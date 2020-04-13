@@ -1,0 +1,5 @@
+giturlparse
+agithub
+gitpython
+PyYAML
+retrying

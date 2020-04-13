@@ -1,0 +1,255 @@
+[submodule "addons/MathBenTech_development"]
+	url = https://github.com/ERPLibre/development.git
+	path = addons/MathBenTech_development
+[submodule "addons/MathBenTech_odoo-business-spending-management-quebec-canada"]
+	url = https://github.com/ERPLibre/odoo-business-spending-management-quebec-canada.git
+	path = addons/MathBenTech_odoo-business-spending-management-quebec-canada
+[submodule "addons/MathBenTech_scrummer"]
+	url = https://github.com/ERPLibre/scrummer.git
+	path = addons/MathBenTech_scrummer
+[submodule "addons/muk-it_muk_base"]
+	url = https://github.com/ERPLibre/muk_base.git
+	path = addons/muk-it_muk_base
+[submodule "addons/muk-it_muk_dms"]
+	url = https://github.com/ERPLibre/muk_dms.git
+	path = addons/muk-it_muk_dms
+[submodule "addons/muk-it_muk_docs"]
+	url = https://github.com/ERPLibre/muk_docs.git
+	path = addons/muk-it_muk_docs
+[submodule "addons/muk-it_muk_misc"]
+	url = https://github.com/ERPLibre/muk_misc.git
+	path = addons/muk-it_muk_misc
+[submodule "addons/muk-it_muk_quality"]
+	url = https://github.com/ERPLibre/muk_quality.git
+	path = addons/muk-it_muk_quality
+[submodule "addons/muk-it_muk_web"]
+	url = https://github.com/ERPLibre/muk_web.git
+	path = addons/muk-it_muk_web
+[submodule "addons/muk-it_muk_website"]
+	url = https://github.com/ERPLibre/muk_website.git
+	path = addons/muk-it_muk_website
+[submodule "addons/Numigi_odoo-base-addons"]
+	url = https://github.com/ERPLibre/odoo-base-addons.git
+	path = addons/Numigi_odoo-base-addons
+[submodule "addons/Numigi_odoo-entertainment-addons"]
+	url = https://github.com/ERPLibre/odoo-entertainment-addons.git
+	path = addons/Numigi_odoo-entertainment-addons
+[submodule "addons/Numigi_odoo-git-addons"]
+	url = https://github.com/ERPLibre/odoo-git-addons.git
+	path = addons/Numigi_odoo-git-addons
+[submodule "addons/Numigi_odoo-hr-addons"]
+	url = https://github.com/ERPLibre/odoo-hr-addons.git
+	path = addons/Numigi_odoo-hr-addons
+[submodule "addons/Numigi_odoo-partner-addons"]
+	url = https://github.com/ERPLibre/odoo-partner-addons.git
+	path = addons/Numigi_odoo-partner-addons
+[submodule "addons/Numigi_odoo-product-addons"]
+	url = https://github.com/ERPLibre/odoo-product-addons.git
+	path = addons/Numigi_odoo-product-addons
+[submodule "addons/Numigi_odoo-project-addons"]
+	url = https://github.com/ERPLibre/odoo-project-addons.git
+	path = addons/Numigi_odoo-project-addons
+[submodule "addons/Numigi_odoo-purchase-addons"]
+	url = https://github.com/ERPLibre/odoo-purchase-addons.git
+	path = addons/Numigi_odoo-purchase-addons
+[submodule "addons/Numigi_odoo-stock-addons"]
+	url = https://github.com/ERPLibre/odoo-stock-addons.git
+	path = addons/Numigi_odoo-stock-addons
+[submodule "addons/Numigi_odoo-survey-addons"]
+	url = https://github.com/ERPLibre/odoo-survey-addons.git
+	path = addons/Numigi_odoo-survey-addons
+[submodule "addons/Numigi_odoo-timesheet-addons"]
+	url = https://github.com/ERPLibre/odoo-timesheet-addons.git
+	path = addons/Numigi_odoo-timesheet-addons
+[submodule "addons/Numigi_odoo-web-addons"]
+	url = https://github.com/ERPLibre/odoo-web-addons.git
+	path = addons/Numigi_odoo-web-addons
+[submodule "addons/OCA_account-analytic"]
+	url = https://github.com/ERPLibre/account-analytic.git
+	path = addons/OCA_account-analytic
+[submodule "addons/OCA_account-budgeting"]
+	url = https://github.com/ERPLibre/account-budgeting.git
+	path = addons/OCA_account-budgeting
+[submodule "addons/OCA_account-closing"]
+	url = https://github.com/ERPLibre/account-closing.git
+	path = addons/OCA_account-closing
+[submodule "addons/OCA_account-consolidation"]
+	url = https://github.com/ERPLibre/account-consolidation.git
+	path = addons/OCA_account-consolidation
+[submodule "addons/OCA_account-financial-reporting"]
+	url = https://github.com/ERPLibre/account-financial-reporting.git
+	path = addons/OCA_account-financial-reporting
+[submodule "addons/OCA_account-financial-tools"]
+	url = https://github.com/ERPLibre/account-financial-tools
+	path = addons/OCA_account-financial-tools
+[submodule "addons/OCA_account-fiscal-rule"]
+	url = https://github.com/ERPLibre/account-fiscal-rule.git
+	path = addons/OCA_account-fiscal-rule
+[submodule "addons/OCA_account-invoicing"]
+	url = https://github.com/ERPLibre/account-invoicing.git
+	path = addons/OCA_account-invoicing
+[submodule "addons/OCA_account-invoice-reporting"]
+	url = https://github.com/ERPLibre/account-invoice-reporting.git
+	path = addons/OCA_account-invoice-reporting
+[submodule "addons/OCA_account-payment"]
+	url = https://github.com/ERPLibre/account-payment.git
+	path = addons/OCA_account-payment
+[submodule "addons/OCA_account-reconcile"]
+	url = https://github.com/ERPLibre/account-reconcile.git
+	path = addons/OCA_account-reconcile
+[submodule "addons/OCA_apps-store"]
+	url = https://github.com/ERPLibre/apps-store.git
+	path = addons/OCA_apps-store
+[submodule "addons/OCA_bank-payment"]
+	url = https://github.com/ERPLibre/bank-payment.git
+	path = addons/OCA_bank-payment
+[submodule "addons/OCA_bank-statement-import"]
+	url = https://github.com/ERPLibre/bank-statement-import.git
+	path = addons/OCA_bank-statement-import
+[submodule "addons/OCA_brand"]
+	url = https://github.com/ERPLibre/brand.git
+	path = addons/OCA_brand
+[submodule "addons/OCA_business-requirement"]
+	url = https://github.com/ERPLibre/business-requirement.git
+	path = addons/OCA_business-requirement
+[submodule "addons/OCA_commission"]
+	url = https://github.com/ERPLibre/commission.git
+	path = addons/OCA_commission
+[submodule "addons/OCA_community-data-files"]
+	url = https://github.com/ERPLibre/community-data-files.git
+	path = addons/OCA_community-data-files
+[submodule "addons/OCA_connector-telephony"]
+	url = https://github.com/ERPLibre/connector-telephony.git
+	path = addons/OCA_connector-telephony
+[submodule "addons/OCA_contract"]
+	url = https://github.com/ERPLibre/contract.git
+	path = addons/OCA_contract
+[submodule "addons/OCA_credit-control"]
+	url = https://github.com/ERPLibre/credit-control.git
+	path = addons/OCA_credit-control
+[submodule "addons/OCA_currency"]
+	url = https://github.com/ERPLibre/currency.git
+	path = addons/OCA_currency
+[submodule "addons/OCA_data-protection"]
+	url = https://github.com/ERPLibre/data-protection.git
+	path = addons/OCA_data-protection
+[submodule "addons/OCA_donation"]
+	url = https://github.com/ERPLibre/donation.git
+	path = addons/OCA_donation
+[submodule "addons/OCA_e-commerce"]
+	url = https://github.com/ERPLibre/e-commerce.git
+	path = addons/OCA_e-commerce
+[submodule "addons/OCA_edi"]
+	url = https://github.com/ERPLibre/edi.git
+	path = addons/OCA_edi
+[submodule "addons/OCA_event"]
+	url = https://github.com/ERPLibre/event.git
+	path = addons/OCA_event
+[submodule "addons/OCA_helpdesk"]
+	url = https://github.com/ERPLibre/helpdesk.git
+	path = addons/OCA_helpdesk
+[submodule "addons/OCA_hr"]
+	url = https://github.com/ERPLibre/hr.git
+	path = addons/OCA_hr
+[submodule "addons/OCA_knowledge"]
+	url = https://github.com/ERPLibre/knowledge.git
+	path = addons/OCA_knowledge
+[submodule "addons/OCA_l10n-canada"]
+	url = https://github.com/ERPLibre/l10n-canada.git
+	path = addons/OCA_l10n-canada
+[submodule "addons/OCA_maintenance"]
+	url = https://github.com/ERPLibre/maintenance.git
+	path = addons/OCA_maintenance
+[submodule "addons/OCA_management-system"]
+	url = https://github.com/ERPLibre/management-system.git
+	path = addons/OCA_management-system
+[submodule "addons/OCA_manufacture"]
+	url = https://github.com/ERPLibre/manufacture.git
+	path = addons/OCA_manufacture
+[submodule "addons/OCA_margin-analysis"]
+	url = https://github.com/ERPLibre/margin-analysis.git
+	path = addons/OCA_margin-analysis
+[submodule "addons/OCA_mis-builder"]
+	url = https://github.com/ERPLibre/mis-builder.git
+	path = addons/OCA_mis-builder
+[submodule "addons/OCA_multi-company"]
+	url = https://github.com/ERPLibre/multi-company.git
+	path = addons/OCA_multi-company
+[submodule "addons/OCA_partner-contact"]
+	url = https://github.com/ERPLibre/partner-contact.git
+	path = addons/OCA_partner-contact
+[submodule "addons/OCA_pos"]
+	url = https://github.com/ERPLibre/pos.git
+	path = addons/OCA_pos
+[submodule "addons/OCA_product-attribute"]
+	url = https://github.com/ERPLibre/product-attribute.git
+	path = addons/OCA_product-attribute
+[submodule "addons/OCA_product-pack"]
+	url = https://github.com/ERPLibre/product-pack.git
+	path = addons/OCA_product-pack
+[submodule "addons/OCA_product-variant"]
+	url = https://github.com/ERPLibre/product-variant.git
+	path = addons/OCA_product-variant
+[submodule "addons/OCA_project"]
+	url = https://github.com/ERPLibre/project.git
+	path = addons/OCA_project
+[submodule "addons/OCA_project-reporting"]
+	url = https://github.com/ERPLibre/project-reporting.git
+	path = addons/OCA_project-reporting
+[submodule "addons/OCA_purchase-workflow"]
+	url = https://github.com/ERPLibre/purchase-workflow.git
+	path = addons/OCA_purchase-workflow
+[submodule "addons/OCA_queue"]
+	url = https://github.com/ERPLibre/queue.git
+	path = addons/OCA_queue
+[submodule "addons/OCA_reporting-engine"]
+	url = https://github.com/ERPLibre/reporting-engine.git
+	path = addons/OCA_reporting-engine
+[submodule "addons/OCA_sale-workflow"]
+	url = https://github.com/ERPLibre/sale-workflow.git
+	path = addons/OCA_sale-workflow
+[submodule "addons/OCA_server-auth"]
+	url = https://github.com/ERPLibre/server-auth.git
+	path = addons/OCA_server-auth
+[submodule "addons/OCA_server-brand"]
+	url = https://github.com/ERPLibre/server-brand.git
+	path = addons/OCA_server-brand
+[submodule "addons/OCA_server-env"]
+	url = https://github.com/ERPLibre/server-env.git
+	path = addons/OCA_server-env
+[submodule "addons/OCA_server-tools"]
+	url = https://github.com/ERPLibre/server-tools.git
+	path = addons/OCA_server-tools
+[submodule "addons/OCA_server-ux"]
+	url = https://github.com/ERPLibre/server-ux.git
+	path = addons/OCA_server-ux
+[submodule "addons/OCA_social"]
+	url = https://github.com/ERPLibre/social.git
+	path = addons/OCA_social
+[submodule "addons/OCA_stock-logistics-warehouse"]
+	url = https://github.com/ERPLibre/stock-logistics-warehouse.git
+	path = addons/OCA_stock-logistics-warehouse
+[submodule "addons/OCA_timesheet"]
+	url = https://github.com/ERPLibre/timesheet.git
+	path = addons/OCA_timesheet
+[submodule "addons/OCA_web"]
+	url = https://github.com/ERPLibre/web.git
+	path = addons/OCA_web
+[submodule "addons/OCA_website"]
+	url = https://github.com/ERPLibre/website.git
+	path = addons/OCA_website
+[submodule "addons/OCA_wms"]
+	url = https://github.com/ERPLibre/wms.git
+	path = addons/OCA_wms
+[submodule "addons/odooaktiv_QuotationRevision"]
+	url = https://github.com/ERPLibre/QuotationRevision.git
+	path = addons/odooaktiv_QuotationRevision
+[submodule "addons/openeducat_openeducat_erp"]
+	url = https://github.com/ERPLibre/openeducat_erp.git
+	path = addons/openeducat_openeducat_erp
+[submodule "addons/Smile-SA_odoo_addons"]
+	url = https://github.com/ERPLibre/odoo_addons.git
+	path = addons/Smile-SA_odoo_addons
+[submodule "odoo"]
+	url = https://github.com/ERPLibre/odoo.git
+	path = odoo
