@@ -9,6 +9,7 @@ from agithub.GitHub import GitHub  # pip install agithub
 from giturlparse import parse  # pip install giturlparse
 
 from git import Repo
+import git
 from typing import List
 
 CST_FILE_SOURCE_REPO_ADDONS_ODOO = "source_repo_addons_odoo.csv"
@@ -265,6 +266,7 @@ class GitTool:
 
     def generate_repo_source_from_building(self, repo_path="./"):
         """
+        DEPRECATED
         Generate csv file with information about all source addons repo of Odoo
         :param repo_path: Path to build repo source
         :return:
@@ -294,7 +296,7 @@ class GitTool:
         find_index = False
         index_find = 0
         for line in all_lines:
-            if not find_index and "if [ $MINIMAL_ADDONS = \"False\" ]; then\n" == line:
+            if not find_index and "if [[ $MINIMAL_ADDONS = \"False\" ]]; then\n" == line:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
@@ -444,12 +446,33 @@ class GitTool:
         print(f"finish same {len(lst_same)}, diff {len(lst_diff)}")
 
     @staticmethod
-    def add_and_fetch_remote(repo_info: Struct):
-        working_repo = Repo(repo_info.relative_path)
-        if repo_info.organization in [a.name for a in working_repo.remotes]:
-            print(f"Remote \"{repo_info.organization}\" already exist "
-                  f"in {repo_info.relative_path}")
-            return
+    def add_and_fetch_remote(repo_info: Struct, root_repo: Repo = None,
+                             branch_name: str = ""):
+        try:
+            working_repo = Repo(repo_info.relative_path)
+            if repo_info.organization in [a.name for a in working_repo.remotes]:
+                print(f"Remote \"{repo_info.organization}\" already exist "
+                      f"in {repo_info.relative_path}")
+                return
+        except git.NoSuchPathError:
+            print(f"New repo {repo_info.relative_path}")
+            if not root_repo:
+                print(f"Missing git repository to root for repo {repo_info.path}")
+                return
+            if branch_name:
+                submodule_repo = retry(
+                    wait_exponential_multiplier=1000,
+                    stop_max_delay=15000
+                )(root_repo.create_submodule)(repo_info.path, repo_info.path,
+                                              url=repo_info.url_https,
+                                              branch=branch_name)
+            else:
+                submodule_repo = retry(
+                    wait_exponential_multiplier=1000,
+                    stop_max_delay=15000
+                )(root_repo.create_submodule)(repo_info.path, repo_info.path,
+                                              url=repo_info.url_https)
+                return
         # Add remote
         upstream_remote = retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
             working_repo.create_remote)(repo_info.organization, repo_info.url_https)

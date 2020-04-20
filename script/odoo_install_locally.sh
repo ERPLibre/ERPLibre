@@ -62,6 +62,7 @@ printf "longpolling_port = ${OE_LONGPOLLING_PORT}\n" >> ${OE_CONFIG_FILE}
 printf "addons_path = ${OE_HOME_EXT}/addons,${OE_HOME}/addons/addons," >> ${OE_CONFIG_FILE}
 printf "${OE_HOME}/addons/OCA_web," >> ${OE_CONFIG_FILE}
 if [[ $MINIMAL_ADDONS = "False" ]]; then
+    printf "${OE_HOME}/addons/ERPLibre_erplibre_addons," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/MathBenTech_development," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/MathBenTech_scrummer," >> ${OE_CONFIG_FILE}
@@ -135,6 +136,7 @@ if [[ $MINIMAL_ADDONS = "False" ]]; then
     printf "${OE_HOME}/addons/OCA_timesheet," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/OCA_website," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/OCA_wms," >> ${OE_CONFIG_FILE}
+    printf "${OE_HOME}/addons/SanteLibre_santelibre_addons," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/Smile-SA_odoo_addons," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/muk-it_muk_base," >> ${OE_CONFIG_FILE}
     printf "${OE_HOME}/addons/muk-it_muk_dms," >> ${OE_CONFIG_FILE}

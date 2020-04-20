@@ -1,4 +1,5 @@
 url,path
+https://github.com/ERPLibre/erplibre_addons.git,addons
 https://github.com/MathBenTech/development.git,addons
 https://github.com/MathBenTech/odoo-business-spending-management-quebec-canada.git,addons
 https://github.com/MathBenTech/scrummer.git,addons
@@ -80,7 +81,8 @@ https://github.com/OCA/timesheet.git,addons
 https://github.com/OCA/web.git,addons
 https://github.com/OCA/website.git,addons
 https://github.com/OCA/wms.git,addons
+https://github.com/odoo/odoo.git,.
 https://github.com/odooaktiv/QuotationRevision.git,addons
 https://github.com/openeducat/openeducat_erp.git,addons
+https://github.com/SanteLibre/santelibre_addons.git,addons
 https://github.com/Smile-SA/odoo_addons.git,addons
-https://github.com/odoo/odoo.git,.
