@@ -8,7 +8,7 @@
 #-------------------------------------------------------------------------------
 ################################################################################
 
-. ../env_var.sh
+. ./env_var.sh
 
 OE_USER=$(whoami)
 # The default port where this Odoo instance will run under (provided you use the command -c in the terminal)

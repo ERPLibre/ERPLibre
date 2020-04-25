@@ -64,64 +64,64 @@ def main():
         for a in lst_repo]
     i = 0
     total = len(lst_repo)
-    # for repo in lst_repo:
-    #     i += 1
-    #     print(f"Nb element {i}/{total}")
-    #     url = repo.get("url")
-    #
-    #     try:
-    #         working_repo = Repo(repo.get("relative_path"))
-    #     except git.exc.NoSuchPathError:
-    #         # Check to fork
-    #         # repo_info = git_tool.get_transformed_repo_info_from_url(
-    #         #     url, organization_force="ERPLibre",
-    #         #     is_submodule=repo.get("is_submodule"),
-    #         #     sub_path=repo.get("sub_path"))
-    #         git_tool.fork_repo(upstream_url=url,
-    #                            github_token=github_token,
-    #                            organization_name="ERPLibre")
-    #         repo_info = git_tool.get_transformed_repo_info_from_url(
-    #             url, organization_force=organization_name,
-    #             is_submodule=repo.get("is_submodule"), sub_path=repo.get("sub_path"))
-    #         git_tool.fork_repo(upstream_url=url,
-    #                            github_token=github_token,
-    #                            organization_name=organization_name)
-    #
-    #         git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
-    #         continue
-    #
-    #     dct_remote_name = {a.name: a for a in working_repo.remotes}
-    #     remote_origin = dct_remote_name.get("origin")
-    #     remote_erplibre = dct_remote_name.get("ERPLibre")
-    #     remote_organization = dct_remote_name.get(organization_name)
-    #
-    #     if not config.skip_fork:
-    #         if not remote_erplibre:
-    #             repo_info = git_tool.get_transformed_repo_info_from_url(
-    #                 url, organization_force="ERPLibre",
-    #                 is_submodule=repo.get("is_submodule"),
-    #                 sub_path=repo.get("sub_path"))
-    #             git_tool.add_and_fetch_remote(repo_info)
-    #
-    #         git_tool.fork_repo(url, github_token,
-    #                            organization_name=organization_name,
-    #                            )
-    #
-    #     repo_info = git_tool.get_transformed_repo_info_from_url(
-    #         url, organization_force=organization_name,
-    #         is_submodule=repo.get("is_submodule"), sub_path=repo.get("sub_path"))
-    #     if remote_origin:
-    #         working_repo.git.remote("remove", "origin")
-    #     repo_info.organization = "origin"
-    #     try:
-    #         git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
-    #     except Exception as e:
-    #         print(e)
-    #     if config.force and remote_organization:
-    #         working_repo.git.remote("remove", organization_name)
-    #
-    #     repo_info.organization = organization_name
-    #     git_tool.add_and_fetch_remote(repo_info)
+    for repo in lst_repo:
+        i += 1
+        print(f"Nb element {i}/{total}")
+        url = repo.get("url")
+
+        try:
+            working_repo = Repo(repo.get("relative_path"))
+        except git.exc.NoSuchPathError:
+            # Check to fork
+            # repo_info = git_tool.get_transformed_repo_info_from_url(
+            #     url, organization_force="ERPLibre",
+            #     is_submodule=repo.get("is_submodule"),
+            #     sub_path=repo.get("sub_path"))
+            git_tool.fork_repo(upstream_url=url,
+                               github_token=github_token,
+                               organization_name="ERPLibre")
+            repo_info = git_tool.get_transformed_repo_info_from_url(
+                url, organization_force=organization_name,
+                is_submodule=repo.get("is_submodule"), sub_path=repo.get("sub_path"))
+            git_tool.fork_repo(upstream_url=url,
+                               github_token=github_token,
+                               organization_name=organization_name)
+
+            git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
+            continue
+
+        dct_remote_name = {a.name: a for a in working_repo.remotes}
+        remote_origin = dct_remote_name.get("origin")
+        remote_erplibre = dct_remote_name.get("ERPLibre")
+        remote_organization = dct_remote_name.get(organization_name)
+
+        if not config.skip_fork:
+            if not remote_erplibre:
+                repo_info = git_tool.get_transformed_repo_info_from_url(
+                    url, organization_force="ERPLibre",
+                    is_submodule=repo.get("is_submodule"),
+                    sub_path=repo.get("sub_path"))
+                git_tool.add_and_fetch_remote(repo_info)
+
+            git_tool.fork_repo(url, github_token,
+                               organization_name=organization_name,
+                               )
+
+        repo_info = git_tool.get_transformed_repo_info_from_url(
+            url, organization_force=organization_name,
+            is_submodule=repo.get("is_submodule"), sub_path=repo.get("sub_path"))
+        if remote_origin:
+            working_repo.git.remote("remove", "origin")
+        repo_info.organization = "origin"
+        try:
+            git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
+        except Exception as e:
+            print(e)
+        if config.force and remote_organization:
+            working_repo.git.remote("remove", organization_name)
+
+        repo_info.organization = organization_name
+        git_tool.add_and_fetch_remote(repo_info)
 
     # Update origin to new repo
     git_tool.generate_git_modules(lst_repo_organization, repo_path=config.dir)
