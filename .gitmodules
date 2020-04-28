@@ -1,3 +1,6 @@
+[submodule "addons/ERPLibre_erplibre_addons"]
+	url = https://github.com/ERPLibre/erplibre_addons.git
+	path = addons/ERPLibre_erplibre_addons
 [submodule "addons/MathBenTech_development"]
 	url = https://github.com/ERPLibre/development.git
 	path = addons/MathBenTech_development
@@ -241,15 +244,18 @@
 [submodule "addons/OCA_wms"]
 	url = https://github.com/ERPLibre/wms.git
 	path = addons/OCA_wms
+[submodule "odoo"]
+	url = https://github.com/ERPLibre/odoo.git
+	path = odoo
 [submodule "addons/odooaktiv_QuotationRevision"]
 	url = https://github.com/ERPLibre/QuotationRevision.git
 	path = addons/odooaktiv_QuotationRevision
 [submodule "addons/openeducat_openeducat_erp"]
 	url = https://github.com/ERPLibre/openeducat_erp.git
 	path = addons/openeducat_openeducat_erp
+[submodule "addons/SanteLibre_santelibre_addons"]
+	url = https://github.com/ERPLibre/santelibre_addons.git
+	path = addons/SanteLibre_santelibre_addons
 [submodule "addons/Smile-SA_odoo_addons"]
 	url = https://github.com/ERPLibre/odoo_addons.git
 	path = addons/Smile-SA_odoo_addons
-[submodule "odoo"]
-	url = https://github.com/ERPLibre/odoo.git
-	path = odoo

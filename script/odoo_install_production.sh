@@ -8,9 +8,9 @@
 #-------------------------------------------------------------------------------
 ################################################################################
 
-. ../env_var.sh
+. ./env_var.sh
 
-./odoo_install_debian_dependancy.sh
+./script/odoo_install_debian_dependancy.sh
 
 echo -e "\n---- Create ODOO system user ----"
 sudo adduser --system --quiet --shell=/bin/bash --home=/${OE_USER} --gecos 'ODOO' --group ${OE_USER}
@@ -35,12 +35,12 @@ echo -e "\n==== Clone this installation  ===="
 REMOTE_URL_GIT=`git remote get-url origin`
 BRANCH_GIT=`git rev-parse --abbrev-ref HEAD`
 sudo su ${OE_USER} -c "git clone --branch ${BRANCH_GIT} ${REMOTE_URL_GIT} ${OE_HOME_ODOO}"
-sudo cp ../env_var.sh ${OE_HOME_ODOO}
+sudo cp ./env_var.sh ${OE_HOME_ODOO}
 sudo chown -R ${OE_USER}:${OE_USER} ${OE_HOME_ODOO}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${OE_HOME_ODOO}
-sudo su ${OE_USER} -c "./odoo_install_locally.sh"
+sudo su ${OE_USER} -c "./script/odoo_install_locally.sh"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${OE_USER} -c "printf 'logfile = /var/log/${OE_USER}/${OE_CONFIG}.log\n' >> /${OE_USER}/odoo/config.conf"
@@ -48,9 +48,9 @@ cd ${LAST_PWD}
 #--------------------------------------------------
 # Adding ODOO as a daemon
 #--------------------------------------------------
-./odoo_install_daemon.sh
+./script/odoo_install_daemon.sh
 
 #--------------------------------------------------
 # Install Nginx if needed
 #--------------------------------------------------
-./odoo_install_production_nginx.sh
+./script/odoo_install_production_nginx.sh

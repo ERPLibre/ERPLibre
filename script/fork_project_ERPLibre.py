@@ -4,6 +4,7 @@ import sys
 import argparse
 import logging
 from git import Repo
+import git
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(new_path)
@@ -50,6 +51,7 @@ def main():
     config = get_config()
     github_token = config.github_token
     git_tool = GitTool()
+    root_repo = Repo(config.dir)
 
     if not github_token:
         raise ValueError("Missing github_token")
@@ -67,7 +69,26 @@ def main():
         print(f"Nb element {i}/{total}")
         url = repo.get("url")
 
-        working_repo = Repo(repo.get("relative_path"))
+        try:
+            working_repo = Repo(repo.get("relative_path"))
+        except git.exc.NoSuchPathError:
+            # Check to fork
+            # repo_info = git_tool.get_transformed_repo_info_from_url(
+            #     url, organization_force="ERPLibre",
+            #     is_submodule=repo.get("is_submodule"),
+            #     sub_path=repo.get("sub_path"))
+            git_tool.fork_repo(upstream_url=url,
+                               github_token=github_token,
+                               organization_name="ERPLibre")
+            repo_info = git_tool.get_transformed_repo_info_from_url(
+                url, organization_force=organization_name,
+                is_submodule=repo.get("is_submodule"), sub_path=repo.get("sub_path"))
+            git_tool.fork_repo(upstream_url=url,
+                               github_token=github_token,
+                               organization_name=organization_name)
+
+            git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
+            continue
 
         dct_remote_name = {a.name: a for a in working_repo.remotes}
         remote_origin = dct_remote_name.get("origin")
@@ -92,7 +113,10 @@ def main():
         if remote_origin:
             working_repo.git.remote("remove", "origin")
         repo_info.organization = "origin"
-        git_tool.add_and_fetch_remote(repo_info)
+        try:
+            git_tool.add_and_fetch_remote(repo_info, root_repo=root_repo)
+        except Exception as e:
+            print(e)
         if config.force and remote_organization:
             working_repo.git.remote("remove", organization_name)
 
