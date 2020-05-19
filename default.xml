@@ -24,7 +24,7 @@
 
   <remote name="Smile" fetch="https://github.com/ERPLibre/" />
 
-  <project remote="ERPLibre" name="erplibre_addons.git" path="addons/erplibre_addons" groups="addons" />
+  <project remote="ERPLibre" name="erplibre_addons.git" path="addons/erplibre_addons" groups="addons" revision="master" />
   <project remote="MathBenTech" name="development.git" path="addons/MathBenTech/development" groups="addons" />
   <project remote="MathBenTech" name="odoo-business-spending-management-quebec-canada.git" path="addons/quebec-canada" groups="addons" />
   <project remote="MathBenTech" name="scrummer.git" path="addons/MathBenTech/scrummer" groups="addons" />
@@ -106,7 +106,7 @@
   <project remote="OCA" name="web.git" path="addons/OCA/web" groups="addons" />
   <project remote="OCA" name="website.git" path="addons/OCA/website" groups="addons" />
   <project remote="OCA" name="wms.git" path="addons/OCA/wms" groups="addons" />
-  <project remote="odoo" name="odoo" path="addons/com/odoo/" groups="addons" />
+  <project remote="odoo" name="odoo" path="addons/com/odoo/" groups="addons" clone-depth="1" />
   <project remote="odooaktiv" name="QuotationRevision.git" path="addons/QuotationRevision" groups="addons" />
   <project remote="openeducat" name="openeducat_erp.git" path="addons/openeducat_erp" groups="addons" />
   <project remote="SanteLibre" name="santelibre_addons.git" path="addons/santelibre_addons" groups="addons" />
