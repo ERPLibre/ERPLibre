@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <default revision="12.0"
+           remote="ERPLibre"
+           sync-c="true"
+           sync-j="4" />
+
+  <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
+  <remote name="MathBenTech" fetch="https://github.com/ERPLibre/" />
+  <remote name="muk" fetch="https://github.com/ERPLibre/" />
+  <remote name="Numigi" fetch="https://github.com/ERPLibre/" />
+  <remote name="OCA" fetch="https://github.com/ERPLibre/" />
+  <remote name="odoo" fetch="https://github.com/ERPLibre/" />
+  <remote name="odooaktiv" fetch="https://github.com/ERPLibre/" />
+  <remote name="openeducat" fetch="https://github.com/ERPLibre/" />
+  <remote name="SanteLibre" fetch="https://github.com/ERPLibre/" revision="master" />
+  <remote name="Smile" fetch="https://github.com/ERPLibre/" />
+
+
+  <project remote="odoo" name="odoo.git" path="odoo" groups="odoo" revision="12.0_feature_5_star_CRM" clone-depth="1" />
+
+
+  <project remote="ERPLibre" name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" groups="addons" revision="master" />
+  <project remote="MathBenTech" name="development.git" path="addons/MathBenTech_development" groups="addons" />
+  <project remote="MathBenTech" name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_quebec-canada" groups="addons" revision="stable_prod_12.0" />
+  <project remote="MathBenTech" name="scrummer.git" path="addons/MathBenTech_scrummer" groups="addons" />
+  <project remote="muk" name="muk_base.git" path="addons/muk-it_muk_base" groups="addons" />
+  <project remote="muk" name="muk_dms.git" path="addons/muk-it_muk_dms" groups="addons" />
+  <project remote="muk" name="muk_docs.git" path="addons/muk-it_muk_docs" groups="addons" />
+  <project remote="muk" name="muk_misc.git" path="addons/muk-it_muk_misc" groups="addons" />
+  <project remote="muk" name="muk_quality.git" path="addons/muk-it_muk_quality" groups="addons" />
+  <project remote="muk" name="muk_web.git" path="addons/muk-it_muk_web" groups="addons" />
+  <project remote="muk" name="muk_website.git" path="addons/muk-it_muk_website" groups="addons" />
+  <project remote="Numigi" name="odoo-base-addons.git" path="addons/Numigi_base-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-entertainment-addons.git" path="addons/Numigi_entertainment-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-git-addons.git" path="addons/Numigi_git-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-hr-addons.git" path="addons/Numigi_hr-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-partner-addons.git" path="addons/Numigi_partner-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-product-addons.git" path="addons/Numigi_product-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-project-addons.git" path="addons/Numigi_project-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-purchase-addons.git" path="addons/Numigi_purchase-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-stock-addons.git" path="addons/Numigi_stock-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-survey-addons.git" path="addons/Numigi_survey-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-timesheet-addons.git" path="addons/Numigi_timesheet-addons" groups="addons" />
+  <project remote="Numigi" name="odoo-web-addons.git" path="addons/Numigi_Numigi_web-addons" groups="addons" />
+  <project remote="OCA" name="account-analytic.git" path="addons/OCA_account-analytic" groups="addons" />
+  <project remote="OCA" name="account-budgeting.git" path="addons/OCA_account-budgeting" groups="addons" />
+  <project remote="OCA" name="account-closing.git" path="addons/OCA_account-closing" groups="addons" />
+  <project remote="OCA" name="account-consolidation.git" path="addons/OCA_account-consolidation" groups="addons" />
+  <project remote="OCA" name="account-financial-reporting.git" path="addons/OCA_financial-reporting" groups="addons" />
+  <project remote="OCA" name="account-financial-tools" path="addons/OCA_financial-t" groups="addons" />
+  <project remote="OCA" name="account-fiscal-rule.git" path="addons/OCA_fiscal-rule" groups="addons" />
+  <project remote="OCA" name="account-invoicing.git" path="addons/OCA_account-invoicing" groups="addons" />
+  <project remote="OCA" name="account-invoice-reporting.git" path="addons/OCA_invoice-reporting" groups="addons" />
+  <project remote="OCA" name="account-payment.git" path="addons/OCA_account-payment" groups="addons" />
+  <project remote="OCA" name="account-reconcile.git" path="addons/OCA_account-reconcile" groups="addons" />
+  <project remote="OCA" name="apps-store.git" path="addons/OCA_apps-store" groups="addons" />
+  <project remote="OCA" name="bank-payment.git" path="addons/OCA_bank-payment" groups="addons" />
+  <project remote="OCA" name="bank-statement-import.git" path="addons/OCA_statement-import" groups="addons" />
+  <project remote="OCA" name="brand.git" path="addons/OCA_OCA/brand" groups="addons" />
+  <project remote="OCA" name="business-requirement.git" path="addons/OCA_business-requirement" groups="addons" />
+  <project remote="OCA" name="commission.git" path="addons/OCA_OCA/commission" groups="addons" />
+  <project remote="OCA" name="community-data-files.git" path="addons/OCA_data-files" groups="addons" />
+  <project remote="OCA" name="connector-telephony.git" path="addons/OCA_connector-telephony" groups="addons" />
+  <project remote="OCA" name="contract.git" path="addons/OCA_contract" groups="addons" />
+  <project remote="OCA" name="credit-control.git" path="addons/OCA_credit-control" groups="addons" />
+  <project remote="OCA" name="currency.git" path="addons/OCA_currency" groups="addons" />
+  <project remote="OCA" name="data-protection.git" path="addons/OCA_data-protection" groups="addons" />
+  <project remote="OCA" name="donation.git" path="addons/OCA_donation" groups="addons" />
+  <project remote="OCA" name="e-commerce.git" path="addons/OCA_e-commerce" groups="addons" />
+  <project remote="OCA" name="edi.git" path="addons/OCA_edi" groups="addons" />
+  <project remote="OCA" name="event.git" path="addons/OCA_event" groups="addons" />
+  <project remote="OCA" name="helpdesk.git" path="addons/OCA_helpdesk" groups="addons" />
+  <project remote="OCA" name="hr.git" path="addons/OCA_hr" groups="addons" />
+  <project remote="OCA" name="knowledge.git" path="addons/OCA_knowledge" groups="addons" />
+  <project remote="OCA" name="l10n-canada.git" path="addons/OCA_l10n-canada" groups="addons" />
+  <project remote="OCA" name="maintenance.git" path="addons/OCA_maintenance" groups="addons" />
+  <project remote="OCA" name="management-system.git" path="addons/OCA_management-system" groups="addons" />
+  <project remote="OCA" name="manufacture.git" path="addons/OCA_manufacture" groups="addons" />
+  <project remote="OCA" name="margin-analysis.git" path="addons/OCA_margin-analysis" groups="addons" />
+  <project remote="OCA" name="mis-builder.git" path="addons/OCA_mis-builder" groups="addons" />
+  <project remote="OCA" name="multi-company.git" path="addons/OCA_multi-company" groups="addons" />
+  <project remote="OCA" name="partner-contact.git" path="addons/OCA_partner-contact" groups="addons" />
+  <project remote="OCA" name="pos.git" path="addons/OCA_OCA/pos" groups="addons" />
+  <project remote="OCA" name="product-attribute.git" path="addons/OCA_product-attribute" groups="addons" />
+  <project remote="OCA" name="product-pack.git" path="addons/OCA_product-pack" groups="addons" />
+  <project remote="OCA" name="product-variant.git" path="addons/OCA_product-variant" groups="addons" />
+  <project remote="OCA" name="project.git" path="addons/OCA_project" groups="addons" />
+  <project remote="OCA" name="project-reporting.git" path="addons/OCA_project-reporting" groups="addons" />
+  <project remote="OCA" name="purchase-workflow.git" path="addons/OCA_purchase-workflow" groups="addons" />
+  <project remote="OCA" name="queue.git" path="addons/OCA_queue" groups="addons" />
+  <project remote="OCA" name="reporting-engine.git" path="addons/OCA_reporting-engine" groups="addons" />
+  <project remote="OCA" name="sale-workflow.git" path="addons/OCA_sale-workflow" groups="addons" />
+  <project remote="OCA" name="server-auth.git" path="addons/OCA_server-auth" groups="addons" />
+  <project remote="OCA" name="server-brand.git" path="addons/OCA_server-brand" groups="addons" />
+  <project remote="OCA" name="server-env.git" path="addons/OCA_server-env" groups="addons" />
+  <project remote="OCA" name="server-tools.git" path="addons/OCA_server-tools" groups="addons" />
+  <project remote="OCA" name="server-ux.git" path="addons/OCA_server-ux" groups="addons" />
+  <project remote="OCA" name="social.git" path="addons/OCA_OCA/social" groups="addons" />
+  <project remote="OCA" name="stock-logistics-warehouse.git" path="addons/OCA_logistics-warehouse" groups="addons" />
+  <project remote="OCA" name="timesheet.git" path="addons/OCA_timesheet" groups="addons" />
+  <project remote="OCA" name="web.git" path="addons/OCA_web" groups="addons" />
+  <project remote="OCA" name="website.git" path="addons/OCA_website" groups="addons" />
+  <project remote="OCA" name="wms.git" path="addons/OCA_wms" groups="addons" />
+  <project remote="odooaktiv" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" groups="addons" />
+  <project remote="openeducat" name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" groups="addons" />
+  <project remote="SanteLibre" name="santelibre_addons.git" path="addons/SanteLibre_santelibre_addons" groups="addons" />
+  <project remote="Smile" name="odoo_addons.git" path="addons/Smile_odoo_addons" groups="addons" />
+
+</manifest>
