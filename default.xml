@@ -1,55 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-
-  <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
   <default revision="master"
            remote="ERPLibre"
            sync-j="4" />
 
+  <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
+
   <remote name="MathBentech" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="MathBentech"
-           sync-j="4" />
 
   <remote name="muk" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="muk"
-           sync-j="4" />
 
   <remote name="Numigi" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="Numigi"
-           sync-j="4" />
 
   <remote name="OCA" fetch="https://github.com/ERPLibre/" />
-  <default revision="12.0"
-           remote="OCA"
-           sync-j="4" />
 
   <remote name="odoo" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="odoo"
-           sync-j="4" />
 
   <remote name="odooaktiv" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="odooaktiv"
-           sync-j="4" />
 
   <remote name="openeducat" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="openeducat"
-           sync-j="4" />
 
   <remote name="SanteLibre" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="SanteLibre"
-           sync-j="4" />
 
   <remote name="Smile" fetch="https://github.com/ERPLibre/" />
-  <default revision="master"
-           remote="Smile"
-           sync-j="4" />
 
   <project remote="ERPLibre" name="erplibre_addons.git" path="addons/erplibre_addons" groups="addons" />
   <project remote="MathBenTech" name="development.git" path="addons/MathBenTech/development" groups="addons" />
