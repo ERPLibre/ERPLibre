@@ -6,7 +6,7 @@
 
   <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
 
-  <remote name="MathBentech" fetch="https://github.com/ERPLibre/" />
+  <remote name="MathBenTech" fetch="https://github.com/ERPLibre/" />
 
   <remote name="muk" fetch="https://github.com/ERPLibre/" />
 
