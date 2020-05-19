@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-  <default revision="master"
+  <default revision="12.0"
            remote="ERPLibre"
            sync-j="4" />
 
@@ -110,6 +110,6 @@
   <project remote="odooaktiv" name="QuotationRevision.git" path="addons/QuotationRevision" groups="addons" />
   <project remote="openeducat" name="openeducat_erp.git" path="addons/openeducat_erp" groups="addons" />
   <project remote="SanteLibre" name="santelibre_addons.git" path="addons/santelibre_addons" groups="addons" />
-  <project remote="Smile" name="SA/odoo_addons.gremoteit" path="addons/addons.gremo" groups="addons" />
+  <project remote="Smile" name="SA/odoo_addons.git" path="addons/addons.gremo" groups="addons" />
 
 </manifest>
