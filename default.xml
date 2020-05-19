@@ -26,7 +26,7 @@
 
   <project remote="ERPLibre" name="erplibre_addons.git" path="addons/erplibre_addons" groups="addons" revision="master" />
   <project remote="MathBenTech" name="development.git" path="addons/MathBenTech/development" groups="addons" />
-  <project remote="MathBenTech" name="odoo-business-spending-management-quebec-canada.git" path="addons/quebec-canada" groups="addons" />
+  <project remote="MathBenTech" name="odoo-business-spending-management-quebec-canada.git" path="addons/quebec-canada" groups="addons" revision="stable_prod_12.0" />
   <project remote="MathBenTech" name="scrummer.git" path="addons/MathBenTech/scrummer" groups="addons" />
   <project remote="muk" name="muk_base.git" path="addons/muk_base" groups="addons" />
   <project remote="muk" name="muk_dms.git" path="addons/muk_dms" groups="addons" />
