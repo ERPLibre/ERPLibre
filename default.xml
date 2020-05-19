@@ -20,7 +20,7 @@
 
   <remote name="openeducat" fetch="https://github.com/ERPLibre/" />
 
-  <remote name="SanteLibre" fetch="https://github.com/ERPLibre/" />
+  <remote name="SanteLibre" fetch="https://github.com/ERPLibre/" revision="master" />
 
   <remote name="Smile" fetch="https://github.com/ERPLibre/" />
 
