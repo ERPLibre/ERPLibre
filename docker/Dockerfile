@@ -1,4 +1,4 @@
-FROM erplibre-base:12.0
+FROM technolibre/erplibre-base:12.0
 
 ENV REPO_MANIFEST_URL https://github.com/agileops/ERPLibre.git
 RUN cat /etc/os-release
