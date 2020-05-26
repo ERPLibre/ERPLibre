@@ -1,0 +1,55 @@
+version: "3.3"
+services:
+    ERPLibre:
+      image: test
+      ports:
+        - 8069:8069
+      environment:
+        POSTGRES_PASSWORD: mysecretpassword
+        POSTGRES_USER: odoo
+        POSTGRES_DB: odoo
+      depends_on:
+        - db
+      networks:
+        - front
+      command: odoo -c /etc/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+
+    db:
+      image: postgres:12.3
+      environment:
+        POSTGRES_PASSWORD: mysecretpassword
+        POSTGRES_USER: odoo
+        POSTGRES_DB: odoo
+      networks:
+        - front
+
+
+networks:
+  front:
+
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.238.0/24
+
+
+#tmpfs: /run
+#tmpfs:
+#  - /run
+#  - /tmp
+#user: postgresql
+#working_dir: /code
+#domainname: foo.com
+#hostname: foo
+#ipc: host
+#mac_address: 02:42:ac:11:65:43
+#privileged: true
+#read_only: true
+#shm_size: 64M
+#stdin_open: true
+#tty: true
+
+# odoo -d odoo --db_host db -w mysecretpassword
+# timeout 1 bash -c 'cat < /dev/null > /dev/tcp/172.19.0.2/5432'
+# echo $?
