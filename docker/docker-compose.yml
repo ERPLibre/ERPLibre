@@ -32,24 +32,3 @@ networks:
       driver: default
       config:
         - subnet: 172.16.238.0/24
-
-
-#tmpfs: /run
-#tmpfs:
-#  - /run
-#  - /tmp
-#user: postgresql
-#working_dir: /code
-#domainname: foo.com
-#hostname: foo
-#ipc: host
-#mac_address: 02:42:ac:11:65:43
-#privileged: true
-#read_only: true
-#shm_size: 64M
-#stdin_open: true
-#tty: true
-
-# odoo -d odoo --db_host db -w mysecretpassword
-# timeout 1 bash -c 'cat < /dev/null > /dev/tcp/172.19.0.2/5432'
-# echo $?
