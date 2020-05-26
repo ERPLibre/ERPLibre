@@ -2,6 +2,7 @@
 <manifest>
   <default revision="12.0"
            remote="ERPLibre"
+           sync-c="true"
            sync-j="4" />
 
   <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
