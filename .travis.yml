@@ -9,5 +9,5 @@ script:
 
 after_success:
   - docker login --username mikefaille --password "${DOCKER_TOKEN}"
-  - docker push technolibre/erplibre-base:12.0 docker/base
-  - docker push technolibre/erplibre:12.0 docker/main
+  - docker push technolibre/erplibre-base:12.0
+  - docker push technolibre/erplibre:12.0
