@@ -3,3 +3,6 @@ services:
 
 before_install:
   - docker build -t technolibre/erplibre:12.0 docker/main
+
+script:
+  - echo test
