@@ -1,7 +1,7 @@
 version: "3.3"
 services:
     ERPLibre:
-      image: test
+      image: technolibre/erplibre:12.0
       ports:
         - 8069:8069
       environment:
