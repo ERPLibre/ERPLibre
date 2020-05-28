@@ -1,6 +1,25 @@
 #!/bin/bash
 
 set -e
+if [[ "$ENV" == "dev" ]] &&  [ ! -z ${CURRENT_UID} ]
+then
+    export HOME=/ERPLibre
+    cd $HOME
+
+
+    git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+    GIT_PID=$!
+    echo "my repo"  $(git rev-parse --abbrev-ref HEAD)
+    repo init -u  git://127.0.0.1:9418/  -b $(git rev-parse --abbrev-ref HEAD)
+
+    repo sync
+
+    kill -9 $GIT_PID
+elif [[ "$ENV" == "dev" ]] && [  -z ${CURRENT_UID} ]
+then
+    echo 'Please run as follows : CURRENT_UID=$(id -u):$(id -g) docker-compose up'
+    exit 1
+fi
 
 # set the postgres database host, port, user and password according to the environment
 # and pass them as arguments to the odoo process if not present in the config file
@@ -13,7 +32,7 @@ DB_ARGS=()
 function check_config() {
     param="$1"
     value="$2"
-    if grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC" ; then       
+    if grep -q -E "^\s*\b${param}\b\s*=" "$ODOO_RC" ; then
         value=$(grep -E "^\s*\b${param}\b\s*=" "$ODOO_RC" |cut -d " " -f3|sed 's/["\n\r]//g')
     fi;
     DB_ARGS+=("--${param}")

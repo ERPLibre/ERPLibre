@@ -1,18 +1,29 @@
 version: "3.3"
 services:
     ERPLibre:
-      image: technolibre/erplibre:12.0
+      image: technolibre/erplibre-dev:12.0
       ports:
         - 8069:8069
       environment:
-        POSTGRES_PASSWORD: mysecretpassword
-        POSTGRES_USER: odoo
+        HOST: db
+        PASSWORD: mysecretpassword
+        USER: odoo
         POSTGRES_DB: odoo
+        CURRENT_UID: ${CURRENT_UID}
       depends_on:
         - db
       networks:
         - front
       command: odoo -c /etc/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+      volumes: odoo/doo
+      user: ${CURRENT_UID:?"Please run as follows 'CURRENT_UID=$(id -u):$(id -g) docker-compose up'"}
+      # user:
+      volumes:
+        - .:/ERPLibre
+          #   type: volume
+          # source: .
+          # target: /ERPLibre
+
 
     db:
       image: postgres:12.3
@@ -31,4 +42,4 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 172.16.238.0/24
+        - subnet: 172.16.237.0/24
