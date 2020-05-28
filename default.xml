@@ -93,11 +93,11 @@
   <project remote="OCA" name="server-tools.git" path="addons/OCA_server-tools" groups="addons" />
   <project remote="OCA" name="server-ux.git" path="addons/OCA_server-ux" groups="addons" />
   <project remote="OCA" name="social.git" path="addons/OCA_OCA/social" groups="addons" />
-  <project remote="OCA" name="stock-logistics-warehouse.git" path="addons/OCA_OCA/logistics-warehouse" groups="addons" />
-  <project remote="OCA" name="timesheet.git" path="addons/OCA_OCA/timesheet" groups="addons" />
-  <project remote="OCA" name="web.git" path="addons/OCA_OCA/web" groups="addons" />
-  <project remote="OCA" name="website.git" path="addons/OCA_OCA/website" groups="addons" />
-  <project remote="OCA" name="wms.git" path="addons/OCA_OCA/wms" groups="addons" />
+  <project remote="OCA" name="stock-logistics-warehouse.git" path="addons/OCA_logistics-warehouse" groups="addons" />
+  <project remote="OCA" name="timesheet.git" path="addons/OCA_timesheet" groups="addons" />
+  <project remote="OCA" name="web.git" path="addons/OCA_web" groups="addons" />
+  <project remote="OCA" name="website.git" path="addons/OCA_website" groups="addons" />
+  <project remote="OCA" name="wms.git" path="addons/OCA_wms" groups="addons" />
   <project remote="odoo" name="odoo" path="addons/odoo_com/odoo/" groups="addons" clone-depth="1" />
   <project remote="odooaktiv" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" groups="addons" />
   <project remote="openeducat" name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" groups="addons" />
