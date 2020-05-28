@@ -16,6 +16,10 @@
   <remote name="SanteLibre" fetch="https://github.com/ERPLibre/" revision="master" />
   <remote name="Smile" fetch="https://github.com/ERPLibre/" />
 
+
+  <project remote="odoo" name="odoo.git" path="odoo" groups="odoo" revision="12.0_feature_5_star_CRM" />
+
+
   <project remote="ERPLibre" name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" groups="addons" revision="master" />
   <project remote="MathBenTech" name="development.git" path="addons/MathBenTech_development" groups="addons" />
   <project remote="MathBenTech" name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_quebec-canada" groups="addons" revision="stable_prod_12.0" />
