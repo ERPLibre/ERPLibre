@@ -17,7 +17,7 @@
   <remote name="Smile" fetch="https://github.com/ERPLibre/" />
 
 
-  <project remote="odoo" name="odoo.git" path="odoo" groups="odoo" revision="12.0_feature_5_star_CRM" />
+  <project remote="odoo" name="odoo.git" path="odoo" groups="odoo" revision="12.0_feature_5_star_CRM" clone-depth="1" />
 
 
   <project remote="ERPLibre" name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" groups="addons" revision="master" />
@@ -102,7 +102,6 @@
   <project remote="OCA" name="web.git" path="addons/OCA_web" groups="addons" />
   <project remote="OCA" name="website.git" path="addons/OCA_website" groups="addons" />
   <project remote="OCA" name="wms.git" path="addons/OCA_wms" groups="addons" />
-  <project remote="odoo" name="odoo" path="addons/odoo_com/odoo/" groups="addons" clone-depth="1" />
   <project remote="odooaktiv" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" groups="addons" />
   <project remote="openeducat" name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" groups="addons" />
   <project remote="SanteLibre" name="santelibre_addons.git" path="addons/SanteLibre_santelibre_addons" groups="addons" />
