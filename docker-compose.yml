@@ -1,0 +1,48 @@
+version: "3.3"
+services:
+    ERPLibre:
+      image: technolibre/erplibre-dev:12.0
+      ports:
+        - 8069:8069
+      environment:
+        HOST: db
+        PASSWORD: mysecretpassword
+        USER: odoo
+        POSTGRES_DB: odoo
+        CURRENT_UID: ${CURRENT_UID}
+      depends_on:
+        - db
+      networks:
+        - front
+      command: odoo -c /ERPLibre/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+      user: ${CURRENT_UID:?"Please run as follows 'CURRENT_UID=$(id -u):$(id -g) docker-compose up'"}
+      # user:
+      volumes:
+        - .:/ERPLibre
+        # See the volume section at the end of the file
+        - erplibre_data_dir:/var/lib/odoo
+
+    db:
+      image: postgres:12.3
+      environment:
+        POSTGRES_PASSWORD: mysecretpassword
+        POSTGRES_USER: odoo
+        POSTGRES_DB: odoo
+      networks:
+        - front
+
+
+networks:
+  front:
+
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.16.237.0/24
+
+# We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
+# - docker volume --help
+# - docker-compose down --help
+volumes:
+  erplibre_data_dir:
