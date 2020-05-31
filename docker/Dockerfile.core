@@ -6,6 +6,10 @@ SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 # Generate locale C.UTF-8 for postgres and general locale data
 ENV LANG C.UTF-8
 
+ENV ODOO_EXEC_BIN odoo
+ENV ODOO_PREFIX /ERPLibre
+
+
 # Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf
 RUN apt-get update \
         && apt-get install -y --no-install-recommends \
@@ -29,6 +33,8 @@ RUN apt-get update \
             python3-watchdog \
             python3-xlrd \
             python3-xlwt \
+            python3-babel \
+            python3-psycopg2 \
             xz-utils \
             git \
             iproute2 \
@@ -37,6 +43,42 @@ RUN apt-get update \
         && echo '7e35a63f9db14f93ec7feeb0fce76b30c08f2057 wkhtmltox.deb' | sha1sum -c - \
         && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
         && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
+
+
+# dpkg-deb -I  odoo.deb  | grep Depends: | sed "s/ /\\n/g" | egrep '^python\-*' | sed "s/,//g"
+RUN apt-get update \
+        && apt-get install -y --no-install-recommends \
+        python3-dateutil \
+        python3-decorator \
+        python3-docutils \
+        python3-feedparser \
+        python3-gevent \
+        python3-html2text \
+        python3-jinja2 \
+        python3-libsass \
+        python3-lxml \
+        python3-mako \
+        python3-mock \
+        python3-ofxparse \
+        python3-passlib \
+        python3-pil \
+        python3-psutil \
+        python3-psycopg2 \
+        python3-pydot \
+        python3-pyparsing \
+        python3-pypdf2 \
+        python3-reportlab \
+        python3-requests \
+        python3-serial \
+        python3-suds \
+        python3-tz \
+        python3-usb \
+        python3-vatnumber \
+        python3-werkzeug \
+        python3-xlsxwriter \
+        python3-chardet \
+        python3-xlrd \
+        && rm -rf /var/lib/apt/lists/*
 
 # install latest postgresql-client
 RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
@@ -48,9 +90,10 @@ RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/
 	&& gpgconf --kill all \
 	&& rm -rf "$GNUPGHOME" \
 	&& apt-get update  \
-	&& apt-get install --no-install-recommends -y postgresql-client \
-	&& rm -f /etc/apt/sources.list.d/pgdg.list \
-	&& rm -rf /var/lib/apt/lists/*
+	&& apt-get install --no-install-recommends -y postgresql-client-12 \
+        && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/lib/postgresql/12/bin/pg_config /usr/bin/pg_config
 
 RUN cd ; mkdir -p .bin/ && \
         git config --global color.ui false && \
@@ -62,38 +105,40 @@ RUN cd ; mkdir -p .bin/ && \
 
 RUN groupadd --gid 101  --force odoo && \
         useradd --non-unique --create-home --uid 101 --gid 101 odoo
-# # Install Odoo
-# ENV ODOO_VERSION 12.0
-# ARG ODOO_RELEASE=20200417
-# ARG ODOO_SHA=ca4a7485b0b75850ffe1458a8f3266839400a501
-# RUN curl -o odoo.deb -sSL http://nightly.odoo.com/${ODOO_VERSION}/nightly/deb/odoo_${ODOO_VERSION}.${ODOO_RELEASE}_all.deb \
-#         && echo "${ODOO_SHA} odoo.deb" | sha1sum -c - \
-#         && apt-get update \
-#         && apt-get -y install --no-install-recommends ./odoo.deb \
-#         && rm -rf /var/lib/apt/lists/* odoo.deb
+
 
 # Copy entrypoint script and Odoo configuration file
 COPY ./entrypoint.sh /
 RUN  chmod +x /entrypoint.sh
-# COPY ./odoo.conf /etc/odoo/
 
-# # Mount /var/lib/odoo to allow restoring filestore and /mnt/extra-addons for users addons
-# RUN chown odoo /etc/odoo/odoo.conf \
-#     && mkdir -p /mnt/extra-addons \
-#     && chown -R odoo /mnt/extra-addons
-# VOLUME ["/var/lib/odoo", "/mnt/extra-addons"]
-
-# # Expose Odoo services
-# EXPOSE 8069 8071 8072
 
 # # Set the default config file
-# ENV ODOO_RC /etc/odoo/odoo.conf
+ENV ODOO_RC /etc/odoo/odoo.conf
+COPY ./odoo.conf $ODOO_RC
+RUN chown odoo $ODOO_RC
 
-# COPY wait-for-psql.py /usr/local/bin/wait-for-psql.py
+RUN mkdir $ODOO_PREFIX && \
+        chown odoo $ODOO_PREFIX && \
+        chmod 1777 $ODOO_PREFIX
 
-# RUN chmod +X /usr/local/bin/wait-for-psql.py
+# # Mount /var/lib/odoo to allow restoring filestore
+RUN chown odoo $ODOO_RC
+
+# Expose Odoo services
+EXPOSE 8069 8071 8072
+
+COPY wait-for-psql.py /usr/local/bin/wait-for-psql.py
+
+RUN chmod +X /usr/local/bin/wait-for-psql.py
+
+RUN mkdir -p /var/lib/odoo && \
+        chown odoo /var/lib/odoo && \
+        chmod 1777 /var/lib/odoo
+
+VOLUME /var/lib/odoo
 
 # Set default user when running the container
+USER odoo
 
 ENTRYPOINT ["/entrypoint.sh"]
-# CMD ["odoo"]
+CMD ["odoo"]

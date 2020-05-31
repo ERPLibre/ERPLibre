@@ -14,16 +14,13 @@ services:
         - db
       networks:
         - front
-      command: odoo -c /etc/odoo/odoo.conf --without-demo=ALL -i base -d odoo
-      volumes: odoo/doo
+      command: odoo -c /ERPLibre/odoo/odoo.conf --without-demo=ALL -i base -d odoo
       user: ${CURRENT_UID:?"Please run as follows 'CURRENT_UID=$(id -u):$(id -g) docker-compose up'"}
       # user:
       volumes:
         - .:/ERPLibre
-          #   type: volume
-          # source: .
-          # target: /ERPLibre
-
+        # See the volume section at the end of the file
+        - erplibre_data_dir:/var/lib/odoo
 
     db:
       image: postgres:12.3
@@ -43,3 +40,9 @@ networks:
       driver: default
       config:
         - subnet: 172.16.237.0/24
+
+# We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
+# - docker volume --help
+# - docker-compose down --help
+volumes:
+  erplibre_data_dir:

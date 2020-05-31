@@ -21,8 +21,8 @@ RUN cd ; mkdir -p .bin/ && \
 	repo init -u $REPO_MANIFEST_URL  -b 12.0_repo  && \
 	repo sync -j 4 -c
 
-ADD repo_manifest_gen_org_prefix_path.py /root/.bin/
-RUN chmod +x ~/.bin/repo_manifest_gen_org_prefix_path.py
+ADD repo_manifest_gen_org_prefix_path.py /root/.bin/ RUN chmod +x
+~/.bin/repo_manifest_gen_org_prefix_path.py
 
 RUN head /etc/odoo/odoo.conf && /root/.bin/repo_manifest_gen_org_prefix_path.py $ADDONS_BASE_DIR/addons  /etc/odoo/odoo.conf /etc/odoo/odoo.conf && head  /etc/odoo/odoo.conf
 

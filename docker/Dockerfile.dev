@@ -19,6 +19,7 @@ RUN apt update && \
         && rm -rf /var/lib/apt/lists/* \
         && npm install -g rtlcss
 
+# RUN pip3 install -r https://raw.githubusercontent.com/odoo/odoo/12.0/requirements.txt --ignore-installed psycopg2  &&  pip3a cache purge
 
 ENV ADDONS_BASE_DIR /ERPLibre
 ENV ENV=dev
@@ -27,4 +28,14 @@ ENV ENV=dev
 COPY ./entrypoint.sh /
 RUN  chmod +x /entrypoint.sh
 
-# ENV REPO_MANIFEST_URL https://github.com/agileops/ERPLibre.git
+ENV ODOO_PREFIX /ERPLibre
+ENV ODOO_EXEC_BIN $ODOO_PREFIX/odoo/odoo-bin
+
+
+COPY repo_manifest_gen_org_prefix_path.py /usr/bin/
+RUN chmod +x /usr/bin/repo_manifest_gen_org_prefix_path.py
+
+USER odoo
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["odoo"]
