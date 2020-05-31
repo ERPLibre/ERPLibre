@@ -1,0 +1,13 @@
+language: minimal
+
+services:
+  - docker
+
+script:
+  - docker build -f docker/Dockerfile.core -t technolibre/erplibre-core:12.0 docker/
+  - docker build -f docker/Dockerfile.dev -t technolibre/erplibre:12.0 docker/
+
+after_success:
+  - docker login --username mikefaille --password "${DOCKER_TOKEN}"
+  - docker push technolibre/erplibre-core:12.0
+  - docker push technolibre/erplibre:12.0
