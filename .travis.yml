@@ -3,12 +3,22 @@ language: minimal
 services:
   - docker
 
-script:
-  - docker build -f docker/Dockerfile.base -t technolibre/erplibre-base:12.0 docker/
-  - docker build -f docker/Dockerfile.dev -t technolibre/erplibre:12.0 docker/
-  - docker build -f docker/Dockerfile.pkg -t technolibre/erplibre:12.0-pkg docker/
+include:
+    - stage: build base
+      script:
+        - docker build -f docker/Dockerfile.base -t technolibre/erplibre-base:12.0 docker/
+   - stage: build dev env
+       - docker build -f docker/Dockerfile.dev -t technolibre/erplibre-dev:12.0 docker/
+    - stage: build prod
+      script:
+        - docker build -f docker/Dockerfile.prod -t technolibre/erplibre:12.0-pkg docker/
 
 after_success:
   - docker login --username mikefaille --password "${DOCKER_TOKEN}"
   - docker push technolibre/erplibre-core:12.0
+  - docker push technolibre/erplibre-dev:12.0
+  - docker tag technolibre/erplibre:12.0-pkg technolibre/erplibre:12.0
+  - docker tag technolibre/erplibre:12.0-pkg technolibre/erplibre:latest
   - docker push technolibre/erplibre:12.0-pkg
+  - docker push technolibre/erplibre:12.0
+  - docker push technolibre/erplibre:latest
