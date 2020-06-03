@@ -1,8 +1,9 @@
 version: "3.3"
 services:
     ERPLibre:
-      image: technolibre/erplibre:12.0-pkg
-      # image: technolibre/erplibre:12.0-src
+      image: technolibre/erplibre-dev:12.0
+      # image: technolibre/erplibre-prod:pkg-12.0
+      # image: technolibre/erplibre-prod:deb-12.0
       ports:
         - 8069:8069
       environment:
@@ -16,6 +17,7 @@ services:
       networks:
         - front
       command: odoo -c /ERPLibre/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+      user: ${CURRENT_UID:?"Please run as follows 'CURRENT_UID=$(id -u):$(id -g) docker-compose up'"}
       # user:
       volumes:
         - .:/ERPLibre
