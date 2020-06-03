@@ -4,14 +4,15 @@ services:
   - docker
 
 include:
-    - stage: build base
-      script:
-        - docker build -f docker/Dockerfile.base -t technolibre/erplibre-base:12.0 docker/
-   - stage: build dev env
-       - docker build -f docker/Dockerfile.dev -t technolibre/erplibre-dev:12.0 docker/
-    - stage: build prod
-      script:
-        - docker build -f docker/Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg docker/
+  - stage: build base
+    script:
+      - docker build -f docker/Dockerfile.base -t technolibre/erplibre-base:12.0 docker/
+  - stage: build dev env
+    script:
+      - docker build -f docker/Dockerfile.dev -t technolibre/erplibre-dev:12.0 docker/
+  - stage: build prod
+    script:
+      - docker build -f docker/Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg docker/
 
 after_success:
   - docker login --username mikefaille --password "${DOCKER_TOKEN}"
