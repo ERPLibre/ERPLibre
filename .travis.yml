@@ -11,7 +11,7 @@ include:
        - docker build -f docker/Dockerfile.dev -t technolibre/erplibre-dev:12.0 docker/
     - stage: build prod
       script:
-        - docker build -f docker/Dockerfile.prod -t technolibre/erplibre:12.0-pkg docker/
+        - docker build -f docker/Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg docker/
 
 after_success:
   - docker login --username mikefaille --password "${DOCKER_TOKEN}"
