@@ -34,11 +34,9 @@ def get_config():
     )
     parser.add_argument('-d', '--dir', dest="dir", default="./",
                         help="Path of repo to change remote, including submodule.")
-    parser.add_argument('-f', '--upstream', dest="upstream", default="origin",
-                        help="Upstream name to change address https to git.")
-    # TODO support all_upstream
-    # parser.add_argument("--all_upstream", action="store_true",
-    #                     help="Replace for all existing upstream for each repo.")
+    parser.add_argument('-f', '--upstream', dest="upstream",
+                        help="Upstream name to change address https to git. "
+                             "When empty, all upstream is updated.")
     parser.add_argument("--git_to_https", action="store_true",
                         help="Replace all repo git to https.")
     args = parser.parse_args()
@@ -50,20 +48,24 @@ def main():
     config = get_config()
 
     upstream_name = config.upstream
-    lst_repo = git_tool.get_repo_info_submodule(config.dir, add_root=True,
-                                                upstream=upstream_name)
+    lst_repo = git_tool.get_repo_info(config.dir, add_root=True)
     i = 0
     total = len(lst_repo)
     for repo in lst_repo:
         i += 1
         print(f"Nb element {i}/{total}")
         repo_sm = Repo(repo.get("name"))
-        remote_upstream_name = [a for a in repo_sm.remotes if upstream_name == a.name]
-        new_url = repo.get("url_https") if config.git_to_https else repo.get("url_git")
+        if upstream_name:
+            remote_upstream_name = [a for a in repo_sm.remotes
+                                    if upstream_name == a.name]
+        else:
+            remote_upstream_name = [a for a in repo_sm.remotes]
 
         for remote in remote_upstream_name:
+            url, url_https, url_git = git_tool.get_url(remote.url)
+            new_url = url_https if config.git_to_https else url_git
             remote.set_url(new_url)
-        print('Remote "%s" created for %s' % (upstream_name, new_url))
+            print(f'Remote "{remote.name}" update for {new_url}')
 
 
 if __name__ == '__main__':

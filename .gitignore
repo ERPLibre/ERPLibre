@@ -8,3 +8,7 @@ venv
 config.conf
 *.DS_Store
 *.pyc
+
+.repo
+addons
+odoo

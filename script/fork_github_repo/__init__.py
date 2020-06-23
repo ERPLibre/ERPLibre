@@ -147,7 +147,7 @@ def fork_and_clone_repo(
             print("Error when forking repo %s" % forked_repo)
             exit(1)
         else:
-            print("Forked %s to %s" % (upstream_url, forked_repo['ssh_url']))
+            print("Forked %s to %s" % (upstream_url, forked_repo['html_url']))
     elif status == 202:
         print("Forked repo %s already exists" % forked_repo['full_name'])
     elif status != 200:
