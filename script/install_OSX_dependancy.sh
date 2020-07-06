@@ -1,13 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ################################################################################
-# Script for installing Odoo on OSX
+# Script for installing ERPLibre on OSX
 # Author: Alexandre Ferreira Benevides
 #-------------------------------------------------------------------------------
-# This script will install dependency for Odoo on your OSX server. 
+# This script will install dependency for ERPLibre on your OSX server.
 #-------------------------------------------------------------------------------
 ################################################################################
 
-OE_USER=$(whoami)
+EL_USER=$(whoami)
 
 #--------------------------------------------------
 # Install PostgreSQL Server
@@ -15,8 +15,8 @@ OE_USER=$(whoami)
 echo  "\n---- Install PostgreSQL Server ----"
 brew install postgresql
 
-echo  "\n---- Creating the ODOO PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s ${OE_USER}" 2> /dev/null || true
+echo  "\n---- Creating the ERPLibre PostgreSQL User  ----"
+sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 
 #--------------------------------------------------
 # Install Dependencies

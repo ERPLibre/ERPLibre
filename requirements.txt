@@ -3,3 +3,4 @@ agithub
 gitpython
 PyYAML
 retrying
+xmltodict

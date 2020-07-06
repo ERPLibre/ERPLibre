@@ -2,18 +2,19 @@
 # © 2020 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 import os
-from . import addons_repo_origin
 import webbrowser
 from retrying import retry  # pip install retrying
 from agithub.GitHub import GitHub  # pip install agithub
 from giturlparse import parse  # pip install giturlparse
+import xmltodict
+from collections import OrderedDict
 
 from git import Repo
 import git
 from typing import List
 
-CST_FILE_SOURCE_REPO_ADDONS_ODOO = "source_repo_addons_odoo.csv"
-CST_GITHUB_TOKEN = "GITHUB_TOKEN"
+CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
+CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 
 
 class Struct(object):
@@ -42,15 +43,20 @@ class GitTool:
                                            get_obj: bool = True,
                                            is_submodule: bool = True,
                                            organization_force: str = None,
-                                           sub_path: str = "addons") -> object:
+                                           sub_path: str = "addons",
+                                           revision: str = "",
+                                           clone_depth: str = "") -> object:
         """
 
         :param url:
         :param repo_path:
         :param get_obj:
         :param is_submodule:
-        :param path:
         :param organization_force: Keep repo_path and change organization
+        :param sub_path:
+        :param revision: Tag or branch name. When empty, use default branch.
+        :param clone_depth: length of git history to clone. Clone all git when empty.
+        Set to 0 to increase speed to clone, set to empty for development.
         :return:
         """
         _, url_https, url_git = self.get_url(url)
@@ -72,18 +78,30 @@ class GitTool:
             relative_path = f"{repo_path}/{path}"
         relative_path = os.path.normpath(relative_path)
 
+        original_organization = organization
+        url_https_original_organization = url_https[:url_https.rfind("/")]
+        project_name = url_https[url_https.rfind("/") + 1:]
+        #     begin_original = url_git[url_git.find(":") + 1:]
+        #     original_organization = begin_original[:begin_original.find("/")]
         if organization_force:
             organization = organization_force
             url_split = url_https.split("/")
             url_split[3] = organization
             url_https = "/".join(url_split)
             url, _, url_git = self.get_url(url_https)
+        url_https_organization = url_https[:url_https.rfind("/")]
 
         d = {
             "url": url,
             "url_git": url_git,
             "url_https": url_https,
             "organization": organization,
+            "original_organization": original_organization,
+            "url_https_organization": url_https_organization,
+            "url_https_original_organization": url_https_original_organization,
+            "project_name": project_name,
+            "revision": revision,
+            "clone_depth": clone_depth,
             "repo_name": repo_name,
             "path": path,
             "relative_path": relative_path,
@@ -94,9 +112,15 @@ class GitTool:
             return Struct(**d)
         return d
 
-    @staticmethod
-    def get_repo_info_submodule(repo_path: str = "./", add_root: bool = False,
-                                upstream: str = "origin") -> list:
+    def get_repo_info(self, repo_path: str = "./",
+                      add_root: bool = False, is_manifest: bool = True):
+        if is_manifest:
+            return self.get_repo_info_manifest_xml(repo_path=repo_path,
+                                                   add_root=add_root)
+        return self.get_repo_info_submodule(repo_path=repo_path, add_root=add_root)
+
+    def get_repo_info_submodule(self, repo_path: str = "./",
+                                add_root: bool = False) -> list:
         """
         Get information about submodule from repo_path
         :param repo_path: path of repo to get information about submodule
@@ -139,12 +163,7 @@ class GitTool:
                 continue
             elif line[:7] == "\turl = ":
                 url = line[7:-1]
-                if "https" in url:
-                    url_git = f"git@{url[8:].replace('/', ':', 1)}"
-                    url_https = url
-                else:
-                    url_https = f"https://{(url[4:]).replace(':', '/')}"
-                    url_git = url
+                url, url_https, url_git = self.get_url(url)
                 continue
             elif line[:8] == "\tpath = ":
                 path = line[8:-1]
@@ -168,12 +187,7 @@ class GitTool:
         if add_root:
             repo_root = Repo(repo_path)
             url = repo_root.git.remote("get-url", "origin")
-            if "https" in url:
-                url_git = f"git@{url[8:].replace('/', ':', 1)}"
-                url_https = url
-            else:
-                url_https = f"https://{(url[4:]).replace(':', '/')}"
-                url_git = url
+            url, url_https, url_git = self.get_url(url)
 
             data = {
                 "url": url,
@@ -187,10 +201,12 @@ class GitTool:
         lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
         return lst_repo
 
-    @staticmethod
-    def get_repo_info_from_data_structure(repo_path="./", ignore_odoo=False):
+    def get_repo_info_manifest_xml(self, repo_path: str = "./",
+                                   add_root: bool = False) -> list:
         """
-        Deprecated, read file addons_repo_origin to obtains repo list.
+        Get information about manifest of Repo from repo_path
+        :param repo_path: path of repo to get information about submodule
+        :param add_root: add information about root repository
         :return:
         [{
             "url": original_url,
@@ -201,36 +217,79 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        dct_config = {
-            "addons": addons_repo_origin.config_addons
-        }
-        if not ignore_odoo:
-            dct_config[""] = addons_repo_origin.config
-        result = []
-        for c_path, dct_config in dct_config.items():
-            for server, dct_organization in dct_config.items():
-                for organization, lst_repo in dct_organization.items():
-                    for repo in lst_repo:
-                        url = f"https://{server}/{organization}/{repo}.git"
-                        url_https = f"https://{server}/{organization}/{repo}.git"
-                        url_git = f"git@{server}:{organization}/{repo}.git"
-                        if not c_path:
-                            path = f"{repo}"
-                        else:
-                            path = f"{c_path}/{organization}_{repo}"
+        manifest_file = self.get_manifest_file(repo_path=repo_path)
+        filename = f"{repo_path}{manifest_file}"
+        lst_repo = []
+        with open(filename) as xml:
+            xml_as_string = xml.read()
+            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            dct_manifest = xml_dict.get("manifest")
+        default_remote = dct_manifest.get("default").get("@remote")
+        lst_remote = dct_manifest.get("remote")
+        if type(lst_remote) is dict:
+            lst_remote = [lst_remote]
+        lst_project = dct_manifest.get("project")
+        if type(lst_project) is dict:
+            lst_project = [lst_project]
+        dct_remote = {a.get("@name"): a.get("@fetch") for a in lst_remote}
+        for project in lst_project:
+            # get name and remote .git
+            path = project.get("@path")
+            name = path
+            url_prefix = dct_remote.get(project.get("@remote"))
+            if not url_prefix:
+                # get default remote
+                url_prefix = dct_remote.get(default_remote)
+            url = f"{url_prefix}{project.get('@name')}"
+            url, url_https, url_git = self.get_url(url)
+            data = {
+                "url": url,
+                "url_https": url_https,
+                "url_git": url_git,
+                "path": path,
+                "relative_path": f"{repo_path}/{path}",
+                "name": name,
+            }
+            lst_repo.append(data)
 
-                        name = path
-                        result.append(
-                            {
-                                "url": url,
-                                "url_https": url_https,
-                                "url_git": url_git,
-                                "relative_path": f"{repo_path}/{path}",
-                                "path": path,
-                                "name": name,
-                            }
-                        )
-        return result
+        if add_root:
+            repo_root = Repo(repo_path)
+            url = repo_root.git.remote("get-url", "origin")
+            url, url_https, url_git = self.get_url(url)
+
+            data = {
+                "url": url,
+                "url_https": url_https,
+                "url_git": url_git,
+                "path": repo_path,
+                "name": "",
+            }
+            lst_repo.insert(0, data)
+        # Sort
+        lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
+        return lst_repo
+
+    def get_manifest_xml_info(self, repo_path: str = "./",
+                              add_root: bool = False) -> list:
+        """
+        Get contain of manifest
+        :param repo_path: path of repo to get information about submodule
+        :param add_root: add information about root repository
+        :return: dct_remote, dct_project
+
+        """
+        manifest_file = self.get_manifest_file(repo_path=repo_path)
+        filename = f"{repo_path}/manifest/{manifest_file}"
+        with open(filename) as xml:
+            xml_as_string = xml.read()
+            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            dct_manifest = xml_dict.get("manifest")
+        default_remote = dct_manifest.get("default").get("@remote")
+        lst_remote = dct_manifest.get("remote")
+        lst_project = dct_manifest.get("project")
+        dct_remote = {a.get("@name"): a for a in lst_remote}
+        dct_project = {a.get("@name"): a for a in lst_project}
+        return dct_remote, dct_project
 
     @staticmethod
     def get_project_config(repo_path="./"):
@@ -239,7 +298,7 @@ class GitTool:
         :param repo_path: path of repo to get information env_var.sh
         :return:
         {
-            CST_GITHUB_TOKEN: TOKEN,
+            CST_EL_GITHUB_TOKEN: TOKEN,
         }
         """
         filename = f"{repo_path}env_var.sh"
@@ -247,7 +306,7 @@ class GitTool:
             txt = file.readlines()
         txt = [a[:-1] for a in txt if "=" in a]
 
-        lst_filter = [CST_GITHUB_TOKEN]
+        lst_filter = [CST_EL_GITHUB_TOKEN]
         dct_config = {}
         # Take filtered value and get bash string values
         for f in lst_filter:
@@ -255,7 +314,7 @@ class GitTool:
                 if f in v:
                     lst_v = v.split("=")
                     if len(lst_v) > 1:
-                        dct_config[CST_GITHUB_TOKEN] = v.split("=")[1][1:-1]
+                        dct_config[CST_EL_GITHUB_TOKEN] = v.split("=")[1][1:-1]
         return dct_config
 
     @staticmethod
@@ -264,39 +323,25 @@ class GitTool:
         if url:
             webbrowser.open_new_tab(url)
 
-    def generate_repo_source_from_building(self, repo_path="./"):
-        """
-        DEPRECATED
-        Generate csv file with information about all source addons repo of Odoo
-        :param repo_path: Path to build repo source
-        :return:
-        """
-        file_name = f"{repo_path}{CST_FILE_SOURCE_REPO_ADDONS_ODOO}"
-        lst_repo_info = self.get_repo_info_from_data_structure(ignore_odoo=True)
-        lst_result = [f"{a.get('url_https')}\n" for a in lst_repo_info]
-        with open(file_name, "w") as file:
-            file.writelines(lst_result)
-
-    def generate_odoo_install_locally(self, repo_path="./"):
-        # lst_repo = self.get_repo_info_from_data_structure(ignore_odoo=True)
-        lst_repo = self.get_repo_info_submodule(repo_path=repo_path)
+    def generate_install_locally(self, repo_path="./"):
+        lst_repo = self.get_repo_info(repo_path=repo_path)
         lst_result = []
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
             if "addons/OCA_web" == repo.get("path") or \
                     "odoo" == repo.get("path"):
                 continue
-            str_repo = f'    printf "${{OE_HOME}}/{repo.get("path")}," >> ' \
-                       f'${{OE_CONFIG_FILE}}\n'
+            str_repo = f'    printf "${{EL_HOME}}/{repo.get("path")}," >> ' \
+                       f'${{EL_CONFIG_FILE}}\n'
             lst_result.append(str_repo)
-        with open(f"{repo_path}script/odoo_install_locally.sh") as file:
+        with open(f"{repo_path}script/install_locally.sh") as file:
             all_lines = file.readlines()
         # search place to add/replace lines
         index = 0
         find_index = False
         index_find = 0
         for line in all_lines:
-            if not find_index and "if [[ $MINIMAL_ADDONS = \"False\" ]]; then\n" == line:
+            if not find_index and "if [[ $EL_MINIMAL_ADDONS = \"False\" ]]; then\n" == line:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
@@ -310,8 +355,118 @@ class GitTool:
             index += 1
 
         # create file
-        with open(f"{repo_path}script/odoo_install_locally.sh", mode="w") as file:
+        with open(f"{repo_path}script/install_locally.sh", mode="w") as file:
             file.writelines(all_lines)
+
+    @staticmethod
+    def str_insert(source_str, insert_str, pos):
+        return source_str[:pos] + insert_str + source_str[pos:]
+
+    def generate_repo_manifest(self, lst_repo: List[Struct], repo_path: str = "./",
+                               dct_remote={}, dct_project={}):
+        lst_remote = []
+        lst_remote_name = []
+        lst_project = []
+        lst_project_name = []
+        lst_default = []
+
+        # Fill with configuration
+        for dct_value in dct_remote.values():
+            lst_remote.append(OrderedDict(
+                [('@name', dct_value.get("@name")),
+                 ('@fetch', dct_value.get("@fetch"))]
+            ))
+            lst_remote_name.append(dct_value.get("@name"))
+        for dct_value in dct_project.values():
+            lst_project_info = [
+                ('@name', dct_value.get("@name")),
+                ('@path', dct_value.get("@path")),
+                ('@remote', dct_value.get("@remote"))
+            ]
+            if "@revision" in dct_value.keys():
+                lst_project_info.append(('@revision', dct_value.get("@revision")))
+            if "@clone-depth" in dct_value.keys():
+                lst_project_info.append(('@clone-depth', dct_value.get("@clone-depth")))
+            if "@groups" in dct_value.keys():
+                lst_project_info.append(('@groups', dct_value.get("@groups")))
+            lst_project.append(OrderedDict(lst_project_info))
+            lst_project_name.append(dct_value.get("@name"))
+
+        for repo in lst_repo:
+            if not repo.is_submodule:
+                # Default
+                if lst_default:
+                    raise Exception("Cannot have many root repo. "
+                                    "Validate why 2 or more is not submodule.")
+                lst_default.append(OrderedDict([
+                    ('@remote', repo.original_organization),
+                    ('@revision', "12.0"),
+                    ('@sync-j', "4"),
+                    ('@sync-c', "true"),
+                ]))
+            else:
+                # Add remote, only unique remote
+                if repo.original_organization not in lst_remote_name:
+                    lst_remote.append(OrderedDict(
+                        [('@name', repo.original_organization),
+                         ('@fetch', repo.url_https_organization + "/")]
+                    ))
+                    lst_remote_name.append(repo.original_organization)
+                # Add project, only unique project
+                if repo.project_name not in lst_project_name:
+                    lst_project_name.append(repo.project_name)
+                    lst_project_info = [
+                        ('@name', repo.project_name),
+                        ('@path', repo.path),
+                        ('@remote', repo.original_organization),
+                    ]
+                    if repo.revision:
+                        lst_project_info.append(('@revision', repo.revision))
+                    if repo.clone_depth:
+                        lst_project_info.append(('@clone-depth', repo.clone_depth))
+                    if repo.sub_path == "addons":
+                        lst_project_info.append(('@groups', "addons"))
+                    else:
+                        lst_project_info.append(('@groups', "odoo"))
+                    lst_project.append(OrderedDict(lst_project_info))
+
+        # Order in alphabetic
+        lst_order_remote = sorted(lst_remote, key=lambda key: key.get("@name"))
+        lst_order_default = sorted(lst_default, key=lambda key: key.get("@remote"))
+        lst_order_project = sorted(lst_project, key=lambda key: key.get("@name"))
+
+        dct_repo = OrderedDict(
+            [('manifest', OrderedDict([
+                ('remote', lst_order_remote),
+                ('default', lst_order_default),
+                ('project', lst_order_project),
+            ]))])
+        str_xml_text = xmltodict.unparse(dct_repo, pretty=True)
+
+        pos_insert = str_xml_text.rfind("</remote>")
+        if pos_insert:
+            pos_insert += len("</remote>")
+            str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
+
+        pos_insert = str_xml_text.rfind("</default>")
+        if pos_insert:
+            pos_insert += len("</default>")
+        str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
+
+        # pos_insert = str_xml_text.rfind("</project>")
+        # if pos_insert:
+        #     pos_insert += len("</project>")
+        # str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
+
+        str_xml_text = str_xml_text.replace("></remote", "/")
+        str_xml_text = str_xml_text.replace("></default", "/")
+        str_xml_text = str_xml_text.replace("></project", "/")
+        str_xml_text = str_xml_text.replace("encoding=\"utf-8\"", "encoding=\"UTF-8\"")
+        str_xml_text = str_xml_text.replace("\t", "  ")
+
+        # create file
+        with open(f"{repo_path}manifest/default.dev.xml", mode="w") as file:
+            file.writelines(str_xml_text + "\n")
 
     def generate_git_modules(self, lst_repo: List[Struct], repo_path: str = "./"):
         lst_modules = []
@@ -327,8 +482,8 @@ class GitTool:
 
     def get_source_repo_addons(self, repo_path="./", add_repo_root=False):
         """
-        Read file CST_FILE_SOURCE_REPO_ADDONS_ODOO and return structure of data
-        :param repo_path: path to find file CST_FILE_SOURCE_REPO_ADDONS_ODOO
+        Read file CST_FILE_SOURCE_REPO_ADDONS and return structure of data
+        :param repo_path: path to find file CST_FILE_SOURCE_REPO_ADDONS
         :param add_repo_root: force adding repo root in the list
         :return:
         [{
@@ -340,7 +495,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        file_name = f"{repo_path}{CST_FILE_SOURCE_REPO_ADDONS_ODOO}"
+        file_name = f"{repo_path}{CST_FILE_SOURCE_REPO_ADDONS}"
         lst_result = []
         if add_repo_root:
             # TODO what to do if origin not exist?
@@ -354,34 +509,64 @@ class GitTool:
         with open(file_name) as file:
             all_lines = file.readlines()
             if all_lines:
+                # Validate first line is supported column
+                expected_header = "url,path,revision,clone-depth\n"
+                if all_lines[0] != expected_header:
+                    raise Exception(f"Not supported csv, please validate {file_name} "
+                                    f"with first line {expected_header}")
                 # Ignore first line
                 all_lines = all_lines[1:]
+
+                # Be sure empty endline at the end of file
+                if all_lines[-1][-1] != "\n":
+                    all_lines[-1] = all_lines[-1] + "\n"
+
         for line in all_lines:
             # Separate information with path in tuple
             line_split = line[:-1].split(',')
-            if len(line_split) != 2:
-                print(f"Error with line {line}, suppose to have only 1 ','.")
+            if len(line_split) != 4:
+                print(f"Error with line {line}, suppose to have only 4 ','.")
                 exit(1)
-            url, path = line_split
+            url, path, revision, clone_depth = line_split
+            # Validate url
+            # If begin by http, need to finish by .git
+            if len(url) > 5 and url[0:4] == "http" and url[-4:] != ".git":
+                url = f"{url}.git"
             repo_info = self.get_transformed_repo_info_from_url(url,
                                                                 repo_path=repo_path,
                                                                 get_obj=False,
-                                                                sub_path=path)
+                                                                sub_path=path,
+                                                                revision=revision,
+                                                                clone_depth=clone_depth)
             lst_result.append(repo_info)
         return lst_result
 
+    def get_manifest_file(self, repo_path: str = "./"):
+        """
+        Find .repo and return default manifest file.
+        :param repo_path: path to search .repo
+        :return: manifest file used for Repo
+        """
+        file = f"{repo_path}/.repo/manifest.xml"
+        with open(file) as xml:
+            xml_as_string = xml.read()
+            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            manifest_filename = xml_dict.get("manifest").get("include").get("@name")
+        return manifest_filename
+
     def get_matching_repo(self, actual_repo="./", repo_compare_to="./",
-                          force_normalize_compare=False):
+                          force_normalize_compare=False, sync_with_submodule=False):
         """
         Compare repo with .gitmodules files
         :param actual_repo:
         :param repo_compare_to:
         :param force_normalize_compare: update name of compare repo
-        :return:
+        :param sync_with_submodule: force use submodule with repo_compare_to
+        :return: (list of matches, list of missing, list of more)
         """
-        lst_repo_info_actual = self.get_repo_info_submodule(actual_repo)
+        lst_repo_info_actual = self.get_repo_info_manifest_xml(actual_repo)
         dct_repo_info_actual = {a.get("name"): a for a in lst_repo_info_actual}
-        set_actual = set(dct_repo_info_actual.keys())
+        # set_actual = set(dct_repo_info_actual.keys())
         # set_actual_repo = set(
         #     [a[a.find("_") + 1:] for a in dct_repo_info_actual.keys()])
 
@@ -389,13 +574,16 @@ class GitTool:
                                         dct_repo_info_actual.items()}
         set_actual_repo = set(dct_repo_info_actual_adapted.keys())
 
-        lst_repo_info_compare = self.get_repo_info_submodule(repo_compare_to)
+        lst_repo_info_compare = self.get_repo_info(repo_compare_to,
+                                                   is_manifest=not sync_with_submodule)
         if force_normalize_compare:
             for repo_info in lst_repo_info_compare:
                 url_https = repo_info.get("url_https")
                 url_split = url_https.split("/")
                 organization = url_split[3]
-                repo_name = url_split[4][:-4]
+                repo_name = url_split[4]
+                if repo_name[-4:] == ".git":
+                    repo_name = repo_name[:-4]
                 # name = f"addons/{organization}_{repo_name}"
                 name = f"{repo_name}"
                 repo_info["name"] = name
@@ -421,14 +609,34 @@ class GitTool:
                 dct_repo_info_compare[key]
             ))
 
-        return lst_match
+        return lst_match, lst_missing_name_normalize, lst_over_name_normalize
 
     @staticmethod
-    def sync_to(lst_compare_repo_info):
-        i = 0
+    def sync_to(result, checkout_when_diff=False):
+        lst_compare_repo_info, lst_missing_info, lst_over_info = result
+        total = len(lst_missing_info)
+        if total:
+            print(f"\nList of missing : {total}")
+            i = 0
+            for info in lst_missing_info:
+                i += 1
+                print(f"Nb element {i}/{total}")
+                print(f"Missing '{info}'")
+
+        total = len(lst_over_info)
+        if total:
+            print(f"\nList of over : {total}")
+            i = 0
+            for info in lst_over_info:
+                i += 1
+                print(f"Nb element {i}/{total}")
+                print(f"Missing '{info}'")
+
         total = len(lst_compare_repo_info)
+        print(f"\nList of normalize : {total}")
         lst_same = []
         lst_diff = []
+        i = 0
         for original, compare_to in lst_compare_repo_info:
             i += 1
             print(f"Nb element {i}/{total}")
@@ -437,9 +645,15 @@ class GitTool:
             repo_compare = Repo(compare_to.get("relative_path"))
             commit_compare = repo_compare.head.object.hexsha
             if commit_original != commit_compare:
-                print(f"DIFF - {original.get('name')}")
+                print(f"DIFF - {original.get('name')} - O {commit_original} - "
+                      f"R {commit_compare}")
                 lst_diff.append((original, compare_to))
-                repo_original.git.checkout(commit_compare)
+                if checkout_when_diff:
+                    # Update all remote
+                    for remote in repo_original.remotes:
+                        retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
+                            remote.fetch)()
+                    repo_original.git.checkout(commit_compare)
             else:
                 print(f"SAME - {original.get('name')}")
                 lst_same.append((original, compare_to))
@@ -448,6 +662,13 @@ class GitTool:
     @staticmethod
     def add_and_fetch_remote(repo_info: Struct, root_repo: Repo = None,
                              branch_name: str = ""):
+        """
+        Deprecated function, not use anymore git submodule
+        :param repo_info:
+        :param root_repo:
+        :param branch_name:
+        :return:
+        """
         try:
             working_repo = Repo(repo_info.relative_path)
             if repo_info.organization in [a.name for a in working_repo.remotes]:
@@ -509,7 +730,7 @@ class GitTool:
                 print("Error when forking repo %s" % forked_repo)
                 exit(1)
             else:
-                print("Forked %s to %s" % (upstream_url, forked_repo['ssh_url']))
+                print("Forked %s to %s" % (upstream_url, forked_repo['html_url']))
         elif status == 202:
             print("Forked repo %s already exists" % forked_repo['full_name'])
         elif status != 200:

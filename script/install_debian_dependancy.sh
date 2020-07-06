@@ -1,19 +1,9 @@
-#!/bin/bash
-################################################################################
-# Script for installing Odoo on Ubuntu 14.04, 15.04, 16.04 and 18.04 (could be used for other version too)
-# Author: Yenthe Van Ginneken
-#-------------------------------------------------------------------------------
-# This script will install Odoo on your Ubuntu 16.04 server. It can install multiple Odoo instances
-# in one Ubuntu because of the different xmlrpc_ports
-#-------------------------------------------------------------------------------
-################################################################################
+#!/usr/bin/env bash
 
 . ./env_var.sh
 
-OE_USER=$(whoami)
-# The default port where this Odoo instance will run under (provided you use the command -c in the terminal)
-# Set to true if you want to install it, false if you don't need it or have it already installed.
-#INSTALL_WKHTMLTOPDF="True"
+EL_USER=$(whoami)
+#EL_INSTALL_WKHTMLTOPDF="True"
 
 ##
 ###  WKHTMLTOPDF download links
@@ -43,30 +33,30 @@ sudo apt-get upgrade -y
 echo -e "\n---- Install PostgreSQL Server ----"
 sudo apt-get install postgresql -y
 
-echo -e "\n---- Creating the ODOO PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s $OE_USER" 2> /dev/null || true
+echo -e "\n---- Creating the ERPLibre PostgreSQL User  ----"
+sudo su - postgres -c "createuser -s $EL_USER" 2> /dev/null || true
 
 #--------------------------------------------------
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing Python 3 + pip3 --"
-sudo apt-get install git python3 python3-pip build-essential wget python3-dev python3-venv python3-wheel libxslt-dev libzip-dev libldap2-dev libsasl2-dev python3-setuptools node-less libpng12-0 gdebi -y
+sudo apt-get install git python3 python3-pip build-essential wget python3-dev python3-venv python3-wheel libxslt-dev libzip-dev libldap2-dev libsasl2-dev python3-setuptools node-less libpng12-0 gdebi-core -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
 
-if [ ${INSTALL_NGINX} = "True" ]; then
+if [ ${EL_INSTALL_NGINX} = "True" ]; then
     sudo apt install nginx -y
 fi
 
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
-if [ ${INSTALL_WKHTMLTOPDF} = "True" ]; then
+if [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   INSTALLED=$(dpkg -s wkhtmltox|grep installed)
   if [ "" == "${INSTALLED}" ]; then
-      echo -e "\n---- Install wkhtml and place shortcuts on correct place for ODOO 12 ----"
+      echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
       #pick up correct one from x64 & x32 versions:
       if [ "`getconf LONG_BIT`" == "64" ];then
           _url=$WKHTMLTOX_X64
