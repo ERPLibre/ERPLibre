@@ -47,12 +47,13 @@ def main():
 
     # Update origin to new repo
     if not config.clear:
-        dct_remote, dct_project = git_tool.get_manifest_xml_info(repo_path=config.dir,
-                                                                 add_root=True)
+        dct_remote, dct_project, _ = git_tool.get_manifest_xml_info(
+            repo_path=config.dir, add_root=True)
     else:
         dct_remote = {}
         dct_project = {}
-    git_tool.generate_repo_manifest(lst_repo_organization, repo_path=config.dir,
+    git_tool.generate_repo_manifest(lst_repo_organization,
+                                    output=f"{config.dir}manifest/default.dev.xml",
                                     dct_remote=dct_remote, dct_project=dct_project)
     git_tool.generate_install_locally()
 

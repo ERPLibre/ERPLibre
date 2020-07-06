@@ -269,17 +269,19 @@ class GitTool:
         lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
         return lst_repo
 
-    def get_manifest_xml_info(self, repo_path: str = "./",
+    def get_manifest_xml_info(self, repo_path: str = "./", filename=None,
                               add_root: bool = False) -> list:
         """
         Get contain of manifest
         :param repo_path: path of repo to get information about submodule
+        :param filename: manifest filename. Default none, or use this instead use repo_path
         :param add_root: add information about root repository
-        :return: dct_remote, dct_project
+        :return: dct_remote, dct_project, default_remote
 
         """
-        manifest_file = self.get_manifest_file(repo_path=repo_path)
-        filename = f"{repo_path}/manifest/{manifest_file}"
+        if filename is None:
+            manifest_file = self.get_manifest_file(repo_path=repo_path)
+            filename = f"{repo_path}/{manifest_file}"
         with open(filename) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
@@ -289,7 +291,7 @@ class GitTool:
         lst_project = dct_manifest.get("project")
         dct_remote = {a.get("@name"): a for a in lst_remote}
         dct_project = {a.get("@name"): a for a in lst_project}
-        return dct_remote, dct_project
+        return dct_remote, dct_project, default_remote
 
     @staticmethod
     def get_project_config(repo_path="./"):
@@ -362,8 +364,19 @@ class GitTool:
     def str_insert(source_str, insert_str, pos):
         return source_str[:pos] + insert_str + source_str[pos:]
 
-    def generate_repo_manifest(self, lst_repo: List[Struct], repo_path: str = "./",
-                               dct_remote={}, dct_project={}):
+    def generate_repo_manifest(self, lst_repo: List[Struct] = [], output: str = "",
+                               dct_remote={}, dct_project={}, default_remote=None):
+        """
+        Generate repo manifest
+        :param lst_repo: optional, update manifest with list_repo
+        :param output: filename to write output
+        :param dct_remote: dict of remote information
+        :param dct_project: dict of project information
+        :param default_remote: name of default remote, optional
+        :return:
+        """
+        if not output:
+            raise Exception("Cannot generate manifest with missing output filename.")
         lst_remote = []
         lst_remote_name = []
         lst_project = []
@@ -381,14 +394,20 @@ class GitTool:
             lst_project_info = [
                 ('@name', dct_value.get("@name")),
                 ('@path', dct_value.get("@path")),
-                ('@remote', dct_value.get("@remote"))
             ]
+            if "@remote" in dct_value.keys():
+                lst_project_info.append(('@remote', dct_value.get("@remote")))
             if "@revision" in dct_value.keys():
                 lst_project_info.append(('@revision', dct_value.get("@revision")))
             if "@clone-depth" in dct_value.keys():
                 lst_project_info.append(('@clone-depth', dct_value.get("@clone-depth")))
             if "@groups" in dct_value.keys():
                 lst_project_info.append(('@groups', dct_value.get("@groups")))
+            if "@upstream" in dct_value.keys():
+                lst_project_info.append(('@upstream', dct_value.get("@upstream")))
+            if "@dest-branch" in dct_value.keys():
+                lst_project_info.append(('@dest-branch', dct_value.get("@dest-branch")))
+
             lst_project.append(OrderedDict(lst_project_info))
             lst_project_name.append(dct_value.get("@name"))
 
@@ -430,6 +449,14 @@ class GitTool:
                         lst_project_info.append(('@groups', "odoo"))
                     lst_project.append(OrderedDict(lst_project_info))
 
+        if default_remote and not lst_default:
+            lst_default.append(OrderedDict([
+                ('@remote', default_remote),
+                ('@revision', "12.0"),
+                ('@sync-j', "4"),
+                ('@sync-c', "true"),
+            ]))
+
         # Order in alphabetic
         lst_order_remote = sorted(lst_remote, key=lambda key: key.get("@name"))
         lst_order_default = sorted(lst_default, key=lambda key: key.get("@remote"))
@@ -444,14 +471,14 @@ class GitTool:
         str_xml_text = xmltodict.unparse(dct_repo, pretty=True)
 
         pos_insert = str_xml_text.rfind("</remote>")
-        if pos_insert:
+        if pos_insert >= 0:
             pos_insert += len("</remote>")
             str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
 
         pos_insert = str_xml_text.rfind("</default>")
-        if pos_insert:
+        if pos_insert >= 0:
             pos_insert += len("</default>")
-        str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
+            str_xml_text = self.str_insert(str_xml_text, "\n  ", pos_insert)
 
         # pos_insert = str_xml_text.rfind("</project>")
         # if pos_insert:
@@ -465,7 +492,7 @@ class GitTool:
         str_xml_text = str_xml_text.replace("\t", "  ")
 
         # create file
-        with open(f"{repo_path}manifest/default.dev.xml", mode="w") as file:
+        with open(output, mode="w") as file:
             file.writelines(str_xml_text + "\n")
 
     def generate_git_modules(self, lst_repo: List[Struct], repo_path: str = "./"):

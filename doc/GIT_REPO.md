@@ -43,7 +43,19 @@ Do your commit.
 ```bash
 git commit -am "[#ticket] subject: short sentence"
 ```
+### Mix prod and dev to do a stage
+When dev contain specific revision with default revision, you want to replace default revision by prod revision and keep specific version, do:
+```bash
+./venv/bin/python ./script/git_merge_repo_manifest.py --input1 ./manifest/default.dev.xml --input2 ./default.xml --output ./manifest/default.staged.xml
+git commit -am "Updated manifest/default.staged.xml"
 
+git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+
+./venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
+./venv/repo sync -m ./manifest/default.staged.xml
+
+./venv/repo manifest -r -o ./default.xml
+```
 ## Create a dev version
 ```bash
 ./venv/repo manifest -o ./manifest/default.dev.xml
