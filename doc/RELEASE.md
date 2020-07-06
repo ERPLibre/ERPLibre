@@ -3,7 +3,7 @@ A guide on how to do a release.
 
 ## Generate new prod
 ```bash
-./venv/repo manifest -r -o ./manifest/default.xml
+./venv/repo manifest -r -o ./default.xml
 ```
 Do your commit.
 ```bash
@@ -11,7 +11,14 @@ git commit -am "[#ticket] subject: short sentence"
 ```
 
 ## Merge release
-Merge your feature to master. Generate a new tag. Fill CHANGELOG.md
+When ready to make a release, create a branch release/#.#.# and create a pull request to master.
+Update file CHANGELOG.md and create a section with new version.
+Merge it when maintener accept it.
+
+Add a tag on the commit on branch master with your release.
+> git tag v#.#.#
+Push your tag
+> git push --tags
 
 # TIPS
 ## Compare diff repo with another ERPLibre project

@@ -10,7 +10,7 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > ./venv/repo
 
 ## prod
 ```bash
-./venv/repo init -u http://git.erplibre.ca/ERPLibre -b 12.0_repo
+./venv/repo init -u http://git.erplibre.ca/ERPLibre -b master
 ./venv/repo sync
 ```
 
@@ -37,7 +37,7 @@ Freezes all repo, from dev to prod.
 
 This will add revision git hash in the Manifest.
 ```bash
-./venv/repo manifest -r -o ./manifest/default.xml
+./venv/repo manifest -r -o ./default.xml
 ```
 Do your commit.
 ```bash
