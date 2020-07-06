@@ -6,7 +6,7 @@ TODO
 
 ## Migration procedure dev
 
-Example : 
+Example:
 
 update module helpdesk_mgmt and helpdesk_join_team
 
