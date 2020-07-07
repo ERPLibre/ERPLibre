@@ -19,6 +19,17 @@ cd ERPLibre
 ./run.sh
 ```
 
+## Develop in Odoo repository
+You need to remove
+> clone-depth="1"
+
+from
+> ./manifest/default.dev.xml
+
+file to be able to commit and push.
+Commit temporary and regenerate with
+> ./script/install_locally_dev.sh
+
 ## Fork project to create a new project independent of ERPLibre (deprecated)
 ERPLibre was created by this script. It's now deprecated.
 Use this script when you need to fork directly from the original source.
@@ -64,7 +75,7 @@ This will update all urls in git format:
 ## Diff repo with another project
 Tools to display the differences between the repo and another project.
 ```bash
-./venv/bin/python ./script/list_repo_diff.py --sync_to /path/to/project/erplibre --dyr_sync
+./venv/bin/python ./script/list_repo_diff.py --sync_to /path/to/project/erplibre --dry_sync
 ```
 
 ## Sync repo with another project
