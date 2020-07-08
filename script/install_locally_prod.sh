@@ -19,7 +19,7 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 ./script/install_locally.sh
 
 # Update git-repo
-./venv/repo init -u http://git.erplibre.ca/ERPLibre -b 12.0_repo
+./venv/repo init -u http://git.erplibre.ca/ERPLibre -b master
 #./venv/repo sync --force-sync
 ./venv/repo sync
 
