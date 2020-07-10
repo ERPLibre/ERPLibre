@@ -52,3 +52,9 @@ Do your commit.
 ```bash
 git commit -am "[#ticket] subject: short sentence"
 ```
+
+## Useful command
+### Search all repo with specific branch name
+```bash
+./venv/repo forall -pc "git branch -a|grep BRANCH"
+```
