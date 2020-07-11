@@ -550,7 +550,10 @@ class GitTool:
 
         for line in all_lines:
             # Separate information with path in tuple
-            line_split = line[:-1].split(',')
+            line = line.strip()
+            if not line:
+                continue
+            line_split = line.split(',')
             if len(line_split) != 4:
                 print(f"Error with line {line}, suppose to have only 4 ','.")
                 exit(1)
