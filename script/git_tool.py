@@ -15,6 +15,9 @@ from typing import List
 
 CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
 CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
+DEFAULT_PROJECT_NAME = "ERPLibre"
+DEFAULT_WEBSITE = "erplibre.ca"
+DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
 
 
 class Struct(object):
@@ -254,7 +257,13 @@ class GitTool:
 
         if add_root:
             repo_root = Repo(repo_path)
-            url = repo_root.git.remote("get-url", "origin")
+            try:
+                url = repo_root.git.remote("get-url", "origin")
+            except Exception as e:
+                print(f"WARNING: Missing origin remote, use default url "
+                      f"{DEFAULT_REMOTE_URL}. Suggest to add a remote origin: \n"
+                      f"> git remote add origin {DEFAULT_REMOTE_URL}")
+                url = DEFAULT_REMOTE_URL
             url, url_https, url_git = self.get_url(url)
 
             data = {
