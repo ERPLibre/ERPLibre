@@ -102,3 +102,10 @@ To regenerate only manifest.xml.
 ```bash
 ./script/fork_project_ERPLibre.py --skip_fork
 ```
+
+# Coding
+## Create module scaffold (run in the venv)
+```bash
+source ./venv/bin/activate
+python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
+```
