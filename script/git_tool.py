@@ -18,6 +18,7 @@ CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
+DEFAULT_BRANCH = "12.0"
 
 
 class Struct(object):
@@ -26,6 +27,22 @@ class Struct(object):
 
 
 class GitTool:
+    @property
+    def default_project_name(self):
+        return DEFAULT_PROJECT_NAME
+
+    @property
+    def default_website(self):
+        return DEFAULT_WEBSITE
+
+    @property
+    def default_remote_url(self):
+        return DEFAULT_REMOTE_URL
+
+    @property
+    def default_branch(self):
+        return DEFAULT_BRANCH
+
     @staticmethod
     def get_url(url: str) -> object:
         """
@@ -128,7 +145,6 @@ class GitTool:
         Get information about submodule from repo_path
         :param repo_path: path of repo to get information about submodule
         :param add_root: add information about root repository
-        :param upstream: Use this upstream of root
         :return:
         [{
             "url": original_url,
@@ -428,7 +444,7 @@ class GitTool:
                                     "Validate why 2 or more is not submodule.")
                 lst_default.append(OrderedDict([
                     ('@remote', repo.original_organization),
-                    ('@revision', "12.0"),
+                    ('@revision', DEFAULT_BRANCH),
                     ('@sync-j', "4"),
                     ('@sync-c', "true"),
                 ]))
@@ -461,7 +477,7 @@ class GitTool:
         if default_remote and not lst_default:
             lst_default.append(OrderedDict([
                 ('@remote', default_remote),
-                ('@revision', "12.0"),
+                ('@revision', DEFAULT_BRANCH),
                 ('@sync-j', "4"),
                 ('@sync-c', "true"),
             ]))

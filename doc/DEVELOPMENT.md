@@ -84,6 +84,12 @@ Tools to synchronise the repo with another project. This will show differences a
 ./script/git_change_remote.py --sync_to /path/to/project/erplibre
 ```
 
+## Diff code between manifest
+To show diff between commits in different manifest
+```bash
+./script/git_diff_repo_manifest.py --input1 ./manifest/MANIFEST1.xml --input2 ./manifest/MANIFEST2.xml
+```
+
 ## Add repo
 Access to a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
 
