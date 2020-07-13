@@ -11,8 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Update to Odoo Community 12.0
 
+## [1.0.1] - 2020-07-14
+### Added
+- Improve documentation with development and production environment
+- Improve documentation with git repo
+- Move default.xml manifest to root, the default location
+- Support default.stage.xml to update prod with dev
+- Feature to show diff between manifest, between repo of different manifest
+- Update manifest
+    - Muk theme in erplibre_base
+    - Add draft account invoice approbation in portal
+    - New module sale_fix_update_price_unit_when_update_qty
+    - New module account_invoice_approbation
+    - New module sale_margin_editor
+
 ### Fixed
-- Web module display
+- Production installation with git_repo
 
 ## [1.0.0] - 2020-07-04
 ### Added
@@ -41,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: http://git.erplibre.ca/ERPLibre/compare/v1.0.0...HEAD
+[Unreleased]: http://git.erplibre.ca/ERPLibre/compare/v1.0.1...HEAD
+[1.0.1]: http://git.erplibre.ca/ERPLibre/compare/v1.0.0...v1.0.1
 [1.0.0]: http://git.erplibre.ca/ERPLibre/compare/v0.1.1...v1.0.0
 [0.1.1]: http://git.erplibre.ca/ERPLibre/compare/v0.1.0...v0.1.1
 [0.1.0]: http://git.erplibre.ca/ERPLibre/releases/tag/v0.1.0
