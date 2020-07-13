@@ -70,3 +70,19 @@ git commit -am "[#ticket] subject: short sentence"
 ```bash
 ./venv/repo forall -pc "git branch -a|grep BRANCH"
 ```
+
+### Search missing branch in all repo
+```bash
+./venv/repo forall -pc 'git branch -a|(grep /BRANCH$||echo "no match")|grep "no match"'
+```
+
+### Search change file in all repo
+```bash
+./venv/repo forall -pc "git status -s"
+```
+
+### Clean all
+Maybe, some version diverge from your manifest. Simply clean all and relaunch your installation.
+```bash
+./script/clean_repo_manifest.sh
+```
