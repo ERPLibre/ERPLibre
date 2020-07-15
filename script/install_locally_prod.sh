@@ -19,9 +19,7 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 ./script/install_locally.sh
 
 # Update git-repo
-./venv/repo init -u http://git.erplibre.ca/ERPLibre -b 12.0_repo
-#./venv/repo sync --force-sync
-./venv/repo sync
+./script/update_manifest_prod.sh
 
 echo -e "\n---- Install python packages/requirements ----"
 ${EL_HOME}/venv/bin/pip3 install --upgrade pip

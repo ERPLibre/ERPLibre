@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!./venv/bin/python
 import os
 import sys
 import argparse
@@ -127,7 +127,8 @@ def main():
 
     # Update origin to new repo
     # git_tool.generate_git_modules(lst_repo_organization, repo_path=config.dir)
-    git_tool.generate_repo_manifest(lst_repo_organization, repo_path=config.dir)
+    git_tool.generate_repo_manifest(lst_repo_organization,
+                                    output=f"{config.dir}manifest/default.dev.xml")
     git_tool.generate_install_locally()
 
 

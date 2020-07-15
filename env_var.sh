@@ -19,5 +19,6 @@ EL_INSTALL_NGINX="True"
 # Set the website name
 EL_WEBSITE_NAME="_"
 EL_GITHUB_TOKEN=""
-EL_MANIFEST_PROD="./manifest/default.xml"
+EL_MANIFEST_PROD="./default.xml"
 EL_MANIFEST_DEV="./manifest/default.dev.xml"
+EL_MANIFEST_EXP="./manifest/default.experimental.xml"

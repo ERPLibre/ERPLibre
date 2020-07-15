@@ -20,22 +20,30 @@ With arguments
 ### Method 2
 Execute your own python script:
 ```bash
-source ./venv/bin/activate
-python odoo/odoo-bin -c config.conf --log-level debug
+./run.sh --log-level debug
 ```
 
 ### Update all
 Great idea to run it when updating Odoo, it updates database of each modules.
 ```bash
-python odoo/odoo-bin -c config.conf -d [DATABASE] -u all --log-level debug
+./run.sh -d [DATABASE] -u all --log-level debug
 ```
 
 ### Update module
 ```bash
-python odoo/odoo-bin -c config.conf -d [DATABASE] -u [module] --log-level debug
+./run.sh -d [DATABASE] -u [module] --log-level debug
 ```
 
 ### Test
+First execution, install you requirements, choose a new database.
 ```bash
-python odoo/odoo-bin -c config.conf -d [DATABASE] -i [module to test] --test-enable --stop-after-init --log-level=test --test-tags [module_name][tags]
+./run.sh -d [DATABASE] -i [module to test] --test-enable --stop-after-init --log-level=test
+```
+Execute your test on specific module.
+```bash
+./run.sh -d [DATABASE] -u [module to test] --test-enable --stop-after-init --log-level=test
+```
+Execute your test on specific module with tags.
+```bash
+./run.sh -d [DATABASE] -u [module to test] --test-enable --stop-after-init --log-level=test --test-tags [module_name][tags]
 ```

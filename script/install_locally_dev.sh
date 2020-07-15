@@ -19,13 +19,7 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 ./script/install_locally.sh
 
 # Update git-repo
-git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
-DAEMON_PID=$!
-
-./venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ${EL_MANIFEST_DEV}
-./venv/repo sync -m ${EL_MANIFEST_DEV}
-
-kill ${DAEMON_PID}
+./script/update_manifest_local_dev.sh
 
 echo -e "\n---- Install python packages/requirements ----"
 ${EL_HOME}/venv/bin/pip3 install --upgrade pip
