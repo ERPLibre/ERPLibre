@@ -81,7 +81,7 @@ https://github.com/OCA/timesheet.git,addons,12.0_support_project_agile_timesheet
 https://github.com/OCA/web.git,addons,,
 https://github.com/OCA/website.git,addons,12.0_dev,
 https://github.com/OCA/wms.git,addons,,
-https://github.com/odoo/odoo.git,.,12.0_feature_5_star_CRM,1
+https://github.com/odoo/odoo.git,.,ERPLibre/12.0,1
 https://github.com/odooaktiv/QuotationRevision.git,addons,,
 https://github.com/openeducat/openeducat_erp.git,addons,,
 https://github.com/SanteLibre/santelibre_addons.git,addons,master,

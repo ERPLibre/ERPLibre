@@ -4,3 +4,4 @@ gitpython
 PyYAML
 retrying
 xmltodict
+openupgradelib
