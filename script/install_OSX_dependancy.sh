@@ -49,4 +49,5 @@ fi
 #       ln -s ~/.pyenv/versions/3.6.9/bin/python3.6 /usr/local/bin/python3
 # ===============================================================================================
 echo  "\n---- Installing venv if not already existing (rm -r venv if already exists) ----"
-~/.pyenv/versions/3.6.9/bin/python3.6 -m venv venv
+#~/.pyenv/versions/3.6.9/bin/python3.6 -m venv venv
+python3 -m venv venv
