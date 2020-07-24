@@ -28,7 +28,7 @@ brew link wget
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm
 sudo npm install -g rtlcss
-
+sudo npm install -g less
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
