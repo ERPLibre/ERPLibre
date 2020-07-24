@@ -22,13 +22,15 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo  "\n--- Installing Python 3 + pip3 --"
-brew install git python3 wget
+brew install git python3 wget pyenv
 brew link git
 brew link wget
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm
 sudo npm install -g rtlcss
-
+sudo npm install -g lessc
+pyenv install 3.7.7
+pyenv local 3.7.7
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
@@ -50,4 +52,4 @@ fi
 # ===============================================================================================
 echo  "\n---- Installing venv if not already existing (rm -r venv if already exists) ----"
 #~/.pyenv/versions/3.6.9/bin/python3.6 -m venv venv
-python3 -m venv venv
+/Users/"${EL_USER}"/.pyenv/versions/3.7.7/bin/python3 -m venv venv
