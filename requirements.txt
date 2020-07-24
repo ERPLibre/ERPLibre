@@ -1,3 +1,4 @@
+# For script
 giturlparse
 agithub
 gitpython
@@ -5,3 +6,16 @@ PyYAML
 retrying
 xmltodict
 openupgradelib
+
+# For OSX
+cython
+
+# For Odoo
+wheel
+phonenumbers
+# For testing
+websocket-client
+
+# For updating poetry
+toml
+iscompatible

@@ -28,5 +28,6 @@ Execute script:
 git checkout -b NEW_BRANCH
 git commit -am "Add new repo"
 ./script/install_locally_dev.sh
+./script/poetry_update.py
 ```
 [Update your repo.](./GIT_REPO.md)
