@@ -106,6 +106,6 @@ To regenerate only manifest.xml.
 # Coding
 ## Create module scaffold (run in the venv)
 ```bash
-source ./venv/bin/activate
+source ./.venv/bin/activate
 python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```

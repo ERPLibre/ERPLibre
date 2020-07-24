@@ -2,7 +2,7 @@
 
 . ./env_var.sh
 
-EL_USER=$(whoami)
+EL_USER=${USER}
 EL_HOME=$PWD
 EL_HOME_ODOO="${EL_HOME}/odoo"
 #EL_INSTALL_WKHTMLTOPDF="True"
@@ -13,17 +13,6 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 #EL_CONFIG="${EL_USER}"
 #EL_MINIMAL_ADDONS="False"
 #EL_INSTALL_NGINX="True"
-
-if hash python3.7 2>/dev/null; then
-    PYTHON37="True"
-    PYTHON36="False"
-elif hash python3.6 2>/dev/null; then
-    PYTHON37="False"
-    PYTHON36="True"
-else
-    echo "Missing python3.7 or python3.6. Python3.8 is not compatible."
-    exit 1
-fi
 
 echo -e "* Create server config file"
 
@@ -40,7 +29,7 @@ printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> ${EL_CONFIG_FILE}
 
 printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons/addons," >> ${EL_CONFIG_FILE}
 printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
-if [[ $EL_MINIMAL_ADDONS = "False" ]]; then
+if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${EL_CONFIG_FILE}
@@ -134,7 +123,7 @@ printf "\n" >> ${EL_CONFIG_FILE}
 printf "workers = 2\n" >> ${EL_CONFIG_FILE}
 printf "max_cron_threads = 2\n" >> ${EL_CONFIG_FILE}
 
-if [ ${EL_INSTALL_NGINX} = "True" ]; then
+if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "xmlrpc_interface = 127.0.0.1\n" >> ${EL_CONFIG_FILE}
     printf "netrpc_interface = 127.0.0.1\n" >> ${EL_CONFIG_FILE}
     printf "proxy_mode = True\n" >> ${EL_CONFIG_FILE}
@@ -144,22 +133,34 @@ echo -e "\n---- Install Odoo with addons module ----"
 git submodule update --init
 
 # Generate empty addons if missing
-if [ ! -d "./addons/addons" ]; then
+if [[ ! -d "./addons/addons" ]]; then
     mkdir -p ./addons/addons
 fi
 
-echo -e "\n---- Create Virtual environment Python ----"
-cd ${EL_HOME}
-if [[ ${PYTHON37} = "True" ]]; then
-    python3.7 -m venv venv
-elif [[ ${PYTHON36} = "True" ]]; then
-    python3.6 -m venv venv
+if [[ ! -f "./.venv" ]]; then
+    echo -e "\n---- Create Virtual environment Python ----"
+    if [[ -f "/home/"${USER}"/.pyenv/versions/3.7.7/bin/python3" ]]; then
+        /home/"${USER}"/.pyenv/versions/3.7.7/bin/python3 -m venv .venv
+    elif [[ -f "/Users/"${USER}"/.pyenv/versions/3.7.7/bin/python3" ]]; then
+        /Users/"${USER}"/.pyenv/versions/3.7.7/bin/python3 -m venv .venv
+    else
+        echo "Missing pyenv, please refer installation guide."
+        exit 1
+    fi
 fi
-cd -
+
+echo -e "\n---- Installing poetry dependancy ----"
+.venv/bin/pip install --upgrade pip
+source $HOME/.poetry/env
+poetry install
+
+# Link for dev
+echo -e "\n---- Add link dependency in site-packages of Python ----"
+ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/
 
 # Install git-repo if missing
-if [ ! -f "./venv/repo" ]; then
-    echo "Install git-repo from Google APIS"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ./venv/repo
-    chmod +x ./venv/repo
+if [[ ! -f "./.venv/repo" ]]; then
+    echo "\n---- Install git-repo from Google APIS ----"
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
+    chmod +x ./.venv/repo
 fi

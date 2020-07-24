@@ -3,7 +3,7 @@ A guide on how to do a release.
 
 ## Generate new prod
 ```bash
-./venv/repo manifest -r -o ./default.xml
+./.venv/repo manifest -r -o ./default.xml
 ```
 Do your commit.
 ```bash
@@ -21,10 +21,10 @@ git tag v#.#.#
 # Push your tags
 git push --tags
 # Add tags for all repo
-./venv/repo forall -pc "git tag ERPLibre/v#.#.#"
-./venv/repo forall -pc "git push ERPLibre --tags"
+./.venv/repo forall -pc "git tag ERPLibre/v#.#.#"
+./.venv/repo forall -pc "git push ERPLibre --tags"
 # Get all difference between a tag and HEAD, to update the CHANGELOG.md
-./venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
+./.venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
 ```
 
 # TIPS

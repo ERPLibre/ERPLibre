@@ -1,4 +1,4 @@
-#!./venv/bin/python
+#!./.venv/bin/python
 # © 2020 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 import os
@@ -351,6 +351,7 @@ class GitTool:
             webbrowser.open_new_tab(url)
 
     def generate_install_locally(self, repo_path="./"):
+        filename_locally = f"{repo_path}script/install_locally.sh"
         lst_repo = self.get_repo_info(repo_path=repo_path)
         lst_result = []
         for repo in lst_repo:
@@ -361,14 +362,15 @@ class GitTool:
             str_repo = f'    printf "${{EL_HOME}}/{repo.get("path")}," >> ' \
                        f'${{EL_CONFIG_FILE}}\n'
             lst_result.append(str_repo)
-        with open(f"{repo_path}script/install_locally.sh") as file:
+        with open(filename_locally) as file:
             all_lines = file.readlines()
         # search place to add/replace lines
         index = 0
         find_index = False
         index_find = 0
         for line in all_lines:
-            if not find_index and "if [[ $EL_MINIMAL_ADDONS = \"False\" ]]; then\n" == line:
+            if not find_index and \
+                    "if [[ ${EL_MINIMAL_ADDONS} = \"False\" ]]; then\n" == line:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
@@ -381,8 +383,12 @@ class GitTool:
                 break
             index += 1
 
+        if not find_index:
+            print(f"ERROR cannot regenerate file {filename_locally}, "
+                  f"did you change the header?")
+
         # create file
-        with open(f"{repo_path}script/install_locally.sh", mode="w") as file:
+        with open(filename_locally, mode="w") as file:
             file.writelines(all_lines)
 
     @staticmethod

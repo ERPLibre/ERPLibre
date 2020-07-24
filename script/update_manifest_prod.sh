@@ -6,6 +6,6 @@
 #EL_MANIFEST_DEV="./manifest/default.dev.xml"
 
 # Update git-repo
-./venv/repo init -u http://git.erplibre.ca/ERPLibre -b $(git rev-parse --abbrev-ref HEAD)
-#./venv/repo sync --force-sync
-./venv/repo sync -v
+./.venv/repo init -u http://git.erplibre.ca/ERPLibre -b $(git rev-parse --abbrev-ref HEAD)
+#./.venv/repo sync --force-sync
+./.venv/repo sync -v

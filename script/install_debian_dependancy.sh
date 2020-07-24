@@ -2,7 +2,7 @@
 
 . ./env_var.sh
 
-EL_USER=$(whoami)
+EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
 
 ##
@@ -31,42 +31,65 @@ sudo apt-get upgrade -y
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-sudo apt-get install postgresql -y
+sudo apt-get install postgresql libpq-dev -y
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s $EL_USER" 2> /dev/null || true
+sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 
 #--------------------------------------------------
 # Install Dependencies
 #--------------------------------------------------
-echo -e "\n--- Installing Python 3 + pip3 --"
-sudo apt-get install git python3 python3-pip build-essential wget python3-dev python3-venv python3-wheel libxslt-dev libzip-dev libldap2-dev libsasl2-dev python3-setuptools node-less libpng12-0 gdebi-core -y
+echo -e "\n--- Installing debian dependancy --"
+sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpng12-0 gdebi-core libffi-dev -y
+sudo apt-get install libmariadbd-dev -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
+sudo npm install -g lessc
 
 if [ ${EL_INSTALL_NGINX} = "True" ]; then
-    sudo apt install nginx -y
+  echo -e "\n---- Installing nginx ----"
+  sudo apt install nginx -y
 fi
+
+echo -e "\n---- Installing python 3.7.7 with pyenv ----"
+curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+
+export PATH="/home/${USER}/.pyenv/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+
+yes n|pyenv install 3.7.7
+pyenv local 3.7.7
+
+python_exec="$(pyenv root)/versions/3.7.7/bin/python"
+
+echo -e "\n---- Installing poetry for reliable python package ----"
+curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${python_exec}
+
+#/home/"${USER}"/.poetry/bin/poetry env use ${python_exec}
+#source $HOME/.poetry/env
 
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
 if [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
+  echo -e "\n---- Installing wkhtml ----"
   INSTALLED=$(dpkg -s wkhtmltox|grep installed)
   if [ "" == "${INSTALLED}" ]; then
       echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
       #pick up correct one from x64 & x32 versions:
       if [ "`getconf LONG_BIT`" == "64" ];then
-          _url=$WKHTMLTOX_X64
+          _url=${WKHTMLTOX_X64}
       else
-          _url=$WKHTMLTOX_X32
+          _url=${WKHTMLTOX_X32}
       fi
       sudo wget ${_url}
       sudo gdebi --n `basename ${_url}`
       sudo ln -s /usr/local/bin/wkhtmltopdf /usr/bin
       sudo ln -s /usr/local/bin/wkhtmltoimage /usr/bin
+  else echo -e "\n---- Already installed wkhtml ----"
   fi
 else
   echo "Wkhtmltopdf isn't installed due to the choice of the user!"
