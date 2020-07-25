@@ -56,7 +56,8 @@ def main():
         dct_project = {}
     git_tool.generate_repo_manifest(lst_repo_organization,
                                     output=f"{config.dir}{config.manifest}",
-                                    dct_remote=dct_remote, dct_project=dct_project)
+                                    dct_remote=dct_remote, dct_project=dct_project,
+                                    keep_original=True)
     git_tool.generate_install_locally()
 
 

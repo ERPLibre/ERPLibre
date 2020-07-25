@@ -390,7 +390,8 @@ class GitTool:
         return source_str[:pos] + insert_str + source_str[pos:]
 
     def generate_repo_manifest(self, lst_repo: List[Struct] = [], output: str = "",
-                               dct_remote={}, dct_project={}, default_remote=None):
+                               dct_remote={}, dct_project={}, default_remote=None,
+                               keep_original=False):
         """
         Generate repo manifest
         :param lst_repo: optional, update manifest with list_repo
@@ -398,6 +399,8 @@ class GitTool:
         :param dct_remote: dict of remote information
         :param dct_project: dict of project information
         :param default_remote: name of default remote, optional
+        :param keep_original: if True, can manage multiple organization with same name,
+           but with different fetch url
         :return:
         """
         if not output:
@@ -449,10 +452,15 @@ class GitTool:
                     ('@sync-c', "true"),
                 ]))
             else:
+                if keep_original and repo.project_name not in dct_project.keys():
+                    # Exception, create a new remote to keep tracking on original
+                    original_organization = f"{repo.original_organization}_origin"
+                else:
+                    original_organization = repo.original_organization
                 # Add remote, only unique remote
-                if repo.original_organization not in lst_remote_name:
+                if original_organization not in lst_remote_name:
                     lst_remote.append(OrderedDict(
-                        [('@name', repo.original_organization),
+                        [('@name', original_organization),
                          ('@fetch', repo.url_https_organization + "/")]
                     ))
                     lst_remote_name.append(repo.original_organization)
@@ -462,7 +470,7 @@ class GitTool:
                     lst_project_info = [
                         ('@name', repo.project_name),
                         ('@path', repo.path),
-                        ('@remote', repo.original_organization),
+                        ('@remote', original_organization),
                     ]
                     if repo.revision:
                         lst_project_info.append(('@revision', repo.revision))
