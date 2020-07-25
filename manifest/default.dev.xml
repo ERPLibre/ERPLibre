@@ -10,6 +10,7 @@
   <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
   <remote name="odooaktiv" fetch="https://github.com/ERPLibre/"/>
   <remote name="openeducat" fetch="https://github.com/ERPLibre/"/>
+  <remote name="pledra" fetch="https://github.com/pledra/"/>
   
   <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true"/>
   
@@ -67,6 +68,7 @@
   <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="12.0_partner_no_vat_improve_no_vat" groups="addons"/>
   <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" groups="addons"/>
