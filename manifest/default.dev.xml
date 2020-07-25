@@ -83,6 +83,7 @@
   <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" groups="addons"/>
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
   <project name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" groups="addons"/>
+  <project name="product_rating_app.git" path="addons/odooaktiv_product_rating_app" remote="odooaktiv" groups="addons"/>
   <project name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" groups="addons"/>
   <project name="project.git" path="addons/OCA_project" remote="OCA" revision="12.0_fix_conflict_project_key" groups="addons"/>
   <project name="purchase-workflow.git" path="addons/OCA_purchase-workflow" remote="OCA" groups="addons"/>
