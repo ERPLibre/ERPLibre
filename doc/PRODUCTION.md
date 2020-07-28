@@ -63,3 +63,10 @@ Simply update all feature.
 ```bash
 ./run.sh --limit-time-real 99999 --stop-after-init -u all -d DATABASE
 ```
+
+# Postgresql
+To show config file:
+> psql -U postgres -c 'SHOW config_file'
+
+Edit this file to accept interface from all network:
+> /var/lib/postgres/data/postgresql.conf

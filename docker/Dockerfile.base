@@ -6,8 +6,8 @@ SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 # Generate locale C.UTF-8 for postgres and general locale data
 ENV LANG C.UTF-8
 
-ENV ODOO_EXEC_BIN odoo
 ENV ODOO_PREFIX /ERPLibre
+ENV ODOO_EXEC_BIN $ODOO_PREFIX/odoo/odoo-bin
 
 
 # Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf

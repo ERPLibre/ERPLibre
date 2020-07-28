@@ -4,7 +4,6 @@ import psycopg2
 import sys
 import time
 
-
 if __name__ == '__main__':
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('--db_host', required=True)
@@ -21,10 +20,11 @@ if __name__ == '__main__':
 
     connected = False
     error = ''
-    while ((time.time() - start_time) < args.timeout ) or connected is True:
+    while ((time.time() - start_time) < args.timeout) or connected is True:
         try:
-
-            conn = psycopg2.connect(user=args.db_user, host=args.db_host, port=args.db_port, password=args.db_password, dbname="odoo")
+            conn = psycopg2.connect(user=args.db_user, host=args.db_host,
+                                    port=args.db_port, password=args.db_password,
+                                    dbname="postgres")
 
             break
         except psycopg2.OperationalError as e:
