@@ -7,6 +7,7 @@
   <remote name="OCA" fetch="https://github.com/ERPLibre/"/>
   <remote name="SanteLibre" fetch="https://github.com/ERPLibre/"/>
   <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
+  <remote name="camptocamp" fetch="https://github.com/ERPLibre/"/>
   <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
   <remote name="obayit" fetch="https://github.com/ERPLibre/"/>
   <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
@@ -76,6 +77,7 @@
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="12.0_sale_order_line_timesheet_attribution" groups="addons"/>
+  <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" groups="addons"/>

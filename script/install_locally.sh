@@ -127,6 +127,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_wms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/SanteLibre_santelibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Smile-SA_odoo_addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_base," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_dms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_docs," >> ${EL_CONFIG_FILE}
