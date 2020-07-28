@@ -5,20 +5,24 @@ services:
       # image: technolibre/erplibre:12.0-src
       ports:
         - 8069:8069
+        - 8071:8071
+        - 8072:8072
       environment:
         HOST: db
         PASSWORD: mysecretpassword
         USER: odoo
-        POSTGRES_DB: odoo
-        CURRENT_UID: ${CURRENT_UID}
+        POSTGRES_DB: postgres
+#        CURRENT_UID: ${CURRENT_UID}
       depends_on:
         - db
-      networks:
-        - front
-      command: odoo -c /ERPLibre/odoo/odoo.conf --without-demo=ALL -i base -d odoo
+#      networks:
+#        - front
+      #entrypoint: odoo
+      #command: bash -c "sleep 1000 && odoo --without-demo=ALL -i base -d odoo "
+      command: odoo
       # user:
       volumes:
-        - .:/ERPLibre
+        # - .:/ERPLibre
         # See the volume section at the end of the file
         - erplibre_data_dir:/var/lib/odoo
 
@@ -27,22 +31,26 @@ services:
       environment:
         POSTGRES_PASSWORD: mysecretpassword
         POSTGRES_USER: odoo
-        POSTGRES_DB: odoo
-      networks:
-        - front
+        POSTGRES_DB: postgres
+        PGDATA: /var/lib/postgresql/data/pgdata
+      volumes:
+        - erplibre-db-data:/var/lib/postgresql/data/pgdata
+      #networks:
+      #  - front
 
 
-networks:
-  front:
-
-    driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.16.237.0/24
+#networks:
+#  front:
+#
+#    driver: bridge
+#    ipam:
+#      driver: default
+#      config:
+#        - subnet: 172.16.237.0/24
 
 # We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help
 # - docker-compose down --help
 volumes:
   erplibre_data_dir:
+  erplibre-db-data:

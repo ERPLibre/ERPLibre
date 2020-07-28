@@ -1,19 +1,20 @@
 FROM technolibre/erplibre-base:12.0
 
-ENV REPO_MANIFEST_URL https://github.com/agileops/ERPLibre.git
+ENV REPO_MANIFEST_URL http://git.erplibre.ca/ERPLibre
 RUN cat /etc/os-release
+ENV BRANCH_ERPLIBRE dev/1.1.0
 
 USER root
 
 # Install Odoo
-ENV ODOO_VERSION 12.0
-ARG ODOO_RELEASE=20200417
-ARG ODOO_SHA=ca4a7485b0b75850ffe1458a8f3266839400a501
-RUN curl -o odoo.deb -sSL http://nightly.odoo.com/${ODOO_VERSION}/nightly/deb/odoo_${ODOO_VERSION}.${ODOO_RELEASE}_all.deb \
-        && echo "${ODOO_SHA} odoo.deb" | sha1sum -c - \
-        && apt-get update \
-        && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew  install --no-install-recommends   ./odoo.deb \
-        && rm -rf /var/lib/apt/lists/* odoo.deb
+#ENV ODOO_VERSION 12.0
+#ARG ODOO_RELEASE=20200417
+#ARG ODOO_SHA=ca4a7485b0b75850ffe1458a8f3266839400a501
+#RUN curl -o odoo.deb -sSL http://nightly.odoo.com/${ODOO_VERSION}/nightly/deb/odoo_${ODOO_VERSION}.${ODOO_RELEASE}_all.deb \
+#        && echo "${ODOO_SHA} odoo.deb" | sha1sum -c - \
+#        && apt-get update \
+#        && apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confnew  install --no-install-recommends   ./odoo.deb \
+#        && rm -rf /var/lib/apt/lists/* odoo.deb
 
 
 RUN mkdir ~/.ssh/ && echo "StrictHostKeyChecking no" >> ~/.ssh/config &&   apt update && apt install ssh-client  git -y --no-install-recommends && \
@@ -24,7 +25,7 @@ RUN cd ; mkdir -p .bin/ && \
 	git config --global user.email "foo@bar.io" && \
 	git config --global user.name "Foo Bar" && \
         mkdir -p $ODOO_PREFIX && cd $ODOO_PREFIX && \
-	repo init -u $REPO_MANIFEST_URL  -b 12.0_repo  && \
+	repo init -u $REPO_MANIFEST_URL  -b $BRANCH_ERPLIBRE  && \
 	repo sync -j 4 -c
 
 ADD repo_manifest_gen_org_prefix_path.py /root/.bin/
