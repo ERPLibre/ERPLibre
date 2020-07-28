@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
+  <remote name="CybroOdoo" fetch="https://github.com/ERPLibre/"/>
   <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
   <remote name="JayVora-SerpentCS" fetch="https://github.com/ERPLibre/"/>
   <remote name="MathBenTech" fetch="https://github.com/ERPLibre/"/>
@@ -8,6 +9,8 @@
   <remote name="SanteLibre" fetch="https://github.com/ERPLibre/"/>
   <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
   <remote name="camptocamp" fetch="https://github.com/ERPLibre/"/>
+  <remote name="dhongu" fetch="https://github.com/ERPLibre/"/>
+  <remote name="kinjal-sorathiya" fetch="https://github.com/ERPLibre/"/>
   <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
   <remote name="obayit" fetch="https://github.com/ERPLibre/"/>
   <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
@@ -18,6 +21,8 @@
   <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true"/>
   
   <project name="MassEditing.git" path="addons/JayVora-SerpentCS_MassEditing" remote="JayVora-SerpentCS" groups="addons"/>
+  <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
+  <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
   <project name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
@@ -48,6 +53,7 @@
   <project name="data-protection.git" path="addons/OCA_data-protection" remote="OCA" groups="addons"/>
   <project name="ddmrp.git" path="addons/OCA_ddmrp" remote="OCA" groups="addons"/>
   <project name="delivery-carrier.git" path="addons/OCA_delivery-carrier" remote="OCA" groups="addons"/>
+  <project name="deltatech.git" path="addons/dhongu_deltatech" remote="dhongu" groups="addons"/>
   <project name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" groups="addons"/>
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="12.0_module_donation_website" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
