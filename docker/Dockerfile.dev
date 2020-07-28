@@ -28,10 +28,6 @@ ENV ENV=dev
 COPY ./entrypoint.sh /
 RUN  chmod +x /entrypoint.sh
 
-ENV ODOO_PREFIX /ERPLibre
-ENV ODOO_EXEC_BIN $ODOO_PREFIX/odoo/odoo-bin
-
-
 COPY repo_manifest_gen_org_prefix_path.py /usr/bin/
 RUN chmod +x /usr/bin/repo_manifest_gen_org_prefix_path.py
 

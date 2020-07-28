@@ -64,6 +64,13 @@ Simply update all feature.
 ./run.sh --limit-time-real 99999 --stop-after-init -u all -d DATABASE
 ```
 
+# Postgresql
+To show config file:
+> psql -U postgres -c 'SHOW config_file'
+
+Edit this file to accept interface from all network:
+> /var/lib/postgres/data/postgresql.conf
+
 # Delete an instance in production
 Caution, this delete home of users, it's irrevocable.
 ```bash
