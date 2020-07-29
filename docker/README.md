@@ -38,7 +38,7 @@ docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 Go at the root of this git project.
 ```bash
 cd ERPLibre
-docker-compose -f docker-compose.yml up
+docker-compose -f docker-compose.yml up -d
 ```
 
 ### Diagnostic Docker-Compose
@@ -94,3 +94,12 @@ Delete volume
 ```bash
 docker volume prune
 ```
+
+# Need more space for docker
+You can change the home for docker, edit file `/etc/docker/daemon.json`
+```json
+{
+  "data-root": "/home/docker"
+}
+```
+And restart docker service. You can delete all older location of docker or move it.
