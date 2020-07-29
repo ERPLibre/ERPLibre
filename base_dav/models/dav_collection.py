@@ -1,12 +1,18 @@
 # Copyright 2019 Therp BV <https://therp.nl>
-# Copyright 2019 initOS GmbH <https://initos.com>
+# Copyright 2019-2020 initOS GmbH <https://initos.com>
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
-from datetime import datetime, date
-from dateutil import tz
+
+import os
+import time
+from operator import itemgetter
+from urllib.parse import quote_plus
+
 import vobject
 from odoo import api, fields, models, tools
+
 # pylint: disable=missing-import-error
 from ..controllers.main import PREFIX
+from ..radicale.collection import Collection, FileItem, Item
 
 
 class DavCollection(models.Model):
@@ -14,6 +20,15 @@ class DavCollection(models.Model):
     _description = 'A collection accessible via WebDAV'
 
     name = fields.Char(required=True)
+    rights = fields.Selection(
+        [
+            ("owner_only", "Owner Only"),
+            ("owner_write_only", "Owner Write Only"),
+            ("authenticated", "Authenticated"),
+        ],
+        required=True,
+        default="owner_only",
+    )
     dav_type = fields.Selection(
         [
             ('calendar', 'Calendar'),
@@ -31,10 +46,11 @@ class DavCollection(models.Model):
         required=True,
         domain=[('transient', '=', False)],
     )
-    domain = fields.Text(
+    domain = fields.Char(
         required=True,
         default='[]',
     )
+    field_uuid = fields.Many2one('ir.model.fields')
     field_mapping_ids = fields.One2many(
         'dav.collection.field_mapping',
         'collection_id',
@@ -42,7 +58,6 @@ class DavCollection(models.Model):
     )
     url = fields.Char(compute='_compute_url')
 
-    @api.multi
     def _compute_tag(self):
         for this in self:
             if this.dav_type == 'calendar':
@@ -50,11 +65,11 @@ class DavCollection(models.Model):
             elif this.dav_type == 'addressbook':
                 this.tag = 'VADDRESSBOOK'
 
-    @api.multi
     def _compute_url(self):
+        base_url = self.env['ir.config_parameter'].get_param('web.base.url')
         for this in self:
             this.url = '%s%s/%s/%s' % (
-                self.env['ir.config_parameter'].get_param('web.base.url'),
+                base_url,
                 PREFIX,
                 self.env.user.login,
                 this.id,
@@ -70,21 +85,24 @@ class DavCollection(models.Model):
             'user': self.env.user,
         }
 
-    @api.multi
     def _eval_domain(self):
         self.ensure_one()
-        return tools.safe_eval(self.domain, self._eval_context())
+        return list(tools.safe_eval(self.domain, self._eval_context()))
 
-    @api.multi
     def eval(self):
         if not self:
             return self.env['unknown']
         self.ensure_one()
-        return self.env[self.model_id.model].search(
-            self._eval_domain()
-        )
+        return self.env[self.model_id.model].search(self._eval_domain())
 
-    @api.multi
+    def get_record(self, components):
+        self.ensure_one()
+        collection_model = self.env[self.model_id.model]
+
+        field_name = self.field_uuid.name or "id"
+        domain = [(field_name, '=', components[-1])] + self._eval_domain()
+        return collection_model.search(domain, limit=1)
+
     def from_vobject(self, item):
         self.ensure_one()
 
@@ -104,26 +122,13 @@ class DavCollection(models.Model):
             if name not in children:
                 continue
 
-            child = children[name]
+            if name in children:
+                value = mapping.from_vobject(children[name])
+                if value:
+                    result[mapping.field_id.name] = value
 
-            conversion_funcs = [
-                '_from_vobject_%s_%s' % (mapping.field_id.ttype, name),
-                '_from_vobject_%s' % mapping.field_id.ttype,
-            ]
-
-            value = child.value
-            for conversion_func in conversion_funcs:
-                if hasattr(self, conversion_func):
-                    val = getattr(self, conversion_func)(child)
-                    if val:
-                        value = val
-                        break
-
-            if value:
-                result[mapping.field_id.name] = value
         return result
 
-    @api.multi
     def to_vobject(self, record):
         self.ensure_one()
         result = None
@@ -135,75 +140,150 @@ class DavCollection(models.Model):
             result = vobject.vCard()
             vobj = result
         for mapping in self.field_mapping_ids:
-            conversion_funcs = [
-                '_to_vobject_%s_%s' % (
-                    mapping.field_id.ttype, mapping.name.lower()
-                ),
-                '_to_vobject_%s' % mapping.field_id.ttype,
-            ]
-            value = record[mapping.field_id.name]
-            for conversion_func in conversion_funcs:
-                if hasattr(self, conversion_func):
-                    value = getattr(self, conversion_func)(
-                        record, mapping.field_id.name
-                    )
-                    break
-            if not value:
-                continue
-            vobj.add(mapping.name).value = value
+            value = mapping.to_vobject(record)
+            if value:
+                vobj.add(mapping.name).value = value
+
         if 'uid' not in vobj.contents:
             vobj.add('uid').value = '%s,%s' % (record._name, record.id)
         if 'rev' not in vobj.contents and 'write_date' in record._fields:
-            vobj.add('rev').value = self._to_vobject_datetime_rev(
-                record, 'write_date',
-            )
+            vobj.add('rev').value = record.write_date.\
+                replace(':', '').replace(' ', 'T').replace('.', '') + 'Z'
         return result
 
     @api.model
-    def _from_vobject_datetime(self, item):
-        if isinstance(item.value, datetime):
-            value = item.value.astimezone(tz.UTC)
-            return value.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT)
-        elif isinstance(item.value, date):
-            return item.value.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT)
-        return None
+    def _odoo_to_http_datetime(self, value):
+        return time.strftime(
+            '%a, %d %b %Y %H:%M:%S GMT',
+            time.strptime(value, '%Y-%m-%d %H:%M:%S'),
+        )
 
     @api.model
-    def _from_vobject_date(self, item):
-        if isinstance(item.value, datetime):
-            value = item.value.astimezone(tz.UTC)
-            return value.strftime(tools.DEFAULT_SERVER_DATE_FORMAT)
-        elif isinstance(item.value, date):
-            return item.value.strftime(tools.DEFAULT_SERVER_DATE_FORMAT)
-        return None
+    def _split_path(self, path):
+        return list(filter(
+            None, os.path.normpath(path or '').strip('/').split('/')
+        ))
 
-    @api.model
-    def _from_vobject_binary(self, item):
-        return item.value.encode('ascii')
+    def dav_list(self, collection, path_components):
+        self.ensure_one()
 
-    @api.model
-    def _from_vobject_char_n(self, item):
-        return item.family
+        if self.dav_type == 'files':
+            if len(path_components) == 3:
+                collection_model = self.env[self.model_id.model]
+                record = collection_model.browse(map(
+                    itemgetter(0),
+                    collection_model.name_search(
+                        path_components[2], operator='=', limit=1,
+                    )
+                ))
+                return [
+                    '/' + '/'.join(
+                        path_components + [quote_plus(attachment.name)]
+                    )
+                    for attachment in self.env['ir.attachment'].search([
+                        ('type', '=', 'binary'),
+                        ('res_model', '=', record._name),
+                        ('res_id', '=', record.id),
+                    ])
+                ]
+            elif len(path_components) == 2:
+                return [
+                    '/' + '/'.join(
+                        path_components + [quote_plus(record.display_name)]
+                    )
+                    for record in self.eval()
+                ]
 
-    @api.multi
-    def _to_vobject_datetime(self, record, field_name):
-        result = fields.Datetime.from_string(record[field_name])
-        return result.replace(tzinfo=tz.UTC)
+        if len(path_components) > 2:
+            return []
 
-    @api.multi
-    def _to_vobject_datetime_rev(self, record, field_name):
-        return record[field_name] and record[field_name]\
-            .replace('-', '').replace(' ', 'T').replace(':', '') + 'Z'
+        result = []
+        for record in self.eval():
+            if self.field_uuid:
+                uuid = record[self.field_uuid.name]
+            else:
+                uuid = str(record.id)
+            result.append('/' + '/'.join(path_components + [uuid]))
+        return result
 
-    @api.multi
-    def _to_vobject_date(self, record, field_name):
-        return fields.Date.from_string(record[field_name])
+    def dav_delete(self, collection, components):
+        self.ensure_one()
 
-    @api.multi
-    def _to_vobject_binary(self, record, field_name):
-        return record[field_name] and record[field_name].decode('ascii')
+        if self.dav_type == "files":
+            # TODO: Handle deletion of attachments
+            pass
+        else:
+            self.get_record(components).unlink()
 
-    @api.multi
-    def _to_vobject_char_n(self, record, field_name):
-        # TODO: how are we going to handle compound types like this?
-        return vobject.vcard.Name(family=record[field_name])
+    def dav_upload(self, collection, href, item):
+        self.ensure_one()
+
+        components = self._split_path(href)
+        collection_model = self.env[self.model_id.model]
+        if self.dav_type == 'files':
+            # TODO: Handle upload of attachments
+            return None
+
+        data = self.from_vobject(item)
+        record = self.get_record(components)
+
+        if not record:
+            if self.field_uuid:
+                data[self.field_uuid.name] = components[-1]
+
+            record = collection_model.create(data)
+            uuid = components[-1] if self.field_uuid else record.id
+            href = "%s/%s" % (href, uuid)
+        else:
+            record.write(data)
+
+        return Item(
+            collection,
+            item=self.to_vobject(record),
+            href=href,
+            last_modified=self._odoo_to_http_datetime(record.write_date),
+        )
+
+    def dav_get(self, collection, href):
+        self.ensure_one()
+
+        components = self._split_path(href)
+        collection_model = self.env[self.model_id.model]
+        if self.dav_type == 'files':
+            if len(components) == 3:
+                result = Collection(href)
+                result.logger = self.logger
+                return result
+            if len(components) == 4:
+                record = collection_model.browse(map(
+                    itemgetter(0),
+                    collection_model.name_search(
+                        components[2], operator='=', limit=1,
+                    )
+                ))
+                attachment = self.env['ir.attachment'].search([
+                    ('type', '=', 'binary'),
+                    ('res_model', '=', record._name),
+                    ('res_id', '=', record.id),
+                    ('name', '=', components[3]),
+                ], limit=1)
+                return FileItem(
+                    collection,
+                    item=attachment,
+                    href=href,
+                    last_modified=self._odoo_to_http_datetime(
+                        record.write_date
+                    ),
+                )
+
+        record = self.get_record(components)
+
+        if not record:
+            return None
+
+        return Item(
+            collection,
+            item=self.to_vobject(record),
+            href=href,
+            last_modified=self._odoo_to_http_datetime(record.write_date),
+        )

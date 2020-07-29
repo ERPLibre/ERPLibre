@@ -1,12 +1,13 @@
 # Copyright 2018 Therp BV <https://therp.nl>
-# Copyright 2019 initOS GmbH <https://initos.com>
+# Copyright 2019-2020 initOS GmbH <https://initos.com>
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
 import base64
 import os
-import operator
 import time
-from odoo.http import request
 from contextlib import contextmanager
+
+from odoo.http import request
+
 try:
     from radicale.storage import BaseCollection, Item, get_etag
 except ImportError:
@@ -79,6 +80,10 @@ class Collection(BaseCollection):
     def env(self):
         return request.env
 
+    @property
+    def last_modified(self):
+        return self._odoo_to_http_datetime(self.collection.create_date)
+
     def __init__(self, path):
         self.path_components = self._split_path(path)
         self.path = '/'.join(self.path_components) or '/'
@@ -89,90 +94,6 @@ class Collection(BaseCollection):
             self.collection = self.env['dav.collection'].browse(int(
                 self.path_components[1]
             ))
-
-    def get(self, href):
-        components = self._split_path(href)
-        # TODO: this probably better should happen in some dav.collection
-        # function
-        collection_model = self.env[self.collection.model_id.model]
-        if self.collection.dav_type == 'files':
-            if len(components) == 3:
-                result = Collection(href)
-                result.logger = self.logger
-                return result
-            if len(components) == 4:
-                record = collection_model.browse(map(
-                    operator.itemgetter(0),
-                    collection_model.name_search(
-                        components[2], operator='=', limit=1,
-                    )
-                ))
-                attachment = self.env['ir.attachment'].search([
-                    ('type', '=', 'binary'),
-                    ('res_model', '=', record._name),
-                    ('res_id', '=', record.id),
-                    ('name', '=', components[3]),
-                ], limit=1)
-                return FileItem(
-                    self,
-                    item=attachment,
-                    href=href,
-                    last_modified=self._odoo_to_http_datetime(
-                        record.write_date
-                    ),
-                )
-
-        try:
-            record = collection_model.browse(int(components[-1]))
-        except ValueError:
-            return None
-        return Item(
-            self,
-            item=self.collection.to_vobject(record),
-            href=href,
-            last_modified=self._odoo_to_http_datetime(record.write_date),
-        )
-
-    def upload(self, href, vobject_item):
-        components = self._split_path(href)
-
-        collection_model = self.env[self.collection.model_id.model]
-        if self.collection.dav_type == 'files':
-            return super().upload(href, vobject_item)
-
-        data = self.collection.from_vobject(vobject_item)
-
-        try:
-            record_id = int(components[-1])
-        except ValueError:
-            record_id = None
-
-        if not record_id:
-            record = collection_model.create(data)
-            href = "%s/%s" % (href, record.id)
-        else:
-            record = collection_model.browse(record_id)
-            record.write(data)
-
-        return Item(
-            self,
-            item=self.collection.to_vobject(record),
-            href=href,
-            last_modified=self._odoo_to_http_datetime(record.write_date),
-        )
-
-    def delete(self, href):
-        components = self._split_path(href)
-
-        collection_model = self.env[self.collection.model_id.model]
-        if self.collection.dav_type == 'files':
-            return super().delete(href)
-
-        try:
-            record_id = int(components[-1])
-            collection_model.browse(record_id).unlink()
-        except ValueError:
-            pass
 
     def _odoo_to_http_datetime(self, value):
         return time.strftime(
@@ -198,46 +119,14 @@ class Collection(BaseCollection):
             return '#48c9f4'
         self.logger.warning('unsupported metadata %s', key)
 
-    @property
-    def last_modified(self):
-        return self._odoo_to_http_datetime(self.collection.create_date)
+    def get(self, href):
+        return self.collection.dav_get(self, href)
+
+    def upload(self, href, vobject_item):
+        return self.collection.dav_upload(self, href, vobject_item)
+
+    def delete(self, href):
+        return self.collection.dav_delete(self, self._split_path(href))
 
     def list(self):
-        # TODO: this probably better should happen in some dav.collection
-        # function
-        if self.collection.dav_type == 'files':
-            if len(self.path_components) == 3:
-                collection_model = self.env[self.collection.model_id.model]
-                record = collection_model.browse(map(
-                    operator.itemgetter(0),
-                    collection_model.name_search(
-                        self.path_components[2], operator='=', limit=1,
-                    )
-                ))
-                return [
-                    '/' + '/'.join(
-                        # TODO: take care somewhere that we have no invalid
-                        # characters here
-                        self.path_components + [attachment.name]
-                    )
-                    for attachment in self.env['ir.attachment'].search([
-                        ('type', '=', 'binary'),
-                        ('res_model', '=', record._name),
-                        ('res_id', '=', record.id),
-                    ])
-                ]
-            elif len(self.path_components) == 2:
-                return [
-                    '/' + '/'.join(
-                        # TODO: take care somewhere that we have no invalid
-                        # characters here
-                        self.path_components + [record.display_name]
-                    )
-                    for record in self.collection.eval()
-                ]
-        if len(self.path_components) > 2:
-            return []
-        return [
-            '/' + '/'.join(self.path_components + [str(record.id)])
-            for record in self.collection.eval()
-        ]
+        return self.collection.dav_list(self, self.path_components)

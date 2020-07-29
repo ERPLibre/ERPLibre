@@ -1,5 +1,4 @@
 * much better UX for configuring collections (probably provide a group that sees the current fully flexible field mappings, and by default show some dumbed down version where you can select some preselected vobject fields)
-* support writing
 * support todo lists and journals
 * support configuring default field mappings per model
 * support plain WebDAV collections to make some model's records accessible as folders, and the records' attachments as files (r/w)

@@ -1,21 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <record id="collection_calendar" model="dav.collection">
-        <field name="name">Calendar</field>
-        <field name="dav_type">calendar</field>
-        <field name="model_id" ref="calendar.model_calendar_event" />
-        <field name="domain">[]</field>
-    </record>
-    <record id="field_mapping_calendar_summary" model="dav.collection.field_mapping">
-        <field name="name">summary</field>
-        <field name="field_id" ref="calendar.field_calendar_event_display_name" />
-        <field name="collection_id" ref="collection_calendar" />
-    </record>
-    <record id="field_mapping_calendar_dtstart" model="dav.collection.field_mapping">
-        <field name="name">dtstart</field>
-        <field name="field_id" ref="calendar.field_calendar_event_start" />
-        <field name="collection_id" ref="collection_calendar" />
-    </record>
     <record id="collection_addressbook" model="dav.collection">
         <field name="name">Addressbook</field>
         <field name="dav_type">addressbook</field>

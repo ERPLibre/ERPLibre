@@ -1,4 +1,5 @@
 # Copyright 2018 Therp BV <https://therp.nl>
+# Copyright 2019-2020 initOS GmbH <https://initos.com>
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
 {
     "name": "Caldav and Carddav support",
@@ -9,9 +10,6 @@
     "summary": "Access Odoo data as calendar or address book",
     "depends": [
         'base',
-        # TODO: this is only for demoing during development, remove
-        # when done (and the collection in demo data)
-        'calendar',
     ],
     "demo": [
         "demo/dav_collection.xml",

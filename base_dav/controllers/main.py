@@ -1,15 +1,17 @@
 # Copyright 2018 Therp BV <https://therp.nl>
 # License AGPL-3.0 or later (https://www.gnu.org/licenses/agpl.html).
+
+import logging
+from configparser import RawConfigParser as ConfigParser
+
+import werkzeug
+from odoo import http
+from odoo.http import request
+
 try:
     import radicale
 except ImportError:
     radicale = None
-import logging
-import werkzeug
-from configparser import RawConfigParser as ConfigParser
-from odoo import http
-from odoo.http import request
-
 
 PREFIX = '/.dav'
 
