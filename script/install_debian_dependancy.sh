@@ -53,24 +53,6 @@ if [ ${EL_INSTALL_NGINX} = "True" ]; then
   sudo apt install nginx -y
 fi
 
-echo -e "\n---- Installing python 3.7.7 with pyenv ----"
-curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
-
-export PATH="/home/${USER}/.pyenv/bin:$PATH"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
-
-yes n|pyenv install 3.7.7
-pyenv local 3.7.7
-
-python_exec="$(pyenv root)/versions/3.7.7/bin/python"
-
-echo -e "\n---- Installing poetry for reliable python package ----"
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${python_exec}
-
-#/home/"${USER}"/.poetry/bin/poetry env use ${python_exec}
-#source $HOME/.poetry/env
-
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------

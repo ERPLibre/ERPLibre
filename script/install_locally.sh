@@ -164,30 +164,56 @@ if [[ ! -d "./addons/addons" ]]; then
     mkdir -p ./addons/addons
 fi
 
-if [[ ! -f "./.venv" ]]; then
+PYENV_PATH=~/.pyenv
+PYENV_VERSION_PATH=${PYENV_PATH}/versions/3.7.7
+PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
+POETRY_PATH=~/.poetry
+VENV_PATH=./.venv
+
+if [[ ! -d "${PYENV_PATH}" ]]; then
+    echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
+    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+fi
+
+export PATH="${PYENV_PATH}/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+
+if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
+    echo -e "\n---- Installing python 3.7.7 with pyenv in ${PYENV_VERSION_PATH} ----"
+    yes n|pyenv install 3.7.7
+fi
+
+pyenv local 3.7.7
+
+if [[ ! -d "${POETRY_PATH}" ]]; then
+    echo -e "\n---- Installing poetry for reliable python package ----"
+    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
+fi
+
+if [[ ! -d ${VENV_PATH} ]]; then
     echo -e "\n---- Create Virtual environment Python ----"
-    if [[ -f "/home/"${USER}"/.pyenv/versions/3.7.7/bin/python3" ]]; then
-        /home/"${USER}"/.pyenv/versions/3.7.7/bin/python3 -m venv .venv
-    elif [[ -f "/Users/"${USER}"/.pyenv/versions/3.7.7/bin/python3" ]]; then
-        /Users/"${USER}"/.pyenv/versions/3.7.7/bin/python3 -m venv .venv
+    if [[ -e ${PYTHON_EXEC} ]]; then
+        ${PYTHON_EXEC} -m venv .venv
     else
         echo "Missing pyenv, please refer installation guide."
         exit 1
     fi
 fi
 
+# Install git-repo if missing
+if [[ ! -f ${VENV_REPO_PATH} ]]; then
+    echo "\n---- Install git-repo from Google APIS ----"
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
+    chmod +x ${VENV_PATH}/repo
+fi
+
 echo -e "\n---- Installing poetry dependancy ----"
-.venv/bin/pip install --upgrade pip
+${VENV_PATH}/bin/pip install --upgrade pip
+#/home/"${USER}"/.poetry/bin/poetry env use ${PYTHON_EXEC}
 source $HOME/.poetry/env
 poetry install
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
 ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/
-
-# Install git-repo if missing
-if [[ ! -f "./.venv/repo" ]]; then
-    echo "\n---- Install git-repo from Google APIS ----"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
-    chmod +x ./.venv/repo
-fi
