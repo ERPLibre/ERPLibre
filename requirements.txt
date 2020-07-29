@@ -6,6 +6,8 @@ PyYAML
 retrying
 xmltodict
 openupgradelib
+ics
+radicale==2.1.12
 
 # For OSX
 cython
