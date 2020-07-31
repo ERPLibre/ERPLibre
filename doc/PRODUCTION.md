@@ -63,3 +63,9 @@ Simply update all feature.
 ```bash
 ./run.sh --limit-time-real 99999 --stop-after-init -u all -d DATABASE
 ```
+
+# Delete an instance in production
+Caution, this delete home of users, it's irrevocable.
+```bash
+./script/delete_production.sh
+```
