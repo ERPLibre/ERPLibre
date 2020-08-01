@@ -1,8 +1,9 @@
 FROM technolibre/erplibre-base:12.0
 
 ENV REPO_MANIFEST_URL http://git.erplibre.ca/ERPLibre
-RUN cat /etc/os-release
 ENV BRANCH_ERPLIBRE dev/1.1.0
+
+RUN cat /etc/os-release
 
 USER root
 
@@ -17,21 +18,21 @@ USER root
 #        && rm -rf /var/lib/apt/lists/* odoo.deb
 
 
-RUN mkdir ~/.ssh/ && echo "StrictHostKeyChecking no" >> ~/.ssh/config &&   apt update && apt install ssh-client  git -y --no-install-recommends && \
+RUN mkdir ~/.ssh/ && echo "StrictHostKeyChecking no" >> ~/.ssh/config && apt update && apt install ssh-client git -y --no-install-recommends && \
 	rm -rf /var/lib/apt/lists/*
 
 RUN cd ; mkdir -p .bin/ && \
-	git config --global color.ui false && \
-	git config --global user.email "foo@bar.io" && \
-	git config --global user.name "Foo Bar" && \
-        mkdir -p $ODOO_PREFIX && cd $ODOO_PREFIX && \
-	repo init -u $REPO_MANIFEST_URL  -b $BRANCH_ERPLIBRE  && \
-	repo sync -j 4 -c
+    git config --global color.ui false && \
+    git config --global user.email "mathben@technolibre.ca" && \
+    git config --global user.name "Mathieu Benoit" && \
+    mkdir -p $ODOO_PREFIX && cd $ODOO_PREFIX && \
+    repo init -u $REPO_MANIFEST_URL -b $BRANCH_ERPLIBRE  && \
+    repo sync -j 4 -c
 
 ADD repo_manifest_gen_org_prefix_path.py /root/.bin/
 RUN chmod +x ~/.bin/repo_manifest_gen_org_prefix_path.py
 
-RUN head /etc/odoo/odoo.conf && /root/.bin/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons  /etc/odoo/odoo.conf /etc/odoo/odoo.conf && head  /etc/odoo/odoo.conf
+RUN head /etc/odoo/odoo.conf && /root/.bin/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && head /etc/odoo/odoo.conf
 
 user odoo
 

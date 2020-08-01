@@ -10,7 +10,7 @@ then
     git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
     GIT_PID=$!
     echo "my repo"  $(git rev-parse --abbrev-ref HEAD)
-    repo init -u  git://127.0.0.1:9418/  -b $(git rev-parse --abbrev-ref HEAD) -m default.dev.xml
+    repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m default.dev.xml
 
     repo sync
 
