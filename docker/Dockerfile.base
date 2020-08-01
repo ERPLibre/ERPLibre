@@ -1,5 +1,5 @@
 FROM  debian:buster-slim
-MAINTAINER Odoo S.A. <info@odoo.com>
+MAINTAINER TechnoLibre <info@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
 
@@ -9,76 +9,74 @@ ENV LANG C.UTF-8
 ENV ODOO_PREFIX /ERPLibre
 ENV ODOO_EXEC_BIN $ODOO_PREFIX/odoo/odoo-bin
 
-
 # Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf
 RUN apt-get update \
-        && apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl \
-            dirmngr \
-            fonts-noto-cjk \
-            gnupg \
-            libssl-dev \
-	    node-less \
-            npm \
-            python3-num2words \
-            python3-pip \
-            python3-phonenumbers \
-            python3-pyldap \
-            python3-qrcode \
-            python3-renderpm \
-            python3-setuptools \
-            python3-slugify \
-            python3-vobject \
-            python3-watchdog \
-            python3-xlrd \
-            python3-xlwt \
-            python3-babel \
-            python3-psycopg2 \
-            xz-utils \
-            git \
-            iproute2 \
-            inetutils-ping \
-        && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.stretch_amd64.deb \
-        && echo '7e35a63f9db14f93ec7feeb0fce76b30c08f2057 wkhtmltox.deb' | sha1sum -c - \
-        && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
-        && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
-
+    && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    dirmngr \
+    fonts-noto-cjk \
+    gnupg \
+    libssl-dev \
+    node-less \
+    npm \
+    python3-num2words \
+    python3-pip \
+    python3-phonenumbers \
+    python3-pyldap \
+    python3-qrcode \
+    python3-renderpm \
+    python3-setuptools \
+    python3-slugify \
+    python3-vobject \
+    python3-watchdog \
+    python3-xlrd \
+    python3-xlwt \
+    python3-babel \
+    python3-psycopg2 \
+    xz-utils \
+    git \
+    iproute2 \
+    inetutils-ping \
+    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.stretch_amd64.deb \
+    && echo '7e35a63f9db14f93ec7feeb0fce76b30c08f2057 wkhtmltox.deb' | sha1sum -c - \
+    && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
+    && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
 
 # dpkg-deb -I  odoo.deb  | grep Depends: | sed "s/ /\\n/g" | egrep '^python\-*' | sed "s/,//g"
 RUN apt-get update \
-        && apt-get install -y --no-install-recommends \
-        python3-dateutil \
-        python3-decorator \
-        python3-docutils \
-        python3-feedparser \
-        python3-gevent \
-        python3-html2text \
-        python3-jinja2 \
-        python3-libsass \
-        python3-lxml \
-        python3-mako \
-        python3-mock \
-        python3-ofxparse \
-        python3-passlib \
-        python3-pil \
-        python3-psutil \
-        python3-psycopg2 \
-        python3-pydot \
-        python3-pyparsing \
-        python3-pypdf2 \
-        python3-reportlab \
-        python3-requests \
-        python3-serial \
-        python3-suds \
-        python3-tz \
-        python3-usb \
-        python3-vatnumber \
-        python3-werkzeug \
-        python3-xlsxwriter \
-        python3-chardet \
-        python3-xlrd \
-        && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends \
+    python3-dateutil \
+    python3-decorator \
+    python3-docutils \
+    python3-feedparser \
+    python3-gevent \
+    python3-html2text \
+    python3-jinja2 \
+    python3-libsass \
+    python3-lxml \
+    python3-mako \
+    python3-mock \
+    python3-ofxparse \
+    python3-passlib \
+    python3-pil \
+    python3-psutil \
+    python3-psycopg2 \
+    python3-pydot \
+    python3-pyparsing \
+    python3-pypdf2 \
+    python3-reportlab \
+    python3-requests \
+    python3-serial \
+    python3-suds \
+    python3-tz \
+    python3-usb \
+    python3-vatnumber \
+    python3-werkzeug \
+    python3-xlsxwriter \
+    python3-chardet \
+    python3-xlrd \
+    && rm -rf /var/lib/apt/lists/*
 
 # install latest postgresql-client
 RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
@@ -91,26 +89,23 @@ RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/
 	&& rm -rf "$GNUPGHOME" \
 	&& apt-get update  \
 	&& apt-get install --no-install-recommends -y postgresql-client-12 \
-        && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
 RUN ln -s /usr/lib/postgresql/12/bin/pg_config /usr/bin/pg_config
 
 RUN cd ; mkdir -p .bin/ && \
-        git config --global color.ui false && \
-        git config --global user.email "foo@bar.io" && \
-        git config --global user.name "Foo Bar" && \
-        curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && \
-        chmod +x /usr/bin/repo  && sed -i '1 s/python$/python3/' /usr/bin/repo
-
+    git config --global color.ui false && \
+    git config --global user.email "foo@bar.io" && \
+    git config --global user.name "Foo Bar" && \
+    curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && \
+    chmod +x /usr/bin/repo  && sed -i '1 s/python$/python3/' /usr/bin/repo
 
 RUN groupadd --gid 101  --force odoo && \
         useradd --non-unique --create-home --uid 101 --gid 101 odoo
 
-
 # Copy entrypoint script and Odoo configuration file
 COPY ./entrypoint.sh /
 RUN  chmod +x /entrypoint.sh
-
 
 # # Set the default config file
 ENV ODOO_RC /etc/odoo/odoo.conf
@@ -118,8 +113,8 @@ COPY ./odoo.conf $ODOO_RC
 RUN chown odoo $ODOO_RC
 
 RUN mkdir $ODOO_PREFIX && \
-        chown odoo $ODOO_PREFIX && \
-        chmod 1777 $ODOO_PREFIX
+    chown odoo $ODOO_PREFIX && \
+    chmod 1777 $ODOO_PREFIX
 
 # # Mount /var/lib/odoo to allow restoring filestore
 RUN chown odoo $ODOO_RC
@@ -132,8 +127,8 @@ COPY wait-for-psql.py /usr/local/bin/wait-for-psql.py
 RUN chmod +X /usr/local/bin/wait-for-psql.py
 
 RUN mkdir -p /var/lib/odoo && \
-        chown odoo /var/lib/odoo && \
-        chmod 1777 /var/lib/odoo
+    chown odoo /var/lib/odoo && \
+    chmod 1777 /var/lib/odoo
 
 VOLUME /var/lib/odoo
 
