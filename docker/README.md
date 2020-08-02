@@ -71,6 +71,8 @@ docker run --name some-postgres -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRE
 
 export
 db_host = "host.docker.internal"
+
+docker stats erplibre_ERPLibre_1
 ```
 
 ### Cleaning
