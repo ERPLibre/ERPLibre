@@ -70,13 +70,15 @@ case "$1" in
         if [[ "$1" == "scaffold" ]] ; then
             exec odoo  "$@" || exec odoo-bin "$@"
         else
-            wait-for-psql.py ${DB_ARGS[@]} --timeout=30
-            exec $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}"
+            cd $ODOO_PREFIX
+            ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
+            exec ./.venv/bin/python $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
         fi
         ;;
     -*)
-        wait-for-psql.py ${DB_ARGS[@]} --timeout=30
-        exec $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}"
+        cd $ODOO_PREFIX
+        ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
+        exec ./.venv/bin/python $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf
         ;;
     *)
         exec "$@"

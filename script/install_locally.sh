@@ -175,6 +175,7 @@ if [[ ! -d "${PYENV_PATH}" ]]; then
     curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
 fi
 
+echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
 export PATH="${PYENV_PATH}/bin:$PATH"
 eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
