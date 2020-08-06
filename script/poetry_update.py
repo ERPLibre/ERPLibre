@@ -27,7 +27,7 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description='''\
-        Update pip dependancy in Poetry, clear pyproject.toml, search all dependancies
+        Update pip dependency in Poetry, clear pyproject.toml, search all dependencies
         from requirements.txt, search conflict version and generate a new list.
         Launch Poetry installation.
 ''',
@@ -36,6 +36,8 @@ def get_config():
     )
     parser.add_argument('-d', '--dir', dest="dir", default="./",
                         help="Path of repo to change remote, including submodule.")
+    parser.add_argument('-f', '--force', action="store_true",
+                        help="Force create new list of dependency, ignore poetry.lock.")
     parser.add_argument('-v', '--verbose', action="store_true",
                         help="More information in execution, show stats.")
     args = parser.parse_args()
@@ -50,7 +52,7 @@ def combine_requirements(config):
     """
     Search all module and version in all requirements.txt file in this project.
     For each version, check compatibility and show warning with provenance file
-    Generate requirements.txt to "./.venv/build_dependancy.txt"
+    Generate requirements.txt to "./.venv/build_dependency.txt"
     :param config:
     :return:
     """
@@ -174,11 +176,21 @@ def combine_requirements(config):
             else:
                 print(f"Internal error, missing result for {lst_requis}.")
 
-    with open("./.venv/build_dependancy.txt", 'w') as f:
+    # Support ignored requirements
+    lst_ignore = get_list_ignored()
+    lst_ignored_key = []
+    for key in dct_requirements.keys():
+        for ignored in lst_ignore:
+            if ignored == key:
+                lst_ignored_key.append(key)
+    for key in lst_ignored_key:
+        del dct_requirements[key]
+
+    with open("./.venv/build_dependency.txt", 'w') as f:
         f.writelines([f"{list(a)[0]}\n" for a in dct_requirements.values()])
 
 
-def sorted_dependancy_poetry(pyproject_filename):
+def sorted_dependency_poetry(pyproject_filename):
     # Open pyproject.toml
     with open(pyproject_filename, 'r') as f:
         dct_pyproject = toml.load(f)
@@ -200,7 +212,7 @@ def sorted_dependancy_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def delete_dependancy_poetry(pyproject_filename):
+def delete_dependency_poetry(pyproject_filename):
     # Open pyproject.toml
     with open(pyproject_filename, 'r') as f:
         dct_pyproject = toml.load(f)
@@ -220,8 +232,14 @@ def delete_dependancy_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def call_poetry_add_build_dependancy():
-    os.system("./script/poetry_add_build_dependancy.sh")
+def call_poetry_add_build_dependency():
+    os.system("./script/poetry_add_build_dependency.sh")
+
+
+def get_list_ignored():
+    with open("./ignore_requirements.txt", 'r') as f:
+        lst_ignore_requirements = [a.strip() for a in f.readlines()]
+    return lst_ignore_requirements
 
 
 def main():
@@ -230,10 +248,12 @@ def main():
     config = get_config()
     pyproject_toml_filename = f'{config.dir}pyproject.toml'
 
-    delete_dependancy_poetry(pyproject_toml_filename)
+    delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
-    call_poetry_add_build_dependancy()
-    sorted_dependancy_poetry(pyproject_toml_filename)
+    if config.force:
+        os.remove("./poetry.lock")
+    call_poetry_add_build_dependency()
+    sorted_dependency_poetry(pyproject_toml_filename)
 
 
 if __name__ == '__main__':
