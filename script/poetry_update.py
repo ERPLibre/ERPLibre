@@ -4,6 +4,7 @@ import sys
 import argparse
 import logging
 import toml
+import ast
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 import iscompatible
@@ -46,6 +47,10 @@ def get_config():
 
 def get_lst_requirements_txt():
     return list(Path(".").rglob("requirements.[tT][xX][tT]"))
+
+
+def get_lst_manifest_py():
+    return list(Path(".").rglob("__manifest__.py"))
 
 
 def combine_requirements(config):
@@ -103,6 +108,8 @@ def combine_requirements(config):
                     dct_requirements_module_filename[b].append(filename)
                 lst_requirements.append(b)
 
+    dct_requirements = get_manifest_external_dependencies(dct_requirements)
+
     dct_requirements_diff_version = {k: v for k, v in dct_requirements.items() if
                                      len(v) > 1}
     # dct_requirements_same_version = {k: v for k, v in dct_requirements.items() if
@@ -133,6 +140,9 @@ def combine_requirements(config):
                 if "b" in no_version:
                     result_number[0] = result_number[0][0], no_version[
                                                             :no_version.find("b")]
+                elif not no_version[no_version.rfind(".") + 1:].isnumeric():
+                    result_number[0] = result_number[0][0], no_version[
+                                                            :no_version.rfind(".")]
                 result_number = iscompatible.string_to_tuple(result_number[0][1])
                 lst_version_requis.append((requis, result_number))
             # Check compatibility with all possibility
@@ -224,12 +234,39 @@ def delete_dependency_poetry(pyproject_filename):
         poetry = tool.get("poetry")
         if poetry:
             dependencies = poetry.get("dependencies")
-            python_dependencie = ("python", dependencies.get("python", ''))
-            poetry["dependencies"] = OrderedDict([python_dependencie])
+            python_dependency = ("python", dependencies.get("python", ''))
+            poetry["dependencies"] = OrderedDict([python_dependency])
 
     # Rewrite pyproject.toml
     with open(pyproject_filename, 'w') as f:
         toml.dump(dct_pyproject, f)
+
+
+def get_manifest_external_dependencies(dct_requirements):
+    lst_manifest_file = get_lst_manifest_py()
+    lst_dct_ext_depend = []
+    for manifest_file in lst_manifest_file:
+        with open(manifest_file, 'r') as f:
+            contents = f.read()
+            try:
+                dct = ast.literal_eval(contents)
+            except:
+                _logger.error(f"File {manifest_file} contains error, skip.")
+                continue
+            ext_depend = dct.get("external_dependencies")
+            if not ext_depend:
+                continue
+            python = ext_depend.get("python")
+            if not python:
+                continue
+            for depend in python:
+                requirement = dct_requirements.get(depend)
+                if requirement:
+                    requirement.add(depend)
+                else:
+                    dct_requirements[depend] = set([depend])
+
+    return dct_requirements
 
 
 def call_poetry_add_build_dependency():
@@ -250,7 +287,7 @@ def main():
 
     delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
-    if config.force:
+    if config.force and os.path.isfile("./poetry.lock"):
         os.remove("./poetry.lock")
     call_poetry_add_build_dependency()
     sorted_dependency_poetry(pyproject_toml_filename)
