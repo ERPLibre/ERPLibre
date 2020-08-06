@@ -1,1 +1,14 @@
 mercurial
+facturx
+stdnum
+u2flib_server
+dateutil
+csv
+chess
+git
+voicent
+swiftclient
+keystoneclient
+xlsxwriter
+ldap
+pythonjsonlogger
