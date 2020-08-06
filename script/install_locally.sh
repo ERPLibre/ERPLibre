@@ -129,6 +129,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/Smile-SA_odoo_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/it-projects-llc_odoo-saas-tools," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/kinjal-sorathiya_Property-Management_odoo," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_base," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_dms," >> ${EL_CONFIG_FILE}
