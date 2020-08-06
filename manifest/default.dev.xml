@@ -10,6 +10,7 @@
   <remote name="camptocamp" fetch="https://github.com/ERPLibre/"/>
   <remote name="dhongu" fetch="https://github.com/ERPLibre/"/>
   <remote name="it-projects-llc" fetch="https://github.com/ERPLibre/"/>
+  <remote name="itpp-labs" fetch="https://github.com/ERPLibre/"/>
   <remote name="kinjal-sorathiya" fetch="https://github.com/ERPLibre/"/>
   <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
   <remote name="obayit" fetch="https://github.com/ERPLibre/"/>
@@ -136,6 +137,7 @@
   <project name="vertical-isp.git" path="addons/OCA_vertical-isp" remote="OCA" groups="addons"/>
   <project name="vertical-travel.git" path="addons/OCA_vertical-travel" remote="OCA" groups="addons"/>
   <project name="web.git" path="addons/OCA_web" remote="OCA" groups="addons"/>
+  <project name="website-addons.git" path="addons/itpp-labs_website-addons" remote="itpp-labs" groups="addons"/>
   <project name="website-cms.git" path="addons/OCA_website-cms" remote="OCA" groups="addons"/>
   <project name="website.git" path="addons/OCA_website" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="wms.git" path="addons/OCA_wms" remote="OCA" groups="addons"/>
