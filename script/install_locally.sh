@@ -65,6 +65,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_business-requirement," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_commission," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_community-data-files," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_connector," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_connector-ecommerce," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_connector-interfaces," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_connector-jira," >> ${EL_CONFIG_FILE}
@@ -130,6 +131,8 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/it-projects-llc_odoo-saas-tools," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/itpp-labs_access-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/itpp-labs_pos-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/itpp-labs_website-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/kinjal-sorathiya_Property-Management_odoo," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_base," >> ${EL_CONFIG_FILE}

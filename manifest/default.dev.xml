@@ -26,6 +26,7 @@
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
   <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
   <project name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" groups="addons"/>
+  <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
   <project name="account-closing.git" path="addons/OCA_account-closing" remote="OCA" groups="addons"/>
@@ -48,6 +49,7 @@
   <project name="connector-interfaces.git" path="addons/OCA_connector-interfaces" remote="OCA" groups="addons"/>
   <project name="connector-jira.git" path="addons/OCA_connector-jira" remote="OCA" groups="addons"/>
   <project name="connector-telephony.git" path="addons/OCA_connector-telephony" remote="OCA" groups="addons"/>
+  <project name="connector.git" path="addons/OCA_connector" remote="OCA" groups="addons"/>
   <project name="contract.git" path="addons/OCA_contract" remote="OCA" groups="addons"/>
   <project name="credit-control.git" path="addons/OCA_credit-control" remote="OCA" groups="addons"/>
   <project name="crm.git" path="addons/OCA_crm" remote="OCA" groups="addons"/>
@@ -107,6 +109,7 @@
   <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
   <project name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" groups="addons"/>
   <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" groups="addons"/>
+  <project name="pos-addons.git" path="addons/itpp-labs_pos-addons" remote="itpp-labs" groups="addons"/>
   <project name="pos.git" path="addons/OCA_pos" remote="OCA" groups="addons"/>
   <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" groups="addons"/>
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
