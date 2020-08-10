@@ -105,3 +105,10 @@ You can change the home for docker, edit file `/etc/docker/daemon.json`
 }
 ```
 And restart docker service. You can delete all older location of docker or move it.
+
+# Update docker
+When building your docker with script
+> ./script/docker_build.sh
+
+You need to push your docker image and update your tag, like 1.0.1:
+> docker push technolibre/erplibre:1.0.1
