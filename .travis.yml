@@ -5,7 +5,7 @@ services:
 
 script:
   - docker build -f docker/Dockerfile.base -t technolibre/erplibre-base:12.0 docker/
-  - docker build -f docker/Dockerfile.dev -t technolibre/erplibre:12.0 docker/
+#  - docker build -f docker/Dockerfile.dev -t technolibre/erplibre:12.0 docker/
   - docker build -f docker/Dockerfile.pkg -t technolibre/erplibre:12.0-pkg docker/
 
 after_success:

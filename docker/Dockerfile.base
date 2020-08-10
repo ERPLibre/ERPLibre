@@ -113,6 +113,7 @@ RUN groupadd --gid 101  --force odoo && \
 # TODO delete poetry installation
 # Install Poetry
 RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+#curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
 
 # Copy entrypoint script and Odoo configuration file
 COPY ./entrypoint.sh /
@@ -133,11 +134,11 @@ RUN chown odoo $ODOO_RC
 # Expose Odoo services
 EXPOSE 8069 8071 8072
 
-RUN mkdir -p /var/lib/odoo && \
-    chown odoo /var/lib/odoo && \
-    chmod 1777 /var/lib/odoo
+#RUN mkdir -p /var/lib/odoo && \
+#    chown odoo /var/lib/odoo && \
+#    chmod 1777 /var/lib/odoo
 
-VOLUME /var/lib/odoo
+# VOLUME /var/lib/odoo
 
 # Set default user when running the container
 USER odoo

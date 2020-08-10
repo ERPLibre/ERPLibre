@@ -1,7 +1,7 @@
 version: "3.3"
 services:
     ERPLibre:
-      image: technolibre/erplibre:12.0-pkg
+      image: technolibre/erplibre:1.0.1
       ports:
         - 8069:8069
         - 8071:8071
@@ -17,6 +17,7 @@ services:
       volumes:
         # See the volume section at the end of the file
         - erplibre_data_dir:/home/odoo/.local/share/Odoo/
+        - erplibre_conf:/etc/odoo
 
     db:
       image: postgres:12.3
@@ -33,4 +34,5 @@ services:
 # - docker-compose down --help
 volumes:
   erplibre_data_dir:
+  erplibre_conf:
   erplibre-db-data:
