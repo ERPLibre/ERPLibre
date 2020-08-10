@@ -189,7 +189,9 @@ pyenv local 3.7.7
 
 if [[ ! -d "${POETRY_PATH}" ]]; then
     echo -e "\n---- Installing poetry for reliable python package ----"
-    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
+#     curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
+    curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
+    python get-poetry.py -y --preview
 fi
 
 if [[ ! -d ${VENV_PATH} ]]; then

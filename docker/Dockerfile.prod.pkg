@@ -1,4 +1,4 @@
-FROM mathben/erplibre-base:1.0.2
+FROM mathben/erplibre-base:1.0.3
 
 ENV REPO_MANIFEST_URL http://git.erplibre.ca/ERPLibre
 ARG WORKING_BRANCH
@@ -39,7 +39,12 @@ RUN cd $ODOO_PREFIX && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
 
-user odoo
+#RUN mkdir '/home/odoo/.local'
+#RUN chown -R odoo '/home/odoo/.local'
+
+USER odoo
+
+RUN mkdir -p '/home/odoo/.local/share/Odoo/'
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["odoo"]

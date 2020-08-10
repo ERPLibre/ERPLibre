@@ -1,7 +1,7 @@
 version: "3.3"
 services:
     ERPLibre:
-      image: mathben/erplibre:1.0.2
+      image: mathben/erplibre:1.0.3
       ports:
         - 8069:8069
         - 8071:8071
@@ -13,7 +13,7 @@ services:
         POSTGRES_DB: postgres
       depends_on:
         - db
-      command: odoo
+      command: odoo --dev all
       volumes:
         # See the volume section at the end of the file
         - erplibre_data_dir:/home/odoo/.local/share/Odoo/
