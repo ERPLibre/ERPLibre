@@ -32,7 +32,6 @@ printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/CybroOdoo_OpenHRMS," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/JayVora-SerpentCS_MassEditing," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_scrummer," >> ${EL_CONFIG_FILE}
@@ -141,6 +140,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/obayit_odoo_dhtmlxgantt," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odooaktiv_QuotationRevision," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odooaktiv_product_rating_app," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/odoomates_odooapps," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/openeducat_openeducat_erp," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/pledra_odoo-product-configurator," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/tegin_medical-fhir," >> ${EL_CONFIG_FILE}
