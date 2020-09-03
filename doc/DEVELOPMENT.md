@@ -90,6 +90,12 @@ To show diff between commits in different manifest
 ./script/git_diff_repo_manifest.py --input1 ./manifest/MANIFEST1.xml --input2 ./manifest/MANIFEST2.xml
 ```
 
+## Diff between actual branch with manifest
+To show diff between actual code and expected in manifest
+```bash
+./script/git_show_divergence_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
+```
+
 ## Add repo
 Access to a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
 
@@ -101,6 +107,11 @@ Fork the repo to be able to push new code:
 To regenerate only manifest.xml.
 ```bash
 ./script/fork_project_ERPLibre.py --skip_fork
+```
+
+Check if contains "auto_install" in manifest, change to False.
+```bash
+./script/repo_remove_auto_install.py
 ```
 
 # Coding

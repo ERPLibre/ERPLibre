@@ -311,7 +311,7 @@ class GitTool:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
             dct_manifest = xml_dict.get("manifest")
-        default_remote = dct_manifest.get("default").get("@remote")
+        default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
         lst_project = dct_manifest.get("project")
         dct_remote = {a.get("@name"): a for a in lst_remote}
@@ -404,7 +404,7 @@ class GitTool:
         :param output: filename to write output
         :param dct_remote: dict of remote information
         :param dct_project: dict of project information
-        :param default_remote: name of default remote, optional
+        :param default_remote: dict of default remote
         :param keep_original: if True, can manage multiple organization with same name,
            but with different fetch url
         :return:
@@ -490,7 +490,7 @@ class GitTool:
 
         if default_remote and not lst_default:
             lst_default.append(OrderedDict([
-                ('@remote', default_remote),
+                ('@remote', default_remote.get("@remote")),
                 ('@revision', DEFAULT_BRANCH),
                 ('@sync-j', "4"),
                 ('@sync-c', "true"),
