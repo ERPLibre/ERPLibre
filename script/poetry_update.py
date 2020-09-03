@@ -123,14 +123,14 @@ def combine_requirements(config):
 
     if dct_requirements_diff_version:
         # Validate compatibility
-        for key, lst_requis in dct_requirements_diff_version.items():
+        for key, lst_requirement in dct_requirements_diff_version.items():
             result = None
 
-            lst_version_requis = []
-            for requis in lst_requis:
-                if ".*" in requis:
-                    requis = requis.replace(".*", "")
-                result_number = iscompatible.parse_requirements(requis)
+            lst_version_requirement = []
+            for requirement in lst_requirement:
+                if ".*" in requirement:
+                    requirement = requirement.replace(".*", "")
+                result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
                     # Ignore empty version
                     continue
@@ -144,13 +144,13 @@ def combine_requirements(config):
                     result_number[0] = result_number[0][0], no_version[
                                                             :no_version.rfind(".")]
                 result_number = iscompatible.string_to_tuple(result_number[0][1])
-                lst_version_requis.append((requis, result_number))
+                lst_version_requirement.append((requirement, result_number))
             # Check compatibility with all possibility
             is_compatible = True
-            if len(lst_version_requis) > 1:
-                highest_value = sorted(lst_version_requis, key=lambda tup: tup[1])[-1]
-                for version_requis in lst_version_requis:
-                    is_compatible &= iscompatible.iscompatible(version_requis[0],
+            if len(lst_version_requirement) > 1:
+                highest_value = sorted(lst_version_requirement, key=lambda tup: tup[1])[-1]
+                for version_requirement in lst_version_requirement:
+                    is_compatible &= iscompatible.iscompatible(version_requirement[0],
                                                                highest_value[1])
                 if is_compatible:
                     result = highest_value[0]
@@ -158,11 +158,11 @@ def combine_requirements(config):
                     # Find the requirements file and print the conflict
                     # Take the version from Odoo by default, else take the more recent
                     odoo_value = None
-                    for version_requis in lst_version_requis:
+                    for version_requirement in lst_version_requirement:
                         filename_1 = dct_requirements_module_filename.get(
-                            version_requis[0])
+                            version_requirement[0])
                         if priority_filename_requirement in filename_1:
-                            odoo_value = version_requis[0]
+                            odoo_value = version_requirement[0]
                             break
 
                     if odoo_value:
@@ -173,18 +173,18 @@ def combine_requirements(config):
                         str_result_choose = f"Select highest value {result}"
                     str_versions = " VS ".join(
                         [f"{a[0]} from {dct_requirements_module_filename.get(a[0])}" for
-                         a in lst_version_requis])
+                         a in lst_version_requirement])
                     print(f"WARNING - Not compatible {str_versions} - "
                           f"{str_result_choose}.")
-            elif len(lst_version_requis) == 1:
-                result = lst_version_requis[0][0]
+            elif len(lst_version_requirement) == 1:
+                result = lst_version_requirement[0][0]
             else:
                 result = key
 
             if result:
                 dct_requirements[key] = set((result,))
             else:
-                print(f"Internal error, missing result for {lst_requis}.")
+                print(f"Internal error, missing result for {lst_requirement}.")
 
     # Support ignored requirements
     lst_ignore = get_list_ignored()

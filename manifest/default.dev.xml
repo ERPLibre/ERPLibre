@@ -26,16 +26,16 @@
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
   <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
   <project name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" groups="addons"/>
-  <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" groups="addons"/>
-  <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
+  <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" revision="12.0_dev" groups="addons"/>
+  <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
   <project name="account-closing.git" path="addons/OCA_account-closing" remote="OCA" groups="addons"/>
   <project name="account-consolidation.git" path="addons/OCA_account-consolidation" remote="OCA" groups="addons"/>
   <project name="account-financial-reporting.git" path="addons/OCA_account-financial-reporting" remote="OCA" revision="12.0_dev" groups="addons"/>
-  <project name="account-financial-tools.git" path="addons/OCA_account-financial-tools" remote="OCA" groups="addons"/>
+  <project name="account-financial-tools.git" path="addons/OCA_account-financial-tools" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="account-fiscal-rule.git" path="addons/OCA_account-fiscal-rule" remote="OCA" groups="addons"/>
   <project name="account-invoice-reporting.git" path="addons/OCA_account-invoice-reporting" remote="OCA" groups="addons"/>
-  <project name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" revision="12.0_account_invoice_approbation" groups="addons"/>
+  <project name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="account-payment.git" path="addons/OCA_account-payment" remote="OCA" groups="addons"/>
   <project name="account-reconcile.git" path="addons/OCA_account-reconcile" remote="OCA" groups="addons"/>
   <project name="apps-store.git" path="addons/OCA_apps-store" remote="OCA" groups="addons"/>
@@ -109,7 +109,7 @@
   <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
   <project name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" groups="addons"/>
   <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" groups="addons"/>
-  <project name="pos-addons.git" path="addons/itpp-labs_pos-addons" remote="itpp-labs" groups="addons"/>
+  <project name="pos-addons.git" path="addons/itpp-labs_pos-addons" remote="itpp-labs" revision="12.0_dev" groups="addons"/>
   <project name="pos.git" path="addons/OCA_pos" remote="OCA" groups="addons"/>
   <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" groups="addons"/>
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
@@ -124,7 +124,7 @@
   <project name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" groups="addons"/>
   <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
   <project name="santelibre_addons.git" path="addons/SanteLibre_santelibre_addons" remote="SanteLibre" revision="master" groups="addons"/>
-  <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" groups="addons"/>
+  <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="12.0_dev" groups="addons"/>
   <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons"/>
   <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" groups="addons"/>
   <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons"/>
@@ -139,8 +139,8 @@
   <project name="vertical-hotel.git" path="addons/OCA_vertical-hotel" remote="OCA" groups="addons"/>
   <project name="vertical-isp.git" path="addons/OCA_vertical-isp" remote="OCA" groups="addons"/>
   <project name="vertical-travel.git" path="addons/OCA_vertical-travel" remote="OCA" groups="addons"/>
-  <project name="web.git" path="addons/OCA_web" remote="OCA" groups="addons"/>
-  <project name="website-addons.git" path="addons/itpp-labs_website-addons" remote="itpp-labs" groups="addons"/>
+  <project name="web.git" path="addons/OCA_web" remote="OCA" revision="12.0_dev" groups="addons"/>
+  <project name="website-addons.git" path="addons/itpp-labs_website-addons" remote="itpp-labs" revision="12.0_dev" groups="addons"/>
   <project name="website-cms.git" path="addons/OCA_website-cms" remote="OCA" groups="addons"/>
   <project name="website.git" path="addons/OCA_website" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="wms.git" path="addons/OCA_wms" remote="OCA" groups="addons"/>
