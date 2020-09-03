@@ -27,7 +27,7 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description='''\
-        Update pip dependancy in Poetry, clear pyproject.toml, search all dependancies
+        Update pip dependency in Poetry, clear pyproject.toml, search all dependancies
         from requirements.txt, search conflict version and generate a new list.
         Launch Poetry installation.
 ''',
@@ -50,7 +50,7 @@ def combine_requirements(config):
     """
     Search all module and version in all requirements.txt file in this project.
     For each version, check compatibility and show warning with provenance file
-    Generate requirements.txt to "./.venv/build_dependancy.txt"
+    Generate requirements.txt to "./.venv/build_dependency.txt"
     :param config:
     :return:
     """
@@ -174,11 +174,11 @@ def combine_requirements(config):
             else:
                 print(f"Internal error, missing result for {lst_requis}.")
 
-    with open("./.venv/build_dependancy.txt", 'w') as f:
+    with open("./.venv/build_dependency.txt", 'w') as f:
         f.writelines([f"{list(a)[0]}\n" for a in dct_requirements.values()])
 
 
-def sorted_dependancy_poetry(pyproject_filename):
+def sorted_dependency_poetry(pyproject_filename):
     # Open pyproject.toml
     with open(pyproject_filename, 'r') as f:
         dct_pyproject = toml.load(f)
@@ -200,7 +200,7 @@ def sorted_dependancy_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def delete_dependancy_poetry(pyproject_filename):
+def delete_dependency_poetry(pyproject_filename):
     # Open pyproject.toml
     with open(pyproject_filename, 'r') as f:
         dct_pyproject = toml.load(f)
@@ -220,8 +220,8 @@ def delete_dependancy_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def call_poetry_add_build_dependancy():
-    os.system("./script/poetry_add_build_dependancy.sh")
+def call_poetry_add_build_dependency():
+    os.system("./script/poetry_add_build_dependency.sh")
 
 
 def main():
@@ -230,10 +230,10 @@ def main():
     config = get_config()
     pyproject_toml_filename = f'{config.dir}pyproject.toml'
 
-    delete_dependancy_poetry(pyproject_toml_filename)
+    delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
-    call_poetry_add_build_dependancy()
-    sorted_dependancy_poetry(pyproject_toml_filename)
+    call_poetry_add_build_dependency()
+    sorted_dependency_poetry(pyproject_toml_filename)
 
 
 if __name__ == '__main__':

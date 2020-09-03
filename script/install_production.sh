@@ -2,7 +2,7 @@
 
 . ./env_var.sh
 
-./script/install_debian_dependancy.sh
+./script/install_debian_dependency.sh
 
 echo -e "\n---- Create ERPLIBRE system user ----"
 sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPLIBRE' --group ${EL_USER}
