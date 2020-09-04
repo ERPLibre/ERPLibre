@@ -212,10 +212,10 @@ def sorted_dependency_poetry(pyproject_filename):
         poetry = tool.get("poetry")
         if poetry:
             dependencies = poetry.get("dependencies")
-            python_dependencie = ("python", dependencies.get("python", ''))
+            python_dependency = ("python", dependencies.get("python", ''))
             lst_dependency = [(k, v) for k, v in dependencies.items() if k != "python"]
             lst_dependency = sorted(lst_dependency, key=lambda tup: tup[0])
-            poetry["dependencies"] = OrderedDict([python_dependencie] + lst_dependency)
+            poetry["dependencies"] = OrderedDict([python_dependency] + lst_dependency)
 
     # Rewrite pyproject.toml
     with open(pyproject_filename, 'w') as f:

@@ -216,7 +216,7 @@ if [[ ! -f ${VENV_REPO_PATH} ]]; then
     chmod +x ${VENV_PATH}/repo
 fi
 
-echo -e "\n---- Installing poetry dependancy ----"
+echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 #/home/"${USER}"/.poetry/bin/poetry env use ${PYTHON_EXEC}
 source $HOME/.poetry/env
