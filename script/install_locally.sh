@@ -221,6 +221,8 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 #/home/"${USER}"/.poetry/bin/poetry env use ${PYTHON_EXEC}
 source $HOME/.poetry/env
 poetry install
+# Delete artifacts created by pip, cause error in next "poetry install"
+rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
