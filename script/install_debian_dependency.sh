@@ -40,7 +40,7 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpng12-0 gdebi-core libffi-dev -y
+sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpng12-0 gdebi-core libffi-dev libbz2-dev -y
 sudo apt-get install libmariadbd-dev -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
