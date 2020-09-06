@@ -120,3 +120,9 @@ Check if contains "auto_install" in manifest, change to False.
 source ./.venv/bin/activate
 python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```
+
+# Pull request
+## Show all pull request from organization
+```bash
+/script/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
+```
