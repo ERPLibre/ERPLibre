@@ -32,6 +32,7 @@ printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/CybroOdoo_OpenHRMS," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/ERPLibre_erplibre_theme_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_scrummer," >> ${EL_CONFIG_FILE}
@@ -126,7 +127,6 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_website," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_website-cms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_wms," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/SanteLibre_santelibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Smile-SA_odoo_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
