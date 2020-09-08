@@ -174,6 +174,7 @@ PYENV_VERSION_PATH=${PYENV_PATH}/versions/3.7.7
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 POETRY_PATH=~/.poetry
 VENV_PATH=./.venv
+VENV_REPO_PATH=${VENV_PATH}/repo
 
 if [[ ! -d "${PYENV_PATH}" ]]; then
     echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
@@ -212,8 +213,11 @@ fi
 # Install git-repo if missing
 if [[ ! -f ${VENV_REPO_PATH} ]]; then
     echo "\n---- Install git-repo from Google APIS ----"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
-    chmod +x ${VENV_PATH}/repo
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ${VENV_REPO_PATH}
+    chmod +x ${VENV_REPO_PATH}
+    sed -i 1d ${VENV_REPO_PATH}
+    PYTHON_HASHBANG="#!./.venv/bin/python"
+    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
 fi
 
 echo -e "\n---- Installing poetry dependency ----"
