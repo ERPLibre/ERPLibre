@@ -12,7 +12,16 @@ cd ERPLibre
 Modify the file env_var.sh for production installation.
 
 ### 3. Execute the script:
-Support Ubuntu 18.04 server
+#### Ubuntu 18.04 server
+```bash
+./script/install_dev.sh
+./script/install_production.sh
+```
+A service is running by systemd, you can access with the DNS name, found it in env_var.sh
+
+#### Ubuntu 20.04 server
+Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
+
 ```bash
 ./script/install_dev.sh
 ./script/install_production.sh
@@ -20,7 +29,7 @@ Support Ubuntu 18.04 server
 A service is running by systemd, you can access with the DNS name, found it in env_var.sh
 
 ### 4. SSL:
-Generate a ssl certificat
+Generate a ssl certificate
 ```bash
 sudo certbot --nginx
 ```
