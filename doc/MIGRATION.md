@@ -30,6 +30,11 @@ Checkout a new branch, like this example :
 git checkout -b mig_REPO
 ```
 
+You need dependency : 
+```bash
+./.venv/bin/pip install -e git://github.com/grap/odoo-module-migrator.git#egg=odoo-module-migrator
+```
+
 Add repo in file [source_repo_addons.csv](../source_repo_addons.csv)
 
 Fork it
@@ -46,3 +51,22 @@ Commit
 ```bash
 git commit -am "Migrate REPO"
 ```
+
+Go on the repo and create branch `12.0_mig`
+```bash
+cd addons/REPO
+git checkout -b 12.0_mig
+```
+
+For each module, run this command
+```bash
+/.venv/bin/odoo-module-migrate --directory ./ --init-version-name 10.0 --target-version-name 12.0 --modules module_name
+```
+
+Update python dependency
+```bash
+cd ../..
+./script/poetry_update.py
+```
+
+Create a clean environment and install all this module.
