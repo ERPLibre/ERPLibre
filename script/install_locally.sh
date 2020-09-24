@@ -148,6 +148,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/odoomates_odooapps," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/openeducat_openeducat_erp," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/pledra_odoo-product-configurator," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/savoirfairelinux_odoo_payroll," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/tegin_medical-fhir," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/doc/itpp-labs_odoo-development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/doc/itpp-labs_odoo-port-docs," >> ${EL_CONFIG_FILE}
