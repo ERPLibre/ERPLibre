@@ -110,7 +110,7 @@
   <project name="odoo.git" path="odoo" remote="odoo" revision="ERPLibre/12.0" clone-depth="10" groups="odoo"/>
   <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="12.0_remote_autoinstall" groups="addons"/>
   <project name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>
-  <project name="odoo_payroll.git" path="addons/savoirfairelinux_odoo_payroll" remote="savoirfairelinux" groups="addons"/>
+  <project name="odoo_payroll.git" path="addons/savoirfairelinux_odoo_payroll" remote="savoirfairelinux" revision="10.0" groups="addons"/>
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons"/>
   <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
   <project name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" groups="addons"/>
