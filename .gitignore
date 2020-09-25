@@ -11,4 +11,7 @@ config.conf
 
 .repo
 addons
+doc/itpp*
+doc/odoo*
+script/OCA*
 odoo

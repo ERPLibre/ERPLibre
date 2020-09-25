@@ -12,3 +12,4 @@ keystoneclient
 xlsxwriter
 ldap
 pythonjsonlogger
+python-alipay-sdk

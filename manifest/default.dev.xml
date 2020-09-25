@@ -58,6 +58,7 @@
   <project name="delivery-carrier.git" path="addons/OCA_delivery-carrier" remote="OCA" groups="addons"/>
   <project name="deltatech.git" path="addons/dhongu_deltatech" remote="dhongu" groups="addons"/>
   <project name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" groups="addons"/>
+  <project name="documentation-user.git" path="doc/odoo_documentation-user" remote="odoo" groups="odoo"/>
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="12.0_module_donation_website" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
@@ -89,17 +90,20 @@
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="12.0_sale_order_line_timesheet_attribution" groups="addons"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
+  <project name="odoo-development.git" path="doc/itpp-labs_odoo-development" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
+  <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-saas-tools.git" path="addons/it-projects-llc_odoo-saas-tools" remote="it-projects-llc" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" groups="addons"/>
   <project name="odoo.git" path="odoo" remote="odoo" revision="ERPLibre/12.0" clone-depth="10" groups="odoo"/>
