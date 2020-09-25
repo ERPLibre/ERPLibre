@@ -432,6 +432,17 @@ lxml = "*"
 requests = "*"
 
 [[package]]
+name = "elaphe3"
+version = "0.2.0"
+description = "Generates various barcodes using barcode.ps and pillow."
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+pillow = "*"
+
+[[package]]
 name = "email-validator"
 version = "1.1.1"
 description = "A robust email syntax and deliverability validation library for Python 2.x/3.x."
@@ -2505,7 +2516,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.0"
 python-versions = "^3.7"
-content-hash = "61eb6bb040593dfa76402ae22e529d6f78d6535d0f8cba64740f0c1a1d2ab123"
+content-hash = "c96e3c5da7fd16c374ab7b1eba5a1ff4b54f1656f7dcc0d91374f3524d68283b"
 
 [metadata.files]
 agithub = [
@@ -2749,6 +2760,9 @@ docutils = [
 ebaysdk = [
     {file = "ebaysdk-2.1.5-py3.7.egg", hash = "sha256:55360edc239037c3a0aaaf3f39889ddea666b8b1d97c893b2c3fd2269d868b45"},
     {file = "ebaysdk-2.1.5.tar.gz", hash = "sha256:78458e1ea4a0fc7d693c26de363069696393767e4aa9689fd38efbfb08409acd"},
+]
+elaphe3 = [
+    {file = "elaphe3-0.2.0.tar.gz", hash = "sha256:2d59f8975a09ce10fe8f45ce717f1cdd3248ea8ae6594c84f8bf71f0b5d6171a"},
 ]
 email-validator = [
     {file = "email_validator-1.1.1-py2.py3-none-any.whl", hash = "sha256:5f246ae8d81ce3000eade06595b7bb55a4cf350d559e890182a1466a21f25067"},

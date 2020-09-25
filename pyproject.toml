@@ -139,6 +139,7 @@ xlwt = "1.3"
 xmltodict = "^0.12.0"
 zeep = "^3.4.0"
 zxcvbn = "^4.4.28"
+elaphe3 = "0.2.0"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^0.57.0"
