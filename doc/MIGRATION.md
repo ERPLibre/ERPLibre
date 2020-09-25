@@ -60,13 +60,21 @@ git checkout -b 12.0_mig
 
 For each module, run this command
 ```bash
-/.venv/bin/odoo-module-migrate --directory ./ --init-version-name 10.0 --target-version-name 12.0 --modules module_name
+../../.venv/bin/odoo-module-migrate --directory ./ --init-version-name 10.0 --target-version-name 12.0 --modules module_name
+```
+You can use this script for all modules
+```bash
+find . -maxdepth 1 -not  -path '*/\.*' -type d |grep -v "\.$"|gawk '{system("../../.venv/bin/odoo-module-migrate -ll DEBUG --directory ./ --init-version-name 8.0 --target-version-name 12.0 -m "$1)}'
 ```
 
 Update python dependency
 ```bash
 cd ../..
 ./script/poetry_update.py
+```
+If not working, you can add manually a dependency with:
+```bash
+poetry add PACKAGE==VERSION
 ```
 
 Create a clean environment and install all this module.
