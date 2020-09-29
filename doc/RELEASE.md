@@ -10,10 +10,13 @@ Do your commit.
 git commit -am "[#ticket] subject: short sentence"
 ```
 
+Update variable ERPLIBRE_VERSION in [env_var.sh](../env_var.sh)
+
 ## Merge release
 When ready to make a release, create a branch release/#.#.# and create a pull request to master.
-Update file CHANGELOG.md and create a section with new version.
-Merge it when maintener accept it.
+
+Update file [CHANGELOG.md](../CHANGELOG.md) and create a section with new version.
+Merge it when maintainer accept it.
 
 Add a tag on the commit on branch master with your release. When adding tag, be sure to update default.xml
 ```bash
