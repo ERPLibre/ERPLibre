@@ -5,19 +5,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.1.0] - 2020-09-30
 ### Added
 - Docker
+- Pyenv to manage python version
+- Poetry to manage python dependencies
+    - Script poetry_update to search all dependencies in addons
+- Travis CI WIP
+- TODO.md
+- Guide to update all repositories with community
+- Update manifest
+    - Add missing OCA repos
+    - Add medical, property management and more
+    - Add cloud/saas repo
 
 ### Changed
-- Update to Odoo Community 12.0
+- Update to Odoo Community 12.0 and all addons
+- Rename venv to .venv
+- More documentation on how to use ERPLibre
 
 ## [1.0.1] - 2020-07-14
 ### Added
-- Improve documentation with development and production environment
-- Improve documentation with git repo
+- Improved documentation with development and production environment
+- Improved documentation with git repo
 - Move default.xml manifest to root, the default location
 - Support default.stage.xml to update prod with dev
-- Feature to show diff between manifest, between repo of different manifest
+- Feature to show diff between manifests or between repo of different manifests
 - Update manifest
     - Muk theme in erplibre_base
     - Add draft account invoice approbation in portal
@@ -31,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2020-07-04
 ### Added
 - Environment of development, discovery and production with documentation and script.
-- git-repo of Google to support addons repository instead of using Git submodule.
+- Google git-repo to support addons repository instead of using Git submodule.
 
 ### Removed
 - Git submodule
