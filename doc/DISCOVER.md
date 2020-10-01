@@ -20,7 +20,7 @@ cd ERPLibre
 ```
 
 ## Add repo
-Access to a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
+To access a new repo, add your URL to file [source_repo_addons.csv](../source_repo_addons.csv)
 
 Execute script:
 ```bash

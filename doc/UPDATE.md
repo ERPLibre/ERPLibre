@@ -1,9 +1,9 @@
 # Update ERPLibre
-## Update all repo from origin source
-The update is done on branch 12.0, you need to validate this branch exist.
+## Update all repos from the origin source
+The update is possible on branch 12.0, you need to verify this branch existence.
 
-1. Make sure all repo git is conform, remove all argument depth from manifest and regenerate.
-You can clean all and regenerate
+1. Make sure all git repos are conform, remove all argument depth from manifest and regenerate.
+You can clean all and regenerate.
 ```bash
 ./script/clean_repo_manifest.sh
 ./script/install_locally_dev.sh
@@ -19,6 +19,6 @@ You can clean all and regenerate
 ./script/git_update_repo.py
 ```
 
-4. Push force all needed repo, manage rebase conflict
+4. Do a forced push on all needed repo and manage rebase conflicts.
 
 5. Test a clone with dev, check file [DEVELOPMENT.md](./DEVELOPMENT.md)

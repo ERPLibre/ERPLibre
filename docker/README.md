@@ -1,10 +1,10 @@
 # ERPLibre - Docker
 
-Those image are prepare to permit better portability and reproducibility of ERPLibre release.
+Those images are prepared to permit better portability and reproducibility of ERPLibre release.
 
 Due the the growing code of ERPLibre, it could also simplify development.
 
-NOTE: Those Dockerfile themselve are in heavy development for now. Incompatibilities between release are normal until the interfaces will be stabilized.
+NOTE: Those Dockerfiles themselves are in heavy development for now. Incompatibilities between releases are normal until the interface is stabilized.
 
 
 ## Pre-requirements
@@ -14,9 +14,9 @@ NOTE: Those Dockerfile themselve are in heavy development for now. Incompatibili
 
 ## Files representations
 
-- Dockerfile.base: This Dockerfile represent the base Docker image layer reused by other child layers
+- Dockerfile.base: This Dockerfile represents the base Docker image layer reused by other child layers.
 - Dockerfile.dev: This Dockerfile is specialized in development.
-- Dockerfile.prod{pkg,src}: Dockerfile.prod.\* is a Docker image specialized for production systems. Dockerfile.prod.pkg reuse official Debian files from Odoo.com. Dockerfile.prod.src fetch the Odoo source code as the ERPLibre runtime.
+- Dockerfile.prod{pkg,src}: Dockerfile.prod.\* is a Docker image specialized for production systems. Dockerfile.prod.pkg reuses official Debian files from Odoo.com. Dockerfile.prod.src fetches the Odoo source code as the ERPLibre runtime.
 
 ## Getting started
 
@@ -62,7 +62,7 @@ docker exec -ti DOCKER_NAME bash
 docker exec -u root -ti DOCKER_NAME bash
 ```
 
-Interesting command to debug
+Commands for debugging
 ```bash
 docker run -p 8069:8069 --entrypoint bash -ti DOCKER_NAME
 docker exec -ti DOCKER_NAME bash
@@ -97,14 +97,14 @@ Delete volume
 docker volume prune
 ```
 
-# Need more space for docker
-You can change the home for docker, edit file `/etc/docker/daemon.json`
+# Change docker directory
+You can change the docker directory by editing file `/etc/docker/daemon.json`
 ```json
 {
   "data-root": "/home/docker"
 }
 ```
-And restart docker service. You can delete all older location of docker or move it.
+And restart docker service. You can delete or move all older locations of docker.
 
 # Update docker
 When building your docker with script

@@ -1,13 +1,13 @@
 # Poetry
-## Add automatically dependancies
-Add your dependancies in files [requirements.txt](../requirements.txt) and run script
+## Add automatically dependencies
+Add your dependencies in file [requirements.txt](../requirements.txt) and run script
 ```bash
 ./script/poetry_update.py
 ```
-This will search all requirements.txt files and update pyproject.toml, to run poetry update.
+This will search all `requirements.txt` files and update `pyproject.toml` and it will update poetry
 
-## Add manually dependancies
-The automatic script will erase this dependency, but you can add it for your locally test.
+## Add manually dependencies
+The automatic script will erase this dependency, but you can add it for your local test.
 ```bash
 poetry add PYTHON_MODULE
 ```

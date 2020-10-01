@@ -12,7 +12,7 @@ Support Ubuntu 18.04 and OSX
 ./script/install_dev.sh
 ./script/install_locally_prod.sh
 ```
-Update your configuration if you need to run somehere than 127.0.0.1, file config.conf
+Update your configuration if you need to run somehere than 127.0.0.1, file `config.conf`
 ```
 #xmlrpc_interface = 127.0.0.1
 #netrpc_interface = 127.0.0.1

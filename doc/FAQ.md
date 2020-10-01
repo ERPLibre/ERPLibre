@@ -8,7 +8,7 @@ error.GitError: manifests rev-list (u'^2736dfd46e8a30cf59a9cd6e93d9e56e87021f2a'
 
 Did you modify files in .repo?
 
-Anyways, to reset files from your branch into .repo:
+To reset files from your branch into .repo:
 ```bash
 cd .repo/manifests
 git branch -av
