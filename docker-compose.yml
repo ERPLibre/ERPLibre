@@ -1,0 +1,38 @@
+version: "3.3"
+services:
+    ERPLibre:
+      image: technolibre/erplibre:1.1.0
+      ports:
+        - 8069:8069
+        - 8071:8071
+        - 8072:8072
+      environment:
+        HOST: db
+        PASSWORD: mysecretpassword
+        USER: odoo
+        POSTGRES_DB: postgres
+      depends_on:
+        - db
+      command: odoo
+      volumes:
+        # See the volume section at the end of the file
+        - erplibre_data_dir:/home/odoo/.local/share/Odoo/
+        - erplibre_conf:/etc/odoo
+
+    db:
+      image: postgres:12.3
+      environment:
+        POSTGRES_PASSWORD: mysecretpassword
+        POSTGRES_USER: odoo
+        POSTGRES_DB: postgres
+        PGDATA: /var/lib/postgresql/data/pgdata
+      volumes:
+        - erplibre-db-data:/var/lib/postgresql/data/pgdata
+
+# We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
+# - docker volume --help
+# - docker-compose down --help
+volumes:
+  erplibre_data_dir:
+  erplibre_conf:
+  erplibre-db-data:

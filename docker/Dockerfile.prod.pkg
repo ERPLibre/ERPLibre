@@ -1,0 +1,50 @@
+FROM technolibre/erplibre-base:1.1.0
+
+ENV REPO_MANIFEST_URL http://git.erplibre.ca/ERPLibre
+ARG WORKING_BRANCH
+ENV BRANCH_ERPLIBRE $WORKING_BRANCH
+
+RUN cat /etc/os-release
+
+USER root
+
+RUN mkdir ~/.ssh/ && \
+    echo "StrictHostKeyChecking no" >> ~/.ssh/config && \
+    apt update && \
+    apt install ssh-client git -y --no-install-recommends && \
+	rm -rf /var/lib/apt/lists/*
+
+RUN cd ; mkdir -p .bin/ && \
+    git config --global color.ui false && \
+	git config --global user.email "foo@bar.io" && \
+	git config --global user.name "Foo Bar" && \
+    git clone $REPO_MANIFEST_URL -b $BRANCH_ERPLIBRE $ODOO_PREFIX
+
+RUN cd $ODOO_PREFIX && \
+    python -m venv .venv
+
+RUN cd $ODOO_PREFIX && \
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
+    chmod +x ./.venv/repo
+
+RUN cd $ODOO_PREFIX && \
+    ./script/update_manifest_dev.sh
+
+RUN cd $ODOO_PREFIX && \
+    source /root/.poetry/env && \
+    poetry install
+
+RUN cd $ODOO_PREFIX && \
+    head /etc/odoo/odoo.conf && \
+    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
+    head /etc/odoo/odoo.conf
+
+#RUN mkdir '/home/odoo/.local'
+#RUN chown -R odoo '/home/odoo/.local'
+
+USER odoo
+
+RUN mkdir -p '/home/odoo/.local/share/Odoo/'
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["odoo"]

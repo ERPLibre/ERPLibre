@@ -1,4 +1,4 @@
-#!./venv/bin/python
+#!./.venv/bin/python
 # © 2020 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 

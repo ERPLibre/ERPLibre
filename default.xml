@@ -1,103 +1,146 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <manifest>
-  <remote name="ERPLibre" fetch="https://github.com/ERPLibre/"/>
-  <remote name="MathBenTech" fetch="https://github.com/ERPLibre/"/>
-  <remote name="Numigi" fetch="https://github.com/ERPLibre/"/>
-  <remote name="OCA" fetch="https://github.com/ERPLibre/"/>
-  <remote name="SanteLibre" fetch="https://github.com/ERPLibre/"/>
-  <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
-  <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
-  <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
-  <remote name="odooaktiv" fetch="https://github.com/ERPLibre/"/>
-  <remote name="openeducat" fetch="https://github.com/ERPLibre/"/>
+  <remote fetch="https://github.com/ERPLibre/" name="CybroOdoo"/>
+  <remote fetch="https://github.com/ERPLibre/" name="ERPLibre"/>
+  <remote fetch="https://github.com/ERPLibre/" name="MathBenTech"/>
+  <remote fetch="https://github.com/ERPLibre/" name="Numigi"/>
+  <remote fetch="https://github.com/ERPLibre/" name="OCA"/>
+  <remote fetch="https://github.com/ERPLibre/" name="Smile-SA"/>
+  <remote fetch="https://github.com/ERPLibre/" name="camptocamp"/>
+  <remote fetch="https://github.com/ERPLibre/" name="dhongu"/>
+  <remote fetch="https://github.com/ERPLibre/" name="it-projects-llc"/>
+  <remote fetch="https://github.com/ERPLibre/" name="itpp-labs"/>
+  <remote fetch="https://github.com/ERPLibre/" name="kinjal-sorathiya"/>
+  <remote fetch="https://github.com/ERPLibre/" name="muk-it"/>
+  <remote fetch="https://github.com/ERPLibre/" name="obayit"/>
+  <remote fetch="https://github.com/ERPLibre/" name="odoo"/>
+  <remote fetch="https://github.com/ERPLibre/" name="odooaktiv"/>
+  <remote fetch="https://github.com/ERPLibre/" name="odoomates"/>
+  <remote fetch="https://github.com/ERPLibre/" name="openeducat"/>
+  <remote fetch="https://github.com/ERPLibre/" name="pledra"/>
+  <remote fetch="https://github.com/ERPLibre/" name="tegin"/>
   
-  <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true"/>
+  <default remote="ERPLibre" revision="12.0" sync-c="true" sync-j="4"/>
   
-  <project name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" revision="701438f9c59bd657de516d9ef4de1ba6167bf30b" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" revision="7ce9fe25a7c977c5338001bc32d58b1cadffe51e" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" revision="e175ffa84fb61f70de67a2732292e43bd490cefd" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-closing.git" path="addons/OCA_account-closing" remote="OCA" revision="40d40c73574bf65c91c879e0607b4ac455df06b2" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-consolidation.git" path="addons/OCA_account-consolidation" remote="OCA" revision="741fc50366bd70fceb88a2a3fcb0449b2582ed31" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-financial-reporting.git" path="addons/OCA_account-financial-reporting" remote="OCA" revision="1e0f8301ca015b3c4c456401bc30c5f211ccae3f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-financial-tools.git" path="addons/OCA_account-financial-tools" remote="OCA" revision="9721abd4c9db653e1d009f8a023e9f750523989f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-fiscal-rule.git" path="addons/OCA_account-fiscal-rule" remote="OCA" revision="f396ba6a2e2acebaaff579f0e6991b669812d64d" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-invoice-reporting.git" path="addons/OCA_account-invoice-reporting" remote="OCA" revision="320dd9fce4d212b2dcf5dc4447494964ad1e246d" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" revision="12c270d5ddeb72e0dee250289d24e3a8af4b26b3" upstream="12.0_account_invoice_approbation" dest-branch="12.0_account_invoice_approbation" groups="addons"/>
-  <project name="account-payment.git" path="addons/OCA_account-payment" remote="OCA" revision="888debebd8e42c1ee5107577ca2f3bc5f38d72e1" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="account-reconcile.git" path="addons/OCA_account-reconcile" remote="OCA" revision="0390b112def3d362d95232d382317511616ee6dd" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="apps-store.git" path="addons/OCA_apps-store" remote="OCA" revision="022d24db4c6463f38b9f4452fe03c9fb8b3a44ce" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="bank-payment.git" path="addons/OCA_bank-payment" remote="OCA" revision="7e0e572fb4772c8ebacfe52d58c396bdbd9e01f9" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="bank-statement-import.git" path="addons/OCA_bank-statement-import" remote="OCA" revision="198306503b51371c8603fd8defef65fcd82bf954" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="brand.git" path="addons/OCA_brand" remote="OCA" revision="601a8c5c741b3035000f2337feab16325e6b9a49" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="business-requirement.git" path="addons/OCA_business-requirement" remote="OCA" revision="dd74e74583861b44c6120473ba0b56c90b887334" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="commission.git" path="addons/OCA_commission" remote="OCA" revision="e679120a6d8f910cba81d949ecddd7b89f48fc01" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="community-data-files.git" path="addons/OCA_community-data-files" remote="OCA" revision="2b17e5567d1bcb8ca377268615f209fdd57dc66e" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="connector-telephony.git" path="addons/OCA_connector-telephony" remote="OCA" revision="6d9df1037a97dbf791a7f0a717846a63144174bb" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="contract.git" path="addons/OCA_contract" remote="OCA" revision="3e531348cb51aeb2cc16c16ab8a2b693756ba47f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="credit-control.git" path="addons/OCA_credit-control" remote="OCA" revision="a97496a829cadc0d9be07d7825e93062417ab670" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="currency.git" path="addons/OCA_currency" remote="OCA" revision="5c0d54e37789ecc24bebbe53fa56a92a492575bb" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="data-protection.git" path="addons/OCA_data-protection" remote="OCA" revision="ce4f334a1077b5c15d457f22daaa48b9f639409e" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" revision="1f023cdf2a03b8b3fbb176b45657bae2db1c0e3d" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="aa6478a72c9673ad6458de19aa2362397c613fae" upstream="12.0_module_donation_website" dest-branch="12.0_module_donation_website" groups="addons"/>
-  <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" revision="d7c99e565f25b495b3c0d252f181d8df4490a757" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="edi.git" path="addons/OCA_edi" remote="OCA" revision="742b1316773f8a1b224e42c65c3c3a7685481a30" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" revision="d66e9b4c9c026c02446664537b9d9a7e63cce002" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="event.git" path="addons/OCA_event" remote="OCA" revision="e2bdf12c61e9967eeb9abc618c79ca43b464ea7f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="helpdesk.git" path="addons/OCA_helpdesk" remote="OCA" revision="74da6d49a9493be6ea39eb6da0654e81aca65619" upstream="12.0_dev" dest-branch="12.0_dev" groups="addons"/>
-  <project name="hr.git" path="addons/OCA_hr" remote="OCA" revision="4743acf7ab796ea3738743a44c62cd516126ec53" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="knowledge.git" path="addons/OCA_knowledge" remote="OCA" revision="9ae45f798bbefa854b03f612e22291ac1b95568d" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="l10n-canada.git" path="addons/OCA_l10n-canada" remote="OCA" revision="5680b485cdfa0b6f1c2f4e32356b5938a9752c00" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="maintenance.git" path="addons/OCA_maintenance" remote="OCA" revision="4e521ec35f6e8b66f86a62db644dadc9206b476e" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="management-system.git" path="addons/OCA_management-system" remote="OCA" revision="479afcc65ee29530e2bcaa7342f93b6783d14d97" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="manufacture.git" path="addons/OCA_manufacture" remote="OCA" revision="ce36844281754a75b527c4ace21837c8a16b75ab" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="margin-analysis.git" path="addons/OCA_margin-analysis" remote="OCA" revision="22907c7ee34dba85085d9459704e38592f00e0b2" upstream="12.0_sale_margin_editor" dest-branch="12.0_sale_margin_editor" groups="addons"/>
-  <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" revision="5d7697296ad90794599373940e6fc6cead8ca1a2" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_base.git" path="addons/muk-it_muk_base" remote="muk-it" revision="d888c9695292295a732fcdd4a7b9820978df5e7f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_dms.git" path="addons/muk-it_muk_dms" remote="muk-it" revision="020e604d635a229c09a07e839d95f8e37706606a" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" revision="a8ea02b9f00ae9fe5d2ea25ac43d23532cc11d45" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" revision="37b9d6dc20fa686a323057b160015bfc2c2c8143" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_quality.git" path="addons/muk-it_muk_quality" remote="muk-it" revision="1a4c6f25c5e4fe0029d406d6283555bd23a44d27" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="431d86d6694e846b407c84f00a31a10f0cf5b83b" upstream="12.0_fix_web_conflict_menu" dest-branch="12.0_fix_web_conflict_menu" groups="addons"/>
-  <project name="muk_website.git" path="addons/muk-it_muk_website" remote="muk-it" revision="c1e6c1755d09562f66247832bd01a0d580c43e23" upstream="12.0_remove_autoinstall" dest-branch="12.0_remove_autoinstall" groups="addons"/>
-  <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" revision="fdb4d255b6a3b51925f8a226bfebf2eccabd2786" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="60bc1e5414ff3bf81a6d72831da2eaad94ccbcb2" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="822d2e018554119fa63f79ac91625473ec54b9fe" upstream="12.0_sale_order_line_timesheet_attribution" dest-branch="12.0_sale_order_line_timesheet_attribution" groups="addons"/>
-  <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="82c33255261eff361a91da13b28e4e68a95b25dd" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" revision="96db417669a631877c1439f617ac8c0cc6edfff9" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" revision="0034395bcdb38c02749644607f43ccac760dfb49" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="f0c54ffb3409cd8e748ae5db19077c7c966cd57f" upstream="12.0_partner_no_vat_improve_no_vat" dest-branch="12.0_partner_no_vat_improve_no_vat" groups="addons"/>
-  <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" revision="36751bd3c6baced6a0b3f5ddb675d87cb04a745c" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="4388a4ca61b87032e2c3783dc2740b299cd31b6f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" revision="5d226ca3887c77e31467a192a0fbe4066bf7842c" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="3fe57c3cad122d5a448239b46fda8bf76ea32493" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" revision="9e897bae38ff0d6d3180296a552d994bb10c0eff" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" revision="d2bbb19dc8f917272694ff0a6231275083fb7e74" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" revision="3a4aa46439a794429d5939cff561f42c4f312a99" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="odoo.git" path="odoo" remote="odoo" revision="0e0213c487041d9969444e312430c23e994ed778" upstream="ERPLibre/12.0" dest-branch="ERPLibre/12.0" clone-depth="10" groups="odoo"/>
-  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="2be318c18ac5b0fe2129cc61d86419033ff07d5f" upstream="12.0_remote_autoinstall" dest-branch="12.0_remote_autoinstall" groups="addons"/>
-  <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" revision="4a2a1d930d88a127959fd39af22f7d818e08663d" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" revision="a79e57685caad7d0dec9318378fdd46862e31be4" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="pos.git" path="addons/OCA_pos" remote="OCA" revision="6a922b3d87491d59128a097f286be1e3f3fc11df" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" revision="ea48097094462e67d7e1558b333da78c6038b89c" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" revision="b9eccbdb9ae0fdd3ed1138270c3eff3142a015c3" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" revision="fb4f4042b3ca0ee6cde6ab0625e2c914b96b174f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" revision="7f71f086dd732170e7605dfdf80e6cc4969a711e" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="project.git" path="addons/OCA_project" remote="OCA" revision="4390f1ffa9f00058b0d1aa7fae27fb74bbefb83b" upstream="12.0_fix_conflict_project_key" dest-branch="12.0_fix_conflict_project_key" groups="addons"/>
-  <project name="purchase-workflow.git" path="addons/OCA_purchase-workflow" remote="OCA" revision="d17436791bcfbe0985af137163564af3fe90bbe1" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="queue.git" path="addons/OCA_queue" remote="OCA" revision="0b71a3951b583f154f170adacf4920e6d7138329" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="reporting-engine.git" path="addons/OCA_reporting-engine" remote="OCA" revision="14fba657a0dbda1258edcf3c92886866e7cecf67" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="4b200358312689d944aaaf012c5723bb2bc9cb77" upstream="12.0_modules_sale_order_line" dest-branch="12.0_modules_sale_order_line" groups="addons"/>
-  <project name="santelibre_addons.git" path="addons/SanteLibre_santelibre_addons" remote="SanteLibre" revision="ee94058aecee418b3652864f23b54a86ba0f92f4" upstream="master" dest-branch="master" groups="addons"/>
-  <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="38c04c8f7b7fe897d166ded74dda9d8d76f7f4c4" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" revision="f911c9f31a064cca3012431b70e60a7b89448138" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" revision="d8f27b04475d3cc74a7bebb1e086f647f5e01569" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="server-env.git" path="addons/OCA_server-env" remote="OCA" revision="19af535b3aedd5c1fdfbe911dacfc43ae31edb71" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" revision="d97aaa9fa2f01f64ebf7100668e0901fde35d42f" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="server-ux.git" path="addons/OCA_server-ux" remote="OCA" revision="655b3cc291a7e3718371a45ebe6f2e0952896adf" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="social.git" path="addons/OCA_social" remote="OCA" revision="7b0836bf7a5c40db332dd90d5ebef619234060ac" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" revision="a591de15150f7b16c1ef23d2fc30c814874dea27" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" revision="8625e65414801780c91e91bf93b2ed32567f8117" upstream="12.0_support_project_agile_timesheet" dest-branch="12.0_support_project_agile_timesheet" groups="addons"/>
-  <project name="web.git" path="addons/OCA_web" remote="OCA" revision="b65c492f4011fe4e9dac8c0a26eeef8c43cb1c39" upstream="12.0" dest-branch="12.0" groups="addons"/>
-  <project name="website.git" path="addons/OCA_website" remote="OCA" revision="603a44d53a2e7a457560a0f99bdcc95780399ee5" upstream="12.0_dev" dest-branch="12.0_dev" groups="addons"/>
-  <project name="wms.git" path="addons/OCA_wms" remote="OCA" revision="e7a1541f8c513cf755bd82780c6c035d2fafc2ce" upstream="12.0" dest-branch="12.0" groups="addons"/>
+  <project dest-branch="12.0" groups="addons" name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="e7881872d147e91a59e9ee9fac9e89316e1cabb4" upstream="12.0"/>
+  <project dest-branch="master" groups="addons" name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="922f6878ac560829d2ebe951b93f858c1e7d256d" upstream="master"/>
+  <project dest-branch="12.0" groups="addons" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" revision="701438f9c59bd657de516d9ef4de1ba6167bf30b" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" revision="482ed9d81ab707020918b43b945a92e9a3849b35" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons" name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" revision="127b15406fc619f8a01c1823bbf1aecc891ac4e7" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" revision="41723d9753c186c2f310f7960d27597700218453" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="account-closing.git" path="addons/OCA_account-closing" remote="OCA" revision="a7d2b14943027514a25666ee247d7ac18feae8d4" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="account-consolidation.git" path="addons/OCA_account-consolidation" remote="OCA" revision="aff1c46476a62ac6603bd64a0c22a020dd61c92e" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="account-financial-reporting.git" path="addons/OCA_account-financial-reporting" remote="OCA" revision="9a301da921491f7ff39d001884f4da20e2a14275" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons" name="account-financial-tools.git" path="addons/OCA_account-financial-tools" remote="OCA" revision="2a00520ba4e3f126799591d2279554556610471a" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="account-fiscal-rule.git" path="addons/OCA_account-fiscal-rule" remote="OCA" revision="220ecc1fd7a33f8718f9c629c93fcaf4c2be0e6f" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="account-invoice-reporting.git" path="addons/OCA_account-invoice-reporting" remote="OCA" revision="0eacde24ff15d63f6cfff4ea1113d36aa62e10c8" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" revision="d0841c7351ee4fe37f59187689520214b0ab0a51" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="account-payment.git" path="addons/OCA_account-payment" remote="OCA" revision="6c3c3d5ae95958b181544bb371291ef059082551" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="account-reconcile.git" path="addons/OCA_account-reconcile" remote="OCA" revision="661f3bb2f1df474aef1640f1511a4fb4a6e3151f" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="apps-store.git" path="addons/OCA_apps-store" remote="OCA" revision="9f02be326e234b1f981add21b13d6f87d1d9a52d" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="bank-payment.git" path="addons/OCA_bank-payment" remote="OCA" revision="6e3c6724866b3f191586a8e25578aafe76d3aa76" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="bank-statement-import.git" path="addons/OCA_bank-statement-import" remote="OCA" revision="b4695b27a555f758b00733f47048b612a2d397be" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="brand.git" path="addons/OCA_brand" remote="OCA" revision="790324790c909961d2f86954e24e01ce4bcdf045" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="business-requirement.git" path="addons/OCA_business-requirement" remote="OCA" revision="7be3c2b25b3b3f4ebd21e0d055c3bba63c45761a" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="commission.git" path="addons/OCA_commission" remote="OCA" revision="f47fb07531b767a5a15a4aa966c6a96e15a21b3f" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="community-data-files.git" path="addons/OCA_community-data-files" remote="OCA" revision="ff512e6dee776279de31636f890b19d50a434fb2" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="connector-ecommerce.git" path="addons/OCA_connector-ecommerce" remote="OCA" revision="41674c2f4681ea7b6713d8273b44c0c9b816116a" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="connector-interfaces.git" path="addons/OCA_connector-interfaces" remote="OCA" revision="43baddd62e856a17c8068890aa7ecdd1cc428ae9" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="connector-jira.git" path="addons/OCA_connector-jira" remote="OCA" revision="34d3137a7ddebe680c55c1668702d573c5f3387d" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="connector-telephony.git" path="addons/OCA_connector-telephony" remote="OCA" revision="b87711775dae08e43a0803772bdeb6afda408db4" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="connector.git" path="addons/OCA_connector" remote="OCA" revision="274c3f1c385fb822eacd73235ecf3522dc96fe27" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="contract.git" path="addons/OCA_contract" remote="OCA" revision="03c444e0b583b8950da11efa302991d148bf9ac0" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="credit-control.git" path="addons/OCA_credit-control" remote="OCA" revision="b37f66e87063b3b49117dbcab184ad3c28d050c7" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="crm.git" path="addons/OCA_crm" remote="OCA" revision="e0d66587f245c80a6dba3a5227481fe831b1891a" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="currency.git" path="addons/OCA_currency" remote="OCA" revision="b12e419825ec222a29c00fdb1b7740ad54397f51" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="data-protection.git" path="addons/OCA_data-protection" remote="OCA" revision="fa9fb5386989e987bd6c34f5e28c75974588e185" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="ddmrp.git" path="addons/OCA_ddmrp" remote="OCA" revision="f4f2f920c091caef4bf0b55c6e1a98ed333afa25" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="delivery-carrier.git" path="addons/OCA_delivery-carrier" remote="OCA" revision="92a8b4445400a2ee76ed4ea9c9fe83a57a2aaeab" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="deltatech.git" path="addons/dhongu_deltatech" remote="dhongu" revision="70ad7f4f9981896e04117156732ac0056764031c" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" revision="2609ef2966731594741d6a5804cccba1251002e1" upstream="12.0"/>
+  <project dest-branch="12.0_module_donation_website" groups="addons" name="donation.git" path="addons/OCA_donation" remote="OCA" revision="66a80b99c17baaa82df76d51bd3fd9bc3163034a" upstream="12.0_module_donation_website"/>
+  <project dest-branch="12.0" groups="addons" name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" revision="004e2c69b4b0d6ff12ec863d41994b19fe12b70c" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="edi.git" path="addons/OCA_edi" remote="OCA" revision="020a96a4512b60ab74f1213526770595eb54e687" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" revision="cc41fef9d3eea7722b3f7245fc556c51f3e0b7c0" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" revision="8ccf9eecbf26841d728b57dbc12f2c3bdbfe48de" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="event.git" path="addons/OCA_event" remote="OCA" revision="caa5d06e1dd454800149785685c73a1c17af14d1" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="field-service.git" path="addons/OCA_field-service" remote="OCA" revision="fb3cd1ccdf7339ef6d8a55173594f9727c509693" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="fleet.git" path="addons/OCA_fleet" remote="OCA" revision="3b5a96ef9d0a7d769c78e1141a7048a5cdbe8552" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="geospatial.git" path="addons/OCA_geospatial" remote="OCA" revision="24e5832b6807f2757a9f12e26c3cff8c241b63bc" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="helpdesk.git" path="addons/OCA_helpdesk" remote="OCA" revision="3f03ee5595e6827961c7c46d245bfde2ef2d4eec" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="hr.git" path="addons/OCA_hr" remote="OCA" revision="8cd4ac8db3cdbe500e21300edabfb3f20e657960" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="interface-github.git" path="addons/OCA_interface-github" remote="OCA" revision="9a51c99b0e0adb2d3529feca5d68c76a982d9afc" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="knowledge.git" path="addons/OCA_knowledge" remote="OCA" revision="7448855b3efc403cba03a3225056fed0fbc1c952" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="l10n-canada.git" path="addons/OCA_l10n-canada" remote="OCA" revision="5680b485cdfa0b6f1c2f4e32356b5938a9752c00" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="maintenance.git" path="addons/OCA_maintenance" remote="OCA" revision="915ba2aa932dad664e4604acf723ac0fb38f3796" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="management-system.git" path="addons/OCA_management-system" remote="OCA" revision="fd422cef074d8aacc2e0cfd61893a949d4d86cd6" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="manufacture.git" path="addons/OCA_manufacture" remote="OCA" revision="560da9ba630974d819e1e505648c7b9731e461f1" upstream="12.0"/>
+  <project dest-branch="12.0_sale_margin_editor" groups="addons" name="margin-analysis.git" path="addons/OCA_margin-analysis" remote="OCA" revision="9abbd69de30b972edd26269c212d0380f1915da7" upstream="12.0_sale_margin_editor"/>
+  <project dest-branch="12.0" groups="addons" name="medical-fhir.git" path="addons/tegin_medical-fhir" remote="tegin" revision="19cba74b3b61ba684749da1f5d7cdb287bd45050" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" revision="178c50f03df1b684972706aa94db917e6114f6cb" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="muk_base.git" path="addons/muk-it_muk_base" remote="muk-it" revision="a97c3f5c4369596756e283f34ecebbd184d7c725" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="muk_dms.git" path="addons/muk-it_muk_dms" remote="muk-it" revision="346b2d742696343ee025083604ee6fcb2050a65b" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" revision="a8ea02b9f00ae9fe5d2ea25ac43d23532cc11d45" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" revision="37b9d6dc20fa686a323057b160015bfc2c2c8143" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="muk_quality.git" path="addons/muk-it_muk_quality" remote="muk-it" revision="1a4c6f25c5e4fe0029d406d6283555bd23a44d27" upstream="12.0"/>
+  <project dest-branch="12.0_fix_web_conflict_menu" groups="addons" name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="4fb8ce157ce0a144503440b0036bf05625b7c3e1" upstream="12.0_fix_web_conflict_menu"/>
+  <project dest-branch="12.0_remove_autoinstall" groups="addons" name="muk_website.git" path="addons/muk-it_muk_website" remote="muk-it" revision="c1e6c1755d09562f66247832bd01a0d580c43e23" upstream="12.0_remove_autoinstall"/>
+  <project dest-branch="12.0" groups="addons" name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" revision="9d689c5ad230f8f2e6a550354a6b1577a8e5a3c9" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="78c23a29283f35ef480186358dd6d848a38a2aff" upstream="12.0_dev"/>
+  <project dest-branch="12.0_sale_order_line_timesheet_attribution" groups="addons" name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="822d2e018554119fa63f79ac91625473ec54b9fe" upstream="12.0_sale_order_line_timesheet_attribution"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" revision="234451065fa2804af832d713dcec9cf8842d8a49" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="5abba3eabcb60c96d80240ab756736eb57ed345b" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" revision="a394f422a5d3063dd2c339544ecca74bdbbe19ae" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" revision="2d3dd1769b47aac54585c56dcad652a4dbe5850f" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="3320fbed43c324d07035f7f1d1bc77d779f8fe0e" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" revision="e4daf4cb743dd73928571c0757083e8ee6fec6ef" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" revision="785923c83266097f53569769c26c8f2a859d1d6f" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="3f844c31afd62a3f1a606f9d55038a881c10c927" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" revision="36d5b5b5a56ef0ddbb75bc83d5d13c38aceea3f2" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-saas-tools.git" path="addons/it-projects-llc_odoo-saas-tools" remote="it-projects-llc" revision="5f7cf7f7d347a244641feb5d38ac8acd180e4e2b" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="0d4106c1800c2feff32e40206082bb4cb10547d1" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" revision="9e897bae38ff0d6d3180296a552d994bb10c0eff" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" revision="11f01fcca4714fd946949519fd3f3b56b136b813" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" revision="3a4aa46439a794429d5939cff561f42c4f312a99" upstream="12.0"/>
+  <project clone-depth="10" dest-branch="ERPLibre/12.0" groups="odoo" name="odoo.git" path="odoo" remote="odoo" revision="5dca43a46633785a27d52be3f01c2ebaf2389dd3" upstream="ERPLibre/12.0"/>
+  <project dest-branch="12.0_remote_autoinstall" groups="addons" name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="42cac5684e7bc60454a56eb44366c9b079dff197" upstream="12.0_remote_autoinstall"/>
+  <project dest-branch="12.0" groups="addons" name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" revision="f54a35ba90be42967cdd423e830823981be75f67" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" revision="76ed3e44029407bf0733ca14c00d2a4b5dc0bfa8" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" revision="d9c26e6bf4bfa532162cbdd0d92a7e4d4915ffd0" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" revision="da9f3eb128e72bccb4355fe4dbb869d60aa663fc" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" revision="0f5346db7bdb4850ab1502a7af66ba46b55a4fae" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="pos-addons.git" path="addons/itpp-labs_pos-addons" remote="itpp-labs" revision="6c57f57e23e89724d121977a86e24e8d1af24a4c" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="pos.git" path="addons/OCA_pos" remote="OCA" revision="75703f87031440eea93b3bdd33ec8fc2e3b5c13a" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" revision="69d58f4c68c42c01908d277f65d667f6e3184cac" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" revision="b869a5d2efaa1b2bdf391e7bba52f3b44256bc98" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" revision="e586ebbb9a5a3191278ba0cca1b525649b60ece0" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="product_rating_app.git" path="addons/odooaktiv_product_rating_app" remote="odooaktiv" revision="5174b118c9a186bcef17a9296cc303111a06f427" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" revision="b5b0e8de37be84d2181f19f84f381ada3fd25812" upstream="12.0"/>
+  <project dest-branch="12.0_fix_conflict_project_key" groups="addons" name="project.git" path="addons/OCA_project" remote="OCA" revision="0b335b5b146e84eebeb898c3cee5b1ccc959ede7" upstream="12.0_fix_conflict_project_key"/>
+  <project dest-branch="12.0" groups="addons" name="purchase-workflow.git" path="addons/OCA_purchase-workflow" remote="OCA" revision="547072c977cf24f044615787ffcf7b56d838ec89" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="queue.git" path="addons/OCA_queue" remote="OCA" revision="d303bceac89152c6996b7f5bbeabb6a67192b93f" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="reporting-engine.git" path="addons/OCA_reporting-engine" remote="OCA" revision="733d57754c6e419bb16ee095824e787b218c1aa4" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="rma.git" path="addons/OCA_rma" remote="OCA" revision="fd48feb1dea66daae474b74a7e7656f74ba50313" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" revision="10224ef7b42ee3dec2849414e41557b0bc3c8f79" upstream="12.0"/>
+  <project dest-branch="12.0_modules_sale_order_line" groups="addons" name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="5d8d2575e6a2c8ad0e3315abd0585651f73b80fd" upstream="12.0_modules_sale_order_line"/>
+  <project dest-branch="12.0_dev" groups="addons" name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="38c04c8f7b7fe897d166ded74dda9d8d76f7f4c4" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" revision="2bfb2b2f64bda15fb5c7f8f4d528aa1aadc4998b" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" revision="77a1ee79912d381e06c8bd96f1034574b460881d" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" revision="786a26c58f789ed63e6380d5e550cf300a5ae1a4" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="server-env.git" path="addons/OCA_server-env" remote="OCA" revision="11d6745d4156636dd12d134a9b3f8053cb24717b" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" revision="cca5dffd0dec68e1aa4209a8747d4381a97efa89" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="server-ux.git" path="addons/OCA_server-ux" remote="OCA" revision="765439a6af66be5ee2427a2775812d44a345a235" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="social.git" path="addons/OCA_social" remote="OCA" revision="8bd98212b8d04aa3de82e9f51063b9d185ac0f1c" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" revision="1b99507da7815d1dd2e030a3a1d28285ea7ecf76" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="storage.git" path="addons/OCA_storage" remote="OCA" revision="77bac72af7f4aa1c6248378e9cbb5ebcdd52f994" upstream="12.0"/>
+  <project dest-branch="12.0_support_project_agile_timesheet" groups="addons" name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" revision="a8630243c1c06c66579f5d6fff6ad71e249a0f80" upstream="12.0_support_project_agile_timesheet"/>
+  <project dest-branch="12.0" groups="addons" name="vertical-association.git" path="addons/OCA_vertical-association" remote="OCA" revision="467f3d5ed737fa65b4f7781013fa48e9c328cd61" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="vertical-hotel.git" path="addons/OCA_vertical-hotel" remote="OCA" revision="f958379e1492870431a92543089db214b62ab1f5" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="vertical-isp.git" path="addons/OCA_vertical-isp" remote="OCA" revision="28ad39aae5eb5cebaa46d79ce563ef760451962b" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons" name="vertical-travel.git" path="addons/OCA_vertical-travel" remote="OCA" revision="3572c0689eb67a757681070ac913c72cea50645f" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="web.git" path="addons/OCA_web" remote="OCA" revision="2c57ad38475f030dbd00c01d00c6a540d5ab4d7d" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons" name="website-addons.git" path="addons/itpp-labs_website-addons" remote="itpp-labs" revision="ed7d3b19435d7522afccf17edd9261ab215b4851" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="website-cms.git" path="addons/OCA_website-cms" remote="OCA" revision="e67368d15de06e795247bd54874181bfd7324a44" upstream="12.0"/>
+  <project dest-branch="12.0_dev" groups="addons" name="website.git" path="addons/OCA_website" remote="OCA" revision="900919e8fbe155ebf58273870f0fb596f317f6c4" upstream="12.0_dev"/>
+  <project dest-branch="12.0" groups="addons" name="wms.git" path="addons/OCA_wms" remote="OCA" revision="04600a6f653b7c7e8b597f452cceb4172013c73f" upstream="12.0"/>
 </manifest>

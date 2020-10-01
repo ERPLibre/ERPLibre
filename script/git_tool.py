@@ -1,4 +1,4 @@
-#!./venv/bin/python
+#!./.venv/bin/python
 # © 2020 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 import os
@@ -311,7 +311,7 @@ class GitTool:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
             dct_manifest = xml_dict.get("manifest")
-        default_remote = dct_manifest.get("default").get("@remote")
+        default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
         lst_project = dct_manifest.get("project")
         dct_remote = {a.get("@name"): a for a in lst_remote}
@@ -351,6 +351,7 @@ class GitTool:
             webbrowser.open_new_tab(url)
 
     def generate_install_locally(self, repo_path="./"):
+        filename_locally = f"{repo_path}script/install_locally.sh"
         lst_repo = self.get_repo_info(repo_path=repo_path)
         lst_result = []
         for repo in lst_repo:
@@ -361,14 +362,15 @@ class GitTool:
             str_repo = f'    printf "${{EL_HOME}}/{repo.get("path")}," >> ' \
                        f'${{EL_CONFIG_FILE}}\n'
             lst_result.append(str_repo)
-        with open(f"{repo_path}script/install_locally.sh") as file:
+        with open(filename_locally) as file:
             all_lines = file.readlines()
         # search place to add/replace lines
         index = 0
         find_index = False
         index_find = 0
         for line in all_lines:
-            if not find_index and "if [[ $EL_MINIMAL_ADDONS = \"False\" ]]; then\n" == line:
+            if not find_index and \
+                    "if [[ ${EL_MINIMAL_ADDONS} = \"False\" ]]; then\n" == line:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
@@ -381,8 +383,12 @@ class GitTool:
                 break
             index += 1
 
+        if not find_index:
+            print(f"ERROR cannot regenerate file {filename_locally}, "
+                  f"did you change the header?")
+
         # create file
-        with open(f"{repo_path}script/install_locally.sh", mode="w") as file:
+        with open(filename_locally, mode="w") as file:
             file.writelines(all_lines)
 
     @staticmethod
@@ -390,14 +396,17 @@ class GitTool:
         return source_str[:pos] + insert_str + source_str[pos:]
 
     def generate_repo_manifest(self, lst_repo: List[Struct] = [], output: str = "",
-                               dct_remote={}, dct_project={}, default_remote=None):
+                               dct_remote={}, dct_project={}, default_remote=None,
+                               keep_original=False):
         """
         Generate repo manifest
         :param lst_repo: optional, update manifest with list_repo
         :param output: filename to write output
         :param dct_remote: dict of remote information
         :param dct_project: dict of project information
-        :param default_remote: name of default remote, optional
+        :param default_remote: dict of default remote
+        :param keep_original: if True, can manage multiple organization with same name,
+           but with different fetch url
         :return:
         """
         if not output:
@@ -449,10 +458,15 @@ class GitTool:
                     ('@sync-c', "true"),
                 ]))
             else:
+                if keep_original and repo.project_name not in dct_project.keys():
+                    # Exception, create a new remote to keep tracking on original
+                    original_organization = f"{repo.original_organization}_origin"
+                else:
+                    original_organization = repo.original_organization
                 # Add remote, only unique remote
-                if repo.original_organization not in lst_remote_name:
+                if original_organization not in lst_remote_name:
                     lst_remote.append(OrderedDict(
-                        [('@name', repo.original_organization),
+                        [('@name', original_organization),
                          ('@fetch', repo.url_https_organization + "/")]
                     ))
                     lst_remote_name.append(repo.original_organization)
@@ -462,7 +476,7 @@ class GitTool:
                     lst_project_info = [
                         ('@name', repo.project_name),
                         ('@path', repo.path),
-                        ('@remote', repo.original_organization),
+                        ('@remote', original_organization),
                     ]
                     if repo.revision:
                         lst_project_info.append(('@revision', repo.revision))
@@ -476,7 +490,7 @@ class GitTool:
 
         if default_remote and not lst_default:
             lst_default.append(OrderedDict([
-                ('@remote', default_remote),
+                ('@remote', default_remote.get("@remote")),
                 ('@revision', DEFAULT_BRANCH),
                 ('@sync-j', "4"),
                 ('@sync-c', "true"),
@@ -759,6 +773,30 @@ class GitTool:
         retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
             upstream_remote.fetch)()
         print('Remote "%s" fetched' % repo_info.organization)
+
+    def get_pull_request_repo(self, upstream_url: str, github_token: str,
+                              organization_name: str = ""):
+        """
+
+        :param upstream_url:
+        :param github_token:
+        :param organization_name:
+        :return: List of url if success, else False
+        """
+        gh = GitHub(token=github_token)
+        parsed_url = parse(upstream_url)
+
+        # Fork the repo
+        status, user = gh.user.get()
+        user_name = user['login'] if not organization_name else organization_name
+        status, lst_pull = gh.repos[user_name][parsed_url.repo].pulls.get()
+        if type(lst_pull) is dict:
+            print(f"For url {upstream_url}, got {lst_pull.get('message')}")
+            return False
+        else:
+            for pull in lst_pull:
+                print(pull.get("html_url"))
+        return lst_pull
 
     def fork_repo(self, upstream_url: str, github_token: str,
                   organization_name: str = ""):

@@ -1,6 +1,34 @@
+# For script
 giturlparse
 agithub
 gitpython
 PyYAML
 retrying
 xmltodict
+openupgradelib
+
+# For OSX
+cython
+
+# For Odoo
+wheel
+phonenumbers
+
+# For OCA
+factur-x
+
+# For testing
+websocket-client
+python-stdnum
+python-u2flib_server
+python-dateutil
+python-csv
+python-chess
+python-git
+voicent-python
+python-swiftclient
+python-keystoneclient
+
+# For updating poetry
+toml
+iscompatible

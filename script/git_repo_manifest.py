@@ -1,4 +1,4 @@
-#!./venv/bin/python
+#!./.venv/bin/python
 import os
 import sys
 import argparse
@@ -30,6 +30,8 @@ def get_config():
                         help="Path of repo to change remote, including submodule.")
     parser.add_argument('--clear', action="store_true",
                         help="Create a new manifest and clear old configuration.")
+    parser.add_argument('-m', '--manifest', default="manifest/default.dev.xml",
+                        help="The manifest file path to generate.")
     args = parser.parse_args()
     return args
 
@@ -53,8 +55,9 @@ def main():
         dct_remote = {}
         dct_project = {}
     git_tool.generate_repo_manifest(lst_repo_organization,
-                                    output=f"{config.dir}manifest/default.dev.xml",
-                                    dct_remote=dct_remote, dct_project=dct_project)
+                                    output=f"{config.dir}{config.manifest}",
+                                    dct_remote=dct_remote, dct_project=dct_project,
+                                    keep_original=True)
     git_tool.generate_install_locally()
 
 

@@ -1,0 +1,147 @@
+FROM  debian:buster-slim
+MAINTAINER TechnoLibre <docker@technolibre.ca>
+
+SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+# Generate locale C.UTF-8 for postgres and general locale data
+ENV LANG C.UTF-8
+
+ENV LANG="C.UTF-8" \
+    LC_ALL="C.UTF-8" \
+    PATH="/opt/pyenv/shims:/opt/pyenv/bin:$PATH" \
+    PYENV_ROOT="/opt/pyenv" \
+    PYENV_SHELL="bash"
+
+ENV ODOO_PREFIX /ERPLibre
+ENV ODOO_EXEC_BIN $ODOO_PREFIX/odoo/odoo-bin
+
+# Install some deps, lessc and less-plugin-clean-css, and wkhtmltopdf
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    dirmngr \
+    fonts-noto-cjk \
+    gnupg \
+    libssl-dev \
+    node-less \
+    npm \
+    python3-num2words \
+    python3-pip \
+    python3-phonenumbers \
+    python3-pyldap \
+    python3-qrcode \
+    python3-renderpm \
+    python3-setuptools \
+    python3-slugify \
+    python3-vobject \
+    python3-watchdog \
+    python3-xlrd \
+    python3-xlwt \
+    python3-babel \
+    python3-psycopg2 \
+    xz-utils \
+    git \
+    wget \
+    libxslt-dev \
+    libzip-dev \
+    libldap2-dev \
+    libsasl2-dev \
+    node-less \
+    gdebi-core \
+    libffi-dev \
+    iproute2 \
+    libmariadbd-dev \
+    inetutils-ping \
+    build-essential \
+    libsqlite3-dev \
+    sqlite3 \
+    bzip2 \
+    libbz2-dev \
+    zlib1g-dev \
+    libssl-dev \
+    openssl \
+    libgdbm-dev \
+    libgdbm-compat-dev \
+    liblzma-dev \
+    libreadline-dev \
+    libncursesw5-dev \
+    libffi-dev \
+    uuid-dev \
+    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.stretch_amd64.deb \
+    && echo '7e35a63f9db14f93ec7feeb0fce76b30c08f2057 wkhtmltox.deb' | sha1sum -c - \
+    && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
+    && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
+
+# Install latest postgresql-client
+RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
+	&& GNUPGHOME="$(mktemp -d)" \
+	&& export GNUPGHOME \
+	&& repokey='B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8' \
+	&& gpg --batch --keyserver keyserver.ubuntu.com --recv-keys "${repokey}" \
+	&& gpg --batch --armor --export "${repokey}" > /etc/apt/trusted.gpg.d/pgdg.gpg.asc \
+	&& gpgconf --kill all \
+	&& rm -rf "$GNUPGHOME" \
+	&& apt-get update  \
+	&& apt-get install --no-install-recommends -y postgresql-client-12 libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python with pyenv
+# Reference https://github.com/bopen/docker-ubuntu-pyenv
+COPY pyenv-version.txt python-versions.txt /
+
+RUN git clone -b `cat /pyenv-version.txt` --single-branch --depth 1 https://github.com/pyenv/pyenv.git $PYENV_ROOT \
+    && for version in `cat /python-versions.txt`; do pyenv install $version; done \
+    && pyenv global `cat /python-versions.txt` \
+    && find $PYENV_ROOT/versions -type d '(' -name '__pycache__' -o -name 'test' -o -name 'tests' ')' -exec rm -rf '{}' + \
+    && find $PYENV_ROOT/versions -type f '(' -name '*.pyo' -o -name '*.exe' ')' -exec rm -f '{}' + \
+    && rm -rf /tmp/* \
+    && python --version \
+    && python3 --version
+
+# Install git-repo
+RUN cd ; mkdir -p .bin/ && \
+    git config --global color.ui false   && \
+    git config --global user.email "foo@bar.io" && \
+    git config --global user.name "Foo Bar" && \
+    curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/bin/repo && \
+    chmod +x /usr/bin/repo  && sed -i '1 s/python$/python3/' /usr/bin/repo
+
+RUN groupadd --gid 101  --force odoo && \
+        useradd --non-unique --create-home --uid 101 --gid 101 odoo
+
+# TODO delete poetry installation
+# Install Poetry
+RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+#curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
+
+# Copy entrypoint script and Odoo configuration file
+COPY ./entrypoint.sh /
+RUN  chmod +x /entrypoint.sh
+
+# Set the default config file
+ENV ODOO_RC /etc/odoo/odoo.conf
+COPY ./odoo.conf $ODOO_RC
+RUN chown odoo $ODOO_RC
+
+RUN mkdir $ODOO_PREFIX && \
+    chown odoo $ODOO_PREFIX && \
+    chmod 1777 $ODOO_PREFIX
+
+# Mount /var/lib/odoo to allow restoring filestore
+RUN chown odoo $ODOO_RC
+
+# Expose Odoo services
+EXPOSE 8069 8071 8072
+
+#RUN mkdir -p /var/lib/odoo && \
+#    chown odoo /var/lib/odoo && \
+#    chmod 1777 /var/lib/odoo
+
+# VOLUME /var/lib/odoo
+
+# Set default user when running the container
+USER odoo
+
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["odoo"]

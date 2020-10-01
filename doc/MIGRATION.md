@@ -1,10 +1,10 @@
 # ERPLibre
 
-## Migration procedure production
+## Migration procedure in production
 
 TODO
 
-## Migration procedure dev
+## Migration procedure in dev
 
 Example:
 

@@ -30,8 +30,8 @@ User=${EL_USER}
 Group=${EL_USER}
 Restart=always
 RestartSec=5
-PIDFile=${EL_HOME_ERPLIBRE}/venv/service.pid
-ExecStart=${EL_HOME_ERPLIBRE}/venv/run.sh
+PIDFile=${EL_HOME_ERPLIBRE}/.venv/service.pid
+ExecStart=${EL_HOME_ERPLIBRE}/.venv/run.sh
 StandardOutput=journal+console
 
 [Install]
@@ -51,14 +51,14 @@ sudo su ${EL_USER} -c "sudo rm -f /tmp/${EL_USER}run.sh"
 cat <<EOF > /tmp/${EL_USER}run.sh
 #!/usr/bin/env bash
 cd ${EL_HOME_ERPLIBRE}
-source ./venv/bin/activate
+source ./.venv/bin/activate
 python3 ${EL_HOME_ERPLIBRE}/odoo/odoo-bin -c ${EL_HOME_ERPLIBRE}/config.conf --limit-time-real 99999 --limit-time-cpu 99999 $@
 EOF
 
 echo -e "* Security Run File"
-sudo cp /tmp/${EL_USER}run.sh ${EL_HOME_ERPLIBRE}/venv/run.sh
-sudo chmod 755 ${EL_HOME_ERPLIBRE}/venv/run.sh
-sudo chown ${EL_USER}: ${EL_HOME_ERPLIBRE}/venv/run.sh
+sudo cp /tmp/${EL_USER}run.sh ${EL_HOME_ERPLIBRE}/.venv/run.sh
+sudo chmod 755 ${EL_HOME_ERPLIBRE}/.venv/run.sh
+sudo chown ${EL_USER}: ${EL_HOME_ERPLIBRE}/.venv/run.sh
 
 echo "-----------------------------------------------------------"
 echo "Done! The ERPLibre server is up and running. Specifications:"
