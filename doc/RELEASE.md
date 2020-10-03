@@ -30,6 +30,9 @@ git push --tags
 ./.venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
 ```
 
+## Push docker
+[Build and push guide](../docker/README.md) at section `# Update docker`.
+
 # TIPS
 ## Compare repo differences with another ERPLibre project
 To generate a list of differences between repo git commit 
