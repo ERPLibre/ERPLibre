@@ -40,13 +40,15 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev node-less libpng12-0 gdebi-core libffi-dev libbz2-dev -y
+sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev libpng12-0 gdebi-core libffi-dev libbz2-dev -y
 sudo apt-get install libmariadbd-dev -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
-sudo npm install -g lessc
+sudo npm install -g less
+
+sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 if [ ${EL_INSTALL_NGINX} = "True" ]; then
   echo -e "\n---- Installing nginx ----"

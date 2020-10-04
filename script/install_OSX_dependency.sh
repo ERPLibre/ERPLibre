@@ -34,7 +34,7 @@ eval "$(docker-machine env default)"
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
-sudo npm install -g lessc
+sudo npm install -g less
 yes n|pyenv install 3.7.7
 pyenv local 3.7.7
 
