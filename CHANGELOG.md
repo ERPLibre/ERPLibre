@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Developer, test, migration and user documentation
+
+### Changed
+- Travis CI
 
 ## [1.1.0] - 2020-09-30
 ### Added
