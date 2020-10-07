@@ -20,6 +20,15 @@ cd ERPLibre
 ```
 
 ## Develop in Odoo repository
+Odoo repository has partial git history for fastest deployment. You need to restore the history to be able to push.
+
+## Solution 1
+```bash
+cd odoo
+git fetch --unshallow odoo
+```
+
+### Solution 2
 You need to remove `clone-depth="10"` from `./manifest/default.dev.xml` in order to be able to commit and push.
 Make a temporary commit and regenerate with `./script/install_locally_dev.sh`
 
