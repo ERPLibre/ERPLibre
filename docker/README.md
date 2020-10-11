@@ -77,9 +77,15 @@ docker stats erplibre_ERPLibre_1
 
 ### Cleaning
 
+Delete all system
+```bash
+docker system prune -a
+```
+
 Delete docker image
 ```bash
 docker image prune
+docker rmi $(docker images -q)
 ```
 
 Delete volumes
