@@ -85,7 +85,7 @@ RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/
     && rm -rf /var/lib/apt/lists/*
 
 # Install npm dependencies
-RUN sudo npm install -g rtlcss less \
+RUN npm install -g rtlcss less \
     && ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 # Install python with pyenv
@@ -114,7 +114,7 @@ RUN groupadd --gid 101  --force odoo && \
 
 # TODO delete poetry installation
 # Install Poetry
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
+RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python - -y --preview --version 1.0.10
 #curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
 
 # Copy entrypoint script and Odoo configuration file
