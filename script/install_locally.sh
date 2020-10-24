@@ -179,6 +179,7 @@ PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 POETRY_PATH=~/.poetry
 VENV_PATH=./.venv
 VENV_REPO_PATH=${VENV_PATH}/repo
+POETRY_VERSION=1.0.10
 
 if [[ ! -d "${PYENV_PATH}" ]]; then
     echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
@@ -201,7 +202,7 @@ if [[ ! -d "${POETRY_PATH}" ]]; then
     echo -e "\n---- Installing poetry for reliable python package ----"
 #     curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
     curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
-    python get-poetry.py -y --preview
+    python get-poetry.py -y --preview --version ${POETRY_VERSION}
 fi
 
 if [[ ! -d ${VENV_PATH} ]]; then
