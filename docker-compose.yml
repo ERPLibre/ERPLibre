@@ -11,6 +11,9 @@ services:
         PASSWORD: mysecretpassword
         USER: odoo
         POSTGRES_DB: postgres
+        STOP_BEFORE_INIT: "False"
+        DB_NAME: ""
+        UPDATE_ALL_DB: "False"
       depends_on:
         - db
       command: odoo
