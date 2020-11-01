@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 . ./env_var.sh
 
+ARGS=""
+
+for arg in "$@"
+do
+    if [ "$arg" == "--no-cache" ]
+    then
+        ARGS="${ARGS} --no-cache"
+    fi
+done
+
 # Rewrite docker-compose
 ./script/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD}
 
 cd docker
 
-ARGS=--build-arg=WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
-# Clear cache
-# ARGS="${ARGS} --no-cache"
+ARGS="${ARGS} --build-arg=WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg=WORKING_HASH=$(git rev-parse --verify HEAD)"
 
 set -e
 

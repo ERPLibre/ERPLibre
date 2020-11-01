@@ -9,7 +9,7 @@
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
 DAEMON_PID=$!
 
-./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ${EL_MANIFEST_PROD}
+./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --verify HEAD) -m ${EL_MANIFEST_PROD}
 ./.venv/repo sync -v -m ${EL_MANIFEST_PROD}
 
 kill ${DAEMON_PID}
