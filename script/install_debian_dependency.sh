@@ -7,11 +7,18 @@ EL_USER=${USER}
 
 ##
 ###  WKHTMLTOPDF download links
-## === Ubuntu Trusty x64 & x32 === (for other distributions please replace these two links,
+## === Ubuntu Focal x64 === (for other distributions please replace these two links,
 ## in order to have correct version of wkhtmltopdf installed, for a danger note refer to
 ## https://github.com/odoo/odoo/wiki/Wkhtmltopdf ):
-WKHTMLTOX_X64=https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.trusty_amd64.deb
-WKHTMLTOX_X32=https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.5/wkhtmltox_0.12.5-1.trusty_i386.deb
+# Ubuntu 20.04
+UBUNTU_VERSION=$(lsb_release -rs)
+if [ "20.04" == "${UBUNTU_VERSION}" ]; then
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
+else
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb
+fi
 
 #--------------------------------------------------
 # Update Server
@@ -63,12 +70,7 @@ if [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   INSTALLED=$(dpkg -s wkhtmltox|grep installed)
   if [ "" == "${INSTALLED}" ]; then
       echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
-      #pick up correct one from x64 & x32 versions:
-      if [ "`getconf LONG_BIT`" == "64" ];then
-          _url=${WKHTMLTOX_X64}
-      else
-          _url=${WKHTMLTOX_X32}
-      fi
+      _url=${WKHTMLTOX_X64}
       sudo wget ${_url}
       sudo gdebi --n `basename ${_url}`
       sudo ln -s /usr/local/bin/wkhtmltopdf /usr/bin
