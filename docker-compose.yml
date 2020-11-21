@@ -31,7 +31,7 @@ services:
         - erplibre-db-data:/var/lib/postgresql/data/pgdata
       restart: always
 
-# We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
+# We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help
 # - docker-compose down --help
 volumes:
