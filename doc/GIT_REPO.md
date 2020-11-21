@@ -10,13 +10,13 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
 
 ## prod
 ```bash
-./.venv/repo init -u http://git.erplibre.ca/ERPLibre -b master
+./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b master
 ./.venv/repo sync
 ```
 
 ## dev
 ```bash
-./.venv/repo init -u http://git.erplibre.ca/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
+./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
 ./.venv/repo sync
 ```
 

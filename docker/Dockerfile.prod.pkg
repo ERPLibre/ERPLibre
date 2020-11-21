@@ -1,6 +1,6 @@
 FROM technolibre/erplibre-base:1.1.0
 
-ENV REPO_MANIFEST_URL http://git.erplibre.ca/ERPLibre
+ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
 ENV BRANCH_ERPLIBRE $WORKING_BRANCH

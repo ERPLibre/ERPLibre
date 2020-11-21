@@ -4,7 +4,7 @@ Select a guide to install your environment!
 ## Easy way to run locally
 Clone the project
 ```bash
-git clone http://git.erplibre.ca/ERPLibre.git
+git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 ```
 Support Ubuntu 18.04 and OSX

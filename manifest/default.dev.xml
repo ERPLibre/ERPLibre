@@ -79,7 +79,7 @@
   <project name="margin-analysis.git" path="addons/OCA_margin-analysis" remote="OCA" revision="12.0_sale_margin_editor" groups="addons"/>
   <project name="medical-fhir.git" path="addons/tegin_medical-fhir" remote="tegin" groups="addons"/>
   <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" groups="addons"/>
-  <project name="muk_base.git" path="addons/muk-it_muk_base" remote="muk-it" groups="addons"/>
+  <project name="muk_base.git" path="addons/muk-it_muk_base" remote="muk-it" revision="12.0_dev" groups="addons"/>
   <project name="muk_dms.git" path="addons/muk-it_muk_dms" remote="muk-it" groups="addons"/>
   <project name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" groups="addons"/>
   <project name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" groups="addons"/>
