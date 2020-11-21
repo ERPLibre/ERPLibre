@@ -54,11 +54,6 @@ Run:
 ./run.sh --stop-after-init -i user_test,disable_mail_server --dev all -d DATABASE
 ```
 
-# TODO
-```bash
-./script/git_change_remote.py
-```
-
 ## Change git url https to git
 This will update all urls in git format:
 ```bash
@@ -102,7 +97,7 @@ To regenerate only manifest.xml.
 ./script/fork_project_ERPLibre.py --skip_fork
 ```
 
-Check if  manifest contains "auto_install" and change the value to False.
+Check if manifest contains "auto_install" and change the value to False.
 ```bash
 ./script/repo_remove_auto_install.py
 ```

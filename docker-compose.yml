@@ -21,6 +21,7 @@ services:
         # See the volume section at the end of the file
         - erplibre_data_dir:/home/odoo/.local/share/Odoo/
         - erplibre_conf:/etc/odoo
+      restart: always
 
     db:
       image: postgres:12.3
@@ -31,8 +32,9 @@ services:
         PGDATA: /var/lib/postgresql/data/pgdata
       volumes:
         - erplibre-db-data:/var/lib/postgresql/data/pgdata
+      restart: always
 
-# We configure volume without specific destination to let docket manage it. To configure it through docker use (read related documentation before continuing) :
+# We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help
 # - docker-compose down --help
 volumes:
