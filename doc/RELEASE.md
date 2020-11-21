@@ -31,7 +31,14 @@ git push --tags
 ```
 
 ## Push docker
-[Build and push guide](../docker/README.md) at section `# Update docker`.
+When building your docker with script
+> ./script/docker_build.sh --release
+
+List your docker version
+> docker image
+
+You need to push your docker image and update your tag, like 1.0.1:
+> docker push technolibre/erplibre:VERSION
 
 # TIPS
 ## Compare repo differences with another ERPLibre project
