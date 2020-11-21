@@ -4,7 +4,7 @@
 
 ### 1. Clone the project:
 ```bash
-git clone http://git.erplibre.ca/ERPLibre.git
+git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 ```
 
