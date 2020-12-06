@@ -43,6 +43,8 @@ RUN cd $ODOO_PREFIX && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
 
+RUN cp /etc/odoo/odoo.conf /odoo.conf
+
 #RUN mkdir '/home/odoo/.local'
 #RUN chown -R odoo '/home/odoo/.local'
 
