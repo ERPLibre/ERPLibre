@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ERPLIBRE_VERSION="1.1.0"
+ERPLIBRE_VERSION="1.1.1"
 
 EL_USER="erplibre"
 EL_HOME="/${EL_USER}"
@@ -19,7 +19,7 @@ EL_MINIMAL_ADDONS="False"
 # Set this to True if you want to install Nginx!
 EL_INSTALL_NGINX="True"
 # Set the website name
-EL_WEBSITE_NAME="_"
+EL_WEBSITE_NAME=""
 EL_GITHUB_TOKEN=""
 EL_MANIFEST_PROD="./default.xml"
 EL_MANIFEST_DEV="./manifest/default.dev.xml"
