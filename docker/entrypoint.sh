@@ -42,6 +42,11 @@ then
     exit 1
 fi
 
+# Fix volumes of odoo.conf if not exist
+if [ ! -f "/etc/odoo/odoo.conf" ]; then
+    cp /odoo.conf /etc/odoo/odoo.conf
+fi
+
 # set the postgres database host, port, user and password according to the environment
 # and pass them as arguments to the odoo process if not present in the config file
 : ${HOST:=${DB_PORT_5432_TCP_ADDR:='db'}}
