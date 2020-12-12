@@ -114,3 +114,9 @@ python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```bash
 /script/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
+
+# Commit
+Use this commit format:
+```bash
+git commit -am "[#ticket] subject: short sentence"
+```
