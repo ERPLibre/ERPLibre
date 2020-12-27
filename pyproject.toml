@@ -149,6 +149,7 @@ xmltodict = "^0.12.0"
 zeep = "^3.4.0"
 zxcvbn = "^4.4.28"
 pymysql = "^0.10.1"
+code-writer = "^1.1.1"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^0.57.0"
