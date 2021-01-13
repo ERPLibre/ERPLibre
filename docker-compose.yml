@@ -24,7 +24,7 @@ services:
       restart: always
 
     db:
-      image: postgres:12.3
+      image: mdillon/postgis:11-alpine
       environment:
         POSTGRES_PASSWORD: mysecretpassword
         POSTGRES_USER: odoo
