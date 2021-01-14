@@ -32,3 +32,4 @@ python-keystoneclient
 # For updating poetry
 toml
 iscompatible
+pandas==1.2.0
