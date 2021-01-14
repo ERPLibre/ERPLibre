@@ -30,6 +30,26 @@ else
 endif
 
 ###################
+#  Configuration  #
+###################
+# generate new config.conf
+.PHONY: config_install
+config_install:
+	./script/install_locally.sh
+
+# generate config all repo
+.PHONY: config_gen_all
+config_gen_all:
+	./script/git_repo_update_group.py
+	./script/install_locally.sh
+
+# generate config repo code_generator
+.PHONY: config_gen_code_generator
+config_gen_code_generator:
+	./script/git_repo_update_group.py  --group base,code_generator
+	./script/install_locally.sh
+
+###################
 #  Documentation  #
 ###################
 # documentation all

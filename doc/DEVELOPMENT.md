@@ -102,6 +102,19 @@ Check if manifest contains "auto_install" and change the value to False.
 ./script/repo_remove_auto_install.py
 ```
 
+# Execution
+## Config file
+You can limit your addons in ERPlibre config file depending on a group of your actual manifest.
+```bash
+./script/git_repo_update_group.py --group base,code_generator
+./script/install_locally.sh
+```
+Or go back to normal
+```bash
+./script/git_repo_update_group.py
+./script/install_locally.sh
+```
+
 # Coding
 ## Create module scaffold
 ```bash
