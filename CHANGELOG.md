@@ -7,8 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Code generator for Odoo module
+- Support map geoengine
+
 ### Changed
 
+- Downgrade postgresql to 11 to support postgis
 - Travis CI
 
 ## [1.1.1] - 2020-12-11
