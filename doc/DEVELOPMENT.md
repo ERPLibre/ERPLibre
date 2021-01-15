@@ -102,6 +102,12 @@ Check if manifest contains "auto_install" and change the value to False.
 ./script/repo_remove_auto_install.py
 ```
 
+## Filter repo by group
+Only keep repo tagged by group 'base' and 'code_generator'
+```bash
+./script/update_manifest_local_dev_code_generator.sh
+```
+
 # Execution
 ## Config file
 You can limit your addons in ERPlibre config file depending on a group of your actual manifest.
