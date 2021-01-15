@@ -29,6 +29,24 @@ else
 	endif
 endif
 
+##############
+#  Git repo  #
+##############
+# clear all repo DANGER
+.PHONY: repo_clear_all
+repo_clear_all:
+	./script/clean_repo_manifest.sh
+
+# change all repo to ssh on all remote
+.PHONY: repo_use_all_ssh
+repo_use_all_ssh:
+	./script/git_change_remote_https_to_git.py
+
+# change all repo to https on all remote
+.PHONY: repo_use_all_https
+repo_use_all_https:
+	./script/git_change_remote_https_to_git.py --git_to_https
+
 ###################
 #  Configuration  #
 ###################
