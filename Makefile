@@ -29,6 +29,19 @@ else
 	endif
 endif
 
+############
+#  docker  #
+############
+# build docker
+.PHONY: docker_build
+docker_build:
+	./script/docker_build.sh
+
+# build docker release
+.PHONY: docker_build_release
+docker_build_release:
+	./script/docker_build.sh --release
+
 ##############
 #  Git repo  #
 ##############
