@@ -42,6 +42,11 @@ docker_build:
 docker_build_release:
 	./script/docker_build.sh --release
 
+# docker clean all
+.PHONY: docker_clean_all
+docker_clean_all:
+	docker system prune -a --volumes
+
 ##############
 #  Git repo  #
 ##############
