@@ -133,10 +133,10 @@ class GitTool:
         return d
 
     def get_repo_info(self, repo_path: str = "./",
-                      add_root: bool = False, is_manifest: bool = True):
+                      add_root: bool = False, is_manifest: bool = True, filter_group=None):
         if is_manifest:
             return self.get_repo_info_manifest_xml(repo_path=repo_path,
-                                                   add_root=add_root)
+                                                   add_root=add_root, filter_group=filter_group)
         return self.get_repo_info_submodule(repo_path=repo_path, add_root=add_root)
 
     def get_repo_info_submodule(self, repo_path: str = "./",
@@ -221,11 +221,12 @@ class GitTool:
         return lst_repo
 
     def get_repo_info_manifest_xml(self, repo_path: str = "./",
-                                   add_root: bool = False) -> list:
+                                   add_root: bool = False, filter_group=None) -> list:
         """
         Get information about manifest of Repo from repo_path
         :param repo_path: path of repo to get information about submodule
         :param add_root: add information about root repository
+        :param filter_group: filter manifest by group if exist, separate by comma for multiple group
         :return:
         [{
             "url": original_url,
@@ -236,6 +237,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
+        lst_filter_group = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
         filename = f"{repo_path}{manifest_file}"
         lst_repo = []
@@ -252,6 +254,17 @@ class GitTool:
             lst_project = [lst_project]
         dct_remote = {a.get("@name"): a.get("@fetch") for a in lst_remote}
         for project in lst_project:
+            groups = project.get("@groups")
+            lst_group = groups.split(',') if groups else []
+            # Continue if lst_filter exist and group in filter
+            for group in lst_group:
+                if lst_filter_group and group not in lst_filter_group:
+                    continue
+                else:
+                    break
+            else:
+                continue
+
             # get name and remote .git
             path = project.get("@path")
             name = path
@@ -268,6 +281,7 @@ class GitTool:
                 "path": path,
                 "relative_path": f"{repo_path}/{path}",
                 "name": name,
+                "group": group,
             }
             lst_repo.append(data)
 
@@ -350,9 +364,9 @@ class GitTool:
         if url:
             webbrowser.open_new_tab(url)
 
-    def generate_install_locally(self, repo_path="./"):
+    def generate_install_locally(self, repo_path="./", filter_group=None):
         filename_locally = f"{repo_path}script/install_locally.sh"
-        lst_repo = self.get_repo_info(repo_path=repo_path)
+        lst_repo = self.get_repo_info(repo_path=repo_path, filter_group=filter_group)
         lst_result = []
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
