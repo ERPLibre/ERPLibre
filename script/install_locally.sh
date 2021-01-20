@@ -159,7 +159,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
 fi
 printf "\n" >> ${EL_CONFIG_FILE}
 
-printf "workers = 2\n" >> ${EL_CONFIG_FILE}
+printf "workers = 0\n" >> ${EL_CONFIG_FILE}
 printf "max_cron_threads = 2\n" >> ${EL_CONFIG_FILE}
 
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
