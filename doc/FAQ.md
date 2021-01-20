@@ -1,4 +1,10 @@
 # FAQ
+## Networking
+Show all open port
+```bash
+sudo lsof -i -P -n | grep LISTEN
+```
+
 ## git-repo
 ### error.GitError fatal bad revision
 Example:
