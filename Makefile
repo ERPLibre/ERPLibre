@@ -29,6 +29,71 @@ else
 	endif
 endif
 
+#########
+#  RUN  #
+#########
+.PHONY: run
+run:
+	echo http://localhost:8069
+	echo http://localhost:8069/web/database/manager
+	./run.sh
+
+.PHONY: run_test
+run_test:
+	echo http://localhost:8069
+	./run.sh --database test
+
+.PHONY: run_code_generator
+run_code_generator:
+	echo http://localhost:8069
+	./run.sh --database code_generator
+
+#############
+#  INSTALL  #
+#############
+.PHONY: install_dev
+install_dev:
+	./script/install_locally_dev.sh
+
+#####################
+#  DB installation  #
+#####################
+.PHONY: db_list
+db_list:
+	./.venv/bin/python3 ./odoo/odoo-bin db --list
+
+.PHONY: db_list_incompatible_database
+db_list_incompatible_database:
+	./.venv/bin/python3 ./odoo/odoo-bin db --list_incompatible_db
+
+.PHONY: db_version
+db_version:
+	./.venv/bin/python3 ./odoo/odoo-bin db --version
+
+.PHONY: db_drop_db_test
+db_drop_db_test:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test
+
+.PHONY: db_drop_db_code_generator
+db_drop_db_code_generator:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
+
+.PHONY: db_restore_erplibre_base_db_test
+db_restore_erplibre_base_db_test:
+	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_base --database test
+
+.PHONY: db_restore_erplibre_website_db_test
+db_restore_erplibre_website_db_test:
+	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_website --database test
+
+.PHONY: db_restore_erplibre_website_chat_crm_db_test
+db_restore_erplibre_website_chat_crm_db_test:
+	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_website_chat_crm --database test
+
+.PHONY: db_restore_erplibre_base_db_code_generator
+db_restore_erplibre_base_db_code_generator:
+	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_base --database code_generator
+
 #########################
 #  Addons installation  #
 #########################
@@ -39,6 +104,19 @@ addons_install_code_generator_demo:
 .PHONY: addons_uninstall_code_generator_demo
 addons_uninstall_code_generator_demo:
 	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo
+
+.PHONY: addons_install_all_code_generator_demo
+addons_install_all_code_generator_demo:
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo -u code_generator_demo
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_export_helpdesk -u code_generator_demo_export_helpdesk
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_internal -u code_generator_demo_internal
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_portal -u code_generator_demo_portal
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_theme_website -u code_generator_demo_theme_website
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_website_leaflet -u code_generator_demo_website_leaflet
+
+.PHONY: addons_uninstall_all_code_generator_demo
+addons_uninstall_all_code_generator_demo:
+	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet
 
 ############
 #  docker  #
