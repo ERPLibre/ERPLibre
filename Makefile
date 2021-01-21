@@ -29,6 +29,35 @@ else
 	endif
 endif
 
+#########################
+#  Addons installation  #
+#########################
+.PHONY: addons_install_code_generator_demo
+addons_install_code_generator_demo:
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo -u code_generator_demo
+
+.PHONY: addons_uninstall_code_generator_demo
+addons_uninstall_code_generator_demo:
+	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo
+
+############
+#  docker  #
+############
+# build docker
+.PHONY: docker_build
+docker_build:
+	./script/docker_build.sh
+
+# build docker release
+.PHONY: docker_build_release
+docker_build_release:
+	./script/docker_build.sh --release
+
+# docker clean all
+.PHONY: docker_clean_all
+docker_clean_all:
+	docker system prune -a --volumes
+
 ##############
 #  Git repo  #
 ##############
