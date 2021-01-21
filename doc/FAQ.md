@@ -4,6 +4,14 @@ Show all open port
 ```bash
 sudo lsof -i -P -n | grep LISTEN
 ```
+or
+```bash
+sudo netstat -lpnt | grep LISTEN
+```
+or
+```bash
+sudo ss -lpnt | grep LISTEN
+```
 
 ## git-repo
 ### error.GitError fatal bad revision
