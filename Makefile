@@ -55,6 +55,19 @@ run_code_generator:
 install_dev:
 	./script/install_locally_dev.sh
 
+# Install this for the first time of dev environment
+.PHONY: install_os
+install_os:
+	./script/install_dev.sh
+
+.PHONY: install_docker_debian
+install_docker_debian:
+	./script/ install_debian_10_prod_docker.sh
+
+.PHONY: install_docker_ubuntu
+install_docker_ubuntu:
+	./script/install_ubuntu_docker.sh
+
 #####################
 #  DB installation  #
 #####################
