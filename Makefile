@@ -118,6 +118,9 @@ addons_install_code_generator_demo:
 addons_uninstall_code_generator_demo:
 	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo
 
+.PHONY: addons_reinstall_code_generator_demo
+addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addons_install_code_generator_demo
+
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
 	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo -u code_generator_demo
