@@ -54,7 +54,12 @@ def main():
     for repo in lst_repo:
         i += 1
         print(f"Nb element {i}/{total}")
-        repo_sm = Repo(repo.get("name"))
+        repo_name = repo.get("name")
+        relative_path = os.path.join(new_path, repo_name)
+        if not os.path.isdir(relative_path):
+            print(f"Ignore repo {relative_path}")
+            continue
+        repo_sm = Repo(repo_name)
         if upstream_name:
             remote_upstream_name = [a for a in repo_sm.remotes
                                     if upstream_name == a.name]
