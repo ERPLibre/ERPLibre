@@ -219,6 +219,11 @@ docker_clean_all:
 repo_clear_all:
 	./script/clean_repo_manifest.sh
 
+# configure only group code_generator
+.PHONY: repo_configure_group_code_generator
+repo_configure_group_code_generator:
+	./script/update_manifest_local_dev_code_generator.sh
+
 # change all repo to ssh on all remote
 .PHONY: repo_use_all_ssh
 repo_use_all_ssh:
