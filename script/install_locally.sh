@@ -168,8 +168,8 @@ if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "proxy_mode = True\n" >> ${EL_CONFIG_FILE}
 fi
 
-echo -e "\n---- Install Odoo with addons module ----"
-git submodule update --init
+#echo -e "\n---- Install Odoo with addons module ----"
+#git submodule update --init
 
 # Generate empty addons if missing
 if [[ ! -d "./addons/addons" ]]; then

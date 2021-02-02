@@ -55,6 +55,19 @@ run_code_generator:
 install_dev:
 	./script/install_locally_dev.sh
 
+# Install this for the first time of dev environment
+.PHONY: install_os
+install_os:
+	./script/install_dev.sh
+
+.PHONY: install_docker_debian
+install_docker_debian:
+	./script/ install_debian_10_prod_docker.sh
+
+.PHONY: install_docker_ubuntu
+install_docker_ubuntu:
+	./script/install_ubuntu_docker.sh
+
 #####################
 #  DB installation  #
 #####################
@@ -104,6 +117,9 @@ addons_install_code_generator_demo:
 .PHONY: addons_uninstall_code_generator_demo
 addons_uninstall_code_generator_demo:
 	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo
+
+.PHONY: addons_reinstall_code_generator_demo
+addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addons_install_code_generator_demo
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
