@@ -121,6 +121,40 @@ addons_uninstall_code_generator_demo:
 .PHONY: addons_reinstall_code_generator_demo
 addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addons_install_code_generator_demo
 
+.PHONY: addons_install_code_generator_demo_portal
+addons_install_code_generator_demo_portal:
+	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo_portal -u code_generator_demo_portal
+
+.PHONY: addons_uninstall_code_generator_demo_portal
+addons_uninstall_code_generator_demo_portal:
+	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo_portal
+	./run.sh --no-http --stop-after-init -d code_generator --uninstall code_generator_demo
+
+.PHONY: addons_reinstall_code_generator_demo_portal
+addons_reinstall_code_generator_demo_portal: addons_uninstall_code_generator_demo_portal addons_install_code_generator_demo_portal
+
+.PHONY: addons_install_demo_portal_on_code_generator
+addons_install_demo_portal_on_code_generator:
+	./run.sh --no-http --stop-after-init -d code_generator -i demo_portal -u demo_portal
+
+.PHONY: addons_uninstall_demo_portal_on_code_generator
+addons_uninstall_demo_portal_on_code_generator:
+	./run.sh --no-http --stop-after-init -d code_generator --uninstall demo_portal
+
+.PHONY: addons_reinstall_demo_portal_on_code_generator
+addons_reinstall_demo_portal_on_code_generator: addons_uninstall_demo_portal_on_code_generator addons_install_demo_portal_on_code_generator
+
+.PHONY: addons_install_demo_portal_on_test
+addons_install_demo_portal_on_test:
+	./run.sh --no-http --stop-after-init -d test -i demo_portal -u demo_portal
+
+.PHONY: addons_uninstall_demo_portal_on_test
+addons_uninstall_demo_portal_on_test:
+	./run.sh --no-http --stop-after-init -d test --uninstall demo_portal
+
+.PHONY: addons_reinstall_demo_portal_on_test
+addons_reinstall_demo_portal_on_test: addons_uninstall_demo_portal_on_test addons_install_demo_portal_on_test
+
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
 	./run.sh --no-http --stop-after-init -d code_generator -i code_generator_demo -u code_generator_demo
@@ -184,6 +218,11 @@ docker_clean_all:
 .PHONY: repo_clear_all
 repo_clear_all:
 	./script/clean_repo_manifest.sh
+
+# configure only group code_generator
+.PHONY: repo_configure_group_code_generator
+repo_configure_group_code_generator:
+	./script/update_manifest_local_dev_code_generator.sh
 
 # change all repo to ssh on all remote
 .PHONY: repo_use_all_ssh
