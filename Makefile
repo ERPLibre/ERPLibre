@@ -265,6 +265,15 @@ config_gen_code_generator:
 	./script/git_repo_update_group.py --group base,code_generator
 	./script/install_locally.sh
 
+##########
+#  I18n  #
+##########
+
+# i18n generation demo_portal
+.PHONY: i18n_generate_demo_portal
+i18n_generate_demo_portal:
+	./.venv/bin/python3 ./odoo/odoo-bin i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
+
 ###################
 #  Documentation  #
 ###################
