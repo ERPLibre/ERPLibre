@@ -251,7 +251,7 @@ config_gen_all:
 # generate config repo code_generator
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
-	./script/git_repo_update_group.py  --group base,code_generator
+	./script/git_repo_update_group.py --group base,code_generator
 	./script/install_locally.sh
 
 ###################
