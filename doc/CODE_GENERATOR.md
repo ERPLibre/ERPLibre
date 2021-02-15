@@ -29,14 +29,57 @@ By default, code_generator_demo generate itself, code_generator_demo.
 
 Name your module begin with `MODULE_NAME = "code_generator_template_"`
 
-The value "enable_template_code_generator_demo" at True
+The value "enable_template_code_generator_demo" at False to create a new template module, else this will recreate code_generator_demo.
+
+Example, to generate the module `code_generator_template_demo_website_snippet`, change value
+```python
+MODULE_NAME = "code_generator_template_demo_website_snippet"
+[...]
+value["enable_template_website_snippet_view"] = True
+[...]
+lst_depend = [
+    "code_generator",
+    "code_generator_website_snippet",
+]
+```
+Generate new module, this will overwrite code_generator_template_demo_website_snippet:
+```bash
+make addons_install_code_generator_demo
+```
 
 ### Generate a Code_Generator
 
-Name your module begin with `MODULE_NAME = "code_generator_template_"`
+Name your module begin with `MODULE_NAME = "code_generator_demo_"`
 
 The value "enable_template_code_generator_demo" at False
 
+Continue the example, you generated the template `code_generator_template_demo_website_snippet`, this will overwrite code_generator_demo_website_snippet:
+```bash
+./install_addon.sh code_generator code_generator_template_demo_website_snippet
+```
+
 ## Create your first Module
 
-TODO
+Continue example of code_generator_demo_website_snippet to generate your first module. Update next value:
+```python
+"application": True,
+"category_id": env.ref("base.module_category_website").id,
+[...]
+# Add dependencies
+lst_depend = [
+    "website",
+]
+```
+
+Generate your module:
+```bash
+./install_addon.sh code_generator code_generator_demo_website_snippet
+```
+
+Now, you can test it! Note, you cannot install a generated module with is code_generator associated, because duplicated models!
+Generate your module:
+```bash
+# Optional, reset test database
+make db_restore_erplibre_base_db_test
+./install_addon.sh test demo_website_snippet
+```
