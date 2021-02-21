@@ -83,3 +83,20 @@ Generate your module:
 make db_restore_erplibre_base_db_test
 ./install_addon.sh test demo_website_snippet
 ```
+
+# How to generate i18n translation
+
+You need a template and a module.
+Be sure you have this line in template:
+
+```python
+new_module_path = os.path.join(path_module_generate, new_module_name)
+code_generator_writer.set_module_translator(new_module_name, new_module_path)
+```
+
+First, install the module, example demo_portal, and after the template, example code_generator_template_demo_portal
+```bash
+make db_restore_erplibre_base_db_code_generator
+./install_addon.sh test demo_portal
+./install_addon.sh test code_generator_template_demo_portal
+```
