@@ -151,6 +151,8 @@ xlwt = "1.3"
 xmltodict = "^0.12.0"
 zeep = "^4.0.0"
 zxcvbn = "^4.4.28"
+wget = "^3.2"
+js2py = "^0.70"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^0.57.0"

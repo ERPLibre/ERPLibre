@@ -95,6 +95,10 @@ db_drop_db_code_generator:
 db_restore_erplibre_base_db_test: db_drop_db_test
 	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_base --database test
 
+.PHONY: db_restore_test
+db_restore_test: db_drop_db_test
+	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image test --database test
+
 .PHONY: db_restore_erplibre_website_db_test
 db_restore_erplibre_website_db_test: db_drop_db_test
 	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_website --database test
@@ -188,7 +192,7 @@ addons_install_demo_website_snippet_on_test:
 	./install_addon.sh test demo_website_snippet_content,demo_website_snippet_effect,demo_website_snippet_feature,demo_website_snippet_structure
 
 .PHONY: addons_install_all_code_generator_demo
-addons_install_all_code_generator_demo:
+addons_install_all_code_generator_demo: addons_install_code_generator_demo_website_snippet
 	./install_addon.sh code_generator code_generator_demo
 	./install_addon.sh code_generator code_generator_demo_export_helpdesk
 	./install_addon.sh code_generator code_generator_demo_internal
