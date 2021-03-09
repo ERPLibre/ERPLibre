@@ -51,7 +51,7 @@
   <project name="connector-jira.git" path="addons/OCA_connector-jira" remote="OCA" groups="addons"/>
   <project name="connector-telephony.git" path="addons/OCA_connector-telephony" remote="OCA" groups="addons"/>
   <project name="connector.git" path="addons/OCA_connector" remote="OCA" groups="addons"/>
-  <project name="contract.git" path="addons/OCA_contract" remote="OCA" groups="addons"/>
+  <project name="contract.git" path="addons/OCA_contract" remote="OCA" revision="12.0_dev" groups="addons,code_generator"/>
   <project name="credit-control.git" path="addons/OCA_credit-control" remote="OCA" groups="addons"/>
   <project name="crm.git" path="addons/OCA_crm" remote="OCA" groups="addons"/>
   <project name="currency.git" path="addons/OCA_currency" remote="OCA" groups="addons"/>
