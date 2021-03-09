@@ -9,8 +9,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Code generator for Odoo module
+- Code generator for Odoo module, depending of ERPLibre
 - Support map geoengine
+- Multilingual markdown
 
 ### Changed
 

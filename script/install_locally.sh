@@ -185,6 +185,7 @@ POETRY_PATH=~/.poetry
 VENV_PATH=./.venv
 LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
 VENV_REPO_PATH=${VENV_PATH}/repo
+VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 POETRY_VERSION=1.0.10
 
 echo "Python path version home"
@@ -244,6 +245,16 @@ if [[ ! -f ${VENV_REPO_PATH} ]]; then
     sed -i 1d ${VENV_REPO_PATH}
     PYTHON_HASHBANG="#!./.venv/bin/python"
     sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
+fi
+
+# Install Multilingual Markdown Generator if missing
+if [[ ! -f ${VENV_MULTILINGUAL_MARKDOWN_PATH} ]]; then
+    echo "\n---- Install Multilingual Markdown Generator ----"
+    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ${VENV_MULTILINGUAL_MARKDOWN_PATH}
+    chmod +x ${VENV_MULTILINGUAL_MARKDOWN_PATH}
+    sed -i 1d ${VENV_MULTILINGUAL_MARKDOWN_PATH}
+    PYTHON_HASHBANG="#!./.venv/bin/python"
+    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_MULTILINGUAL_MARKDOWN_PATH}
 fi
 
 echo -e "\n---- Installing poetry dependency ----"
