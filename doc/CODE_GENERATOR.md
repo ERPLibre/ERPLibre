@@ -12,6 +12,8 @@ Modules
 2. A Code_Generator generates a Module.
 3. A Template reads a Module to generate a Code_Generator.
 
+Warning, be careful to your code, always commit after a manipulation, because the mode enable_sync_code erase data, only the git will save you!
+
 ## Prepare a DB
 
 This will destroy and create database named code_generator.
