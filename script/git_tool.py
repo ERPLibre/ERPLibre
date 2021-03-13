@@ -370,8 +370,8 @@ class GitTool:
         lst_result = []
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
-            if "addons/OCA_web" == repo.get("path") or \
-                    "odoo" == repo.get("path"):
+            if "addons/OCA_web" == repo.get("path") or "odoo" == repo.get("path") or \
+                    "ERPLibre_image_db" == repo.get("path"):
                 continue
             str_repo = f'    printf "${{EL_HOME}}/{repo.get("path")}," >> ' \
                        f'${{EL_CONFIG_FILE}}\n'
