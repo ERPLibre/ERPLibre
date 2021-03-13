@@ -251,6 +251,11 @@ docker_clean_all:
 repo_clear_all:
 	./script/clean_repo_manifest.sh
 
+# configure all repo
+.PHONY: repo_configure_all
+repo_configure_all:
+	./script/update_manifest_local_dev.sh
+
 # configure only group code_generator
 .PHONY: repo_configure_group_code_generator
 repo_configure_group_code_generator:
