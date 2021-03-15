@@ -97,43 +97,43 @@ db_drop_db_test3:
 
 .PHONY: db_drop_db_code_generator
 db_drop_db_code_generator:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
+	time ./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
 
 .PHONY: db_drop_db_template
 db_drop_db_template:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
+	time ./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
 
 .PHONY: db_restore_erplibre_base_db_test
 db_restore_erplibre_base_db_test:
-	./script/db_restore.py --database test
+	time ./script/db_restore.py --database test
 
 .PHONY: db_restore_erplibre_base_db_test2
 db_restore_erplibre_base_db_test2:
-	./script/db_restore.py --database test2
+	time ./script/db_restore.py --database test2
 
 .PHONY: db_restore_erplibre_base_db_test3
 db_restore_erplibre_base_db_test3:
-	./script/db_restore.py --database test3
+	time ./script/db_restore.py --database test3
 
 .PHONY: db_restore_erplibre_website_db_test
 db_restore_erplibre_website_db_test:
-	./script/db_restore.py --database test --image erplibre_website
+	time ./script/db_restore.py --database test --image erplibre_website
 
 .PHONY: db_restore_erplibre_website_chat_crm_db_test
 db_restore_erplibre_website_chat_crm_db_test:
-	./script/db_restore.py --database test --image erplibre_website_chat_crm
+	time ./script/db_restore.py --database test --image erplibre_website_chat_crm
 
 .PHONY: db_restore_erplibre_ecommerce_base_db_test
 db_restore_erplibre_ecommerce_base_db_test:
-	./script/db_restore.py --database test --image erplibre_ecommerce_base
+	time ./script/db_restore.py --database test --image erplibre_ecommerce_base
 
 .PHONY: db_restore_erplibre_base_db_code_generator
 db_restore_erplibre_base_db_code_generator:
-	./script/db_restore.py --database code_generator
+	time ./script/db_restore.py --database code_generator
 
 .PHONY: db_restore_erplibre_base_db_template
 db_restore_erplibre_base_db_template:
-	./script/db_restore.py --database template
+	time ./script/db_restore.py --database template
 
 #########################
 #  Addons installation  #
