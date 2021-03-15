@@ -87,25 +87,53 @@ db_version:
 db_drop_db_test:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test
 
+.PHONY: db_drop_db_test2
+db_drop_db_test2:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
+
+.PHONY: db_drop_db_test3
+db_drop_db_test3:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test3
+
 .PHONY: db_drop_db_code_generator
 db_drop_db_code_generator:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
 
+.PHONY: db_drop_db_template
+db_drop_db_template:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
+
 .PHONY: db_restore_erplibre_base_db_test
-db_restore_erplibre_base_db_test: db_drop_db_test
-	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_base --database test
+db_restore_erplibre_base_db_test:
+	./script/db_restore.py --database test
+
+.PHONY: db_restore_erplibre_base_db_test2
+db_restore_erplibre_base_db_test2:
+	./script/db_restore.py --database test2
+
+.PHONY: db_restore_erplibre_base_db_test3
+db_restore_erplibre_base_db_test3:
+	./script/db_restore.py --database test3
 
 .PHONY: db_restore_erplibre_website_db_test
-db_restore_erplibre_website_db_test: db_drop_db_test
-	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_website --database test
+db_restore_erplibre_website_db_test:
+	./script/db_restore.py --database test --image erplibre_website
 
 .PHONY: db_restore_erplibre_website_chat_crm_db_test
-db_restore_erplibre_website_chat_crm_db_test: db_drop_db_test
-	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_website_chat_crm --database test
+db_restore_erplibre_website_chat_crm_db_test:
+	./script/db_restore.py --database test --image erplibre_website_chat_crm
+
+.PHONY: db_restore_erplibre_ecommerce_base_db_test
+db_restore_erplibre_ecommerce_base_db_test:
+	./script/db_restore.py --database test --image erplibre_ecommerce_base
 
 .PHONY: db_restore_erplibre_base_db_code_generator
-db_restore_erplibre_base_db_code_generator: db_drop_db_code_generator
-	./.venv/bin/python3 ./odoo/odoo-bin db --restore --restore_image erplibre_base --database code_generator
+db_restore_erplibre_base_db_code_generator:
+	./script/db_restore.py --database code_generator
+
+.PHONY: db_restore_erplibre_base_db_template
+db_restore_erplibre_base_db_template:
+	./script/db_restore.py --database template
 
 #########################
 #  Addons installation  #
@@ -120,72 +148,6 @@ addons_uninstall_code_generator_demo:
 
 .PHONY: addons_reinstall_code_generator_demo
 addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addons_install_code_generator_demo
-
-.PHONY: addons_install_code_generator_demo_website_snippet
-addons_install_code_generator_demo_website_snippet:
-	./install_addon.sh code_generator code_generator_demo_website_snippet_content
-	./install_addon.sh code_generator code_generator_demo_website_snippet_effect
-	./install_addon.sh code_generator code_generator_demo_website_snippet_feature
-	./install_addon.sh code_generator code_generator_demo_website_snippet_structure
-
-.PHONY: addons_uninstall_code_generator_demo_website_snippet
-addons_uninstall_code_generator_demo_website_snippet:
-	./uninstall_addon.sh code_generator code_generator_demo_website_snippet_content
-	./uninstall_addon.sh code_generator code_generator_demo_website_snippet_effect
-	./uninstall_addon.sh code_generator code_generator_demo_website_snippet_feature
-	./uninstall_addon.sh code_generator code_generator_demo_website_snippet_structure
-
-.PHONY: addons_reinstall_code_generator_demo_website_snippet
-addons_reinstall_code_generator_demo_website_snippet: addons_uninstall_code_generator_demo_website_snippet addons_install_code_generator_demo_website_snippet
-
-.PHONY: addons_install_code_generator_template_demo_portal
-addons_install_code_generator_template_demo_portal:
-	./install_addon.sh code_generator code_generator_template_demo_portal
-
-.PHONY: addons_uninstall_code_generator_template_demo_portal
-addons_uninstall_code_generator_template_demo_portal:
-	./uninstall_addon.sh code_generator code_generator_template_demo_portal
-
-.PHONY: addons_reinstall_code_generator_template_demo_portal
-addons_reinstall_code_generator_template_demo_portal: addons_uninstall_code_generator_template_demo_portal addons_install_code_generator_template_demo_portal
-
-.PHONY: addons_install_code_generator_demo_portal
-addons_install_code_generator_demo_portal:
-	./install_addon.sh code_generator code_generator_demo_portal
-
-.PHONY: addons_uninstall_code_generator_demo_portal
-addons_uninstall_code_generator_demo_portal:
-	./uninstall_addon.sh code_generator code_generator_demo_portal
-	./uninstall_addon.sh code_generator code_generator_demo
-
-.PHONY: addons_reinstall_code_generator_demo_portal
-addons_reinstall_code_generator_demo_portal: addons_uninstall_code_generator_demo_portal addons_install_code_generator_demo_portal
-
-.PHONY: addons_install_demo_portal_on_code_generator
-addons_install_demo_portal_on_code_generator:
-	./install_addon.sh code_generator demo_portal
-
-.PHONY: addons_uninstall_demo_portal_on_code_generator
-addons_uninstall_demo_portal_on_code_generator:
-	./uninstall_addon.sh code_generator demo_portal
-
-.PHONY: addons_reinstall_demo_portal_on_code_generator
-addons_reinstall_demo_portal_on_code_generator: addons_uninstall_demo_portal_on_code_generator addons_install_demo_portal_on_code_generator
-
-.PHONY: addons_install_demo_portal_on_test
-addons_install_demo_portal_on_test:
-	./install_addon.sh test demo_portal
-
-.PHONY: addons_uninstall_demo_portal_on_test
-addons_uninstall_demo_portal_on_test:
-	./uninstall_addon.sh test demo_portal
-
-.PHONY: addons_reinstall_demo_portal_on_test
-addons_reinstall_demo_portal_on_test: addons_uninstall_demo_portal_on_test addons_install_demo_portal_on_test
-
-.PHONY: addons_install_demo_website_snippet_on_test
-addons_install_demo_website_snippet_on_test:
-	./install_addon.sh test demo_website_snippet_content,demo_website_snippet_effect,demo_website_snippet_feature,demo_website_snippet_structure
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
