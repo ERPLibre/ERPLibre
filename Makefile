@@ -157,10 +157,35 @@ addons_install_all_code_generator_demo:
 	./install_addon.sh code_generator code_generator_demo_portal
 	./install_addon.sh code_generator code_generator_demo_theme_website
 	./install_addon.sh code_generator code_generator_demo_website_leaflet
+	./install_addon.sh code_generator code_generator_demo_website_snippet
 
-.PHONY: addons_uninstall_all_code_generator_demo
-addons_uninstall_all_code_generator_demo:
-	./uninstall_addon.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet
+.PHONY: addons_install_all_code_generator_template
+addons_install_all_code_generator_template:
+	./install_addon.sh template demo_portal,auto_backup
+	./install_addon.sh template code_generator_template_demo_portal
+	./install_addon.sh template code_generator_template_demo_sysadmin_cron
+
+.PHONY: addons_install_all_generated_demo
+addons_install_all_generated_demo:
+	./install_addon.sh template demo_export_helpdesk,demo_internal,demo_portal,demo_website_leaflet,demo_website_snippet
+	# TODO support installation theme with cli
+	#./install_addon.sh template theme_website_demo_code_generator
+
+.PHONY: addons_install_all_code_generator
+addons_install_all_code_generator:
+	./install_addon.sh code_generator code_generator_auto_backup
+
+##########
+#  test  #
+##########
+.PHONY: test_code_generator_generation
+test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo
+
+.PHONY: test_code_generator_template
+test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template
+
+.PHONY: test_code_generator_demo
+test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo
 
 ############
 #  docker  #
