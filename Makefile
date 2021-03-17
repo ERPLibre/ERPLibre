@@ -179,13 +179,25 @@ addons_install_all_code_generator:
 #  test  #
 ##########
 .PHONY: test_code_generator_generation
-test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo
+test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo clean_code_generator_template
 
 .PHONY: test_code_generator_template
-test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template
+test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template clean_code_generator_template
 
 .PHONY: test_code_generator_demo
-test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo
+test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
+
+.PHONY: test_code_generator_demo_portal
+test_code_generator_demo_portal: db_restore_erplibre_base_db_code_generator
+	./install_addon.sh code_generator code_generator_demo_portal
+	./script/repo_revert_git_diff_date_from_code_generator.py
+
+###########
+#  clean  #
+###########
+.PHONY: clean_code_generator_template
+clean_code_generator_template:
+	./script/repo_revert_git_diff_date_from_code_generator.py
 
 ############
 #  docker  #

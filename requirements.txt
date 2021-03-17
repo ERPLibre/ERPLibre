@@ -6,6 +6,7 @@ PyYAML
 retrying
 xmltodict
 openupgradelib
+unidiff
 
 # For OSX
 cython
