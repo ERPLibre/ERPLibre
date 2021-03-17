@@ -161,19 +161,14 @@ addons_install_all_code_generator_demo:
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
-	./install_addon.sh template demo_portal
+	./install_addon.sh template demo_portal,auto_backup
 	./install_addon.sh template code_generator_template_demo_portal
-	./install_addon.sh template auto_backup
 	./install_addon.sh template code_generator_template_demo_sysadmin_cron
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
-	./install_addon.sh template demo_export_helpdesk
-	./install_addon.sh template demo_internal
-	./install_addon.sh template demo_portal
-	./install_addon.sh template demo_theme_website
-	./install_addon.sh template demo_website_leaflet
-	./install_addon.sh template demo_website_snippet
+	./install_addon.sh template demo_export_helpdesk,demo_internal,demo_portal,demo_website_leaflet,demo_website_snippet
+	# TODO support installation theme with cli
 	#./install_addon.sh template theme_website_demo_code_generator
 
 .PHONY: addons_install_all_code_generator
