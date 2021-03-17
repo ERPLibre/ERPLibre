@@ -187,6 +187,13 @@ test_code_generator_template: db_restore_erplibre_base_db_template addons_instal
 .PHONY: test_code_generator_demo
 test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo
 
+###########
+#  clean  #
+###########
+.PHONY: clean_code_generator_template
+clean_code_generator_template:
+	./script/repo_revert_git_diff_date_from_code_generator.py
+
 ############
 #  docker  #
 ############
