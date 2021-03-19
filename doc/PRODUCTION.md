@@ -85,3 +85,28 @@ Caution, this delete user's home, it's irrevocable.
 ```bash
 ./script/delete_production.sh
 ```
+
+# Update ip when public ip change with CloudFlare and crontab
+
+```bash
+mkdir ~/.cloudflare
+```
+
+Edit ~/.cloudflare/cloudflare.cfg
+```
+[PROFILE_NAME]
+email=EMAIL
+token=TOKEN
+```
+
+Add your cron
+```bash
+vim /etc/crontab
+# Add
+*/5 * * * * USER cd PATH && ./script/deployment/update_dns_cloudflare.py --profile PROFILE_NAME --zone_name CLOUDFLARE_ZONE_NAME --dns_name DNS_NAME --auto_sync
+```
+
+Check log with
+```bash
+sudo journalctl -feu cron
+```
