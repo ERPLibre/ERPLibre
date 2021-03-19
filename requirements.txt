@@ -34,3 +34,6 @@ python-keystoneclient
 toml
 iscompatible
 pandas==1.2.0
+
+# For deployment
+cloudflare
