@@ -75,6 +75,7 @@
   <project name="interface-github.git" path="addons/OCA_interface-github" remote="OCA" groups="addons"/>
   <project name="knowledge.git" path="addons/OCA_knowledge" remote="OCA" groups="addons"/>
   <project name="l10n-canada.git" path="addons/OCA_l10n-canada" remote="OCA" groups="addons"/>
+  <project name="maintainer-tools.git" path="script/OCA_maintainer-tools" remote="OCA" revision="master" groups="odoo,code_generator"/>
   <project name="maintenance.git" path="addons/OCA_maintenance" remote="OCA" groups="addons"/>
   <project name="management-system.git" path="addons/OCA_management-system" remote="OCA" groups="addons"/>
   <project name="manufacture.git" path="addons/OCA_manufacture" remote="OCA" groups="addons"/>
