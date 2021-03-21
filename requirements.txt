@@ -30,6 +30,14 @@ voicent-python
 python-swiftclient
 python-keystoneclient
 
+# For logical test
+docutils==0.16
+flake8
+pylint-odoo
+git+https://github.com/oca/pylint-odoo.git#egg=pylint-odoo
+# oca-maintainers-tools
+# git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
+
 # For updating poetry
 toml
 iscompatible
