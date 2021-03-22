@@ -37,6 +37,10 @@ pylint-odoo
 git+https://github.com/oca/pylint-odoo.git#egg=pylint-odoo
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
+xmlformatter
+html5print
+css-html-prettify
+BeautifulSoup4
 
 # For updating poetry
 toml
