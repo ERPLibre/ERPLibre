@@ -41,6 +41,7 @@ xmlformatter
 html5print
 css-html-prettify
 BeautifulSoup4
+black
 
 # For updating poetry
 toml
