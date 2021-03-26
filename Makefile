@@ -180,9 +180,11 @@ addons_install_all_code_generator:
 ##########
 .PHONY: test_code_generator_generation
 test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo clean_code_generator_template
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: test_code_generator_template
 test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template clean_code_generator_template
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: test_code_generator_demo
 test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
