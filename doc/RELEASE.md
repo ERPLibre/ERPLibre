@@ -80,7 +80,7 @@ When building your docker with script
 > ./script/docker_build.sh --release
 
 List your docker version
-> docker image
+> docker images
 
 You need to push your docker image and update your tag, like 1.0.1:
 > docker push technolibre/erplibre:VERSION

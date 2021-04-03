@@ -6,6 +6,7 @@ PyYAML
 retrying
 xmltodict
 openupgradelib
+unidiff
 
 # For OSX
 cython
@@ -29,7 +30,24 @@ voicent-python
 python-swiftclient
 python-keystoneclient
 
+# For logical test
+docutils==0.16
+flake8
+pylint-odoo
+git+https://github.com/oca/pylint-odoo.git#egg=pylint-odoo
+# oca-maintainers-tools
+# git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
+xmlformatter
+html5print
+css-html-prettify
+BeautifulSoup4
+black
+git+https://github.com/psf/black.git#egg=black
+
 # For updating poetry
 toml
 iscompatible
 pandas==1.2.0
+
+# For deployment
+cloudflare

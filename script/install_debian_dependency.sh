@@ -55,6 +55,9 @@ sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
 sudo npm install -g less
 
+echo -e "\n---- Test tool ----"
+sudo npm install -g prettier
+
 sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 if [ ${EL_INSTALL_NGINX} = "True" ]; then

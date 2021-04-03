@@ -139,3 +139,27 @@ Use this commit format:
 ```bash
 git commit -am "[#ticket] subject: short sentence"
 ```
+
+# Format code
+## Python
+Use [black](https://github.com/psf/black)
+```bash
+./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator
+```
+
+Or if you prefer [oca-autopep8](https://github.com/psf/black)
+```bash
+./script/maintenance/autopep8.sh ./addons/TechnoLibre_odoo-code-generator
+```
+
+## HTML and css
+Use [prettier](https://github.com/prettier/prettier)
+```bash
+./script/maintenance/prettier.sh ./addons/TechnoLibre_odoo-code-generator
+```
+
+## Javascript
+Use [prettier](https://github.com/prettier/prettier)
+```bash
+./script/maintenance/prettier.sh --tab-width 4 ./addons/TechnoLibre_odoo-code-generator
+```
