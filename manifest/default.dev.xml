@@ -106,7 +106,6 @@
   <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
-  <project name="odoo-saas-tools.git" path="addons/it-projects-llc_odoo-saas-tools" remote="it-projects-llc" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
@@ -131,6 +130,7 @@
   <project name="queue.git" path="addons/OCA_queue" remote="OCA" groups="addons"/>
   <project name="reporting-engine.git" path="addons/OCA_reporting-engine" remote="OCA" groups="addons"/>
   <project name="rma.git" path="addons/OCA_rma" remote="OCA" groups="addons"/>
+  <project name="saas-addons.git" path="addons/it-projects-llc_saas-addons" remote="it-projects-llc" groups="addons"/>
   <project name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" groups="addons"/>
   <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
   <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="12.0_dev" groups="addons"/>
