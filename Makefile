@@ -182,12 +182,29 @@ addons_install_all_code_generator:
 test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo clean_code_generator_template
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
+.PHONY: test_code_generator_generation_other
+test_code_generator_generation_other: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator clean_code_generator_template
+
 .PHONY: test_code_generator_template
 test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template clean_code_generator_template
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: test_code_generator_demo
 test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
+
+############
+#  format  #
+############
+.PHONY: format
+format: format_code_generator format_code_generator_template
+
+.PHONY: format_code_generator
+format_code_generator:
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
+
+.PHONY: format_code_generator_template
+format_code_generator_template:
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 ###########
 #  clean  #
