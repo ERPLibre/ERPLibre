@@ -57,6 +57,7 @@ sudo npm install -g less
 
 echo -e "\n---- Test tool ----"
 sudo npm install -g prettier
+sudo npm install -g prettier @prettier/plugin-xml
 
 sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
