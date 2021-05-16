@@ -192,6 +192,13 @@ test_code_generator_template: db_restore_erplibre_base_db_template addons_instal
 .PHONY: test_code_generator_demo
 test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
 
+##############
+#  terminal  #
+##############
+.PHONY: open_terminal
+open_terminal:
+	./script/open_terminal_code_generator.sh
+
 ############
 #  format  #
 ############
