@@ -9,6 +9,9 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
     if [[ "${OS}" == "Ubuntu" ]]; then
         echo  "\n---- linux-gnu installation process started ----"
         ./script/install_debian_dependency.sh
+    elif [[ "${OS}" == "Raspian" ]]; then
+        echo  "\n---- Raspberry Pi ARM installation process started ----"
+        ./script/install_raspian_dependency.sh
     else
         echo "Your Linux system is not supported."
     fi
