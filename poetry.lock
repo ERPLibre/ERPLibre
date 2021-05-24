@@ -1620,7 +1620,7 @@ description = "Python interface to PROJ (cartographic projections and coordinate
 name = "pyproj"
 optional = false
 python-versions = ">=3.6"
-version = "3.0.0.post1"
+version = "1.9.6"
 
 [package.dependencies]
 certifi = "*"
@@ -1633,14 +1633,6 @@ name = "pyreadline"
 optional = false
 python-versions = "*"
 version = "2.1"
-
-[[package]]
-category = "main"
-description = "Implementation of some RFC standard algorithms"
-name = "pyrfc"
-optional = false
-python-versions = "*"
-version = "0.1.2"
 
 [[package]]
 category = "main"
