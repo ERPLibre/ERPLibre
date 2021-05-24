@@ -196,7 +196,7 @@ eval "$(pyenv virtualenv-init -)"
 
 if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
     echo -e "\n---- Installing python 3.7.7 with pyenv in ${PYENV_VERSION_PATH} ----"
-    yes n|pyenv install 3.7.7
+    yes n|pyenv install 3.7.7 --verbose
 fi
 
 pyenv local 3.7.7

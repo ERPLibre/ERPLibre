@@ -42,6 +42,14 @@ echo -e "\n--- Installing debian dependency --"
 sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev libpng12-0 gdebi-core libffi-dev libbz2-dev -y
 sudo apt-get install libmariadbd-dev -y
 
+sudo apt-get remove python-pymssql
+sudo apt-get install python-pip freetds-dev python3-dev python-dev
+sudo pip install pymssql==2.1.5
+
+sudo apt-get install proj-bin
+
+
+
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
