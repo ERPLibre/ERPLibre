@@ -47,6 +47,8 @@ sudo apt-get install libmariadbd-dev -y
 #sudo apt-get install python-pip freetds-dev python3-dev python-dev
 #sudo pip install pymssql==2.1.5
 
+sudo apt-get install python3-distutils
+
 sudo apt-get install proj-bin -y
 
 
