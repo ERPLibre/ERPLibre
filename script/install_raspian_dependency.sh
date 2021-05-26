@@ -50,6 +50,7 @@ sudo apt-get install python-pip freetds-dev python3-dev python-dev
 sudo apt-get install python3-distutils
 sudo apt-get install python-dev python-setuptools
 sudo apt-get install proj-bin -y
+sudo apt-get install libopenjp2-7
 
 
 
