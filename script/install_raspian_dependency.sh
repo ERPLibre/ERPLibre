@@ -43,12 +43,12 @@ sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-de
 sudo apt-get install libmariadbd-dev -y
 
 #Valider si la prochaine ligne est nécessaire, possiblement retirer les lignes 2 et 3, ou les 3
-#sudo apt-get remove python-pymssql
-#sudo apt-get install python-pip freetds-dev python3-dev python-dev
+sudo apt-get remove python-pymssql
+sudo apt-get install python-pip freetds-dev python3-dev python-dev
 #sudo pip install pymssql==2.1.5
 
 sudo apt-get install python3-distutils
-
+sudo apt-get install python-dev python-setuptools
 sudo apt-get install proj-bin -y
 
 

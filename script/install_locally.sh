@@ -231,6 +231,7 @@ fi
 
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
+${VENV_PATH}/bin/pip3.7 install pillow==6.1.0 --default-timeout=100
 #/home/"${USER}"/.poetry/bin/poetry env use ${PYTHON_EXEC}
 source $HOME/.poetry/env
 poetry install
