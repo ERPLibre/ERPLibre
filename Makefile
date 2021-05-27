@@ -192,6 +192,16 @@ test_code_generator_template: db_restore_erplibre_base_db_template addons_instal
 .PHONY: test_code_generator_demo
 test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
 
+.PHONY: test_code_generator_code
+test_code_generator_code: clean_test
+	./script/make.sh test_code_generator_template
+	./script/make.sh test_code_generator_generation_other
+
+.PHONY: test_code_generator_code_i18n
+test_code_generator_code_i18n: test_code_generator_code
+	./script/make.sh test_code_generator_template
+	./script/make.sh clean_code_generator_template
+
 ##############
 #  terminal  #
 ##############
@@ -208,10 +218,12 @@ format: format_code_generator format_code_generator_template
 .PHONY: format_code_generator
 format_code_generator:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
+	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
+	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 ###########
 #  clean  #
@@ -219,6 +231,10 @@ format_code_generator_template:
 .PHONY: clean_code_generator_template
 clean_code_generator_template:
 	./script/repo_revert_git_diff_date_from_code_generator.py
+
+.PHONY: clean_test
+clean_test:
+	cd addons/OCA_server-tools; git stash; git clean -fd
 
 ############
 #  docker  #
