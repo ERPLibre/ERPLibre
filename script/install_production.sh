@@ -48,7 +48,8 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
-sudo su ${EL_USER} -c "./script/install_locally_prod.sh"
+sudo su ${EL_USER} -c "./script/install_locally_dev.sh"
+#sudo su ${EL_USER} -c "./script/install_locally_prod.sh"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"

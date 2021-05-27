@@ -11,7 +11,20 @@ EL_USER=${USER}
 ## in order to have correct version of wkhtmltopdf installed, for a danger note refer to
 ## https://github.com/odoo/odoo/wiki/Wkhtmltopdf ):
 # Raspian
-WKHTMLTOX_ARM=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb
+
+# check if 64 or 32 bit
+if [ `getconf LONG_BIT` = "64" ]
+then
+    echo "I'm 64-bit"
+    WKHTMLTOX_ARM=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb
+else
+    echo "I'm 32-bit"
+    WKHTMLTOX_ARM=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.raspberrypi.buster_armhf.deb
+fi
+
+
+# WKHTMLTOX_ARM=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_arm64.deb
+# WKHTMLTOX_ARM=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.raspberrypi.buster_armhf.deb
 #--------------------------------------------------
 # Update Server
 #--------------------------------------------------
@@ -74,7 +87,7 @@ if [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   INSTALLED=$(dpkg -s wkhtmltox|grep installed)
   if [ "" == "${INSTALLED}" ]; then
       echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
-      _url=${WKHTMLTOX_X64}
+      _url=${WKHTMLTOX_ARM}
       sudo wget ${_url}
       sudo gdebi --n `basename ${_url}`
       sudo ln -s /usr/local/bin/wkhtmltopdf /usr/bin
