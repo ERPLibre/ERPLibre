@@ -51,6 +51,9 @@ run_code_generator:
 #############
 #  INSTALL  #
 #############
+.PHONY: install
+install:install_os install_dev
+
 .PHONY: install_dev
 install_dev:
 	./script/install_locally_dev.sh
