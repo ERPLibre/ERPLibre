@@ -2,7 +2,23 @@
 
 . ./env_var.sh
 
-./script/install_debian_dependency.sh
+if [[ "${OSTYPE}" == "linux-gnu" ]]; then
+     echo  "\n---- linux-gnu detected----"
+    OS=$(lsb_release -si)
+    if [[ "${OS}" == "Ubuntu" ]]; then
+        echo  "\n---- linux-gnu installation process started ----"
+        ./script/install_debian_dependency.sh
+    else
+        echo "Your Linux system is not supported."
+    fi
+#elif [[ "${OSTYPE}" == "darwin"* ]]; then
+#    echo  "\n---- Darwin installation process started ----"
+#    ./script/install_OSX_dependency.sh
+elif [[ "${OSTYPE}" == "linux-gnueabihf"* ]]; then
+    echo  "\n---- Raspberry Pi ARM installation process started ----"
+    ./script/install_raspian_dependency.sh
+fi
+
 
 echo -e "\n---- Create ERPLIBRE system user ----"
 sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPLIBRE' --group ${EL_USER}
@@ -32,7 +48,8 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
-sudo su ${EL_USER} -c "./script/install_locally_prod.sh"
+#sudo su ${EL_USER} -c "./script/install_locally_prod.sh"
+sudo su ${EL_USER} -c "./script/install_locally_dev.sh"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"
