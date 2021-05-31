@@ -178,12 +178,19 @@ if [[ ! -d "./addons/addons" ]]; then
 fi
 
 PYENV_PATH=~/.pyenv
-PYENV_VERSION_PATH=${PYENV_PATH}/versions/3.7.7
+PYTHON_VERSION=3.7.7
+PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 POETRY_PATH=~/.poetry
 VENV_PATH=./.venv
+LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
 VENV_REPO_PATH=${VENV_PATH}/repo
 POETRY_VERSION=1.0.10
+
+echo "Python path version home"
+echo ${PYENV_VERSION_PATH}
+echo "Python path version local"
+echo ${LOCAL_PYTHON_EXEC}
 
 if [[ ! -d "${PYENV_PATH}" ]]; then
     echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
@@ -196,28 +203,37 @@ eval "$(pyenv init -)"
 eval "$(pyenv virtualenv-init -)"
 
 if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
-    echo -e "\n---- Installing python 3.7.7 with pyenv in ${PYENV_VERSION_PATH} ----"
-    yes n|pyenv install 3.7.7
+    echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
+    yes n|pyenv install ${PYTHON_VERSION}
+    if [[ $retVal -ne 0 ]]; then
+        echo "Error when installing pyenv"
+        exit 1
+    fi
 fi
 
-pyenv local 3.7.7
+pyenv local ${PYTHON_VERSION}
+
+if [[ ! -d ${VENV_PATH} ]]; then
+    echo -e "\n---- Create Virtual environment Python ----"
+    if [[ -e ${PYTHON_EXEC} ]]; then
+        ${PYTHON_EXEC} -m venv .venv
+        retVal=$?
+          if [[ $retVal -ne 0 ]]; then
+              echo "Virtual environment, error when creating .venv"
+              exit 1
+          fi
+    else
+        echo "Missing pyenv, please refer installation guide."
+        exit 1
+    fi
+fi
 
 if [[ ! -d "${POETRY_PATH}" ]]; then
     # Delete directory ~/.poetry and .venv to force update to new version
     echo -e "\n---- Installing poetry for reliable python package ----"
 #     curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
     curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
-    python get-poetry.py -y --preview --version ${POETRY_VERSION}
-fi
-
-if [[ ! -d ${VENV_PATH} ]]; then
-    echo -e "\n---- Create Virtual environment Python ----"
-    if [[ -e ${PYTHON_EXEC} ]]; then
-        ${PYTHON_EXEC} -m venv .venv
-    else
-        echo "Missing pyenv, please refer installation guide."
-        exit 1
-    fi
+    ${LOCAL_PYTHON_EXEC} get-poetry.py -y --preview --version ${POETRY_VERSION}
 fi
 
 # Install git-repo if missing
@@ -232,9 +248,15 @@ fi
 
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
-#/home/"${USER}"/.poetry/bin/poetry env use ${PYTHON_EXEC}
-source $HOME/.poetry/env
-poetry install
+# Force python instead of changing env
+#/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
+# source $HOME/.poetry/env
+${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+    echo "Poetry installation error."
+    exit 1
+fi
 # Delete artifacts created by pip, cause error in next "poetry install"
 rm -rf artifacts
 
