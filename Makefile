@@ -389,3 +389,8 @@ doc_user:
 .PHONY: doc_clean_user
 doc_clean_user:
 	make -C doc/odoo_documentation-user clean
+
+# documentation markdown
+.PHONY: doc_markdown
+doc_markdown:
+	./.venv/multilang_md.py $(shell pwd)/doc/CODE_GENERATOR.base.md

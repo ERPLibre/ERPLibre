@@ -51,3 +51,7 @@ pandas==1.2.0
 
 # For deployment
 cloudflare
+
+# For multilang_md.py
+click
+emoji

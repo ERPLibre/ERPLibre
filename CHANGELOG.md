@@ -11,6 +11,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Code generator for Odoo module
 - Support map geoengine
+- Multilingual markdown
 
 ### Changed
 
