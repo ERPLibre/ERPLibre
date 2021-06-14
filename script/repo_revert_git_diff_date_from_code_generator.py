@@ -35,6 +35,7 @@ def main():
     config = get_config()
     # rex = r"\s+(?=\d{2}(?:\d{2})?-\d{1,2}-\d{1,2}\b)"
     rex = r"[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1]) (2[0-3]|[01][0-9]):[0-5][0-9]"
+    # TODO support argument instead of hardcoded values
     lst_path = [
         "./addons/TechnoLibre_odoo-code-generator-template",
         "./addons/OCA_server-tools",
@@ -42,6 +43,7 @@ def main():
     for path in lst_path:
         repo = git.Repo(path)
         supported_ext = [".xml", ".pot", ".po"]
+        translation_ext = [".pot", ".po"]
         for diff in repo.index.diff(None, create_patch=True):
             # if diff.change_type == "M":
             file_path = diff.a_path
@@ -50,6 +52,21 @@ def main():
                 file_real_path = os.path.join(path, diff.a_path)
                 if not os.path.isfile(file_real_path):
                     continue
+                if file_extension in translation_ext:
+                    is_modified = False
+                    lst_write_data = []
+                    # Delete code expression path caused by ERPLibre architecture
+                    with open(file_real_path, 'r') as file:
+                        lst_data = file.readlines()
+                        for data in lst_data:
+                            if data.startswith("#: code:addons/addons/"):
+                                is_modified = True
+                            else:
+                                lst_write_data.append(data)
+                    if is_modified:
+                        with open(file_real_path, 'w') as file:
+                            file.writelines(lst_write_data)
+
                 str_diff = repo.git.diff(diff.a_path)
                 patch = PatchSet(str_diff)
                 for modified_file in patch.modified_files:
