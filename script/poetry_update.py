@@ -46,7 +46,11 @@ def get_config():
 
 
 def get_lst_requirements_txt():
-    return list(Path(".").rglob("requirements.[tT][xX][tT]"))
+    # Ignore some item in list
+    lst = [a for a in Path(".").rglob("requirements.[tT][xX][tT]")
+           if not os.path.dirname(a).startswith('.repo/') and not os.path.dirname(a).startswith('.venv/')
+           ]
+    return lst
 
 
 def get_lst_manifest_py():
@@ -61,7 +65,8 @@ def combine_requirements(config):
     :param config:
     :return:
     """
-    priority_filename_requirement = "odoo/requirements.txt"
+    priority_filename_requirement = "requirements.txt"
+    second_priority_filename_requirement = "odoo/requirements.txt"
     lst_sign = ("==", "!=", ">=", "<=", "<", ">", ";")
     lst_requirements = []
     ignore_requirements = ["sys_platform == 'win32'", "python_version < '3.7'"]
@@ -158,14 +163,19 @@ def combine_requirements(config):
                     # Find the requirements file and print the conflict
                     # Take the version from Odoo by default, else take the more recent
                     odoo_value = None
+                    erplibre_value = None
                     for version_requirement in lst_version_requirement:
                         filename_1 = dct_requirements_module_filename.get(
                             version_requirement[0])
                         if priority_filename_requirement in filename_1:
+                            erplibre_value = version_requirement[0]
+                        elif second_priority_filename_requirement in filename_1:
                             odoo_value = version_requirement[0]
-                            break
 
-                    if odoo_value:
+                    if erplibre_value:
+                        str_result_choose = f"Select {erplibre_value} because from ERPLibre"
+                        result = erplibre_value
+                    elif odoo_value:
                         str_result_choose = f"Select {odoo_value} because from Odoo"
                         result = odoo_value
                     else:
@@ -270,7 +280,12 @@ def get_manifest_external_dependencies(dct_requirements):
 
 
 def call_poetry_add_build_dependency():
-    os.system("./script/poetry_add_build_dependency.sh")
+    """
+
+    :return: True if success
+    """
+    status = os.system("./script/poetry_add_build_dependency.sh")
+    return status == 0
 
 
 def get_list_ignored():
@@ -289,8 +304,9 @@ def main():
     combine_requirements(config)
     if config.force and os.path.isfile("./poetry.lock"):
         os.remove("./poetry.lock")
-    call_poetry_add_build_dependency()
-    sorted_dependency_poetry(pyproject_toml_filename)
+    status = call_poetry_add_build_dependency()
+    if status:
+        sorted_dependency_poetry(pyproject_toml_filename)
 
 
 if __name__ == '__main__':
