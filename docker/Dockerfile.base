@@ -1,4 +1,4 @@
-FROM  debian:buster-slim
+FROM  python:3.7.7-slim-buster
 MAINTAINER TechnoLibre <docker@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
@@ -25,29 +25,19 @@ RUN apt-get update \
     gnupg \
     libssl-dev \
     npm \
-    python3-num2words \
-    python3-pip \
-    python3-phonenumbers \
-    python3-pyldap \
-    python3-qrcode \
-    python3-renderpm \
-    python3-setuptools \
-    python3-slugify \
-    python3-vobject \
-    python3-watchdog \
-    python3-xlrd \
-    python3-xlwt \
-    python3-babel \
-    python3-psycopg2 \
     xz-utils \
     git \
     wget \
+    make \
+    libssl-dev \
+    zlib1g-dev \
+    llvm \
+    tk-dev \
     libxslt-dev \
     libzip-dev \
     libldap2-dev \
     libsasl2-dev \
     gdebi-core \
-    libffi-dev \
     iproute2 \
     libmariadbd-dev \
     inetutils-ping \
@@ -85,21 +75,21 @@ RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/
     && rm -rf /var/lib/apt/lists/*
 
 # Install npm dependencies
-RUN npm install -g rtlcss less \
+RUN npm install -g rtlcss less prettier @prettier/plugin-xml \
     && ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
 # Install python with pyenv
 # Reference https://github.com/bopen/docker-ubuntu-pyenv
-COPY pyenv-version.txt python-versions.txt /
+#COPY pyenv-version.txt python-versions.txt /
 
-RUN git clone -b `cat /pyenv-version.txt` --single-branch --depth 1 https://github.com/pyenv/pyenv.git $PYENV_ROOT \
-    && for version in `cat /python-versions.txt`; do pyenv install $version; done \
-    && pyenv global `cat /python-versions.txt` \
-    && find $PYENV_ROOT/versions -type d '(' -name '__pycache__' -o -name 'test' -o -name 'tests' ')' -exec rm -rf '{}' + \
-    && find $PYENV_ROOT/versions -type f '(' -name '*.pyo' -o -name '*.exe' ')' -exec rm -f '{}' + \
-    && rm -rf /tmp/* \
-    && python --version \
-    && python3 --version
+#RUN git clone -b `cat /pyenv-version.txt` --single-branch --depth 1 https://github.com/pyenv/pyenv.git $PYENV_ROOT \
+#    && for version in `cat /python-versions.txt`; do pyenv install $version; done \
+#    && pyenv global `cat /python-versions.txt` \
+#    && find $PYENV_ROOT/versions -type d '(' -name '__pycache__' -o -name 'test' -o -name 'tests' ')' -exec rm -rf '{}' + \
+#    && find $PYENV_ROOT/versions -type f '(' -name '*.pyo' -o -name '*.exe' ')' -exec rm -f '{}' + \
+#    && rm -rf /tmp/* \
+#    && python --version \
+#    && python3 --version
 
 # Install git-repo
 RUN cd ; mkdir -p .bin/ && \
@@ -111,11 +101,6 @@ RUN cd ; mkdir -p .bin/ && \
 
 RUN groupadd --gid 101  --force odoo && \
         useradd --non-unique --create-home --uid 101 --gid 101 odoo
-
-# TODO delete poetry installation
-# Install Poetry
-RUN curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python - -y --preview --version 1.0.10
-#curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
 
 # Copy entrypoint script and Odoo configuration file
 COPY ./entrypoint.sh /
