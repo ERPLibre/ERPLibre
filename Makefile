@@ -46,6 +46,7 @@ run_test:
 .PHONY: run_code_generator
 run_code_generator:
 	echo http://localhost:8069
+	# -$(BROWSER) http://localhost:8069
 	./run.sh --database code_generator
 
 #############
@@ -141,69 +142,98 @@ db_restore_erplibre_base_db_template:
 #########################
 #  Addons installation  #
 #########################
+.PHONY: addons_install_code_generator_basic
+addons_install_code_generator_basic: db_restore_erplibre_base_db_code_generator
+	./script/addons/install_addons.sh code_generator code_generator
+
+.PHONY: addons_install_code_generator_featured
+addons_install_code_generator_featured: addons_install_code_generator_basic
+	./script/addons/install_addons.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal
+
+.PHONY: addons_install_code_generator_full
+addons_install_code_generator_full: addons_install_code_generator_featured
+	./script/addons/install_addons.sh code_generator code_generator_db_servers,code_generator_website_snippet,code_generator_geoengine,code_generator_theme_website,code_generator_website_leaflet
+
 .PHONY: addons_install_code_generator_demo
 addons_install_code_generator_demo:
-	./install_addon.sh code_generator code_generator_demo
+	./script/addons/install_addons.sh code_generator code_generator_demo
 
 .PHONY: addons_uninstall_code_generator_demo
 addons_uninstall_code_generator_demo:
-	./uninstall_addon.sh code_generator code_generator_demo
+	./script/addons/uninstall_addons.sh code_generator code_generator_demo
 
 .PHONY: addons_reinstall_code_generator_demo
 addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addons_install_code_generator_demo
 
 .PHONY: addons_install_all_code_generator_demo
-addons_install_all_code_generator_demo:
-	./install_addon.sh code_generator code_generator_demo
-	./install_addon.sh code_generator code_generator_demo_export_helpdesk
-	./install_addon.sh code_generator code_generator_demo_internal
-	./install_addon.sh code_generator code_generator_demo_portal
-	./install_addon.sh code_generator code_generator_demo_theme_website
-	./install_addon.sh code_generator code_generator_demo_website_leaflet
-	./install_addon.sh code_generator code_generator_demo_website_snippet
+addons_install_all_code_generator_demo: db_restore_erplibre_base_db_code_generator
+	./script/addons/install_addons.sh code_generator code_generator_demo
+	./script/addons/install_addons.sh code_generator code_generator_demo_export_helpdesk
+	./script/addons/install_addons.sh code_generator code_generator_demo_internal
+	./script/addons/install_addons.sh code_generator code_generator_demo_portal
+	./script/addons/install_addons.sh code_generator code_generator_demo_theme_website
+	./script/addons/install_addons.sh code_generator code_generator_demo_website_leaflet
+	./script/addons/install_addons.sh code_generator code_generator_demo_website_snippet
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
-	./install_addon.sh template demo_portal,auto_backup
-	./install_addon.sh template code_generator_template_demo_portal
-	./install_addon.sh template code_generator_template_demo_sysadmin_cron
+	./script/addons/install_addons.sh template demo_portal,auto_backup
+	./script/addons/install_addons.sh template code_generator_template_demo_portal code_generator_template_demo_sysadmin_cron
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
-	./install_addon.sh template demo_export_helpdesk,demo_internal,demo_portal,demo_website_leaflet,demo_website_snippet
+	./script/addons/install_addons.sh template demo_export_helpdesk,demo_internal,demo_portal,demo_website_leaflet,demo_website_snippet
 	# TODO support installation theme with cli
-	#./install_addon.sh template theme_website_demo_code_generator
+	#./script/addons/install_addons.sh template theme_website_demo_code_generator
 
 .PHONY: addons_install_all_code_generator
 addons_install_all_code_generator:
-	./install_addon.sh code_generator code_generator_auto_backup
+	./script/addons/install_addons.sh code_generator code_generator_auto_backup
 
 ##########
 #  test  #
 ##########
+.PHONY: test
+test: test_format test_code_generator_generation test_code_generator_generation_extra test_code_generator_code_i18n test_code_generator_code_i18n_extra
+
+.PHONY: test_format
+test_format:
+	./script/maintenance/black.sh --check ./addons/TechnoLibre_odoo-code-generator/
+	./script/maintenance/black.sh --check ./addons/TechnoLibre_odoo-code-generator-template/
+
 .PHONY: test_code_generator_generation
-test_code_generator_generation: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator_demo clean_code_generator_template
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
+test_code_generator_generation:
+	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
+	time ./script/db_restore.py --database code_generator
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_export_helpdesk ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_internal ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_portal ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_theme_website ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_leaflet ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_snippet ./addons/TechnoLibre_odoo-code-generator-template
 
-.PHONY: test_code_generator_generation_other
-test_code_generator_generation_other: db_restore_erplibre_base_db_code_generator addons_install_all_code_generator clean_code_generator_template
-
-.PHONY: test_code_generator_template
-test_code_generator_template: db_restore_erplibre_base_db_template addons_install_all_code_generator_template clean_code_generator_template
-	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
-
-.PHONY: test_code_generator_demo
-test_code_generator_demo: db_restore_erplibre_base_db_template addons_install_all_generated_demo clean_code_generator_template
-
-.PHONY: test_code_generator_code
-test_code_generator_code: clean_test
-	./script/make.sh test_code_generator_template
-	./script/make.sh test_code_generator_generation_other
+.PHONY: test_code_generator_generation_extra
+test_code_generator_generation_extra:
+	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
+	time ./script/db_restore.py --database code_generator
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_auto_backup ./addons/OCA_server-tools/auto_backup
 
 .PHONY: test_code_generator_code_i18n
-test_code_generator_code_i18n: test_code_generator_code
-	./script/make.sh test_code_generator_template
-	./script/make.sh clean_code_generator_template
+test_code_generator_code_i18n:
+	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
+	time ./script/db_restore.py --database template
+	./script/addons/install_addons.sh template demo_portal
+	./script/code_generator/install_and_test_code_generator.sh template code_generator_template_demo_portal ./addons/TechnoLibre_odoo-code-generator-template
+
+.PHONY: test_code_generator_code_i18n_extra
+test_code_generator_code_i18n_extra:
+	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
+	time ./script/db_restore.py --database template
+	./script/addons/install_addons.sh template auto_backup
+	./script/code_generator/install_and_test_code_generator.sh template code_generator_template_demo_sysadmin_cron ./addons/TechnoLibre_odoo-code-generator-template
+	# To support i18n in auto_backup
+	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
 
 ##############
 #  terminal  #
