@@ -3,10 +3,10 @@
 # $2 is module name
 # $3 is directory path to check
 
-./script/addons/install_addons.sh $1 $2
+./script/addons/install_addons_dev.sh $1 $2
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-    echo "Error ./script/addons/install_addons.sh ${1} ${2}"
+    echo "Error ./script/addons/install_addons_dev.sh ${1} ${2}"
     exit 1
 fi
 ./script/repo_revert_git_diff_date_from_code_generator.py

@@ -218,7 +218,7 @@ Pour continuer avec l'exemple, généré le template `code_generator_template_de
 <!-- [common] -->
 ```bash
 make db_restore_erplibre_base_db_template
-./script/addons/install_addons.sh template code_generator_template_demo_website_snippet
+./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -259,7 +259,7 @@ Pour continuer avec l'exemple, généré le template `code_generator_template_de
 
 <!-- [common] -->
 ```bash
-./script/addons/install_addons.sh code_generator code_generator_template_demo_website_snippet
+./script/addons/install_addons_dev.sh code_generator code_generator_template_demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -293,7 +293,7 @@ Générer votre module :
 
 <!-- [common] -->
 ```bash
-./script/addons/install_addons.sh code_generator code_generator_demo_website_snippet
+./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -311,7 +311,7 @@ Il est maintenant possible de modifier les paramètres via l'interface manuelle 
 <!-- [common] -->
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh code_generator code_generator_demo_website_snippet
+./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -332,7 +332,7 @@ value["enable_sync_template"] = True
 Exécuter l'installation du template pour qu'il se synchronise sur le module généré.
 ```bash
 make db_restore_erplibre_base_db_template
-./script/addons/install_addons.sh template code_generator_template_demo_website_snippet
+./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -345,7 +345,7 @@ Prêt à tester, générer le module :
 ```bash
 # Optional, reset test database
 make db_restore_erplibre_base_db_test
-./script/addons/install_addons.sh test demo_website_snippet
+./script/addons/install_addons_dev.sh test demo_website_snippet
 ```
 
 <!-- [en] -->
@@ -375,8 +375,8 @@ Premièrement, installer le module, par exemple `demo_portal`, et ensuite le tem
 <!-- [common] -->
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh test demo_portal
-./script/addons/install_addons.sh test code_generator_template_demo_portal
+./script/addons/install_addons_dev.sh test demo_portal
+./script/addons/install_addons_dev.sh test code_generator_template_demo_portal
 ```
 
 <!-- [en] -->
@@ -403,8 +403,8 @@ Exemple :
 <!-- [common] -->
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh test demo_portal
-./script/addons/install_addons.sh test code_generator_template_demo_portal
+./script/addons/install_addons_dev.sh test demo_portal
+./script/addons/install_addons_dev.sh test code_generator_template_demo_portal
 ```
 
 <!-- [en] -->
