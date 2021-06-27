@@ -6,7 +6,7 @@ import logging
 from git import Repo  # pip install gitpython
 from retrying import retry  # pip install retrying
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -23,13 +23,18 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
-''',
-        epilog='''\
-'''
+        description="""\
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('-d', '--dir', dest="dir", default="./",
-                        help="Path of repo to change remote, including submodule.")
+    parser.add_argument(
+        "-d",
+        "--dir",
+        dest="dir",
+        default="./",
+        help="Path of repo to change remote, including submodule.",
+    )
     args = parser.parse_args()
     return args
 
@@ -38,13 +43,21 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    lst_repo = git_tool.get_source_repo_addons(repo_path=config.dir,
-                                               add_repo_root=False)
-    lst_repo_organization = [git_tool.get_transformed_repo_info_from_url(
-        a.get("url"), repo_path=config.dir, get_obj=True,
-        is_submodule=a.get("is_submodule"), sub_path=a.get("sub_path"),
-        revision=a.get("revision"), clone_depth=a.get("clone_depth"))
-        for a in lst_repo]
+    lst_repo = git_tool.get_source_repo_addons(
+        repo_path=config.dir, add_repo_root=False
+    )
+    lst_repo_organization = [
+        git_tool.get_transformed_repo_info_from_url(
+            a.get("url"),
+            repo_path=config.dir,
+            get_obj=True,
+            is_submodule=a.get("is_submodule"),
+            sub_path=a.get("sub_path"),
+            revision=a.get("revision"),
+            clone_depth=a.get("clone_depth"),
+        )
+        for a in lst_repo
+    ]
 
     i = 0
     total = len(lst_repo)
@@ -61,17 +74,22 @@ def main():
         # 1. Add remote if not exist
         try:
             upstream_remote = git_repo.remote(upstream_name)
-            print(f'Remote "{upstream_name}" already exists in {repo.relative_path}')
+            print(
+                f'Remote "{upstream_name}" already exists in'
+                f" {repo.relative_path}"
+            )
         except ValueError:
             upstream_remote = retry(
-                wait_exponential_multiplier=1000,
-                stop_max_delay=15000
+                wait_exponential_multiplier=1000, stop_max_delay=15000
             )(git_repo.create_remote)(upstream_name, repo.url_https)
-            print('Remote "%s" created for %s' % (upstream_name, repo.url_https))
+            print(
+                'Remote "%s" created for %s' % (upstream_name, repo.url_https)
+            )
 
         # 2. Fetch the remote source
         retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-            upstream_remote.fetch)()
+            upstream_remote.fetch
+        )()
         print('Remote "%s" fetched' % upstream_name)
 
         # 3. Rebase actual branch with new branch
@@ -99,15 +117,19 @@ def main():
             # push
             try:
                 retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-                    git_repo.git.push)(repo.organization, rev)
+                    git_repo.git.push
+                )(repo.organization, rev)
             except:
-                print("Cannot push, maybe need to push force or resolv rebase conflict",
-                      file=sys.stderr)
+                print(
+                    "Cannot push, maybe need to push force or resolv rebase"
+                    " conflict",
+                    file=sys.stderr,
+                )
                 print(f"cd {repo.path}")
                 print(f"git diff ERPLibre/v#.#.#..HEAD")
                 print(f"git push --force {repo.organization} {rev}")
                 print(f"cd -")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

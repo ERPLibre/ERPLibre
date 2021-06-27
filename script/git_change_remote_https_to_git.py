@@ -9,7 +9,7 @@ import sys
 
 from git import Repo
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -27,18 +27,32 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
-''',
-        epilog='''\
-'''
+        description="""\
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('-d', '--dir', dest="dir", default="./",
-                        help="Path of repo to change remote, including submodule.")
-    parser.add_argument('-f', '--upstream', dest="upstream",
-                        help="Upstream name to change address https to git. "
-                             "When empty, all upstream is updated.")
-    parser.add_argument("--git_to_https", action="store_true",
-                        help="Replace all repo git to https.")
+    parser.add_argument(
+        "-d",
+        "--dir",
+        dest="dir",
+        default="./",
+        help="Path of repo to change remote, including submodule.",
+    )
+    parser.add_argument(
+        "-f",
+        "--upstream",
+        dest="upstream",
+        help=(
+            "Upstream name to change address https to git. "
+            "When empty, all upstream is updated."
+        ),
+    )
+    parser.add_argument(
+        "--git_to_https",
+        action="store_true",
+        help="Replace all repo git to https.",
+    )
     args = parser.parse_args()
     return args
 
@@ -61,8 +75,9 @@ def main():
             continue
         repo_sm = Repo(repo_name)
         if upstream_name:
-            remote_upstream_name = [a for a in repo_sm.remotes
-                                    if upstream_name == a.name]
+            remote_upstream_name = [
+                a for a in repo_sm.remotes if upstream_name == a.name
+            ]
         else:
             remote_upstream_name = [a for a in repo_sm.remotes]
 
@@ -73,5 +88,5 @@ def main():
             print(f'Remote "{remote.name}" update for {new_url}')
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

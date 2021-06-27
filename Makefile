@@ -246,7 +246,7 @@ open_terminal:
 #  format  #
 ############
 .PHONY: format
-format: format_code_generator format_code_generator_template
+format: format_code_generator format_code_generator_template format_script
 
 .PHONY: format_code_generator
 format_code_generator:
@@ -257,6 +257,10 @@ format_code_generator:
 format_code_generator_template:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
+
+.PHONY: format_script
+format_script:
+	./script/maintenance/black.sh ./script/
 
 ###########
 #  clean  #

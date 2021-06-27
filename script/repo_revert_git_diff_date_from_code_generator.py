@@ -7,7 +7,7 @@ import git
 from unidiff import PatchSet
 import re
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 _logger = logging.getLogger(__name__)
@@ -22,10 +22,10 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
-''',
-        epilog='''\
-'''
+        description="""\
+""",
+        epilog="""\
+""",
     )
     args = parser.parse_args()
     return args
@@ -34,7 +34,10 @@ def get_config():
 def main():
     config = get_config()
     # rex = r"\s+(?=\d{2}(?:\d{2})?-\d{1,2}-\d{1,2}\b)"
-    rex = r"[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1]) (2[0-3]|[01][0-9]):[0-5][0-9]"
+    rex = (
+        r"[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])"
+        r" (2[0-3]|[01][0-9]):[0-5][0-9]"
+    )
     # TODO support argument instead of hardcoded values
     lst_path = [
         "./addons/TechnoLibre_odoo-code-generator-template",
@@ -56,7 +59,7 @@ def main():
                     is_modified = False
                     lst_write_data = []
                     # Delete code expression path caused by ERPLibre architecture
-                    with open(file_real_path, 'r') as file:
+                    with open(file_real_path, "r") as file:
                         lst_data = file.readlines()
                         for data in lst_data:
                             if data.startswith("#: code:addons/addons/"):
@@ -64,7 +67,7 @@ def main():
                             else:
                                 lst_write_data.append(data)
                     if is_modified:
-                        with open(file_real_path, 'w') as file:
+                        with open(file_real_path, "w") as file:
                             file.writelines(lst_write_data)
 
                 str_diff = repo.git.diff(diff.a_path)
@@ -76,7 +79,10 @@ def main():
                         nb_line_target = len(hunk.target)
                         if nb_line_source != nb_line_target:
                             # TODO support different line
-                            _logger.warning(f"Source nb line different of target nb line for file {path}/{file_path}.")
+                            _logger.warning(
+                                "Source nb line different of target nb line"
+                                f" for file {path}/{file_path}."
+                            )
                             continue
                         # try:
                         #     assert nb_line_source == nb_line_target, f"Not the same line of diff:\n{str_diff}"
@@ -88,22 +94,27 @@ def main():
                                 result_target = re.split(rex, hunk.target[i])
                             else:
                                 result_target = ""
-                            if len(result_source) > 1 or len(result_target) > 1:
+                            if (
+                                len(result_source) > 1
+                                or len(result_target) > 1
+                            ):
                                 line_to_change = hunk.target_start + i - 1
-                                lst_to_write.append((line_to_change, hunk.source[i][1:]))
+                                lst_to_write.append(
+                                    (line_to_change, hunk.source[i][1:])
+                                )
                     # rewrite
                     rewrite(file_real_path, lst_to_write)
 
 
 def rewrite(file_path, lst_to_write):
     # TODO not optimal for big file
-    with open(file_path, 'r') as file:
+    with open(file_path, "r") as file:
         data = file.readlines()
     for line in lst_to_write:
         data[line[0]] = line[1]
-    with open(file_path, 'w') as file:
+    with open(file_path, "w") as file:
         file.writelines(data)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
