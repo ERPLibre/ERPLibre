@@ -111,6 +111,10 @@ db_drop_db_template:
 db_restore_erplibre_base_db_test:
 	./script/db_restore.py --database test
 
+.PHONY: db_restore_erplibre_base_db_test_module_test
+db_restore_erplibre_base_db_test_module_test: db_restore_erplibre_base_db_test
+	./script/addons/install_addons.sh test test
+
 .PHONY: db_restore_erplibre_base_db_test2
 db_restore_erplibre_base_db_test2:
 	./script/db_restore.py --database test2

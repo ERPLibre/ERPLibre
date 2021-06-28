@@ -38,6 +38,179 @@ Ouvrir le navigateur sur [http://localhost:8069](http://localhost:8069). Utilisa
 
 Ouvrir l'application `Code Generator` et créer un `Module`. Remplir les champs requis et générer avec `Action/Generate code`.
 
+### Create model-view module
+
+```bash
+make addons_install_code_generator_basic
+make run_code_generator
+```
+
+TODO
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+make run_test
+```
+
+### Create portal module
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_portal
+make run_code_generator
+```
+
+TODO
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+make run_test
+```
+
+TODO
+
+### Create hook module for installation
+
+TODO
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_hook
+make run_code_generator
+```
+
+TODO
+
+```python
+with api.Environment.manage():
+    env = api.Environment(cr, SUPERUSER_ID, {})
+    print("Hello World")
+```
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+```
+
+### Create cron module
+
+TODO
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_cron
+make run_code_generator
+```
+
+TODO
+
+```python
+log("Coucou")
+```
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+make run_test
+```
+
+TODO
+
+### Create website snippet module
+
+In progress
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_website_snippet
+make run_code_generator
+```
+
+TODO
+
+TODO
+
+### Create geoengine with Leaflet module
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_website_leaflet
+make run_code_generator
+```
+
+TODO
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+make run_test
+```
+
+TODO
+
+### Create theme module for website
+
+TODO
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_theme_website
+make run_code_generator
+```
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test
+./script/addons/install_addons.sh test website
+make run_test
+```
+
+TODO
+
+### Extract data to module
+
+TODO
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator helpdesk_mgmt
+make run_code_generator
+```
+TODO
+
+```bash
+make db_restore_erplibre_base_db_test_module_test
+```
+
+### Migrate external database into module of migration
+
+TODO
+
+```bash
+make addons_install_code_generator_basic
+./script/addons/install_addons.sh code_generator code_generator_db_servers
+make run_code_generator
+```
+TODO
+
+### Migrate from website to model with PDF data
+
+TODO
+
+```bash
+make db_restore_erplibre_base_db_code_generator
+./script/addons/install_addons_dev.sh code_generator code_generator_demo_converter_js
+make db_restore_erplibre_base_db_test
+./script/addons/install_addons_dev.sh test business_plan_import_pdf
+```
+
 ## Prepare a DB
 
 This will destroy and create database named `code_generator`.
@@ -46,9 +219,17 @@ This will destroy and create database named `code_generator`.
 make db_restore_erplibre_base_db_code_generator
 ```
 
-## Test code generator
+TODO
+
+```bash
+make config_gen_code_generator
+```
 
 TODO
+
+```bash
+make config_gen_all
+```
 
 ## Create your first `Code_Generator`
 
@@ -90,7 +271,7 @@ Continue the example, you generated the template `code_generator_template_demo_w
 
 ```bash
 make db_restore_erplibre_base_db_template
-./script/addons/install_addons.sh template code_generator_template_demo_website_snippet
+./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
 ```
 
 Go to section [Create your first module](#create-your-first-module)
@@ -108,7 +289,7 @@ value["enable_template_code_generator_demo"] = False
 Continue the example, you generated the template `code_generator_template_demo_website_snippet`, this will overwrite `code_generator_demo_website_snippet`:
 
 ```bash
-./script/addons/install_addons.sh code_generator code_generator_template_demo_website_snippet
+./script/addons/install_addons_dev.sh code_generator code_generator_template_demo_website_snippet
 ```
 
 ## Create your first Module
@@ -128,7 +309,8 @@ lst_depend = [
 Generate your module:
 
 ```bash
-./script/addons/install_addons.sh code_generator code_generator_demo_website_snippet
+make db_restore_erplibre_base_db_code_generator
+./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
 ```
 
 Now, you can test it! Note, you cannot install a generated module with is code_generator associated, because duplicated
@@ -137,21 +319,30 @@ models!
 
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh code_generator code_generator_demo_website_snippet
+./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
 ```
 
 
 ```python
 value["enable_sync_template"] = True
+value["enable_template_wizard_view"] = True
+value["template_model_name"] = "test;test2"
 ```
 
+TODO
+
+```bash
+make db_restore_erplibre_base_db_template
+./script/addons/install_addons_dev.sh template demo_website_snippet
+./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
+```
 
 Ready to test, generate your module:
 
 ```bash
 # Optional, reset test database
 make db_restore_erplibre_base_db_test
-./script/addons/install_addons.sh test demo_website_snippet
+./script/addons/install_addons_dev.sh test demo_website_snippet
 ```
 
 # How to generate i18n translation
@@ -167,8 +358,8 @@ First, install the module, example `demo_portal`, and after the template, exampl
 
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh test demo_portal
-./script/addons/install_addons.sh test code_generator_template_demo_portal
+./script/addons/install_addons_dev.sh test demo_portal
+./script/addons/install_addons_dev.sh test code_generator_template_demo_portal
 ```
 
 # Sync Code_Generator fields from Module
@@ -182,11 +373,17 @@ Example:
 
 ```bash
 make db_restore_erplibre_base_db_code_generator
-./script/addons/install_addons.sh test demo_portal
-./script/addons/install_addons.sh test code_generator_template_demo_portal
+./script/addons/install_addons_dev.sh test demo_portal
+./script/addons/install_addons_dev.sh test code_generator_template_demo_portal
 ```
 
 # Test the code generator
+
+TODO
+
+```bash
+make test
+```
 
 TODO
 
