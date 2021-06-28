@@ -101,43 +101,43 @@ db_drop_db_test3:
 
 .PHONY: db_drop_db_code_generator
 db_drop_db_code_generator:
-	time ./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
 
 .PHONY: db_drop_db_template
 db_drop_db_template:
-	time ./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
 
 .PHONY: db_restore_erplibre_base_db_test
 db_restore_erplibre_base_db_test:
-	time ./script/db_restore.py --database test
+	./script/db_restore.py --database test
 
 .PHONY: db_restore_erplibre_base_db_test2
 db_restore_erplibre_base_db_test2:
-	time ./script/db_restore.py --database test2
+	./script/db_restore.py --database test2
 
 .PHONY: db_restore_erplibre_base_db_test3
 db_restore_erplibre_base_db_test3:
-	time ./script/db_restore.py --database test3
+	./script/db_restore.py --database test3
 
 .PHONY: db_restore_erplibre_website_db_test
 db_restore_erplibre_website_db_test:
-	time ./script/db_restore.py --database test --image erplibre_website
+	./script/db_restore.py --database test --image erplibre_website
 
 .PHONY: db_restore_erplibre_website_chat_crm_db_test
 db_restore_erplibre_website_chat_crm_db_test:
-	time ./script/db_restore.py --database test --image erplibre_website_chat_crm
+	./script/db_restore.py --database test --image erplibre_website_chat_crm
 
 .PHONY: db_restore_erplibre_ecommerce_base_db_test
 db_restore_erplibre_ecommerce_base_db_test:
-	time ./script/db_restore.py --database test --image erplibre_ecommerce_base
+	./script/db_restore.py --database test --image erplibre_ecommerce_base
 
 .PHONY: db_restore_erplibre_base_db_code_generator
 db_restore_erplibre_base_db_code_generator:
-	time ./script/db_restore.py --database code_generator
+	./script/db_restore.py --database code_generator
 
 .PHONY: db_restore_erplibre_base_db_template
 db_restore_erplibre_base_db_template:
-	time ./script/db_restore.py --database template
+	./script/db_restore.py --database template
 
 #########################
 #  Addons installation  #
@@ -204,7 +204,7 @@ test_format:
 .PHONY: test_code_generator_generation
 test_code_generator_generation:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
-	time ./script/db_restore.py --database code_generator
+	./script/db_restore.py --database code_generator
 	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo ./addons/TechnoLibre_odoo-code-generator-template
 	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_export_helpdesk ./addons/TechnoLibre_odoo-code-generator-template
 	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_internal ./addons/TechnoLibre_odoo-code-generator-template
@@ -216,20 +216,20 @@ test_code_generator_generation:
 .PHONY: test_code_generator_generation_extra
 test_code_generator_generation_extra:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
-	time ./script/db_restore.py --database code_generator
+	./script/db_restore.py --database code_generator
 	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_auto_backup ./addons/OCA_server-tools/auto_backup
 
 .PHONY: test_code_generator_code_i18n
 test_code_generator_code_i18n:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
-	time ./script/db_restore.py --database template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_portal
 	./script/code_generator/install_and_test_code_generator.sh template code_generator_template_demo_portal ./addons/TechnoLibre_odoo-code-generator-template
 
 .PHONY: test_code_generator_code_i18n_extra
 test_code_generator_code_i18n_extra:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
-	time ./script/db_restore.py --database template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template auto_backup
 	./script/code_generator/install_and_test_code_generator.sh template code_generator_template_demo_sysadmin_cron ./addons/TechnoLibre_odoo-code-generator-template
 	# To support i18n in auto_backup
