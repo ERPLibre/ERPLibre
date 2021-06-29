@@ -147,12 +147,12 @@ addons_install_code_generator_basic: db_restore_erplibre_base_db_code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator
 
 .PHONY: addons_install_code_generator_featured
-addons_install_code_generator_featured: addons_install_code_generator_basic
+addons_install_code_generator_featured: db_restore_erplibre_base_db_code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal
 
 .PHONY: addons_install_code_generator_full
-addons_install_code_generator_full: addons_install_code_generator_featured
-	./script/addons/install_addons_dev.sh code_generator code_generator_db_servers,code_generator_website_snippet,code_generator_geoengine,code_generator_theme_website,code_generator_website_leaflet
+addons_install_code_generator_full: db_restore_erplibre_base_db_code_generator
+	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal,code_generator_db_servers,code_generator_website_snippet,code_generator_geoengine,code_generator_theme_website,code_generator_website_leaflet
 
 .PHONY: addons_install_code_generator_demo
 addons_install_code_generator_demo:
@@ -167,13 +167,14 @@ addons_reinstall_code_generator_demo: addons_uninstall_code_generator_demo addon
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo: db_restore_erplibre_base_db_code_generator
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
@@ -205,13 +206,14 @@ test_format:
 test_code_generator_generation:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
 	./script/db_restore.py --database code_generator
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_export_helpdesk ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_internal ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_portal ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_theme_website ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_leaflet ./addons/TechnoLibre_odoo-code-generator-template
-	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_snippet ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_export_helpdesk ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_internal ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_portal ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_theme_website ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_leaflet ./addons/TechnoLibre_odoo-code-generator-template
+#	./script/code_generator/install_and_test_code_generator.sh code_generator code_generator_demo_website_snippet ./addons/TechnoLibre_odoo-code-generator-template
 
 .PHONY: test_code_generator_generation_extra
 test_code_generator_generation_extra:
