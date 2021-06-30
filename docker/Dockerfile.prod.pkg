@@ -34,9 +34,22 @@ RUN cd $ODOO_PREFIX && \
 RUN cd $ODOO_PREFIX && \
     ./script/update_manifest_dev.sh
 
+# TODO delete poetry installation
+# Install Poetry
 RUN cd $ODOO_PREFIX && \
-    source /root/.poetry/env && \
-    poetry install
+    curl -sSL -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py && \
+    ./.venv/bin/python get-poetry.py -y --preview --version 1.0.10
+
+RUN cd $ODOO_PREFIX && \
+    ./.venv/bin/pip install --upgrade pip && \
+    ./.venv/bin/python ~/.poetry/bin/poetry install && \
+    rm -rf artifacts
+
+RUN cd $ODOO_PREFIX/.venv && \
+    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ./multilang_md.py && \
+    chmod +x ./multilang_md.py && \
+    sed -i 1d ./multilang_md.py && \
+    sed -i "1 i #!./.venv/bin/python" ./multilang_md.py
 
 RUN cd $ODOO_PREFIX && \
     head /etc/odoo/odoo.conf && \

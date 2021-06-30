@@ -7,19 +7,18 @@ Clone the project
 git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 ```
-Support Ubuntu 18.04 and OSX
+Support Ubuntu 18.04, 20.04 and OSX. The installation duration is more than 30 minutes.
 ```bash
-./script/install_dev.sh
-./script/install_locally_prod.sh
+make install
 ```
-Update your configuration if you need to run somehere than 127.0.0.1, file `config.conf`
+Update your configuration if you need to run from another interface than 127.0.0.1, file `config.conf`
 ```
 #xmlrpc_interface = 127.0.0.1
 #netrpc_interface = 127.0.0.1
 ```
-Run
+Ready to execute
 ```bash
-./run.sh
+make run
 ```
 
 ## Discover guide
@@ -36,3 +35,9 @@ Run
 
 # git-repo
 To change repository like addons, see [GIT_REPO.md](doc/GIT_REPO.md)
+
+# Test
+Execute ERPLibre test with his code generator.
+```bash
+time make test
+```

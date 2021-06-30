@@ -9,13 +9,42 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- Code generator for Odoo module
+- Adapt script to give an execution status
+- Multilingual markdown
+- Guide to use Cloudflare with DDNS
+- Script to check git diff and ignore date
+- Repo with ERPLibre image
+- Improve git repo usage, filter repo by use case
+
+#### Makefile
+- Format code
+- Code generator test
+- Addons installation
+- OS installation
+- Restore database
+- Docker execution
+
+#### Code generator
+- Code generator for Odoo module, depending of ERPLibre
 - Support map geoengine
+- Support i18n
+- Script to transform Python and XML to Python code writer script to regenerate themselves
 
 ### Changed
 
-- Downgrade postgresql to 11 to support postgis
-- Travis CI
+- Update Python dependency with Poetry
+- Format all Python code with black
+
+#### Docker
+
+- Use buster python 3.7.7 image to remove pyenv
+- Update Postgresql to support Postgis
+- Support volume addons /ERPLibre/addons/addons
+
+### Fixed
+
+- Ubuntu installation
+- Poetry installation
 
 ## [1.1.1] - 2020-12-11
 

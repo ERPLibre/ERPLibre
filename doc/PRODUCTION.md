@@ -62,9 +62,10 @@ cd /[EL_USER]/erplibre
 
 ## Move prod database to dev
 When moving prod database to your dev environment, you want to remove email servers and install user test to test the database.
+Warning, this is not safe for production, you expose all data.
 Run:
 ```bash
-./run.sh --stop-after-init -i user_test,disable_mail_server --dev all -d DATABASE
+./script/migrate_prod_to_test.sh DATABASE
 ```
 
 ## Update production
@@ -84,4 +85,29 @@ Edit this file to accept interface from all networks:
 Caution, this delete user's home, it's irrevocable.
 ```bash
 ./script/delete_production.sh
+```
+
+# Update ip when public ip change with CloudFlare and crontab
+
+```bash
+mkdir ~/.cloudflare
+```
+
+Edit ~/.cloudflare/cloudflare.cfg
+```
+[PROFILE_NAME]
+email=EMAIL
+token=TOKEN
+```
+
+Add your cron
+```bash
+vim /etc/crontab
+# Add
+*/5 * * * * USER cd PATH && ./script/deployment/update_dns_cloudflare.py --profile PROFILE_NAME --zone_name CLOUDFLARE_ZONE_NAME --dns_name DNS_NAME --auto_sync
+```
+
+Check log with
+```bash
+sudo journalctl -feu cron
 ```

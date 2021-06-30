@@ -6,7 +6,7 @@ import logging
 from git import Repo
 import git
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -25,14 +25,17 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
+        description="""\
         Update config.conf file with group specified in manifest file.
-''',
-        epilog='''\
-'''
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('--group', default="",
-                        help="Prod by default, use 'dev' for manifest/default.dev.xml")
+    parser.add_argument(
+        "--group",
+        default="",
+        help="Prod by default, use 'dev' for manifest/default.dev.xml",
+    )
     args = parser.parse_args()
     return args
 
@@ -46,5 +49,5 @@ def main():
     git_tool.generate_install_locally(filter_group=filter_group)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -15,7 +15,7 @@ RUN apt-get update \
             fonts-noto-cjk \
             gnupg \
             libssl-dev \
-	    node-less \
+            node-less \
             npm \
             python3-num2words \
             python3-pip \
@@ -37,6 +37,8 @@ RUN apt-get update \
         && echo 'd9f259a67e05e1c221d48b504453645e6c491fab wkhtmltox.deb' | sha1sum -c - \
         && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
         && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
+
+RUN npm i prettier
 
 # install latest postgresql-client
 RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/apt/sources.list.d/pgdg.list \

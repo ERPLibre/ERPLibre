@@ -1,11 +1,12 @@
 # For script
 giturlparse
 agithub
-gitpython
+GitPython==3.1.12
 PyYAML
 retrying
 xmltodict
 openupgradelib
+unidiff
 
 # For OSX
 cython
@@ -13,6 +14,7 @@ cython
 # For Odoo
 wheel
 phonenumbers
+pytz==2017.3
 
 # For OCA
 factur-x
@@ -29,7 +31,26 @@ voicent-python
 python-swiftclient
 python-keystoneclient
 
+# For logical test
+docutils==0.16
+flake8
+git+https://github.com/oca/pylint-odoo.git
+# oca-maintainers-tools
+# git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
+xmlformatter
+html5print
+css-html-prettify
+BeautifulSoup4
+git+https://github.com/psf/black.git@21.6b0
+
 # For updating poetry
 toml
 iscompatible
 pandas==1.2.0
+
+# For deployment
+cloudflare
+
+# For multilang_md.py
+click
+emoji

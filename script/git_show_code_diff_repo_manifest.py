@@ -6,7 +6,7 @@ import logging
 from git import Repo
 from git.exc import GitCommandError
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -24,11 +24,15 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""Compare actual code with a manifest.""",
-        epilog='''\
-'''
+        epilog="""\
+""",
     )
-    parser.add_argument('-m', '--manifest', required=True,
-                        help="The manifest to compare with actual code.")
+    parser.add_argument(
+        "-m",
+        "--manifest",
+        required=True,
+        help="The manifest to compare with actual code.",
+    )
     args = parser.parse_args()
     return args
 
@@ -37,8 +41,12 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    dct_remote, dct_project, default_remote = git_tool.get_manifest_xml_info(filename=config.manifest, add_root=True)
-    default_branch_name = default_remote.get("@revision", git_tool.default_branch)
+    dct_remote, dct_project, default_remote = git_tool.get_manifest_xml_info(
+        filename=config.manifest, add_root=True
+    )
+    default_branch_name = default_remote.get(
+        "@revision", git_tool.default_branch
+    )
     i = 0
     total = len(dct_project)
     for name, project in dct_project.items():
@@ -57,7 +65,9 @@ def main():
             # TODO maybe need to check divergence with local branch and not remote branch
             commit_head = git_repo.git.rev_parse("HEAD")
             try:
-                commit_branch = git_repo.git.rev_parse(f"{organization}/{branch_name}")
+                commit_branch = git_repo.git.rev_parse(
+                    f"{organization}/{branch_name}"
+                )
             except GitCommandError:
                 print("ERROR Something wrong with this repo.")
                 continue
@@ -66,10 +76,13 @@ def main():
             else:
                 print("PASS Not on specified branch, no divergence.")
         elif branch_name != value:
-            print(f"ERROR, manifest revision is {branch_name} and actual revision is {value}.")
+            print(
+                f"ERROR, manifest revision is {branch_name} and actual"
+                f" revision is {value}."
+            )
         else:
             print("PASS")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

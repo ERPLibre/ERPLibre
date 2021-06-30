@@ -59,13 +59,17 @@ class GitTool:
 
         return url, url_https, url_git
 
-    def get_transformed_repo_info_from_url(self, url: str, repo_path: str = "./",
-                                           get_obj: bool = True,
-                                           is_submodule: bool = True,
-                                           organization_force: str = None,
-                                           sub_path: str = "addons",
-                                           revision: str = "",
-                                           clone_depth: str = "") -> object:
+    def get_transformed_repo_info_from_url(
+        self,
+        url: str,
+        repo_path: str = "./",
+        get_obj: bool = True,
+        is_submodule: bool = True,
+        organization_force: str = None,
+        sub_path: str = "addons",
+        revision: str = "",
+        clone_depth: str = "",
+    ) -> object:
         """
 
         :param url:
@@ -99,8 +103,8 @@ class GitTool:
         relative_path = os.path.normpath(relative_path)
 
         original_organization = organization
-        url_https_original_organization = url_https[:url_https.rfind("/")]
-        project_name = url_https[url_https.rfind("/") + 1:]
+        url_https_original_organization = url_https[: url_https.rfind("/")]
+        project_name = url_https[url_https.rfind("/") + 1 :]
         #     begin_original = url_git[url_git.find(":") + 1:]
         #     original_organization = begin_original[:begin_original.find("/")]
         if organization_force:
@@ -109,7 +113,7 @@ class GitTool:
             url_split[3] = organization
             url_https = "/".join(url_split)
             url, _, url_git = self.get_url(url_https)
-        url_https_organization = url_https[:url_https.rfind("/")]
+        url_https_organization = url_https[: url_https.rfind("/")]
 
         d = {
             "url": url,
@@ -132,15 +136,26 @@ class GitTool:
             return Struct(**d)
         return d
 
-    def get_repo_info(self, repo_path: str = "./",
-                      add_root: bool = False, is_manifest: bool = True, filter_group=None):
+    def get_repo_info(
+        self,
+        repo_path: str = "./",
+        add_root: bool = False,
+        is_manifest: bool = True,
+        filter_group=None,
+    ):
         if is_manifest:
-            return self.get_repo_info_manifest_xml(repo_path=repo_path,
-                                                   add_root=add_root, filter_group=filter_group)
-        return self.get_repo_info_submodule(repo_path=repo_path, add_root=add_root)
+            return self.get_repo_info_manifest_xml(
+                repo_path=repo_path,
+                add_root=add_root,
+                filter_group=filter_group,
+            )
+        return self.get_repo_info_submodule(
+            repo_path=repo_path, add_root=add_root
+        )
 
-    def get_repo_info_submodule(self, repo_path: str = "./",
-                                add_root: bool = False) -> list:
+    def get_repo_info_submodule(
+        self, repo_path: str = "./", add_root: bool = False
+    ) -> list:
         """
         Get information about submodule from repo_path
         :param repo_path: path of repo to get information about submodule
@@ -166,7 +181,7 @@ class GitTool:
         first_execution = True
         for line in txt:
             no_line += 1
-            if line[:12] == "[submodule \"":
+            if line[:12] == '[submodule "':
                 if not first_execution:
                     data = {
                         "url": url,
@@ -220,8 +235,9 @@ class GitTool:
         lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
         return lst_repo
 
-    def get_repo_info_manifest_xml(self, repo_path: str = "./",
-                                   add_root: bool = False, filter_group=None) -> list:
+    def get_repo_info_manifest_xml(
+        self, repo_path: str = "./", add_root: bool = False, filter_group=None
+    ) -> list:
         """
         Get information about manifest of Repo from repo_path
         :param repo_path: path of repo to get information about submodule
@@ -255,7 +271,7 @@ class GitTool:
         dct_remote = {a.get("@name"): a.get("@fetch") for a in lst_remote}
         for project in lst_project:
             groups = project.get("@groups")
-            lst_group = groups.split(',') if groups else []
+            lst_group = groups.split(",") if groups else []
             # Continue if lst_filter exist and group in filter
             for group in lst_group:
                 if lst_filter_group and group not in lst_filter_group:
@@ -290,9 +306,11 @@ class GitTool:
             try:
                 url = repo_root.git.remote("get-url", "origin")
             except Exception as e:
-                print(f"WARNING: Missing origin remote, use default url "
-                      f"{DEFAULT_REMOTE_URL}. Suggest to add a remote origin: \n"
-                      f"> git remote add origin {DEFAULT_REMOTE_URL}")
+                print(
+                    "WARNING: Missing origin remote, use default url "
+                    f"{DEFAULT_REMOTE_URL}. Suggest to add a remote origin: \n"
+                    f"> git remote add origin {DEFAULT_REMOTE_URL}"
+                )
                 url = DEFAULT_REMOTE_URL
             url, url_https, url_git = self.get_url(url)
 
@@ -308,8 +326,9 @@ class GitTool:
         lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
         return lst_repo
 
-    def get_manifest_xml_info(self, repo_path: str = "./", filename=None,
-                              add_root: bool = False) -> list:
+    def get_manifest_xml_info(
+        self, repo_path: str = "./", filename=None, add_root: bool = False
+    ) -> list:
         """
         Get contain of manifest
         :param repo_path: path of repo to get information about submodule
@@ -366,15 +385,22 @@ class GitTool:
 
     def generate_install_locally(self, repo_path="./", filter_group=None):
         filename_locally = f"{repo_path}script/install_locally.sh"
-        lst_repo = self.get_repo_info(repo_path=repo_path, filter_group=filter_group)
+        lst_repo = self.get_repo_info(
+            repo_path=repo_path, filter_group=filter_group
+        )
         lst_result = []
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
-            if "addons/OCA_web" == repo.get("path") or \
-                    "odoo" == repo.get("path"):
+            if (
+                "addons/OCA_web" == repo.get("path")
+                or "odoo" == repo.get("path")
+                or "ERPLibre_image_db" == repo.get("path")
+            ):
                 continue
-            str_repo = f'    printf "${{EL_HOME}}/{repo.get("path")}," >> ' \
-                       f'${{EL_CONFIG_FILE}}\n'
+            str_repo = (
+                f'    printf "${{EL_HOME}}/{repo.get("path")}," >> '
+                "${EL_CONFIG_FILE}\n"
+            )
             lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()
@@ -383,8 +409,10 @@ class GitTool:
         find_index = False
         index_find = 0
         for line in all_lines:
-            if not find_index and \
-                    "if [[ ${EL_MINIMAL_ADDONS} = \"False\" ]]; then\n" == line:
+            if (
+                not find_index
+                and 'if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then\n' == line
+            ):
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
@@ -398,8 +426,10 @@ class GitTool:
             index += 1
 
         if not find_index:
-            print(f"ERROR cannot regenerate file {filename_locally}, "
-                  f"did you change the header?")
+            print(
+                f"ERROR cannot regenerate file {filename_locally}, "
+                "did you change the header?"
+            )
 
         # create file
         with open(filename_locally, mode="w") as file:
@@ -409,9 +439,15 @@ class GitTool:
     def str_insert(source_str, insert_str, pos):
         return source_str[:pos] + insert_str + source_str[pos:]
 
-    def generate_repo_manifest(self, lst_repo: List[Struct] = [], output: str = "",
-                               dct_remote={}, dct_project={}, default_remote=None,
-                               keep_original=False):
+    def generate_repo_manifest(
+        self,
+        lst_repo: List[Struct] = [],
+        output: str = "",
+        dct_remote={},
+        dct_project={},
+        default_remote=None,
+        keep_original=False,
+    ):
         """
         Generate repo manifest
         :param lst_repo: optional, update manifest with list_repo
@@ -424,7 +460,9 @@ class GitTool:
         :return:
         """
         if not output:
-            raise Exception("Cannot generate manifest with missing output filename.")
+            raise Exception(
+                "Cannot generate manifest with missing output filename."
+            )
         lst_remote = []
         lst_remote_name = []
         lst_project = []
@@ -433,28 +471,40 @@ class GitTool:
 
         # Fill with configuration
         for dct_value in dct_remote.values():
-            lst_remote.append(OrderedDict(
-                [('@name', dct_value.get("@name")),
-                 ('@fetch', dct_value.get("@fetch"))]
-            ))
+            lst_remote.append(
+                OrderedDict(
+                    [
+                        ("@name", dct_value.get("@name")),
+                        ("@fetch", dct_value.get("@fetch")),
+                    ]
+                )
+            )
             lst_remote_name.append(dct_value.get("@name"))
         for dct_value in dct_project.values():
             lst_project_info = [
-                ('@name', dct_value.get("@name")),
-                ('@path', dct_value.get("@path")),
+                ("@name", dct_value.get("@name")),
+                ("@path", dct_value.get("@path")),
             ]
             if "@remote" in dct_value.keys():
-                lst_project_info.append(('@remote', dct_value.get("@remote")))
+                lst_project_info.append(("@remote", dct_value.get("@remote")))
             if "@revision" in dct_value.keys():
-                lst_project_info.append(('@revision', dct_value.get("@revision")))
+                lst_project_info.append(
+                    ("@revision", dct_value.get("@revision"))
+                )
             if "@clone-depth" in dct_value.keys():
-                lst_project_info.append(('@clone-depth', dct_value.get("@clone-depth")))
+                lst_project_info.append(
+                    ("@clone-depth", dct_value.get("@clone-depth"))
+                )
             if "@groups" in dct_value.keys():
-                lst_project_info.append(('@groups', dct_value.get("@groups")))
+                lst_project_info.append(("@groups", dct_value.get("@groups")))
             if "@upstream" in dct_value.keys():
-                lst_project_info.append(('@upstream', dct_value.get("@upstream")))
+                lst_project_info.append(
+                    ("@upstream", dct_value.get("@upstream"))
+                )
             if "@dest-branch" in dct_value.keys():
-                lst_project_info.append(('@dest-branch', dct_value.get("@dest-branch")))
+                lst_project_info.append(
+                    ("@dest-branch", dct_value.get("@dest-branch"))
+                )
 
             lst_project.append(OrderedDict(lst_project_info))
             lst_project_name.append(dct_value.get("@name"))
@@ -463,64 +513,97 @@ class GitTool:
             if not repo.is_submodule:
                 # Default
                 if lst_default:
-                    raise Exception("Cannot have many root repo. "
-                                    "Validate why 2 or more is not submodule.")
-                lst_default.append(OrderedDict([
-                    ('@remote', repo.original_organization),
-                    ('@revision', DEFAULT_BRANCH),
-                    ('@sync-j', "4"),
-                    ('@sync-c', "true"),
-                ]))
+                    raise Exception(
+                        "Cannot have many root repo. "
+                        "Validate why 2 or more is not submodule."
+                    )
+                lst_default.append(
+                    OrderedDict(
+                        [
+                            ("@remote", repo.original_organization),
+                            ("@revision", DEFAULT_BRANCH),
+                            ("@sync-j", "4"),
+                            ("@sync-c", "true"),
+                        ]
+                    )
+                )
             else:
-                if keep_original and repo.project_name not in dct_project.keys():
+                if (
+                    keep_original
+                    and repo.project_name not in dct_project.keys()
+                ):
                     # Exception, create a new remote to keep tracking on original
-                    original_organization = f"{repo.original_organization}_origin"
+                    original_organization = (
+                        f"{repo.original_organization}_origin"
+                    )
                 else:
                     original_organization = repo.original_organization
                 # Add remote, only unique remote
                 if original_organization not in lst_remote_name:
-                    lst_remote.append(OrderedDict(
-                        [('@name', original_organization),
-                         ('@fetch', repo.url_https_organization + "/")]
-                    ))
+                    lst_remote.append(
+                        OrderedDict(
+                            [
+                                ("@name", original_organization),
+                                ("@fetch", repo.url_https_organization + "/"),
+                            ]
+                        )
+                    )
                     lst_remote_name.append(repo.original_organization)
                 # Add project, only unique project
                 if repo.project_name not in lst_project_name:
                     lst_project_name.append(repo.project_name)
                     lst_project_info = [
-                        ('@name', repo.project_name),
-                        ('@path', repo.path),
-                        ('@remote', original_organization),
+                        ("@name", repo.project_name),
+                        ("@path", repo.path),
+                        ("@remote", original_organization),
                     ]
                     if repo.revision:
-                        lst_project_info.append(('@revision', repo.revision))
+                        lst_project_info.append(("@revision", repo.revision))
                     if repo.clone_depth:
-                        lst_project_info.append(('@clone-depth', repo.clone_depth))
+                        lst_project_info.append(
+                            ("@clone-depth", repo.clone_depth)
+                        )
                     if repo.sub_path == "addons":
-                        lst_project_info.append(('@groups', "addons"))
+                        lst_project_info.append(("@groups", "addons"))
                     else:
-                        lst_project_info.append(('@groups', "odoo"))
+                        lst_project_info.append(("@groups", "odoo"))
                     lst_project.append(OrderedDict(lst_project_info))
 
         if default_remote and not lst_default:
-            lst_default.append(OrderedDict([
-                ('@remote', default_remote.get("@remote")),
-                ('@revision', DEFAULT_BRANCH),
-                ('@sync-j', "4"),
-                ('@sync-c', "true"),
-            ]))
+            lst_default.append(
+                OrderedDict(
+                    [
+                        ("@remote", default_remote.get("@remote")),
+                        ("@revision", DEFAULT_BRANCH),
+                        ("@sync-j", "4"),
+                        ("@sync-c", "true"),
+                    ]
+                )
+            )
 
         # Order in alphabetic
         lst_order_remote = sorted(lst_remote, key=lambda key: key.get("@name"))
-        lst_order_default = sorted(lst_default, key=lambda key: key.get("@remote"))
-        lst_order_project = sorted(lst_project, key=lambda key: key.get("@name"))
+        lst_order_default = sorted(
+            lst_default, key=lambda key: key.get("@remote")
+        )
+        lst_order_project = sorted(
+            lst_project, key=lambda key: key.get("@name")
+        )
 
         dct_repo = OrderedDict(
-            [('manifest', OrderedDict([
-                ('remote', lst_order_remote),
-                ('default', lst_order_default),
-                ('project', lst_order_project),
-            ]))])
+            [
+                (
+                    "manifest",
+                    OrderedDict(
+                        [
+                            ("remote", lst_order_remote),
+                            ("default", lst_order_default),
+                            ("project", lst_order_project),
+                        ]
+                    ),
+                )
+            ]
+        )
         str_xml_text = xmltodict.unparse(dct_repo, pretty=True)
 
         pos_insert = str_xml_text.rfind("</remote>")
@@ -541,20 +624,26 @@ class GitTool:
         str_xml_text = str_xml_text.replace("></remote", "/")
         str_xml_text = str_xml_text.replace("></default", "/")
         str_xml_text = str_xml_text.replace("></project", "/")
-        str_xml_text = str_xml_text.replace("encoding=\"utf-8\"", "encoding=\"UTF-8\"")
+        str_xml_text = str_xml_text.replace(
+            'encoding="utf-8"', 'encoding="UTF-8"'
+        )
         str_xml_text = str_xml_text.replace("\t", "  ")
 
         # create file
         with open(output, mode="w") as file:
             file.writelines(str_xml_text + "\n")
 
-    def generate_git_modules(self, lst_repo: List[Struct], repo_path: str = "./"):
+    def generate_git_modules(
+        self, lst_repo: List[Struct], repo_path: str = "./"
+    ):
         lst_modules = []
         for repo in lst_repo:
             if repo.is_submodule:
-                lst_modules.append(f"[submodule \"{repo.path}\"]\n"
-                                   f"\turl = {repo.url_https}\n"
-                                   f"\tpath = {repo.path}\n")
+                lst_modules.append(
+                    f'[submodule "{repo.path}"]\n'
+                    f"\turl = {repo.url_https}\n"
+                    f"\tpath = {repo.path}\n"
+                )
 
         # create file
         with open(f"{repo_path}.gitmodules", mode="w") as file:
@@ -581,10 +670,9 @@ class GitTool:
             # TODO what to do if origin not exist?
             repo = Repo(repo_path)
             url = [a for a in repo.remotes][0].url
-            repo_info = self.get_transformed_repo_info_from_url(url,
-                                                                repo_path=repo_path,
-                                                                get_obj=False,
-                                                                is_submodule=False)
+            repo_info = self.get_transformed_repo_info_from_url(
+                url, repo_path=repo_path, get_obj=False, is_submodule=False
+            )
             lst_result.append(repo_info)
         with open(file_name) as file:
             all_lines = file.readlines()
@@ -592,8 +680,10 @@ class GitTool:
                 # Validate first line is supported column
                 expected_header = "url,path,revision,clone-depth\n"
                 if all_lines[0] != expected_header:
-                    raise Exception(f"Not supported csv, please validate {file_name} "
-                                    f"with first line {expected_header}")
+                    raise Exception(
+                        f"Not supported csv, please validate {file_name} "
+                        f"with first line {expected_header}"
+                    )
                 # Ignore first line
                 all_lines = all_lines[1:]
 
@@ -606,7 +696,7 @@ class GitTool:
             line = line.strip()
             if not line:
                 continue
-            line_split = line.split(',')
+            line_split = line.split(",")
             if len(line_split) != 4:
                 print(f"Error with line {line}, suppose to have only 4 ','.")
                 exit(1)
@@ -615,12 +705,14 @@ class GitTool:
             # If begin by http, need to finish by .git
             if len(url) > 5 and url[0:4] == "http" and url[-4:] != ".git":
                 url = f"{url}.git"
-            repo_info = self.get_transformed_repo_info_from_url(url,
-                                                                repo_path=repo_path,
-                                                                get_obj=False,
-                                                                sub_path=path,
-                                                                revision=revision,
-                                                                clone_depth=clone_depth)
+            repo_info = self.get_transformed_repo_info_from_url(
+                url,
+                repo_path=repo_path,
+                get_obj=False,
+                sub_path=path,
+                revision=revision,
+                clone_depth=clone_depth,
+            )
             lst_result.append(repo_info)
         return lst_result
 
@@ -634,11 +726,18 @@ class GitTool:
         with open(file) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
-            manifest_filename = xml_dict.get("manifest").get("include").get("@name")
+            manifest_filename = (
+                xml_dict.get("manifest").get("include").get("@name")
+            )
         return manifest_filename
 
-    def get_matching_repo(self, actual_repo="./", repo_compare_to="./",
-                          force_normalize_compare=False, sync_with_submodule=False):
+    def get_matching_repo(
+        self,
+        actual_repo="./",
+        repo_compare_to="./",
+        force_normalize_compare=False,
+        sync_with_submodule=False,
+    ):
         """
         Compare repo with .gitmodules files
         :param actual_repo:
@@ -653,12 +752,15 @@ class GitTool:
         # set_actual_repo = set(
         #     [a[a.find("_") + 1:] for a in dct_repo_info_actual.keys()])
 
-        dct_repo_info_actual_adapted = {key[key.find("_") + 1:]: item for key, item in
-                                        dct_repo_info_actual.items()}
+        dct_repo_info_actual_adapted = {
+            key[key.find("_") + 1 :]: item
+            for key, item in dct_repo_info_actual.items()
+        }
         set_actual_repo = set(dct_repo_info_actual_adapted.keys())
 
-        lst_repo_info_compare = self.get_repo_info(repo_compare_to,
-                                                   is_manifest=not sync_with_submodule)
+        lst_repo_info_compare = self.get_repo_info(
+            repo_compare_to, is_manifest=not sync_with_submodule
+        )
         if force_normalize_compare:
             for repo_info in lst_repo_info_compare:
                 url_https = repo_info.get("url_https")
@@ -671,7 +773,9 @@ class GitTool:
                 name = f"{repo_name}"
                 repo_info["name"] = name
 
-        dct_repo_info_compare = {a.get("name"): a for a in lst_repo_info_compare}
+        dct_repo_info_compare = {
+            a.get("name"): a for a in lst_repo_info_compare
+        }
         set_compare = set(dct_repo_info_compare.keys())
 
         # TODO finish the match
@@ -681,16 +785,17 @@ class GitTool:
         lst_same_name_normalize = set_actual_repo.intersection(set_compare)
         lst_missing_name_normalize = set_compare.difference(set_actual_repo)
         lst_over_name_normalize = set_actual_repo.difference(set_compare)
-        print(f"Has {len(lst_same_name_normalize)} sames, "
-              f"{len(lst_missing_name_normalize)} missing, "
-              f"{len(lst_over_name_normalize)} more.")
+        print(
+            f"Has {len(lst_same_name_normalize)} sames, "
+            f"{len(lst_missing_name_normalize)} missing, "
+            f"{len(lst_over_name_normalize)} more."
+        )
 
         lst_match = []
         for key in lst_same_name_normalize:
-            lst_match.append((
-                dct_repo_info_actual_adapted[key],
-                dct_repo_info_compare[key]
-            ))
+            lst_match.append(
+                (dct_repo_info_actual_adapted[key], dct_repo_info_compare[key])
+            )
 
         return lst_match, lst_missing_name_normalize, lst_over_name_normalize
 
@@ -728,14 +833,18 @@ class GitTool:
             repo_compare = Repo(compare_to.get("relative_path"))
             commit_compare = repo_compare.head.object.hexsha
             if commit_original != commit_compare:
-                print(f"DIFF - {original.get('name')} - O {commit_original} - "
-                      f"R {commit_compare}")
+                print(
+                    f"DIFF - {original.get('name')} - O {commit_original} - "
+                    f"R {commit_compare}"
+                )
                 lst_diff.append((original, compare_to))
                 if checkout_when_diff:
                     # Update all remote
                     for remote in repo_original.remotes:
-                        retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-                            remote.fetch)()
+                        retry(
+                            wait_exponential_multiplier=1000,
+                            stop_max_delay=15000,
+                        )(remote.fetch)()
                     repo_original.git.checkout(commit_compare)
             else:
                 print(f"SAME - {original.get('name')}")
@@ -743,8 +852,9 @@ class GitTool:
         print(f"finish same {len(lst_same)}, diff {len(lst_diff)}")
 
     @staticmethod
-    def add_and_fetch_remote(repo_info: Struct, root_repo: Repo = None,
-                             branch_name: str = ""):
+    def add_and_fetch_remote(
+        repo_info: Struct, root_repo: Repo = None, branch_name: str = ""
+    ):
         """
         Deprecated function, not use anymore git submodule
         :param repo_info:
@@ -754,42 +864,57 @@ class GitTool:
         """
         try:
             working_repo = Repo(repo_info.relative_path)
-            if repo_info.organization in [a.name for a in working_repo.remotes]:
-                print(f"Remote \"{repo_info.organization}\" already exist "
-                      f"in {repo_info.relative_path}")
+            if repo_info.organization in [
+                a.name for a in working_repo.remotes
+            ]:
+                print(
+                    f'Remote "{repo_info.organization}" already exist '
+                    f"in {repo_info.relative_path}"
+                )
                 return
         except git.NoSuchPathError:
             print(f"New repo {repo_info.relative_path}")
             if not root_repo:
-                print(f"Missing git repository to root for repo {repo_info.path}")
+                print(
+                    f"Missing git repository to root for repo {repo_info.path}"
+                )
                 return
             if branch_name:
                 submodule_repo = retry(
-                    wait_exponential_multiplier=1000,
-                    stop_max_delay=15000
-                )(root_repo.create_submodule)(repo_info.path, repo_info.path,
-                                              url=repo_info.url_https,
-                                              branch=branch_name)
+                    wait_exponential_multiplier=1000, stop_max_delay=15000
+                )(root_repo.create_submodule)(
+                    repo_info.path,
+                    repo_info.path,
+                    url=repo_info.url_https,
+                    branch=branch_name,
+                )
             else:
                 submodule_repo = retry(
-                    wait_exponential_multiplier=1000,
-                    stop_max_delay=15000
-                )(root_repo.create_submodule)(repo_info.path, repo_info.path,
-                                              url=repo_info.url_https)
+                    wait_exponential_multiplier=1000, stop_max_delay=15000
+                )(root_repo.create_submodule)(
+                    repo_info.path, repo_info.path, url=repo_info.url_https
+                )
                 return
         # Add remote
-        upstream_remote = retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-            working_repo.create_remote)(repo_info.organization, repo_info.url_https)
-        print('Remote "%s" created for %s' % (
-            repo_info.organization, repo_info.url_https))
+        upstream_remote = retry(
+            wait_exponential_multiplier=1000, stop_max_delay=15000
+        )(working_repo.create_remote)(
+            repo_info.organization, repo_info.url_https
+        )
+        print(
+            'Remote "%s" created for %s'
+            % (repo_info.organization, repo_info.url_https)
+        )
 
         # Fetch the remote
         retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-            upstream_remote.fetch)()
+            upstream_remote.fetch
+        )()
         print('Remote "%s" fetched' % repo_info.organization)
 
-    def get_pull_request_repo(self, upstream_url: str, github_token: str,
-                              organization_name: str = ""):
+    def get_pull_request_repo(
+        self, upstream_url: str, github_token: str, organization_name: str = ""
+    ):
         """
 
         :param upstream_url:
@@ -802,7 +927,9 @@ class GitTool:
 
         # Fork the repo
         status, user = gh.user.get()
-        user_name = user['login'] if not organization_name else organization_name
+        user_name = (
+            user["login"] if not organization_name else organization_name
+        )
         status, lst_pull = gh.repos[user_name][parsed_url.repo].pulls.get()
         if type(lst_pull) is dict:
             print(f"For url {upstream_url}, got {lst_pull.get('message')}")
@@ -812,34 +939,41 @@ class GitTool:
                 print(pull.get("html_url"))
         return lst_pull
 
-    def fork_repo(self, upstream_url: str, github_token: str,
-                  organization_name: str = ""):
+    def fork_repo(
+        self, upstream_url: str, github_token: str, organization_name: str = ""
+    ):
         # https://developer.github.com/apps/building-integrations/setting-up-and-registering-oauth-apps/about-scopes-for-oauth-apps/
         gh = GitHub(token=github_token)
         parsed_url = parse(upstream_url)
 
         # Fork the repo
         status, user = gh.user.get()
-        user_name = user['login'] if not organization_name else organization_name
+        user_name = (
+            user["login"] if not organization_name else organization_name
+        )
         status, forked_repo = gh.repos[user_name][parsed_url.repo].get()
         if status == 404:
-            status, upstream_repo = (
-                gh.repos[parsed_url.owner][parsed_url.repo].get())
+            status, upstream_repo = gh.repos[parsed_url.owner][
+                parsed_url.repo
+            ].get()
             if status == 404:
                 print("Unable to find repo %s" % upstream_url)
                 exit(1)
             args = {}
             if organization_name:
                 args["organization"] = organization_name
-            status, forked_repo = (
-                gh.repos[parsed_url.owner][parsed_url.repo].forks.post(**args))
+            status, forked_repo = gh.repos[parsed_url.owner][
+                parsed_url.repo
+            ].forks.post(**args)
             if status == 404:
                 print("Error when forking repo %s" % forked_repo)
                 exit(1)
             else:
-                print("Forked %s to %s" % (upstream_url, forked_repo['html_url']))
+                print(
+                    "Forked %s to %s" % (upstream_url, forked_repo["html_url"])
+                )
         elif status == 202:
-            print("Forked repo %s already exists" % forked_repo['full_name'])
+            print("Forked repo %s already exists" % forked_repo["full_name"])
         elif status != 200:
             print("Status not supported: %s - %s" % (status, forked_repo))
             exit(1)

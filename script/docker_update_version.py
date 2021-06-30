@@ -5,7 +5,7 @@ import argparse
 import logging
 import yaml
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -24,17 +24,27 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
+        description="""\
         Update version of docker ready to commit.
-''',
-        epilog='''\
-'''
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('--version', required=True, help="Version of ERPLibre.")
-    parser.add_argument('--base', required=True, help="Docker base name.")
-    parser.add_argument('--prod', required=True, help="Docker prod name.")
-    parser.add_argument('--docker_compose_file', default="./docker-compose.yml", help="Docker compose file to update.")
-    parser.add_argument('--docker_prod', default="./docker/Dockerfile.prod.pkg", help="Docker prod file to update.")
+    parser.add_argument(
+        "--version", required=True, help="Version of ERPLibre."
+    )
+    parser.add_argument("--base", required=True, help="Docker base name.")
+    parser.add_argument("--prod", required=True, help="Docker prod name.")
+    parser.add_argument(
+        "--docker_compose_file",
+        default="./docker-compose.yml",
+        help="Docker compose file to update.",
+    )
+    parser.add_argument(
+        "--docker_prod",
+        default="./docker/Dockerfile.prod.pkg",
+        help="Docker prod file to update.",
+    )
     args = parser.parse_args()
     args.base_version = f"{args.base}:{args.version}"
     args.prod_version = f"{args.prod}:{args.version}"
@@ -57,7 +67,7 @@ def get_config():
 
 
 def edit_text(config):
-    with open(config.docker_compose_file, 'r') as f:
+    with open(config.docker_compose_file, "r") as f:
         lst_docker_info = f.readlines()
 
     if not lst_docker_info:
@@ -70,18 +80,20 @@ def edit_text(config):
         if is_find:
             key = "image:"
             value = lst_docker_info[i]
-            lst_docker_info[i] = f"{value[:value.find(key) + len(key)]} {config.prod_version}\n"
+            lst_docker_info[
+                i
+            ] = f"{value[:value.find(key) + len(key)]} {config.prod_version}\n"
             break
         if "ERPLibre" in docker_info:
             is_find = True
         i += 1
 
-    with open(config.docker_compose_file, 'w') as f:
+    with open(config.docker_compose_file, "w") as f:
         f.writelines(lst_docker_info)
 
 
 def edit_docker_prod(config):
-    with open(config.docker_prod, 'r') as f:
+    with open(config.docker_prod, "r") as f:
         lst_docker_info = f.readlines()
 
     if not lst_docker_info:
@@ -94,7 +106,7 @@ def edit_docker_prod(config):
             lst_docker_info[i] = f"FROM {config.base_version}\n"
         i += 1
 
-    with open(config.docker_prod, 'w') as f:
+    with open(config.docker_prod, "w") as f:
         f.writelines(lst_docker_info)
 
 
@@ -104,5 +116,5 @@ def main():
     edit_docker_prod(config)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
