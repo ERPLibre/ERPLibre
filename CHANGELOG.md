@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+**Migration note**
+
+Because addons repository has change, config file need to be updated.
+- When upgrading to version 1.2.0:
+  - From docker
+    - Run script `make docker_exec_erplibre_gen_config`
+    - Restart the docker `make docker_restart_daemon`
+  - From vanilla
+    - Run script `make install_dev`
+    - Restart your daemon
+    - Regenerate master password manually
+
 ### Added
 
 - Adapt script to give an execution status
@@ -15,6 +27,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Script to check git diff and ignore date
 - Repo with ERPLibre image
 - Improve git repo usage, filter repo by use case
+- ERPLibre theme website of TechnoLibre
+- ERPLibre website snippet
+  - Basic HTML snippets
+  - Snippet card
+  - Snippet timelines
+- Module contract_digitized_signature with contract_portal
+- Module disable auto_backup
+- Odoo cli db command to manipulate restoration db
+- Odoo cli i18n command to generate i18n pot files
 
 #### Makefile
 
@@ -36,6 +57,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Update Python dependency with Poetry
 - Format all Python code with black
+- Module auto_backup with sftp host key
+- Module muk_website_branding use ERPLibre branding
+- Update docs with vscode support, custom document layout, custom email template and trick to use params to share variable
 
 #### Docker
 

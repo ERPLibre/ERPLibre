@@ -295,6 +295,9 @@ docker_run_daemon:
 docker_stop:
 	docker-compose down
 
+.PHONY: docker_restart_daemon
+docker_restart_daemon: docker_stop docker_run_daemon
+
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
 	docker-compose logs -f

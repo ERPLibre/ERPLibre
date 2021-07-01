@@ -18,6 +18,10 @@ And update all from dev to merge into prod.
 ./script/install_locally_dev.sh
 ```
 
+## Update image_db
+
+Change all default image to improve speed when restoring database. Recreate it manually. Check directory `./image_db`.
+
 ## Generate new prod and release
 
 Generate production manifest and freeze all repos versions.
