@@ -305,17 +305,17 @@ docker_show_process:
 
 .PHONY: docker_exec_erplibre
 docker_exec_erplibre:
-	docker exec -u root -ti erplibre_ERPLibre_1 bash
+	./script/docker/docker_exec.sh
 
 # build docker
 .PHONY: docker_build
 docker_build:
-	./script/docker_build.sh
+	./script/docker/docker_build.sh
 
 # build docker release
 .PHONY: docker_build_release
 docker_build_release:
-	./script/docker_build.sh --release
+	./script/docker/docker_build.sh --release
 
 # docker clean all
 .PHONY: docker_clean_all

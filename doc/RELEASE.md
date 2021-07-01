@@ -77,7 +77,7 @@ git push --tags
 Important to generate container after push git tags, otherwise the git version will be wrong.
 
 When building your docker with script
-> ./script/docker_build.sh --release
+> make docker_build_release
 
 List your docker version
 > docker images
