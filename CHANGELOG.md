@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Improve git repo usage, filter repo by use case
 
 #### Makefile
+
 - Format code
 - Code generator test
 - Addons installation
@@ -25,8 +26,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Docker execution
 
 #### Code generator
+
 - Code generator for Odoo module, depending of ERPLibre
-- Support map geoengine
+- Support map geospatial
 - Support i18n
 - Script to transform Python and XML to Python code writer script to regenerate themselves
 
@@ -45,6 +47,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Ubuntu installation
 - Poetry installation
+- Geospatial with postgis can be installed
 
 ## [1.1.1] - 2020-12-11
 
