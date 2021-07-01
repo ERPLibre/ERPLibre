@@ -49,6 +49,14 @@ git diff v#.#.#..HEAD
 ./.venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
 ```
 
+Simplification tools:
+```bash
+# Short version with statistique
+make repo_diff_stat_from_last_version
+# Long version
+make repo_diff_from_last_version
+```
+
 Update file [CHANGELOG.md](../CHANGELOG.md) and create a section with new version, use next command to read all changes.
 
 Create a branch release/#.#.# and create a pull request to branch master with your commit:

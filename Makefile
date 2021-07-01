@@ -352,10 +352,20 @@ repo_configure_all:
 repo_configure_group_code_generator:
 	./script/update_manifest_local_dev_code_generator.sh
 
-# configure only group code_generator
+# Show git status for all repo
 .PHONY: repo_show_status
 repo_show_status:
 	./.venv/repo forall -pc "git status -s"
+
+# Show git diff for all repo from last tag version release
+.PHONY: repo_diff_from_last_version
+repo_diff_from_last_version:
+	./script/repo_diff_last_version.sh
+
+# Show git diff statistique for all repo from last tag version release
+.PHONY: repo_diff_stat_from_last_version
+repo_diff_stat_from_last_version:
+	./script/repo_diff_stat_last_version.sh
 
 # change all repo to ssh on all remote
 .PHONY: repo_use_all_ssh
