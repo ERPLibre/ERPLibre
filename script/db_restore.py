@@ -3,6 +3,8 @@ import os
 import sys
 import argparse
 import logging
+import configparser
+import getpass
 from subprocess import check_output
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -49,11 +51,46 @@ def get_config():
     return args
 
 
+def get_master_password():
+    try:
+        # _logger.info("You have 5 secondes to add master password...")
+        pa = getpass.getpass(
+            prompt="\nEnter master password... "
+        )
+        return pa
+    except getpass.GetPassWarning:
+        _logger.error("Password echoed, danger!")
+
+
 def main():
     config = get_config()
 
+    arg_base = "./.venv/bin/python3 ./odoo/odoo-bin db"
+
+    # check if need master password from config file
+    has_config_file = True
+    config_path = "./config.py"
+    if not os.path.isfile(config_path):
+        config_path = "/etc/odoo/odoo.conf"
+        if not os.path.isfile(config_path):
+            has_config_file = False
+    if has_config_file:
+        config_parser = configparser.ConfigParser()
+        config_parser.read(config_path)
+
+        has_admin_password = config_parser.get("options", "admin_passwd")
+        if has_admin_password:
+            master_password = get_master_password()
+            if not master_password:
+                _logger.error("Missing master password, cancel transaction.")
+                sys.exit(1)
+            else:
+                arg_base += f" --master_password={master_password}"
+        else:
+            _logger.info("No master password needed... Continue")
+
     # Get list of database
-    arg = "./.venv/bin/python3 ./odoo/odoo-bin db --list"
+    arg = f"{arg_base} --list"
     out = check_output(arg.split(" ")).decode()
     lst_db = out.strip().split("\n")
     lst_db_cache = [a for a in lst_db if a.startswith("_cache_")]
@@ -61,10 +98,7 @@ def main():
     if config.clean_cache:
         for db in lst_db_cache:
             _logger.info(f"## Delete {db} ##")
-            arg = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
-                f" {db}"
-            )
+            arg = f"{arg_base} --drop --database {db}"
             out = check_output(arg.split(" ")).decode()
             print(out)
 
@@ -73,10 +107,7 @@ def main():
         # Drop db
         if config.database in lst_db:
             _logger.info(f"## Drop {config.database} ##")
-            arg = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
-                f" {config.database}"
-            )
+            arg = f"{arg_base} --drop --database {config.database}"
             out = check_output(arg.split(" ")).decode()
             print(out)
         # Check cache exist
@@ -86,7 +117,7 @@ def main():
                 f" {config.image} ##"
             )
             arg = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --restore"
+                f"{arg_base} --restore"
                 f" --restore_image {config.image} --database {cache_database}"
             )
             out = check_output(arg.split(" ")).decode()
@@ -96,7 +127,7 @@ def main():
             f"## Clone cache {cache_database} to database {config.database} ##"
         )
         arg = (
-            "./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database"
+            f"{arg_base} --clone --from_database"
             f" {cache_database} --database {config.database}"
         )
         out = check_output(arg.split(" ")).decode()

@@ -307,6 +307,18 @@ docker_show_process:
 docker_exec_erplibre:
 	./script/docker/docker_exec.sh
 
+.PHONY: docker_exec_erplibre_gen_config
+docker_exec_erplibre_gen_config:
+	./script/docker/docker_gen_config.sh
+
+.PHONY: docker_exec_erplibre_make_test
+docker_exec_erplibre_make_test:
+	./script/docker/docker_make_test.sh
+
+.PHONY: docker_exec_erplibre_repo_show_status
+docker_exec_erplibre_repo_show_status:
+	./script/docker/docker_repo_show_status.sh
+
 # build docker
 .PHONY: docker_build
 docker_build:
@@ -339,6 +351,11 @@ repo_configure_all:
 .PHONY: repo_configure_group_code_generator
 repo_configure_group_code_generator:
 	./script/update_manifest_local_dev_code_generator.sh
+
+# configure only group code_generator
+.PHONY: repo_show_status
+repo_show_status:
+	./.venv/repo forall -pc "git status -s"
 
 # change all repo to ssh on all remote
 .PHONY: repo_use_all_ssh

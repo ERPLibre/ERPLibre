@@ -12,8 +12,14 @@ fi
 ./script/repo_revert_git_diff_date_from_code_generator.py
 # Remove pot and po diff
 cd $3
-BRANCH=$(git branch --show-current)
-git restore --source="${BRANCH}" "*.po*"
+# git 2.22 and more, else use next command
+#BRANCH=$(git branch --show-current)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Support old version git < 2.23.0
+# git restore --source="${BRANCH}" "*.po*"
+git checkout -- "*.po*"
+
 cd -
 ./script/maintenance/black.sh $3
 echo "TEST ${2}"
