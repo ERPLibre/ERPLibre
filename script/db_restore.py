@@ -60,6 +60,14 @@ def get_master_password():
         _logger.error("Password echoed, danger!")
 
 
+def get_list_db_cache(arg_base):
+    arg = f"{arg_base} --list"
+    out = check_output(arg.split(" ")).decode()
+    lst_db = out.strip().split("\n")
+    lst_db_cache = [a for a in lst_db if a.startswith("_cache_")]
+    return lst_db, lst_db_cache
+
+
 def main():
     config = get_config()
 
@@ -88,10 +96,7 @@ def main():
             _logger.info("No master password needed... Continue")
 
     # Get list of database
-    arg = f"{arg_base} --list"
-    out = check_output(arg.split(" ")).decode()
-    lst_db = out.strip().split("\n")
-    lst_db_cache = [a for a in lst_db if a.startswith("_cache_")]
+    lst_db, lst_db_cache = get_list_db_cache(arg_base)
 
     if config.clean_cache:
         for db in lst_db_cache:
@@ -99,6 +104,7 @@ def main():
             arg = f"{arg_base} --drop --database {db}"
             out = check_output(arg.split(" ")).decode()
             print(out)
+        lst_db, lst_db_cache = get_list_db_cache(arg_base)
 
     if config.database:
         cache_database = f"_cache_{config.image}"
