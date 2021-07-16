@@ -147,6 +147,45 @@ db_restore_erplibre_base_db_code_generator:
 db_restore_erplibre_base_db_template:
 	./script/db_restore.py --database template
 
+.PHONY: db_create_db_test
+db_create_db_test: db_drop_db_test
+	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
+
+########################
+#  Image installation  #
+########################
+.PHONY: image_db_create_erplibre_base
+image_db_create_erplibre_base:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
+
+.PHONY: image_db_create_erplibre_website
+image_db_create_erplibre_website:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
+	./script/addons/install_addons.sh test crm,website_crm
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
+	./script/addons/install_addons.sh test website_livechat
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
+	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+
+.PHONY: image_db_create_all
+image_db_create_all:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
+	./script/addons/install_addons.sh test crm,website_crm
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
+	./script/addons/install_addons.sh test website_livechat
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
+	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+
 #########################
 #  Addons installation  #
 #########################

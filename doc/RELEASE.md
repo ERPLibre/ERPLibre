@@ -73,6 +73,21 @@ git commit -am "Release v#.#.#"
 
 Review by your peers, test the docker file and merge to master.
 
+## Generate image db to accelerate db installation
+
+Generate image db before tag, the image is store in directory ./image_db
+
+```bash
+make image_db_create_all
+```
+
+To test it, you need to clean caches and install it:
+
+```bash
+./script/db_restore.py --clean_cache
+./script/db_restore.py --database test --image erplibre_website
+```
+
 ## Create tag
 
 Add a tag on the commit in branch master with your release. When adding tag, be sure to update default.xml
