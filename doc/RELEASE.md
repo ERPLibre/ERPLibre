@@ -83,7 +83,7 @@ git tag v#.#.#
 git push --tags
 # Add tags for all repo
 ./.venv/repo forall -pc "git tag ERPLibre/v#.#.#"
-./.venv/repo forall -pc "git push ERPLibre --tags"
+make tag_push_all
 ```
 
 ## Generate and push docker

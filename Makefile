@@ -242,6 +242,13 @@ test_code_generator_code_i18n_extra:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
 
 ##############
+#  tag  #
+##############
+.PHONY: tag_push_all
+tag_push_all:
+	./script/tag_push_all.py
+
+##############
 #  terminal  #
 ##############
 .PHONY: open_terminal
