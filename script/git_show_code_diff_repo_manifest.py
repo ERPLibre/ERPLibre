@@ -106,11 +106,30 @@ def main():
                 )
                 dct_result["PASS"] += 1
         elif branch_name != value:
-            print(
-                f"{Fore.RED}ERROR{Style.RESET_ALL} manifest revision is"
-                f" {branch_name} and actual revision is {value}."
-            )
-            dct_result["ERROR"] += 1
+            value_hash = git_repo.git.rev_parse(value)
+            if git_repo.git.rev_parse(branch_name) == value_hash:
+                print(
+                    f"{Fore.GREEN}PASS{Style.RESET_ALL} Not same branch, no"
+                    " divergence"
+                )
+                dct_result["PASS"] += 1
+            else:
+                # Check if the new branch is pushed
+                commit_branch = git_repo.git.rev_parse(
+                    f"{organization}/{value}"
+                )
+                if commit_branch == value_hash:
+                    print(
+                        f"{Fore.YELLOW}WARNING{Style.RESET_ALL} New branch"
+                        f" '{value}', divergence, but it's push on remote."
+                    )
+                    dct_result["WARNING"] += 1
+                else:
+                    print(
+                        f"{Fore.RED}ERROR{Style.RESET_ALL} manifest revision"
+                        f" is {branch_name} and actual revision is {value}."
+                    )
+                    dct_result["ERROR"] += 1
         else:
             print(f"{Fore.GREEN}PASS{Style.RESET_ALL}")
             dct_result["PASS"] += 1

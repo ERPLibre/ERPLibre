@@ -6,7 +6,13 @@ Before starting, validate [manifest/default.dev.xml](../manifest/default.dev.xml
 
 ## Clean environment before generate new release
 
-Be sure all files are commit and push, this will erase everything in addons.
+Before clean, check if existing file not committed, not pushed or in stash.
+```bash
+./.venv/repo forall -pc "git stash list"
+./script/git_show_code_diff_repo_manifest.py
+```
+
+This will erase everything in addons. Useful before create docker, manifest and do a release.
 
 ```bash
 ./script/clean_repo_manifest.sh
