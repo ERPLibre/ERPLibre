@@ -191,6 +191,7 @@ uvloop = ["uvloop (>=0.15.2)"]
 reference = "93c10bf9ebccf8d7cc686b0b9579f2e5e41c5328"
 type = "git"
 url = "https://github.com/psf/black.git"
+
 [[package]]
 category = "main"
 description = "Interactive plots and applications in the browser from Python"
@@ -1774,6 +1775,7 @@ whichcraft = "*"
 reference = "455ac91d2d6d651bf67ec8eae7dae516f11b1dec"
 type = "git"
 url = "https://github.com/oca/pylint-odoo.git"
+
 [[package]]
 category = "main"
 description = "Utilities and helpers for writing Pylint plugins"
@@ -2970,7 +2972,7 @@ python-versions = "*"
 version = "4.4.28"
 
 [metadata]
-content-hash = "8f717dd4d3138e704720a02bc6ca7efb301108825e0cfc0dcd16c2a8d3822b6c"
+content-hash = "8de9276db75ff5d36eae0441c17e9c88134de99323ae57b2c09d8ded790012af"
 lock-version = "1.0"
 python-versions = "^3.7.7"
 

@@ -360,6 +360,11 @@ repo_configure_group_code_generator:
 repo_show_status:
 	./.venv/repo forall -pc "git status -s"
 
+# Show divergence between actual repository and production manifest
+.PHONY: repo_diff_manifest_production
+repo_diff_manifest_production:
+	./script/git_show_code_diff_repo_manifest.py
+
 # Show git diff for all repo from last tag version release
 .PHONY: repo_diff_from_last_version
 repo_diff_from_last_version:

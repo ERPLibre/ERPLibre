@@ -54,9 +54,7 @@ def get_config():
 def get_master_password():
     try:
         # _logger.info("You have 5 secondes to add master password...")
-        pa = getpass.getpass(
-            prompt="\nEnter master password... "
-        )
+        pa = getpass.getpass(prompt="\nEnter master password... ")
         return pa
     except getpass.GetPassWarning:
         _logger.error("Password echoed, danger!")

@@ -55,6 +55,8 @@ git diff v#.#.#..HEAD
 
 Simplification tools:
 ```bash
+# Show all divergence repository with production
+make repo_diff_manifest_production
 # Short version with statistique
 make repo_diff_stat_from_last_version
 # Long version
