@@ -186,6 +186,11 @@ image_db_create_all:
 	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
 
+.PHONY: image_diff_base_website
+image_diff_base_website:
+	#./script/manifest/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
+	./script/manifest/compare_backup.py --backup_1 erplibre_base --backup_2 erplibre_website
+
 #########################
 #  Addons installation  #
 #########################
