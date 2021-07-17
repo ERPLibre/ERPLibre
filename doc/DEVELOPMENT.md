@@ -66,6 +66,12 @@ Tools to display the differences between the repo and another project.
 ./script/git_change_remote.py --sync_to /path/to/project/erplibre --dry_sync
 ```
 
+## Showing repo differences with manifest develop
+To understand the divergence with the dev manifest.
+```bash
+./script/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+```
+
 ## Sync repo with another project
 Tools to synchronise the repo with another project. This will show differences and try to checkout on the same commit in all repos.
 ```bash

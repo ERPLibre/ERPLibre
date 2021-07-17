@@ -107,6 +107,10 @@ db_drop_db_code_generator:
 db_drop_db_template:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
 
+.PHONY: db_clean_cache
+db_clean_cache:
+	./script/db_restore.py --clean_cache
+
 .PHONY: db_restore_erplibre_base_db_test
 db_restore_erplibre_base_db_test:
 	./script/db_restore.py --database test
@@ -142,6 +146,66 @@ db_restore_erplibre_base_db_code_generator:
 .PHONY: db_restore_erplibre_base_db_template
 db_restore_erplibre_base_db_template:
 	./script/db_restore.py --database template
+
+.PHONY: db_create_db_test
+db_create_db_test: db_drop_db_test
+	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
+
+########################
+#  Image installation  #
+########################
+.PHONY: image_db_create_erplibre_base
+image_db_create_erplibre_base:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
+
+.PHONY: image_db_create_erplibre_website
+image_db_create_erplibre_website:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
+	./script/addons/install_addons.sh test crm,website_crm
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
+	./script/addons/install_addons.sh test website_livechat
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
+	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+	./script/addons/install_addons.sh test stock,purchase,website_sale_management
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
+	./script/addons/install_addons.sh test project
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
+	./script/addons/install_addons.sh test pos_sale
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
+	./script/addons/install_addons.sh test hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
+
+.PHONY: image_db_create_all
+image_db_create_all:
+	./script/make.sh db_create_db_test
+	./script/addons/install_addons.sh test erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
+	./script/addons/install_addons.sh test crm,website_crm
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
+	./script/addons/install_addons.sh test website_livechat
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
+	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+	./script/addons/install_addons.sh test stock,purchase,website_sale_management
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
+	./script/addons/install_addons.sh test project
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
+	./script/addons/install_addons.sh test pos_sale
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
+	./script/addons/install_addons.sh test hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
+
+.PHONY: image_diff_base_website
+image_diff_base_website:
+	#./script/manifest/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
+	./script/manifest/compare_backup.py --backup_1 erplibre_base --backup_2 erplibre_website
 
 #########################
 #  Addons installation  #
@@ -242,6 +306,13 @@ test_code_generator_code_i18n_extra:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/OCA_server-tools/auto_backup
 
 ##############
+#  tag  #
+##############
+.PHONY: tag_push_all
+tag_push_all:
+	./script/tag_push_all.py
+
+##############
 #  terminal  #
 ##############
 .PHONY: open_terminal
@@ -295,6 +366,9 @@ docker_run_daemon:
 docker_stop:
 	docker-compose down
 
+.PHONY: docker_restart_daemon
+docker_restart_daemon: docker_stop docker_run_daemon
+
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
 	docker-compose logs -f
@@ -305,17 +379,29 @@ docker_show_process:
 
 .PHONY: docker_exec_erplibre
 docker_exec_erplibre:
-	docker exec -u root -ti erplibre_ERPLibre_1 bash
+	./script/docker/docker_exec.sh
+
+.PHONY: docker_exec_erplibre_gen_config
+docker_exec_erplibre_gen_config:
+	./script/docker/docker_gen_config.sh
+
+.PHONY: docker_exec_erplibre_make_test
+docker_exec_erplibre_make_test:
+	./script/docker/docker_make_test.sh
+
+.PHONY: docker_exec_erplibre_repo_show_status
+docker_exec_erplibre_repo_show_status:
+	./script/docker/docker_repo_show_status.sh
 
 # build docker
 .PHONY: docker_build
 docker_build:
-	./script/docker_build.sh
+	./script/docker/docker_build.sh
 
 # build docker release
 .PHONY: docker_build_release
 docker_build_release:
-	./script/docker_build.sh --release
+	./script/docker/docker_build.sh --release
 
 # docker clean all
 .PHONY: docker_clean_all
@@ -339,6 +425,26 @@ repo_configure_all:
 .PHONY: repo_configure_group_code_generator
 repo_configure_group_code_generator:
 	./script/update_manifest_local_dev_code_generator.sh
+
+# Show git status for all repo
+.PHONY: repo_show_status
+repo_show_status:
+	./.venv/repo forall -pc "git status -s"
+
+# Show divergence between actual repository and production manifest
+.PHONY: repo_diff_manifest_production
+repo_diff_manifest_production:
+	./script/git_show_code_diff_repo_manifest.py
+
+# Show git diff for all repo from last tag version release
+.PHONY: repo_diff_from_last_version
+repo_diff_from_last_version:
+	./script/repo_diff_last_version.sh
+
+# Show git diff statistique for all repo from last tag version release
+.PHONY: repo_diff_stat_from_last_version
+repo_diff_stat_from_last_version:
+	./script/repo_diff_stat_last_version.sh
 
 # change all repo to ssh on all remote
 .PHONY: repo_use_all_ssh

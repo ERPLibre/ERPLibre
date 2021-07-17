@@ -4,7 +4,10 @@ import sys
 import argparse
 import logging
 from git import Repo
-from git.exc import GitCommandError
+from git.exc import GitCommandError, NoSuchPathError
+from colorama import Fore
+from colorama import Style
+from collections import defaultdict
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
@@ -30,7 +33,7 @@ def get_config():
     parser.add_argument(
         "-m",
         "--manifest",
-        required=True,
+        default="./default.xml",
         help="The manifest to compare with actual code.",
     )
     args = parser.parse_args()
@@ -47,6 +50,7 @@ def main():
     default_branch_name = default_remote.get(
         "@revision", git_tool.default_branch
     )
+    dct_result = defaultdict(int)
     i = 0
     total = len(dct_project)
     for name, project in dct_project.items():
@@ -54,12 +58,18 @@ def main():
         path = project.get("@path")
         print(f"{i}/{total} - {path}")
         branch_name = project.get("@revision", default_branch_name)
-        organization = project.get("@remote")
-        if not organization:
-            print(f"ERROR missing @remote on project {path}.")
+        organization = project.get("@remote", git_tool.default_project_name)
+
+        try:
+            git_repo = Repo(path)
+        except NoSuchPathError:
+            print(
+                f"{Fore.YELLOW}Warning{Style.RESET_ALL} missing project"
+                f" {path}."
+            )
+            dct_result["WARNING"] += 1
             continue
 
-        git_repo = Repo(path)
         value = git_repo.git.branch("--show-current")
         if not value:
             # TODO maybe need to check divergence with local branch and not remote branch
@@ -69,19 +79,79 @@ def main():
                     f"{organization}/{branch_name}"
                 )
             except GitCommandError:
-                print("ERROR Something wrong with this repo.")
+                # Cannot get information
+                if branch_name == commit_head:
+                    print(
+                        f"{Fore.GREEN}PASS{Style.RESET_ALL} Not on specified"
+                        " branch, no divergence"
+                    )
+                    dct_result["PASS"] += 1
+                else:
+                    print(
+                        f"{Fore.RED}ERROR{Style.RESET_ALL} manifest revision"
+                        f" is {branch_name} and commit {commit_head}."
+                    )
+                    dct_result["ERROR"] += 1
                 continue
             if commit_branch != commit_head:
-                print("WARNING Not on specified branch, got a divergence.")
+                print(
+                    f"{Fore.YELLOW}WARNING{Style.RESET_ALL} Not on specified"
+                    " branch, got a divergence."
+                )
+                dct_result["WARNING"] += 1
             else:
-                print("PASS Not on specified branch, no divergence.")
+                print(
+                    f"{Fore.GREEN}PASS{Style.RESET_ALL} Not on specified"
+                    " branch, no divergence"
+                )
+                dct_result["PASS"] += 1
         elif branch_name != value:
-            print(
-                f"ERROR, manifest revision is {branch_name} and actual"
-                f" revision is {value}."
-            )
+            value_hash = git_repo.git.rev_parse(value)
+            if git_repo.git.rev_parse(branch_name) == value_hash:
+                print(
+                    f"{Fore.GREEN}PASS{Style.RESET_ALL} Not same branch, no"
+                    " divergence"
+                )
+                dct_result["PASS"] += 1
+            else:
+                # Check if the new branch is pushed
+                commit_branch = git_repo.git.rev_parse(
+                    f"{organization}/{value}"
+                )
+                if commit_branch == value_hash:
+                    print(
+                        f"{Fore.YELLOW}WARNING{Style.RESET_ALL} New branch"
+                        f" '{value}', divergence, but it's push on remote."
+                    )
+                    dct_result["WARNING"] += 1
+                else:
+                    print(
+                        f"{Fore.RED}ERROR{Style.RESET_ALL} manifest revision"
+                        f" is {branch_name} and actual revision is {value}."
+                    )
+                    dct_result["ERROR"] += 1
         else:
-            print("PASS")
+            print(f"{Fore.GREEN}PASS{Style.RESET_ALL}")
+            dct_result["PASS"] += 1
+
+    str_result = ""
+    if dct_result["PASS"]:
+        str_result += (
+            f"{Fore.GREEN}PASS: {dct_result['PASS']}{Style.RESET_ALL}"
+        )
+    if dct_result["WARNING"]:
+        if str_result:
+            str_result += " "
+        str_result += (
+            f"{Fore.YELLOW}WARNING: {dct_result['WARNING']}{Style.RESET_ALL}"
+        )
+    if dct_result["ERROR"]:
+        if str_result:
+            str_result += " "
+        str_result += (
+            f"{Fore.RED}ERROR: {dct_result['ERROR']}{Style.RESET_ALL}"
+        )
+    print(str_result)
 
 
 if __name__ == "__main__":

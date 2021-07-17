@@ -82,6 +82,18 @@ git commit -am "[#ticket] subject: short sentence"
 ```
 
 ### Clean all
+Before, check changed file in all repos.
+
+```bash
+./.venv/repo forall -pc "git status -s"
+```
+
+Check the changed branch, and push changed if needed.
+
+```bash
+./script/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+```
+
 Maybe, some version diverge from your manifest. Simply clean all and relaunch your installation.
 ```bash
 ./script/clean_repo_manifest.sh

@@ -6,7 +6,13 @@ Before starting, validate [manifest/default.dev.xml](../manifest/default.dev.xml
 
 ## Clean environment before generate new release
 
-Be sure all files are commit and push, this will erase everything in addons.
+Before clean, check if existing file not committed, not pushed or in stash.
+```bash
+./.venv/repo forall -pc "git stash list"
+./script/git_show_code_diff_repo_manifest.py
+```
+
+This will erase everything in addons. Useful before create docker, manifest and do a release.
 
 ```bash
 ./script/clean_repo_manifest.sh
@@ -17,6 +23,10 @@ And update all from dev to merge into prod.
 ```bash
 ./script/install_locally_dev.sh
 ```
+
+## Update image_db
+
+Change all default image to improve speed when restoring database. Recreate it manually. Check directory `./image_db`.
 
 ## Generate new prod and release
 
@@ -49,6 +59,16 @@ git diff v#.#.#..HEAD
 ./.venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
 ```
 
+Simplification tools:
+```bash
+# Show all divergence repository with production
+make repo_diff_manifest_production
+# Short version with statistique
+make repo_diff_stat_from_last_version
+# Long version
+make repo_diff_from_last_version
+```
+
 Update file [CHANGELOG.md](../CHANGELOG.md) and create a section with new version, use next command to read all changes.
 
 Create a branch release/#.#.# and create a pull request to branch master with your commit:
@@ -58,6 +78,21 @@ git commit -am "Release v#.#.#"
 ```
 
 Review by your peers, test the docker file and merge to master.
+
+## Generate image db to accelerate db installation
+
+Generate image db before tag, the image is store in directory ./image_db
+
+```bash
+make image_db_create_all
+```
+
+To test it, you need to clean caches and install it:
+
+```bash
+./script/db_restore.py --clean_cache
+./script/db_restore.py --database test --image erplibre_website
+```
 
 ## Create tag
 
@@ -69,7 +104,7 @@ git tag v#.#.#
 git push --tags
 # Add tags for all repo
 ./.venv/repo forall -pc "git tag ERPLibre/v#.#.#"
-./.venv/repo forall -pc "git push ERPLibre --tags"
+make tag_push_all
 ```
 
 ## Generate and push docker
@@ -77,7 +112,7 @@ git push --tags
 Important to generate container after push git tags, otherwise the git version will be wrong.
 
 When building your docker with script
-> ./script/docker_build.sh --release
+> make docker_build_release
 
 List your docker version
 > docker images
