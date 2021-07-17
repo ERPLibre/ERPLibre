@@ -163,7 +163,7 @@ image_db_create_erplibre_base:
 .PHONY: image_db_create_erplibre_website
 image_db_create_erplibre_website:
 	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines
+	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
@@ -171,13 +171,21 @@ image_db_create_erplibre_website:
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
 	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+	./script/addons/install_addons.sh test stock,purchase,website_sale_management
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
+	./script/addons/install_addons.sh test project
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
+	./script/addons/install_addons.sh test pos_sale
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
+	./script/addons/install_addons.sh test hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
 
 .PHONY: image_db_create_all
 image_db_create_all:
 	./script/make.sh db_create_db_test
 	./script/addons/install_addons.sh test erplibre_base
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
-	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
@@ -185,6 +193,14 @@ image_db_create_all:
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
 	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
+	./script/addons/install_addons.sh test stock,purchase,website_sale_management
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
+	./script/addons/install_addons.sh test project
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
+	./script/addons/install_addons.sh test pos_sale
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
+	./script/addons/install_addons.sh test hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
 
 .PHONY: image_diff_base_website
 image_diff_base_website:
