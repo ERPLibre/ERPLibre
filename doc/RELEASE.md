@@ -2,11 +2,10 @@
 
 A guide on how to generate a release.
 
-Before starting, validate [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
-
 ## Clean environment before generate new release
 
 Before clean, check if existing file not committed, not pushed or in stash.
+
 ```bash
 ./.venv/repo forall -pc "git stash list"
 ./script/git_show_code_diff_repo_manifest.py
@@ -24,9 +23,18 @@ And update all from dev to merge into prod.
 ./script/install_locally_dev.sh
 ```
 
-## Update image_db
+## Validate environment
 
-Change all default image to improve speed when restoring database. Recreate it manually. Check directory `./image_db`.
+- Check [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
+- Run test with `make test`
+
+### Update image_db
+
+Run `make image_db_create_all`, this will generate image in directory `./image_db`.
+
+### Test docker generate
+
+Run `make docker_build` to generate a docker.
 
 ## Generate new prod and release
 
@@ -39,11 +47,13 @@ Generate production manifest and freeze all repos versions.
 Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh) and [Dockerfile.prod](../docker/Dockerfile.prod.pkg).
 
 Generate [poetry](./POETRY.md) and keep only missing dependencies, remove updates.
+
 ```bash
 ./script/poetry_update.py
 ```
 
 When running script poetry_update.py, note manually inserted dependencies, stash all changes and add it manually.
+
 ```bash
 poetry add DEPENDENCY
 ```
@@ -60,6 +70,7 @@ git diff v#.#.#..HEAD
 ```
 
 Simplification tools:
+
 ```bash
 # Show all divergence repository with production
 make repo_diff_manifest_production

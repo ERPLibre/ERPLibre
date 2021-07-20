@@ -5,7 +5,7 @@ import argparse
 import logging
 import yaml
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
