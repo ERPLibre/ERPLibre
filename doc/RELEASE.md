@@ -2,16 +2,16 @@
 
 A guide on how to generate a release.
 
-## Clean environment before generate new release
+## Clean environment before generating new release
 
-Before clean, check if existing file not committed, not pushed or in stash.
+Before the cleaning, check if existing file is not committed, not pushed or in stash.
 
 ```bash
 ./.venv/repo forall -pc "git stash list"
 ./script/git_show_code_diff_repo_manifest.py
 ```
 
-This will erase everything in addons. Useful before create docker, manifest and do a release.
+This will erase everything in addons. Useful before creating docker, manifest and do a release.
 
 ```bash
 ./script/clean_repo_manifest.sh
@@ -25,12 +25,12 @@ And update all from dev to merge into prod.
 
 ## Validate environment
 
-- Check [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
+- Check if [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
 - Run test with `make test`
 
 ### Update image_db
 
-Run `make image_db_create_all`, this will generate image in directory `./image_db`.
+Run `make image_db_create_all`, this will generate an image in directory `./image_db`.
 
 ### Test docker generate
 
@@ -101,7 +101,7 @@ Review by your peers, test the docker file and merge to master.
 
 ## Generate image db to accelerate db installation
 
-Generate image db before tag, the image is store in directory ./image_db
+Generate image db before tag, the image is stored in directory ./image_db
 
 ```bash
 make image_db_create_all
@@ -149,3 +149,4 @@ To generate a list of differences between repo git commit
 ```bash
 ./script/git_change_remote.py --sync_to /path/to/directory
 ```
+

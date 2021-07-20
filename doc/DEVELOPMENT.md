@@ -24,7 +24,7 @@ You need to remove `clone-depth="10"` from `./manifest/default.dev.xml` in order
 Make a temporary commit and regenerate with `./script/install_locally_dev.sh`
 
 ## Fork project to create a new project independent from ERPLibre (deprecated)
-ERPLibre was created by this script. It's now deprecated.
+ERPLibre was created with this script. It's now deprecated.
 Use this script when you need to fork directly from the original source.
 Don't use this script if you want to update from ERPLibre and follow mainstream development.
 ```bash
@@ -32,9 +32,9 @@ Don't use this script if you want to update from ERPLibre and follow mainstream 
 ```
 
 # Fork all repos for you own organization
-Go to your github account and generate a token to access fork option with your user. Create an organization or use your personal account can choose your user name.
+Go to your Github account and generate a token to access fork option with your user. Create an organization or use your personal account and choose your user name.
 
-This command will fork all repos and ERPLibre to your own organization. It keeps track to ERPLibre.
+This command will fork all repos and ERPLibre to your own organization. It keeps track of ERPLibre.
 ```bash
 ./script/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
 ```
@@ -47,15 +47,15 @@ Execute to generate Repo manifest
 ./script/fork_project_ERPLibre.py --skip_fork
 ```
 
-## Move database prod to dev
-When moving database prod to your dev environment, you want to remove email servers and install user test in order to test the database.
+## Move database from prod to dev
+When moving database from prod to your dev environment, you want to remove email servers and install user test in order to test the database.
 Run:
 ```bash
 ./run.sh --stop-after-init -i user_test,disable_mail_server --dev all -d DATABASE
 ```
 
-## Change git url https to git
-This will update all urls in git format:
+## Change git url https to Git
+This will update all urls in Git format:
 ```bash
 ./script/git_change_remote_https_to_git.py
 ```
@@ -67,7 +67,7 @@ Tools to display the differences between the repo and another project.
 ```
 
 ## Showing repo differences with manifest develop
-To understand the divergence with the dev manifest.
+To understand the divergences with the dev manifest.
 ```bash
 ./script/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
 ```

@@ -16,7 +16,7 @@ Modify the file env_var.sh for production installation.
 Enable nginx if you need a proxy with `EL_INSTALL_NGINX`.
 Redirect your DNS to the proxy's ip and add your A and AAAA into `WL_WEBSITE_NAME` with space between.
 
-### 3. Execute the script:
+### 3. Execute the scripts:
 
 #### With proxy nginx production, install certbot before for SSL
 ```bash
@@ -37,7 +37,7 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 ./script/install_dev.sh
 ./script/install_production.sh
 ```
-A service is running by SystemD. You can access it with the DNS name found in env_var.sh
+A service is runned by SystemD. You can access it with the DNS name found in `env_var.sh`
 
 #### Ubuntu 20.04 server
 Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
@@ -46,7 +46,7 @@ Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missi
 ./script/install_dev.sh
 ./script/install_production.sh
 ```
-A service is running by SystemD, you can access with the DNS name found in env_var.sh
+A service is runned by SystemD, you can access it with the DNS name found in `env_var.sh`
 
 ### 4. SSL:
 Generate a ssl certificate
@@ -82,7 +82,7 @@ cd /[EL_USER]/erplibre
 
 ## Move prod database to dev
 When moving prod database to your dev environment, you want to remove email servers and install user test to test the database.
-Warning, this is not safe for production, you expose all data.
+WARNING, this is not safe for production, you will expose all data.
 Run:
 ```bash
 ./script/migrate_prod_to_test.sh DATABASE
@@ -95,14 +95,14 @@ Update all features.
 ```
 
 # Postgresql
-To show config file:
+To show config files:
 > psql -U postgres -c 'SHOW config_file'
 
 Edit this file to accept interface from all networks:
 > /var/lib/postgres/data/postgresql.conf
 
 # Delete an instance in production
-Caution, this delete user's home, it's irrevocable.
+CAUTION, this will delete user's home, it's irrevocable.
 ```bash
 ./script/delete_production.sh
 ```

@@ -1,5 +1,5 @@
 # Poetry
-## Add automatically dependencies
+## Add dependencies automatically
 Add your dependencies in file [requirements.txt](../requirements.txt) and run script
 ```bash
 ./script/poetry_update.py
@@ -10,7 +10,7 @@ Priority dependencies in ./requirements.txt, after it's ./odoo/requirements.txt,
 
 TODO add option to only add missing dependencies and ignore update.
 
-## Add manually dependencies
+## Add dependencies manually
 The automatic script will erase this dependency, but you can add it for your local test.
 ```bash
 poetry add PYTHON_MODULE

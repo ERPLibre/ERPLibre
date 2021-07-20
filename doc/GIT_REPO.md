@@ -30,12 +30,12 @@ git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose
 ```
 
 # Create Manifest
-A [Manifest](https://gerrit.googlesource.com/git-repo/+/master/docs/manifest-format.md), is a XML file managed by git-repo to generate repo.
+A [Manifest](https://gerrit.googlesource.com/git-repo/+/master/docs/manifest-format.md), is an XML file managed by git-repo to generate a repo.
 
 ## Make a new version of prod
 It freezes all repo, from dev to prod.
 
-This will add revision git hash in the Manifest.
+This will add revision git hash in the manifest.
 ```bash
 ./.venv/repo manifest -r -o ./default.xml
 ```
@@ -66,7 +66,7 @@ git commit -am "[#ticket] subject: short sentence"
 ```
 
 ## Useful commands
-### Search all repo with a specific branch name
+### Search all repos with a specific branch name
 ```bash
 ./.venv/repo forall -pc "git branch -a|grep BRANCH"
 ```
@@ -82,7 +82,7 @@ git commit -am "[#ticket] subject: short sentence"
 ```
 
 ### Clean all
-Before, check changed file in all repos.
+Before cleaning, check changed file in all repos.
 
 ```bash
 ./.venv/repo forall -pc "git status -s"
