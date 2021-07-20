@@ -30,7 +30,11 @@ And update all from dev to merge into prod.
 
 ### Update image_db
 
-Run `make image_db_create_all`, this will generate an image in directory `./image_db`.
+Run `make image_db_create_all` to generate database images in directory `./image_db`.
+
+### Update documentations
+
+Run `make doc_markdown` to generate Markdown in directory `./doc`.
 
 ### Test docker generate
 

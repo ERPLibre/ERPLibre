@@ -470,7 +470,7 @@ Aller dans l'interface web, Application «Configuration», «Paramètres Génér
 TODO
 
 <!-- [fr] -->
-L'exemple est consrtuit avec le helpdesk. Installer le module helpdesk_mgmt :
+L'exemple est construit avec le helpdesk. Installer le module helpdesk_mgmt :
 
 Pour des références techniques, voir module :
 - code_generator_demo_export_helpdesk;
