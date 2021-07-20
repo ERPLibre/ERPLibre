@@ -1,5 +1,8 @@
 # ERPLibre production guide
 
+## Requirement
+- 5Go of disk space
+
 ## Production installation procedure
 
 ### 1. Clone the project:
