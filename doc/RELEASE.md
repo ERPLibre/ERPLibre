@@ -36,6 +36,10 @@ Run `make image_db_create_all`, this will generate image in directory `./image_d
 
 Run `make docker_build` to generate a docker.
 
+### Test production Ubuntu environment
+
+Follow instruction into [PRODUCTION.md](./PRODUCTION.md).
+
 ## Generate new prod and release
 
 Generate production manifest and freeze all repos versions.

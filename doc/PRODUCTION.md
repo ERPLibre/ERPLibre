@@ -10,14 +10,31 @@ cd ERPLibre
 
 ### 2. Modify the parameters
 Modify the file env_var.sh for production installation.
+Enable nginx if you need a proxy with `EL_INSTALL_NGINX`.
+Redirect your DNS to the proxy's ip and add your A and AAAA into `WL_WEBSITE_NAME` with space between.
 
 ### 3. Execute the script:
+
+#### With proxy nginx production, install certbot before for SSL
+```bash
+# Snap installation
+# https://snapcraft.io/docs/installing-snap-on-debian
+sudo apt install -y snapd
+sudo snap install core
+sudo snap refresh core
+
+# https://certbot.eff.org/lets-encrypt/debianbuster-nginx
+# Cerbot
+sudo snap install --classic certbot
+sudo ln -s /snap/bin/certbot /usr/bin/certbot
+```
+
 #### Ubuntu 18.04 server
 ```bash
 ./script/install_dev.sh
 ./script/install_production.sh
 ```
-A service is running by systemd. You can access it with the DNS name found in env_var.sh
+A service is running by SystemD. You can access it with the DNS name found in env_var.sh
 
 #### Ubuntu 20.04 server
 Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
@@ -26,7 +43,7 @@ Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missi
 ./script/install_dev.sh
 ./script/install_production.sh
 ```
-A service is running by systemd, you can access with the DNS name found in env_var.sh
+A service is running by SystemD, you can access with the DNS name found in env_var.sh
 
 ### 4. SSL:
 Generate a ssl certificate

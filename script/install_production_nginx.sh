@@ -2,12 +2,19 @@
 
 . ./env_var.sh
 
+TEMP_FILENAME_NGINX_AVAILABLE="localhost"
+NEW_EL_WEBSITE_NAME="${EL_WEBSITE_NAME}"
+if [[ -z "${EL_WEBSITE_NAME}" ]]; then
+  NEW_EL_WEBSITE_NAME=${TEMP_FILENAME_NGINX_AVAILABLE}
+fi
+TEMP_FILE_NGINX_AVAILABLE="/tmp/${TEMP_FILENAME_NGINX_AVAILABLE}"
+
 #--------------------------------------------------
 # Install Nginx if needed
 #--------------------------------------------------
 if [ ${EL_INSTALL_NGINX} = "True" ]; then
-  echo -e "\n---- Installing and setting up Nginx ----"
-  cat <<EOF > /tmp/nginx${EL_USER}
+  echo -e "\n---- Installing and setting up Nginx into ${TEMP_FILE_NGINX_AVAILABLE} ----"
+  cat <<EOF >${TEMP_FILE_NGINX_AVAILABLE}
 upstream erplibre${EL_USER} {
   server 127.0.0.1:${EL_PORT};
 }
@@ -18,7 +25,7 @@ upstream erplibre${EL_USER}chat {
 server {
     listen 80;
 
-    server_name ${EL_WEBSITE_NAME};
+    server_name ${NEW_EL_WEBSITE_NAME};
 
     # Add Headers for erplibre proxy mode
     proxy_set_header X-Forwarded-Host \$host;
@@ -80,11 +87,11 @@ server {
 }
 EOF
 
-  sudo mv -f /tmp/nginx${EL_USER} /etc/nginx/sites-available/${EL_WEBSITE_NAME}
-  sudo ln -fs /etc/nginx/sites-available/${EL_WEBSITE_NAME} /etc/nginx/sites-enabled/${EL_WEBSITE_NAME}
+  sudo mv -f ${TEMP_FILE_NGINX_AVAILABLE} /etc/nginx/sites-available/${NEW_EL_WEBSITE_NAME}
+  sudo ln -fs /etc/nginx/sites-available/${NEW_EL_WEBSITE_NAME} /etc/nginx/sites-enabled/${NEW_EL_WEBSITE_NAME}
   sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default
   sudo systemctl restart nginx
-  echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-enabled/${EL_WEBSITE_NAME}"
+  echo "Done! The Nginx server is up and running. Configuration can be found at /etc/nginx/sites-enabled/${NEW_EL_WEBSITE_NAME}"
   echo "Run manually certbot : sudo certbot --nginx"
 else
   echo "Nginx isn't installed due to choice of the user!"

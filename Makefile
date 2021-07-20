@@ -64,6 +64,11 @@ install_dev:
 install_os:
 	./script/install_dev.sh
 
+.PHONY: install_production
+install_production:
+	./script/install_dev.sh
+	./script/install_production.sh
+
 .PHONY: install_docker_debian
 install_docker_debian:
 	./script/ install_debian_10_prod_docker.sh
