@@ -38,7 +38,12 @@ Run `make docker_build` to generate a docker.
 
 ### Test production Ubuntu environment
 
-Follow instruction into [PRODUCTION.md](./PRODUCTION.md).
+Follow instructions in [PRODUCTION.md](./PRODUCTION.md).
+
+Test installation with code generator Geomap:
+```bash
+make addons_install_code_generator_full
+```
 
 ## Generate new prod and release
 
