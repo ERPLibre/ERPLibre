@@ -83,7 +83,7 @@ def main():
         dct_project=dct_project,
         keep_original=True,
     )
-    git_tool.generate_install_locally()
+    git_tool.generate_generate_config()
 
 
 if __name__ == "__main__":

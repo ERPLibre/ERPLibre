@@ -51,9 +51,9 @@ def get_config():
         help="Open web browser for each repo.",
     )
     parser.add_argument(
-        "--generate_only_install_locally",
+        "--generate_only_generate_config",
         action="store_true",
-        help="Only generate script install_locally.sh.",
+        help="Only generate script generate_config.sh.",
     )
     parser.add_argument(
         "--sync_to",
@@ -81,10 +81,10 @@ def main():
     # lst_repo = get_all_repo()
     config = get_config()
 
-    if config.generate_only_install_locally:
+    if config.generate_only_generate_config:
         print("Generate config file locally.")
         gt = git_tool.GitTool()
-        gt.generate_install_locally()
+        gt.generate_generate_config()
         return
 
     if config.sync_to:

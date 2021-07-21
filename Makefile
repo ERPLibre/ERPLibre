@@ -124,6 +124,10 @@ db_restore_erplibre_base_db_test:
 db_restore_erplibre_base_db_test_module_test: db_restore_erplibre_base_db_test
 	./script/addons/install_addons.sh test test
 
+.PHONY: db_restore_erplibre_base_db_test_image_test
+db_restore_erplibre_base_db_test_image_test:
+	./script/db_restore.py --database test --image test
+
 .PHONY: db_restore_erplibre_base_db_test2
 db_restore_erplibre_base_db_test2:
 	./script/db_restore.py --database test2
@@ -466,25 +470,25 @@ repo_use_all_https:
 # generate new config.conf
 .PHONY: config_install
 config_install:
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config all repo
 .PHONY: config_gen_all
 config_gen_all:
 	./script/git_repo_update_group.py
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config repo code_generator
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
 	./script/git_repo_update_group.py --group base,code_generator
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config repo image_db
 .PHONY: config_gen_image_db
 config_gen_image_db:
 	./script/git_repo_update_group.py --group base,image_db
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 ##########
 #  I18n  #

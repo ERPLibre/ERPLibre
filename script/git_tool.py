@@ -383,8 +383,8 @@ class GitTool:
         if url:
             webbrowser.open_new_tab(url)
 
-    def generate_install_locally(self, repo_path="./", filter_group=None):
-        filename_locally = f"{repo_path}script/install_locally.sh"
+    def generate_generate_config(self, repo_path="./", filter_group=None):
+        filename_locally = f"{repo_path}script/generate_config.sh"
         lst_repo = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )

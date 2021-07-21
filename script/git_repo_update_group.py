@@ -46,7 +46,7 @@ def main():
 
     filter_group = config.group if config.group else None
 
-    git_tool.generate_install_locally(filter_group=filter_group)
+    git_tool.generate_generate_config(filter_group=filter_group)
 
 
 if __name__ == "__main__":

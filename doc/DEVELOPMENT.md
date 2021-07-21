@@ -155,14 +155,14 @@ You can limit your addons in ERPlibre config file depending on a group of your a
 
 ```bash
 ./script/git_repo_update_group.py --group base,code_generator
-./script/install_locally.sh
+./script/generate_config.sh
 ```
 
 Or go back to normal
 
 ```bash
 ./script/git_repo_update_group.py
-./script/install_locally.sh
+./script/generate_config.sh
 ```
 
 # Database
