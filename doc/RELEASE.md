@@ -82,7 +82,7 @@ Generate production manifest and freeze all repos versions.
 ./.venv/repo manifest -r -o ./default.xml
 ```
 
-Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh) and [Dockerfile.prod](../docker/Dockerfile.prod.pkg).
+Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg) and [docker-compose](../docker-compose.yml).
 
 Generate [poetry](./POETRY.md) and keep only missing dependencies, remove updates.
 

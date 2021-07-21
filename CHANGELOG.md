@@ -7,6 +7,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.0] - 2020-12-11
+
 **Migration note**
 
 Because addons repository has change, config file need to be updated.
@@ -173,7 +175,9 @@ Because addons repository has change, config file need to be updated.
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.0...HEAD
+
+[1.2.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.1.1...v1.2.0
 
 [1.1.1]: https://github.com/ERPLibre/ERPLibre/compare/v1.0.1...v1.1.1
 
