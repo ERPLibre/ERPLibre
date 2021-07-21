@@ -369,6 +369,10 @@ docker_stop:
 .PHONY: docker_restart_daemon
 docker_restart_daemon: docker_stop docker_run_daemon
 
+.PHONY: docker_show_databases
+docker_show_databases:
+	./script/docker/docker_list_database.sh
+
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
 	docker-compose logs -f
