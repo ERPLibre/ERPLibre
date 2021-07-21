@@ -30,7 +30,11 @@ def get_config():
     )
     parser.add_argument("--csv_1", required=True, help="CSV file first")
     parser.add_argument("--csv_2", required=True, help="CSV file second")
-    parser.add_argument("--compare_key", required=True, help="Key to search and compare with it.")
+    parser.add_argument(
+        "--compare_key",
+        required=True,
+        help="Key to search and compare with it.",
+    )
     args = parser.parse_args()
     return args
 
@@ -38,8 +42,8 @@ def get_config():
 def main():
     config = get_config()
 
-    with open(config.csv_1, mode='r') as csv_file_1:
-        with open(config.csv_2, mode='r') as csv_file_2:
+    with open(config.csv_1, mode="r") as csv_file_1:
+        with open(config.csv_2, mode="r") as csv_file_2:
             csv_reader_1 = csv.DictReader(csv_file_1)
             csv_reader_2 = csv.DictReader(csv_file_2)
             lst_csv_1 = [a.get(config.compare_key) for a in csv_reader_1]
