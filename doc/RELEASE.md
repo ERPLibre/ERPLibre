@@ -2,17 +2,16 @@
 
 A guide on how to generate a release.
 
-Before starting, validate [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
+## Clean environment before generating new release
 
-## Clean environment before generate new release
+Before the cleaning, check if existing file isn't committed, not pushed or in stash.
 
-Before clean, check if existing file not committed, not pushed or in stash.
 ```bash
 ./.venv/repo forall -pc "git stash list"
 ./script/git_show_code_diff_repo_manifest.py
 ```
 
-This will erase everything in addons. Useful before create docker, manifest and do a release.
+This will erase everything in addons. Useful before creating docker, manifest and do a release.
 
 ```bash
 ./script/clean_repo_manifest.sh
@@ -24,9 +23,56 @@ And update all from dev to merge into prod.
 ./script/install_locally_dev.sh
 ```
 
-## Update image_db
+## Validate environment
 
-Change all default image to improve speed when restoring database. Recreate it manually. Check directory `./image_db`.
+- Check if [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
+- Run test :
+
+```bash
+make test
+```
+
+### Format code
+
+To format all code, run:
+
+```bash
+make format
+```
+
+### Update image_db
+
+To generate database images in directory `./image_db`, run:
+
+```bash
+make image_db_create_all
+```
+
+### Update documentations
+
+To generate Markdown in directory `./doc`, run:
+
+```bash
+make doc_markdown
+```
+
+### Test docker generate
+
+To generate a docker, run:
+
+```bash
+make docker_build
+```
+
+### Test production Ubuntu environment
+
+Follow instructions in [PRODUCTION.md](./PRODUCTION.md).
+
+Test installation with code generator Geomap:
+
+```bash
+make addons_install_code_generator_full
+```
 
 ## Generate new prod and release
 
@@ -39,11 +85,13 @@ Generate production manifest and freeze all repos versions.
 Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh) and [Dockerfile.prod](../docker/Dockerfile.prod.pkg).
 
 Generate [poetry](./POETRY.md) and keep only missing dependencies, remove updates.
+
 ```bash
 ./script/poetry_update.py
 ```
 
 When running script poetry_update.py, note manually inserted dependencies, stash all changes and add it manually.
+
 ```bash
 poetry add DEPENDENCY
 ```
@@ -60,6 +108,7 @@ git diff v#.#.#..HEAD
 ```
 
 Simplification tools:
+
 ```bash
 # Show all divergence repository with production
 make repo_diff_manifest_production
@@ -81,7 +130,7 @@ Review by your peers, test the docker file and merge to master.
 
 ## Generate image db to accelerate db installation
 
-Generate image db before tag, the image is store in directory ./image_db
+Generate image db before tag, the image is stored in directory ./image_db
 
 ```bash
 make image_db_create_all

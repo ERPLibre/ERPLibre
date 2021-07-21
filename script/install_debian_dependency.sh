@@ -38,7 +38,7 @@ sudo apt-get upgrade -y
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-sudo apt-get install postgresql libpq-dev -y
+sudo apt-get install postgresql libpq-dev postgis -y
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User  ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true

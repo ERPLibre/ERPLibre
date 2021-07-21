@@ -64,6 +64,11 @@ install_dev:
 install_os:
 	./script/install_dev.sh
 
+.PHONY: install_production
+install_production:
+	./script/install_dev.sh
+	./script/install_production.sh
+
 .PHONY: install_docker_debian
 install_docker_debian:
 	./script/ install_debian_10_prod_docker.sh
@@ -180,27 +185,22 @@ image_db_create_erplibre_website:
 	./script/addons/install_addons.sh test hr
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
 
+.PHONY: image_db_create_erplibre_code_generator
+image_db_create_erplibre_code_generator:
+	./script/make.sh addons_install_code_generator_basic
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator --restore_image erplibre_code_generator_basic
+	./script/make.sh addons_install_code_generator_featured
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator --restore_image erplibre_code_generator_featured
+	./script/make.sh addons_install_code_generator_full
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator --restore_image erplibre_code_generator_full
+
 .PHONY: image_db_create_all
 image_db_create_all:
-	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
-	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
-	./script/addons/install_addons.sh test crm,website_crm
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
-	./script/addons/install_addons.sh test website_livechat
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
-	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
-	./script/addons/install_addons.sh test stock,purchase,website_sale_management
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
-	./script/addons/install_addons.sh test project
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
-	./script/addons/install_addons.sh test pos_sale
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
-	./script/addons/install_addons.sh test hr
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
+	#./script/make.sh config_gen_image_db
+	./script/make.sh image_db_create_erplibre_base
+	./script/make.sh image_db_create_erplibre_website
+	./script/make.sh image_db_create_erplibre_code_generator
+	#./script/make.sh config_gen_all
 
 .PHONY: image_diff_base_website
 image_diff_base_website:
@@ -474,6 +474,12 @@ config_gen_all:
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
 	./script/git_repo_update_group.py --group base,code_generator
+	./script/install_locally.sh
+
+# generate config repo image_db
+.PHONY: config_gen_image_db
+config_gen_image_db:
+	./script/git_repo_update_group.py --group base,image_db
 	./script/install_locally.sh
 
 ##########

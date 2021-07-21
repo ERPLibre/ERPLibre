@@ -37,14 +37,22 @@ def get_config():
     parser.add_argument("--backup_2", help="Backup name second")
     args = parser.parse_args()
 
-    die(bool(args.backup_file_1) and bool(args.backup_1),
-        "Take only --backup_file_1 or --backup_1")
-    die(not bool(args.backup_file_1) and not bool(args.backup_1),
-        "Missing --backup_file_1 or --backup_1")
-    die(bool(args.backup_file_2) and bool(args.backup_2),
-        "Take only --backup_file_2 or --backup_2")
-    die(not bool(args.backup_file_2) and not bool(args.backup_2),
-        "Missing --backup_file_2 or --backup_2")
+    die(
+        bool(args.backup_file_1) and bool(args.backup_1),
+        "Take only --backup_file_1 or --backup_1",
+    )
+    die(
+        not bool(args.backup_file_1) and not bool(args.backup_1),
+        "Missing --backup_file_1 or --backup_1",
+    )
+    die(
+        bool(args.backup_file_2) and bool(args.backup_2),
+        "Take only --backup_file_2 or --backup_2",
+    )
+    die(
+        not bool(args.backup_file_2) and not bool(args.backup_2),
+        "Missing --backup_file_2 or --backup_2",
+    )
 
     return args
 
@@ -61,11 +69,11 @@ def main():
         file_path_2 = config.backup_file_2
     else:
         file_path_2 = os.path.join("image_db", f"{config.backup_2}.zip")
-        
-    with zipfile.ZipFile(file_path_1, 'r') as zip_ref:
+
+    with zipfile.ZipFile(file_path_1, "r") as zip_ref:
         manifest_file_1 = zip_ref.open("manifest.json")
 
-    with zipfile.ZipFile(file_path_2, 'r') as zip_ref:
+    with zipfile.ZipFile(file_path_2, "r") as zip_ref:
         manifest_file_2 = zip_ref.open("manifest.json")
 
     json_manifest_file_1 = json.load(manifest_file_1)
@@ -81,10 +89,16 @@ def main():
     print(f"{len(same)} same")
     if same:
         print(same)
-    print(f"{Fore.BLUE}{len(difference_1)}{Style.RESET_ALL} difference manifest 1 to manifest 2")
+    print(
+        f"{Fore.BLUE}{len(difference_1)}{Style.RESET_ALL} difference manifest"
+        " 1 to manifest 2"
+    )
     if difference_1:
         print(difference_1)
-    print(f"{Fore.MAGENTA}{len(difference_2)}{Style.RESET_ALL} difference manifest 2 to manifest 1")
+    print(
+        f"{Fore.MAGENTA}{len(difference_2)}{Style.RESET_ALL} difference"
+        " manifest 2 to manifest 1"
+    )
     if difference_2:
         print(difference_2)
 

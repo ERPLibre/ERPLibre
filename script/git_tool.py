@@ -394,7 +394,7 @@ class GitTool:
             if (
                 "addons/OCA_web" == repo.get("path")
                 or "odoo" == repo.get("path")
-                or "ERPLibre_image_db" == repo.get("path")
+                or "image_db" == repo.get("path")
             ):
                 continue
             str_repo = (

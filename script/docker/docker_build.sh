@@ -29,7 +29,13 @@ ERPLIBRE_DOCKER_PROD_VERSION="${ERPLIBRE_DOCKER_PROD}:${ERPLIBRE_VERSION}"
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
-./script/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD}
+./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD}
+
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+    echo "Error ./script/docker/docker_build.sh when execute docker_update_version.py"
+    exit 1
+fi
 
 cd docker
 

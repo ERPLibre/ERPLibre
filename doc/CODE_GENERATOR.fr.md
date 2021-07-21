@@ -1,9 +1,9 @@
 # Comment générer du code
 
-Ne jamais exécuter le générateur de code dans un environnement de production, il y a création de dépendance circulaire pouvant causer de la frustration à nettoyer tous les dommages. D'ailleurs, il est nécessaire d'exécuter en mode développement, avec l'argument `--dev all`. 
+Ne jamais exécuter le générateur de code dans un environnement de production, il y a création de dépendances circulaires pouvant causer de la frustration à nettoyer tous les dommages. D'ailleurs, il est nécessaire d'exécuter en mode développement, avec l'argument `--dev all`. 
 
 L'objectif du générateur de code est de :
-- utilisation du générateur via l'interface web;
+- utiliser le générateur via l'interface web;
 - créer un nouveau module;
 - modifier un module existant;
 - exécuter les tests.
@@ -12,7 +12,7 @@ Ce générateur de code, pour ERPLibre, a tout avantage d'être sous licence AGP
 - (Utiliser) L'utilisation de module sans restriction;
 - (Copier) Copier des modules pour faciliter leur maintenance et leur pérennité;
 - (Étudier) De comprendre le comportement des fonctionnalités;
-- (Modifier) Modifier un module existant pour l'améliorer et pouvoir le redistribuer à la communauté;
+- (Modifier) Modifier un module existant pour l'améliorer et devoir le redistribuer à la communauté;
 
 ```
 Modules
@@ -21,12 +21,12 @@ Modules
 ############    ##################    ##########
 ```
 
-Il y a 3 types de module dans le contexte du générateur de code :
-1. [A Template generates a Template or a Code_Generator.](#crer-votre-premier-code_generator), le chef d'orchestre qui permet de gérer plusieurs générateur de code.
+Il y a 3 types de modules dans le contexte du générateur de code :
+1. [A Template generates a Template or a Code_Generator.](#crer-votre-premier-code_generator), le chef d'orchestre qui permet de gérer plusieurs générateurs de code.
 2. Un Code_Generator génère un module, c'est un moule à module généré.
 3. Un Template lit un module pour générer un Code_Generator.
 
-Attention pour ne pas écraser votre code, toujours commiter après une manipulation, l'utilisation du mode enable_sync_code peut effacer des données. Seul git vous sauvera!
+Attention pour ne pas écraser votre code, toujours commiter après une manipulation, l'utilisation du mode enable_sync_code peut effacer des données. Seul Git vous sauvera!
 
 ## Générateur de module avec l'interface web
 
@@ -52,7 +52,7 @@ make addons_install_code_generator_full
 make run_code_generator
 ```
 
-Ouvrir le navigateur sur [http://localhost:8069](http://localhost:8069). Utilisateur `test` et mot de passe `test`. Une fois connecté, ouvrir sur [http://localhost:8069/web?debug=](http://localhost:8069/web?debug=) pour activer le déverminage.
+Ouvrir le navigateur sur [http://localhost:8069](http://localhost:8069). Utilisateur `test` et mot de passe `test`. Une fois connecté, ouvrir sur [http://localhost:8069/web?debug=](http://localhost:8069/web?debug=) pour activer le mode déverminage.
 
 Ouvrir l'application `Code Generator` et créer un `Module`. Remplir les champs requis et générer avec `Action/Generate code`.
 
@@ -63,19 +63,19 @@ make addons_install_code_generator_basic
 make run_code_generator
 ```
 
-Pour des références techniques, voir module :
+Pour des références techniques, voir modules :
 - code_generator_template_demo_portal
 - code_generator_demo_portal
 - code_generator_demo_internal
 - demo_portal
 - demo_internal
 
-Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Technical Data», activer «Application».
-- Sur l'onglet «Elements»/«Models», ajouter un modèle et sauvegarder.
+Aller dans le module «Code generator» et créer un module «test»;
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Technical Data», activer «Application»;
+- Sur l'onglet «Elements»/«Models», ajouter un modèle et sauvegarder;
 - Appuyer sur le bouton «Views»
-  - Appuyer «Generate»
+  - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
 
@@ -93,22 +93,22 @@ make addons_install_code_generator_basic
 make run_code_generator
 ```
 
-Pour des références techniques, voir module :
+Pour des références techniques, voir modules :
 - code_generator_template_demo_portal
 - code_generator_demo_portal
 - code_generator_demo_internal
 - demo_portal
 - demo_internal
 
-Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Technical Data», activer «Application».
-- Sur l'onglet «Elements»/«Models», ajouter un modèle et sauvegarder.
+Aller dans le module «Code generator» et créer un module «test»;
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Technical Data», activer «Application»;
+- Sur l'onglet «Elements»/«Models», ajouter un modèle et sauvegarder;
 - Appuyer sur le bouton «Views»
   - Désactiver «Enable all feature»
   - Dans l'onglet «Portal»
     - Activer «Enable portal feature»
-  - Appuyer «Generate»
+  - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
 
@@ -124,10 +124,10 @@ Aller sur le portail pour visualiser les données, à l'adresse `/my`.
 
 ### Créer un module crochet pour l'installation
 
-Le crochet nommé «hook» permet d'exécuter du code en
-- Pré-initialisation du module
-- Post-initialisation du module
-- Désinstallation du module
+Le crochet nommé «hook» permet d'exécuter du code en:
+- Pré-initialisation du module;
+- Post-initialisation du module;
+- Désinstallation du module.
 
 Pour des références techniques, voir module :
 - code_generator_demo
@@ -139,10 +139,10 @@ make run_code_generator
 ```
 
 Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Hook»
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Hook»:
   - Activer «Show post_init_hook»
-  - Ajouter le code suivant dans la fenêtre qui est apparu :
+  - Ajouter le code suivant dans la fenêtre qui est apparue :
 
 ```python
 with api.Environment.manage():
@@ -162,9 +162,9 @@ make db_restore_erplibre_base_db_test_module_test
 Permettre d'exécuter du code basé sur des séquences de temps ou des moments spécifiques à répétition.
 
 Pour des références techniques, voir module :
-- code_generator_template_demo_sysadmin_cron
-- code_generator_auto_backup
-- auto_backup
+- code_generator_template_demo_sysadmin_cron;
+- code_generator_auto_backup;
+- auto_backup.
 
 ```bash
 make addons_install_code_generator_basic
@@ -173,13 +173,13 @@ make run_code_generator
 ```
 
 Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Cron»
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Cron»:
   - Ajouter un cron
-    - Choisir le «Modèle» : «Contact»
-    - Choisir unité de temps en «Minutes» dans «Exécuter tous les»
-    - Modifier «Nombre d'appel» à -1 pour exécution sans arrêt.
-    - Activer «Force nextcall» pour permettre que l'interval soit basé sur le moment d'installation du module
+    - Choisir le «Modèle» : «Contact»;
+    - Choisir unité de temps en «Minutes» dans «Exécuter tous les»;
+    - Modifier «Nombre d'appel» à -1 pour exécution sans arrêt;
+    - Activer «Force nextcall» pour permettre que l'interval soit basé sur le moment d'installation du module.
     - Ajouter le code :
 
 ```python
@@ -194,7 +194,7 @@ make db_restore_erplibre_base_db_test_module_test
 make run_test
 ```
 
-Avec les outils développeur, aller regarder les logs dans l'application «Configuration»/Technique/«Structure de base de donnée»/Historisation. Des informations dans le temps apparaîtront avec le mot «Coucou».
+Avec les outils développeur, aller regarder les logs dans l'application «Configuration»/Technique/«Structure de base de données»/Historisation. Des informations dans le temps apparaîtront avec le mot «Coucou».
 
 ### Créer un module de snippet pour le site web
 
@@ -207,9 +207,9 @@ make run_code_generator
 ```
 
 Pour des références techniques, voir module :
-- code_generator_template_demo_website_snippet
-- code_generator_demo_website_snippet
-- demo_website_snippet
+- code_generator_template_demo_website_snippet;
+- code_generator_demo_website_snippet;
+- demo_website_snippet.
 
 Puis dans le repo addons/ERPLibre_erplibre_theme_addons, branche code_generator_erplibre_website_snippets
 - code_generator_erplibre_website_snippets
@@ -219,7 +219,7 @@ Aller dans le module «Code generator» et créer un module «test».
 
 TODO Incomplet
 
-### Créer un module de gestion de coordonnée géospatial avec Leaflet
+### Créer un module de gestion de coordonnées géospatiales avec Leaflet
 
 ```bash
 make addons_install_code_generator_basic
@@ -228,27 +228,27 @@ make run_code_generator
 ```
 
 Pour des références techniques, voir module :
-- code_generator_demo_website_leaflet
-- demo_website_leaflet
+- code_generator_demo_website_leaflet;
+- demo_website_leaflet.
 
-Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Technical Data»
-  - Activer «Application»
-  - Ajouter la dépendance du geo_engine «Geospatial support for System»
-- Sur l'onglet «Elements»/«Models»
-  - Ajouter un modèle «test»
-    - Ajouter un champs de type «geo_». Le «geo_point» fonctionne bien. Si vous ajoutez plusieurs géométrie, tel que «geo_point», «geo_line» et «geo_polygon», il faut ajouter le champs «type» avec les valeurs du nom des champs choisis en option de sélection, exemple `[('geo_point', 'Geo Point'),('geo_polygon', 'Geo Polygon')]`
-    - Ajouter le champs optionnel «html_text» de type «html» pour pouvoir afficher du texte dessus.
-- Appuyer sur le bouton «Controllers»
-  - Ajouter le modèle du module actuel, «test»
-  - Appuyer «Generate»
-- Appuyer sur le bouton «Views»
-  - Désactiver «Enable all feature»
-  - Dans l'onglet «Website»
-    - Activer «Enable website leaflet feature»
-    - Activer «Enable geoengine feature»
-  - Appuyer «Generate»
+Aller dans le module «Code generator» et créer un module «test»:
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Technical Data»:
+  - Activer «Application»;
+  - Ajouter la dépendance du geo_engine «Geospatial support for System»;
+- Sur l'onglet «Elements»/«Models»:
+  - Ajouter un modèle «test»;
+    - Ajouter un champs de type «geo_». Le «geo_point» fonctionne bien. Si vous ajoutez plusieurs géométries, telles que «geo_point», «geo_line» et «geo_polygon», il faut ajouter le champs nommé «type» au type sélection avec les valeurs du nom des champs choisis en option de sélection, exemple `[('geo_point', 'Geo Point'),('geo_polygon', 'Geo Polygon')]`
+    - Ajouter le champs optionnel «html_text» de type «html» pour pouvoir afficher du texte dedans.
+- Appuyer sur le bouton «Controllers»:
+  - Ajouter le modèle du module actuel, «test»;
+  - Appuyer «Generate».
+- Appuyer sur le bouton «Views»:
+  - Désactiver «Enable all feature»;
+  - Dans l'onglet «Website»:
+    - Activer «Enable website leaflet feature»;
+    - Activer «Enable geoengine feature»;
+  - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
 
@@ -267,20 +267,20 @@ Aller sur la page du site web, ajouter le snippet «Leaflet». Chercher le point
 ### Créer un module thème pour site web
 
 Pour des références techniques, voir module :
-- code_generator_demo_theme_website
+- code_generator_demo_theme_website.
 
 ```bash
 make addons_install_code_generator_basic
 ./script/addons/install_addons.sh code_generator code_generator_theme_website
 make run_code_generator
 ```
-Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Technical Data», activer «Website theme».
-- Appuyer sur le bouton «Views»
-  - Aller à l'onglet «theme_website»
-    - Mettre les couleurs désirés
-  - Appuyer «Generate»
+Aller dans le module «Code generator» et créer un module «test»:
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Technical Data», activer «Website theme»;
+- Appuyer sur le bouton «Views»:
+  - Aller à l'onglet «theme_website»:
+    - Mettre les couleurs désirés;
+  - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
 
@@ -292,17 +292,17 @@ make db_restore_erplibre_base_db_test
 make run_test
 ```
 
-Aller dans l'interface web, Application «Configuration», «Paramètres Généraux»/«Site Web»/«Choisissez un thème». Installer le thème «TEST». Puis aller la page du site web, les couleurs sont dans «Personnaliser»/«Personnaliser le thème».
+Aller dans l'interface web, Application «Configuration», «Paramètres Généraux»/«Site Web»/«Choisissez un thème». Installer le thème «TEST», puis aller la page du site web, les couleurs sont dans «Personnaliser»/«Personnaliser le thème».
 
 ### Extraire les données vers un module
 
-L'exemple est avec le helpdesk. Installer le module helpdesk_mgmt :
+L'exemple est construit avec le helpdesk. Installer le module helpdesk_mgmt :
 
 Pour des références techniques, voir module :
-- code_generator_demo_export_helpdesk
-- code_generator_demo_export_website
-- demo_website_data
-- demo_helpdesk_data
+- code_generator_demo_export_helpdesk;
+- code_generator_demo_export_website;
+- demo_website_data;
+- demo_helpdesk_data.
 
 ```bash
 make addons_install_code_generator_basic
@@ -311,25 +311,25 @@ make run_code_generator
 ```
 Créer un ticket dans l'application «Helpdesk» dans l'interface web.
 
-Aller dans le module «Code generator» et créer un module «test».
-- Sur l'onglet «Information», activer «Enable Sync Code»
-- Sur l'onglet «Technical Data», activer «Only export data».
-- Appuyer sur le bouton «Models»
+Aller dans le module «Code generator» et créer un module «test»:
+- Sur l'onglet «Information», activer «Enable Sync Code»;
+- Sur l'onglet «Technical Data», activer «Only export data»;
+- Appuyer sur le bouton «Models»:
   - Choisissez dans «Models» :
-    - «helpdesk.ticket»
-  - Activer «Clear field blacklisted»
-  - Enlever les éléments suivant de «Fields» :
-    - name
-    - description
-    - number
-  - Appuyer «Generate»
+    - «helpdesk.ticket»;
+  - Activer «Clear field blacklisted»;
+  - Enlever les éléments suivants de «Fields» :
+    - name;
+    - description;
+    - number;
+  - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
 ```bash
 make db_restore_erplibre_base_db_test_module_test
 ```
 
-### Migrer une base de donnée externe en module de migration
+### Migrer une base de données externe en module de migration
 
 En progression.
 
@@ -341,21 +341,21 @@ make addons_install_code_generator_basic
 ./script/addons/install_addons.sh code_generator code_generator_db_servers
 make run_code_generator
 ```
-Aller dans le module «Code generator», menu «Databases»/«Databases» et créer un connecteur vers une base de donnée.
+Aller dans le module «Code generator», menu «Databases»/«Databases» et créer un connecteur vers une base de données.
 
 À compléter...
 
-### Migrer d'un site web vers un modèle de donnée avec des données format PDF
+### Migrer d'un site web vers un modèle de données avec des données format PDF
 
 En progression, ce n'est pas encore supporté via l'interface web.
 
-Cette technique permet d'aller lire du Javascript sur un site web pour lire ensuite le HTML, c'est à dire la vue, et en comprendre l'information pour créer un modèle.
+Cette technique permet d'aller lire du Javascript sur un site web pour lire ensuite le HTML, c'est-à-dire la vue, et en comprendre l'information, pour créer un modèle.
 
 Pour des références techniques, voir module :
-- code_generator_demo_converter_js
-- business_plan_import_pdf
+- code_generator_demo_converter_js;
+- business_plan_import_pdf.
 
-Attention, il faut mettre à jour les variables, dans les fichiers hook.py qui permettront d'extraire des données sur le site web à copier. Aucun exemple public n'est accessible pour le moment.
+Attention, il faut mettre à jour les variables, dans les fichiers hook.py, qui permettront d'extraire des données sur le site web à copier. Aucun exemple public n'est accessible pour le moment.
 
 ```bash
 make db_restore_erplibre_base_db_code_generator
@@ -366,19 +366,19 @@ make db_restore_erplibre_base_db_test
 
 ## Préparer une BD
 
-Ceci va détruire et créer une base de donnée nommé `code_generator`.
+Ceci va détruire et créer une base de données nommée `code_generator`.
 
 ```bash
 make db_restore_erplibre_base_db_code_generator
 ```
 
-Pour de meilleur performance d'exécution, réduire la quantité de «repo addons» permet d'accélérer l'installation, exécuter :
+Pour de meilleures performances d'exécution, réduire la quantité de «repo addons» qui permet d'accélérer l'installation, exécuter :
 
 ```bash
 make config_gen_code_generator
 ```
 
-Pour revenir à la configuration normal, en production, exécuter :
+Pour revenir à la configuration normale, en production, exécuter :
 
 ```bash
 make config_gen_all
@@ -416,7 +416,7 @@ make addons_install_code_generator_demo
 
 ### Générer un Code_Generator (suite de template)
 
-Au besoin, renommé votre module qui débute par `MODULE_NAME = "code_generator_"`
+Au besoin, renommer votre module qui débute par `MODULE_NAME = "code_generator_"`
 
 Pour continuer avec l'exemple, généré le template `code_generator_template_demo_website_snippet`, ceci va écraser `code_generator_demo_website_snippet`:
 
@@ -429,7 +429,7 @@ Aller à la section [Créer votre premier module](#crer-votre-premier-module)
 
 ### Générer un Code_Generator_Demo
 
-Nommé votre module qui débute par `MODULE_NAME = "code_generator_demo_"`
+Nommer votre module qui débute par `MODULE_NAME = "code_generator_demo_"`
 
 Désactiver la variable `enable_template_code_generator_demo`
 
@@ -437,7 +437,7 @@ Désactiver la variable `enable_template_code_generator_demo`
 value["enable_template_code_generator_demo"] = False
 ```
 
-Pour continuer avec l'exemple, généré le template `code_generator_template_demo_website_snippet`, ceci va écraser `code_generator_demo_website_snippet`:
+Pour continuer avec l'exemple, générez le template `code_generator_template_demo_website_snippet`, ceci va écraser `code_generator_demo_website_snippet`:
 
 ```bash
 ./script/addons/install_addons_dev.sh code_generator code_generator_template_demo_website_snippet
@@ -483,7 +483,7 @@ value["enable_template_wizard_view"] = True
 value["template_model_name"] = "test;test2"
 ```
 
-Exécuter l'installation du template pour qu'il se synchronise sur le module généré.
+Exécuter l'installation du template pour qu'il se synchronise avec le module généré.
 
 ```bash
 make db_restore_erplibre_base_db_template
@@ -520,7 +520,7 @@ make db_restore_erplibre_base_db_code_generator
 
 Ceci va permettre de réduire le temps de programmation d'un `Code_Generator` avec la synchronisation des champs de module avec `Template`.
 
-On a besoin d'un `Template`, un `Code_Generator` accompagné de son module. Installer le module en premier dans une base de donnée nettoyé et installer le `Template`, ceci va générer le `Code_Generator`, utiliser `enable_sync_template` à la valeur `True`.
+On a besoin d'un `Template`, un `Code_Generator` accompagné de son module. Installer le module en premier dans une base de données nettoyée et installer le `Template`, ceci va générer le `Code_Generator`, utiliser `enable_sync_template` à la valeur `True`.
 
 Exemple :
 
@@ -544,7 +544,7 @@ Tester les générations simples :
 make test_code_generator_generation
 ```
 
-Tester les générations extra :
+Tester les générations extras :
 
 ```bash
 make test_code_generator_generation_extra

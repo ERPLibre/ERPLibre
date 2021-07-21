@@ -1,8 +1,8 @@
 # ERPLibre documentation
-Select a guide to install your environment!
+Select a guide to install your environment.
 
 ## Easy way to run locally
-Clone the project
+Clone the project:
 ```bash
 git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
@@ -16,10 +16,21 @@ Update your configuration if you need to run from another interface than 127.0.0
 #xmlrpc_interface = 127.0.0.1
 #netrpc_interface = 127.0.0.1
 ```
-Ready to execute
+Ready to execute:
 ```bash
 make run
 ```
+
+## Easy way to run docker
+First, install dependencies to run docker, check script `./script/install_ubuntu_docker.sh`. You need docker and docker-compose.
+
+The docker volume is binded to the directory name, therefore create a unique directory name and run:
+```bash
+wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.2.0/docker-compose.yml
+docker-compose up -d
+```
+
+For more information, read [Docker guide](./docker/README.md).
 
 ## Discover guide
 [Guide to run ERPLibre in discover to learn it](./doc/DISCOVER.md).
