@@ -14,6 +14,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Because addons repository has change, config file need to be updated.
 - When upgrading to version 1.2.0:
   - From docker
+    - Clone project if only download docker-compose
+      - `git init`
+      - `git remote add origin https://github.com/erplibre/erplibre`
+      - `git fetch`
+      - `mv ./docker-compose.yml /tmp/temp_docker-compose.yml`
+      - `git checkout master`
+      - `mv /tmp/temp_docker-compose.yml ./docker-compose.yml`
+    - Update `./docker-compose.yml` depending of difference with git.
     - Run script `make docker_exec_erplibre_gen_config`
     - Restart the docker `make docker_restart_daemon`
   - From vanilla
