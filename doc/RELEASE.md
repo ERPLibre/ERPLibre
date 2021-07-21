@@ -4,7 +4,7 @@ A guide on how to generate a release.
 
 ## Clean environment before generating new release
 
-Before the cleaning, check if existing file is not committed, not pushed or in stash.
+Before the cleaning, check if existing file isn't committed, not pushed or in stash.
 
 ```bash
 ./.venv/repo forall -pc "git stash list"
@@ -26,29 +26,50 @@ And update all from dev to merge into prod.
 ## Validate environment
 
 - Check if [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
-- Run test with `make test`
+- Run test :
+
+```bash
+make test
+```
 
 ### Format code
 
-Run `make format` to format all code.
+To format all code, run:
+
+```bash
+make format
+```
 
 ### Update image_db
 
-Run `make image_db_create_all` to generate database images in directory `./image_db`.
+To generate database images in directory `./image_db`, run:
+
+```bash
+make image_db_create_all
+```
 
 ### Update documentations
 
-Run `make doc_markdown` to generate Markdown in directory `./doc`.
+To generate Markdown in directory `./doc`, run:
+
+```bash
+make doc_markdown
+```
 
 ### Test docker generate
 
-Run `make docker_build` to generate a docker.
+To generate a docker, run:
+
+```bash
+make docker_build
+```
 
 ### Test production Ubuntu environment
 
 Follow instructions in [PRODUCTION.md](./PRODUCTION.md).
 
 Test installation with code generator Geomap:
+
 ```bash
 make addons_install_code_generator_full
 ```
@@ -157,4 +178,3 @@ To generate a list of differences between repo git commit
 ```bash
 ./script/git_change_remote.py --sync_to /path/to/directory
 ```
-
