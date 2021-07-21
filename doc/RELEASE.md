@@ -28,6 +28,10 @@ And update all from dev to merge into prod.
 - Check if [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
 - Run test with `make test`
 
+### Format code
+
+Run `make format` to format all code.
+
 ### Update image_db
 
 Run `make image_db_create_all` to generate database images in directory `./image_db`.
