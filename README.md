@@ -21,6 +21,17 @@ Ready to execute:
 make run
 ```
 
+## Easy way to run docker
+First, install dependencies to run docker, check script `./script/install_ubuntu_docker.sh`. You need docker and docker-compose.
+
+The docker volume is binded to the directory name, therefore create a unique directory name and run:
+```bash
+wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.2.0/docker-compose.yml
+docker-compose up -d
+```
+
+For more information, read [Docker guide](./docker/README.md).
+
 ## Discover guide
 [Guide to run ERPLibre in discover to learn it](./doc/DISCOVER.md).
 
