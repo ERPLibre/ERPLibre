@@ -16,6 +16,10 @@ services:
         UPDATE_ALL_DB: "False"
       depends_on:
         - db
+      # not behind a proxy
+      #command: odoo --workers 0
+      # behind a proxy
+      #command: odoo --workers 2
       command: odoo
       volumes:
         # See the volume section at the end of the file
