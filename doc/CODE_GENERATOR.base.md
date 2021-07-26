@@ -91,7 +91,7 @@ make addons_install_code_generator_full
 make run_code_generator
 ```
 
-Ouvrir le navigateur sur [http://localhost:8069](http://localhost:8069). Utilisateur `test` et mot de passe `test`. Une fois connecté, ouvrir sur [http://localhost:8069/web?debug=](http://localhost:8069/web?debug=) pour activer le mode déverminage.
+Ouvrir le navigateur sur [http://localhost:8069](http://localhost:8069). Utilisateur `admin` et mot de passe `admin`. Une fois connecté, ouvrir sur [http://localhost:8069/web?debug=](http://localhost:8069/web?debug=) pour activer le mode déverminage.
 
 Ouvrir l'application `Code Generator` et créer un `Module`. Remplir les champs requis et générer avec `Action/Generate code`.
 
