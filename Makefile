@@ -166,13 +166,14 @@ db_create_db_test: db_drop_db_test
 .PHONY: image_db_create_erplibre_base
 image_db_create_erplibre_base:
 	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base
+	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
 
 .PHONY: image_db_create_erplibre_website
 image_db_create_erplibre_website:
-	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
+	# Depend on image_db_create_erplibre_base
+	./script/make.sh image_db_create_erplibre_base
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
@@ -201,7 +202,7 @@ image_db_create_erplibre_code_generator:
 .PHONY: image_db_create_all
 image_db_create_all:
 	#./script/make.sh config_gen_image_db
-	./script/make.sh image_db_create_erplibre_base
+	#./script/make.sh image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_website
 	./script/make.sh image_db_create_erplibre_code_generator
 	#./script/make.sh config_gen_all
