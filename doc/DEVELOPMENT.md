@@ -165,6 +165,29 @@ Or go back to normal
 ./script/install_locally.sh
 ```
 
+# Database
+
+## Clean database PostgreSQL
+
+Sometime, it's not possible to delete a database from the database manager `http://127.0.0.1:8069/web/database/manager`, so you can do it manually. Replace `database_name` by your database name:
+
+```bash
+sudo -iu postgres
+psql
+```
+
+And run:
+
+```postgres-sql
+DROP DATABASE database_name;
+```
+
+Exit and delete filestore:
+
+```bash
+rm -r ~/.local/share/Odoo/filestore/database_name
+```
+
 # Coding
 
 ## Create module scaffold
