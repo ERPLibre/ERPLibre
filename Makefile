@@ -124,6 +124,10 @@ db_restore_erplibre_base_db_test:
 db_restore_erplibre_base_db_test_module_test: db_restore_erplibre_base_db_test
 	./script/addons/install_addons.sh test test
 
+.PHONY: db_restore_erplibre_base_db_test_image_test
+db_restore_erplibre_base_db_test_image_test:
+	./script/db_restore.py --database test --image test
+
 .PHONY: db_restore_erplibre_base_db_test2
 db_restore_erplibre_base_db_test2:
 	./script/db_restore.py --database test2
@@ -162,13 +166,14 @@ db_create_db_test: db_drop_db_test
 .PHONY: image_db_create_erplibre_base
 image_db_create_erplibre_base:
 	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base
+	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
 
 .PHONY: image_db_create_erplibre_website
 image_db_create_erplibre_website:
-	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test erplibre_base,website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
+	# Depend on image_db_create_erplibre_base
+	./script/make.sh image_db_create_erplibre_base
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
@@ -197,7 +202,7 @@ image_db_create_erplibre_code_generator:
 .PHONY: image_db_create_all
 image_db_create_all:
 	#./script/make.sh config_gen_image_db
-	./script/make.sh image_db_create_erplibre_base
+	#./script/make.sh image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_website
 	./script/make.sh image_db_create_erplibre_code_generator
 	#./script/make.sh config_gen_all
@@ -369,6 +374,10 @@ docker_stop:
 .PHONY: docker_restart_daemon
 docker_restart_daemon: docker_stop docker_run_daemon
 
+.PHONY: docker_show_databases
+docker_show_databases:
+	./script/docker/docker_list_database.sh
+
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
 	docker-compose logs -f
@@ -462,25 +471,25 @@ repo_use_all_https:
 # generate new config.conf
 .PHONY: config_install
 config_install:
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config all repo
 .PHONY: config_gen_all
 config_gen_all:
 	./script/git_repo_update_group.py
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config repo code_generator
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
 	./script/git_repo_update_group.py --group base,code_generator
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 # generate config repo image_db
 .PHONY: config_gen_image_db
 config_gen_image_db:
 	./script/git_repo_update_group.py --group base,image_db
-	./script/install_locally.sh
+	./script/generate_config.sh
 
 ##########
 #  I18n  #

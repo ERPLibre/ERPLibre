@@ -177,7 +177,7 @@ def main():
     git_tool.generate_repo_manifest(
         lst_repo_organization, output=f"{config.dir}manifest/default.dev.xml"
     )
-    git_tool.generate_install_locally()
+    git_tool.generate_generate_config()
 
 
 if __name__ == "__main__":

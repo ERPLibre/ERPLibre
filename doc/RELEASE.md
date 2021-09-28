@@ -64,6 +64,15 @@ To generate a docker, run:
 make docker_build
 ```
 
+### Rename old version to new version
+
+Search old version, like :
+```bash
+grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.2.0
+```
+
+Replace if need it to new version.
+
 ### Test production Ubuntu environment
 
 Follow instructions in [PRODUCTION.md](./PRODUCTION.md).
@@ -126,7 +135,14 @@ Create a branch release/#.#.# and create a pull request to branch master with yo
 git commit -am "Release v#.#.#"
 ```
 
-Review by your peers, test the docker file and merge to master.
+Review by your peers, test the docker file and **merge to master**.
+
+```bash
+git checkout master
+git merge --no-ff RELEASE_BRANCH
+```
+
+Add comment `Release v#.#.#`.
 
 ## Generate image db to accelerate db installation
 

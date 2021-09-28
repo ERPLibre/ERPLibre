@@ -135,7 +135,7 @@ def main():
 
         # Update origin to new repo
 
-    GitTool().generate_install_locally()
+    GitTool().generate_generate_config()
 
 
 if __name__ == "__main__":

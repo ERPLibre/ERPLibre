@@ -155,14 +155,37 @@ You can limit your addons in ERPlibre config file depending on a group of your a
 
 ```bash
 ./script/git_repo_update_group.py --group base,code_generator
-./script/install_locally.sh
+./script/generate_config.sh
 ```
 
 Or go back to normal
 
 ```bash
 ./script/git_repo_update_group.py
-./script/install_locally.sh
+./script/generate_config.sh
+```
+
+# Database
+
+## Clean database PostgreSQL
+
+Sometime, it's not possible to delete a database from the database manager `http://127.0.0.1:8069/web/database/manager`, so you can do it manually. Replace `database_name` by your database name:
+
+```bash
+sudo -iu postgres
+psql
+```
+
+And run:
+
+```postgres-sql
+DROP DATABASE database_name;
+```
+
+Exit and delete filestore:
+
+```bash
+rm -r ~/.local/share/Odoo/filestore/database_name
 ```
 
 # Coding
