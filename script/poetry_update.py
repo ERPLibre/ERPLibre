@@ -54,6 +54,11 @@ def get_config():
         action="store_true",
         help="More information in execution, show stats.",
     )
+    parser.add_argument(
+        "--dry",
+        action="store_true",
+        help="Don't apply change, only show warning.",
+    )
     args = parser.parse_args()
     return args
 
@@ -349,15 +354,17 @@ def main():
     # repo = Repo(root_path)
     # lst_repo = get_all_repo()
     config = get_config()
-    pyproject_toml_filename = f"{config.dir}pyproject.toml"
 
-    delete_dependency_poetry(pyproject_toml_filename)
+    if not config.dry:
+        pyproject_toml_filename = f"{config.dir}pyproject.toml"
+        delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
-    if config.force and os.path.isfile("./poetry.lock"):
-        os.remove("./poetry.lock")
-    status = call_poetry_add_build_dependency()
-    if status:
-        sorted_dependency_poetry(pyproject_toml_filename)
+    if not config.dry:
+        if config.force and os.path.isfile("./poetry.lock"):
+            os.remove("./poetry.lock")
+        status = call_poetry_add_build_dependency()
+        if status:
+            sorted_dependency_poetry(pyproject_toml_filename)
 
 
 if __name__ == "__main__":
