@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ERPLIBRE_VERSION="1.2.0"
+ERPLIBRE_VERSION="1.2.1"
 
 EL_USER="erplibre"
 EL_HOME="/${EL_USER}"

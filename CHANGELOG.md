@@ -7,7 +7,35 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [1.2.0] - 2020-12-11
+## [1.2.1] - 2021-09-28
+
+### Added
+
+- doc/migration.md
+
+### Changed
+
+- Update pip dependency with security update
+  - Jinja2==2.11.3
+  - lxml==4.6.3
+  - cryptography==3.2
+  - psutil==5.6.6
+  - Pillow==8.3.2
+  - Werkzeug==0.15.3
+- Script separate generate_config.sh from install_locally.sh
+- Improve developer documentation
+- More Docker script
+
+#### Code generator
+
+- Improve db_servers generation code
+- Improve wizard generate UI menu
+
+### Fixed
+
+- Mobile view menu item in Web interface from muk_web_theme
+
+## [1.2.0] - 2021-07-21
 
 **Migration note**
 
@@ -183,7 +211,9 @@ Because addons repository has change, config file need to be updated.
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.1...HEAD
+
+[1.2.1]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.0...v1.2.1
 
 [1.2.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.1.1...v1.2.0
 

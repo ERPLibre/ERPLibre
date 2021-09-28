@@ -23,7 +23,7 @@
   
   <default remote="ERPLibre" revision="12.0" sync-c="true" sync-j="4"/>
   
-  <project clone-depth="1" dest-branch="12.0" groups="base" name="ERPLibre_image_db.git" path="image_db" revision="dab97241995bb65309e92db251eda6c35849f889" upstream="12.0"/>
+  <project clone-depth="1" dest-branch="12.0" groups="base" name="ERPLibre_image_db.git" path="image_db" revision="890013f62132c5c8779a4ef63b820c47a7694b2f" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons" name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="e7881872d147e91a59e9ee9fac9e89316e1cabb4" upstream="12.0"/>
   <project dest-branch="master" groups="addons" name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="922f6878ac560829d2ebe951b93f858c1e7d256d" upstream="master"/>
   <project dest-branch="12.0" groups="addons" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" revision="701438f9c59bd657de516d9ef4de1ba6167bf30b" upstream="12.0"/>
@@ -87,14 +87,14 @@
   <project dest-branch="12.0" groups="addons" name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" revision="a8ea02b9f00ae9fe5d2ea25ac43d23532cc11d45" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons,base" name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" revision="37b9d6dc20fa686a323057b160015bfc2c2c8143" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons" name="muk_quality.git" path="addons/muk-it_muk_quality" remote="muk-it" revision="1a4c6f25c5e4fe0029d406d6283555bd23a44d27" upstream="12.0"/>
-  <project dest-branch="12.0_dev" groups="addons,base" name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="d857e59a288f81ee1119860f30802473166888e1" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons,base" name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="89018ef54942ed958b10a3fb5a4e63a84ced8095" upstream="12.0_dev"/>
   <project dest-branch="12.0_remove_autoinstall" groups="addons,base" name="muk_website.git" path="addons/muk-it_muk_website" remote="muk-it" revision="c6c42a4b7187f8964675d004e478e2251f2cdde9" upstream="12.0_remove_autoinstall"/>
   <project dest-branch="12.0" groups="addons" name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" revision="9d689c5ad230f8f2e6a550354a6b1577a8e5a3c9" upstream="12.0"/>
   <project dest-branch="12.0_dev" groups="addons" name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="78c23a29283f35ef480186358dd6d848a38a2aff" upstream="12.0_dev"/>
   <project dest-branch="12.0_sale_order_line_timesheet_attribution" groups="addons,base" name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="822d2e018554119fa63f79ac91625473ec54b9fe" upstream="12.0_sale_order_line_timesheet_attribution"/>
   <project dest-branch="12.0_dev" groups="addons" name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" revision="66ab5ab453d38f480bd8b07c54b9925e25e9890b" upstream="12.0_dev"/>
-  <project dest-branch="12.0" groups="addons,code_generator,image_db" name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" remote="TechnoLibre" revision="4be2d00b98788b2b741a9c51c27bdab08c2905ef" upstream="12.0"/>
-  <project dest-branch="12.0" groups="addons,code_generator,image_db" name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="899858faa3c27979783896a7d9004d4e9c7c59b0" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons,code_generator,image_db" name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" remote="TechnoLibre" revision="57e09628115f8fa8868fd4006e41d68ccb595c0f" upstream="12.0"/>
+  <project dest-branch="12.0" groups="addons,code_generator,image_db" name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="256d298b0638eb00cc88e875530c1f394ff0d7f2" upstream="12.0"/>
   <project dest-branch="12.0_dev" groups="odoo" name="odoo-development.git" path="doc/itpp-labs_odoo-development" remote="itpp-labs" revision="388bc9b618a0e7ccf970fc678028f19b146e65f9" upstream="12.0_dev"/>
   <project dest-branch="12.0_dev" groups="addons" name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="5abba3eabcb60c96d80240ab756736eb57ed345b" upstream="12.0_dev"/>
   <project dest-branch="12.0_dev" groups="addons" name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" revision="a394f422a5d3063dd2c339544ecca74bdbbe19ae" upstream="12.0_dev"/>

@@ -26,7 +26,7 @@ First, install dependencies to run docker, check script `./script/install_ubuntu
 
 The docker volume is binded to the directory name, therefore create a unique directory name and run:
 ```bash
-wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.2.0/docker-compose.yml
+wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.2.1/docker-compose.yml
 docker-compose up -d
 ```
 
