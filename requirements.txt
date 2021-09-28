@@ -55,3 +55,20 @@ cloudflare
 # For multilang_md.py
 click
 emoji
+
+# Code generator
+mysqlclient
+
+# Force update dependency to fix poetry
+numpy==1.21.1
+
+# Force version for security update
+# Not pyyaml, break by camptocamp_odoo-cloud-platform
+# error with 5.x (ConstructorError: could not determine a constructor for the tag '!record')
+# pyyaml==5.4
+Jinja2==2.11.3
+lxml==4.6.3
+cryptography==3.2
+psutil==5.6.6
+Pillow==8.3.2
+Werkzeug==0.15.3
