@@ -18,7 +18,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Update pip dependency with security update
   - Jinja2==2.11.3
   - lxml==4.6.3
-  - cryptography==3.2
+  - cryptography==3.4.8
   - psutil==5.6.6
   - Pillow==8.3.2
   - Werkzeug==0.15.3
