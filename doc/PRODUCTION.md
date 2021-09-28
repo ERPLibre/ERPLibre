@@ -15,7 +15,7 @@ cd ERPLibre
 
 ### 2. Modify the parameters
 
-Modify the file env_var.sh for production installation. Enable nginx if you need a proxy with `EL_INSTALL_NGINX`.
+Modify the file env_var.sh for production installation. Enable nginx if you need a proxy with `EL_INSTALL_NGINX` at True.
 Redirect your DNS to the proxy's ip and add your A and AAAA into `WL_WEBSITE_NAME` with space between.
 
 ### 3. Execute the scripts:

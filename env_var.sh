@@ -17,7 +17,7 @@ EL_SUPERADMIN="admin"
 EL_CONFIG="${EL_USER}"
 EL_MINIMAL_ADDONS="False"
 # Set this to True if you want to install Nginx!
-EL_INSTALL_NGINX="True"
+EL_INSTALL_NGINX="False"
 # Set the website name
 EL_WEBSITE_NAME="localhost"
 EL_GITHUB_TOKEN=""
