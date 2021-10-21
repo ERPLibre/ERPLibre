@@ -12,7 +12,7 @@ authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]
 [tool.poetry.dependencies]
 python = "^3.7.7"
 Asterisk = "^0.0.8"
-Babel = "2.3.4"
+Babel = "2.9.1"
 BeautifulSoup4 = "^4.10.0"
 GitPython = "3.1.12"
 Jinja2 = "2.11.3"
