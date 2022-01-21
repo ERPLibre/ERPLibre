@@ -37,8 +37,8 @@ sudo npm install -g rtlcss
 sudo npm install -g less
 sudo npm install -g prettier
 sudo npm install -g prettier @prettier/plugin-xml
-yes n|pyenv install 3.7.7
-pyenv local 3.7.7
+yes n|pyenv install 3.7.12
+pyenv local 3.7.12
 
 echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.zshrc
 

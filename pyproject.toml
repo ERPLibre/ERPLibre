@@ -10,7 +10,7 @@ license = "AGPL-3.0-or-later"
 authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]
 
 [tool.poetry.dependencies]
-python = "^3.7.7"
+python = "^3.7.12"
 Asterisk = "^0.0.8"
 Babel = "2.3.4"
 BeautifulSoup4 = "^4.10.0"
