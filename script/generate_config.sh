@@ -142,7 +142,9 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/muk-it_muk_quality," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_web," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/muk-it_muk_website," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/novacode-nl_odoo-formio," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/obayit_odoo_dhtmlxgantt," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/odoo_design-themes," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odooaktiv_QuotationRevision," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odooaktiv_product_rating_app," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odoomates_odooapps," >> ${EL_CONFIG_FILE}

@@ -59,6 +59,9 @@ emoji
 # Code generator
 mysqlclient
 
+# pyproj >=3.3.0 is not compatible with python 3.7
+pyproj==3.2.1
+
 # Force update dependency to fix poetry
 numpy==1.21.1
 
@@ -67,8 +70,9 @@ numpy==1.21.1
 # error with 5.x (ConstructorError: could not determine a constructor for the tag '!record')
 # pyyaml==5.4
 Jinja2==2.11.3
-lxml==4.6.3
+lxml==4.7.1
 cryptography==3.4.8
 psutil==5.6.6
-Pillow==8.3.2
-Werkzeug==0.15.3
+Pillow==9.0.0
+Werkzeug==0.11.15
+Babel==2.9.1
