@@ -1,10 +1,10 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
-from git import Repo
+import os
+import sys
 
+from git import Repo
 from retrying import retry  # pip install retrying
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))

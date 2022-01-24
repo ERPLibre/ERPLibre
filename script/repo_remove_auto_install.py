@@ -1,9 +1,10 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
+
 from git import Repo  # pip install gitpython
 from git.exc import GitCommandError
 

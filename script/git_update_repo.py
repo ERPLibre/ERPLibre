@@ -1,8 +1,9 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
+
 from git import Repo  # pip install gitpython
 from retrying import retry  # pip install retrying
 

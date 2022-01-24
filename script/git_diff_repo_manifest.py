@@ -1,8 +1,9 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
+
 from git import Repo
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
