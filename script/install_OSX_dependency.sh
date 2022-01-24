@@ -49,8 +49,8 @@ curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poet
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
 echo  "\n---- Installing Wkhtmltopdf if needed ----"
-if [ ! -f "wkhtmltox-0.12.6-1.macos-cocoa.pkg" ]; then
-  sudo wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.macos-cocoa.pkg
-  sudo sudo installer -pkg wkhtmltox-0.12.6-1.macos-cocoa.pkg -target /
+if [ ! -f "wkhtmltox-0.12.6-2.macos-cocoa.pkg" ]; then
+  sudo wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-2/wkhtmltox-0.12.6-2.macos-cocoa.pkg
+  sudo sudo installer -pkg wkhtmltox-0.12.6-2.macos-cocoa.pkg -target /
 else echo "Wkhtmltopdf already installed"
 fi

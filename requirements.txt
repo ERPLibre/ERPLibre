@@ -43,6 +43,7 @@ html5print
 css-html-prettify
 BeautifulSoup4
 git+https://github.com/psf/black.git@21.6b0
+isort
 
 # For updating poetry
 toml
