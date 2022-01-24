@@ -109,7 +109,7 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env
 #/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
 # source $HOME/.poetry/env
-${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry env use ${VENV_PATH}/bin/python3
+#${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry env use ${VENV_PATH}/bin/python3
 ${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
