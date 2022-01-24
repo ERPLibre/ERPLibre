@@ -1,10 +1,11 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
+from xml.dom import Node, minidom
+
 from code_writer import CodeWriter
-from xml.dom import minidom, Node
 
 from script.git_tool import GitTool
 

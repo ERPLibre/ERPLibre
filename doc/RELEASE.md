@@ -45,6 +45,7 @@ make format
 To generate database images in directory `./image_db`, run:
 
 ```bash
+make config_gen_all
 make image_db_create_all
 ```
 
@@ -72,6 +73,8 @@ grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.2
 ```
 
 Replace if need it to new version.
+
+Update file `./pyproject.toml` in [tool.poetry], line `version =`.
 
 ### Test production Ubuntu environment
 
@@ -184,6 +187,10 @@ List your docker version
 
 You need to push your docker image and update your tag, like 1.0.1:
 > docker push technolibre/erplibre:VERSION
+
+## Do a release on github
+
+Visit `https://github.com/ERPLibre/ERPLibre/releases/new` and create a release named `v#.#.#` and copy information from CHANGELOG.md.
 
 # TIPS
 

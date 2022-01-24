@@ -1,5 +1,19 @@
 # FAQ
 
+## Scripting
+
+### Search all duplicate file recursively in given directory
+
+```bash
+find . -type f -printf '%p/ %f\n' | sort -k2 | uniq -f1 --all-repeated=separate
+```
+
+### Search all duplicate directory recursively in given directory
+
+```bash
+find . -type d -printf '%p/ %f\n' | sort -k2 | uniq -f1 --all-repeated=separate
+```
+
 ## Networking
 
 Show all open port

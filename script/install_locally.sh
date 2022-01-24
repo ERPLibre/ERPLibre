@@ -25,7 +25,7 @@ if [[ ! -d "./addons/addons" ]]; then
 fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=3.7.7
+PYTHON_VERSION=3.7.12
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 POETRY_PATH=~/.poetry

@@ -53,7 +53,9 @@ sudo apt-get install libmariadbd-dev -y
 sudo apt-get install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
-sudo apt-get install nodejs npm -y
+curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install npm@latest -g
 sudo npm install -g rtlcss
 sudo npm install -g less
 

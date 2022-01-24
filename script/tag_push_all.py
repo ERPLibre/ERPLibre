@@ -1,12 +1,12 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
+
+from colorama import Fore, Style
 from git import Repo  # pip install gitpython
 from retrying import retry  # pip install retrying
-from colorama import Fore
-from colorama import Style
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)

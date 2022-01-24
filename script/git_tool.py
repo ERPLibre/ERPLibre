@@ -3,15 +3,15 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 import os
 import webbrowser
-from retrying import retry  # pip install retrying
-from agithub.GitHub import GitHub  # pip install agithub
-from giturlparse import parse  # pip install giturlparse
-import xmltodict
 from collections import OrderedDict
-
-from git import Repo
-import git
 from typing import List
+
+import git
+import xmltodict
+from agithub.GitHub import GitHub  # pip install agithub
+from git import Repo
+from giturlparse import parse  # pip install giturlparse
+from retrying import retry  # pip install retrying
 
 CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
 CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
@@ -391,11 +391,7 @@ class GitTool:
         lst_result = []
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
-            if (
-                "addons/OCA_web" == repo.get("path")
-                or "odoo" == repo.get("path")
-                or "image_db" == repo.get("path")
-            ):
+            if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
             str_repo = (
                 f'    printf "${{EL_HOME}}/{repo.get("path")}," >> '

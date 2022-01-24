@@ -73,27 +73,41 @@ On_IPurple='\033[0;105m' # Purple
 On_ICyan='\033[0;106m'   # Cyan
 On_IWhite='\033[0;107m'  # White
 
-# TODO support argument to test only specified path
-
 check_git() {
   REP=$1
-  cd ${REP}
+  cd "${REP}" || exit
 
-  output=$(git status --porcelain)
-  if [ -z "$output" ]; then
-    echo "PASS - ${REP}"
+  if [ $# -gt 1 ]; then
+    output=$(git status --porcelain "$2")
   else
-    echo -e "${Red}FAIL - ${REP}${Color_Off}"
+    output=$(git status --porcelain)
+  fi
+  if [ -z "$output" ]; then
+    if [ $# -gt 1 ]; then
+      echo "PASS - ${REP}/${2}"
+    else
+      echo "PASS - ${REP}"
+    fi
+  else
+    if [ $# -gt 1 ]; then
+      echo -e "${Red}FAIL - ${REP}${2}${Color_Off}"
+    else
+      echo -e "${Red}FAIL - ${REP}${Color_Off}"
+    fi
     echo -e "${BRed}${output}${Color_Off}"
-    cd - >/dev/null
+    cd - >/dev/null || exit
     exit 1
   fi
 
-  cd - >/dev/null
+  cd - >/dev/null || exit
 }
 
 if [ $# -gt 0 ]; then
-  check_git "$1"
+  if [ $# -gt 1 ]; then
+    check_git "$1" "$2"
+  else
+    check_git "$1"
+  fi
 else
   # check_git "./addons/TechnoLibre_odoo-code-generator"
   check_git "./addons/TechnoLibre_odoo-code-generator-template"

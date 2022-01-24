@@ -1,12 +1,14 @@
 from __future__ import print_function
+
 import argparse
 import os.path
 import shutil
+
+import yaml  # pip install PyYAML
 from agithub.GitHub import GitHub  # pip install agithub
 from git import Repo  # pip install gitpython
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
-import yaml  # pip install PyYAML
 
 DEFAULT_CONFIG_FILENAME = "~/.github/fork_github_repo.yaml"
 

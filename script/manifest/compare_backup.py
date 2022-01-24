@@ -1,12 +1,12 @@
 #!./.venv/bin/python
+import argparse
+import json
+import logging
 import os
 import sys
-import argparse
-import logging
 import zipfile
-import json
-from colorama import Fore
-from colorama import Style
+
+from colorama import Fore, Style
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)

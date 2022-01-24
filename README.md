@@ -2,6 +2,10 @@
 Select a guide to install your environment.
 
 ## Easy way to run locally
+Into Ubuntu, minimal dependency:
+```bash
+sudo apt install make git
+```
 Clone the project:
 ```bash
 git clone https://github.com/ERPLibre/ERPLibre.git

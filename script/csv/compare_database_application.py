@@ -1,9 +1,9 @@
 #!./.venv/bin/python
+import argparse
+import csv
+import logging
 import os
 import sys
-import argparse
-import logging
-import csv
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)

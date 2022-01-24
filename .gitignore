@@ -10,7 +10,9 @@ config.conf
 *.pyc
 
 .repo
-addons
+!addons/
+addons/*
+!script/addons
 doc/itpp*
 doc/odoo*
 script/OCA*

@@ -1,13 +1,14 @@
 #!./.venv/bin/python
+import argparse
+import ast
+import logging
 import os
 import sys
-import argparse
-import logging
-import toml
-import ast
 from collections import OrderedDict, defaultdict
 from pathlib import Path
+
 import iscompatible
+import toml
 
 new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
