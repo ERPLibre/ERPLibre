@@ -199,6 +199,27 @@ db_clone_test_to_test2:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
 	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
 
+.PHONY: db_clone_accorderie_test
+db_clone_accorderie_test:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_accorderie_jason
+	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test_accorderie_jason --from_database accorderie_jason
+	./script/addons/install_addons_dev.sh test_accorderie_jason code_generator_demo_export_website_attachments
+
+.PHONY: db_test_export
+db_test_export:
+	./script/db_restore.py --database test_website_export
+	./script/addons/install_addons_dev.sh test_website_export demo_website_data
+
+.PHONY: db_test_re_export_website_attachments
+db_test_re_export_website_attachments:
+	./script/db_restore.py --database test_website_export
+	./script/addons/install_addons_dev.sh test_website_export demo_website_attachments_data
+	# TODO this test fail at uninstall, it remove all files.
+	# TODO Strategy is to update ir_model_data, change module data and attach to another module like website
+	# TODO and update all link in website, (or use id of ir.attachment instead of xmlid website.)
+	./script/addons/uninstall_addons.sh test_website_export demo_website_attachments_data
+	./script/addons/install_addons_dev.sh test_website_export code_generator_demo_export_website_attachments
+
 ########################
 #  Image installation  #
 ########################
@@ -388,6 +409,7 @@ image_db_create_erplibre_package_wiki:
 
 .PHONY: image_db_create_all
 image_db_create_all:
+	# TODO remove modules from addons/addons
 	#./script/make.sh config_gen_image_db
 	./script/database/db_restore.py --clean_cache
 	./script/make.sh image_db_create_erplibre_base
@@ -430,6 +452,81 @@ image_db_create_test_website_attachments:
 image_diff_base_website:
 	#./script/manifest/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
 	./script/manifest/compare_backup.py --backup_1 erplibre_base --backup_2 erplibre_website
+
+#############################
+#  Accorderie installation  #
+#############################
+.PHONY: accorderie_install_migrate_mysql
+accorderie_install_migrate_mysql:
+	./script/db_restore.py --database code_generator_accorderie_base --image code_generator_accorderie_base
+	-rm ./addons/TechnoLibre_odoo_accorderie/accorderie_migrate_mysql/.cache
+	./script/addons/install_addons_dev.sh code_generator_accorderie_base accorderie_migrate_mysql
+
+.PHONY: accorderie_install_accorderie_canada
+accorderie_install_accorderie_canada:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada
+
+.PHONY: accorderie_install_accorderie_canada_ddb
+accorderie_install_accorderie_canada_ddb:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb
+
+.PHONY: accorderie_install_accorderie_canada_ddb_website
+accorderie_install_accorderie_canada_ddb_website:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website
+	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+
+.PHONY: accorderie_install_accorderie_canada_old_view
+accorderie_install_accorderie_canada_old_view:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_old_view
+
+.PHONY: accorderie_install_template_accorderie_canada
+accorderie_install_template_accorderie_canada:
+	./script/db_restore.py --database template_accorderie
+	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada
+
+.PHONY: accorderie_install_template_accorderie_canada_ddb
+accorderie_install_template_accorderie_canada_ddb:
+	./script/db_restore.py --database template_accorderie
+	./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo_accorderie/accorderie_canada_ddb -t addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
+	./script/addons/install_addons_dev.sh template_accorderie accorderie_canada_ddb
+	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_ddb
+
+.PHONY: accorderie_install_template_accorderie_canada_old_view
+accorderie_install_template_accorderie_canada_old_view:
+	./script/db_restore.py --database template_accorderie
+	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_old_view
+
+.PHONY: accorderie_install_code_generator_accorderie_canada
+accorderie_install_code_generator_accorderie_canada:
+	./script/db_restore.py --database code_generator_accorderie
+	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada
+
+.PHONY: accorderie_install_code_generator_accorderie_canada_ddb
+accorderie_install_code_generator_accorderie_canada_ddb:
+	./script/db_restore.py --database code_generator_accorderie
+	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada_ddb
+
+.PHONY: accorderie_install_code_generator_migrator_accorderie_canada_ddb
+accorderie_install_code_generator_migrator_accorderie_canada_ddb:
+	./script/db_restore.py --database code_generator_accorderie
+	./addons/TechnoLibre_odoo_accorderie/script/restore_database_accorderie.sh
+	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_portal
+	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_migrator_accorderie_canada_ddb
+
+.PHONY: accorderie_install_code_generator_accorderie_canada_old_view
+accorderie_install_code_generator_accorderie_canada_old_view:
+	./script/db_restore.py --database code_generator_accorderie
+	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada_old_view
+
+.PHONY: accorderie_setup_migrate_database
+accorderie_setup_migrate_database:
+	./script/db_restore.py --database code_generator_db_servers
+	./script/addons/install_addons_dev.sh code_generator_db_servers code_generator_db_servers
 
 #########################
 #  Addons installation  #
@@ -806,6 +903,7 @@ format:
 	./script/make.sh format_script
 	./script/make.sh format_erplibre_addons
 	./script/make.sh format_supported_addons
+	./script/make.sh format_accorderie
 
 .PHONY: format_code_generator
 format_code_generator:
@@ -827,6 +925,11 @@ format_supported_addons:
 	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
 	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
+
+.PHONY: format_accorderie
+format_accorderie:
+	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo_accorderie
+	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
@@ -991,6 +1094,12 @@ config_gen_all:
 .PHONY: config_gen_code_generator
 config_gen_code_generator:
 	./script/git/git_repo_update_group.py --group base,code_generator
+	./script/generate_config.sh
+
+# generate config repo accorderie
+.PHONY: config_gen_accorderie
+config_gen_accorderie:
+	./script/git_repo_update_group.py --group base,code_generator,accorderie
 	./script/generate_config.sh
 
 # generate config repo image_db

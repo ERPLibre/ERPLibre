@@ -132,6 +132,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/Smile-SA_odoo_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/TechnoLibre_odoo-code-generator," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/TechnoLibre_odoo-code-generator-template," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/TechnoLibre_odoo_accorderie," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ajepe_odoo-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
