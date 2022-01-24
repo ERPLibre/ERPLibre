@@ -197,6 +197,14 @@ source ./.venv/bin/activate
 python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```
 
+## Use Code generator
+
+Read CODE_GENERATOR.md.
+
+# Version
+
+Read GIT_REPO.md to understand how changer version.
+
 ## Python version
 
 Your actual version is in file .python-version. Use script `./script/version/change_python_version.sh 3.7.12` to change to version 3.7.12 .
