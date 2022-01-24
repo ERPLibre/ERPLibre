@@ -199,6 +199,21 @@ db_clone_test_to_test2:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
 	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
 
+.PHONY: db_test_export
+db_test_export:
+	./script/database/db_restore.py --database test_website_export
+	./script/addons/install_addons_dev.sh test_website_export demo_website_data
+
+.PHONY: db_test_re_export_website_attachments
+db_test_re_export_website_attachments:
+	./script/database/db_restore.py --database test_website_export
+	./script/addons/install_addons_dev.sh test_website_export demo_website_attachments_data
+	# TODO this test fail at uninstall, it remove all files.
+	# TODO Strategy is to update ir_model_data, change module data and attach to another module like website
+	# TODO and update all link in website, (or use id of ir.attachment instead of xmlid website.)
+	./script/addons/uninstall_addons.sh test_website_export demo_website_attachments_data
+	./script/addons/install_addons_dev.sh test_website_export code_generator_demo_export_website_attachments
+
 ########################
 #  Image installation  #
 ########################
@@ -395,6 +410,7 @@ image_db_create_erplibre_package_dms:
 
 .PHONY: image_db_create_all
 image_db_create_all:
+	# TODO remove modules from addons/addons
 	#./script/make.sh config_gen_image_db
 	./script/database/db_restore.py --clean_cache
 	./script/make.sh image_db_create_erplibre_base
