@@ -33,7 +33,7 @@ VENV_PATH=./.venv
 LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
 VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
-POETRY_VERSION=1.0.10
+POETRY_VERSION=1.1.12
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
@@ -109,6 +109,7 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env
 #/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
 # source $HOME/.poetry/env
+${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry env use ${VENV_PATH}/bin/python3
 ${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
