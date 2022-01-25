@@ -121,3 +121,7 @@ List your docker version
 
 You need to push your docker image and update your tag, like 1.0.1:
 > docker push technolibre/erplibre:VERSION
+
+# Diagnostic
+When getting and error about missing module, or after an upgrade, you need to update config file.
+> make docker_exec_erplibre_gen_config
