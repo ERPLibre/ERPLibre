@@ -37,7 +37,7 @@ RUN cd $ODOO_PREFIX && \
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
     curl -sSL -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py && \
-    ./.venv/bin/python get-poetry.py -y --preview --version 1.0.10
+    ./.venv/bin/python get-poetry.py -y --preview --version 1.1.12
 
 RUN cd $ODOO_PREFIX && \
     ./.venv/bin/pip install --upgrade pip && \
