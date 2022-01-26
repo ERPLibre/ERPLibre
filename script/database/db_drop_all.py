@@ -22,6 +22,11 @@ def get_config():
         epilog="""\
 """,
     )
+    parser.add_argument(
+        "--test_only",
+        help="test and test_* and other by system test.",
+        action="store_true",
+    )
     args = parser.parse_args()
     return args
 
@@ -32,6 +37,12 @@ def main():
     out_db = execute_shell("./.venv/bin/python3 ./odoo/odoo-bin db --list")
     lst_db = out_db.split("\n")
     for db_name in lst_db:
+        if config.test_only and not (
+            db_name in ("test",)
+            or db_name.startswith("test_")
+            or db_name.startswith("new_project_")
+        ):
+            continue
         execute_shell(
             "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
             f" {db_name}"

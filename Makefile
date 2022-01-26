@@ -117,6 +117,10 @@ db_drop_db_template:
 db_drop_all:
 	./script/database/db_drop_all.py
 
+.PHONY: db_drop_test
+db_drop_test:
+	./script/database/db_drop_all.py --test_only
+
 .PHONY: db_clean_cache
 db_clean_cache:
 	./script/db_restore.py --clean_cache
