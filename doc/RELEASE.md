@@ -124,7 +124,7 @@ Simplification tools:
 ```bash
 # Show all divergence repository with production
 make repo_diff_manifest_production
-# Short version with statistique
+# Short version with statistics
 make repo_diff_stat_from_last_version
 # Long version
 make repo_diff_from_last_version

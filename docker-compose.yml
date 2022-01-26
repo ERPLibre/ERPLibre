@@ -1,43 +1,43 @@
 version: "3.3"
 services:
-    ERPLibre:
-      image: technolibre/erplibre:1.2.1
-      ports:
-        - 8069:8069
-        - 8071:8071
-        - 8072:8072
-      environment:
-        HOST: db
-        PASSWORD: mysecretpassword
-        USER: odoo
-        POSTGRES_DB: postgres
-        STOP_BEFORE_INIT: "False"
-        DB_NAME: ""
-        UPDATE_ALL_DB: "False"
-      depends_on:
-        - db
-      # not behind a proxy
-      #command: odoo --workers 0
-      # behind a proxy
-      #command: odoo --workers 2
-      command: odoo
-      volumes:
-        # See the volume section at the end of the file
-        - erplibre_data_dir:/home/odoo/.local/share/Odoo
-        - ./addons/addons:/ERPLibre/addons/addons
-        - erplibre_conf:/etc/odoo
-      restart: always
+  ERPLibre:
+    image: technolibre/erplibre:1.3.0
+    ports:
+      - 8069:8069
+      - 8071:8071
+      - 8072:8072
+    environment:
+      HOST: db
+      PASSWORD: mysecretpassword
+      USER: odoo
+      POSTGRES_DB: postgres
+      STOP_BEFORE_INIT: "False"
+      DB_NAME: ""
+      UPDATE_ALL_DB: "False"
+    depends_on:
+      - db
+    # not behind a proxy
+    #command: odoo --workers 0
+    # behind a proxy
+    #command: odoo --workers 2
+    command: odoo
+    volumes:
+      # See the volume section at the end of the file
+      - erplibre_data_dir:/home/odoo/.local/share/Odoo
+      - ./addons/addons:/ERPLibre/addons/addons
+      - erplibre_conf:/etc/odoo
+    restart: always
 
-    db:
-      image: postgis/postgis:12-3.1-alpine
-      environment:
-        POSTGRES_PASSWORD: mysecretpassword
-        POSTGRES_USER: odoo
-        POSTGRES_DB: postgres
-        PGDATA: /var/lib/postgresql/data/pgdata
-      volumes:
-        - erplibre-db-data:/var/lib/postgresql/data/pgdata
-      restart: always
+  db:
+    image: postgis/postgis:12-3.1-alpine
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_USER: odoo
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - erplibre-db-data:/var/lib/postgresql/data/pgdata
+    restart: always
 
 # We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help

@@ -20,3 +20,4 @@ odoo
 image_db
 get-poetry.py
 artifacts
+wkhtmltox*
