@@ -177,7 +177,7 @@ db_create_db_test:
 .PHONY: image_db_create_erplibre_base
 image_db_create_erplibre_base:
 	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position
+	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
 
 .PHONY: image_db_create_erplibre_website
