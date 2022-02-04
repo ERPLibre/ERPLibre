@@ -363,7 +363,7 @@ class ProjectManagement:
         # Execute all
         bd_name_template = (
             f"new_project_code_generator_template_{uuid.uuid4()}"[:63]
-        )[:63]
+        )
         cmd = f"./script/db_restore.py --database {bd_name_template}"
         os.system(cmd)
         _logger.info(cmd)
@@ -424,7 +424,7 @@ class ProjectManagement:
             cmd = (
                 "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
                 f" {bd_name_generator}"
-            )[:63]
+            )
             _logger.info(cmd)
             os.system(cmd)
 
