@@ -131,7 +131,7 @@ db_restore_erplibre_base_db_test:
 
 .PHONY: db_restore_erplibre_base_db_test_module_test
 db_restore_erplibre_base_db_test_module_test:
-	./script/make.sh db_restore_erplibre_base_db_test
+	./script/db_restore.py --database test
 	./script/addons/install_addons.sh test test
 
 .PHONY: db_restore_erplibre_base_db_test_image_test
@@ -228,17 +228,17 @@ image_diff_base_website:
 #########################
 .PHONY: addons_install_code_generator_basic
 addons_install_code_generator_basic:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator
 
 .PHONY: addons_install_code_generator_featured
 addons_install_code_generator_featured:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal
 
 .PHONY: addons_install_code_generator_full
 addons_install_code_generator_full:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal,code_generator_db_servers,code_generator_website_snippet,code_generator_geoengine,code_generator_theme_website,code_generator_website_leaflet
 
 .PHONY: addons_install_code_generator_demo
@@ -256,7 +256,7 @@ addons_reinstall_code_generator_demo:
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
@@ -270,7 +270,7 @@ addons_install_all_code_generator_demo:
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
-	./script/make.sh db_restore_erplibre_base_db_template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_portal,auto_backup,demo_internal_inherit
 	./script/addons/install_addons_dev.sh template code_generator_template_demo_portal,code_generator_template_demo_sysadmin_cron,code_generator_template_demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_portal
@@ -282,7 +282,7 @@ addons_install_all_code_generator_template:
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
-	./script/make.sh db_restore_erplibre_base_db_template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
 	# TODO support installation theme with cli
 	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
