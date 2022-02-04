@@ -44,6 +44,11 @@ run_test:
 	echo http://localhost:8069
 	./run.sh --database test
 
+.PHONY: run_prod_client
+run_prod_client:
+	echo http://localhost:8069
+	./run.sh --database prod_client
+
 .PHONY: run_code_generator
 run_code_generator:
 	echo http://localhost:8069
@@ -133,6 +138,12 @@ db_restore_erplibre_base_db_test:
 db_restore_erplibre_base_db_test_module_test:
 	./script/db_restore.py --database test
 	./script/addons/install_addons.sh test test
+
+.PHONY: db_restore_prod_client
+db_restore_prod_client:
+	# You need to put the database backup in ./image_db/prod_client.zip
+	./script/db_restore.py --database prod_client --image prod_client
+	./script/migrate_prod_to_test.sh prod_client
 
 .PHONY: db_restore_erplibre_base_db_test_image_test
 db_restore_erplibre_base_db_test_image_test:

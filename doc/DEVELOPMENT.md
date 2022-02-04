@@ -61,11 +61,14 @@ Execute to generate Repo manifest
 
 ## Move database from prod to dev
 
-When moving database from prod to your dev environment, you want to remove email servers and install user test in order
-to test the database. Run:
+Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a database
+named `prod_client` ready to test.
+
+When moving database from prod to your dev environment, you want to remove email servers, backups and install user test
+in order to test the database. Run:
 
 ```bash
-./run.sh --stop-after-init -i user_test,disable_mail_server --dev all -d DATABASE
+./script/migrate_prod_to_test.sh DATABASE
 ```
 
 ## Change git url https to Git
