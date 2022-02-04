@@ -263,10 +263,10 @@ addons_install_all_code_generator_demo:
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
@@ -284,6 +284,13 @@ addons_install_all_code_generator_template:
 addons_install_all_generated_demo:
 	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
+	#./script/addons/install_addons_dev.sh template demo_internal
+	#./script/addons/install_addons_dev.sh template demo_internal_inherit
+	#./script/addons/install_addons_dev.sh template demo_portal
+	#./script/addons/install_addons_dev.sh template demo_website_leaflet
+	#./script/addons/install_addons_dev.sh template demo_website_snippet
+	#./script/addons/install_addons_dev.sh template auto_backup
 	# TODO support installation theme with cli
 	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
 
@@ -391,7 +398,7 @@ test_installation_demo:
 	./script/db_restore.py --database test_demo
 	./script/addons/install_addons.sh test_demo demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet
 	# TODO cannot install from command line (CLI)
-	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator ./addons/TechnoLibre_odoo-code-generator-template
+	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator
 
 .PHONY: test_code_generator_generation
 test_code_generator_generation:
