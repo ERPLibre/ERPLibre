@@ -7,6 +7,14 @@ optional = false
 python-versions = "*"
 
 [[package]]
+name = "aioshutil"
+version = "1.1"
+description = "Asynchronous shutil module."
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[[package]]
 name = "alabaster"
 version = "0.7.12"
 description = "A configurable sidebar-enabled Sphinx theme"
@@ -1820,7 +1828,7 @@ typing-extensions = {version = ">=3.10.0", markers = "python_version < \"3.10\""
 
 [[package]]
 name = "pylint-odoo"
-version = "5.0.5"
+version = "5.0.6.dev1"
 description = "Pylint plugin for Odoo"
 category = "main"
 optional = false
@@ -1844,7 +1852,7 @@ whichcraft = "*"
 type = "git"
 url = "https://github.com/oca/pylint-odoo.git"
 reference = "master"
-resolved_reference = "c03dd158acd79dea665588af38a00a49f54e210a"
+resolved_reference = "151d31d452f8963c560672e2abe1919649769a45"
 
 [[package]]
 name = "pylint-plugin-utils"
@@ -3062,12 +3070,16 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7.12"
-content-hash = "83010756f7980ae45b19114177a7018314bede3c0fd49ab139d1a73782b8c851"
+content-hash = "a0ff20f5203ceac245624c04e5d9b96956a3453545738056f9a24be8f22f9775"
 
 [metadata.files]
 agithub = [
     {file = "agithub-2.2.2-py2.py3-none-any.whl", hash = "sha256:5f50071536db0cc9611859e761d7c3dc6f951a8535029bf6af7fb22744b7e118"},
     {file = "agithub-2.2.2.tar.gz", hash = "sha256:321aa5fc688fde2970562b35c991881b69a13f57372d554a0fab184df85fa8a7"},
+]
+aioshutil = [
+    {file = "aioshutil-1.1-py3-none-any.whl", hash = "sha256:4c17e1da55cf928b4a85bd6ff5e4f1560cf21db7a16b5da5844f8f3edf3e2895"},
+    {file = "aioshutil-1.1.tar.gz", hash = "sha256:d2e8d6baddab13137410b27ce24f39ce9889684cb47503d5af182ea8d038b0f1"},
 ]
 alabaster = [
     {file = "alabaster-0.7.12-py2.py3-none-any.whl", hash = "sha256:446438bdcca0e05bd45ea2de1668c1d9b032e1a9154c2c259092d77031ddd359"},
