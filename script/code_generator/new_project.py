@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import sys
+import tempfile
 import uuid
 
 from git import Repo
@@ -74,14 +75,6 @@ def get_config():
         help="Force override directory and module.",
     )
     parser.add_argument(
-        "--do_not_update_config",
-        action="store_true",
-        help=(
-            "Ignore updating config file. This is a patch for a bug for"
-            " duplicate path, but 1 relative and the other is absolute."
-        ),
-    )
-    parser.add_argument(
         "--keep_bd_alive",
         action="store_true",
         help="By default, the bd is cleaned after a run.",
@@ -105,11 +98,9 @@ class ProjectManagement:
         template_name="",
         template_directory="",
         force=False,
-        ignore_config=False,
         keep_bd_alive=False,
     ):
         self.force = force
-        self.ignore_config = ignore_config
         self.keep_bd_alive = keep_bd_alive
         self.msg_error = ""
         self.origin_config_txt = ""
@@ -233,6 +224,7 @@ class ProjectManagement:
         git_repo.git.restore(relative_path)
 
     def generate_module(self):
+        # TODO copy directory in temp workspace file before update it
         module_path = os.path.join(self.module_directory, self.module_name)
         if not self.force and not self.validate_path_ready_to_be_override(
             self.module_name, self.module_directory, path=module_path
@@ -316,7 +308,7 @@ class ProjectManagement:
             )
         ):
             return False
-        self.update_config()
+        config_path = self.update_config()
 
         bd_name_demo = f"new_project_code_generator_demo_{uuid.uuid4()}"[:63]
         cmd = f"./script/db_restore.py --database {bd_name_demo}"
@@ -325,7 +317,7 @@ class ProjectManagement:
         _logger.info("========= GENERATE code_generator_demo =========")
         cmd = (
             f"./script/addons/install_addons_dev.sh {bd_name_demo}"
-            " code_generator_demo"
+            f" code_generator_demo {config_path}"
         )
         os.system(cmd)
 
@@ -345,7 +337,6 @@ class ProjectManagement:
         # Validate
         if not os.path.exists(template_path):
             _logger.error(f"Module template not exists '{template_path}'")
-            self.revert_config()
             return False
         else:
             _logger.info(f"Module template exists '{template_path}'")
@@ -379,14 +370,14 @@ class ProjectManagement:
             os.system(cmd)
             cmd = (
                 f"./script/addons/install_addons_dev.sh {bd_name_template}"
-                f" {self.module_name}"
+                f" {self.module_name} {config_path}"
             )
             _logger.info(cmd)
             os.system(cmd)
 
         cmd = (
             f"./script/addons/install_addons_dev.sh {bd_name_template}"
-            f" {self.template_name}"
+            f" {self.template_name} {config_path}"
         )
         _logger.info(cmd)
         os.system(cmd)
@@ -402,7 +393,6 @@ class ProjectManagement:
         # Validate
         if not os.path.exists(cg_path):
             _logger.error(f"Module cg not exists '{cg_path}'")
-            self.revert_config()
             return False
         else:
             _logger.info(f"Module cg exists '{cg_path}'")
@@ -415,7 +405,7 @@ class ProjectManagement:
 
         cmd = (
             f"./script/addons/install_addons_dev.sh {bd_name_generator}"
-            f" {self.cg_name}"
+            f" {self.cg_name} {config_path}"
         )
         _logger.info(cmd)
         os.system(cmd)
@@ -431,17 +421,13 @@ class ProjectManagement:
         # Validate
         if not os.path.exists(template_path):
             _logger.error(f"Module not exists '{module_path}'")
-            self.revert_config()
             return False
         else:
             _logger.info(f"Module exists '{module_path}'")
 
-        self.revert_config()
         return True
 
     def update_config(self):
-        if self.ignore_config:
-            return
         # Backup config and restore it after, check if path exist or add it temporary
         with open("./config.conf") as config:
             config_txt = config.read()
@@ -462,14 +448,11 @@ class ProjectManagement:
         if lst_directory_to_add:
             new_str = "addons_path = " + ",".join(lst_directory_to_add) + ","
             config_txt = config_txt.replace("addons_path = ", new_str)
-            with open("./config.conf", "w") as config:
-                config.write(config_txt)
-
-    def revert_config(self):
-        if self.ignore_config:
-            return
-        with open("./config.conf", "w") as config:
-            config.write(self.origin_config_txt)
+        temp_file = tempfile.mktemp()
+        with open(temp_file, "w") as config:
+            config.write(config_txt)
+        print(f"mathben \n {temp_file} \n")
+        return temp_file
 
 
 def main():
@@ -482,7 +465,6 @@ def main():
         cg_name=config.code_generator_name,
         template_name=config.template_name,
         force=config.force,
-        ignore_config=config.do_not_update_config,
         keep_bd_alive=config.keep_bd_alive,
     )
     if project.msg_error:

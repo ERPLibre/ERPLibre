@@ -6,8 +6,6 @@ import os
 import sys
 from collections import defaultdict
 
-CONFIG_PATH = "./config.conf"
-
 logging.basicConfig(
     format=(
         "%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d]"
@@ -35,6 +33,12 @@ def get_config():
         help="Module name to search, a list can be use separate by ,",
     )
     parser.add_argument(
+        "-c",
+        "--config",
+        default="./config.conf",
+        help="The config path.",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug output",
@@ -49,18 +53,18 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     config_parser = configparser.ConfigParser()
-    config_parser.read(CONFIG_PATH)
+    config_parser.read(config.config)
     if "options" in config_parser:
         if "addons_path" in config_parser["options"]:
             addons_path = config_parser["options"]["addons_path"]
         else:
             _logger.error(
                 "Missing item 'addons_path' in section 'options' in"
-                f" '{CONFIG_PATH}'"
+                f" '{config.config}'"
             )
             return -1
     else:
-        _logger.error(f"Missing section 'options' in '{CONFIG_PATH}'")
+        _logger.error(f"Missing section 'options' in '{config.config}'")
         return -1
 
     lst_addons_path = addons_path.split(",")
