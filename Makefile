@@ -117,6 +117,10 @@ db_drop_db_template:
 db_drop_all:
 	./script/database/db_drop_all.py
 
+.PHONY: db_drop_test
+db_drop_test:
+	./script/database/db_drop_all.py --test_only
+
 .PHONY: db_clean_cache
 db_clean_cache:
 	./script/db_restore.py --clean_cache
@@ -127,7 +131,7 @@ db_restore_erplibre_base_db_test:
 
 .PHONY: db_restore_erplibre_base_db_test_module_test
 db_restore_erplibre_base_db_test_module_test:
-	./script/make.sh db_restore_erplibre_base_db_test
+	./script/db_restore.py --database test
 	./script/addons/install_addons.sh test test
 
 .PHONY: db_restore_erplibre_base_db_test_image_test
@@ -173,14 +177,14 @@ db_create_db_test:
 .PHONY: image_db_create_erplibre_base
 image_db_create_erplibre_base:
 	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position
+	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
 
 .PHONY: image_db_create_erplibre_website
 image_db_create_erplibre_website:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
@@ -192,7 +196,7 @@ image_db_create_erplibre_website:
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
 	./script/addons/install_addons.sh test project
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
-	./script/addons/install_addons.sh test pos_sale
+	./script/addons/install_addons.sh test pos_sale,muk_pos_branding
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
 	./script/addons/install_addons.sh test hr
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
@@ -224,17 +228,17 @@ image_diff_base_website:
 #########################
 .PHONY: addons_install_code_generator_basic
 addons_install_code_generator_basic:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator
 
 .PHONY: addons_install_code_generator_featured
 addons_install_code_generator_featured:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal
 
 .PHONY: addons_install_code_generator_full
 addons_install_code_generator_full:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_cron,code_generator_hook,code_generator_portal,code_generator_db_servers,code_generator_website_snippet,code_generator_geoengine,code_generator_theme_website,code_generator_website_leaflet
 
 .PHONY: addons_install_code_generator_demo
@@ -252,21 +256,21 @@ addons_reinstall_code_generator_demo:
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
-	./script/make.sh db_restore_erplibre_base_db_code_generator
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
-	./script/make.sh db_restore_erplibre_base_db_template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_portal,auto_backup,demo_internal_inherit
 	./script/addons/install_addons_dev.sh template code_generator_template_demo_portal,code_generator_template_demo_sysadmin_cron,code_generator_template_demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_portal
@@ -278,8 +282,15 @@ addons_install_all_code_generator_template:
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
-	./script/make.sh db_restore_erplibre_base_db_template
+	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
+	#./script/addons/install_addons_dev.sh template demo_internal
+	#./script/addons/install_addons_dev.sh template demo_internal_inherit
+	#./script/addons/install_addons_dev.sh template demo_portal
+	#./script/addons/install_addons_dev.sh template demo_website_leaflet
+	#./script/addons/install_addons_dev.sh template demo_website_snippet
+	#./script/addons/install_addons_dev.sh template auto_backup
 	# TODO support installation theme with cli
 	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
 
@@ -389,7 +400,7 @@ test_installation_demo:
 	./script/db_restore.py --database test_demo
 	./script/addons/install_addons.sh test_demo demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet
 	# TODO cannot install from command line (CLI)
-	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator ./addons/TechnoLibre_odoo-code-generator-template
+	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator
 
 .PHONY: test_code_generator_generation
 test_code_generator_generation:
