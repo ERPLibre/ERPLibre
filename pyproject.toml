@@ -169,6 +169,7 @@ xmlformatter = "^0.2.4"
 xmltodict = "^0.12.0"
 zeep = "^4.1.0"
 zxcvbn = "^4.4.28"
+aioshutil = "^1.1"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^1.1.0"

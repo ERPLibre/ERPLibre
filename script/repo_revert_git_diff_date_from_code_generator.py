@@ -32,6 +32,10 @@ def get_config():
         epilog="""\
 """,
     )
+    parser.add_argument(
+        "--repo",
+        default="./addons/TechnoLibre_odoo-code-generator-template;./addons/OCA_server-tools",
+    )
     args = parser.parse_args()
     return args
 
@@ -43,11 +47,7 @@ def main():
         r"[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])"
         r" (2[0-3]|[01][0-9]):[0-5][0-9]"
     )
-    # TODO support argument instead of hardcoded values
-    lst_path = [
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        "./addons/OCA_server-tools",
-    ]
+    lst_path = config.repo.split(";")
     for path in lst_path:
         repo = git.Repo(path)
         supported_ext = [".xml", ".pot", ".po"]

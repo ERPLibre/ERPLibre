@@ -9,6 +9,7 @@ openupgradelib
 unidiff
 colorama
 wheel
+aioshutil
 
 # For OSX
 cython

@@ -357,6 +357,8 @@ test_full:
 test_full_fast:
 	./script/make.sh clean
 	./script/test/run_parallel_test.py
+	# TODO This test is broken in parallel
+	./script/make.sh test_code_generator_hello_world
 
 .PHONY: test_base
 test_base:
