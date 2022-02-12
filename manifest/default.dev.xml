@@ -95,7 +95,7 @@
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
   <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons"/>
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="12.0_sale_order_line_timesheet_attribution" groups="addons,base"/>
+  <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" revision="12.0" groups="addons,base"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" revision="12.0_dev" groups="addons"/>
   <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" revision="12.0" remote="TechnoLibre" groups="addons,code_generator,image_db"/>
   <project name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="12.0" groups="addons,code_generator,image_db"/>

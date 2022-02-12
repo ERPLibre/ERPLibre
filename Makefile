@@ -186,7 +186,7 @@ image_db_create_erplibre_website:
 	./script/make.sh image_db_create_erplibre_base
 	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
-	./script/addons/install_addons.sh test crm,website_crm
+	./script/addons/install_addons.sh test crm,website_crm,crm_team_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
 	./script/addons/install_addons.sh test website_livechat
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
