@@ -80,7 +80,7 @@ if [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   INSTALLED=$(dpkg -s wkhtmltox|grep installed)
   if [ "" == "${INSTALLED}" ]; then
       echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
-      _url=${WKHTMLTOX_X64}
+      _url=${WKHTMLTOX_ARM}
       sudo wget ${_url}
       sudo gdebi --n `basename ${_url}`
       sudo ln -s /usr/local/bin/wkhtmltopdf /usr/bin
