@@ -107,6 +107,7 @@ fi
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 #TODO verify need for ${VENV_PATH}/bin/pip3.7 install pillow==6.1.0 --default-timeout=100 ???
+${VENV_PATH}/bin/pip3.7 install pillow==6.1.0 --default-timeout=100 ???
 # Force python instead of changing env
 #/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
 # source $HOME/.poetry/env
