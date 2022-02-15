@@ -713,6 +713,7 @@ clean:
 .PHONY: doc
 doc:
 	./script/make.sh doc_dev
+	./script/make.sh doc_dev_odoo
 	./script/make.sh doc_migration
 	./script/make.sh doc_test
 	./script/make.sh doc_user
@@ -722,6 +723,7 @@ doc:
 .PHONY: doc_clean
 doc_clean:
 	./script/make.sh doc_clean_dev
+	./script/make.sh doc_clean_dev_odoo
 	./script/make.sh doc_clean_migration
 	./script/make.sh doc_clean_test
 	./script/make.sh doc_clean_user
@@ -738,6 +740,19 @@ open_doc_dev:
 .PHONY: doc_clean_dev
 doc_clean_dev:
 	make -C doc/itpp-labs_odoo-development/docs clean
+
+# documentation odoo dev
+.PHONY: doc_dev_odoo
+doc_dev_odoo:
+	source ./.venv/bin/activate && make -C odoo/doc html || exit 1
+
+.PHONY: open_doc_dev_odoo
+open_doc_dev_odoo:
+	-$(BROWSER) odoo/doc/_build/html/index.html
+
+.PHONY: doc_clean_dev_odoo
+doc_clean_dev_odoo:
+	make -C odoo/doc clean
 
 # documentation migration
 .PHONY: doc_migration
