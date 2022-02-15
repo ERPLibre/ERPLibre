@@ -2,7 +2,6 @@
 giturlparse
 agithub
 GitPython==3.1.12
-PyYAML
 retrying
 xmltodict
 openupgradelib
@@ -18,6 +17,8 @@ cython
 wheel
 phonenumbers
 pytz==2017.3
+# TODO Force use odoo/doc/requirements.txt, check when need update
+sphinx==1.6.7
 
 # For OCA
 factur-x
