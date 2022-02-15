@@ -243,41 +243,44 @@ addons_install_code_generator_full:
 
 .PHONY: addons_install_code_generator_demo
 addons_install_code_generator_demo:
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo
-
-.PHONY: addons_uninstall_code_generator_demo
-addons_uninstall_code_generator_demo:
-	./script/addons/uninstall_addons.sh code_generator code_generator_demo
-
-.PHONY: addons_reinstall_code_generator_demo
-addons_reinstall_code_generator_demo:
-	./script/make.sh addons_uninstall_code_generator_demo
-	./script/make.sh addons_install_code_generator_demo
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
 	./script/db_restore.py --database code_generator
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
-#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
+	# TODO ignore code_generator_demo_internal cause (demo_internal, demo_model_2_internal_view_form) already exists
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+	#./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
 	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_portal,auto_backup,demo_internal_inherit
 	./script/addons/install_addons_dev.sh template code_generator_template_demo_portal,code_generator_template_demo_sysadmin_cron,code_generator_template_demo_internal_inherit
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_portal -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_portal
 	#./script/addons/install_addons_dev.sh template demo_portal
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_portal
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/OCA_server-tools/auto_backup -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_sysadmin_cron
 	#./script/addons/install_addons_dev.sh template auto_backup
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_sysadmin_cron
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_internal -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal
+	#./script/addons/install_addons_dev.sh template demo_internal
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_internal_inherit -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal_inherit
 
