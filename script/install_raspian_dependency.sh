@@ -61,6 +61,13 @@ sudo apt-get install proj-bin -y
 sudo apt-get install libopenjp2-7
 sudo apt -y install rustc
 
+#TODO verify need for this addition after test
+echo -e "\n---- Installing dependencies for pyenv ----"
+sudo apt-get install make build-essential libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+
+
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
 sudo npm install -g rtlcss
