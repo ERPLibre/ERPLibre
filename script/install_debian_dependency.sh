@@ -38,7 +38,7 @@ sudo apt-get upgrade -y
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-sudo apt-get install postgresql libpq-dev -y
+sudo apt-get install postgresql libpq-dev postgis -y
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User  ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
@@ -49,11 +49,19 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 echo -e "\n--- Installing debian dependency --"
 sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev libpng12-0 gdebi-core libffi-dev libbz2-dev -y
 sudo apt-get install libmariadbd-dev -y
+# Dependencies for pyenv
+sudo apt-get install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev -y
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
-sudo apt-get install nodejs npm -y
+curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install npm@latest -g
 sudo npm install -g rtlcss
 sudo npm install -g less
+
+echo -e "\n---- Test tool ----"
+sudo npm install -g prettier
+sudo npm install -g prettier @prettier/plugin-xml
 
 sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc
 

@@ -2,20 +2,157 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com).
-This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com). This project adheres
+to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2022-01-25
+
+**Migration note**
+
+With new version of poetry, a bug occurs in the update. The solution is to delete the directory to let it
+recreate. `rm -rf ~/.poetry`
+
 ### Added
 
-- Code generator for Odoo module
-- Support map geoengine
+- Code generator supports view : activity, calendar, diagram, form, graph, kanban, pivot, search, timeline and tree
+- Code generator supports portal view field and form creation
+- Code generator generates generic snippets for demo_portal
+- Code generator generates code_generator with code_generator_code_generator
+- Code generator tests mariadb migrator
+- Code generator supports javascript interpretation for snippet
+- Code generator supports inheritance
+- Code generator new project to create the suite of generation code
+- Script to test the generation of module `code_generator`
+- Make test_full_fast to run all test in parallel
+- Module `web_timeline` and `web_diagram_position` in base image.
+- Module `odoo-formio` from novacode-nl
+- Module `design_themes` from Odoo
+- Format python header with isort
 
 ### Changed
 
-- Downgrade postgresql to 11 to support postgis
-- Travis CI
+- Update to Python==3.7.12
+- Update to poetry==1.1.12
+- Update pip dependency with security update
+    - Pillow==9.0.0
+    - lxml==4.7.1
+    - babel==2.9.1
+    - pyyaml==6.0
+    - reportlab==3.6.5
+- Web diagram module has all color of the rainbow in option
+- Refactor and simplify code of code_generator, better support of code reader
+
+### Fixed
+
+- Downgrade Werkzeug==0.11.15, only this version is supported by Odoo 12.0. This fixes some http request behind a proxy.
+
+## [1.2.1] - 2021-09-28
+
+### Added
+
+- doc/migration.md
+
+### Changed
+
+- Update pip dependency with security update
+    - Jinja2==2.11.3
+    - lxml==4.6.3
+    - cryptography==3.4.8
+    - psutil==5.6.6
+    - Pillow==8.3.2
+    - Werkzeug==0.15.3
+- Script separate generate_config.sh from install_locally.sh
+- Improve developer documentation
+- More Docker script
+
+#### Code generator
+
+- Improve db_servers generation code
+- Improve wizard generate UI menu
+
+### Fixed
+
+- Mobile view menu item in Web interface from muk_web_theme
+
+## [1.2.0] - 2021-07-21
+
+**Migration note**
+
+Because addons repository has change, config file need to be updated.
+
+- When upgrading to version 1.2.0:
+    - From docker
+        - Clone project if only download docker-compose
+            - `git init`
+            - `git remote add origin https://github.com/erplibre/erplibre`
+            - `git fetch`
+            - `mv ./docker-compose.yml /tmp/temp_docker-compose.yml`
+            - `git checkout master`
+            - `mv /tmp/temp_docker-compose.yml ./docker-compose.yml`
+        - Update `./docker-compose.yml` depending of difference with git.
+        - Run script `make docker_exec_erplibre_gen_config`
+        - Restart the docker `make docker_restart_daemon`
+    - From vanilla
+        - Run script `make install_dev`
+        - Restart your daemon
+        - Regenerate master password manually
+
+### Added
+
+- Adapt script to give an execution status
+- Multilingual markdown
+- Guide to use Cloudflare with DDNS
+- Script to check git diff and ignore date
+- Repo with ERPLibre image
+- Improve git repo usage, filter repo by use case
+- ERPLibre theme website of TechnoLibre
+- ERPLibre website snippet
+    - Basic HTML snippets
+    - Snippet card
+    - Snippet timelines
+- Module contract_digitized_signature with contract_portal
+- Module disable auto_backup
+- Odoo cli db command to manipulate restoration db
+- Odoo cli i18n command to generate i18n pot files
+
+#### Makefile
+
+- Format code
+- Code generator test
+- Addons installation
+- OS installation
+- Restore database
+- Docker execution
+
+#### Code generator
+
+- Code generator for Odoo module, depending of ERPLibre
+- Support map geospatial
+- Support i18n
+- Script to transform Python and XML to Python code writer script to regenerate themselves
+
+### Changed
+
+- Update Python dependency with Poetry
+- Format all Python code with black
+- Module auto_backup with sftp host key
+- Module muk_website_branding use ERPLibre branding
+- Update docs with vscode support, custom document layout, custom email template and trick to use params to share
+  variable
+
+#### Docker
+
+- Use buster python 3.7.7 image to remove pyenv
+- Update Postgresql to support Postgis
+- Support volume addons /ERPLibre/addons/addons
+
+### Fixed
+
+- Ubuntu installation
+- Poetry installation
+- Geospatial with postgis can be installed
 
 ## [1.1.1] - 2020-12-11
 
@@ -117,7 +254,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.3.0...HEAD
+
+[1.3.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.1...v1.3.0
+
+[1.2.1]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.0...v1.2.1
+
+[1.2.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.1.1...v1.2.0
 
 [1.1.1]: https://github.com/ERPLibre/ERPLibre/compare/v1.0.1...v1.1.1
 

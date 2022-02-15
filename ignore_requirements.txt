@@ -13,3 +13,6 @@ xlsxwriter
 ldap
 pythonjsonlogger
 python-alipay-sdk
+pyrfc
+MySQLdb
+formiodata

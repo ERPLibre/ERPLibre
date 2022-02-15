@@ -1,14 +1,16 @@
 from __future__ import print_function
+
 import argparse
 import os.path
 import shutil
+
+import yaml  # pip install PyYAML
 from agithub.GitHub import GitHub  # pip install agithub
 from git import Repo  # pip install gitpython
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
-import yaml  # pip install PyYAML
 
-DEFAULT_CONFIG_FILENAME = '~/.github/fork_github_repo.yaml'
+DEFAULT_CONFIG_FILENAME = "~/.github/fork_github_repo.yaml"
 
 
 def github_url_argument(url):
@@ -20,11 +22,11 @@ def github_url_argument(url):
     """
     parsed_url = parse(url)
     if not parsed_url.valid:
-        raise argparse.ArgumentTypeError('%s is not a valid git URL'
-                                         % url)
+        raise argparse.ArgumentTypeError("%s is not a valid git URL" % url)
     if not parsed_url.github:
-        raise argparse.ArgumentTypeError('%s is not a GitHub repo'
-                                         % parsed_url.url)
+        raise argparse.ArgumentTypeError(
+            "%s is not a GitHub repo" % parsed_url.url
+        )
     return url
 
 
@@ -41,10 +43,10 @@ def get_config():
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
+        description="""\
 Fork a GitHub repo, clone that repo to a local directory, add the upstream
-remote, create an optional feature branch and checkout that branch''',
-        epilog='''\
+remote, create an optional feature branch and checkout that branch""",
+        epilog="""\
 The config file with a default location of
 ~/.github/fork_github_repo.yaml contains the following settings:
 
@@ -59,27 +61,40 @@ The file is YAML formatted and the contents look like this :
 github_token: 0123456789abcdef0123456789abcdef01234567
 repo_dir: ~/Documents/github.com/example/
 organization:
-'''
+""",
     )
     parser.add_argument(
-        '-c', '--config',
-        help='Filename of the yaml config file (default : %s)'
-             % DEFAULT_CONFIG_FILENAME,
+        "-c",
+        "--config",
+        help="Filename of the yaml config file (default : %s)"
+        % DEFAULT_CONFIG_FILENAME,
         default=filename_argument(DEFAULT_CONFIG_FILENAME),
-        type=filename_argument)
-    parser.add_argument('url', help="GitHub URL of the upstream repo to fork",
-                        type=github_url_argument)
-    parser.add_argument('branch', nargs='?', default=None,
-                        help="Name of the feature branch to create")
+        type=filename_argument,
+    )
+    parser.add_argument(
+        "url",
+        help="GitHub URL of the upstream repo to fork",
+        type=github_url_argument,
+    )
+    parser.add_argument(
+        "branch",
+        nargs="?",
+        default=None,
+        help="Name of the feature branch to create",
+    )
     args = parser.parse_args()
     if (args.config == filename_argument(DEFAULT_CONFIG_FILENAME)) and (
-            not os.path.isfile(args.config)):
-        parser.error('Please create a config file at %s or point to one with '
-                     'the --config option.' % DEFAULT_CONFIG_FILENAME)
+        not os.path.isfile(args.config)
+    ):
+        parser.error(
+            "Please create a config file at %s or point to one with "
+            "the --config option." % DEFAULT_CONFIG_FILENAME
+        )
     if not os.path.isfile(args.config):
         raise argparse.ArgumentTypeError(
-            'Could not find config file %s.' % args.config)
-    with open(args.config, 'r') as f:
+            "Could not find config file %s." % args.config
+        )
+    with open(args.config, "r") as f:
         try:
             config = yaml.safe_load(f)
             if isinstance(config, dict):
@@ -88,10 +103,12 @@ organization:
             else:
                 raise argparse.ArgumentTypeError(
                     'Config contains %s of "%s" but it should be a dict'
-                    % (type(config), config))
+                    % (type(config), config)
+                )
         except yaml.YAMLError:
             raise argparse.ArgumentTypeError(
-                'Could not parse YAML in %s' % args.config)
+                "Could not parse YAML in %s" % args.config
+            )
 
 
 def get_list_fork_repo(upstream_url, github_token):
@@ -105,9 +122,15 @@ def get_list_fork_repo(upstream_url, github_token):
 
 
 def fork_and_clone_repo(
-        upstream_url, github_token, repo_dir_root, branch_name=None,
-        upstream_name='upstream', organization_name=None, fork_only=False,
-        repo_root=None):
+    upstream_url,
+    github_token,
+    repo_dir_root,
+    branch_name=None,
+    upstream_name="upstream",
+    organization_name=None,
+    fork_only=False,
+    repo_root=None,
+):
     """Fork a GitHub repo, clone that repo to a local directory,
     add the upstream remote, create an optional feature branch and checkout
     that branch
@@ -130,26 +153,28 @@ def fork_and_clone_repo(
 
     # Fork the repo
     status, user = gh.user.get()
-    user_name = user['login'] if not organization_name else organization_name
+    user_name = user["login"] if not organization_name else organization_name
     status, forked_repo = gh.repos[user_name][parsed_url.repo].get()
     if status == 404:
-        status, upstream_repo = (
-            gh.repos[parsed_url.owner][parsed_url.repo].get())
+        status, upstream_repo = gh.repos[parsed_url.owner][
+            parsed_url.repo
+        ].get()
         if status == 404:
             print("Unable to find repo %s" % upstream_url)
             exit(1)
         args = {}
         if organization_name:
             args["organization"] = organization_name
-        status, forked_repo = (
-            gh.repos[parsed_url.owner][parsed_url.repo].forks.post(**args))
+        status, forked_repo = gh.repos[parsed_url.owner][
+            parsed_url.repo
+        ].forks.post(**args)
         if status == 404:
             print("Error when forking repo %s" % forked_repo)
             exit(1)
         else:
-            print("Forked %s to %s" % (upstream_url, forked_repo['html_url']))
+            print("Forked %s to %s" % (upstream_url, forked_repo["html_url"]))
     elif status == 202:
-        print("Forked repo %s already exists" % forked_repo['full_name'])
+        print("Forked repo %s already exists" % forked_repo["full_name"])
     elif status != 200:
         print("Status not supported: %s - %s" % (status, forked_repo))
         exit(1)
@@ -166,24 +191,30 @@ def fork_and_clone_repo(
         try:
             if branch_name:
                 submodule_repo = retry(
-                    wait_exponential_multiplier=1000,
-                    stop_max_delay=15000
-                )(repo_root.create_submodule)(repo_dir_root, repo_dir_root,
-                                              url=http_url,
-                                              branch=branch_name)
+                    wait_exponential_multiplier=1000, stop_max_delay=15000
+                )(repo_root.create_submodule)(
+                    repo_dir_root,
+                    repo_dir_root,
+                    url=http_url,
+                    branch=branch_name,
+                )
             else:
                 submodule_repo = retry(
-                    wait_exponential_multiplier=1000,
-                    stop_max_delay=15000
-                )(repo_root.create_submodule)(repo_dir_root, repo_dir_root,
-                                              url=http_url)
+                    wait_exponential_multiplier=1000, stop_max_delay=15000
+                )(repo_root.create_submodule)(
+                    repo_dir_root, repo_dir_root, url=http_url
+                )
         except KeyError as e:
             if os.path.isdir(repo_dir_root):
-                print(f"Warning, submodule {repo_dir_root} already exist, "
-                      f"you need to add it in stage.")
+                print(
+                    f"Warning, submodule {repo_dir_root} already exist, "
+                    "you need to add it in stage."
+                )
             else:
-                print(f"\nERROR Cannot create submodule {repo_dir_root}."
-                      f"Maybe you need to delete .git/modules/{repo_dir_root}\n")
+                print(
+                    f"\nERROR Cannot create submodule {repo_dir_root}."
+                    f"Maybe you need to delete .git/modules/{repo_dir_root}\n"
+                )
                 return
                 # # Delete appropriate submodule and recreate_submodule
                 # shutil.rmtree(f".git/modules/{repo_dir_root}", ignore_errors=True)
@@ -219,14 +250,15 @@ def fork_and_clone_repo(
         #                                   url=bare_repo.git_dir, branch='master')
     else:
         if os.path.isdir(repo_dir):
-            print("Directory %s already exists, assuming it's a clone" % repo_dir)
+            print(
+                "Directory %s already exists, assuming it's a clone" % repo_dir
+            )
             cloned_repo = Repo(repo_dir)
         else:
             cloned_repo = retry(
-                wait_exponential_multiplier=1000,
-                stop_max_delay=15000
-            )(Repo.clone_from)(forked_repo['ssh_url'], repo_dir)
-            print("Cloned %s to %s" % (forked_repo['ssh_url'], repo_dir))
+                wait_exponential_multiplier=1000, stop_max_delay=15000
+            )(Repo.clone_from)(forked_repo["ssh_url"], repo_dir)
+            print("Cloned %s to %s" % (forked_repo["ssh_url"], repo_dir))
 
     # Create the remote upstream
     try:
@@ -234,14 +266,14 @@ def fork_and_clone_repo(
         print('Remote "%s" already exists in %s' % (upstream_name, repo_dir))
     except ValueError:
         upstream_remote = retry(
-            wait_exponential_multiplier=1000,
-            stop_max_delay=15000
+            wait_exponential_multiplier=1000, stop_max_delay=15000
         )(cloned_repo.create_remote)(upstream_name, upstream_url)
         print('Remote "%s" created for %s' % (upstream_name, upstream_url))
 
     # Fetch the remote upstream
     retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-        upstream_remote.fetch)()
+        upstream_remote.fetch
+    )()
     print('Remote "%s" fetched' % upstream_name)
 
     # Create and checkout the branch
@@ -255,19 +287,25 @@ def fork_and_clone_repo(
             branch = cloned_repo.heads[branch_name]
             print('Branch "%s" already exists' % branch_name)
         if branch_name not in cloned_repo.remotes.origin.refs:
-            cloned_repo.remotes.origin.push(refspec='{}:{}'.format(
-                branch.path, branch.path))
+            cloned_repo.remotes.origin.push(
+                refspec="{}:{}".format(branch.path, branch.path)
+            )
             print('Branch "%s" pushed to origin' % branch_name)
         else:
             print('Branch "%s" already exists in remote origin' % branch_name)
         if branch.tracking_branch() is None:
             branch.set_tracking_branch(
-                cloned_repo.remotes.origin.refs[branch_name])
-            print('Tracking branch "%s" setup for branch "%s"' % (
-                cloned_repo.remotes.origin.refs[branch_name], branch_name))
+                cloned_repo.remotes.origin.refs[branch_name]
+            )
+            print(
+                'Tracking branch "%s" setup for branch "%s"'
+                % (cloned_repo.remotes.origin.refs[branch_name], branch_name)
+            )
         else:
-            print('Branch "%s" already setup to track "%s"' % (
-                branch_name, cloned_repo.remotes.origin.refs[branch_name]))
+            print(
+                'Branch "%s" already setup to track "%s"'
+                % (branch_name, cloned_repo.remotes.origin.refs[branch_name])
+            )
         branch.checkout()
         print('Branch "%s" checked out' % branch_name)
         return branch

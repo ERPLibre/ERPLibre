@@ -1,21 +1,45 @@
 # FAQ
+
+## Scripting
+
+### Search all duplicate file recursively in given directory
+
+```bash
+find . -type f -printf '%p/ %f\n' | sort -k2 | uniq -f1 --all-repeated=separate
+```
+
+### Search all duplicate directory recursively in given directory
+
+```bash
+find . -type d -printf '%p/ %f\n' | sort -k2 | uniq -f1 --all-repeated=separate
+```
+
 ## Networking
+
 Show all open port
+
 ```bash
 sudo lsof -i -P -n | grep LISTEN
 ```
+
 or
+
 ```bash
 sudo netstat -lpnt | grep LISTEN
 ```
+
 or
+
 ```bash
 sudo ss -lpnt | grep LISTEN
 ```
 
 ## git-repo
+
 ### error.GitError fatal bad revision
+
 Example:
+
 ```
 error.GitError: manifests rev-list (u'^2736dfd46e8a30cf59a9cd6e93d9e56e87021f2a', 'HEAD', '--'): fatal: bad revision 'HEAD'
 ```
@@ -23,6 +47,7 @@ error.GitError: manifests rev-list (u'^2736dfd46e8a30cf59a9cd6e93d9e56e87021f2a'
 Did you modify files in .repo?
 
 To reset files from your branch into .repo:
+
 ```bash
 cd .repo/manifests
 git branch -av

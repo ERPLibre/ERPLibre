@@ -1,29 +1,38 @@
-# ERPLibre
+# Migration
 
-## Migration procedure in production
+Guide to help migration with different version.
 
-TODO
+## Docker
 
-## Migration procedure in dev
+- Clone project if only download docker-compose
+    - `git init`
+    - `git remote add origin https://github.com/erplibre/erplibre`
+    - `git fetch`
+    - `mv ./docker-compose.yml /tmp/temp_docker-compose.yml`
+    - `git checkout master`
+    - `mv /tmp/temp_docker-compose.yml ./docker-compose.yml`
+- Do manually a backup of ERPLibre database (TODO implement makefile command)
+- Update `./docker-compose.yml` depending of difference with git.
+- Run script `make docker_exec_erplibre_gen_config`
+- Stop the docker `make docker_stop`
+- Delete the volume, `docker volume rm ${BASENAME}_erplibre-db-data`
+- Start the docker `make docker_run_daemon`
+- Restore the backup manually.
 
-Example:
+### Database migration, PostgreSQL update 11 to 12
 
-update module helpdesk_mgmt and helpdesk_join_team
+TODO not working automatically, check last procedure and do it manually. The command to the docker is missing support when database is external.
 
-update translation all
+Easy way, do a backup with ERPLibre, upgrade Postgresql, restore the same backup.
 
-Remove helpdesk_res_partner_team
+List all database :
 
-Delete module not found
+```bash
+make docker_show_databases
+```
 
-smile_upgrade?
+## Vanilla
 
-update html categorie_id
-
-join_team == 6
-
-servicecall == 1
-
---limit-time-real 99999 -c config.conf --stop-after-init -d santelibre -i helpdesk_mrp -i erplibre_base_enterprise_mrp,erplibre_base_hackaton,helpdesk_mgmt -u helpdesk_join_team
-
---limit-time-real 99999 -c config.conf --stop-after-init -d santelibre  -u helpdesk_join_team
+- Run script `make install_dev`
+- Restart your daemon
+- Regenerate master password manually

@@ -1,10 +1,11 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
+from xml.dom import Node, minidom
+
 from code_writer import CodeWriter
-from xml.dom import minidom, Node
 
 from script.git_tool import GitTool
 
@@ -20,16 +21,22 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
+        description="""\
         Transform a xml file in code writer format xml file.
-''',
-        epilog='''\
-'''
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('-f', '--file', dest="file", required=True,
-                        help="Path of file to transform to code_writer.")
-    parser.add_argument('-o', '--output', dest="output",
-                        help="The output file.")
+    parser.add_argument(
+        "-f",
+        "--file",
+        dest="file",
+        required=True,
+        help="Path of file to transform to code_writer.",
+    )
+    parser.add_argument(
+        "-o", "--output", dest="output", help="The output file."
+    )
     args = parser.parse_args()
     return args
 
@@ -55,7 +62,10 @@ def code_writer_deep_xml(nodes):
                 if lst_comment:
                     comment = f"# {lst_comment[0]}"
 
-            code_line = (f"E.{node.tagName}({str(dict(node.attributes.items()))})", value)
+            code_line = (
+                f"E.{node.tagName}({str(dict(node.attributes.items()))})",
+                value,
+            )
             lst_result.append((comment, code_line))
         elif node.nodeType == Node.TEXT_NODE:
             if size_nodes == 1:
@@ -102,31 +112,36 @@ def main():
         print(f"Error, cannot parse {config.file}")
         sys.exit(1)
 
-    cw.emit('from lxml.builder import E')
-    cw.emit('from lxml import etree as ET')
-    cw.emit('from code_writer import CodeWriter')
-    cw.emit('')
+    cw.emit("from lxml.builder import E")
+    cw.emit("from lxml import etree as ET")
+    cw.emit("from code_writer import CodeWriter")
+    cw.emit("")
     cw.emit('print(\'<?xml version="1.0" encoding="utf-8"?>\')')
     cw.emit('print("<odoo>")')
 
     lst_function = []
     comment_for_next_group = None
 
-    for odoo in mydoc.getElementsByTagName('odoo'):
+    for odoo in mydoc.getElementsByTagName("odoo"):
         for ir_view_item in odoo.childNodes:
             if ir_view_item.nodeType == Node.ELEMENT_NODE:
                 # Show part of xml
                 fct_name = "ma_fonction"
                 lst_function.append(fct_name)
-                cw.emit(f'def {fct_name}():')
+                cw.emit(f"def {fct_name}():")
                 with cw.indent():
                     cw.emit('"""')
-                    for line in transform_string_to_list(ir_view_item.toprettyxml()):
+                    for line in transform_string_to_list(
+                        ir_view_item.toprettyxml()
+                    ):
                         cw.emit(line)
                     cw.emit('"""')
                     # Show comment
                     if comment_for_next_group:
-                        cw.emit(f'print(\'<!-- {comment_for_next_group.strip()} -->\')')
+                        cw.emit(
+                            "print('<!--"
+                            f" {comment_for_next_group.strip()} -->')"
+                        )
                         comment_for_next_group = None
                     attributes_root = dict(ir_view_item.attributes.items())
 
@@ -136,15 +151,21 @@ def main():
                     generate_code.generate_code(lst_out)
                     child_root = generate_code.result
 
-                    code = f'root = E.{ir_view_item.tagName}({str(attributes_root)}, {child_root})'
+                    code = (
+                        "root ="
+                        f" E.{ir_view_item.tagName}({str(attributes_root)},"
+                        f" {child_root})"
+                    )
 
                     for line in code.split("\n"):
                         cw.emit(line)
 
-                    cw.emit('content = ET.tostring(root, pretty_print=True)')
+                    cw.emit("content = ET.tostring(root, pretty_print=True)")
                     cw.emit()
                     cw.emit("cw = CodeWriter()")
-                    cw.emit('for line in content.decode("utf-8").split("\\n"):')
+                    cw.emit(
+                        'for line in content.decode("utf-8").split("\\n"):'
+                    )
                     with cw.indent():
                         cw.emit("with cw.indent():")
                         with cw.indent():
@@ -161,13 +182,15 @@ def main():
 
     output = cw.render()
     if config.output:
-        with open(config.output, 'w') as file:
+        with open(config.output, "w") as file:
             file.write(output)
     else:
         print(output)
 
 
-def add_line(cw, line, no_line, nb_indent, no_indent, init_no_intend, nb_space):
+def add_line(
+    cw, line, no_line, nb_indent, no_indent, init_no_intend, nb_space
+):
     """
     Recursive check indent and write line
     :param cw: code_writer module
@@ -185,21 +208,21 @@ def add_line(cw, line, no_line, nb_indent, no_indent, init_no_intend, nb_space):
         sys.exit(-1)
 
     if nb_indent == -1:
-        cw.emit("cw.emit(\"\")")
+        cw.emit('cw.emit("")')
         return 0
     elif nb_indent == no_indent:
         if nb_indent == 0:
-            cw.emit(f"cw.emit(\"{line}\")")
+            cw.emit(f'cw.emit("{line}")')
             return 0
         elif nb_indent == 1:
             if no_indent != init_no_intend:
                 cw.emit(f"with cw.indent({4 + nb_space if nb_space else ''}):")
             with cw.indent():
-                cw.emit(f"cw.emit(\"{line}\")")
+                cw.emit(f'cw.emit("{line}")')
         elif nb_indent == 2:
             if nb_indent - 1 > init_no_intend:
                 cw.emit(f"with cw.indent():")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

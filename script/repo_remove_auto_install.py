@@ -1,13 +1,14 @@
 #!./.venv/bin/python
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
+
 from git import Repo  # pip install gitpython
 from git.exc import GitCommandError
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(new_path)
 
 from script.git_tool import GitTool
@@ -24,13 +25,18 @@ def get_config():
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='''\
-''',
-        epilog='''\
-'''
+        description="""\
+""",
+        epilog="""\
+""",
     )
-    parser.add_argument('-d', '--dir', dest="dir", default="./",
-                        help="Path of repo to change remote, including submodule.")
+    parser.add_argument(
+        "-d",
+        "--dir",
+        dest="dir",
+        default="./",
+        help="Path of repo to change remote, including submodule.",
+    )
     args = parser.parse_args()
     return args
 
@@ -39,13 +45,21 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    lst_repo = git_tool.get_source_repo_addons(repo_path=config.dir,
-                                               add_repo_root=False)
-    lst_repo_organization = [git_tool.get_transformed_repo_info_from_url(
-        a.get("url"), repo_path=config.dir, get_obj=True,
-        is_submodule=a.get("is_submodule"), sub_path=a.get("sub_path"),
-        revision=a.get("revision"), clone_depth=a.get("clone_depth"))
-        for a in lst_repo]
+    lst_repo = git_tool.get_source_repo_addons(
+        repo_path=config.dir, add_repo_root=False
+    )
+    lst_repo_organization = [
+        git_tool.get_transformed_repo_info_from_url(
+            a.get("url"),
+            repo_path=config.dir,
+            get_obj=True,
+            is_submodule=a.get("is_submodule"),
+            sub_path=a.get("sub_path"),
+            revision=a.get("revision"),
+            clone_depth=a.get("clone_depth"),
+        )
+        for a in lst_repo
+    ]
 
     lst_ignore_repo = ["odoo"]
 
@@ -68,7 +82,9 @@ def main():
             is_checkout_branch = True
         except GitCommandError:
             try:
-                git_repo.git.checkout("-t", f"{repo.organization}/{branch_name}")
+                git_repo.git.checkout(
+                    "-t", f"{repo.organization}/{branch_name}"
+                )
                 is_checkout_branch = True
             except GitCommandError:
                 pass
@@ -93,7 +109,7 @@ def get_manifest_external_dependencies(repo):
     lst_manifest_file = get_lst_manifest_py(repo.relative_path)
     for manifest_file in lst_manifest_file:
         has_change_manifest = False
-        with open(manifest_file, 'r') as f:
+        with open(manifest_file, "r") as f:
             lst_content = f.readlines()
             i = 0
             for content in lst_content:
@@ -102,16 +118,18 @@ def get_manifest_external_dependencies(repo):
                     has_change = True
                     first_char_index = content.find("auto_install")
                     index = content.find("True", first_char_index)
-                    lst_content[i] = content[:index] + "False" + content[index + 4:]
+                    lst_content[i] = (
+                        content[:index] + "False" + content[index + 4 :]
+                    )
                 i += 1
 
         if has_change_manifest:
             print(f"Update file {manifest_file}")
-            with open(manifest_file, 'w') as f:
+            with open(manifest_file, "w") as f:
                 f.writelines(lst_content)
 
     return has_change
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
