@@ -59,6 +59,7 @@ sudo apt-get install python3-distutils
 sudo apt-get install python-dev python-setuptools
 sudo apt-get install proj-bin -y
 sudo apt-get install libopenjp2-7
+sudo apt -y install rustc
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
