@@ -257,9 +257,10 @@ addons_reinstall_code_generator_demo:
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
 	./script/db_restore.py --database code_generator
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
+#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
 #	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
@@ -283,8 +284,9 @@ addons_install_all_code_generator_template:
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
 	./script/db_restore.py --database template
-	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_website_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
 	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
+	#./script/addons/install_addons_dev.sh template demo_website_data
 	#./script/addons/install_addons_dev.sh template demo_internal
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_portal
@@ -293,10 +295,6 @@ addons_install_all_generated_demo:
 	#./script/addons/install_addons_dev.sh template auto_backup
 	# TODO support installation theme with cli
 	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
-
-.PHONY: addons_install_all_code_generator
-addons_install_all_code_generator:
-	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 ##################
 # Code generator #
