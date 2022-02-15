@@ -11,7 +11,7 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
             echo "Your version is not supported, only support 18.04 and 20.04 : ${VERSION}"
         fi
     elif [[ "${OS}" == "Debian" ]]; then
-        if [[  "${VERSION}" == Debian GNU/Linux 10*]]; then
+        if [[  "${VERSION}" == Debian\ GNU/Linux\ 10* ]]; then
             echo  "\n---- linux-gnu installation process started ----"
             ./script/install_debian_dependency.sh
         else
