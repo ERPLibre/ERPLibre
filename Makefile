@@ -728,6 +728,15 @@ doc_clean:
 	./script/make.sh doc_clean_test
 	./script/make.sh doc_clean_user
 
+# open documentation all
+.PHONY: open_doc_all
+open_doc_all:
+	./script/make.sh open_doc_dev
+	./script/make.sh open_doc_dev_odoo
+	./script/make.sh open_doc_migration
+	./script/make.sh open_doc_test
+	./script/make.sh open_doc_user
+
 # documentation dev
 .PHONY: doc_dev
 doc_dev:
