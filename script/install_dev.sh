@@ -10,10 +10,20 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
         else
             echo "Your version is not supported, only support 18.04 and 20.04 : ${VERSION}"
         fi
+    elif [[ "${OS}" == "Debian" ]]; then
+        if [[  "${VERSION}" == Debian\ GNU/Linux\ 10* ]]; then
+            echo  "\n---- linux-gnu installation process started ----"
+            ./script/install_debian_dependency.sh
+        else
+            echo "Your version is not supported, only support 10 : ${VERSION}"
+        fi
     else
         echo "Your Linux system is not supported, only support Ubuntu 18.04 or Ubuntu 20.04."
     fi
 elif [[ "${OSTYPE}" == "darwin"* ]]; then
     echo  "\n---- Darwin installation process started ----"
     ./script/install_OSX_dependency.sh
+elif [[ "${OSTYPE}" == "linux-gnueabihf"* ]]; then
+     echo  "\n---- Raspberry Pi ARM installation process started ----"
+     ./script/install_raspian_dependency.sh
 fi

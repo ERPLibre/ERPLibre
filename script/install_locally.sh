@@ -52,7 +52,7 @@ eval "$(pyenv virtualenv-init -)"
 
 if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
     echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
-    yes n|pyenv install ${PYTHON_VERSION}
+    yes n|pyenv install ${PYTHON_VERSION} --verbose
     if [[ $retVal -ne 0 ]]; then
         echo "Error when installing pyenv"
         exit 1
@@ -106,6 +106,8 @@ fi
 
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
+#TODO verify need for ${VENV_PATH}/bin/pip3.7 install pillow==6.1.0 --default-timeout=100 ???
+${VENV_PATH}/bin/pip3.7 install pillow==9.0.0 --default-timeout=100
 # Force python instead of changing env
 #/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
 # source $HOME/.poetry/env
