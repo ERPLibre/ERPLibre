@@ -49,6 +49,7 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
 echo -e "\n--- Installing debian dependency --"
 sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev libpng12-0 gdebi-core libffi-dev libbz2-dev -y
 sudo apt-get install libmariadbd-dev -y
+sudo apt-get install gdebi-core
 
 #Valider si la prochaine ligne est nécessaire, possiblement retirer les lignes 2 et 3, ou les 3
 sudo apt-get remove python-pymssql
