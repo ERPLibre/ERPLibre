@@ -13,6 +13,7 @@ read answer
      ./script/delete_production.sh
      sudo rm -rf ~/.poetry
      sudo rm -rf ~/.pyenv
+     sudo rm poetry.lock
  else
      echo "Ok we cancel Destroy sequence"
  fi
