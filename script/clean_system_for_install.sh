@@ -5,9 +5,9 @@ echo "This action could remove a production instance with ===> env_var.sh parame
 echo "---> rm -rf ~/.poetry"
 echo "---> rm -rf ~/.pyenv"
 
-answer = input "Are you sure you want to proceed with destroy?"
-
- if [ $answer = "y" ]
+echo "Are you sure you want to proceed with destroy? [y/n]"
+read answer
+ if [ $answer == "y" ]
  then
    echo "Ok we destroy"
     # ./delete_production.sh
