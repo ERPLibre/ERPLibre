@@ -1,8 +1,6 @@
 [build-system]
-requires = [ "poetry>=1.1.12",]
-build-backend = "poetry.masonry.api"
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = [ "poetry>=1.1.12","setuptools", "wheel"]
+build-backend = ["poetry.masonry.api","setuptools.build_meta"]
 
 
 [tool.isort]
