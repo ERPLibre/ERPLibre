@@ -5,6 +5,7 @@
   <remote name="MathBenTech" fetch="https://github.com/ERPLibre/"/>
   <remote name="Numigi" fetch="https://github.com/ERPLibre/"/>
   <remote name="OCA" fetch="https://github.com/ERPLibre/"/>
+  <remote name="OmniaGit" fetch="https://github.com/ERPLibre/"/>
   <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
   <remote name="TechnoLibre" fetch="https://github.com/ERPLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ERPLibre/"/>
@@ -120,6 +121,7 @@
   <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="12.0_remote_autoinstall" groups="addons"/>
   <project name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons"/>
+  <project name="odooplm.git" path="addons/OmniaGit_odooplm" remote="OmniaGit" groups="addons"/>
   <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
   <project name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" groups="addons"/>
   <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" groups="addons"/>
