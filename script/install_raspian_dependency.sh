@@ -72,6 +72,11 @@ sudo apt-get install make build-essential libssl-dev zlib1g-dev \
 echo -e "\n---- for pillow ----"
 sudo apt-get install libjpeg-dev zlib1g-dev
 
+#TODO verify need for this addition after test
+echo -e "\n---- for pymssql ----"
+sudo apt-get --assume-yes update
+sudo apt-get --assume-yes install install freetds-dev freetds-bin
+sudo apt-get --assume-yes install python-dev python-pip
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
