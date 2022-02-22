@@ -76,7 +76,7 @@ sudo apt-get install libjpeg-dev zlib1g-dev
 echo -e "\n---- for pymssql ----"
 sudo apt-get --assume-yes update
 sudo apt-get --assume-yes install install freetds-dev freetds-bin
-sudo apt-get --assume-yes install python-dev python-pip
+sudo apt-get --assume-yes install python3-dev python3-pip
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
