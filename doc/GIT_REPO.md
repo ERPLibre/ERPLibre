@@ -125,11 +125,3 @@ Maybe, some version diverge from your manifest. Simply clean all and relaunch yo
 ```bash
 ./script/clean_repo_manifest.sh
 ```
-
-### Unshallow git
-
-By example, the repo Odoo use a depth clone. If you need all the clone repo, use this command on right directory:
-
-```bash
-git fetch REMOTE --unshallow
-```
