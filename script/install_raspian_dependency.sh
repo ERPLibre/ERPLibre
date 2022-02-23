@@ -73,10 +73,10 @@ echo -e "\n---- for pillow ----"
 sudo apt-get install libjpeg-dev zlib1g-dev
 
 #TODO verify need for this addition after test (python3-dev instead of python-dev probablement le fix)
-echo -e "\n---- for pymssql ----"
-sudo apt-get --assume-yes update
-sudo apt-get --assume-yes install freetds-dev freetds-bin
-sudo apt-get --assume-yes install python3-dev python3-pip
+#echo -e "\n---- for pymssql ----"
+#sudo apt-get --assume-yes update
+#sudo apt-get --assume-yes install freetds-dev freetds-bin
+#sudo apt-get --assume-yes install python3-dev python3-pip
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get install nodejs npm -y
