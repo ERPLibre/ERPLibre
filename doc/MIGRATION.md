@@ -21,7 +21,8 @@ Guide to help migration with different version.
 
 ### Database migration, PostgreSQL update 11 to 12
 
-TODO not working automatically, check last procedure and do it manually. The command to the docker is missing support when database is external.
+TODO not working automatically, check last procedure and do it manually. The command to the docker is missing support
+when database is external.
 
 Easy way, do a backup with ERPLibre, upgrade Postgresql, restore the same backup.
 

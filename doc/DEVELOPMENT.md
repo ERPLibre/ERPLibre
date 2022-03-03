@@ -172,7 +172,8 @@ Or go back to normal
 
 ## Clean database PostgreSQL
 
-Sometime, it's not possible to delete a database from the database manager `http://127.0.0.1:8069/web/database/manager`, so you can do it manually. Replace `database_name` by your database name:
+Sometime, it's not possible to delete a database from the database manager `http://127.0.0.1:8069/web/database/manager`,
+so you can do it manually. Replace `database_name` by your database name:
 
 ```bash
 sudo -iu postgres
@@ -210,7 +211,8 @@ Read GIT_REPO.md to understand how changer version.
 
 ## Python version
 
-Your actual version is in file .python-version. Use script `./script/version/change_python_version.sh 3.7.12` to change to version 3.7.12 .
+Your actual version is in file .python-version. Use script `./script/version/change_python_version.sh 3.7.12` to change
+to version 3.7.12 .
 
 Run the installation, `make install_dev`.
 

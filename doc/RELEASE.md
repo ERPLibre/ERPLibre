@@ -68,6 +68,7 @@ make docker_build
 ### Rename old version to new version
 
 Search old version, like :
+
 ```bash
 grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.2.0
 ```
@@ -94,7 +95,8 @@ Generate production manifest and freeze all repos versions.
 ./.venv/repo manifest -r -o ./default.xml
 ```
 
-Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg) and [docker-compose](../docker-compose.yml).
+Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg)
+and [docker-compose](../docker-compose.yml).
 
 Generate [poetry](./POETRY.md) and keep only missing dependencies, remove updates.
 
@@ -190,7 +192,8 @@ You need to push your docker image and update your tag, like 1.0.1:
 
 ## Do a release on github
 
-Visit `https://github.com/ERPLibre/ERPLibre/releases/new` and create a release named `v#.#.#` and copy information from CHANGELOG.md.
+Visit `https://github.com/ERPLibre/ERPLibre/releases/new` and create a release named `v#.#.#` and copy information from
+CHANGELOG.md.
 
 # TIPS
 
