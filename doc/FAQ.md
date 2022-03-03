@@ -34,6 +34,28 @@ or
 sudo ss -lpnt | grep LISTEN
 ```
 
+## Git
+
+### Unshallow git
+
+By example, the repo Odoo use a depth clone. If you need all the clone repo, use this command on right directory:
+
+```bash
+git fetch REMOTE --unshallow
+```
+
+### Amend several commits in Git to change author
+
+```bash
+git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@mail.com>' --no-edit"
+```
+
+### Cherry-pick a merged commit with conflict
+
+```bash
+git cherry-pick -m 1 --strategy-option theirs HASH
+```
+
 ## git-repo
 
 ### error.GitError fatal bad revision

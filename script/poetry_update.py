@@ -143,6 +143,21 @@ def combine_requirements(config):
 
     dct_requirements = get_manifest_external_dependencies(dct_requirements)
 
+    # Merge all requirement by insensitive
+    dct_requirement_insensitive = {}
+    copy_dct_requirements = dct_requirements.copy()
+    dct_requirements = defaultdict(set)
+    for req_name, set_info in copy_dct_requirements.items():
+        lower_req_name = req_name.lower()
+        associate_req_name = dct_requirement_insensitive.get(lower_req_name)
+        if not associate_req_name:
+            dct_requirement_insensitive[lower_req_name] = req_name
+            dct_requirements[req_name] = set_info
+        else:
+            dct_requirements[associate_req_name] = set.union(
+                dct_requirements[associate_req_name], set_info
+            )
+
     dct_requirements_diff_version = {
         k: v for k, v in dct_requirements.items() if len(v) > 1
     }
@@ -194,9 +209,21 @@ def combine_requirements(config):
                     lst_version_requirement, key=lambda tup: tup[1]
                 )[-1]
                 for version_requirement in lst_version_requirement:
-                    is_compatible &= iscompatible.iscompatible(
-                        version_requirement[0], highest_value[1]
-                    )
+                    # TODO support me in iscompatible lib
+                    # check after ., because b can appear in number
+                    v_r_split = version_requirement[0].split(".", 1)
+                    if len(v_r_split) > 1 and "b" in v_r_split[1]:
+                        version_requirement_upd = version_requirement[0][
+                            : version_requirement[0].rindex("b")
+                        ]
+                    else:
+                        version_requirement_upd = version_requirement[0]
+                    try:
+                        is_compatible &= iscompatible.iscompatible(
+                            version_requirement_upd, highest_value[1]
+                        )
+                    except Exception as e:
+                        print(e)
                 if is_compatible:
                     result = highest_value[0]
                 else:

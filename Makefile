@@ -186,7 +186,7 @@ image_db_create_erplibre_website:
 	./script/make.sh image_db_create_erplibre_base
 	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
-	./script/addons/install_addons.sh test crm,website_crm
+	./script/addons/install_addons.sh test crm,website_crm,crm_team_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
 	./script/addons/install_addons.sh test website_livechat
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
@@ -243,48 +243,53 @@ addons_install_code_generator_full:
 
 .PHONY: addons_install_code_generator_demo
 addons_install_code_generator_demo:
+	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo
-
-.PHONY: addons_uninstall_code_generator_demo
-addons_uninstall_code_generator_demo:
-	./script/addons/uninstall_addons.sh code_generator code_generator_demo
-
-.PHONY: addons_reinstall_code_generator_demo
-addons_reinstall_code_generator_demo:
-	./script/make.sh addons_uninstall_code_generator_demo
-	./script/make.sh addons_install_code_generator_demo
 
 .PHONY: addons_install_all_code_generator_demo
 addons_install_all_code_generator_demo:
 	./script/db_restore.py --database code_generator
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_internal,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
-#	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
-#	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
+	# TODO ignore code_generator_demo_internal cause (demo_internal, demo_model_2_internal_view_form) already exists
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_internal_inherit
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_portal
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+	#./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 .PHONY: addons_install_all_code_generator_template
 addons_install_all_code_generator_template:
 	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_portal,auto_backup,demo_internal_inherit
 	./script/addons/install_addons_dev.sh template code_generator_template_demo_portal,code_generator_template_demo_sysadmin_cron,code_generator_template_demo_internal_inherit
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_portal -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_portal
 	#./script/addons/install_addons_dev.sh template demo_portal
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_portal
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/OCA_server-tools/auto_backup -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_sysadmin_cron
 	#./script/addons/install_addons_dev.sh template auto_backup
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_sysadmin_cron
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_internal -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal
+	#./script/addons/install_addons_dev.sh template demo_internal
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal
+
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_internal_inherit -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal_inherit
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
 	./script/db_restore.py --database template
-	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_website_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
 	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
+	#./script/addons/install_addons_dev.sh template demo_website_data
 	#./script/addons/install_addons_dev.sh template demo_internal
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_portal
@@ -293,10 +298,6 @@ addons_install_all_generated_demo:
 	#./script/addons/install_addons_dev.sh template auto_backup
 	# TODO support installation theme with cli
 	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
-
-.PHONY: addons_install_all_code_generator
-addons_install_all_code_generator:
-	./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 ##################
 # Code generator #
@@ -715,6 +716,7 @@ clean:
 .PHONY: doc
 doc:
 	./script/make.sh doc_dev
+	./script/make.sh doc_dev_odoo
 	./script/make.sh doc_migration
 	./script/make.sh doc_test
 	./script/make.sh doc_user
@@ -724,9 +726,19 @@ doc:
 .PHONY: doc_clean
 doc_clean:
 	./script/make.sh doc_clean_dev
+	./script/make.sh doc_clean_dev_odoo
 	./script/make.sh doc_clean_migration
 	./script/make.sh doc_clean_test
 	./script/make.sh doc_clean_user
+
+# open documentation all
+.PHONY: open_doc_all
+open_doc_all:
+	./script/make.sh open_doc_dev
+	./script/make.sh open_doc_dev_odoo
+	./script/make.sh open_doc_migration
+	./script/make.sh open_doc_test
+	./script/make.sh open_doc_user
 
 # documentation dev
 .PHONY: doc_dev
@@ -740,6 +752,19 @@ open_doc_dev:
 .PHONY: doc_clean_dev
 doc_clean_dev:
 	make -C doc/itpp-labs_odoo-development/docs clean
+
+# documentation odoo dev
+.PHONY: doc_dev_odoo
+doc_dev_odoo:
+	source ./.venv/bin/activate && make -C odoo/doc html || exit 1
+
+.PHONY: open_doc_dev_odoo
+open_doc_dev_odoo:
+	-$(BROWSER) odoo/doc/_build/html/index.html
+
+.PHONY: doc_clean_dev_odoo
+doc_clean_dev_odoo:
+	make -C odoo/doc clean
 
 # documentation migration
 .PHONY: doc_migration

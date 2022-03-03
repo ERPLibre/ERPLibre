@@ -410,7 +410,6 @@ lst_depend = [
 Générer un nouveau module, ceci va écraser `code_generator_template_demo_website_snippet` :
 
 ```bash
-make db_restore_erplibre_base_db_code_generator
 make addons_install_code_generator_demo
 ```
 
