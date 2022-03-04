@@ -36,6 +36,35 @@ sudo ss -lpnt | grep LISTEN
 
 ## Git
 
+### Configuration
+
+Prefer to use Vim when editing?
+
+```bash
+git config --global core.editor "vim"
+```
+
+Prefer to use Meld when resolving conflit?
+
+```bash
+git config --global merge.tool meld
+```
+
+Prefer to us Meld to show difference?
+
+```bash
+git config --global diff.tool meld
+git config --global difftool.prompt false
+```
+
+### Retroactively applying format code to existing branches
+
+Adapt this command to your situation, this is an example:
+
+```bash
+git rebase --strategy-option=theirs --exec 'cd ../../ && ./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/website_snippet_all/ && cd - && git add --all && git commit --amend --no-edit' HEAD~47
+```
+
 ### Unshallow git
 
 By example, the repo Odoo use a depth clone. If you need all the clone repo, use this command on right directory:
