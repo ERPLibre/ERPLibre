@@ -7,6 +7,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Migration note**
+
+Update module `website`.
+
+### Added
+
+- Script run_parallel_test.sh to execute all tests in parallel for better execution speed
+- Documentation to use docker in production
+- Add repo:
+    - Ajepe odoo-addons to support restful
+    - OmniaGIT Odoo PLM
+    - MathBenTech family-management
+- Add module:
+    - iohub_connector to support mqtt
+- Add module by default:
+    - auto_backup
+    - muk_website_branding
+    - website_snippet_anchor
+    - website_anchor_smooth_scroll
+    - crm_team_quebec
+- Documentation Odoo dev
+
+### Changed
+
+- Downgrade sphinx to 1.6.7 to support Odoo dev documentation
+- Update pip dependency with security update
+    - Pillow==9.0.1
+
+### Fixed
+
+- Poetry supports insensitive python dependency
+- Code generator new project supports relative path and check duplicated paths
+
 ## [1.3.0] - 2022-01-25
 
 **Migration note**
