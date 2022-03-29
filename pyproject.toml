@@ -178,7 +178,7 @@ websocket_client = "^1.1.0"
 
 [tool.poetry.dependencies.black]
 git = "https://github.com/psf/black.git"
-rev = "21.6b0"
+rev = "22.3.0"
 
 [tool.poetry.dependencies.pylint-odoo]
 git = "https://github.com/oca/pylint-odoo.git"
