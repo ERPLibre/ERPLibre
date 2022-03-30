@@ -32,6 +32,7 @@ Update module `website`.
 ### Changed
 
 - Downgrade sphinx to 1.6.7 to support Odoo dev documentation
+- Move packages modules in makefile image creation
 - Update pip dependency with security update
     - Pillow==9.0.1
 
