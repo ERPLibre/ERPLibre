@@ -525,12 +525,22 @@ format:
 	./script/make.sh format_code_generator
 	./script/make.sh format_code_generator_template
 	./script/make.sh format_script
+	./script/make.sh format_erplibre_addons
 
 .PHONY: format_code_generator
 format_code_generator:
 	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
+
+.PHONY: format_erplibre_addons
+format_erplibre_addons:
+	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
+	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
+	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
+	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_themes_addons/
+	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_themes_addons/
+	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_themes_addons/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
