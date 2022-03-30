@@ -45,7 +45,7 @@ xmlformatter
 html5print
 css-html-prettify
 BeautifulSoup4
-git+https://github.com/psf/black.git@21.6b0
+git+https://github.com/psf/black.git@22.3.0
 isort
 
 # For updating poetry
@@ -70,6 +70,9 @@ pyproj==3.2.1
 # Force update dependency to fix poetry
 numpy==1.21.1
 
+# Solve pcodedmp, oletools, rtfde and extract-msg
+win_unicode_console
+
 # Security issue, need to update to version =>0.15.3, but odoo12 is only support ==0.11.15
 Werkzeug==0.11.15
 
@@ -78,7 +81,7 @@ pyyaml==6.0
 lxml==4.7.1
 cryptography==36.0.1
 psutil==5.9.0
-Pillow==9.0.0
+Pillow==9.0.1
 Babel==2.9.1
 reportlab==3.6.5
 pycrypto==2.6.1

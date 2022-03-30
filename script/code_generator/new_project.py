@@ -1,5 +1,6 @@
 #!./.venv/bin/python
 import argparse
+import configparser
 import logging
 import os
 import sys
@@ -103,13 +104,13 @@ class ProjectManagement:
         self.force = force
         self.keep_bd_alive = keep_bd_alive
         self.msg_error = ""
-        self.origin_config_txt = ""
         self.has_config_update = False
 
         self.module_directory = module_directory
         if not os.path.exists(self.module_directory):
             self.msg_error = (
-                f"Path directory '{self.module_directory}' not exist."
+                f"Path directory '{self.module_directory}' not exist. You"
+                f" actual path is: '{os.getcwd()}'."
             )
             _logger.error(self.msg_error)
             return
@@ -117,7 +118,8 @@ class ProjectManagement:
         self.cg_directory = cg_directory if cg_directory else module_directory
         if not os.path.exists(self.cg_directory):
             self.msg_error = (
-                f"Path cg directory '{self.cg_directory}' not exist."
+                f"Path cg directory '{self.cg_directory}' not exist. You"
+                f" actual path is: '{os.getcwd()}'."
             )
             _logger.error(self.msg_error)
             return
@@ -428,30 +430,38 @@ class ProjectManagement:
         return True
 
     def update_config(self):
-        # Backup config and restore it after, check if path exist or add it temporary
-        with open("./config.conf") as config:
-            config_txt = config.read()
-            self.origin_config_txt = config_txt
-            lst_directory = list(
-                {
-                    self.cg_directory,
-                    self.module_directory,
-                    self.template_directory,
-                }
-            )
-            lst_directory_to_add = []
-            for directory in lst_directory:
-                if directory not in config_txt:
-                    self.has_config_update = True
-                    lst_directory_to_add.append(directory)
-
-        if lst_directory_to_add:
-            new_str = "addons_path = " + ",".join(lst_directory_to_add) + ","
-            config_txt = config_txt.replace("addons_path = ", new_str)
+        config = configparser.ConfigParser()
+        config.read("./config.conf")
+        addons_path = config.get("options", "addons_path")
+        lst_addons_path = addons_path.split(",")
+        lst_directory = list(
+            {
+                self.cg_directory,
+                self.module_directory,
+                self.template_directory,
+            }
+        )
+        has_change = False
+        for new_addons_path in lst_directory:
+            for actual_addons_path in lst_addons_path:
+                if not actual_addons_path:
+                    continue
+                # Validate if not existing and valide is different path
+                relative_actual_addons_path = os.path.relpath(
+                    actual_addons_path
+                )
+                relative_new_addons_path = os.path.relpath(new_addons_path)
+                if relative_actual_addons_path == relative_new_addons_path:
+                    break
+            else:
+                lst_addons_path.insert(0, new_addons_path)
+                has_change = True
+        if has_change:
+            config.set("options", "addons_path", ",".join(lst_addons_path))
         temp_file = tempfile.mktemp()
-        with open(temp_file, "w") as config:
-            config.write(config_txt)
-        print(f"mathben \n {temp_file} \n")
+        with open(temp_file, "w") as configfile:
+            config.write(configfile)
+        _logger.info(f"Create temporary config file: {temp_file}")
         return temp_file
 
 

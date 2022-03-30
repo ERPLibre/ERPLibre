@@ -15,8 +15,8 @@ cd ERPLibre
 
 ### 2. Modify the parameters
 
-Modify the file env_var.sh for production installation. Enable nginx if you need a proxy with `EL_INSTALL_NGINX` at True.
-Redirect your DNS to the proxy's ip and add your A and AAAA into `WL_WEBSITE_NAME` with space between.
+Modify the file env_var.sh for production installation. Enable nginx if you need a proxy with `EL_INSTALL_NGINX` at
+True. Redirect your DNS to the proxy's ip and add your A and AAAA into `WL_WEBSITE_NAME` with space between.
 
 ### 3. Execute the scripts:
 
@@ -157,16 +157,19 @@ sudo journalctl -feu cron
 ```
 
 # Docker
+
 ## Update
 
 When update a docker, you need to update the list of module.
 
 Run script to update configuration :
+
 ```bash
 ./script/docker/docker_gen_config.sh
 ```
 
 Edit the docker-compose.yml and update the command line (change DATABASE) to :
+
 ```yaml
     command: odoo --workers 2 -u erplibre_info -d DATABASE
 ```
@@ -174,6 +177,7 @@ Edit the docker-compose.yml and update the command line (change DATABASE) to :
 Note, the goal is to call `env['ir.module.module'].update_list()`.
 
 Restart the docker :
+
 ```bash
 docker-compose down
 docker-compose up -d
@@ -182,6 +186,7 @@ docker-compose up -d
 Revert the command in docker-compose.yml.
 
 You can validate in log the update, you need to find `odoo.modules.loading: updating modules list`, check
+
 ```bash
 docker-compose logs -f
 ```

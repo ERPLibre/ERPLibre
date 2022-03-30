@@ -1144,12 +1144,13 @@ def run_all_test(config) -> None:
         run_code_generator_template_demo_internal_inherit_test(config),
         run_code_generator_template_demo_sysadmin_cron_test(config),
         run_code_generator_demo_test(config),
-        run_code_generator_generic_all_test(config),
-        # save 30 seconds with generic_all and next commented
-        # run_code_generator_data_test(config),
-        # run_code_generator_theme_test(config),
-        # run_code_generator_website_snippet_test(config),
-        # run_code_generator_demo_generic_test(config),
+        # Begin run generic test
+        # run_code_generator_generic_all_test(config),
+        run_code_generator_data_test(config),
+        run_code_generator_theme_test(config),
+        run_code_generator_website_snippet_test(config),
+        run_code_generator_demo_generic_test(config),
+        # End run generic test
         # TODO Will cause conflict with the other because write in code_generator_demo/hooks.py
         # run_helloworld_test(config),
         run_code_generator_inherit_test(config),
