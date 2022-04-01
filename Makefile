@@ -669,6 +669,7 @@ format:
 	./script/make.sh format_code_generator_template
 	./script/make.sh format_script
 	./script/make.sh format_erplibre_addons
+	./script/make.sh format_supported_addons
 
 .PHONY: format_code_generator
 format_code_generator:
@@ -684,6 +685,12 @@ format_erplibre_addons:
 	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
 	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
+
+.PHONY: format_supported_addons
+format_supported_addons:
+	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
+	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
+	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
