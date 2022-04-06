@@ -864,10 +864,12 @@ async def run_code_generator_website_snippet_test(config) -> Tuple[str, int]:
     lst_generated_module = [
         "demo_website_leaflet",
         "demo_website_snippet",
+        "demo_website_multiple_snippet",
     ]
     lst_tested_module = [
         "code_generator_demo_website_leaflet",
         "code_generator_demo_website_snippet",
+        "code_generator_demo_website_multiple_snippet",
     ]
     # Multiple
     res, status = await test_exec(
