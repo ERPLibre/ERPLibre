@@ -195,13 +195,13 @@ image_db_create_erplibre_base:
 image_db_create_erplibre_website:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_product_category,website_snippet_carousel_product,website_snippet_all
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
 	./script/addons/install_addons.sh test crm,website_crm,crm_team_quebec
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
 	./script/addons/install_addons.sh test website_livechat
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
-	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
+	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
 	./script/addons/install_addons.sh test stock,purchase,website_sale_management
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
