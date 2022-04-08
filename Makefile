@@ -404,7 +404,10 @@ addons_install_code_generator_demo:
 addons_install_all_code_generator_demo:
 	./script/db_restore.py --database code_generator
 	# TODO ignore code_generator_demo_internal cause (demo_internal, demo_model_2_internal_view_form) already exists
-	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_demo_website_multiple_snippet,code_generator_auto_backup
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
+	# Conflict between code_generator_demo_website_multiple_snippet and code_generator_demo_internal_inherit
+	./script/db_restore.py --database code_generator
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_multiple_snippet
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
@@ -438,6 +441,16 @@ addons_install_all_code_generator_template:
 	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_internal_inherit -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal_inherit
+
+	# TODO not working, need to add in test parallel
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_website_snippet -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_website_snippet
+	#./script/addons/install_addons_dev.sh template demo_website_snippet
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
+
+	# TODO not working, need to add in test parallel
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_website_multiple_snippet -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_website_multiple_snippet
+	#./script/addons/install_addons_dev.sh template demo_website_multiple_snippet
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_website_multiple_snippet
 
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
@@ -647,9 +660,9 @@ test_code_generator_demo_mariadb_sql_example_1:
 	#./script/addons/install_addons_dev.sh test_code_generator code_generator_demo_mariadb_sql_example_1
 	./script/code_generator/install_and_test_code_generator.sh test_code_generator code_generator_demo_mariadb_sql_example_1 ./addons/TechnoLibre_odoo-code-generator-template demo_mariadb_sql_example_1
 
-##############
+#########
 #  tag  #
-##############
+#########
 .PHONY: tag_push_all
 tag_push_all:
 	./script/tag_push_all.py
