@@ -212,6 +212,16 @@ image_db_create_erplibre_website:
 	./script/addons/install_addons.sh test hr
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
 
+.PHONY: image_db_create_erplibre_demo
+image_db_create_erplibre_demo:
+	# take the same of image_db_create_erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test
+	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test --demo
+	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_demo_base
+	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all,crm,website_crm,crm_team_quebec,website_livechat,website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product,stock,purchase,website_sale_management,project,pos_sale,muk_pos_branding,hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_demo_full
+
 .PHONY: image_db_create_erplibre_code_generator
 image_db_create_erplibre_code_generator:
 	./script/make.sh addons_install_code_generator_basic
