@@ -329,6 +329,92 @@ Générer le module avec «Action/Générer code».
 make db_restore_erplibre_base_db_test_module_test
 ```
 
+### Exporter un site web vers un module
+
+Cette technique a été testé sans thème d'installé.
+
+Ce qui est exporté : Les pages, les fichiers attachés et les fichiers CSS.
+Ce qui n'est pas exporté à notre connaissance : Les menus, les fichiers XML autres.
+
+À propos des fichiers attachés, ils sont importés et associés à un xml_id. Les doublons sont enlevés et les noms
+duppliqués sont gérés. Les URL sont réécrites dans chaque page.
+
+À propos des fichiers CSS, pour modifier les couleurs sans avoir de thème, aller en mode debug assets, dans le website
+builder, activé `Inclure tous les fichiers SCSS`. Vous pourrez ainsi modifier les fichiers `user_color_palette`
+et `user_theme_color_palette`.
+
+Exemple pour `/website/static/src/scss/options/colors/user_color_palette.scss` :
+
+```scss
+$o-user-color-palette: map-merge($o-user-color-palette, o-map-omit((
+        'menu': #ffffff,
+  // -- hook --
+)));
+```
+
+Exemple pour `/website/static/src/scss/options/colors/user_theme_color_palette.scss` :
+
+```scss
+$o-user-theme-color-palette: map-merge($o-user-theme-color-palette, o-map-omit((
+        'alpha': #ff956b,
+        'beta': null,
+        'gamma': null,
+        'delta': null,
+        'epsilon': #ffffff,
+  // -- hook --
+)));
+```
+
+Plus d'exemple des variables dans le
+fichier `addons/TechnoLibre_odoo-code-generator-template/theme_website_demo_code_generator/static/src/scss/primary_variables.scss`
+
+Une fois qu'on passe en module, il n'est plus possible d'utiliser adéquatement le `website_builder`, puisqu'une mise à
+jour effacerait toutes les modifications sur le design. Il faut ainsi toujours mettre à jour le module et faire des
+mises à jour sur le design. La stratégie est alors de migrer le design dans un module thème.
+
+#### Méthode 1 (fonctionnel pour les fichiers attachés et pages, non fonctionnel pour les CSS)
+
+Cette méthode permet de voir tous les fichiers importés, mais il ne nécessite pas de transformation de la BD.
+
+Modifier le module `code_generator_demo_export_website` pour décider du nouveau module à créer.
+
+Suggestion, faites un clone de votre BD de production avant de l'exporter pour ne pas l'affecter, l'exportation modifie
+des informations dans la base de données.
+
+Le résultat généré montre les fichiers modifiés, mais il doit être adapté, surement être transformé en thème.
+
+Supposons que le nom de votre BD est `test_website` :
+
+```bash
+./script/addons/install_addons_dev.sh test_website code_generator_demo_export_website
+```
+
+#### Méthode 2 (fonctionnel pour les CSS, fichiers attachés et pages)
+
+Cette méthode nécessite la transformation de la BD, elle remplace ensuite les fichiers d'origine dans le website
+builder.
+
+Modifier le module `code_generator_demo_export_website_attachments` pour décider du nouveau module à créer.
+
+Suggestion, faites un clone de votre BD de production avant de l'exporter pour ne pas l'affecter, l'exportation modifie
+des informations dans la base de données.
+
+Supposons que le nom de votre BD est `test_website` :
+
+```bash
+./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test_website --restore_image test_website_backup
+./script/db_restore.py --database test_website_2 --image test_website_backup.zip --clean_cache
+```
+
+Un fichier temporaire `./image_db/test_website_backup.zip` a été créé, vous pouvez aller l'effacer.
+
+Maintenant, modifier chaques fichiers manuellements de la liste désiré à importer (comme ajouter un espace à la fin du
+fichier, le formatage va l'effacer) et exécuter :
+
+```bash
+./script/addons/install_addons_dev.sh test_website_2 code_generator_demo_export_website_attachments
+```
+
 ### Migrer une base de données externe en module de migration
 
 En progression.
@@ -410,6 +496,7 @@ lst_depend = [
 Générer un nouveau module, ceci va écraser `code_generator_template_demo_website_snippet` :
 
 ```bash
+make db_restore_erplibre_base_db_code_generator
 make addons_install_code_generator_demo
 ```
 
