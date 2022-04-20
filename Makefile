@@ -182,6 +182,11 @@ db_create_db_test:
 	./script/make.sh db_drop_db_test
 	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
 
+.PHONY: db_clone_test_to_test2
+db_clone_test_to_test2:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
+	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
+
 ########################
 #  Image installation  #
 ########################
