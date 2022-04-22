@@ -68,6 +68,7 @@
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="12.0_module_donation_website" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
+  <project name="erplibre-3D-printing-addons.git" path="addons/ERPLibre_erplibre-3D-printing-addons" remote="ERPLibre" groups="addons"/>
   <project name="erplibre-family-management.git" path="addons/MathBenTech_erplibre-family-management" remote="MathBenTech" groups="addons,code_generator"/>
   <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" groups="addons,base"/>
   <project name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" remote="ERPLibre" groups="addons,code_generator,image_db"/>
