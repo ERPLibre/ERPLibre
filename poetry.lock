@@ -1913,7 +1913,7 @@ typing-extensions = {version = ">=3.10.0", markers = "python_version < \"3.10\""
 
 [[package]]
 name = "pylint-odoo"
-version = "5.0.6.dev1"
+version = "6.0.1.dev1"
 description = "Pylint plugin for Odoo"
 category = "main"
 optional = false
@@ -1926,7 +1926,7 @@ lxml = ">=4.2.3"
 pbr = "*"
 polib = "<=1.1.1"
 Pygments = "<=2.10.0"
-pylint = "<=2.11.1"
+pylint = "<=2.13.5"
 pylint-plugin-utils = "0.6"
 restructuredtext-lint = "<=1.3.2"
 rfc3986 = "*"
@@ -1937,7 +1937,7 @@ whichcraft = "*"
 type = "git"
 url = "https://github.com/oca/pylint-odoo.git"
 reference = "master"
-resolved_reference = "151d31d452f8963c560672e2abe1919649769a45"
+resolved_reference = "5c15bca5fa12f3eaef54e03a1d8718150f6f2d5a"
 
 [[package]]
 name = "pylint-plugin-utils"
@@ -2004,11 +2004,11 @@ python-versions = "*"
 
 [[package]]
 name = "pypdf2"
-version = "1.26.0"
-description = "PDF toolkit"
+version = "1.27.5"
+description = "A pure-python PDF library capable of splitting, merging, cropping, and transforming PDF files"
 category = "main"
 optional = false
-python-versions = "*"
+python-versions = ">=2.7"
 
 [[package]]
 name = "pypdf4"
@@ -3140,7 +3140,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7.12"
-content-hash = "2db33749ac40b29c90384af08533abb5495f80d903435d7a802496780217ef7c"
+content-hash = "040d1a303de5241c4897ea4e44164305ce33bf08b97fcfbada8716ef648b85e3"
 
 [metadata.files]
 agithub = [
@@ -4515,7 +4515,8 @@ pyparsing = [
     {file = "pyparsing-2.1.10.zip", hash = "sha256:0aa6e8d8c3f9c447a95a33bb04b103ead630121c3f4233e2980348cecf8b69c8"},
 ]
 pypdf2 = [
-    {file = "PyPDF2-1.26.0.tar.gz", hash = "sha256:e28f902f2f0a1603ea95ebe21dff311ef09be3d0f0ef29a3e44a932729564385"},
+    {file = "PyPDF2-1.27.5-py3-none-any.whl", hash = "sha256:9c81fc06be50fbf2e6199e8c2eac05f3eaafae4b3905ecca41200f5b02ac43d7"},
+    {file = "PyPDF2-1.27.5.tar.gz", hash = "sha256:7c18c1d48e56547b1c33f772dc15d6adbd1f4020b62e64bb4a0bc0ee2ab94511"},
 ]
 pypdf4 = [
     {file = "PyPDF4-1.27.0.tar.gz", hash = "sha256:7c932441146d205572f96254d53c79ea2c30c9e11df55a5cf87e056c7b3d7f89"},
