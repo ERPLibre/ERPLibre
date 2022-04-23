@@ -555,6 +555,18 @@ test_full_fast:
 	# TODO This test is broken in parallel
 	./script/make.sh test_code_generator_hello_world
 
+.PHONY: test_full_fast_coverage
+test_full_fast_coverage:
+	./script/make.sh clean
+	./.venv/bin/coverage erase
+	./script/test/run_parallel_test.py --coverage
+	# TODO This test is broken in parallel
+	./script/make.sh test_code_generator_hello_world
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
 .PHONY: test_base
 test_base:
 	./script/make.sh test_format
@@ -674,6 +686,55 @@ test_code_generator_demo_mariadb_sql_example_1:
 	./script/addons/install_addons_dev.sh test_code_generator code_generator_portal
 	#./script/addons/install_addons_dev.sh test_code_generator code_generator_demo_mariadb_sql_example_1
 	./script/code_generator/install_and_test_code_generator.sh test_code_generator code_generator_demo_mariadb_sql_example_1 ./addons/TechnoLibre_odoo-code-generator-template demo_mariadb_sql_example_1
+
+###############
+# Test addons #
+###############
+.PHONY: test_addons_sale
+test_addons_sale:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_sale
+	./test.sh -d test_addons_sale --db-filter test_addons_sale -i sale
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m
+	./.venv/bin/coverage html
+
+.PHONY: test_addons_helpdesk
+test_addons_helpdesk:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_helpdesk
+	./test.sh -d test_addons_helpdesk --db-filter test_addons_helpdesk -i helpdesk_mgmt
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m
+	./.venv/bin/coverage html
+
+.PHONY: test_addons_code_generator
+test_addons_code_generator:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_code_generator
+	# TODO missing test in code_generator
+	./test.sh --dev all -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: test_addons_code_generator_code_generator
+test_addons_code_generator_code_generator:
+	# TODO this test only generation, not test
+	./.venv/bin/coverage erase
+	./script/db_restore.py --database test_addons_code_generator_code_generator
+	./test.sh --dev all -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: open_test_coverage
+open_test_coverage:
+	-$(BROWSER) htmlcov/index.html
+
+# TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv/test.py
 
 #########
 #  tag  #

@@ -41,6 +41,11 @@ def get_config():
         help="Will run in serial.",
     )
     parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Execute coverage file.",
+    )
+    parser.add_argument(
         "--keep_cache",
         action="store_true",
         help=(
@@ -576,11 +581,18 @@ async def test_exec(
     if not test_status and lst_init_module_name:
         # Install required module
         str_test = ",".join(lst_init_module_name)
-        script_name = (
-            "./script/addons/install_addons_dev.sh"
-            if tested_module
-            else "./script/addons/install_addons.sh"
-        )
+        if config.coverage:
+            script_name = (
+                "./script/addons/coverage_install_addons_dev.sh"
+                if tested_module
+                else "./script/addons/coverage_install_addons.sh"
+            )
+        else:
+            script_name = (
+                "./script/addons/install_addons_dev.sh"
+                if tested_module
+                else "./script/addons/install_addons.sh"
+            )
         if new_config_path:
             res, status = await run_command(
                 script_name,
@@ -623,10 +635,15 @@ async def test_exec(
     #     destination_path = install_path
 
     if not test_status and tested_module and generated_module:
+        cmd = (
+            "./script/code_generator/coverage_install_and_test_code_generator.sh"
+            if config.coverage
+            else "./script/code_generator/install_and_test_code_generator.sh"
+        )
         # Finally, the test
         if new_config_path:
             res, status = await run_command(
-                "./script/code_generator/install_and_test_code_generator.sh",
+                cmd,
                 unique_database_name,
                 tested_module,
                 test_generated_path,
@@ -636,7 +653,7 @@ async def test_exec(
             )
         else:
             res, status = await run_command(
-                "./script/code_generator/install_and_test_code_generator.sh",
+                cmd,
                 unique_database_name,
                 tested_module,
                 install_path,

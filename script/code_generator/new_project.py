@@ -58,6 +58,11 @@ def get_config():
         help="The directory of the code_generator to use.",
     )
     parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help="Execute coverage file.",
+    )
+    parser.add_argument(
         "--code_generator_name",
         help="The name of the code_generator to use.",
     )
@@ -100,8 +105,10 @@ class ProjectManagement:
         template_directory="",
         force=False,
         keep_bd_alive=False,
+        coverage=False,
     ):
         self.force = force
+        self._coverage = coverage
         self.keep_bd_alive = keep_bd_alive
         self.msg_error = ""
         self.has_config_update = False
@@ -317,10 +324,17 @@ class ProjectManagement:
         _logger.info(cmd)
         os.system(cmd)
         _logger.info("========= GENERATE code_generator_demo =========")
-        cmd = (
-            f"./script/addons/install_addons_dev.sh {bd_name_demo}"
-            f" code_generator_demo {config_path}"
-        )
+
+        if self._coverage:
+            cmd = (
+                "./script/addons/coverage_install_addons_dev.sh"
+                f" {bd_name_demo} code_generator_demo {config_path}"
+            )
+        else:
+            cmd = (
+                f"./script/addons/install_addons_dev.sh {bd_name_demo}"
+                f" code_generator_demo {config_path}"
+            )
         os.system(cmd)
 
         if not self.keep_bd_alive:
@@ -370,17 +384,29 @@ class ProjectManagement:
             )
             _logger.info(cmd)
             os.system(cmd)
-            cmd = (
-                f"./script/addons/install_addons_dev.sh {bd_name_template}"
-                f" {self.module_name} {config_path}"
-            )
+            if self._coverage:
+                cmd = (
+                    "./script/addons/coverage_install_addons_dev.sh"
+                    f" {bd_name_template} {self.module_name} {config_path}"
+                )
+            else:
+                cmd = (
+                    f"./script/addons/install_addons_dev.sh {bd_name_template}"
+                    f" {self.module_name} {config_path}"
+                )
             _logger.info(cmd)
             os.system(cmd)
 
-        cmd = (
-            f"./script/addons/install_addons_dev.sh {bd_name_template}"
-            f" {self.template_name} {config_path}"
-        )
+        if self._coverage:
+            cmd = (
+                "./script/addons/coverage_install_addons_dev.sh"
+                f" {bd_name_template} {self.template_name} {config_path}"
+            )
+        else:
+            cmd = (
+                f"./script/addons/install_addons_dev.sh {bd_name_template}"
+                f" {self.template_name} {config_path}"
+            )
         _logger.info(cmd)
         os.system(cmd)
 
@@ -405,10 +431,16 @@ class ProjectManagement:
         os.system(cmd)
         _logger.info(f"========= GENERATE {self.cg_name} =========")
 
-        cmd = (
-            f"./script/addons/install_addons_dev.sh {bd_name_generator}"
-            f" {self.cg_name} {config_path}"
-        )
+        if self._coverage:
+            cmd = (
+                "./script/addons/coverage_install_addons_dev.sh"
+                f" {bd_name_generator} {self.cg_name} {config_path}"
+            )
+        else:
+            cmd = (
+                f"./script/addons/install_addons_dev.sh {bd_name_generator}"
+                f" {self.cg_name} {config_path}"
+            )
         _logger.info(cmd)
         os.system(cmd)
 
@@ -476,6 +508,7 @@ def main():
         template_name=config.template_name,
         force=config.force,
         keep_bd_alive=config.keep_bd_alive,
+        coverage=config.coverage,
     )
     if project.msg_error:
         return -1
