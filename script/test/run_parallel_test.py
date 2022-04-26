@@ -276,6 +276,7 @@ async def test_exec(
     test_name=None,
     install_path=None,
     run_in_sandbox=False,
+    restore_db_image_name="erplibre_base",
 ) -> Tuple[str, int]:
     test_result = ""
     test_status = 0
@@ -572,6 +573,8 @@ async def test_exec(
             "./script/db_restore.py",
             "--database",
             unique_database_name,
+            "--image",
+            restore_db_image_name,
             test_name=test_name,
         )
         test_result += res
@@ -808,6 +811,33 @@ async def run_code_generator_data_test(config) -> Tuple[str, int]:
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_data_test",
         run_in_sandbox=True,
+    )
+    test_result += res
+    test_status += status
+
+    return test_result, test_status
+
+
+async def run_code_generator_export_website_attachments_test(
+    config,
+) -> Tuple[str, int]:
+    test_result = ""
+    test_status = 0
+    lst_generated_module = [
+        "demo_website_attachments_data",
+    ]
+    lst_tested_module = [
+        "code_generator_demo_export_website_attachments",
+    ]
+    # Multiple
+    res, status = await test_exec(
+        config,
+        "./addons/TechnoLibre_odoo-code-generator-template",
+        generated_module=",".join(lst_generated_module),
+        tested_module=",".join(lst_tested_module),
+        test_name="code_generator_export_website_attachments_test",
+        run_in_sandbox=True,
+        restore_db_image_name="test_website_attachments",
     )
     test_result += res
     test_status += status
@@ -1166,6 +1196,7 @@ def run_all_test(config) -> None:
         # Begin run generic test
         # run_code_generator_generic_all_test(config),
         run_code_generator_data_test(config),
+        run_code_generator_export_website_attachments_test(config),
         run_code_generator_theme_test(config),
         run_code_generator_website_snippet_test(config),
         run_code_generator_demo_generic_test(config),

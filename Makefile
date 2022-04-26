@@ -387,6 +387,13 @@ image_db_create_all:
 	#./script/make.sh image_db_create_erplibre_package_wiki
 	#./script/make.sh config_gen_all
 
+.PHONY: image_db_create_test_website_attachments
+image_db_create_test_website_attachments:
+	./script/db_restore.py --clean_cache
+	./script/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
+	# Do your stuff
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator_test_website_attachements --restore_image test_website_attachments
+
 .PHONY: image_diff_base_website
 image_diff_base_website:
 	#./script/manifest/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
@@ -423,6 +430,9 @@ addons_install_all_code_generator_demo:
 	# Conflict between code_generator_demo_website_multiple_snippet and code_generator_demo_internal_inherit
 	./script/db_restore.py --database code_generator
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_multiple_snippet
+	./script/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
+	./script/addons/install_addons_dev.sh code_generator_test_website_attachements code_generator_demo_export_website_attachments
+
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
