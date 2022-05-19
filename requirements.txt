@@ -79,7 +79,7 @@ Werkzeug==0.11.15
 
 # Force version for security update
 pyyaml==6.0
-lxml==4.7.1
+lxml==4.8.0
 cryptography==36.0.1
 psutil==5.9.0
 Pillow==9.0.1
