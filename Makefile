@@ -481,6 +481,7 @@ addons_install_all_code_generator_template:
 addons_install_all_generated_demo:
 	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_website_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	./script/addons/install_addons_theme.sh template theme_website_demo_code_generator
 	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
 	#./script/addons/install_addons_dev.sh template demo_website_data
 	#./script/addons/install_addons_dev.sh template demo_internal
@@ -489,8 +490,7 @@ addons_install_all_generated_demo:
 	#./script/addons/install_addons_dev.sh template demo_website_leaflet
 	#./script/addons/install_addons_dev.sh template demo_website_snippet
 	#./script/addons/install_addons_dev.sh template auto_backup
-	# TODO support installation theme with cli
-	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
+	#./script/addons/install_addons_theme.sh template theme_website_demo_code_generator
 
 ##################
 # Code generator #
@@ -605,8 +605,7 @@ test_installation_demo:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
 	./script/db_restore.py --database test_demo
 	./script/addons/install_addons.sh test_demo demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet
-	# TODO cannot install from command line (CLI)
-	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator
+	./script/addons/install_addons_theme.sh test_demo theme_website_demo_code_generator
 
 .PHONY: test_code_generator_generation
 test_code_generator_generation:
