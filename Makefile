@@ -182,35 +182,57 @@ db_create_db_test:
 	./script/make.sh db_drop_db_test
 	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
 
+.PHONY: db_create_db_image_creation
+db_create_db_image_creation:
+	.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation
+	.venv/bin/python3 ./odoo/odoo-bin db --create --database image_creation
+
+.PHONY: db_clone_test_to_test2
+db_clone_test_to_test2:
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
+	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
+
 ########################
 #  Image installation  #
 ########################
 .PHONY: image_db_create_erplibre_base
 image_db_create_erplibre_base:
-	./script/make.sh db_create_db_test
-	./script/addons/install_addons.sh test web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_base
+	./script/make.sh db_create_db_image_creation
+	./script/addons/install_addons.sh image_creation web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_base
 
 .PHONY: image_db_create_erplibre_website
 image_db_create_erplibre_website:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_product_category,website_snippet_carousel_product,website_snippet_all
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website
-	./script/addons/install_addons.sh test crm,website_crm,crm_team_quebec
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_crm
-	./script/addons/install_addons.sh test website_livechat
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_website_chat_crm
-	./script/addons/install_addons.sh test website_sale,erplibre_base_quebec
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_base
-	./script/addons/install_addons.sh test stock,purchase,website_sale_management
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_advance
-	./script/addons/install_addons.sh test project
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_project
-	./script/addons/install_addons.sh test pos_sale,muk_pos_branding
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos
-	./script/addons/install_addons.sh test hr
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_ecommerce_pos_hr
+	./script/addons/install_addons.sh image_creation website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all
+	./script/addons/install_addons_theme.sh image_creation theme_default
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_website
+	./script/addons/install_addons.sh image_creation crm,website_crm,crm_team_quebec
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_website_crm
+	./script/addons/install_addons.sh image_creation website_livechat
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_website_chat_crm
+	./script/addons/install_addons.sh image_creation website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_ecommerce_base
+	./script/addons/install_addons.sh image_creation stock,purchase,website_sale_management
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_ecommerce_advance
+	./script/addons/install_addons.sh image_creation project
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_ecommerce_project
+	./script/addons/install_addons.sh image_creation pos_sale,muk_pos_branding
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_ecommerce_pos
+	./script/addons/install_addons.sh image_creation hr
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_ecommerce_pos_hr
+
+.PHONY: image_db_create_erplibre_demo
+image_db_create_erplibre_demo:
+	# take the same of image_db_create_erplibre_base
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation
+	./.venv/bin/python3 ./odoo/odoo-bin db --create --database image_creation --demo
+	./script/addons/install_addons.sh image_creation web_responsive,disable_odoo_online,remove_odoo_enterprise,auth_user_case_insensitive,muk_web_theme,muk_utils,muk_branding,muk_mail_branding,muk_web_branding,muk_web_theme_mail,muk_web_utils,fetchmail_notify_error_to_sender,mail_debrand,partner_quebec_tz,erplibre_info,web_timeline,web_diagram_position,auto_backup
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_demo_base
+	./script/addons/install_addons.sh image_creation website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all,crm,website_crm,crm_team_quebec,website_livechat,website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product,stock,purchase,website_sale_management,project,pos_sale,muk_pos_branding,hr
+	./script/addons/install_addons_theme.sh image_creation theme_default
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_demo_full
 
 .PHONY: image_db_create_erplibre_code_generator
 image_db_create_erplibre_code_generator:
@@ -225,128 +247,130 @@ image_db_create_erplibre_code_generator:
 image_db_create_erplibre_package_accounting:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test account_fiscal_year_closing,account_export_csv,account_financial_report,account_tax_balance,mis_builder_cash_flow,partner_statement,account_bank_statement_import_camt_oca,account_bank_statement_import_move_line,account_bank_statement_import_ofx,account_bank_statement_import_online,account_bank_statement_import_online_paypal,account_bank_statement_import_online_transferwise,account_bank_statement_import_paypal,account_bank_statement_import_split,account_bank_statement_import_txt_xlsx,accounting_pdf_reports,om_account_accountant,om_account_asset,om_account_budget
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_accounting
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation account_fiscal_year_closing,account_export_csv,account_financial_report,account_tax_balance,mis_builder_cash_flow,partner_statement,account_bank_statement_import_camt_oca,account_bank_statement_import_move_line,account_bank_statement_import_ofx,account_bank_statement_import_online,account_bank_statement_import_online_paypal,account_bank_statement_import_online_transferwise,account_bank_statement_import_paypal,account_bank_statement_import_split,account_bank_statement_import_txt_xlsx,accounting_pdf_reports,om_account_accountant,om_account_asset,om_account_budget
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_accounting
 
 .PHONY: image_db_create_erplibre_package_business_requirements
 image_db_create_erplibre_package_business_requirements:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test crm_team_quebec
-	./script/addons/install_addons.sh test business_requirement,business_requirement_crm,business_requirement_deliverable,business_requirement_sale,business_requirement_sale_timesheet
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_business_requirements
+	./script/addons/install_addons.sh image_creation crm_team_quebec
+	./script/addons/install_addons.sh image_creation business_requirement,business_requirement_crm,business_requirement_deliverable,business_requirement_sale,business_requirement_sale_timesheet
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_business_requirements
 
 .PHONY: image_db_create_erplibre_package_contract
 image_db_create_erplibre_package_contract:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test agreement,agreement_account,agreement_legal,agreement_legal_sale,agreement_project,agreement_sale,agreement_serviceprofile,agreement_stock,contract,contract_forecast,contract_invoice_start_end_dates,contract_layout_category_hide_detail,contract_mandate,contract_payment_mode,contract_sale,contract_sale_invoicing,contract_sale_mandate,contract_sale_payment_mode,contract_transmit_method,contract_variable_qty_prorated,contract_variable_qty_timesheet,contract_variable_quantity,product_contract,product_contract_variable_quantity
-#	./script/addons/install_addons.sh test agreement_legal_sale_fieldservice,agreement_maintenance,agreement_mrp,agreement_repair
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_contract
+	./script/addons/install_addons.sh image_creation agreement,agreement_account,agreement_legal,agreement_legal_sale,agreement_project,agreement_sale,agreement_serviceprofile,agreement_stock,contract,contract_forecast,contract_invoice_start_end_dates,contract_layout_category_hide_detail,contract_mandate,contract_payment_mode,contract_sale,contract_sale_invoicing,contract_sale_mandate,contract_sale_payment_mode,contract_transmit_method,contract_variable_qty_prorated,contract_variable_qty_timesheet,contract_variable_quantity,product_contract,product_contract_variable_quantity
+#	./script/addons/install_addons.sh image_creation agreement_legal_sale_fieldservice,agreement_maintenance,agreement_mrp,agreement_repair
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_contract
 
 .PHONY: image_db_create_erplibre_package_crm
 image_db_create_erplibre_package_crm:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec,crm_team_quebec
-	./script/addons/install_addons.sh test crm,crm_livechat,crm_phone_validation,crm_project,crm_reveal
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_crm
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec,crm_team_quebec
+	./script/addons/install_addons.sh image_creation crm,crm_livechat,crm_phone_validation,crm_project,crm_reveal
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_crm
 
 .PHONY: image_db_create_erplibre_package_e_commerce
 image_db_create_erplibre_package_e_commerce:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test website_sale,website_sale_comparison,website_sale_delivery,website_sale_digital,website_sale_link_tracker,website_sale_management,website_sale_stock,website_sale_wishlist,website_sale_attribute_filter_category,website_sale_attribute_filter_order,website_sale_attribute_filter_price,website_sale_cart_selectable,website_sale_category_description,website_sale_checkout_country_vat,website_sale_checkout_skip_payment,website_sale_exception,website_sale_hide_empty_category,website_sale_hide_price,website_sale_product_attachment,website_sale_product_attribute_filter_visibility,website_sale_product_attribute_value_filter_existing,website_sale_product_detail_attribute_image,website_sale_product_detail_attribute_value_image,website_sale_product_minimal_price,website_sale_product_reference_displayed,website_sale_product_sort,website_sale_product_style_badge,website_sale_require_legal,website_sale_require_login,website_sale_secondary_unit,website_sale_show_company_data,website_sale_stock_available,website_sale_stock_available_display,website_sale_stock_force_block,website_sale_suggest_create_account,website_sale_wishlist_keep,website_snippet_carousel_product,website_snippet_product_category,product_rating_review,product_configurator,product_configurator_mrp,product_configurator_purchase,product_configurator_sale,product_configurator_stock,website_product_configurator
-#	./script/addons/install_addons.sh test website_sale_product_brand,website_sale_tax_toggle,website_sale_vat_required,product_configurator_sale_mrp,product_configurator_stock_lots,product_configurator_subconfig,website_product_configurator_mrp
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_e_commerce
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation website_sale,website_sale_comparison,website_sale_delivery,website_sale_digital,website_sale_link_tracker,website_sale_management,website_sale_stock,website_sale_wishlist,website_sale_attribute_filter_category,website_sale_attribute_filter_order,website_sale_attribute_filter_price,website_sale_cart_selectable,website_sale_category_description,website_sale_checkout_country_vat,website_sale_checkout_skip_payment,website_sale_exception,website_sale_hide_empty_category,website_sale_hide_price,website_sale_product_attachment,website_sale_product_attribute_filter_visibility,website_sale_product_attribute_value_filter_existing,website_sale_product_detail_attribute_image,website_sale_product_detail_attribute_value_image,website_sale_product_minimal_price,website_sale_product_reference_displayed,website_sale_product_sort,website_sale_product_style_badge,website_sale_require_legal,website_sale_require_login,website_sale_secondary_unit,website_sale_show_company_data,website_sale_stock_available,website_sale_stock_available_display,website_sale_stock_force_block,website_sale_suggest_create_account,website_sale_wishlist_keep,website_snippet_carousel_product,website_snippet_product_category,product_rating_review,product_configurator,product_configurator_mrp,product_configurator_purchase,product_configurator_sale,product_configurator_stock,website_product_configurator
+	./script/addons/install_addons_theme.sh image_creation theme_default
+#	./script/addons/install_addons.sh image_creation website_sale_product_brand,website_sale_tax_toggle,website_sale_vat_required,product_configurator_sale_mrp,product_configurator_stock_lots,product_configurator_subconfig,website_product_configurator_mrp
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_e_commerce
 
 .PHONY: image_db_create_erplibre_package_field_service
 image_db_create_erplibre_package_field_service:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec,crm_team_quebec
-	./script/addons/install_addons.sh test fieldservice,fieldservice_account,fieldservice_account_analytic,fieldservice_account_payment,fieldservice_activity,fieldservice_agreement,fieldservice_change_management,fieldservice_crm,fieldservice_delivery,fieldservice_distribution,fieldservice_fleet,fieldservice_geoengine,fieldservice_isp_account,fieldservice_isp_flow,fieldservice_location_builder,fieldservice_maintenance,fieldservice_partner_multi_relation,fieldservice_project,fieldservice_purchase,fieldservice_recurring,fieldservice_repair,fieldservice_route,fieldservice_route_account,fieldservice_route_stock,fieldservice_route_vehicle,fieldservice_sale,fieldservice_sale_recurring,fieldservice_sale_stock,fieldservice_size,fieldservice_skill,fieldservice_stage_server_action,fieldservice_stage_validation,fieldservice_stock,fieldservice_stock_account,fieldservice_stock_account_analytic,fieldservice_substatus,fieldservice_vehicle,fieldservice_vehicle_stock
-#	./script/addons/install_addons.sh test fieldservice_google_map,fieldservice_google_marker_icon_picker
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_field_service
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec,crm_team_quebec
+	./script/addons/install_addons.sh image_creation fieldservice,fieldservice_account,fieldservice_account_analytic,fieldservice_account_payment,fieldservice_activity,fieldservice_agreement,fieldservice_change_management,fieldservice_crm,fieldservice_delivery,fieldservice_distribution,fieldservice_fleet,fieldservice_geoengine,fieldservice_isp_account,fieldservice_isp_flow,fieldservice_location_builder,fieldservice_maintenance,fieldservice_partner_multi_relation,fieldservice_project,fieldservice_purchase,fieldservice_recurring,fieldservice_repair,fieldservice_route,fieldservice_route_account,fieldservice_route_stock,fieldservice_route_vehicle,fieldservice_sale,fieldservice_sale_recurring,fieldservice_sale_stock,fieldservice_size,fieldservice_skill,fieldservice_stage_server_action,fieldservice_stage_validation,fieldservice_stock,fieldservice_stock_account,fieldservice_stock_account_analytic,fieldservice_substatus,fieldservice_vehicle,fieldservice_vehicle_stock
+#	./script/addons/install_addons.sh image_creation fieldservice_google_map,fieldservice_google_marker_icon_picker
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_field_service
 
 .PHONY: image_db_create_erplibre_package_helpdesk
 image_db_create_erplibre_package_helpdesk:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test helpdesk_mailing_list,helpdesk_join_team,helpdesk_mgmt,helpdesk_mgmt_project,helpdesk_motive,helpdesk_mrp,helpdesk_partner,helpdesk_service_call,helpdesk_supplier,helpdesk_type
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_helpdesk
+	./script/addons/install_addons.sh image_creation helpdesk_mailing_list,helpdesk_join_team,helpdesk_mgmt,helpdesk_mgmt_project,helpdesk_motive,helpdesk_mrp,helpdesk_partner,helpdesk_service_call,helpdesk_supplier,helpdesk_type
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_helpdesk
 
 .PHONY: image_db_create_erplibre_package_hr
 image_db_create_erplibre_package_hr:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test hr,hr_expense_associate_with_customer,hr_expense_tip,res_partner_fix_group_by_company,hr_attendance,hr_contract,hr_expense,hr_expense_check,hr_gamification,hr_holidays,hr_maintenance,hr_org_chart,hr_payroll,hr_payroll_account,hr_recruitment,hr_recruitment_survey,hr_timesheet,hr_timesheet_attendance,hr_attendance_autoclose,hr_attendance_geolocation,hr_attendance_modification_tracking,hr_attendance_reason,hr_attendance_report_theoretical_time,hr_attendance_rfid,hr_calendar_rest_time,hr_contract_currency,hr_contract_document,hr_contract_multi_job,hr_contract_rate,hr_course,hr_employee_age,hr_employee_birth_name,hr_employee_calendar_planning,hr_employee_display_own_info,hr_employee_document,hr_employee_emergency_contact,hr_employee_firstname,hr_employee_health,hr_employee_id,hr_employee_language,hr_employee_medical_examination,hr_employee_partner_external,hr_employee_phone_extension,hr_employee_relative,hr_employee_service,hr_employee_service_contract,hr_employee_social_media,hr_employee_ssn,hr_expense_advance_clearing,hr_expense_cancel,hr_expense_invoice,hr_expense_payment_difference,hr_expense_petty_cash,hr_expense_sequence,hr_expense_tier_validation,hr_experience,hr_holidays_accrual_advanced,hr_holidays_credit,hr_holidays_hour,hr_holidays_leave_auto_approve,hr_holidays_leave_repeated,hr_holidays_leave_request_wizard,hr_holidays_length_validation,hr_holidays_notify_employee_manager,hr_holidays_public,hr_holidays_settings,hr_holidays_validity_date,hr_job_category,hr_payroll_cancel,hr_payslip_change_state,hr_period,hr_skill,hr_worked_days_from_timesheet,resource_hook,hr_contract_single_open,hr_contract_wage_type,hr_employee_private_wizard,hr_employee_type,hr_employee_type_private_wizard,hr_event,hr_expense_same_month,hr_working_space,muk_hr_utils
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_hr
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation hr,hr_expense_associate_with_customer,hr_expense_tip,res_partner_fix_group_by_company,hr_attendance,hr_contract,hr_expense,hr_expense_check,hr_gamification,hr_holidays,hr_maintenance,hr_org_chart,hr_payroll,hr_payroll_account,hr_recruitment,hr_recruitment_survey,hr_timesheet,hr_timesheet_attendance,hr_attendance_autoclose,hr_attendance_geolocation,hr_attendance_modification_tracking,hr_attendance_reason,hr_attendance_report_theoretical_time,hr_attendance_rfid,hr_calendar_rest_time,hr_contract_currency,hr_contract_document,hr_contract_multi_job,hr_contract_rate,hr_course,hr_employee_age,hr_employee_birth_name,hr_employee_calendar_planning,hr_employee_display_own_info,hr_employee_document,hr_employee_emergency_contact,hr_employee_firstname,hr_employee_health,hr_employee_id,hr_employee_language,hr_employee_medical_examination,hr_employee_partner_external,hr_employee_phone_extension,hr_employee_relative,hr_employee_service,hr_employee_service_contract,hr_employee_social_media,hr_employee_ssn,hr_expense_advance_clearing,hr_expense_cancel,hr_expense_invoice,hr_expense_payment_difference,hr_expense_petty_cash,hr_expense_sequence,hr_expense_tier_validation,hr_experience,hr_holidays_accrual_advanced,hr_holidays_credit,hr_holidays_hour,hr_holidays_leave_auto_approve,hr_holidays_leave_repeated,hr_holidays_leave_request_wizard,hr_holidays_length_validation,hr_holidays_notify_employee_manager,hr_holidays_public,hr_holidays_settings,hr_holidays_validity_date,hr_job_category,hr_payroll_cancel,hr_payslip_change_state,hr_period,hr_skill,hr_worked_days_from_timesheet,resource_hook,hr_contract_single_open,hr_contract_wage_type,hr_employee_private_wizard,hr_employee_type,hr_employee_type_private_wizard,hr_event,hr_expense_same_month,hr_working_space,muk_hr_utils
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_hr
 
 .PHONY: image_db_create_erplibre_package_project
 image_db_create_erplibre_package_project:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test project,project_chatter,project_default_task_stage,project_form_with_dates,project_hide_create_sale_order,project_iteration,project_iteration_parent_only,project_iteration_parent_type_required,project_portal_hide_timesheets,project_portal_parent_task,project_remaining_hours_update,project_stage,project_stage_allow_timesheet,project_stage_no_quick_create,project_task_date_planned,project_task_deadline_from_project,project_task_full_text_search,project_task_id_in_display_name,project_task_link,project_task_reference,project_task_resource_type,project_task_search_parent_subtask,project_task_stage_external_mail,project_task_subtask_same_project,project_task_subtask_time_range,project_task_time_range,project_task_type,project_template,project_template_numigi,project_template_timesheet,project_time_management,project_time_range,project_type
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_project
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation project,project_chatter,project_default_task_stage,project_form_with_dates,project_hide_create_sale_order,project_iteration,project_iteration_parent_only,project_iteration_parent_type_required,project_portal_hide_timesheets,project_portal_parent_task,project_remaining_hours_update,project_stage,project_stage_allow_timesheet,project_stage_no_quick_create,project_task_date_planned,project_task_deadline_from_project,project_task_full_text_search,project_task_id_in_display_name,project_task_link,project_task_reference,project_task_resource_type,project_task_search_parent_subtask,project_task_stage_external_mail,project_task_subtask_same_project,project_task_subtask_time_range,project_task_time_range,project_task_type,project_template,project_template_numigi,project_template_timesheet,project_time_management,project_time_range,project_type
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_project
 
 .PHONY: image_db_create_erplibre_package_purchase
 image_db_create_erplibre_package_purchase:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test purchase,purchase_mrp,purchase_requisition,purchase_stock,product_supplier_info_helpers,purchase_consignment,purchase_consignment_delivery_expense,purchase_consignment_inventory,purchase_consignment_inventory_line_domain,purchase_estimated_time_arrival,purchase_invoice_empty_lines,purchase_invoice_from_picking,purchase_partner_products,purchase_warning_minimum_amount
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_purchase
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation purchase,purchase_mrp,purchase_requisition,purchase_stock,product_supplier_info_helpers,purchase_consignment,purchase_consignment_delivery_expense,purchase_consignment_inventory,purchase_consignment_inventory_line_domain,purchase_estimated_time_arrival,purchase_invoice_empty_lines,purchase_invoice_from_picking,purchase_partner_products,purchase_warning_minimum_amount
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_purchase
 
 .PHONY: image_db_create_erplibre_package_sale
 image_db_create_erplibre_package_sale:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec,crm_team_quebec
-	./script/addons/install_addons.sh test sale,sale_crm,sale_expense,sale_management,sale_margin,sale_mrp,sale_purchase,sale_quotation_builder,sale_stock,sale_timesheet,sales_team,product_create_group,product_dimension,product_dimension_numigi,product_extra_views,product_extra_views_purchase,product_extra_views_sale,product_extra_views_stock,product_kit,product_panel_shortcut,product_reference,product_reference_list_view,product_supplier_name_search,product_variant_button_complete_form,sale_order_line_limit,sale_degroup_tax,payment,payment_transfer,purchase,stock
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_sale
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec,crm_team_quebec
+	./script/addons/install_addons.sh image_creation sale,sale_crm,sale_expense,sale_management,sale_margin,sale_mrp,sale_purchase,sale_quotation_builder,sale_stock,sale_timesheet,sales_team,product_create_group,product_dimension,product_dimension_numigi,product_extra_views,product_extra_views_purchase,product_extra_views_sale,product_extra_views_stock,product_kit,product_panel_shortcut,product_reference,product_reference_list_view,product_supplier_name_search,product_variant_button_complete_form,sale_order_line_limit,sale_degroup_tax,payment,payment_transfer,purchase,stock
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_sale
 
 .PHONY: image_db_create_erplibre_package_scrummer
 image_db_create_erplibre_package_scrummer:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test erplibre_base_quebec
-	./script/addons/install_addons.sh test scrummer,scrummer_git,scrummer_kanban,scrummer_scrum,scrummer_timesheet_category,scrummer_workflow_security,scrummer_workflow_transition_by_project,scrummer_workflow_transitions_by_task_type,web_diagram_position,web_syncer,web_widget_image_url,project_agile_sale_timesheet,project_agile_analytic,project_agile_scrum,project_git_github,project_git_gitlab,project_portal
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_scrummer
+	./script/addons/install_addons.sh image_creation erplibre_base_quebec
+	./script/addons/install_addons.sh image_creation scrummer,scrummer_git,scrummer_kanban,scrummer_scrum,scrummer_timesheet_category,scrummer_workflow_security,scrummer_workflow_transition_by_project,scrummer_workflow_transitions_by_task_type,web_diagram_position,web_syncer,web_widget_image_url,project_agile_sale_timesheet,project_agile_analytic,project_agile_scrum,project_git_github,project_git_gitlab,project_portal
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_scrummer
 
 .PHONY: image_db_create_erplibre_package_stock
 image_db_create_erplibre_package_stock:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test stock,stock_account,stock_dropshipping,stock_landed_costs,stock_picking_batch,purchase_warehouse_access,stock_component,stock_component_account,stock_inventory_accounting_date_editable,stock_inventory_category_domain,stock_inventory_internal_location,stock_inventory_line_domain,stock_location_position_alphanum,stock_picking_change_destination,stock_serial_single_quant,stock_theorical_quantity_access,stock_turnover_rate,stock_warehouse_access,stock_warehouse_distance
-#	./script/addons/install_addons.sh test stock_zebra,stock_inventory_line_domain_barcode
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_stock
+	./script/addons/install_addons.sh image_creation stock,stock_account,stock_dropshipping,stock_landed_costs,stock_picking_batch,purchase_warehouse_access,stock_component,stock_component_account,stock_inventory_accounting_date_editable,stock_inventory_category_domain,stock_inventory_internal_location,stock_inventory_line_domain,stock_location_position_alphanum,stock_picking_change_destination,stock_serial_single_quant,stock_theorical_quantity_access,stock_turnover_rate,stock_warehouse_access,stock_warehouse_distance
+#	./script/addons/install_addons.sh image_creation stock_zebra,stock_inventory_line_domain_barcode
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_stock
 
 .PHONY: image_db_create_erplibre_package_timesheet
 image_db_create_erplibre_package_timesheet:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test payroll_code_on_task_type,payroll_period,payroll_preparation,payroll_preparation_export_wizard,payroll_preparation_from_timesheet,project_timesheet_time_control_enhanced,timesheet_edit_only_today,timesheet_list_description_after_task,timesheet_list_employee,timesheet_multi_line_wizard,timesheet_multi_line_wizard_security,timesheet_payroll_period,timesheet_validation_status
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_timesheet
+	./script/addons/install_addons.sh image_creation payroll_code_on_task_type,payroll_period,payroll_preparation,payroll_preparation_export_wizard,payroll_preparation_from_timesheet,project_timesheet_time_control_enhanced,timesheet_edit_only_today,timesheet_list_description_after_task,timesheet_list_employee,timesheet_multi_line_wizard,timesheet_multi_line_wizard_security,timesheet_payroll_period,timesheet_validation_status
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_timesheet
 
 .PHONY: image_db_create_erplibre_package_website
 image_db_create_erplibre_package_website:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test portal,website,website_blog,website_crm,website_crm_partner_assign,website_crm_phone_validation,website_customer,website_event,website_event_questions,website_event_sale,website_event_track,website_form,website_form_project,website_forum,website_gengo,website_google_map,website_hr,website_hr_recruitment,website_links,website_livechat,website_mail,website_mail_channel,website_mass_mailing,website_membership,website_partner,website_payment,website_rating,website_slides,website_survey,website_theme_install,website_twitter,website_adv_image_optimization,website_anchor_smooth_scroll,website_blog_excerpt_img,website_breadcrumb,website_canonical_url,website_cookie_notice,website_crm_privacy_policy,website_crm_quick_answer,website_crm_recaptcha,website_form_builder,website_form_recaptcha,website_google_tag_manager,website_img_dimension,website_js_below_the_fold,website_lazy_load_image,website_legal_page,website_logo,website_media_size,website_megamenu,website_odoo_debranding,website_portal_address,website_portal_contact,website_snippet_anchor,website_snippet_big_button,website_snippet_country_dropdown,website_snippet_marginless_gallery,smile_website_login_as,website_snippet_all
-#	./script/addons/install_addons.sh test website_no_crawler
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_website
+	./script/addons/install_addons.sh image_creation portal,website,website_blog,website_crm,website_crm_partner_assign,website_crm_phone_validation,website_customer,website_event,website_event_questions,website_event_sale,website_event_track,website_form,website_form_project,website_forum,website_gengo,website_google_map,website_hr,website_hr_recruitment,website_links,website_livechat,website_mail,website_mail_channel,website_mass_mailing,website_membership,website_partner,website_payment,website_rating,website_slides,website_survey,website_theme_install,website_twitter,website_adv_image_optimization,website_anchor_smooth_scroll,website_blog_excerpt_img,website_breadcrumb,website_canonical_url,website_cookie_notice,website_crm_privacy_policy,website_crm_quick_answer,website_crm_recaptcha,website_form_builder,website_form_recaptcha,website_google_tag_manager,website_img_dimension,website_js_below_the_fold,website_lazy_load_image,website_legal_page,website_logo,website_media_size,website_megamenu,website_odoo_debranding,website_portal_address,website_portal_contact,website_snippet_anchor,website_snippet_big_button,website_snippet_country_dropdown,website_snippet_marginless_gallery,smile_website_login_as,website_snippet_all
+	./script/addons/install_addons_theme.sh image_creation theme_default
+#	./script/addons/install_addons.sh image_creation website_no_crawler
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_website
 
 .PHONY: image_db_create_erplibre_package_wiki
 image_db_create_erplibre_package_wiki:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh test document_page,document_page_approval,document_page_group,document_page_project,document_page_reference,document_page_tag,document_url,knowledge,attachment_preview,document_page_procedure,document_page_quality_manual,document_page_work_instruction,mgmtsystem,mgmtsystem_action,mgmtsystem_audit,mgmtsystem_hazard,mgmtsystem_manual,mgmtsystem_nonconformity,mgmtsystem_nonconformity_hr,mgmtsystem_nonconformity_product,mgmtsystem_nonconformity_project,mgmtsystem_quality,mgmtsystem_review,mgmtsystem_survey
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test --restore_image erplibre_package_wiki
+	./script/addons/install_addons.sh image_creation document_page,document_page_approval,document_page_group,document_page_project,document_page_reference,document_page_tag,document_url,knowledge,attachment_preview,document_page_procedure,document_page_quality_manual,document_page_work_instruction,mgmtsystem,mgmtsystem_action,mgmtsystem_audit,mgmtsystem_hazard,mgmtsystem_manual,mgmtsystem_nonconformity,mgmtsystem_nonconformity_hr,mgmtsystem_nonconformity_product,mgmtsystem_nonconformity_project,mgmtsystem_quality,mgmtsystem_review,mgmtsystem_survey
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_wiki
 
 .PHONY: image_db_create_all
 image_db_create_all:
@@ -354,6 +378,7 @@ image_db_create_all:
 	#./script/make.sh image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_website
 	./script/make.sh image_db_create_erplibre_code_generator
+	#./script/make.sh image_db_create_erplibre_demo
 	#./script/make.sh image_db_create_erplibre_package_accounting
 	#./script/make.sh image_db_create_erplibre_package_business_requirements
 	#./script/make.sh image_db_create_erplibre_package_contract
@@ -371,6 +396,13 @@ image_db_create_all:
 	#./script/make.sh image_db_create_erplibre_package_website
 	#./script/make.sh image_db_create_erplibre_package_wiki
 	#./script/make.sh config_gen_all
+
+.PHONY: image_db_create_test_website_attachments
+image_db_create_test_website_attachments:
+	./script/db_restore.py --clean_cache
+	./script/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
+	# Do your stuff
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator_test_website_attachements --restore_image test_website_attachments
 
 .PHONY: image_diff_base_website
 image_diff_base_website:
@@ -405,6 +437,12 @@ addons_install_all_code_generator_demo:
 	./script/db_restore.py --database code_generator
 	# TODO ignore code_generator_demo_internal cause (demo_internal, demo_model_2_internal_view_form) already exists
 	./script/addons/install_addons_dev.sh code_generator code_generator_demo,code_generator_demo_export_helpdesk,code_generator_demo_export_website,code_generator_demo_internal_inherit,code_generator_demo_portal,code_generator_demo_theme_website,code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_auto_backup
+	# Conflict between code_generator_demo_website_multiple_snippet and code_generator_demo_internal_inherit
+	./script/db_restore.py --database code_generator
+	./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_multiple_snippet
+	./script/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
+	./script/addons/install_addons_dev.sh code_generator_test_website_attachements code_generator_demo_export_website_attachments
+
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_helpdesk
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_export_website
@@ -414,6 +452,7 @@ addons_install_all_code_generator_demo:
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_theme_website
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_leaflet
 	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_snippet
+	#./script/addons/install_addons_dev.sh code_generator code_generator_demo_website_multiple_snippet
 	#./script/addons/install_addons_dev.sh code_generator code_generator_auto_backup
 
 .PHONY: addons_install_all_code_generator_template
@@ -438,10 +477,21 @@ addons_install_all_code_generator_template:
 	#./script/addons/install_addons_dev.sh template demo_internal_inherit
 	#./script/addons/install_addons_dev.sh template code_generator_template_demo_internal_inherit
 
+	# TODO not working, need to add in test parallel
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_website_snippet -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_website_snippet
+	#./script/addons/install_addons_dev.sh template demo_website_snippet
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_website_snippet
+
+	# TODO not working, need to add in test parallel
+	#./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo-code-generator-template/demo_website_multiple_snippet -t addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_website_multiple_snippet
+	#./script/addons/install_addons_dev.sh template demo_website_multiple_snippet
+	#./script/addons/install_addons_dev.sh template code_generator_template_demo_website_multiple_snippet
+
 .PHONY: addons_install_all_generated_demo
 addons_install_all_generated_demo:
 	./script/db_restore.py --database template
 	./script/addons/install_addons_dev.sh template demo_helpdesk_data,demo_website_data,demo_internal,demo_internal_inherit,demo_portal,demo_website_leaflet,demo_website_snippet,auto_backup
+	./script/addons/install_addons_theme.sh template theme_website_demo_code_generator
 	#./script/addons/install_addons_dev.sh template demo_helpdesk_data
 	#./script/addons/install_addons_dev.sh template demo_website_data
 	#./script/addons/install_addons_dev.sh template demo_internal
@@ -450,8 +500,7 @@ addons_install_all_generated_demo:
 	#./script/addons/install_addons_dev.sh template demo_website_leaflet
 	#./script/addons/install_addons_dev.sh template demo_website_snippet
 	#./script/addons/install_addons_dev.sh template auto_backup
-	# TODO support installation theme with cli
-	#./script/addons/install_addons_dev.sh template theme_website_demo_code_generator
+	#./script/addons/install_addons_theme.sh template theme_website_demo_code_generator
 
 ##################
 # Code generator #
@@ -526,6 +575,18 @@ test_full_fast:
 	# TODO This test is broken in parallel
 	./script/make.sh test_code_generator_hello_world
 
+.PHONY: test_full_fast_coverage
+test_full_fast_coverage:
+	./script/make.sh clean
+	./.venv/bin/coverage erase
+	./script/test/run_parallel_test.py --coverage
+	# TODO This test is broken in parallel
+	./script/make.sh test_code_generator_hello_world
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
 .PHONY: test_base
 test_base:
 	./script/make.sh test_format
@@ -554,8 +615,7 @@ test_installation_demo:
 	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
 	./script/db_restore.py --database test_demo
 	./script/addons/install_addons.sh test_demo demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet
-	# TODO cannot install from command line (CLI)
-	#./script/addons/install_addons.sh test_demo theme_website_demo_code_generator
+	./script/addons/install_addons_theme.sh test_demo theme_website_demo_code_generator
 
 .PHONY: test_code_generator_generation
 test_code_generator_generation:
@@ -646,9 +706,58 @@ test_code_generator_demo_mariadb_sql_example_1:
 	#./script/addons/install_addons_dev.sh test_code_generator code_generator_demo_mariadb_sql_example_1
 	./script/code_generator/install_and_test_code_generator.sh test_code_generator code_generator_demo_mariadb_sql_example_1 ./addons/TechnoLibre_odoo-code-generator-template demo_mariadb_sql_example_1
 
-##############
+###############
+# Test addons #
+###############
+.PHONY: test_addons_sale
+test_addons_sale:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_sale
+	./test.sh -d test_addons_sale --db-filter test_addons_sale -i sale
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m
+	./.venv/bin/coverage html
+
+.PHONY: test_addons_helpdesk
+test_addons_helpdesk:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_helpdesk
+	./test.sh -d test_addons_helpdesk --db-filter test_addons_helpdesk -i helpdesk_mgmt
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m
+	./.venv/bin/coverage html
+
+.PHONY: test_addons_code_generator
+test_addons_code_generator:
+	./.venv/bin/coverage erase
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_code_generator
+	# TODO missing test in code_generator
+	./test.sh --dev all -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: test_addons_code_generator_code_generator
+test_addons_code_generator_code_generator:
+	# TODO this test only generation, not test
+	./.venv/bin/coverage erase
+	./script/db_restore.py --database test_addons_code_generator_code_generator
+	./test.sh --dev all -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: open_test_coverage
+open_test_coverage:
+	-$(BROWSER) htmlcov/index.html
+
+# TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv/test.py
+
+#########
 #  tag  #
-##############
+#########
 .PHONY: tag_push_all
 tag_push_all:
 	./script/tag_push_all.py
@@ -669,6 +778,7 @@ format:
 	./script/make.sh format_code_generator_template
 	./script/make.sh format_script
 	./script/make.sh format_erplibre_addons
+	./script/make.sh format_supported_addons
 
 .PHONY: format_code_generator
 format_code_generator:
@@ -681,9 +791,15 @@ format_erplibre_addons:
 	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
 	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
-	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_themes_addons/
-	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_themes_addons/
-	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_themes_addons/
+	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
+	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
+	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
+
+.PHONY: format_supported_addons
+format_supported_addons:
+	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
+	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
+	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:

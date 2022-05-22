@@ -53,7 +53,7 @@ def get_config():
 
 def get_master_password():
     try:
-        # _logger.info("You have 5 secondes to add master password...")
+        # _logger.info("You have 5 seconds to add master password...")
         pa = getpass.getpass(prompt="\nEnter master password... ")
         return pa
     except getpass.GetPassWarning:
@@ -73,9 +73,9 @@ def main():
 
     arg_base = "./.venv/bin/python3 ./odoo/odoo-bin db"
 
-    # check if need master password from config file
+    # check if it needs master password from config file
     has_config_file = True
-    config_path = "./config.py"
+    config_path = "./config.conf"
     if not os.path.isfile(config_path):
         config_path = "/etc/odoo/odoo.conf"
         if not os.path.isfile(config_path):
@@ -85,7 +85,7 @@ def main():
         config_parser.read(config_path)
 
         has_admin_password = config_parser.get("options", "admin_passwd")
-        if has_admin_password:
+        if has_admin_password and has_admin_password != "admin":
             master_password = get_master_password()
             if not master_password:
                 _logger.error("Missing master password, cancel transaction.")

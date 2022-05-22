@@ -19,8 +19,10 @@ Update module `website`.
     - Ajepe odoo-addons to support restful
     - OmniaGIT Odoo PLM
     - MathBenTech family-management
+    - erplibre-3D-printing-addons
 - Add module:
     - iohub_connector to support mqtt
+    - sinerkia_jitsi_meet to integrate Jitsi
 - Add module by default:
     - auto_backup
     - muk_website_branding
@@ -28,6 +30,12 @@ Update module `website`.
     - website_anchor_smooth_scroll
     - crm_team_quebec
 - Documentation Odoo dev
+- Format command supported addons
+- Install theme with Odoo command
+- Script to install theme addons
+- Image website with default theme
+- Image erplibre demo
+- Test with coverage
 
 ### Changed
 
@@ -35,6 +43,9 @@ Update module `website`.
 - Move packages modules in makefile image creation
 - Update pip dependency with security update
     - Pillow==9.0.1
+    - PyPDF2==1.27.8
+- Code generator export website with attachments and scss design file with documentation
+- Code generator support multiple snippet
 
 ### Fixed
 

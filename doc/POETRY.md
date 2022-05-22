@@ -21,3 +21,8 @@ The automatic script will erase this dependency, but you can add it for your loc
 ```bash
 poetry add PYTHON_MODULE
 ```
+
+## Error `relative path can't be expressed as a file URI`
+
+If you got this error `relative path can't be expressed as a file URI` when executing poetry, delete directory
+artifacts: `rm -rf artifacts/` and rerun the update.

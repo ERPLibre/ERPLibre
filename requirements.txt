@@ -34,6 +34,7 @@ python-git
 voicent-python
 python-swiftclient
 python-keystoneclient
+coverage
 
 # For logical test
 docutils==0.17.1
@@ -78,7 +79,7 @@ Werkzeug==0.11.15
 
 # Force version for security update
 pyyaml==6.0
-lxml==4.7.1
+lxml==4.8.0
 cryptography==36.0.1
 psutil==5.9.0
 Pillow==9.0.1
@@ -88,3 +89,4 @@ pycrypto==2.6.1
 urllib3==1.26.8
 requests==2.27.1
 boto3>=1.20.41
+PyPDF2==1.27.8
