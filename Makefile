@@ -930,6 +930,7 @@ format_supported_addons:
 format_accorderie:
 	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo_accorderie
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie
+	find ./addons/TechnoLibre_odoo_accorderie/ -type f -name "*css" -exec ./script/maintenance/prettier.sh {} \;
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
