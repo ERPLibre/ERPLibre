@@ -24,7 +24,12 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME}
 echo -e "\n==== Clone this installation  ===="
 REMOTE_URL_GIT=`git remote get-url origin`
 BRANCH_GIT=`git rev-parse --abbrev-ref HEAD`
-sudo su ${EL_USER} -c "git clone --branch ${BRANCH_GIT} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
+if [ "HEAD" = "${BRANCH_GIT}" ]; then
+  # Checkout version of env_var.sh
+  sudo su ${EL_USER} -c "git clone --branch v${ERPLIBRE_VERSION} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
+else
+  sudo su ${EL_USER} -c "git clone --branch ${BRANCH_GIT} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
+fi
 sudo cp ./env_var.sh ${EL_HOME_ERPLIBRE}
 sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
