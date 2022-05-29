@@ -478,6 +478,13 @@ accorderie_install_accorderie_canada_ddb_website:
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 
+.PHONY: accorderie_install_accorderie_canada_ddb_website_demo
+accorderie_install_accorderie_canada_ddb_website_demo:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website
+	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
+
 .PHONY: accorderie_install_accorderie_canada_old_view
 accorderie_install_accorderie_canada_old_view:
 	./script/db_restore.py --database accorderie
