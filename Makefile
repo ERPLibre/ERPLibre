@@ -481,7 +481,7 @@ accorderie_install_accorderie_canada_ddb_website:
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo
 accorderie_install_accorderie_canada_ddb_website_demo:
 	./script/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 
@@ -500,7 +500,7 @@ accorderie_install_template_accorderie_canada_ddb:
 	./script/db_restore.py --database template_accorderie
 	./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo_accorderie/accorderie_canada_ddb -t addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
-	./script/addons/install_addons_dev.sh template_accorderie accorderie_canada_ddb
+	./script/addons/install_addons_dev.sh template_accorderie accorderie_canada_ddb,accorderie_canada_ddb_data
 	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_ddb
 
 .PHONY: accorderie_install_template_accorderie_canada_old_view
