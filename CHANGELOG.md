@@ -9,7 +9,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **Migration note**
 
-Update module `website`.
+- Update module `website`,`muk_web_theme`.
+- For dev, run `poetry cache clear --all pypi`
 
 ### Added
 
@@ -29,6 +30,7 @@ Update module `website`.
     - website_snippet_anchor
     - website_anchor_smooth_scroll
     - crm_team_quebec
+    - partner_no_vat
 - Documentation Odoo dev
 - Format command supported addons
 - Install theme with Odoo command
@@ -41,9 +43,11 @@ Update module `website`.
 
 - Downgrade sphinx to 1.6.7 to support Odoo dev documentation
 - Move packages modules in makefile image creation
+- Update to poetry==1.1.14
 - Update pip dependency with security update
     - Pillow==9.0.1
     - PyPDF2==1.27.8
+    - lxml==4.9.1
 - Code generator export website with attachments and scss design file with documentation
 - Code generator support multiple snippet
 
@@ -51,6 +55,8 @@ Update module `website`.
 
 - Poetry supports insensitive python dependency
 - Code generator new project supports relative path and check duplicated paths
+- Muk web theme table header background-color and on hover for Many2many
+- Script docker-compose use lowercase name
 
 ## [1.3.0] - 2022-01-25
 
