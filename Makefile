@@ -472,6 +472,11 @@ accorderie_install_accorderie_canada_ddb:
 	./script/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb,partner_no_vat
 
+.PHONY: accorderie_install_accorderie_canada_ddb_data
+accorderie_install_accorderie_canada_ddb_data:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb,accorderie_canada_ddb_data
+
 .PHONY: accorderie_install_accorderie_canada_ddb_website
 accorderie_install_accorderie_canada_ddb_website:
 	./script/db_restore.py --database accorderie
