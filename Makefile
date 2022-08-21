@@ -498,6 +498,14 @@ accorderie_install_accorderie_canada_ddb_website_demo_diagram:
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 	./script/addons/uninstall_addons.sh accorderie web_diagram_position
 
+.PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production
+accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production:
+	./script/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,web_no_crawler,contacts
+	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
+	./script/addons/uninstall_addons.sh accorderie web_diagram_position
+
 .PHONY: accorderie_install_accorderie_canada_old_view
 accorderie_install_accorderie_canada_old_view:
 	./script/db_restore.py --database accorderie
