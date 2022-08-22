@@ -556,6 +556,30 @@ accorderie_setup_migrate_database:
 	./script/db_restore.py --database code_generator_db_servers
 	./script/addons/install_addons_dev.sh code_generator_db_servers code_generator_db_servers
 
+.PHONY: accorderie_open_maquette
+accorderie_open_maquette:
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86536430
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86537471
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86537295
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86697719
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86588770
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86537849
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86594545
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86537980
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86609563
+#	-$(BROWSER) https://marvelapp.com/prototype/1773h559/screen/86608523
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.pds.individuelle.formulaire&categorie=1"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.pos.individuelle.formulaire&categorie=1"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.saa.offrir.nouveau.categorie_service.formulaire&membre=3&categorie=92"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.saa.offrir.existant.formulaire&offre_service=3&membre=3"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.saa.recevoir.choix.nouveau.formulaire&membre=3&categorie=94"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.saa.recevoir.choix.existant.time.formulaire&membre=3&offre_service=6&date=2022-08-25&time=10:00"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.va.oui.formulaire&echange_service=2"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.va.non.offert.nouveau_formulaire"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.va.non.offert.existant_formulaire&echange_service=4"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.va.non.recu.choix.nouveau.formulaire&membre=4&echange_service=3&categorie=94"
+	-$(BROWSER) "http://127.0.0.1:8069/participer#!?state=init.va.non.recu.choix.formulaire&membre=4&echange_service=3"
+
 #########################
 #  Addons installation  #
 #########################
