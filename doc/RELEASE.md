@@ -83,6 +83,7 @@ make addons_install_code_generator_full
 To generate database images in directory `./image_db`, run:
 
 ```bash
+make db_clean_cache
 make config_gen_all
 make image_db_create_all
 ```

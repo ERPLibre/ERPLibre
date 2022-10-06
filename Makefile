@@ -375,26 +375,26 @@ image_db_create_erplibre_package_wiki:
 .PHONY: image_db_create_all
 image_db_create_all:
 	#./script/make.sh config_gen_image_db
-	#./script/make.sh image_db_create_erplibre_base
+	./script/make.sh image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_website
 	./script/make.sh image_db_create_erplibre_code_generator
-	#./script/make.sh image_db_create_erplibre_demo
-	#./script/make.sh image_db_create_erplibre_package_accounting
-	#./script/make.sh image_db_create_erplibre_package_business_requirements
-	#./script/make.sh image_db_create_erplibre_package_contract
-	#./script/make.sh image_db_create_erplibre_package_crm
-	#./script/make.sh image_db_create_erplibre_package_e_commerce
-	#./script/make.sh image_db_create_erplibre_package_field_service
-	#./script/make.sh image_db_create_erplibre_package_helpdesk
-	#./script/make.sh image_db_create_erplibre_package_hr
-	#./script/make.sh image_db_create_erplibre_package_project
-	#./script/make.sh image_db_create_erplibre_package_purchase
-	#./script/make.sh image_db_create_erplibre_package_sale
-	#./script/make.sh image_db_create_erplibre_package_scrummer
-	#./script/make.sh image_db_create_erplibre_package_stock
-	#./script/make.sh image_db_create_erplibre_package_timesheet
-	#./script/make.sh image_db_create_erplibre_package_website
-	#./script/make.sh image_db_create_erplibre_package_wiki
+	./script/make.sh image_db_create_erplibre_demo
+	./script/make.sh image_db_create_erplibre_package_accounting
+	./script/make.sh image_db_create_erplibre_package_business_requirements
+	./script/make.sh image_db_create_erplibre_package_contract
+	./script/make.sh image_db_create_erplibre_package_crm
+	./script/make.sh image_db_create_erplibre_package_e_commerce
+	./script/make.sh image_db_create_erplibre_package_field_service
+	./script/make.sh image_db_create_erplibre_package_helpdesk
+	./script/make.sh image_db_create_erplibre_package_hr
+	./script/make.sh image_db_create_erplibre_package_project
+	./script/make.sh image_db_create_erplibre_package_purchase
+	./script/make.sh image_db_create_erplibre_package_sale
+	./script/make.sh image_db_create_erplibre_package_scrummer
+	./script/make.sh image_db_create_erplibre_package_stock
+	./script/make.sh image_db_create_erplibre_package_timesheet
+	./script/make.sh image_db_create_erplibre_package_website
+	./script/make.sh image_db_create_erplibre_package_wiki
 	#./script/make.sh config_gen_all
 
 .PHONY: image_db_create_test_website_attachments

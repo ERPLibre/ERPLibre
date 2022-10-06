@@ -26,7 +26,7 @@
   
   <default remote="ERPLibre" revision="12.0" sync-c="true" sync-j="4"/>
   
-  <project clone-depth="1" dest-branch="12.0" groups="base" name="ERPLibre_image_db.git" path="image_db" revision="30e5afa98a97cc222ce42d31703c0e0caf621291" upstream="12.0"/>
+  <project clone-depth="1" dest-branch="12.0" groups="base" name="ERPLibre_image_db.git" path="image_db" revision="4ecd1579156c80eb5ef39aed1bbdc4dbd0bde13b" upstream="12.0"/>
   <project dest-branch="dev_12.0" groups="addons" name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="d1220087280d304310db09b4bbf1818c8ab04b69" upstream="dev_12.0"/>
   <project dest-branch="master" groups="addons" name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="922f6878ac560829d2ebe951b93f858c1e7d256d" upstream="master"/>
   <project dest-branch="12.0" groups="addons" name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" revision="701438f9c59bd657de516d9ef4de1ba6167bf30b" upstream="12.0"/>
@@ -142,7 +142,7 @@
   <project dest-branch="12.0" groups="addons" name="saas-addons.git" path="addons/it-projects-llc_saas-addons" remote="it-projects-llc" revision="b03699e438366bb8df292ef6486ef7473cf15e34" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons" name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" revision="10224ef7b42ee3dec2849414e41557b0bc3c8f79" upstream="12.0"/>
   <project dest-branch="12.0_modules_sale_order_line" groups="addons" name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="5d8d2575e6a2c8ad0e3315abd0585651f73b80fd" upstream="12.0_modules_sale_order_line"/>
-  <project dest-branch="12.0_dev" groups="addons,base" name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="70fd7c4b94009f18fbb1c609e143fde05bacd5be" upstream="12.0_dev"/>
+  <project dest-branch="12.0_dev" groups="addons,base" name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="839636184714e6356db011b459d983feb6c7e732" upstream="12.0_dev"/>
   <project dest-branch="12.0" groups="addons,base,image_db" name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" revision="2bfb2b2f64bda15fb5c7f8f4d528aa1aadc4998b" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons" name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" revision="77a1ee79912d381e06c8bd96f1034574b460881d" upstream="12.0"/>
   <project dest-branch="12.0" groups="addons,base" name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" revision="786a26c58f789ed63e6380d5e550cf300a5ae1a4" upstream="12.0"/>
