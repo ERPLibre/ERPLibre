@@ -68,7 +68,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - website_form_builder HTML support and allow option to align send button
 - Odoo cherry-pick 2 commits bus fix
 - Minor fix css color into module hr_theme from repo CybroOdoo_OpenHRMS
-- Typo in project task when logs time
+- Typo in project task when logging time
 
 ### Removed
 
