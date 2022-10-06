@@ -26,6 +26,6 @@ pip install setuptools-rust
 # Delete all tag before installing, or break installation, will generate a new one after
 git tag | xargs git tag -d
 python setup.py install
-git tag ERPLibre/v1.3.0
+git tag ERPLibre/v1.4.0
 #${VENV_PATH}/bin/pip install ./script/OCA_maintainer-tools/
 cd -

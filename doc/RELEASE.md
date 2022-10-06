@@ -29,7 +29,7 @@ And update all from dev to merge into prod.
 - Run test :
 
 ```bash
-make test
+make test_full_fast
 ```
 
 ### Format code
@@ -38,15 +38,6 @@ To format all code, run:
 
 ```bash
 make format
-```
-
-### Update image_db
-
-To generate database images in directory `./image_db`, run:
-
-```bash
-make config_gen_all
-make image_db_create_all
 ```
 
 ### Update documentations
@@ -85,6 +76,22 @@ Test installation with code generator Geomap:
 
 ```bash
 make addons_install_code_generator_full
+```
+
+### Update image_db
+
+To generate database images in directory `./image_db`, run:
+
+```bash
+make config_gen_all
+make image_db_create_all
+```
+
+To test it, you need to clean caches and install it:
+
+```bash
+./script/db_restore.py --clean_cache
+./script/db_restore.py --database test --image erplibre_website
 ```
 
 ## Generate new prod and release
@@ -148,21 +155,6 @@ git merge --no-ff RELEASE_BRANCH
 ```
 
 Add comment `Release v#.#.#`.
-
-## Generate image db to accelerate db installation
-
-Generate image db before tag, the image is stored in directory ./image_db
-
-```bash
-make image_db_create_all
-```
-
-To test it, you need to clean caches and install it:
-
-```bash
-./script/db_restore.py --clean_cache
-./script/db_restore.py --database test --image erplibre_website
-```
 
 ## Create tag
 

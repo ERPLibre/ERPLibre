@@ -7,9 +7,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2022-10-05
+
 **Migration note**
 
-- Update module `website`,`muk_web_theme`.
+- Update module `website`,`website_form_builder`.
 - For dev, run `poetry cache clear --all pypi`
 
 ### Added
@@ -23,7 +25,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     - erplibre-3D-printing-addons
 - Add module:
     - iohub_connector to support mqtt
+    - website_snippet_all to install all snippets, extracted from all themes
+    - website_blog_snippet_all to install website_snippet_all with website_blog and associated snippet
     - sinerkia_jitsi_meet to integrate Jitsi
+    - erplibre_website_snippets_jitsi to integrate Jitsi in snippet, work in progress
 - Add module by default:
     - auto_backup
     - muk_website_branding
@@ -42,14 +47,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - Downgrade sphinx to 1.6.7 to support Odoo dev documentation
-- Move packages modules in makefile image creation
 - Update to poetry==1.1.14
 - Update pip dependency with security update
     - Pillow==9.0.1
     - PyPDF2==1.27.8
     - lxml==4.9.1
 - Code generator export website with attachments and scss design file with documentation
-- Code generator support multiple snippet
+- Code generator support multiple snippets
+- Into repo Numigi_odoo-project-addons rename module project_template to project_template_numigi
+- Into repo Numigi_odoo-product-addons rename module product_dimension to product_dimension_numigi
+- Into repo Numigi_odoo-partner-addons, re-enable auto-install module
+- Into repo muk-it_muk_website, re-enable auto-install module
 
 ### Fixed
 
@@ -57,6 +65,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Code generator new project supports relative path and check duplicated paths
 - Muk web theme table header background-color and on hover for Many2many
 - Script docker-compose use lowercase name
+- website_form_builder HTML support and allow option to align send button
+- Odoo cherry-pick 2 commits bus fix
+- Minor fix css color into module hr_theme from repo CybroOdoo_OpenHRMS
+- Typo in project task when logs time
+
+### Removed
+
+- Module package erplibre from ERPLibre_erplibre_addons and use instead image creation, check Makefile
 
 ## [1.3.0] - 2022-01-25
 
@@ -305,7 +321,9 @@ Because addons repository has change, config file need to be updated.
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.4.0...HEAD
+
+[1.4.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.3.0...v1.4.0
 
 [1.3.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.2.1...v1.3.0
 
