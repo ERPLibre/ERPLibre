@@ -486,7 +486,7 @@ accorderie_install_accorderie_canada_ddb_website:
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo
 accorderie_install_accorderie_canada_ddb_website_demo:
 	./script/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 
