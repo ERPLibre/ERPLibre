@@ -472,6 +472,10 @@ accorderie_install_accorderie_canada_ddb:
 	./script/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb,partner_no_vat
 
+.PHONY: accorderie_install_all_snippet
+accorderie_install_all_snippet:
+	./script/addons/install_addons.sh accorderie ./script/addons/install_addons.sh accorderie erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_snippet_all
+
 .PHONY: accorderie_install_accorderie_canada_ddb_data
 accorderie_install_accorderie_canada_ddb_data:
 	./script/db_restore.py --database accorderie
