@@ -965,9 +965,15 @@ class GitTool:
                 print("Error when forking repo %s" % forked_repo)
                 exit(1)
             else:
-                print(
-                    "Forked %s to %s" % (upstream_url, forked_repo["html_url"])
-                )
+                try:
+                    print(
+                        "Forked %s to %s"
+                        % (upstream_url, forked_repo["html_url"])
+                    )
+                except Exception as e:
+                    print(e)
+                    print(forked_repo)
+                    print(upstream_url)
         elif status == 202:
             print("Forked repo %s already exists" % forked_repo["full_name"])
         elif status != 200:
