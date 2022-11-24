@@ -24,10 +24,12 @@
   <remote name="openeducat" fetch="https://github.com/ERPLibre/"/>
   <remote name="pledra" fetch="https://github.com/ERPLibre/"/>
   <remote name="tegin" fetch="https://github.com/ERPLibre/"/>
-  
+  <remote name="PolyLabac" fetch="https://github.com/PolyLabac/"/>
+
   <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true"/>
   
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" groups="base"/>
+  <project name="erplibre-addons-polylabac.git" path="addons/PolyLabac_erplibre-addons-polylabac" remote="PolyLabac" groups="base"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="dev_12.0" groups="addons"/>
   <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
   <project name="QuotationRevision.git" path="addons/MathBenTech_QuotationRevision" remote="MathBenTech" groups="addons"/>
