@@ -494,6 +494,13 @@ accorderie_install_accorderie_canada_ddb_website_demo:
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 
+.PHONY: labac_install_labac_website_demo
+labac_install_labac_website_demo:
+	./script/db_restore.py --database labac
+	./script/addons/install_addons.sh labac accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler
+	./script/addons/install_addons_theme.sh labac theme_accorderie_canada
+	./script/addons/install_addons.sh labac demo_accorderie_canada_ddb
+
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram
 accorderie_install_accorderie_canada_ddb_website_demo_diagram:
 	./script/database/db_restore.py --database accorderie
