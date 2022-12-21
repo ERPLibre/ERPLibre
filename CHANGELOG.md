@@ -16,6 +16,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Update to Python==3.7.16
 - Update poetry==1.3.1
 
+### Removed
+
+- Ubuntu 18.04 is broken, need to install manually nodejs and npm
+
 ## [1.4.0] - 2022-10-05
 
 **Migration note**

@@ -89,30 +89,61 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
-curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
-sudo apt-get install -y nodejs
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "apt-get nodejs installation error."
-  exit 1
-fi
-sudo npm install npm@latest -g
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "npm install npm lastest installation error."
-  exit 1
-fi
-sudo npm install -g rtlcss
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "npm install rtlcss installation error."
-  exit 1
-fi
-sudo npm install -g less
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "npm install less installation error."
-  exit 1
+if [ "18.04" == "${UBUNTU_VERSION}" ]; then
+  sudo apt remove nodeJS npm
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.2/install.sh | bash
+  chmod +x ~/.nvm/nvm.sh
+  . $NVM_DIR/nvm.sh && nvm install 16.15.1
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "nvm installation error."
+    exit 1
+  fi
+  source ~/.bashrc
+  npm install npm@latest -g
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install npm lastest installation error."
+    exit 1
+  fi
+  npm install -g rtlcss
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install rtlcss installation error."
+    exit 1
+  fi
+  npm install -g less
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install less installation error."
+    exit 1
+  fi
+else
+  curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
+  sudo apt-get install -y nodejs
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "apt-get nodejs installation error."
+    exit 1
+  fi
+  sudo npm install npm@latest -g
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install npm lastest installation error."
+    exit 1
+  fi
+  sudo npm install -g rtlcss
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install rtlcss installation error."
+    exit 1
+  fi
+  sudo npm install -g less
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "npm install less installation error."
+    exit 1
+  fi
 fi
 
 echo -e "\n---- Test tool ----"
