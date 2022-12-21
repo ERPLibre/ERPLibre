@@ -12,14 +12,16 @@ EL_USER=${USER}
 ## https://github.com/odoo/odoo/wiki/Wkhtmltopdf ):
 # Ubuntu 20.04
 UBUNTU_VERSION=$(lsb_release -rs)
+OS=$(lsb_release -si)
 if [ "20.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
 elif [ "22.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
 elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
+elif [[ "${OS}" == "Debian" ]]; then
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
 else
-  # TODO support debian
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
   exit 1
 fi
