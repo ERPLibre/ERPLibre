@@ -128,6 +128,9 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/pip install vatnumber
     ${VENV_PATH}/bin/pip install suds-jurko
 fi
+${VENV_PATH}/bin/pip install vatnumber
+${VENV_PATH}/bin/pip install suds-jurko
+
 # Delete artifacts created by pip, cause error in next "poetry install"
 rm -rf artifacts
 
