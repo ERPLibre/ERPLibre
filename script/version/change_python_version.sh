@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# $1 new version version, like 3.7.12
+# $1 new version version, like 3.7.16
 
 input=".python-version"
 while IFS= read -r line

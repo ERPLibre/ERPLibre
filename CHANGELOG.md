@@ -13,6 +13,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Changed
 
+- Update to Python==3.7.16
 - Update poetry==1.3.1
 
 ## [1.4.0] - 2022-10-05
