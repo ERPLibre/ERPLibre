@@ -8,7 +8,7 @@ openupgradelib
 unidiff
 colorama
 wheel
-aioshutil
+aioshutil<1.2
 
 # For OSX
 cython
@@ -36,7 +36,7 @@ coverage
 
 # For logical test
 docutils==0.17.1
-flake8
+flake8<6.0.0
 git+https://github.com/oca/pylint-odoo.git
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
@@ -69,6 +69,8 @@ pyproj==3.2.1
 # fix zipp depend on importlib-metadata
 zipp>=3.6.0
 
+# Upgrade psycopg for better support python3
+psycopg2>=2.9.5
 
 # Force update dependency to fix poetry
 # numpy >=1.22 is not compatible with python 3.7
