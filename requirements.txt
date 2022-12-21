@@ -41,7 +41,6 @@ git+https://github.com/oca/pylint-odoo.git
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
 xmlformatter
-html5print
 css-html-prettify
 BeautifulSoup4
 git+https://github.com/psf/black.git@22.3.0
