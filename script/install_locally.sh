@@ -28,12 +28,13 @@ PYENV_PATH=~/.pyenv
 PYTHON_VERSION=3.7.12
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
-POETRY_PATH=~/.poetry
 VENV_PATH=./.venv
 LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
 VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
-POETRY_VERSION=1.1.14
+#POETRY_PATH=~/.local/bin/poetry
+POETRY_PATH=${VENV_PATH}/bin/poetry
+POETRY_VERSION=1.3.1
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
@@ -76,13 +77,12 @@ if [[ ! -d ${VENV_PATH} ]]; then
     fi
 fi
 
-if [[ ! -d "${POETRY_PATH}" ]]; then
-    # Delete directory ~/.poetry and .venv to force update to new version
-    echo -e "\n---- Installing poetry for reliable python package ----"
-#     curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | ${PYTHON_EXEC}
-    curl -fsS -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py
-    ${LOCAL_PYTHON_EXEC} get-poetry.py -y --preview --version ${POETRY_VERSION}
-fi
+#if [[ ! -d "${POETRY_PATH}" ]]; then
+#    # Delete directory ~/.poetry and .venv to force update to new version
+#    echo -e "\n---- Installing poetry ${LOCAL_PYTHON_EXEC} for reliable python package ----"
+#    # TODO self update poetry with `poetry self update ${POETRY_VERSION}`
+#    curl -sSL https://install.python-poetry.org | POETRY_VERSION=${POETRY_VERSION} ${LOCAL_PYTHON_EXEC} - -y
+#fi
 
 # Install git-repo if missing
 if [[ ! -f ${VENV_REPO_PATH} ]]; then
@@ -110,11 +110,23 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 #/home/"${USER}"/.poetry/bin/poetry env use ${LOCAL_PYTHON_EXEC}
 # source $HOME/.poetry/env
 #${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry env use ${VENV_PATH}/bin/python3
-${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-    echo "Poetry installation error."
-    exit 1
+#${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
+#${POETRY_PATH} install
+
+# Delete artifacts created by pip, cause error in next "poetry install"
+if [[ ! -f "${POETRY_PATH}" ]]; then
+    ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
+    ${VENV_PATH}/bin/poetry --version
+    ${VENV_PATH}/bin/poetry lock --no-update
+    ${VENV_PATH}/bin/poetry install
+    retVal=$?
+    if [[ $retVal -ne 0 ]]; then
+        echo "Poetry installation error."
+        exit 1
+    fi
+    # Fix broken poetry by installing ignored dependence
+    ${VENV_PATH}/bin/pip install vatnumber
+    ${VENV_PATH}/bin/pip install suds-jurko
 fi
 # Delete artifacts created by pip, cause error in next "poetry install"
 rm -rf artifacts

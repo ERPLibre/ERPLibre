@@ -27,8 +27,6 @@ factur-x
 websocket-client
 python-stdnum
 python-u2flib_server
-python-dateutil
-python-csv
 python-chess
 python-git
 voicent-python
@@ -75,6 +73,7 @@ zipp>=3.6.0
 # Force update dependency to fix poetry
 # numpy >=1.22 is not compatible with python 3.7
 numpy==1.21.1
+feedparser==6.0.10
 
 # Solve pcodedmp, oletools, rtfde and extract-msg
 win_unicode_console

@@ -7,6 +7,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Migration note**
+
+- Delete poetry at path `~/.poetry` and `./get-poetry.py`, and rerun installation dev with `make install_dev`
+
+## Changed
+
+- Update poetry==1.3.1
+
 ## [1.4.0] - 2022-10-05
 
 **Migration note**
