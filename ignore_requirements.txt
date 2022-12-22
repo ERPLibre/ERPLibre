@@ -17,3 +17,5 @@ swiftclient
 u2flib_server
 voicent
 xlsxwriter
+suds-jurko
+vatnumber

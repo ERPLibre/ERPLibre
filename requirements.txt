@@ -1,14 +1,14 @@
 # For script
 giturlparse
 agithub
-GitPython==3.1.12
+GitPython==3.1.29
 retrying
 xmltodict
 openupgradelib
 unidiff
 colorama
 wheel
-aioshutil
+aioshutil<1.2
 
 # For OSX
 cython
@@ -27,8 +27,6 @@ factur-x
 websocket-client
 python-stdnum
 python-u2flib_server
-python-dateutil
-python-csv
 python-chess
 python-git
 voicent-python
@@ -38,12 +36,11 @@ coverage
 
 # For logical test
 docutils==0.17.1
-flake8
+flake8<6.0.0
 git+https://github.com/oca/pylint-odoo.git
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
 xmlformatter
-html5print
 css-html-prettify
 BeautifulSoup4
 git+https://github.com/psf/black.git@22.3.0
@@ -71,10 +68,13 @@ pyproj==3.2.1
 # fix zipp depend on importlib-metadata
 zipp>=3.6.0
 
+# Upgrade psycopg for better support python3
+psycopg2==2.9.5
 
 # Force update dependency to fix poetry
 # numpy >=1.22 is not compatible with python 3.7
 numpy==1.21.1
+feedparser==6.0.10
 
 # Solve pcodedmp, oletools, rtfde and extract-msg
 win_unicode_console
@@ -91,7 +91,7 @@ pyyaml==6.0
 lxml==4.9.1
 cryptography==36.0.1
 psutil==5.9.0
-Pillow==9.0.1
+Pillow==9.3.0
 Babel==2.9.1
 reportlab==3.6.5
 pycrypto==2.6.1

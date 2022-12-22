@@ -402,6 +402,7 @@ image_db_create_test_website_attachments:
 	./script/db_restore.py --clean_cache
 	./script/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
 	# Do your stuff
+	./.venv/bin/python3 ./odoo/odoo-bin --limit-time-real 999999 --no-http -c config.conf --stop-after-init -d code_generator_test_website_attachements -u all
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database code_generator_test_website_attachements --restore_image test_website_attachments
 
 .PHONY: image_diff_base_website

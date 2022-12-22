@@ -26,3 +26,11 @@ poetry add PYTHON_MODULE
 
 If you got this error `relative path can't be expressed as a file URI` when executing poetry, delete directory
 artifacts: `rm -rf artifacts/` and rerun the update.
+
+## Upgrade Poetry
+
+Change version in file `./script/install_locally.sh` into constant `POETRY_VERSION`.
+
+Erase directory `~/.poetry` and `./get-poetry.py`.
+
+Run installation script for OS, check `./script/install_locally.sh`.

@@ -7,6 +7,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Migration note**
+
+- Delete poetry at path `~/.poetry` and `./get-poetry.py`, and rerun installation dev with `make install_dev`
+
+## Added
+
+- Support Ubuntu 22.04 with installation script
+
+## Changed
+
+- Odoo 12.0 update from 22-07-2020 to 10-10-2022
+- Update pip dependency with security update
+    - Pillow==9.3.0
+    - gitpython==3.1.29
+    - psycopg2==2.9.5
+- Update to Python==3.7.16
+- Update poetry==1.3.1
+- Update imagedb with all Odoo update
+- Repo documentation-user from Odoo change to documentation
+- Repo odooaktiv/QuotationRevision is deleted
+
+### Fixed
+
+- Debian 11 installation script
+
+### Removed
+
+- Ubuntu 18.04 is broken, need to install manually nodejs and npm
+
 ## [1.4.0] - 2022-10-05
 
 **Migration note**
@@ -68,7 +97,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - website_form_builder HTML support and allow option to align send button
 - Odoo cherry-pick 2 commits bus fix
 - Minor fix css color into module hr_theme from repo CybroOdoo_OpenHRMS
-- Typo in project task when logs time
+- Typo in project task when logging time
 
 ### Removed
 
