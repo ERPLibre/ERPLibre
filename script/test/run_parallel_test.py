@@ -11,6 +11,7 @@ import time
 import uuid
 from collections import deque
 from typing import Tuple
+import git
 
 import aioshutil
 from colorama import Fore
@@ -628,9 +629,9 @@ async def test_exec(
         test_result += res
         test_status += status
 
-    test_generated_path = (
-        install_path if destination_path is None else new_destination_path
-    )
+    # test_generated_path = (
+    #     install_path if destination_path is None else new_destination_path
+    # )
     test_generated_path = (
         destination_path if use_test_path_generic else install_path
     )
@@ -930,6 +931,28 @@ async def run_code_generator_website_snippet_test(config) -> Tuple[str, int]:
     test_result += res
     test_status += status
 
+    if "code_generator_demo_website_multiple_snippet" in lst_tested_module:
+        # Because code_generator_demo_website_multiple_snippet depend on code_generator_demo_portal, it will
+        # execute it and this delete file demo_portal/i18n/demo_portal.pot and demo_portal/i18n/fr_CA.po
+        lst_file_is_delete = [
+            "demo_portal/i18n/demo_portal.pot",
+            "demo_portal/i18n/fr_CA.po",
+        ]
+        path_to_check = os.path.join(
+            "addons", "TechnoLibre_odoo-code-generator-template"
+        )
+        repo_demo_portal = git.Repo(path_to_check)
+        status_to_check = repo_demo_portal.git.status("-s")
+        if all([f"D {a}" in status_to_check for a in lst_file_is_delete]):
+            # Revert it
+            for file_name in lst_file_is_delete:
+                repo_demo_portal.git.checkout(file_name)
+        else:
+            test_status += 1
+            test_result += (
+                f"\n\nFAIL - inspect to delete file ${lst_file_is_delete}"
+            )
+
     return test_result, test_status
 
 
@@ -1193,7 +1216,7 @@ def run_all_test(config) -> None:
         run_code_generator_template_demo_internal_inherit_test(config),
         run_code_generator_template_demo_sysadmin_cron_test(config),
         run_code_generator_demo_test(config),
-        # Begin run generic test
+        # Begin to run generic test
         # run_code_generator_generic_all_test(config),
         run_code_generator_data_test(config),
         run_code_generator_export_website_attachments_test(config),
