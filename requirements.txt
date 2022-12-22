@@ -1,7 +1,7 @@
 # For script
 giturlparse
 agithub
-GitPython==3.1.12
+GitPython==3.1.29
 retrying
 xmltodict
 openupgradelib
@@ -69,7 +69,7 @@ pyproj==3.2.1
 zipp>=3.6.0
 
 # Upgrade psycopg for better support python3
-psycopg2>=2.9.5
+psycopg2==2.9.5
 
 # Force update dependency to fix poetry
 # numpy >=1.22 is not compatible with python 3.7
@@ -91,7 +91,7 @@ pyyaml==6.0
 lxml==4.9.1
 cryptography==36.0.1
 psutil==5.9.0
-Pillow==9.0.1
+Pillow==9.3.0
 Babel==2.9.1
 reportlab==3.6.5
 pycrypto==2.6.1
