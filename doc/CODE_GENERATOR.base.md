@@ -698,6 +698,22 @@ make config_gen_all
 ```
 
 <!-- [en] -->
+# Create Code Generator
+
+```bash
+./script/code_generator/new_project.py -d PATH -m MODULE_NAME
+```
+
+<!-- [fr] -->
+# Créer un générateur de code
+
+Le script suivant sert à démarrer projet avec le générateur de code en appuie.
+
+```bash
+./script/code_generator/new_project.py -d CHEMIN -m NOM_DU_MODULE
+```
+
+<!-- [en] -->
 ## Create your first `Code_Generator`
 
 <!-- [fr] -->
