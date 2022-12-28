@@ -785,7 +785,7 @@ format:
 format_code_generator:
 	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
-	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
+	./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
 
 .PHONY: format_erplibre_addons
 format_erplibre_addons:
