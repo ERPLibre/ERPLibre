@@ -36,7 +36,16 @@ def get_config():
         default="./",
         help="Path of repo to change remote, including submodule.",
     )
+    parser.add_argument(
+        "--start_at",
+        dest="start_at",
+        default=0,
+        type=int,
+        help="Index to start the repo update, default 0 to do all the list.",
+    )
     args = parser.parse_args()
+    if args.start_at < 0:
+        raise Exception("Argument start_at need to be 0 or more.")
     return args
 
 
@@ -47,6 +56,8 @@ def main():
     lst_repo = git_tool.get_source_repo_addons(
         repo_path=config.dir, add_repo_root=False
     )
+    if config.start_at >= len(lst_repo):
+        raise Exception(f"Argument start_at need to be less then size of repo '{len(lst_repo)}'")
     lst_repo_organization = [
         git_tool.get_transformed_repo_info_from_url(
             a.get("url"),
@@ -57,14 +68,14 @@ def main():
             revision=a.get("revision"),
             clone_depth=a.get("clone_depth"),
         )
-        for a in lst_repo
+        for a in lst_repo[config.start_at:]
     ]
 
     i = 0
     total = len(lst_repo)
     for repo in lst_repo_organization:
         i += 1
-        print(f"\nNb element {i}/{total} - {repo.path}")
+        print(f"\nNb element {i + config.start_at}/{total} - {repo.path}")
 
         # TODO validate with default to ignore duplicate url, if same remote repo
         if not repo.is_submodule:
