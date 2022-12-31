@@ -2039,14 +2039,19 @@ test = ["unittest2 (>=1.1.0)"]
 
 [[package]]
 name = "mpld3"
-version = "0.3"
+version = "0.5.9"
 description = "D3 Viewer for Matplotlib"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "mpld3-0.3.tar.gz", hash = "sha256:4d455884a211bf99b37ecc760759435c7bb6a5955de47d8daf4967e301878ab7"},
+    {file = "mpld3-0.5.9-py3-none-any.whl", hash = "sha256:cecdd988b24f8d7c7f362b8f72bb91df1a24b1993dd02a958223918a31c31052"},
+    {file = "mpld3-0.5.9.tar.gz", hash = "sha256:d8d228b2911132fd0154e2a49543b7f97247f9851cfe468c6b616f452c676158"},
 ]
+
+[package.dependencies]
+jinja2 = "*"
+matplotlib = "*"
 
 [[package]]
 name = "msgpack"
@@ -2720,14 +2725,14 @@ files = [
 
 [[package]]
 name = "pdf2image"
-version = "1.16.1"
+version = "1.16.2"
 description = "A wrapper around the pdftoppm and pdftocairo command line tools to convert PDF to a PIL Image list."
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pdf2image-1.16.1-py3-none-any.whl", hash = "sha256:f5d14e89505740b5ef4cbee5e3aec08822aeada988bd83cb1848280670867ce2"},
-    {file = "pdf2image-1.16.1.tar.gz", hash = "sha256:788db5a2d3479aa1ed0ff53c8a52fabfe51aff6eb2be7b8bffbf4c1bedcb3547"},
+    {file = "pdf2image-1.16.2-py3-none-any.whl", hash = "sha256:1469335050a17657f94c2f1ef3a23e57807d631ad5bcbaec997c2c42a8186f4a"},
+    {file = "pdf2image-1.16.2.tar.gz", hash = "sha256:86761091eee35f4641ea98dfddb254254361d018be698a199aff7c1d37331803"},
 ]
 
 [package.dependencies]
@@ -5611,4 +5616,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.16"
-content-hash = "be190742876f367e867348adb972f03e24c1e5a083c11e74778012632c9b785a"
+content-hash = "fc025aacb123e6fee32b974d3c2c6f7145e5480715bebad6dae4e6b052573db7"
