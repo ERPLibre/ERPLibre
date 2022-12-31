@@ -298,7 +298,7 @@ image_db_create_erplibre_package_field_service:
 image_db_create_erplibre_package_helpdesk:
 	# Depend on image_db_create_erplibre_base
 	./script/make.sh image_db_create_erplibre_base
-	./script/addons/install_addons.sh image_creation helpdesk_mailing_list,helpdesk_join_team,helpdesk_mgmt,helpdesk_mgmt_project,helpdesk_motive,helpdesk_mrp,helpdesk_partner,helpdesk_service_call,helpdesk_supplier,helpdesk_type
+	./script/addons/install_addons.sh image_creation helpdesk_mailing_list,helpdesk_join_team,helpdesk_mgmt,helpdesk_mgmt_project,helpdesk_motive,helpdesk_type,helpdesk_mgmt_timesheet,helpdesk_mgmt_timesheet_time_control,helpdesk_mgmt_partner_sequence,helpdesk_mgmt_sla
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation --restore_image erplibre_package_helpdesk
 
 .PHONY: image_db_create_erplibre_package_hr
