@@ -58,6 +58,10 @@ cloudflare
 click
 emoji
 
+# Fix bug geoengine
+# https://github.com/OCA/geospatial/issues/318
+shapely==1.8.5
+
 # Code generator
 # TODO OCA_server-backend force 2.0.1 because don't want 2.0.2
 mysqlclient==2.1.1
