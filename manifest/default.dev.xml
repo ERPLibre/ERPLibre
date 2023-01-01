@@ -113,7 +113,7 @@
   <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
