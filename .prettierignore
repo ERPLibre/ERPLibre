@@ -1,0 +1,14 @@
+# Ignore artifacts:
+build
+.coverage
+.repo
+.venv
+
+# Ignore specific file
+*.svg
+
+# Ignore folder
+addons/TechnoLibre_odoo-code-generator/code_generator_website_leaflet/static/src/js
+addons/TechnoLibre_odoo-code-generator/code_generator_website_leaflet/static/src/scss
+addons/TechnoLibre_odoo-code-generator/enhanced_crud/static/libs
+addons/TechnoLibre_odoo-code-generator/enhanced_crud/static/src/css/jquery-context-menu

@@ -19,3 +19,4 @@ voicent
 xlsxwriter
 suds-jurko
 vatnumber
+dns

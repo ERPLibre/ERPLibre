@@ -9,11 +9,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **Migration note**
 
-- Delete poetry at path `~/.poetry` and `./get-poetry.py`, and rerun installation dev with `make install_dev`
+Because new update of Python and Poetry, recreate virtual environment.
+
+```bash
+rm -r ~/.poetry
+rm -r ~/.pyenv
+
+rm ./get-poetry.py
+rm -r ./.venv
+
+make install
+```
+
+Uninstall module contract_portal.
+
+```bash
+./run.sh --no-http --stop-after-init -d DATABASE --uninstall contract_portal
+```
+
+Do a backup of your database and update all module :
+
+```bash
+./run.sh --no-http --stop-after-init -d DATABASE -u all
+```
 
 ## Added
 
 - Support Ubuntu 22.04 with installation script
+- Module mail_history and fetchmail_thread_default in base image DB
+- Makefile can generate image DB in parallel with `image_db_create_all_parallel`
 
 ## Changed
 
@@ -27,6 +51,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Update imagedb with all Odoo update
 - Repo documentation-user from Odoo change to documentation
 - Repo odooaktiv/QuotationRevision is deleted
+- Update all repo (91) to end of 2022
 
 ### Fixed
 
@@ -35,6 +60,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 
 - Ubuntu 18.04 is broken, need to install manually nodejs and npm
+- Module contract_portal and remove signature in portal contract, need an update
+- Downgrade helpdesk_mgmt to remove email team and tracking field
+    - Remove helpdesk_partner
+    - Remove helpdesk_service_call
+    - Remove helpdesk_supplier
+    - Remove helpdesk_mrp
+    - Remove helpdesk_mailing_list
+    - Remove helpdesk_join_team
 
 ## [1.4.0] - 2022-10-05
 

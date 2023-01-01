@@ -235,6 +235,12 @@ TODO
 make config_gen_all
 ```
 
+# Create Code Generator
+
+```bash
+./script/code_generator/new_project.py -d PATH -m MODULE_NAME
+```
+
 ## Create your first `Code_Generator`
 
 Edit [Code Generator Demo](./../addons/TechnoLibre_odoo-code-generator/code_generator_demo/hooks.py) and update `# TODO HUMAN:`

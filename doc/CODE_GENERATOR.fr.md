@@ -470,6 +470,14 @@ Pour revenir à la configuration normale, en production, exécuter :
 make config_gen_all
 ```
 
+# Créer un générateur de code
+
+Le script suivant sert à démarrer projet avec le générateur de code en appuie.
+
+```bash
+./script/code_generator/new_project.py -d CHEMIN -m NOM_DU_MODULE
+```
+
 ## Créer votre premier `Code_Generator`
 
 Modifier [Code Generator Demo](./../addons/TechnoLibre_odoo-code-generator/code_generator_demo/hooks.py) et mettre à jour `# TODO HUMAN:`

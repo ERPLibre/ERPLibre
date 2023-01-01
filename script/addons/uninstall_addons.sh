@@ -10,6 +10,9 @@ if [[ $retVal -ne 0 ]]; then
   echo "Error check_addons_exist.py into uninstall_addons.sh"
   exit 1
 fi
+
+echo "Uninstall module '$2' on BD '$1'"
+
 if [[ $# -eq 3 ]]; then
   ./run.sh --no-http --stop-after-init -d "$1" --uninstall "$2" "$3"
 else

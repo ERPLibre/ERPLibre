@@ -29,7 +29,7 @@
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" revision="12.0" clone-depth="1" groups="base"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="dev_12.0" groups="addons"/>
   <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
-  <project name="QuotationRevision.git" path="addons/odooaktiv_QuotationRevision" remote="odooaktiv" groups="addons"/>
+  <project name="QuotationRevision.git" path="addons/MathBenTech_QuotationRevision" remote="MathBenTech" groups="addons"/>
   <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" revision="12.0_dev" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
@@ -39,7 +39,7 @@
   <project name="account-financial-tools.git" path="addons/OCA_account-financial-tools" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="account-fiscal-rule.git" path="addons/OCA_account-fiscal-rule" remote="OCA" groups="addons"/>
   <project name="account-invoice-reporting.git" path="addons/OCA_account-invoice-reporting" remote="OCA" groups="addons"/>
-  <project name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" revision="12.0_dev" groups="addons"/>
+  <project name="account-invoicing.git" path="addons/OCA_account-invoicing" remote="OCA" groups="addons"/>
   <project name="account-payment.git" path="addons/OCA_account-payment" remote="OCA" groups="addons"/>
   <project name="account-reconcile.git" path="addons/OCA_account-reconcile" remote="OCA" groups="addons"/>
   <project name="apps-store.git" path="addons/OCA_apps-store" remote="OCA" groups="addons"/>
@@ -106,14 +106,14 @@
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
-  <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-module-migrator.git" path="script/OCA_odoo-module-migrator" remote="OCA" revision="master" groups="odoo"/>
   <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="12.0_dev" groups="addons,base,image_db"/>
   <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-survey-addons.git" path="addons/Numigi_odoo-survey-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
@@ -144,7 +144,7 @@
   <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
   <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="12.0_dev" groups="addons,base"/>
   <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons,base,image_db"/>
-  <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" groups="addons"/>
+  <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons,base"/>
   <project name="server-env.git" path="addons/OCA_server-env" remote="OCA" groups="addons"/>
   <project name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" revision="12.0_dev" groups="addons,base"/>
