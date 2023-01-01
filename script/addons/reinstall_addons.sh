@@ -10,12 +10,17 @@ if [[ $retVal -ne 0 ]]; then
   echo "Error check_addons_exist.py into reinstall_addons_dev.sh"
   exit 1
 fi
+
+echo "Uninstall module '$2' on BD '$1'"
+
 if [[ $# -eq 3 ]]; then
   ./script/addons/uninstall_addons.sh "$1" "$2" "$3"
 else
   ./script/addons/uninstall_addons.sh "$1" "$2"
 fi
 # Ignore if not uninstall
+echo "Install module '$2' on BD '$1'"
+
 if [[ $# -eq 3 ]]; then
   ./script/addons/install_addons_dev.sh "$1" "$2" "$3"
 else

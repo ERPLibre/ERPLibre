@@ -10,6 +10,9 @@ if [[ $retVal -ne 0 ]]; then
   echo "Error check_addons_exist.py into coverage_install_addons.sh"
   exit 1
 fi
+
+echo "Install module '$2' on BD '$1'"
+
 if [[ $# -eq 3 ]]; then
   ./coverage_run.sh --no-http --stop-after-init -d "$1" -i "$2" -u "$2" -c "$3"
 else
