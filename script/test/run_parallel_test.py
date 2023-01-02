@@ -798,11 +798,11 @@ async def run_code_generator_data_test(config) -> Tuple[str, int]:
     test_status = 0
     lst_generated_module = [
         "demo_helpdesk_data",
-        "demo_website_data",
+        # "demo_website_data",
     ]
     lst_tested_module = [
         "code_generator_demo_export_helpdesk",
-        "code_generator_demo_export_website",
+        # "code_generator_demo_export_website",
     ]
     # Multiple
     res, status = await test_exec(
@@ -811,6 +811,31 @@ async def run_code_generator_data_test(config) -> Tuple[str, int]:
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_data_test",
+        run_in_sandbox=True,
+    )
+    test_result += res
+    test_status += status
+
+    return test_result, test_status
+
+
+async def run_code_generator_data_test_part_2(config) -> Tuple[str, int]:
+    # TODO merge this test into run_code_generator_data_test
+    test_result = ""
+    test_status = 0
+    lst_generated_module = [
+        "demo_website_data",
+    ]
+    lst_tested_module = [
+        "code_generator_demo_export_website",
+    ]
+    # Multiple
+    res, status = await test_exec(
+        config,
+        "./addons/TechnoLibre_odoo-code-generator-template",
+        generated_module=",".join(lst_generated_module),
+        tested_module=",".join(lst_tested_module),
+        test_name="code_generator_data_part_2_test",
         run_in_sandbox=True,
     )
     test_result += res
@@ -1219,6 +1244,7 @@ def run_all_test(config) -> None:
         # Begin to run generic test
         # run_code_generator_generic_all_test(config),
         run_code_generator_data_test(config),
+        run_code_generator_data_test_part_2(config),
         run_code_generator_export_website_attachments_test(config),
         run_code_generator_theme_test(config),
         run_code_generator_website_snippet_test(config),
