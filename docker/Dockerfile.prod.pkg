@@ -22,6 +22,8 @@ RUN cd ; mkdir -p .bin/ && \
     git config --global user.name "Foo Bar" && \
     if [ "$BRANCH_ERPLIBRE" = "HEAD" ]; then git clone $REPO_MANIFEST_URL $ODOO_PREFIX ; else git clone $REPO_MANIFEST_URL -b $BRANCH_ERPLIBRE $ODOO_PREFIX; fi && \
     cd $ODOO_PREFIX && \
+    # fatal: detected dubious ownership in repository at '/ERPLibre'
+    git config --global --add safe.directory /ERPLibre && \
     git checkout $COMMIT_ERPLIBRE
 
 RUN cd $ODOO_PREFIX && \
@@ -36,14 +38,12 @@ RUN cd $ODOO_PREFIX && \
 
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
-    curl -sSL -o get-poetry.py https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py && \
-    ./.venv/bin/python get-poetry.py -y --preview --version 1.1.14
-
-RUN cd $ODOO_PREFIX && \
     ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/python ~/.poetry/bin/poetry install && \
-    rm -rf artifacts && \
-    rm -rf ~/.poetry
+    ./.venv/bin/pip install vatnumber && \
+    ./.venv/bin/pip install suds-jurko && \
+    ./.venv/bin/pip install poetry==1.3.1 && \
+    ./.venv/bin/poetry --version && \
+    ./.venv/bin/poetry install
 
 RUN cd $ODOO_PREFIX/.venv && \
     curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ./multilang_md.py && \

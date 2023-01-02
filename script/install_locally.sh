@@ -124,10 +124,8 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
         echo "Poetry installation error."
         exit 1
     fi
-    # Fix broken poetry by installing ignored dependence
-    ${VENV_PATH}/bin/pip install vatnumber
-    ${VENV_PATH}/bin/pip install suds-jurko
 fi
+# Fix broken poetry by installing ignored dependence
 ${VENV_PATH}/bin/pip install vatnumber
 ${VENV_PATH}/bin/pip install suds-jurko
 

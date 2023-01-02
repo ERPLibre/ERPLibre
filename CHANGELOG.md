@@ -21,12 +21,6 @@ rm -r ./.venv
 make install
 ```
 
-Uninstall module contract_portal.
-
-```bash
-./run.sh --no-http --stop-after-init -d DATABASE --uninstall contract_portal
-```
-
 Do a backup of your database and update all module :
 
 ```bash
@@ -52,6 +46,8 @@ Do a backup of your database and update all module :
 - Repo documentation-user from Odoo change to documentation
 - Repo odooaktiv/QuotationRevision is deleted
 - Update all repo (91) to end of 2022
+- Rename module project_task_subtask_time_range => project_time_budget
+- Rename module project_task_time_range => project_time_range
 
 ### Fixed
 
@@ -61,13 +57,14 @@ Do a backup of your database and update all module :
 
 - Ubuntu 18.04 is broken, need to install manually nodejs and npm
 - Module contract_portal and remove signature in portal contract, need an update
-- Downgrade helpdesk_mgmt to remove email team and tracking field
-    - Remove helpdesk_partner
-    - Remove helpdesk_service_call
-    - Remove helpdesk_supplier
-    - Remove helpdesk_mrp
-    - Remove helpdesk_mailing_list
-    - Remove helpdesk_join_team
+- Downgrade module helpdesk_mgmt to remove email team and tracking field
+    - Module helpdesk_partner
+    - Module helpdesk_service_call
+    - Module helpdesk_supplier
+    - Module helpdesk_mrp
+    - Module helpdesk_mailing_list
+    - Module helpdesk_join_team
+- Module project_time_management
 
 ## [1.4.0] - 2022-10-05
 

@@ -190,3 +190,19 @@ You can validate in log the update, you need to find `odoo.modules.loading: upda
 ```bash
 docker-compose logs -f
 ```
+
+## Update all
+
+Do a backup on url https://HOST/web/database/manager
+
+Edit the docker-compose.yml and update the command line (change DATABASE) to :
+
+```yaml
+    command: odoo --workers 2 -u all -d DATABASE
+```
+
+Watch log to see error, if you got error, you need to do some code to migrate your data, depend the case.
+
+```bash
+make docker_show_logs_live
+```
