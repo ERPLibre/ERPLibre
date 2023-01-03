@@ -8,9 +8,6 @@ import zipfile
 
 from colorama import Fore, Style
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(new_path)
-
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)

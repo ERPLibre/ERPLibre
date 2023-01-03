@@ -9,8 +9,8 @@ do
   sed -i -e "s/$line/$1/g" ./.python-version
   sed -i -e "s/$line/$1/g" ./docker/Dockerfile.base
   sed -i -e "s/$line/$1/g" ./docker/python-versions.txt
-  sed -i -e "s/$line/$1/g" ./script/install_locally.sh
-  sed -i -e "s/$line/$1/g" ./script/install_OSX_dependency.sh
+  sed -i -e "s/$line/$1/g" ./script/install/install_locally.sh
+  sed -i -e "s/$line/$1/g" ./script/install/install_OSX_dependency.sh
   sed -i -e "s/$line/$1/g" ./pyproject.toml
 done < "$input"
 

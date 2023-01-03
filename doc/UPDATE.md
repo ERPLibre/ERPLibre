@@ -8,20 +8,20 @@ The update is possible on branch 12.0, you need to verify this branch existence.
    regenerate.
 
 ```bash
-./script/clean_repo_manifest.sh
-./script/install_locally_dev.sh
+./script/git/clean_repo_manifest.sh
+./script/install/install_locally_dev.sh
 ```
 
 2. Update all remote with ssh/git
 
 ```bash
-./script/git_change_remote_https_to_git.py
+./script/git/git_change_remote_https_to_git.py
 ```
 
 3. Run update script
 
 ```bash
-./script/git_update_repo.py
+./script/git/git_update_repo.py
 ```
 
 4. Do a forced push on all needed repo and manage rebase conflicts.

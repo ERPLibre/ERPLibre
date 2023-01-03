@@ -13,7 +13,7 @@ The example works with application Helpdesk, install module `helpdesk_mgmt`.
 You need to run with specified database, and you can run the example script.
 
 ```bash
-./script/db_restore.py --database test
+./script/database/db_restore.py --database test
 ./script/addons/install_addons.sh test restful,helpdesk_mgmt
 ./run.sh -d test
 ```

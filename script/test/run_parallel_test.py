@@ -571,7 +571,7 @@ async def test_exec(
     if not test_status:
         # Create database
         res, status = await run_command(
-            "./script/db_restore.py",
+            "./script/database/db_restore.py",
             "--database",
             unique_database_name,
             "--image",

@@ -589,7 +589,7 @@ Supposons que le nom de votre BD est `test_website` :
 
 ```bash
 ./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test_website --restore_image test_website_backup
-./script/db_restore.py --database test_website_2 --image test_website_backup.zip --clean_cache
+./script/database/db_restore.py --database test_website_2 --image test_website_backup.zip --clean_cache
 ```
 
 Un fichier temporaire `./image_db/test_website_backup.zip` a été créé, vous pouvez aller l'effacer.

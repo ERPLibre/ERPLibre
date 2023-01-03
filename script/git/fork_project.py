@@ -7,11 +7,11 @@ import sys
 from git import Repo
 from retrying import retry  # pip install retrying
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(new_path)
 
 from script import fork_github_repo
-from script.git_tool import GitTool
+from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
 CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
