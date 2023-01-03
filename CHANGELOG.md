@@ -331,7 +331,7 @@ Because addons repository has change, config file need to be updated.
 - Improved documentation with development and production environment
 - Improved documentation with git repo
 - Move default.xml manifest to root, the default location
-- Support default.stage.xml to update prod with dev
+- Support default.staged.xml to update prod with dev
 - Feature to show diff between manifests or between repo of different manifests
 - Update manifest
     - Muk theme in erplibre_base
