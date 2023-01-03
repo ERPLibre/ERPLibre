@@ -1,0 +1,12 @@
+.venv
+.repo
+script/OCA_maintainer-tools
+script/OCA_odoo-module-migrator
+image_db
+doc/itpp-labs_odoo-development
+doc/itpp-labs_odoo-port-docs
+doc/itpp-labs_odoo-test-docs
+doc/odoo_documentation-user
+artifacts
+cache
+htmlcov
