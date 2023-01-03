@@ -8,7 +8,9 @@ import sys
 import git
 from unidiff import PatchSet
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 sys.path.append(new_path)
 
 logging.basicConfig(

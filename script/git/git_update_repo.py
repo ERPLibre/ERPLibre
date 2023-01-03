@@ -7,7 +7,9 @@ import sys
 from git import Repo  # pip install gitpython
 from retrying import retry  # pip install retrying
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
@@ -57,7 +59,10 @@ def main():
         repo_path=config.dir, add_repo_root=False
     )
     if config.start_at >= len(lst_repo):
-        raise Exception(f"Argument start_at need to be less then size of repo '{len(lst_repo)}'")
+        raise Exception(
+            "Argument start_at need to be less then size of repo"
+            f" '{len(lst_repo)}'"
+        )
     lst_repo_organization = [
         git_tool.get_transformed_repo_info_from_url(
             a.get("url"),
@@ -68,7 +73,7 @@ def main():
             revision=a.get("revision"),
             clone_depth=a.get("clone_depth"),
         )
-        for a in lst_repo[config.start_at:]
+        for a in lst_repo[config.start_at :]
     ]
 
     i = 0

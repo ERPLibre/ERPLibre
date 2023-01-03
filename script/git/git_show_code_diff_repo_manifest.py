@@ -9,7 +9,9 @@ from colorama import Fore, Style
 from git import Repo
 from git.exc import GitCommandError, NoSuchPathError
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool

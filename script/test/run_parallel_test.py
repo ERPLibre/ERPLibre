@@ -11,9 +11,9 @@ import time
 import uuid
 from collections import deque
 from typing import Tuple
-import git
 
 import aioshutil
+import git
 from colorama import Fore
 
 logging.basicConfig(level=logging.DEBUG)

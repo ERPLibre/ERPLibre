@@ -4,7 +4,9 @@ import logging
 import os
 import sys
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
