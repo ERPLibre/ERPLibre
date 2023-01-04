@@ -55,6 +55,14 @@ run_code_generator:
 	# -$(BROWSER) http://localhost:8069
 	./run.sh --database code_generator
 
+.PHONY: run_parallel_cg
+run_parallel_cg:
+	parallel < ./conf/list_cg_test.txt
+
+.PHONY: run_parallel_cg_template
+run_parallel_cg_template:
+	parallel < ./conf/list_cg_template_test.txt
+
 #############
 #  INSTALL  #
 #############

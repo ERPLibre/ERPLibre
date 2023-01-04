@@ -1,0 +1,6 @@
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_internal
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_internal_inherit
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_mariadb_sql_example_1
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_portal
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_sysadmin_cron
+./script/addons/install_addons_restore_dev.sh code_generator_template_demo_website_snippet
