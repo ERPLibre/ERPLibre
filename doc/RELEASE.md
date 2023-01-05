@@ -8,19 +8,19 @@ Before the cleaning, check if existing file isn't committed, not pushed or in st
 
 ```bash
 ./.venv/repo forall -pc "git stash list"
-./script/git_show_code_diff_repo_manifest.py
+./script/git/git_show_code_diff_repo_manifest.py
 ```
 
 This will erase everything in addons. Useful before creating docker, manifest and do a release.
 
 ```bash
-./script/clean_repo_manifest.sh
+./script/git/clean_repo_manifest.sh
 ```
 
 And update all from dev to merge into prod.
 
 ```bash
-./script/install_locally_dev.sh
+./script/install/install_locally_dev.sh
 ```
 
 ## Validate environment
@@ -91,8 +91,8 @@ make image_db_create_all
 To test it, you need to clean caches and install it:
 
 ```bash
-./script/db_restore.py --clean_cache
-./script/db_restore.py --database test --image erplibre_website
+./script/database/db_restore.py --clean_cache
+./script/database/db_restore.py --database test --image erplibre_website
 ```
 
 ## Generate new prod and release
@@ -109,10 +109,11 @@ and [docker-compose](../docker-compose.yml).
 Generate [poetry](./POETRY.md) and keep only missing dependencies, remove updates.
 
 ```bash
-./script/poetry_update.py
+./script/poetry/poetry_update.py
 ```
 
-When running script poetry_update.py, note manually inserted dependencies, stash all changes and add it manually.
+When running script ./script/poetry/poetry_update.py, note manually inserted dependencies, stash all changes and add it
+manually.
 
 ```bash
 poetry add DEPENDENCY
@@ -195,5 +196,5 @@ CHANGELOG.md.
 To generate a list of differences between repo git commit
 
 ```bash
-./script/git_change_remote.py --sync_to /path/to/directory
+./script/git/git_change_remote.py --sync_to /path/to/directory
 ```

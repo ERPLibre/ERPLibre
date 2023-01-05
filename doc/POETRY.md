@@ -5,7 +5,7 @@
 Add your dependencies in file [requirements.txt](../requirements.txt) and run script
 
 ```bash
-./script/poetry_update.py
+./script/poetry/poetry_update.py
 ```
 
 This will search all `requirements.txt` files and update `pyproject.toml` and it will update poetry
@@ -29,8 +29,8 @@ artifacts: `rm -rf artifacts/` and rerun the update.
 
 ## Upgrade Poetry
 
-Change version in file `./script/install_locally.sh` into constant `POETRY_VERSION`.
+Change version in file `./script/install/install_locally.sh` into constant `POETRY_VERSION`.
 
 Erase directory `~/.poetry` and `./get-poetry.py`.
 
-Run installation script for OS, check `./script/install_locally.sh`.
+Run installation script for OS, check `./script/install/install_locally.sh`.

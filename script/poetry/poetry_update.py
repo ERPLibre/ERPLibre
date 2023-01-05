@@ -10,11 +10,6 @@ from pathlib import Path
 import iscompatible
 import toml
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.append(new_path)
-
-from script import git_tool
-
 _logger = logging.getLogger(__name__)
 
 
@@ -24,8 +19,6 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = git_tool.GitTool.get_project_config()
-
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
@@ -368,7 +361,7 @@ def call_poetry_add_build_dependency():
 
     :return: True if success
     """
-    status = os.system("./script/poetry_add_build_dependency.sh")
+    status = os.system("./script/poetry/poetry_add_build_dependency.sh")
     return status == 0
 
 

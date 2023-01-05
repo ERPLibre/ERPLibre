@@ -259,7 +259,7 @@ class GitTool:
         lst_repo = []
         with open(filename) as xml:
             xml_as_string = xml.read()
-            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
         default_remote = dct_manifest.get("default").get("@remote")
         lst_remote = dct_manifest.get("remote")
@@ -342,7 +342,7 @@ class GitTool:
             filename = f"{repo_path}/{manifest_file}"
         with open(filename) as xml:
             xml_as_string = xml.read()
-            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
         default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
@@ -721,7 +721,7 @@ class GitTool:
         file = f"{repo_path}/.repo/manifest.xml"
         with open(file) as xml:
             xml_as_string = xml.read()
-            xml_dict = xmltodict.parse(xml_as_string, dict_constructor=dict)
+            xml_dict = xmltodict.parse(xml_as_string)
             manifest_filename = (
                 xml_dict.get("manifest").get("include").get("@name")
             )

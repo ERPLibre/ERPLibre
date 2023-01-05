@@ -32,6 +32,8 @@ Do a backup of your database and update all module :
 - Support Ubuntu 22.04 with installation script
 - Module mail_history and fetchmail_thread_default in base image DB
 - Makefile can generate image DB in parallel with `image_db_create_all_parallel`
+- Makefile can run all code_generator with `run_parallel_cg` and `run_parallel_cg_template`
+- Script to generate Pycharm configuration and exclude directory
 
 ## Changed
 
@@ -48,6 +50,7 @@ Do a backup of your database and update all module :
 - Update all repo (91) to end of 2022
 - Rename module project_task_subtask_time_range => project_time_budget
 - Rename module project_task_time_range => project_time_range
+- Refactor script emplacement, create directory in ./script/ per subject
 
 ### Fixed
 
@@ -331,7 +334,7 @@ Because addons repository has change, config file need to be updated.
 - Improved documentation with development and production environment
 - Improved documentation with git repo
 - Move default.xml manifest to root, the default location
-- Support default.stage.xml to update prod with dev
+- Support default.staged.xml to update prod with dev
 - Feature to show diff between manifests or between repo of different manifests
 - Update manifest
     - Muk theme in erplibre_base

@@ -7,10 +7,12 @@ import sys
 from git import Repo
 from retrying import retry  # pip install retrying
 
-new_path = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
 sys.path.append(new_path)
 
-from script import git_tool
+from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
 CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
@@ -22,7 +24,7 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = git_tool.GitTool.get_project_config()
+    config = GitTool.get_project_config()
 
     # TODO update description
     parser = argparse.ArgumentParser(
@@ -83,14 +85,14 @@ def main():
 
     if config.generate_only_generate_config:
         print("Generate config file locally.")
-        gt = git_tool.GitTool()
+        gt = GitTool()
         gt.generate_generate_config()
         return
 
     if config.sync_to:
         if config.sync_to[-1] != "/":
             config.sync_to += "/"
-        gt = git_tool.GitTool()
+        gt = GitTool()
         result = gt.get_matching_repo(
             repo_compare_to=config.sync_to,
             force_normalize_compare=True,
@@ -100,7 +102,7 @@ def main():
         return
 
     # repo_root = Repo(".")
-    lst_repo = git_tool.GitTool.get_repo_info(repo_path=config.dir)
+    lst_repo = GitTool.get_repo_info(repo_path=config.dir)
     i = 0
     total = len(lst_repo)
     for repo in lst_repo:
@@ -112,7 +114,7 @@ def main():
         organization_name = "ERPLibre"
 
         if config.open_web_browser:
-            git_tool.GitTool.open_repo_web_browser(repo.get("url_https"))
+            GitTool.open_repo_web_browser(repo.get("url_https"))
 
         # Create the remote upstream
         split_url = url.split("/")

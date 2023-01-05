@@ -38,22 +38,22 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 #### Ubuntu 18.04 server
 
 ```bash
-./script/install_dev.sh
-./script/install_production.sh
+./script/install/install_dev.sh
+./script/install/install_production.sh
 ```
 
-A service is runned by SystemD. You can access it with the DNS name found in `env_var.sh`
+A service is running by SystemD. You can access it with the DNS name found in `env_var.sh`
 
 #### Ubuntu 20.04 server
 
 Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
 
 ```bash
-./script/install_dev.sh
-./script/install_production.sh
+./script/install/install_dev.sh
+./script/install/install_production.sh
 ```
 
-A service is runned by SystemD, you can access it with the DNS name found in `env_var.sh`
+A service is running by SystemD, you can access it with the DNS name found in `env_var.sh`
 
 ### 4. SSL:
 
@@ -101,7 +101,7 @@ When moving prod database to your dev environment, you want to remove email serv
 database. WARNING, this is not safe for production, you will expose all data. Run:
 
 ```bash
-./script/migrate_prod_to_test.sh DATABASE
+./script/database/migrate_prod_to_test.sh DATABASE
 ```
 
 ## Update production
@@ -125,7 +125,7 @@ Edit this file to accept interface from all networks:
 CAUTION, this will delete user's home, it's irrevocable.
 
 ```bash
-./script/delete_production.sh
+./script/database/delete_production.sh
 ```
 
 # Update ip when public ip change with CloudFlare and crontab

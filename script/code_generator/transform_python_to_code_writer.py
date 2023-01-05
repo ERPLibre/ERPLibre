@@ -7,7 +7,7 @@ import sys
 
 from code_writer import CodeWriter
 
-from script.git_tool import GitTool
+from script.git.git_tool import GitTool
 
 # import tokenize
 

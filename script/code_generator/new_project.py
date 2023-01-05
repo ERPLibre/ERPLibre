@@ -320,7 +320,7 @@ class ProjectManagement:
         config_path = self.update_config()
 
         bd_name_demo = f"new_project_code_generator_demo_{uuid.uuid4()}"[:63]
-        cmd = f"./script/db_restore.py --database {bd_name_demo}"
+        cmd = f"./script/database/db_restore.py --database {bd_name_demo}"
         _logger.info(cmd)
         os.system(cmd)
         _logger.info("========= GENERATE code_generator_demo =========")
@@ -371,7 +371,7 @@ class ProjectManagement:
         bd_name_template = (
             f"new_project_code_generator_template_{uuid.uuid4()}"[:63]
         )
-        cmd = f"./script/db_restore.py --database {bd_name_template}"
+        cmd = f"./script/database/db_restore.py --database {bd_name_template}"
         os.system(cmd)
         _logger.info(cmd)
         _logger.info(f"========= GENERATE {self.template_name} =========")
@@ -426,7 +426,7 @@ class ProjectManagement:
             _logger.info(f"Module cg exists '{cg_path}'")
 
         bd_name_generator = f"new_project_code_generator_{uuid.uuid4()}"[:63]
-        cmd = f"./script/db_restore.py --database {bd_name_generator}"
+        cmd = f"./script/database/db_restore.py --database {bd_name_generator}"
         _logger.info(cmd)
         os.system(cmd)
         _logger.info(f"========= GENERATE {self.cg_name} =========")

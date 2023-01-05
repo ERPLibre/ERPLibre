@@ -1,0 +1,15 @@
+./script/addons/install_addons_restore_dev.sh code_generator_template_code_generator
+./script/addons/install_addons_restore_dev.sh code_generator_auto_backup
+./script/addons/install_addons_restore_dev.sh code_generator_demo
+./script/addons/install_addons_restore_dev.sh code_generator_demo_export_helpdesk
+./script/addons/install_addons_restore_dev.sh code_generator_demo_export_website
+./script/addons/install_addons_restore_dev.sh code_generator_demo_export_website_attachments
+./script/addons/install_addons_restore_dev.sh code_generator_demo_portal
+./script/addons/install_addons_restore_dev.sh code_generator_demo_internal
+./script/addons/install_addons_restore_dev.sh code_generator_demo_internal_inherit
+./script/addons/install_addons_restore_dev.sh code_generator_demo_mariadb_sql_example_1
+./script/addons/install_addons_restore_dev.sh code_generator_demo_theme_website
+./script/addons/install_addons_restore_dev.sh code_generator_demo_website_leaflet
+./script/addons/install_addons_restore_dev.sh code_generator_demo_website_multiple_snippet
+./script/addons/install_addons_restore_dev.sh code_generator_demo_website_snippet
+./script/addons/install_addons_restore_dev.sh code_generator_migrator_demo_mariadb_sql_example_1

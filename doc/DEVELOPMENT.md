@@ -14,8 +14,8 @@ git clone https://github.com/ERPLibre/ERPLibre.git
 
 ```bash
 cd ERPLibre
-./script/install_dev.sh
-./script/install_locally_dev.sh
+./script/install/install_dev.sh
+./script/install/install_locally_dev.sh
 ```
 
 ### 3. Run ERPLibre
@@ -27,15 +27,15 @@ cd ERPLibre
 ## Develop in Odoo repository
 
 You need to remove `clone-depth="10"` from `./manifest/default.dev.xml` in order to be able to commit and push. Make a
-temporary commit and regenerate with `./script/install_locally_dev.sh`
+temporary commit and regenerate with `./script/install/install_locally_dev.sh`
 
-## Fork project to create a new project independent from ERPLibre (deprecated)
+## Fork project to create a new project independent of ERPLibre (deprecated)
 
 ERPLibre was created with this script. It's now deprecated. Use this script when you need to fork directly from the
 original source. Don't use this script if you want to update from ERPLibre and follow mainstream development.
 
 ```bash
-./script/fork_project.py --github_token GITHUB_KEY --organization NAME
+./script/git/fork_project.py --github_token GITHUB_KEY --organization NAME
 ```
 
 # Fork all repos for you own organization
@@ -46,7 +46,7 @@ personal account and choose your user name.
 This command will fork all repos and ERPLibre to your own organization. It keeps track of ERPLibre.
 
 ```bash
-./script/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
+./script/git/fork_project_ERPLibre.py --github_token GITHUB_KEY --organization NAME
 ```
 
 ## Generate manifest from csv repo
@@ -56,7 +56,7 @@ Add repo in file [./source_repo_addons.csv](./source_repo_addons.csv)
 Execute to generate Repo manifest
 
 ```bash
-./script/fork_project_ERPLibre.py --skip_fork
+./script/git/fork_project_ERPLibre.py --skip_fork
 ```
 
 ## Move database from prod to dev
@@ -68,7 +68,7 @@ When moving database from prod to your dev environment, you want to remove email
 in order to test the database. Run:
 
 ```bash
-./script/migrate_prod_to_test.sh DATABASE
+./script/database/migrate_prod_to_test.sh DATABASE
 ```
 
 ## Change git url https to Git
@@ -76,7 +76,7 @@ in order to test the database. Run:
 This will update all urls in Git format:
 
 ```bash
-./script/git_change_remote_https_to_git.py
+./script/git/git_change_remote_https_to_git.py
 ```
 
 ## Showing repo differences between projects
@@ -84,7 +84,7 @@ This will update all urls in Git format:
 Tools to display the differences between the repo and another project.
 
 ```bash
-./script/git_change_remote.py --sync_to /path/to/project/erplibre --dry_sync
+./script/git/git_change_remote.py --sync_to /path/to/project/erplibre --dry_sync
 ```
 
 ## Showing repo differences with manifest develop
@@ -92,7 +92,7 @@ Tools to display the differences between the repo and another project.
 To understand the divergences with the dev manifest.
 
 ```bash
-./script/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+./script/git/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
 ```
 
 ## Sync repo with another project
@@ -101,7 +101,7 @@ Tools to synchronise the repo with another project. This will show differences a
 all repos.
 
 ```bash
-./script/git_change_remote.py --sync_to /path/to/project/erplibre
+./script/git/git_change_remote.py --sync_to /path/to/project/erplibre
 ```
 
 ## Compare two files manifests
@@ -109,7 +109,7 @@ all repos.
 To show differences between commits in different manifests
 
 ```bash
-./script/git_diff_repo_manifest.py --input1 ./manifest/MANIFEST1.xml --input2 ./manifest/MANIFEST2.xml
+./script/git/git_diff_repo_manifest.py --input1 ./manifest/MANIFEST1.xml --input2 ./manifest/MANIFEST2.xml
 ```
 
 ## Differences between code and manifest
@@ -117,7 +117,7 @@ To show differences between commits in different manifests
 To show differences between actual code and manifest
 
 ```bash
-./script/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
+./script/git/git_show_code_diff_repo_manifest.py --manifest ./manifest/MANIFEST1.xml
 ```
 
 ## Add repo
@@ -127,19 +127,19 @@ To access a new repo, add your URL to file [source_repo_addons.csv](../source_re
 Fork the repo to be able to push new code:
 
 ```bash
-./script/fork_project_ERPLibre.py
+./script/git/fork_project_ERPLibre.py
 ```
 
 To regenerate only manifest.xml.
 
 ```bash
-./script/fork_project_ERPLibre.py --skip_fork
+./script/git/fork_project_ERPLibre.py --skip_fork
 ```
 
 Check if manifest contains "auto_install" and change the value to False.
 
 ```bash
-./script/repo_remove_auto_install.py
+./script/git/repo_remove_auto_install.py
 ```
 
 ## Filter repo by group
@@ -147,7 +147,7 @@ Check if manifest contains "auto_install" and change the value to False.
 Only keep repo tagged by group 'base' and 'code_generator'
 
 ```bash
-./script/update_manifest_local_dev_code_generator.sh
+./script/manifest/update_manifest_local_dev_code_generator.sh
 ```
 
 # Execution
@@ -157,14 +157,14 @@ Only keep repo tagged by group 'base' and 'code_generator'
 You can limit your addons in ERPlibre config file depending on a group of your actual manifest.
 
 ```bash
-./script/git_repo_update_group.py --group base,code_generator
+./script/git/git_repo_update_group.py --group base,code_generator
 ./script/generate_config.sh
 ```
 
 Or go back to normal
 
 ```bash
-./script/git_repo_update_group.py
+./script/git/git_repo_update_group.py
 ./script/generate_config.sh
 ```
 
@@ -216,7 +216,7 @@ to version 3.7.16 .
 
 Run the installation, `make install_dev`.
 
-Update poetry, `./script/poetry_update.py`.
+Update poetry, `./script/poetry/poetry_update.py`.
 
 Create docker, `make docker_build`.
 
@@ -225,7 +225,7 @@ Create docker, `make docker_build`.
 ## Show all pull requests from organization
 
 ```bash
-/script/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
+/script/git/pull_request_ERPLibre.py --github_token ### --organization ERPLibre
 ```
 
 # Commit

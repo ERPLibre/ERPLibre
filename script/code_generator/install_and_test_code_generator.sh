@@ -37,7 +37,7 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 # TODO check output when got warning
-./script/repo_revert_git_diff_date_from_code_generator.py --repo "$3"
+./script/git/repo_revert_git_diff_date_from_code_generator.py --repo "$3"
 # Remove pot and po diff
 cd "$3" || exit 1
 # git 2.22 and more, else use next command

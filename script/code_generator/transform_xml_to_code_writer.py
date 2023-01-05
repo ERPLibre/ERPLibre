@@ -7,7 +7,7 @@ from xml.dom import Node, minidom
 
 from code_writer import CodeWriter
 
-from script.git_tool import GitTool
+from script.git.git_tool import GitTool
 
 
 def get_config():

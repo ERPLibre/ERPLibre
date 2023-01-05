@@ -26,9 +26,9 @@ make run
 ```
 
 ## Easy way to run docker
-First, install dependencies to run docker, check script `./script/install_ubuntu_docker.sh`. You need docker and docker-compose.
+First, install dependencies to run docker, check script `./script/install/install_ubuntu_docker.sh`. You need docker and docker-compose.
 
-The docker volume is binded to the directory name, therefore create a unique directory name and run:
+The docker volume is bound to the directory name, therefore create a unique directory name and run:
 ```bash
 wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.4.0/docker-compose.yml
 docker-compose up -d

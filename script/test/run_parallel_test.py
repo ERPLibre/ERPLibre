@@ -11,9 +11,9 @@ import time
 import uuid
 from collections import deque
 from typing import Tuple
-import git
 
 import aioshutil
+import git
 from colorama import Fore
 
 logging.basicConfig(level=logging.DEBUG)
@@ -571,7 +571,7 @@ async def test_exec(
     if not test_status:
         # Create database
         res, status = await run_command(
-            "./script/db_restore.py",
+            "./script/database/db_restore.py",
             "--database",
             unique_database_name,
             "--image",
@@ -692,7 +692,12 @@ def check_git_change():
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
             "./addons/TechnoLibre_odoo-code-generator-template",
-            test_name="Init check_git_change",
+            test_name="Init check_git_change TechnoLibre_odoo-code-generator-template",
+        ),
+        run_command(
+            "./script/code_generator/check_git_change_code_generator.sh",
+            "./addons/OCA_server-tools",
+            test_name="Init check_git_change OCA_server-tools",
         )
     ]
     commands = asyncio.gather(*task_list)

@@ -14,9 +14,9 @@ fi
 echo "Install module '$2' on BD '$1'"
 
 if [[ $# -eq 3 ]]; then
-  ./run.sh --no-http --stop-after-init --dev qweb -d "$1" -i "$2" -u "$2" -c "$3"
+  ./run.sh --no-http --stop-after-init --dev cg -d "$1" -i "$2" -u "$2" -c "$3"
 else
-  ./run.sh --no-http --stop-after-init --dev qweb -d "$1" -i "$2" -u "$2"
+  ./run.sh --no-http --stop-after-init --dev cg -d "$1" -i "$2" -u "$2"
 fi
 
 retVal=$?

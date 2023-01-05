@@ -63,7 +63,7 @@ When dev contains specific revision with default revision, you need to replace d
 keep specific version:
 
 ```bash
-./script/git_merge_repo_manifest.py --input1 ./manifest/default.dev.xml --input2 ./default.xml --output ./manifest/default.staged.xml
+./script/git/git_merge_repo_manifest.py --input1 ./manifest/default.dev.xml --input2 ./default.xml --output ./manifest/default.staged.xml
 git commit -am "Updated manifest/default.staged.xml"
 
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
@@ -117,11 +117,11 @@ Before cleaning, check changed file in all repos.
 Check the changed branch, and push changed if needed.
 
 ```bash
-./script/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
+./script/git/git_show_code_diff_repo_manifest.py -m ./manifest/default.dev.xml
 ```
 
 Maybe, some version diverge from your manifest. Simply clean all and relaunch your installation.
 
 ```bash
-./script/clean_repo_manifest.sh
+./script/git/clean_repo_manifest.sh
 ```

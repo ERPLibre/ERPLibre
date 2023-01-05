@@ -35,7 +35,7 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME_ERPLIBRE}/env_var.sh
 
 LAST_PWD=$PWD
 cd ${EL_HOME_ERPLIBRE}
-sudo su ${EL_USER} -c "./script/install_locally_prod.sh"
+sudo su ${EL_USER} -c "./script/install/install_locally_prod.sh"
 cd ${LAST_PWD}
 #echo -e "\n* Updating server config file"
 #sudo su ${EL_USER} -c "printf 'logfile = /var/log/${EL_USER}/${EL_CONFIG}.log\n' >> /${EL_USER}/erplibre/config.conf"
@@ -43,9 +43,9 @@ cd ${LAST_PWD}
 #--------------------------------------------------
 # Adding ERPLIBRE as a daemon
 #--------------------------------------------------
-./script/install_daemon.sh
+./script/install/install_daemon.sh
 
 #--------------------------------------------------
 # Install Nginx if needed
 #--------------------------------------------------
-./script/install_production_nginx.sh
+./script/install/install_production_nginx.sh

@@ -34,7 +34,7 @@ RUN cd $ODOO_PREFIX && \
     chmod +x ./.venv/repo
 
 RUN cd $ODOO_PREFIX && \
-    ./script/update_manifest_dev.sh
+    ./script/manifest/update_manifest_dev.sh
 
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
