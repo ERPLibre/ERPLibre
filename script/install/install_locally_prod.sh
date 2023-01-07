@@ -11,6 +11,7 @@ fi
 
 # Update git-repo
 ./script/manifest/update_manifest_prod.sh
+retVal=$?
 if [[ $retVal -ne 0 ]]; then
     echo "Error manifest update, check git-repo."
     exit 1
