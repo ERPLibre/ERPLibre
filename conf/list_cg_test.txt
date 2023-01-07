@@ -12,4 +12,3 @@
 ./script/addons/install_addons_restore_dev.sh code_generator_demo_website_leaflet
 ./script/addons/install_addons_restore_dev.sh code_generator_demo_website_multiple_snippet
 ./script/addons/install_addons_restore_dev.sh code_generator_demo_website_snippet
-./script/addons/install_addons_restore_dev.sh code_generator_migrator_demo_mariadb_sql_example_1

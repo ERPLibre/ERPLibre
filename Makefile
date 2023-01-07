@@ -63,6 +63,10 @@ run_parallel_cg:
 run_parallel_cg_template:
 	parallel < ./conf/list_cg_template_test.txt
 
+.PHONY: run_parallel_cg_migrator
+run_parallel_cg_migrator:
+	parallel < ./conf/list_cg_migrator_test.txt
+
 #############
 #  INSTALL  #
 #############
