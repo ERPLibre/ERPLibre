@@ -595,6 +595,7 @@ test_full_fast:
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
+	#./script/test/run_parallel_test.py --keep_cache
 	./script/test/run_parallel_test.py
 	# TODO This test is broken in parallel
 	./script/make.sh test_code_generator_hello_world
