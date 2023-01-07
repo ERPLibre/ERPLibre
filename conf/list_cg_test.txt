@@ -1,4 +1,4 @@
-./script/addons/install_addons_restore_dev.sh code_generator_template_code_generator
+./script/addons/install_addons_restore_dev.sh code_generator_code_generator
 ./script/addons/install_addons_restore_dev.sh code_generator_auto_backup
 ./script/addons/install_addons_restore_dev.sh code_generator_demo
 ./script/addons/install_addons_restore_dev.sh code_generator_demo_export_helpdesk
