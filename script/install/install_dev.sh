@@ -12,6 +12,8 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
         fi
     elif [[ "${OS}" == "Debian" ]]; then
         ./script/install/install_debian_dependency.sh
+    elif [[ "${OS}" == "ManjaroLinux" ]]; then
+        ./script/install/install_debian_dependency.sh
     else
         ./script/install/install_debian_dependency.sh
         echo "Your Linux system is not supported, only support Ubuntu 18.04 or Ubuntu 20.04 or Ubuntu 22.04."
