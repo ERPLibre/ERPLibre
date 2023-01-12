@@ -198,3 +198,9 @@ To generate a list of differences between repo git commit
 ```bash
 ./script/git/git_change_remote.py --sync_to /path/to/directory
 ```
+
+## Semantic versioning
+
+```
+<valid semver> ::= <version core> "-" <pre-release> "+" <build>
+```

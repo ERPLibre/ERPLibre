@@ -920,6 +920,16 @@ docker_build:
 docker_build_release:
 	./script/docker/docker_build.sh --release
 
+# build docker release alpha
+.PHONY: docker_build_release_alpha
+docker_build_release_alpha:
+	./script/docker/docker_build.sh --release_alpha
+
+# build docker release beta
+.PHONY: docker_build_release_beta
+docker_build_release_beta:
+	./script/docker/docker_build.sh --release_beta
+
 # docker clean all
 .PHONY: docker_clean_all
 docker_clean_all:
