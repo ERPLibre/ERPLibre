@@ -207,12 +207,12 @@ db_clone_accorderie_test:
 
 .PHONY: db_test_export
 db_test_export:
-	./script/db_restore.py --database test_website_export
+	./script/database/db_restore.py --database test_website_export
 	./script/addons/install_addons_dev.sh test_website_export demo_website_data
 
 .PHONY: db_test_re_export_website_attachments
 db_test_re_export_website_attachments:
-	./script/db_restore.py --database test_website_export
+	./script/database/db_restore.py --database test_website_export
 	./script/addons/install_addons_dev.sh test_website_export demo_website_attachments_data
 	# TODO this test fail at uninstall, it remove all files.
 	# TODO Strategy is to update ir_model_data, change module data and attach to another module like website
