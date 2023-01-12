@@ -458,18 +458,18 @@ image_diff_base_website:
 #############################
 .PHONY: accorderie_install_migrate_mysql
 accorderie_install_migrate_mysql:
-	./script/db_restore.py --database code_generator_accorderie_base --image code_generator_accorderie_base
+	./script/database/db_restore.py --database code_generator_accorderie_base --image code_generator_accorderie_base
 	-rm ./addons/TechnoLibre_odoo_accorderie/accorderie_migrate_mysql/.cache
 	./script/addons/install_addons_dev.sh code_generator_accorderie_base accorderie_migrate_mysql
 
 .PHONY: accorderie_install_accorderie_canada
 accorderie_install_accorderie_canada:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada
 
 .PHONY: accorderie_install_accorderie_canada_ddb
 accorderie_install_accorderie_canada_ddb:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb,partner_no_vat
 
 .PHONY: accorderie_install_all_snippet
@@ -478,25 +478,25 @@ accorderie_install_all_snippet:
 
 .PHONY: accorderie_install_accorderie_canada_ddb_data
 accorderie_install_accorderie_canada_ddb_data:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb,accorderie_canada_ddb_data
 
 .PHONY: accorderie_install_accorderie_canada_ddb_website
 accorderie_install_accorderie_canada_ddb_website:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,partner_no_vat
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo
 accorderie_install_accorderie_canada_ddb_website_demo:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram
 accorderie_install_accorderie_canada_ddb_website_demo_diagram:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
@@ -504,7 +504,7 @@ accorderie_install_accorderie_canada_ddb_website_demo_diagram:
 
 .PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production
 accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,web_no_crawler,contacts
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
@@ -512,17 +512,17 @@ accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production:
 
 .PHONY: accorderie_install_accorderie_canada_old_view
 accorderie_install_accorderie_canada_old_view:
-	./script/db_restore.py --database accorderie
+	./script/database/db_restore.py --database accorderie
 	./script/addons/install_addons.sh accorderie accorderie_canada_old_view
 
 .PHONY: accorderie_install_template_accorderie_canada
 accorderie_install_template_accorderie_canada:
-	./script/db_restore.py --database template_accorderie
+	./script/database/db_restore.py --database template_accorderie
 	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada
 
 .PHONY: accorderie_install_template_accorderie_canada_ddb
 accorderie_install_template_accorderie_canada_ddb:
-	./script/db_restore.py --database template_accorderie
+	./script/database/db_restore.py --database template_accorderie
 	./script/code_generator/search_class_model.py --quiet -d addons/TechnoLibre_odoo_accorderie/accorderie_canada_ddb -t addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
 	./script/addons/install_addons_dev.sh template_accorderie accorderie_canada_ddb,accorderie_canada_ddb_data
@@ -530,34 +530,34 @@ accorderie_install_template_accorderie_canada_ddb:
 
 .PHONY: accorderie_install_template_accorderie_canada_old_view
 accorderie_install_template_accorderie_canada_old_view:
-	./script/db_restore.py --database template_accorderie
+	./script/database/db_restore.py --database template_accorderie
 	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_old_view
 
 .PHONY: accorderie_install_code_generator_accorderie_canada
 accorderie_install_code_generator_accorderie_canada:
-	./script/db_restore.py --database code_generator_accorderie
+	./script/database/db_restore.py --database code_generator_accorderie
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada
 
 .PHONY: accorderie_install_code_generator_accorderie_canada_ddb
 accorderie_install_code_generator_accorderie_canada_ddb:
-	./script/db_restore.py --database code_generator_accorderie
+	./script/database/db_restore.py --database code_generator_accorderie
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada_ddb
 
 .PHONY: accorderie_install_code_generator_migrator_accorderie_canada_ddb
 accorderie_install_code_generator_migrator_accorderie_canada_ddb:
-	./script/db_restore.py --database code_generator_accorderie
+	./script/database/db_restore.py --database code_generator_accorderie
 	./addons/TechnoLibre_odoo_accorderie/script/restore_database_accorderie.sh
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_portal
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_migrator_accorderie_canada_ddb
 
 .PHONY: accorderie_install_code_generator_accorderie_canada_old_view
 accorderie_install_code_generator_accorderie_canada_old_view:
-	./script/db_restore.py --database code_generator_accorderie
+	./script/database/db_restore.py --database code_generator_accorderie
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada_old_view
 
 .PHONY: accorderie_setup_migrate_database
 accorderie_setup_migrate_database:
-	./script/db_restore.py --database code_generator_db_servers
+	./script/database/db_restore.py --database code_generator_db_servers
 	./script/addons/install_addons_dev.sh code_generator_db_servers code_generator_db_servers
 
 .PHONY: accorderie_open_maquette
