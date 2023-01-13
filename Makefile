@@ -462,6 +462,13 @@ accorderie_install_migrate_mysql:
 	-rm ./addons/TechnoLibre_odoo_accorderie/accorderie_migrate_mysql/.cache
 	./script/addons/install_addons_dev.sh code_generator_accorderie_base accorderie_migrate_mysql
 
+.PHONY: accorderie_canada_ddb_install_migrate_mysql
+accorderie_canada_ddb_install_migrate_mysql:
+	./script/make.sh accorderie_install_accorderie_canada_ddb_website_prod
+	-rm ./addons/TechnoLibre_odoo_accorderie/accorderie_canada_ddb_migrate_mysql/.cache
+	./script/addons/install_addons_dev.sh accorderie stock,muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view
+	./script/addons/install_addons_dev.sh accorderie accorderie_canada_ddb_migrate_mysql
+
 .PHONY: accorderie_install_accorderie_canada
 accorderie_install_accorderie_canada:
 	./script/database/db_restore.py --database accorderie
@@ -494,6 +501,12 @@ accorderie_install_accorderie_canada_ddb_website_demo:
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
 	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 
+.PHONY: accorderie_install_accorderie_canada_ddb_website_prod
+accorderie_install_accorderie_canada_ddb_website_prod:
+	./script/database/db_restore.py --database accorderie
+	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler
+	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+
 .PHONY: labac_install_labac_website_demo
 labac_install_labac_website_demo:
 	./script/database/db_restore.py --database labac
@@ -501,21 +514,21 @@ labac_install_labac_website_demo:
 	./script/addons/install_addons_theme.sh labac theme_accorderie_canada
 	./script/addons/install_addons.sh labac demo_accorderie_canada_ddb
 
-.PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram
-accorderie_install_accorderie_canada_ddb_website_demo_diagram:
-	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat
-	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
-	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
-	./script/addons/uninstall_addons.sh accorderie web_diagram_position
-
-.PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production
-accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production:
-	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,web_no_crawler,contacts
-	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
-	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
-	./script/addons/uninstall_addons.sh accorderie web_diagram_position
+#.PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram
+#accorderie_install_accorderie_canada_ddb_website_demo_diagram:
+#	./script/database/db_restore.py --database accorderie
+#	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat
+#	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+#	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
+#	./script/addons/uninstall_addons.sh accorderie web_diagram_position
+#
+#.PHONY: accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production
+#accorderie_install_accorderie_canada_ddb_website_demo_diagram_final_production:
+#	./script/database/db_restore.py --database accorderie
+#	./script/addons/install_addons.sh accorderie accorderie_canada_ddb_website,accorderie_canada_ddb_data,partner_no_vat,web_no_crawler,contacts
+#	./script/addons/install_addons_theme.sh accorderie theme_accorderie_canada
+#	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
+#	./script/addons/uninstall_addons.sh accorderie web_diagram_position
 
 .PHONY: accorderie_install_accorderie_canada_old_view
 accorderie_install_accorderie_canada_old_view:
