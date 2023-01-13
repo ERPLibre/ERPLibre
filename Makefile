@@ -1166,7 +1166,7 @@ config_gen_code_generator:
 # generate config repo accorderie
 .PHONY: config_gen_accorderie
 config_gen_accorderie:
-	./script/git_repo_update_group.py --group base,code_generator,accorderie
+	./script/git/git_repo_update_group.py --group base,code_generator,accorderie
 	./script/generate_config.sh
 
 # generate config repo image_db
