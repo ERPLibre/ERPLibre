@@ -243,7 +243,7 @@ image_db_create_erplibre_website:
 image_db_create_erplibre_demo:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_demo
 	./.venv/bin/python3 ./odoo/odoo-bin db --create --database image_creation_demo --demo
-	./script/addons/install_addons_from_file.sh image_creation_erplibre_base ./conf/module_list_image_erplibre_base.txt
+	./script/addons/install_addons_from_file.sh image_creation_demo ./conf/module_list_image_erplibre_base.txt
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_demo --restore_image erplibre_demo_base
 	./script/addons/install_addons.sh image_creation_demo website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all,crm,website_crm,crm_team_quebec,website_livechat,website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product,stock,purchase,website_sale_management,project,pos_sale,muk_pos_branding,hr
 	./script/addons/install_addons_theme.sh image_creation_demo theme_default
