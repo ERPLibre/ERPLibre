@@ -530,11 +530,6 @@ labac_install_labac_website_demo:
 #	./script/addons/install_addons.sh accorderie demo_accorderie_canada_ddb
 #	./script/addons/uninstall_addons.sh accorderie web_diagram_position
 
-.PHONY: accorderie_install_accorderie_canada_old_view
-accorderie_install_accorderie_canada_old_view:
-	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_canada_old_view
-
 .PHONY: accorderie_install_template_accorderie_canada
 accorderie_install_template_accorderie_canada:
 	./script/database/db_restore.py --database template_accorderie
@@ -547,11 +542,6 @@ accorderie_install_template_accorderie_canada_ddb:
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo_accorderie/code_generator_template_accorderie_canada_ddb
 	./script/addons/install_addons_dev.sh template_accorderie accorderie_canada_ddb,accorderie_canada_ddb_data
 	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_ddb
-
-.PHONY: accorderie_install_template_accorderie_canada_old_view
-accorderie_install_template_accorderie_canada_old_view:
-	./script/database/db_restore.py --database template_accorderie
-	./script/addons/install_addons_dev.sh template_accorderie code_generator_template_accorderie_canada_old_view
 
 .PHONY: accorderie_install_code_generator_accorderie_canada
 accorderie_install_code_generator_accorderie_canada:
@@ -569,11 +559,6 @@ accorderie_install_code_generator_migrator_accorderie_canada_ddb:
 	./addons/TechnoLibre_odoo_accorderie/script/restore_database_accorderie.sh
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_portal
 	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_migrator_accorderie_canada_ddb
-
-.PHONY: accorderie_install_code_generator_accorderie_canada_old_view
-accorderie_install_code_generator_accorderie_canada_old_view:
-	./script/database/db_restore.py --database code_generator_accorderie
-	./script/addons/install_addons_dev.sh code_generator_accorderie code_generator_accorderie_canada_old_view
 
 .PHONY: accorderie_setup_migrate_database
 accorderie_setup_migrate_database:
