@@ -386,6 +386,13 @@ image_db_create_erplibre_package_wiki:
 	./script/addons/install_addons.sh image_creation_erplibre_package_wiki document_page,document_page_approval,document_page_group,document_page_project,document_page_reference,document_page_tag,document_url,knowledge,attachment_preview,document_page_procedure,document_page_quality_manual,document_page_work_instruction,mgmtsystem,mgmtsystem_action,mgmtsystem_audit,mgmtsystem_hazard,mgmtsystem_manual,mgmtsystem_nonconformity,mgmtsystem_nonconformity_hr,mgmtsystem_nonconformity_product,mgmtsystem_nonconformity_project,mgmtsystem_quality,mgmtsystem_review,mgmtsystem_survey
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_wiki --restore_image erplibre_package_wiki
 
+.PHONY: image_db_create_erplibre_package_dms
+image_db_create_erplibre_package_dms:
+#	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_dms
+#	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_dms
+	./script/addons/install_addons.sh image_creation_erplibre_package_dms muk_dms,muk_dms_access,muk_dms_view,muk_web_preview,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_dms --restore_image erplibre_package_dms
+
 .PHONY: image_db_create_all
 image_db_create_all:
 	#./script/make.sh config_gen_image_db
@@ -410,6 +417,7 @@ image_db_create_all:
 	./script/make.sh image_db_create_erplibre_package_timesheet
 	./script/make.sh image_db_create_erplibre_package_website
 	./script/make.sh image_db_create_erplibre_package_wiki
+	./script/make.sh image_db_create_erplibre_package_dms
 	./script/make.sh image_db_create_test_website_attachments
 	#./script/make.sh config_gen_all
 
