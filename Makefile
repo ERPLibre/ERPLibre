@@ -472,7 +472,7 @@ accorderie_install_website_accorderie_demo:
 .PHONY: accorderie_install_website_accorderie_prod
 accorderie_install_website_accorderie_prod:
 	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie website_accorderie,accorderie_data,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler
+	./script/addons/install_addons.sh accorderie accorderie_prod,website_accorderie,accorderie_data,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie
 
 .PHONY: labac_install_labac_website_demo
