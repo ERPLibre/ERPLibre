@@ -12,6 +12,7 @@
 ./script/make.sh image_db_create_erplibre_package_timesheet
 ./script/make.sh image_db_create_erplibre_package_website
 ./script/make.sh image_db_create_erplibre_package_wiki
+./script/make.sh image_db_create_erplibre_package_dms
 ./script/make.sh image_db_create_erplibre_package_accounting
 ./script/make.sh image_db_create_erplibre_package_business_requirements
 ./script/make.sh image_db_create_erplibre_website

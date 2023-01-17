@@ -117,7 +117,10 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
     ${VENV_PATH}/bin/poetry --version
-    ${VENV_PATH}/bin/poetry lock --no-update
+    # Fix broken poetry by installing ignored dependence
+    ${VENV_PATH}/bin/pip install vatnumber
+    ${VENV_PATH}/bin/pip install suds-jurko
+    #    ${VENV_PATH}/bin/poetry lock --no-update
     ${VENV_PATH}/bin/poetry install
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
@@ -125,9 +128,6 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
         exit 1
     fi
 fi
-# Fix broken poetry by installing ignored dependence
-${VENV_PATH}/bin/pip install vatnumber
-${VENV_PATH}/bin/pip install suds-jurko
 
 # Delete artifacts created by pip, cause error in next "poetry install"
 rm -rf artifacts

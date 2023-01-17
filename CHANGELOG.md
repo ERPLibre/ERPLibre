@@ -12,11 +12,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Because new update of Python and Poetry, recreate virtual environment.
 
 ```bash
-rm -r ~/.poetry
-rm -r ~/.pyenv
+rm -rf ~/.poetry
+rm -rf ~/.pyenv
 
 rm ./get-poetry.py
-rm -r ./.venv
+rm -rf ./.venv
 
 make install
 ```
