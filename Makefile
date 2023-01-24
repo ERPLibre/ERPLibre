@@ -944,6 +944,9 @@ format_supported_addons:
 	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
 	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
+	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
+	./script/maintenance/black.sh ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
+	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
 
 .PHONY: format_accorderie
 format_accorderie:
