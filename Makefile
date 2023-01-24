@@ -486,7 +486,7 @@ labac_install_labac_website_demo:
 accorderie_install_migrate_mysql:
 	./script/make.sh accorderie_install_website_accorderie_prod
 	-rm ./addons/TechnoLibre_odoo_accorderie/accorderie_migrate_mysql/.cache
-	./script/addons/install_addons_dev.sh accorderie muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video
+	./script/addons/install_addons_dev.sh accorderie muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video,company_active
 	./script/addons/install_addons_dev.sh accorderie erplibre_base,erplibre_base_quebec,crm,project,partner_fax,website,membership,membership_extension,accorderie_prod
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database accorderie --restore_image accorderie
 	./script/addons/install_addons_dev.sh accorderie accorderie_migrate_mysql
