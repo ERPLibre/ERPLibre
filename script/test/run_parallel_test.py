@@ -692,13 +692,16 @@ def check_git_change():
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
             "./addons/TechnoLibre_odoo-code-generator-template",
-            test_name="Init check_git_change TechnoLibre_odoo-code-generator-template",
+            test_name=(
+                "Init check_git_change"
+                " TechnoLibre_odoo-code-generator-template"
+            ),
         ),
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
             "./addons/OCA_server-tools",
             test_name="Init check_git_change OCA_server-tools",
-        )
+        ),
     ]
     commands = asyncio.gather(*task_list)
     tpl_result = loop.run_until_complete(commands)

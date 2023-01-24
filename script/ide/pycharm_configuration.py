@@ -324,7 +324,9 @@ def add_configuration(dct_xml, file_name, config):
                                 conf_full["@folderName"] = conf_folder
                             lst_configuration_full.insert(0, conf_full)
                     else:
-                        _logger.info(f"Configuration already exist: '{s_unique_key}'")
+                        _logger.info(
+                            f"Configuration already exist: '{s_unique_key}'"
+                        )
         else:
             _logger.error(f"Cannot read file '{PATH_DEFAULT_CONFIGURATION}'")
     return has_change
