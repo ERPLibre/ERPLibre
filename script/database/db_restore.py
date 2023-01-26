@@ -22,21 +22,25 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-        Restore database, use cache to clone to improve speed.
+DESCRIPTION
+    Restore database, use cache to clone to improve speed.
+
+SUGGESTION
+    ./script/database/db_restore.py -d test
 """,
         epilog="""\
 """,
     )
     # parser.add_argument('-d', '--dir', dest="dir", default="./",
     #                     help="Path of repo to change remote, including submodule.")
-    parser.add_argument("--database", help="Database to manipulate.")
+    parser.add_argument("-d", "--database", help="Database to manipulate.")
     parser.add_argument(
         "--image",
         default="erplibre_base",
         help=(
             "Image name to restore, from directory image_db, filename without"
             " '.zip'. Example, use erplibre_base to use image"
-            " erplibre_base.zip."
+            " erplibre_base.zip. Default value is erplibre_base"
         ),
     )
     parser.add_argument(
@@ -133,6 +137,9 @@ def main():
         )
         out = check_output(arg.split(" ")).decode()
         print(out)
+
+    if not config.clean_cache and not config.database:
+        print("Nothing to do.")
 
 
 if __name__ == "__main__":
