@@ -14,6 +14,7 @@ EL_USER=${USER}
 #--------------------------------------------------
 echo  "\n---- Install PostgreSQL Server ----"
 brew install postgresql
+brew services start postgresql
 
 echo  "\n---- Creating the ERPLibre PostgreSQL User  ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
