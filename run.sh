@@ -11,7 +11,7 @@ if [ ! -f "${CONFIG_PATH}" ]; then
   fi
 fi
 
-python3 ./odoo/odoo-bin -c ${CONFIG_PATH} --limit-time-real 99999 --limit-time-cpu 99999 $@
+python3 ./odoo/odoo-bin -c ${CONFIG_PATH} --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-soft=8589934592 --limit-memory-hard=10737418240 $@
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "Error run.sh"
