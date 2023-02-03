@@ -340,9 +340,17 @@ def add_exclude_folder(dct_xml, file_name, config):
     die(
         not bool(lst_component), f"Missing 'module/component' into {file_name}"
     )
-    dct_component = [
-        a for a in lst_component if a.get("@name") == "NewModuleRootManager"
-    ]
+    if type(lst_component) is list:
+        dct_component = [
+            a
+            for a in lst_component
+            if a.get("@name") == "NewModuleRootManager"
+        ]
+    elif type(lst_component) is dict:
+        dct_component = [lst_component]
+    else:
+        raise Exception(f"Wrong value for {lst_component}")
+
     die(
         not bool(dct_component),
         "Missing 'module/component @name NewModuleRootManager' into"
