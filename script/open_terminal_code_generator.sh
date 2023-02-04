@@ -7,7 +7,7 @@ paths=(
 "${working_path}/addons/TechnoLibre_odoo-code-generator-template"
 "${working_path}/addons/ERPLibre_erplibre_addons"
 "${working_path}/addons/TechnoLibre_odoo_accorderie"
-"${working_path}/addons/OCA_server-tools"
+"${working_path}/addons/PolyLabac_erplibre-addons-polylabac"
 
 )
 cmd_before="cd "
