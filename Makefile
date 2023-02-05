@@ -463,30 +463,31 @@ accorderie_install_accorderie_demo:
 
 .PHONY: accorderie_install_website_accorderie_demo
 accorderie_install_website_accorderie_demo:
-	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie,website_accorderie,accorderie_data,website_chat_accorderie,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler,smile_website_login_as
+	./script/database/db_restore.py --database accorderie --image erplibre_website_crm
+	./script/addons/install_addons.sh accorderie accorderie,website_accorderie,accorderie_data,website_chat_accorderie,base_fontawesome,website_no_crawler,smile_website_login_as
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie
 	./script/addons/install_addons.sh accorderie demo_website_accorderie,demo_accorderie,demo_website_chat_accorderie
 	#./script/addons/uninstall_addons.sh accorderie web_diagram_position
 
 .PHONY: accorderie_install_website_accorderie_prod
 accorderie_install_website_accorderie_prod:
-	./script/database/db_restore.py --database accorderie
-	./script/addons/install_addons.sh accorderie accorderie_prod,accorderie_approbation,website_accorderie,website_chat_accorderie,accorderie_data,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler,smile_website_login_as
+	./script/database/db_restore.py --database accorderie --image erplibre_website_crm
+	./script/addons/install_addons.sh accorderie accorderie_prod,accorderie_approbation,website_accorderie,website_chat_accorderie,accorderie_data,base_fontawesome,website_no_crawler,smile_website_login_as
 	./script/addons/install_addons_theme.sh accorderie theme_accorderie
 
 .PHONY: labac_install_labac_website_demo
 labac_install_labac_website_demo:
-	./script/database/db_restore.py --database labac
-	./script/addons/install_addons.sh labac accorderie,website_accorderie,accorderie_data,website_chat_accorderie,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,base_fontawesome,website_snippet_all,crm_team_quebec,website_no_crawler,smile_website_login_as
-	./script/addons/install_addons_theme.sh labac theme_accorderie
+	./script/database/db_restore.py --database labac --image erplibre_website_crm
+	./script/addons/install_addons.sh labac accorderie,website_accorderie,accorderie_data,website_chat_accorderie,website_no_crawler,smile_website_login_as,base_fontawesome
+	./script/addons/install_addons_theme.sh labac theme_ore
 	./script/addons/install_addons.sh labac demo_website_accorderie,demo_accorderie,demo_website_chat_accorderie
+	./script/addons/install_addons.sh labac ore,website_ore
 
 .PHONY: accorderie_install_migrate_mysql
 accorderie_install_migrate_mysql:
 	./script/make.sh accorderie_install_website_accorderie_prod
 	./script/addons/install_addons_dev.sh accorderie muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video,company_active
-	./script/addons/install_addons_dev.sh accorderie erplibre_base,erplibre_base_quebec,crm,project,partner_fax,website,membership,membership_extension,accorderie_prod
+	./script/addons/install_addons_dev.sh accorderie project,partner_fax,website,membership,membership_extension,accorderie_prod
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database accorderie --restore_image accorderie
 	./script/addons/install_addons_dev.sh accorderie accorderie_migrate_mysql
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database accorderie --restore_image accorderie_prod
