@@ -274,7 +274,7 @@ make addons_install_code_generator_basic
 ./script/addons/install_addons.sh code_generator code_generator_theme_website
 make run_code_generator
 ```
-Aller dans le module «Code generator» et créer un module «test»:
+Aller dans le module «Code generator» et créer un module «theme_test»:
 - Sur l'onglet «Information», activer «Enable Sync Code»;
 - Sur l'onglet «Technical Data», activer «Website theme»;
 - Appuyer sur le bouton «Views»:
