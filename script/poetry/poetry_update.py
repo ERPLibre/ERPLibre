@@ -82,8 +82,10 @@ def combine_requirements(config):
     """
     priority_filename_requirement = "requirements.txt"
     second_priority_filename_requirement = "odoo/requirements.txt"
-    lst_sign = ("==", "!=", ">=", "<=", "<", ">", ";")
+    except_sign = ";"
+    lst_sign = ("==", "!=", ">=", "<=", "<", ">", except_sign, "~=")
     lst_requirements = []
+    lst_replace_special_sign = {}  # the lib iscompatible doesn't support ~=
     ignore_requirements = ["sys_platform == 'win32'", "python_version < '3.7'"]
     dct_requirements = defaultdict(set)
     lst_requirements_file = get_lst_requirements_txt()
@@ -102,23 +104,23 @@ def combine_requirements(config):
                     if sign in b:
                         # Exception, some time the sign ; can be first, just check
                         if (
-                            sign != ";"
-                            and ";" in b
-                            and b.find(sign) > b.find(";")
+                            sign != except_sign
+                            and except_sign in b
+                            and b.find(sign) > b.find(except_sign)
                         ):
-                            module_name = b[: b.find(";")]
+                            module_name = b[: b.find(except_sign)]
                         else:
                             module_name = b[: b.find(sign)]
                         module_name = module_name.strip()
                         # Special condition for ";", ignore it
-                        if ";" in b:
+                        if except_sign in b:
                             for ignore_string in ignore_requirements:
                                 if ignore_string in b:
                                     break
                             if ignore_string in b:
                                 break
                             lst_requirements_with_condition.add(module_name)
-                            value = b[: b.find(";")].strip()
+                            value = b[: b.find(except_sign)].strip()
                             dct_special_condition[module_name].append(b)
                         else:
                             value = b
@@ -174,6 +176,10 @@ def combine_requirements(config):
             for requirement in lst_requirement:
                 if ".*" in requirement:
                     requirement = requirement.replace(".*", "")
+                if "~=" in requirement:
+                    old_requirement = requirement
+                    requirement = requirement.replace("~=", "==")
+                    lst_replace_special_sign[requirement] = old_requirement
                 result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
                     # Ignore empty version
@@ -225,8 +231,13 @@ def combine_requirements(config):
                     odoo_value = None
                     erplibre_value = None
                     for version_requirement in lst_version_requirement:
+                        key_require = version_requirement[0]
+                        if key_require in lst_replace_special_sign.keys():
+                            key_require = lst_replace_special_sign.get(
+                                key_require
+                            )
                         filename_1 = dct_requirements_module_filename.get(
-                            version_requirement[0]
+                            key_require
                         )
                         if priority_filename_requirement in filename_1:
                             erplibre_value = version_requirement[0]
@@ -265,7 +276,7 @@ def combine_requirements(config):
                 result = key
 
             if result:
-                dct_requirements[key] = set((result,))
+                dct_requirements[key] = {result}
             else:
                 print(f"Internal error, missing result for {lst_requirement}.")
 
