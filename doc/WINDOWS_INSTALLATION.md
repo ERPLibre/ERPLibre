@@ -93,6 +93,9 @@ After that run this command in the root of the project:
 ./run.sh
 ```
 
+## Verifying ERPLibre
+While ERPLibre is running, make sure that you can connect to the following URL `http://localhost:8069` and have the ability to create, modify and remove databases.
+
 ## Set up Development Environment - PyCharm
 
 ### Install PyCharm
@@ -155,7 +158,7 @@ Press `CTRL+ALT+S`, search for `interpreter` and inside the `Python Interpreter`
 
 Wait until PyCharm detects your WSL2 instance and press `NEXT`. Click on `System Interpreter` on the left, select the correct interpreter if it hasn't done so automatically and click `Create`.
 
-![System Interpreter](/image/system_python.png)
+![System Interpreter](image/system_python.png)
 
 Close the project's settings. Once PyCharm prompts you to import modules and allow it.
 
