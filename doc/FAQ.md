@@ -109,3 +109,18 @@ git branch -av
 git reset --hard REF_OF_REMOTES/m
 > git reset --hard remotes/origin/rel/8953/zd552kl/7.1.1-11.40.208
 ```
+
+## OSX installation
+
+### Docker installation
+
+This guide works in the past, but it's now broken
+
+```bash
+echo  "\n--- Installing docker --"
+brew install minikube docker docker-compose docker-machine
+brew cask install virtualbox
+docker-machine create --driver virtualbox default
+docker-machine env default
+eval "$(docker-machine env default)"
+```

@@ -28,12 +28,6 @@ echo  "\n--- Installing Python 3 + pip3 --"
 brew install git python3 wget pyenv
 brew link git
 brew link wget
-echo  "\n--- Installing docker --"
-brew install minikube docker docker-compose docker-machine
-brew cask install virtualbox
-docker-machine create --driver virtualbox default
-docker-machine env default
-eval "$(docker-machine env default)"
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
