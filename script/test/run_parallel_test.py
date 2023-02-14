@@ -117,6 +117,7 @@ def extract_result(result, test_name, lst_error, lst_warning):
 
 
 def check_result(task_list, tpl_result):
+    status = True
     lst_error = []
     lst_warning = []
 
@@ -124,6 +125,9 @@ def check_result(task_list, tpl_result):
         extract_result(
             result, task_list[i].cr_code.co_name, lst_error, lst_warning
         )
+
+    if lst_error:
+        status = False
 
     if lst_warning:
         print(f"{Fore.YELLOW}{len(lst_warning)} WARNING{Fore.RESET}")
@@ -148,6 +152,7 @@ def check_result(task_list, tpl_result):
         str_result = f"{Fore.GREEN}SUCCESS 🍰"
 
     print(f"{Fore.BLUE}Summary TEST {str_result}{Fore.RESET}")
+    return status
 
 
 def print_log(lst_task, tpl_result):
@@ -165,7 +170,6 @@ def print_log(lst_task, tpl_result):
             if result[0]:
                 f.write(result[0])
                 f.write("\n")
-    print(f"Log file {LOG_FILE}")
 
 
 async def run_command_get_output(*args, cwd=None):
@@ -1290,7 +1294,13 @@ def run_all_test(config) -> None:
         finally:
             loop.close()
     print_log(task_list, tpl_result)
-    check_result(task_list, tpl_result)
+    status = check_result(task_list, tpl_result)
+    if status:
+        log_file_print = LOG_FILE
+    else:
+        log_file_print = f"{Fore.RED}{LOG_FILE}{Fore.RESET}"
+
+    print(f"Log file {log_file_print}")
 
 
 def main():

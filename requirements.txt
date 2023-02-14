@@ -1,7 +1,7 @@
 # For script
 giturlparse
 agithub
-GitPython==3.1.29
+GitPython==3.1.30
 retrying
 xmltodict
 openupgradelib
@@ -107,3 +107,4 @@ pyjwt==2.5.0
 pygments==2.7.4
 setuptools==65.5.1
 Werkzeug==0.16.1
+future==0.18.3

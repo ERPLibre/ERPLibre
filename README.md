@@ -54,5 +54,5 @@ To change repository like addons, see [GIT_REPO.md](doc/GIT_REPO.md)
 # Test
 Execute ERPLibre test with his code generator.
 ```bash
-time make test
+time make test_full_fast
 ```
