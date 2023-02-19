@@ -379,7 +379,7 @@ async def test_exec(
             for module_name in lst_module_to_test:
                 # Update path to change new emplacement
                 s_lst_path_tested_module = await run_command_get_output(
-                    "find", ".", "-name", module_name
+                    "find", "./addons/", "-name", module_name
                 )
                 if not s_lst_path_tested_module:
                     return (
@@ -422,7 +422,7 @@ async def test_exec(
 
                     s_lst_path_generated_module = await run_command_get_output(
                         "find",
-                        ".",
+                        "./addons/",
                         "-name",
                         generated_module,
                         cwd=temp_dir_name,
