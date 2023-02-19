@@ -1037,6 +1037,17 @@ i18n_generate_demo_portal:
 clean:
 	find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
 
+###############
+#  Statistic  #
+###############
+.PHONY: stat_module_evolution_per_year
+stat_module_evolution_per_year:
+	./script/statistic/show_evolution_module.py --before_date "2016-01-01" --more_year 7
+
+.PHONY: stat_module_evolution_per_year_OCA
+stat_module_evolution_per_year_OCA:
+	./script/statistic/show_evolution_module.py --filter "/OCA/" --before_date "2016-01-01" --more_year 7
+
 ###################
 #  Documentation  #
 ###################
