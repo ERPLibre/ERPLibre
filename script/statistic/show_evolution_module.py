@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import sys
+import csv
 from collections import defaultdict
 
 from dateutil.relativedelta import relativedelta
@@ -36,7 +37,7 @@ IGNORE_REPO_LIST = (
     "https://github.com/ERPLibre/ERPLibre_image_db.git",
     "https://github.com/muk-it/muk_docs.git",
 )
-DCT_CHANGE_ADDONS_PATH = {"odoo_odoo": "/addons/"}
+DCT_CHANGE_ADDONS_PATH = {"odoo_odoo": ["/addons/", "/odoo/addons/"]}
 DCT_VERSION_RELEASE = {
     "1.0": datetime.datetime.strptime("2005-02-01", "%Y-%m-%d").date(),
     "2.0": datetime.datetime.strptime("2005-03-01", "%Y-%m-%d").date(),
@@ -56,6 +57,7 @@ DCT_VERSION_RELEASE = {
     "15.0": datetime.datetime.strptime("2021-10-01", "%Y-%m-%d").date(),
     "16.0": datetime.datetime.strptime("2022-10-01", "%Y-%m-%d").date(),
 }
+CSV_HEADER_MODULE_NAME = "Nom technique"
 # TODO use rich progress bar when clone
 # TODO support conflict repo name
 
@@ -101,6 +103,11 @@ def get_config():
         ),
     )
     parser.add_argument(
+        "--force_git_fetch",
+        action="store_true",
+        help=f"Force git fetch to update it all remote.",
+    )
+    parser.add_argument(
         "-p",
         "--max_process",
         type=int,
@@ -142,6 +149,14 @@ def get_config():
         default="6.1,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0",
         help="Branch to analyse, separate by ','",
     )
+    parser.add_argument(
+        "--compare_csv",
+        help=(
+            "Path of CSV, search column 'Nom technique' and give list of"
+            " difference module, missing from CSV. Need only 1 branches and no"
+            " more_year."
+        ),
+    )
     args = parser.parse_args()
 
     die(
@@ -169,6 +184,16 @@ def get_config():
         "The params branches contain not supported version, check"
         f" DCT_VERSION_RELEASE : {list(DCT_VERSION_RELEASE.keys())}",
     )
+    die(
+        args.compare_csv
+        and (args.more_year > 0 or len(args.branches.split(",")) > 1),
+        f"When use param compare_csv, cannot use more_year and only 1 branch.",
+    )
+    if args.compare_csv:
+        die(
+            not os.path.isfile(args.compare_csv),
+            f"Path of {args.compare_csv} need to be a file path.",
+        )
     return args
 
 
@@ -176,7 +201,8 @@ def main():
     config = get_config()
     lst_branch = config.branches.split(",")
     before_date = config.before_date
-    lst_stat = []
+    lst_unique_module = set()
+    lst_unique_uninstallable_module = set()
 
     # Check
     die(
@@ -199,7 +225,10 @@ def main():
 
     # Clone all repo
     _logger.info(f"Clone repo")
-    lst_task_clone = [clone_repo(i, a) for i, a in enumerate(lst_repo_url)]
+    lst_task_clone = [
+        clone_repo(i, a, config.force_git_fetch)
+        for i, a in enumerate(lst_repo_url)
+    ]
     lst_repo_path = lib_asyncio.execute(
         config, lst_task_clone, use_uvloop=True
     )
@@ -248,15 +277,22 @@ def main():
         tpl_result = lib_asyncio.execute(config, lst_task, use_uvloop=True)
     _logger.info("Analyse information")
     dct_result = defaultdict(lambda: defaultdict(int))
+    dct_result_unique = defaultdict(set)
     for lst_result_stack in tpl_result:
         for dct_result_module in lst_result_stack:
             # lst_module, branch, path, repo, before_date
             before_date = dct_result_module.get("before_date")
             lst_module = dct_result_module.get("lst_module")
+            lst_uninstallable_module = dct_result_module.get(
+                "lst_uninstallable_module"
+            )
             branch = dct_result_module.get("branch")
             # path = dct_result_module.get("path")
             # repo = dct_result_module.get("repo")
             dct_result[before_date][branch] += len(lst_module)
+            dct_result_unique[before_date].update(lst_module)
+            lst_unique_module.update(lst_module)
+            lst_unique_uninstallable_module.update(lst_uninstallable_module)
 
     # Show result
     _logger.info("Show result")
@@ -267,7 +303,42 @@ def main():
         print(f"Stat nb module by branch name{str_extra}")
         for branch_name, count_module in dct_branch_result.items():
             print(f"{branch_name}\t{count_module}")
+    for before_date, set_result in dct_result_unique.items():
+        str_extra = ""
+        if before_date:
+            str_extra = f" before {before_date}"
+        print(f"Diff nb unique module{str_extra}, length {len(set_result)}")
     print("end of stat")
+
+    if config.compare_csv:
+        index_header = -1
+        lst_unique_module_csv = set()
+        with open(config.compare_csv, "r") as csvfile:
+            for csv_module in csv.reader(csvfile):
+                if index_header == -1:
+                    try:
+                        index_header = csv_module.index(CSV_HEADER_MODULE_NAME)
+                    except Exception as e:
+                        _logger.error(
+                            f"Missing header {CSV_HEADER_MODULE_NAME} in CSV."
+                        )
+                        raise e
+                else:
+                    module_name = csv_module[index_header]
+                    if module_name not in lst_unique_uninstallable_module:
+                        lst_unique_module_csv.add(module_name)
+
+        lst_missing_module_repo = lst_unique_module_csv.difference(
+            lst_unique_module
+        )
+        lst_missing_module_csv = lst_unique_module.difference(
+            lst_unique_module_csv
+        )
+        print("CSV compare")
+        print(f"Module missing from CSV '{len(lst_missing_module_repo)}':")
+        print(lst_missing_module_repo)
+        print(f"Module missing into CSV '{len(lst_missing_module_csv)}':")
+        print(lst_missing_module_csv)
 
 
 def die(cond, message, code=1):
@@ -318,76 +389,84 @@ async def extract_module(lst_branch, repo, path, before_date):
 
         commit = commit.strip()
 
-        # List directory
-        suffix_path = DCT_CHANGE_ADDONS_PATH.get(repo, "")
-        adapt_path = path + suffix_path
-        lst_args = ["git", "ls-tree", "-d", "--name-only", commit]
-        (
-            str_folders,
-            _,
-            status,
-        ) = await lib_asyncio.run_command_get_output_and_status(
-            *lst_args, cwd=adapt_path
-        )
-        if status:
-            _logger.error(f"Receive status 'git ls-tree' {status}")
-            continue
-
-        # TODO send msg when no result
-        if not str_folders:
-            continue
-        lst_module = str_folders.split()
-        if not lst_module:
-            continue
-
-        if suffix_path:
-            suffix_path = suffix_path[1:]
-
         lst_module_installable = []
-        for module in lst_module:
-            # List directory
-            lst_args = [
-                "git",
-                "cat-file",
-                "-p",
-                f"{commit}:{suffix_path}{module}/__manifest__.py",
-            ]
+        lst_module_uninstallable = []
+        # List directory
+        lst_suffix_path = DCT_CHANGE_ADDONS_PATH.get(repo, "")
+        if type(lst_suffix_path) is str:
+            lst_suffix_path = [lst_suffix_path]
+        for suffix_path in lst_suffix_path:
+            adapt_path = path + suffix_path
+            lst_args = ["git", "ls-tree", "-d", "--name-only", commit]
             (
-                manifest,
+                str_folders,
                 _,
                 status,
             ) = await lib_asyncio.run_command_get_output_and_status(
-                *lst_args, cwd=path
+                *lst_args, cwd=adapt_path
             )
             if status:
-                # Maybe __openerp__.py
+                _logger.error(f"Receive status 'git ls-tree' {status}")
+                continue
+
+            # TODO send msg when no result
+            if not str_folders:
+                continue
+            lst_module = str_folders.split()
+            if not lst_module:
+                continue
+
+            if suffix_path:
+                suffix_path = suffix_path[1:]
+
+            for module in lst_module:
+                # List directory
                 lst_args = [
                     "git",
                     "cat-file",
                     "-p",
-                    f"{commit}:{module}/__openerp__.py",
+                    f"{commit}:{suffix_path}{module}/__manifest__.py",
                 ]
                 (
                     manifest,
                     _,
                     status,
                 ) = await lib_asyncio.run_command_get_output_and_status(
-                    *lst_args, cwd=adapt_path
+                    *lst_args, cwd=path
                 )
-            if status:
-                # Ignore, it's not a module
-                # _logger.error(f"Receive status 'git cat-file' {status}")
-                # return return_value
-                continue
-            dct_manifest = eval(manifest + "\n")
-            if dct_manifest.get("installable", True):
-                lst_module_installable.append(module)
+                if status:
+                    # Maybe __openerp__.py
+                    lst_args = [
+                        "git",
+                        "cat-file",
+                        "-p",
+                        f"{commit}:{module}/__openerp__.py",
+                    ]
+                    (
+                        manifest,
+                        _,
+                        status,
+                    ) = await lib_asyncio.run_command_get_output_and_status(
+                        *lst_args, cwd=adapt_path
+                    )
+                if status:
+                    # Ignore, it's not a module
+                    # _logger.error(f"Receive status 'git cat-file' {status}")
+                    # return return_value
+                    continue
+                dct_manifest = eval(manifest + "\n")
+                if dct_manifest.get("installable", True):
+                    lst_module_installable.append(module)
+                else:
+                    lst_module_uninstallable.append(module)
+
         return_value["lst_module"] = lst_module_installable
+        return_value["lst_uninstallable_module"] = lst_module_uninstallable
         lst_result.append(return_value)
     return lst_result
 
 
-async def clone_repo(i, repo_url):
+async def clone_repo(i, repo_url, force_fetch):
     split_repo_url = repo_url.split("/")
     repo_name = f"{split_repo_url[-2]}_{split_repo_url[-1][:-4]}"
     repo_path = os.path.join(CACHE_CLONE_PATH, repo_name)
@@ -396,6 +475,12 @@ async def clone_repo(i, repo_url):
             "git", "clone", repo_url, repo_name, cwd=CACHE_CLONE_PATH
         )
         _logger.info(f"[{i}]New clone {repo_path} with {repo_url}")
+    elif force_fetch:
+        await lib_asyncio.run_command_get_output(
+            "git", "fetch", "--all", cwd=CACHE_CLONE_PATH
+        )
+        _logger.info(f"[{i}]Fetch {repo_path} with {repo_url}")
+
     return repo_name, repo_path
 
 
