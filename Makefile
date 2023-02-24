@@ -469,6 +469,13 @@ accorderie_install_website_accorderie_demo:
 	./script/addons/install_addons.sh accorderie demo_website_accorderie,demo_accorderie,demo_website_chat_accorderie
 	#./script/addons/uninstall_addons.sh accorderie web_diagram_position
 
+.PHONY: ore_install_website_default
+ore_install_website_default:
+	./script/database/db_restore.py --database ore_default --image erplibre_website_crm
+	./script/addons/install_addons.sh ore_default accorderie,website_accorderie,accorderie_data,website_chat_accorderie,base_fontawesome,website_no_crawler,smile_website_login_as
+	#./script/addons/install_addons_theme.sh ore_default theme_accorderie
+	./script/addons/install_addons.sh ore_default demo_website_accorderie,demo_accorderie,demo_website_chat_accorderie
+
 .PHONY: accorderie_install_website_accorderie_prod
 accorderie_install_website_accorderie_prod:
 	./script/database/db_restore.py --database accorderie --image erplibre_website_crm
