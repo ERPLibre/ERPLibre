@@ -456,6 +456,10 @@ image_diff_base_website:
 #############################
 #  Accorderie installation  #
 #############################
+.PHONY: ore_install_all_accorderie_labac_ore_demo_website
+ore_install_all_accorderie_labac_ore_demo_website:
+	parallel ::: "./script/make.sh ore_install_website_default" "./script/make.sh labac_install_labac_website_demo" "./script/make.sh accorderie_install_website_accorderie_demo"
+
 .PHONY: accorderie_install_accorderie_demo
 accorderie_install_accorderie_demo:
 	./script/database/db_restore.py --database accorderie
