@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
-
+source .venv/bin/activate
 EL_USER=${USER}
 EL_HOME=$PWD
 EL_HOME_ODOO="${EL_HOME}/odoo"
