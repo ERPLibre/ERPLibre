@@ -94,6 +94,9 @@ if [[ ! -f ${VENV_REPO_PATH} ]]; then
     sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
 fi
 
+# Make .venv active
+source .venv/bin/activate
+
 # Install Multilingual Markdown Generator if missing
 if [[ ! -f ${VENV_MULTILINGUAL_MARKDOWN_PATH} ]]; then
     echo "\n---- Install Multilingual Markdown Generator ----"
