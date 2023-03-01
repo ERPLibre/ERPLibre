@@ -497,7 +497,7 @@ labac_install_labac_website_demo:
 .PHONY: accorderie_install_migrate_mysql
 accorderie_install_migrate_mysql:
 	./script/make.sh accorderie_install_website_accorderie_prod
-	./script/addons/install_addons_dev.sh accorderie muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video,company_active
+	./script/addons/install_addons_dev.sh accorderie muk_dms,muk_dms_mail,muk_dms_thumbnails,muk_dms_view,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video,res_company_active
 	./script/addons/install_addons_dev.sh accorderie project,partner_fax,website,membership,membership_extension,accorderie_prod
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database accorderie --restore_image accorderie
 	./script/addons/install_addons_dev.sh accorderie accorderie_migrate_mysql
