@@ -616,11 +616,24 @@ test_full_fast_coverage:
 	./.venv/bin/coverage erase
 	./script/test/run_parallel_test.py --coverage
 	# TODO This test is broken in parallel
-	./script/make.sh test_code_generator_hello_world
+	./script/make.sh test_coverage_code_generator_hello_world
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
+
+
+.PHONY: test_cg_demo
+test_cg_demo:
+	./script/make.sh clean
+	# Need to create a BD to create cache _cache_erplibre_base
+	./script/database/db_restore.py --database test
+	./.venv/bin/coverage erase
+	./script/addons/coverage_install_addons_dev.sh test code_generator_demo
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+
 
 .PHONY: test_base
 test_base:
@@ -644,6 +657,10 @@ test_format:
 .PHONY: test_code_generator_hello_world
 test_code_generator_hello_world:
 	./test/code_generator/hello_world.sh
+
+.PHONY: test_coverage_code_generator_hello_world
+test_coverage_code_generator_hello_world:
+	./test/code_generator/coverage_hello_world.sh
 
 .PHONY: test_installation_demo
 test_installation_demo:
