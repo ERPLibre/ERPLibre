@@ -620,6 +620,7 @@ test_full_fast_coverage:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 
@@ -633,6 +634,7 @@ test_cg_demo:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 
 
 .PHONY: test_base
@@ -769,6 +771,7 @@ test_addons_sale:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m
 	./.venv/bin/coverage html
+	./.venv/bin/coverage json
 
 .PHONY: test_addons_helpdesk
 test_addons_helpdesk:
@@ -778,6 +781,7 @@ test_addons_helpdesk:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m
 	./.venv/bin/coverage html
+	./.venv/bin/coverage json
 
 .PHONY: test_addons_code_generator
 test_addons_code_generator:
@@ -788,6 +792,7 @@ test_addons_code_generator:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: test_addons_code_generator_code_generator
@@ -799,6 +804,7 @@ test_addons_code_generator_code_generator:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: open_test_coverage
