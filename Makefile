@@ -788,7 +788,7 @@ test_addons_code_generator:
 	./.venv/bin/coverage erase
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_code_generator
 	# TODO missing test in code_generator
-	./test.sh --dev all -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
+	./test.sh --dev cg -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
@@ -800,7 +800,20 @@ test_addons_code_generator_code_generator:
 	# TODO this test only generation, not test
 	./.venv/bin/coverage erase
 	./script/database/db_restore.py --database test_addons_code_generator_code_generator
-	./test.sh --dev all -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
+	./test.sh --dev cg -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: test_addons_code_generator_template_code_generator
+test_addons_code_generator_template_code_generator:
+	# TODO this test only generation, not test
+	./.venv/bin/coverage erase
+	./script/database/db_restore.py --database test_addons_code_generator_template_code_generator
+	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator
+	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator_template_code_generator
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
