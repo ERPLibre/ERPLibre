@@ -1103,6 +1103,29 @@ async def run_code_generator_template_demo_portal_test(
     return test_result, test_status
 
 
+async def run_code_generator_template_demo_internal_test(
+    config,
+) -> Tuple[str, int]:
+    test_result = ""
+    test_status = 0
+    # Template
+    res, status = await test_exec(
+        config,
+        "./addons/TechnoLibre_odoo-code-generator-template",
+        generated_module="code_generator_demo_internal",
+        tested_module="code_generator_template_demo_internal",
+        search_class_module="demo_internal",
+        lst_init_module_name=[
+            "demo_internal",
+        ],
+        test_name="code_generator_template_demo_internal",
+        run_in_sandbox=True,
+    )
+    test_result += res
+    test_status += status
+
+    return test_result, test_status
+
 async def run_code_generator_template_demo_internal_inherit_test(
     config,
 ) -> Tuple[str, int]:
@@ -1169,6 +1192,7 @@ def run_all_test(config) -> None:
         run_code_generator_demo_mariadb_sql_example_1_test(config),
         run_code_generator_auto_backup_test(config),
         run_code_generator_template_demo_portal_test(config),
+        run_code_generator_template_demo_internal_test(config),
         run_code_generator_template_demo_internal_inherit_test(config),
         run_code_generator_template_demo_sysadmin_cron_test(config),
         run_code_generator_demo_test(config),
