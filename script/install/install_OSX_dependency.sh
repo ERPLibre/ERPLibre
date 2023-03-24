@@ -34,14 +34,9 @@ sudo npm install -g rtlcss
 sudo npm install -g less
 sudo npm install -g prettier
 sudo npm install -g prettier @prettier/plugin-xml
-#yes n|pyenv install 3.7.16
-#pyenv local 3.7.16
 
 echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.zshrc
 
-echo -e "\n---- Installing poetry for reliable python package ----"
-#curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3.7
-#curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
