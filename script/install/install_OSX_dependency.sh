@@ -25,22 +25,20 @@ sudo su - postgres -c "CREATE EXTENSION postgis;\nCREATE EXTENSION postgis_topol
 # Install Dependencies
 #--------------------------------------------------
 echo  "\n--- Installing Python 3 + pip3 --"
-brew install git python3 wget pyenv
+brew install git python3 wget
 brew link git
 brew link wget
+
+echo  "\n--- Installing extra --"
+brew install parallel
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
 sudo npm install -g less
 sudo npm install -g prettier
 sudo npm install -g prettier @prettier/plugin-xml
-yes n|pyenv install 3.7.16
-pyenv local 3.7.16
 
 echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.zshrc
-
-echo -e "\n---- Installing poetry for reliable python package ----"
-curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python
 
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed

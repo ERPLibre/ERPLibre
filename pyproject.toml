@@ -185,6 +185,8 @@ xmltodict = "^0.13.0"
 zeep = "^4.2.1"
 zipp = ">=3.6.0"
 zxcvbn = "^4.4.28"
+tqdm = "^4.64.1"
+uvloop = "^0.17.0"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^1.1.0"

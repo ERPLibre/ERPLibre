@@ -616,11 +616,26 @@ test_full_fast_coverage:
 	./.venv/bin/coverage erase
 	./script/test/run_parallel_test.py --coverage
 	# TODO This test is broken in parallel
-	./script/make.sh test_code_generator_hello_world
+	./script/make.sh test_coverage_code_generator_hello_world
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
+
+
+.PHONY: test_cg_demo
+test_cg_demo:
+	./script/make.sh clean
+	# Need to create a BD to create cache _cache_erplibre_base
+	./script/database/db_restore.py --database test
+	./.venv/bin/coverage erase
+	./script/addons/coverage_install_addons_dev.sh test code_generator_demo
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+
 
 .PHONY: test_base
 test_base:
@@ -644,6 +659,10 @@ test_format:
 .PHONY: test_code_generator_hello_world
 test_code_generator_hello_world:
 	./test/code_generator/hello_world.sh
+
+.PHONY: test_coverage_code_generator_hello_world
+test_coverage_code_generator_hello_world:
+	./test/code_generator/coverage_hello_world.sh
 
 .PHONY: test_installation_demo
 test_installation_demo:
@@ -752,6 +771,7 @@ test_addons_sale:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m
 	./.venv/bin/coverage html
+	./.venv/bin/coverage json
 
 .PHONY: test_addons_helpdesk
 test_addons_helpdesk:
@@ -761,16 +781,18 @@ test_addons_helpdesk:
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m
 	./.venv/bin/coverage html
+	./.venv/bin/coverage json
 
 .PHONY: test_addons_code_generator
 test_addons_code_generator:
 	./.venv/bin/coverage erase
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_code_generator
 	# TODO missing test in code_generator
-	./test.sh --dev all -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
+	./test.sh --dev cg -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: test_addons_code_generator_code_generator
@@ -778,10 +800,24 @@ test_addons_code_generator_code_generator:
 	# TODO this test only generation, not test
 	./.venv/bin/coverage erase
 	./script/database/db_restore.py --database test_addons_code_generator_code_generator
-	./test.sh --dev all -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
+	./test.sh --dev cg -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
 	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	# run: make open_test_coverage
+
+.PHONY: test_addons_code_generator_template_code_generator
+test_addons_code_generator_template_code_generator:
+	# TODO this test only generation, not test
+	./.venv/bin/coverage erase
+	./script/database/db_restore.py --database test_addons_code_generator_template_code_generator
+	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator
+	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator_template_code_generator
+	./.venv/bin/coverage combine -a
+	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: open_test_coverage
@@ -1036,6 +1072,17 @@ i18n_generate_demo_portal:
 .PHONY: clean
 clean:
 	find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
+
+###############
+#  Statistic  #
+###############
+.PHONY: stat_module_evolution_per_year
+stat_module_evolution_per_year:
+	./script/statistic/show_evolution_module.py --before_date "2016-01-01" --more_year 7
+
+.PHONY: stat_module_evolution_per_year_OCA
+stat_module_evolution_per_year_OCA:
+	./script/statistic/show_evolution_module.py --filter "/OCA/" --before_date "2016-01-01" --more_year 7
 
 ###################
 #  Documentation  #

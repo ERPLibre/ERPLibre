@@ -9,12 +9,18 @@ import sys
 import tempfile
 import time
 import uuid
-from collections import deque
 from typing import Tuple
 
 import aioshutil
 import git
 from colorama import Fore
+
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
+from script import lib_asyncio
 
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
@@ -170,27 +176,6 @@ def print_log(lst_task, tpl_result):
             if result[0]:
                 f.write(result[0])
                 f.write("\n")
-
-
-async def run_command_get_output(*args, cwd=None):
-    if cwd is not None:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            # stdout must a pipe to be accessible as process.stdout
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
-    else:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            # stdout must a pipe to be accessible as process.stdout
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    # Wait for the subprocess to finish
-    stdout, stderr = await process.communicate()
-    return stdout.decode()
 
 
 async def run_command(*args, test_name=None):
@@ -378,8 +363,10 @@ async def test_exec(
             lst_module_to_test = tested_module.split(",")
             for module_name in lst_module_to_test:
                 # Update path to change new emplacement
-                s_lst_path_tested_module = await run_command_get_output(
-                    "find", ".", "-name", module_name
+                s_lst_path_tested_module = (
+                    await lib_asyncio.run_command_get_output(
+                        "find", "./addons/", "-name", module_name
+                    )
                 )
                 if not s_lst_path_tested_module:
                     return (
@@ -420,12 +407,14 @@ async def test_exec(
                         os.path.join(temp_dir_name, s_first_path)
                     )
 
-                    s_lst_path_generated_module = await run_command_get_output(
-                        "find",
-                        ".",
-                        "-name",
-                        generated_module,
-                        cwd=temp_dir_name,
+                    s_lst_path_generated_module = (
+                        await lib_asyncio.run_command_get_output(
+                            "find",
+                            "./addons/",
+                            "-name",
+                            generated_module,
+                            cwd=temp_dir_name,
+                        )
                     )
                     if s_lst_path_generated_module:
                         lst_path_generated_module = (
@@ -507,15 +496,19 @@ async def test_exec(
                         hook.write(new_hook_line)
 
         # Format editing code before commit
-        await run_command_get_output(
+        await lib_asyncio.run_command_get_output(
             "./script/maintenance/black.sh", temp_dir_name
         )
 
         # init repo with git
         for dir_to_git in lst_path_to_add_config:
-            await run_command_get_output("git", "init", ".", cwd=dir_to_git)
-            await run_command_get_output("git", "add", ".", cwd=dir_to_git)
-            await run_command_get_output(
+            await lib_asyncio.run_command_get_output(
+                "git", "init", ".", cwd=dir_to_git
+            )
+            await lib_asyncio.run_command_get_output(
+                "git", "add", ".", cwd=dir_to_git
+            )
+            await lib_asyncio.run_command_get_output(
                 "git", "commit", "-am", "'first commit'", cwd=dir_to_git
             )
 
@@ -712,11 +705,6 @@ def check_git_change():
     status = any([a[1] for a in tpl_result])
     loop.close()
     return not status
-
-
-def print_summary_task(task_list):
-    for task in task_list:
-        print(task.cr_code.co_name)
 
 
 # START TEST
@@ -1115,6 +1103,29 @@ async def run_code_generator_template_demo_portal_test(
     return test_result, test_status
 
 
+async def run_code_generator_template_demo_internal_test(
+    config,
+) -> Tuple[str, int]:
+    test_result = ""
+    test_status = 0
+    # Template
+    res, status = await test_exec(
+        config,
+        "./addons/TechnoLibre_odoo-code-generator-template",
+        generated_module="code_generator_demo_internal",
+        tested_module="code_generator_template_demo_internal",
+        search_class_module="demo_internal",
+        lst_init_module_name=[
+            "demo_internal",
+        ],
+        test_name="code_generator_template_demo_internal",
+        run_in_sandbox=True,
+    )
+    test_result += res
+    test_status += status
+
+    return test_result, test_status
+
 async def run_code_generator_template_demo_internal_inherit_test(
     config,
 ) -> Tuple[str, int]:
@@ -1173,75 +1184,6 @@ async def run_helloworld_test(config) -> Tuple[str, int]:
     return res, status
 
 
-async def run_in_serial(task_list):
-    q = asyncio.Queue()
-    for task in task_list:
-        await q.put(task)
-    lst_result = []
-    for i in range(len(task_list)):
-        co = await q.get()
-        result = await co
-        lst_result.append(result)
-    return lst_result
-
-
-class AsyncioPool:
-    # TODO check to replace this pool by https://github.com/dano/aioprocessing
-    def __init__(self, concurrency, loop=None):
-        """
-        @param loop: asyncio loop
-        @param concurrency: Maximum number of concurrently running tasks
-        """
-        self._loop = loop or asyncio.get_event_loop()
-        self._concurrency = concurrency
-        self._coros = deque([])  # All coroutines queued for execution
-        self._futures = []  # All currently running coroutines
-        self._lst_result = []
-
-    def close(self):
-        self._loop.close()
-
-    def add_coro(self, coro):
-        """
-        @param coro: coroutine to add
-        """
-        self._coros.append(coro)
-        self.print_status()
-
-    def run_until_complete(self):
-        self._loop.run_until_complete(self._wait_for_futures())
-        return self._lst_result
-
-    def print_status(self):
-        print(
-            " Status: coros:%s - futures:%s"
-            % (len(self._coros), len(self._futures))
-        )
-
-    def _start_futures(self):
-        num_to_start = self._concurrency - len(self._futures)
-        num_to_start = min(num_to_start, len(self._coros))
-        for _ in range(num_to_start):
-            coro = self._coros.popleft()
-            future = asyncio.ensure_future(coro, loop=self._loop)
-            self._futures.append(future)
-            self.print_status()
-
-    async def _wait_for_futures(self):
-        while len(self._coros) > 0 or len(self._futures) > 0:
-            self._start_futures()
-            futures_completed, futures_pending = await asyncio.wait(
-                self._futures,
-                loop=self._loop,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-
-            for future in futures_completed:
-                self._lst_result.append(future.result())
-                self._futures.remove(future)
-                self._start_futures()
-
-
 def run_all_test(config) -> None:
     # low in time, at the end for more speed
     task_list = [
@@ -1250,6 +1192,7 @@ def run_all_test(config) -> None:
         run_code_generator_demo_mariadb_sql_example_1_test(config),
         run_code_generator_auto_backup_test(config),
         run_code_generator_template_demo_portal_test(config),
+        run_code_generator_template_demo_internal_test(config),
         run_code_generator_template_demo_internal_inherit_test(config),
         run_code_generator_template_demo_sysadmin_cron_test(config),
         run_code_generator_demo_test(config),
@@ -1268,31 +1211,10 @@ def run_all_test(config) -> None:
         run_demo_test(config),
     ]
 
-    print_summary_task(task_list)
+    lib_asyncio.print_summary_task(task_list)
 
-    if asyncio.get_event_loop().is_closed():
-        asyncio.set_event_loop(asyncio.new_event_loop())
+    tpl_result = lib_asyncio.execute(config, task_list)
 
-    if config.no_parallel:
-        tpl_result = asyncio.run(run_in_serial(task_list))
-    elif config.max_process:
-        pool = AsyncioPool(config.max_process)
-        for task in task_list:
-            pool.add_coro(task)
-        try:
-            tpl_result = pool.run_until_complete()
-        finally:
-            pool.close()
-    else:
-        # Use maximal resource
-        loop = asyncio.get_event_loop()
-        if config.debug:
-            loop.set_debug(True)
-        try:
-            commands = asyncio.gather(*task_list)
-            tpl_result = loop.run_until_complete(commands)
-        finally:
-            loop.close()
     print_log(task_list, tpl_result)
     status = check_result(task_list, tpl_result)
     if status:

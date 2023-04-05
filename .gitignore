@@ -9,6 +9,7 @@ config.conf
 *.DS_Store
 *.pyc
 .coverage*
+coverage*
 
 .repo
 !addons/
