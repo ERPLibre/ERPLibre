@@ -1106,11 +1106,12 @@ stat_module_evolution_per_year_OCA:
 # documentation all
 .PHONY: doc
 doc:
-	./script/make.sh doc_dev
-	./script/make.sh doc_migration
-	./script/make.sh doc_test
-	./script/make.sh doc_user
-	./script/make.sh doc_markdown
+#	./script/make.sh doc_dev
+#	./script/make.sh doc_migration
+#	./script/make.sh doc_test
+#	./script/make.sh doc_user
+#	./script/make.sh doc_markdown
+	parallel ::: "./script/make.sh doc_dev" "./script/make.sh doc_migration" "./script/make.sh doc_test" "./script/make.sh doc_user" "./script/make.sh doc_markdown"
 
 # documentation clean all
 .PHONY: doc_clean
