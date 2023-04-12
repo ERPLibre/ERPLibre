@@ -57,7 +57,74 @@ https://apps.microsoft.com/store/detail/ubuntu-22041-lts/9PN20MSR04DW
 
 ## Setup WSL2 for ERPLibre
 
-Once WSL2 has been installed correctly, reboot your computer. Once back into Windows, run the following commands in WSL2:
+Once WSL2 has been installed correctly, reboot your computer. 
+
+### You can open your Ubuntu many ways:
+
+* Search "Ubuntu" by clicking the Windows key
+* [Download the Windows Terminal from the Microsoft Store](https://apps.microsoft.com/store/detail/windows-terminal/9N0DX20HK701)
+
+If you are using the Windows Terminal, you just have to click the little arrow next to the + sign and then you will see Ubuntu.
+![image](https://user-images.githubusercontent.com/59217113/230186101-579d8a5b-0825-404f-bd28-3642adce0948.png)
+
+
+### Setup a GUI for you Ubuntu
+
+1. Update your Ubuntu
+```bash
+sudo apt-get update -y && sudo apt-get upgrade -y
+```
+
+2. Install the XFCE4 Desktop
+```bash
+sudo apt install -y xrdp xfce4 xfce4-goodies
+```
+
+3. Setup the Desktop
+```bash
+sudo cp /etc/xrdp/xrdp.ini /etc/xrdp/xrdp.ini.bak
+sudo sed -i 's/3389/3390/g' /etc/xrdp/xrdp.ini
+sudo sed -i 's/max_bpp=32/#max_bpp=32\nmax_bpp=128/g' /etc/xrdp/xrdp.ini
+sudo sed -i 's/xserverbpp=24/#xserverbpp=24\nxserverbpp=128/g' /etc/xrdp/xrdp.ini
+echo xfce4-session > ~/.xsession
+```
+
+4. Setup the Remote Desktop Connection
+```bash
+sudo nano /etc/xrdp/startwm.sh
+```
+
+Comment these lines with a #
+```bash
+test -x /etc/X11/Xsession && exec /etc/X11/Xsession
+exec /bin/sh /etc/X11/Xsession
+```
+
+Add this line at the end of the file
+```bash
+startxfce4
+```
+
+Exit with Ctrl+S, Ctrl+X
+
+5. Starting Ubuntu Desktop GUI
+
+Open Ubuntu Terminal on your Windows and enter this command
+```bash
+sudo /etc/init.d/xrdp start
+```
+
+Then open *Remote Desktop Connection* by clicking the Windows key and connect to *localhost:3390*
+
+### Memory - Optionnel
+If WSL is taking too much memory, you can reduce with an easy step.
+You just have to go to *C:\Users\YourUsername\.wslconfig* and create a *.wslconfig* file and write:
+```bash
+sudo /etc/init.d/xrdp start
+
+[wsl2]
+memory=3GB
+```
 
 ### Installation of the necessary and up-to-date tools
 
@@ -188,3 +255,11 @@ Run the following command in the root of the project from the terminal in PyChar
 
 ### Can't restart ERPLibre
 Run `htop` from the terminal in PyCharm or WSL2 and close the python processes related to ERPLibre to release the socket.
+
+## References
+[WSL Installation](https://learn.microsoft.com/en-us/windows/wsl/install)
+
+[Linux GUI](https://hub.tcno.co/windows/wsl/desktop-gui/)
+
+[Memory Problem](https://www.aleksandrhovhannisyan.com/blog/limiting-memory-usage-in-wsl-2/)
+

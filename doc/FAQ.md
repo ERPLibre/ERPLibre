@@ -124,3 +124,19 @@ docker-machine create --driver virtualbox default
 docker-machine env default
 eval "$(docker-machine env default)"
 ```
+
+### Run error `current limit exceeds maximum limit`
+
+When you got
+
+```
+File "/Users/test/Desktop/ERPLibre/odoo/odoo/service/server.py", line 83, in set_limit_memory_hard
+resource.setrlimit(rlimit, (config['limit_memory_hard'], hard))
+ValueError: current limit exceeds maximum limit
+```
+
+Add line at the end of config.conf
+
+```
+limit_memory_hard = 0
+```

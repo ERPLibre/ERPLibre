@@ -8,7 +8,6 @@ openupgradelib
 unidiff
 colorama
 wheel
-aioshutil<1.2
 
 # For OSX
 cython
@@ -80,6 +79,10 @@ numpy==1.21.1
 feedparser==6.0.10
 geojson<3.0.0
 
+# asyncio
+aioshutil<1.2
+tqdm
+uvloop
 
 # Solve pcodedmp, oletools, rtfde and extract-msg
 win_unicode_console

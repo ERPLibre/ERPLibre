@@ -93,7 +93,7 @@
   <project name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" groups="addons"/>
   <project name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" revision="12.0_dev" groups="addons,base"/>
   <project name="muk_quality.git" path="addons/muk-it_muk_quality" remote="muk-it" groups="addons"/>
-  <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="12.0_dev" groups="addons,base"/>
+  <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="12.0_dev" groups="addons,base,code_generator"/>
   <project name="muk_website.git" path="addons/muk-it_muk_website" remote="muk-it" revision="12.0_remove_autoinstall" groups="addons,base"/>
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
   <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons"/>

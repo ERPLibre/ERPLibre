@@ -28,6 +28,9 @@ echo  "\n--- Installing Python 3 + pip3 --"
 brew install git python@3.7 wget parallel mariadb
 brew link git
 brew link wget
+
+echo  "\n--- Installing extra --"
+brew install parallel
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
