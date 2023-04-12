@@ -1205,18 +1205,29 @@ def run_all_test(config) -> None:
         run_code_generator_website_snippet_test(config),
         run_code_generator_demo_generic_test(config),
         # End run generic test
-        # TODO Will cause conflict with the other because write in code_generator_demo/hooks.py
-        # run_helloworld_test(config),
         run_code_generator_inherit_test(config),
         run_demo_test(config),
     ]
+    task_second_list = [
+        # TODO Will cause conflict with the other because write in code_generator_demo/hooks.py
+        run_helloworld_test(config),
+    ]
 
+    _logger.info("First list task")
     lib_asyncio.print_summary_task(task_list)
+    _logger.info("Second list task")
+    lib_asyncio.print_summary_task(task_second_list)
 
+    _logger.info("First execution")
     tpl_result = lib_asyncio.execute(config, task_list)
+    _logger.info("Second execution")
+    tpl_result_second = lib_asyncio.execute(config, task_second_list)
 
-    print_log(task_list, tpl_result)
-    status = check_result(task_list, tpl_result)
+    # Extra
+    tpl_result_total = tpl_result + tpl_result_second
+    task_list_total = task_list + task_second_list
+    print_log(task_list_total, tpl_result_total)
+    status = check_result(task_list_total, tpl_result_total)
     if status:
         log_file_print = LOG_FILE
     else:
