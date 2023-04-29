@@ -1126,6 +1126,7 @@ async def run_code_generator_template_demo_internal_test(
 
     return test_result, test_status
 
+
 async def run_code_generator_template_demo_internal_inherit_test(
     config,
 ) -> Tuple[str, int]:
