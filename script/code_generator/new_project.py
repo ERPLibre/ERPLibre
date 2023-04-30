@@ -6,9 +6,11 @@ import os
 import sys
 import tempfile
 import uuid
+import json
 
 from git import Repo
 from git.exc import InvalidGitRepositoryError, NoSuchPathError
+
 
 CODE_GENERATOR_DIRECTORY = "./addons/TechnoLibre_odoo-code-generator-template/"
 CODE_GENERATOR_DEMO_NAME = "code_generator_demo"
@@ -24,10 +26,12 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-# TODO Check if exist DONE
-# TODO change name into code_generator_demo DONE
-# TODO Create code generator empty module with demo DONE
-# TODO revert code_generator_demo DONE
+
+class Struct:
+    def __init__(self, **entries):
+        self.__dict__.update(entries)
+
+
 # TODO execute create_code_generator_from_existing_module.sh with force option
 # TODO open web interface on right database already selected locally with make run
 
@@ -52,6 +56,11 @@ def get_config():
         "--module",
         required=True,
         help="Module name to create",
+    )
+    parser.add_argument(
+        "--config",
+        help="""Configuration to create models with fields and type. JSON style.
+        Example : "{\"model\":[{\"name\":\"a\",\"fields\":[{\"name\":\"a\",\"type\":\"char\"}]}]}" """,
     )
     parser.add_argument(
         "--directory_code_generator",
@@ -106,6 +115,7 @@ class ProjectManagement:
         force=False,
         keep_bd_alive=False,
         coverage=False,
+        config="",
     ):
         self.force = force
         self._coverage = coverage
@@ -155,6 +165,16 @@ class ProjectManagement:
         self.template_name = self._generate_template_name(
             default=template_name
         )
+
+        self._parse_config(config)
+
+    def _parse_config(self, config):
+        if not config:
+            self.config = {}
+            self.config_lst_model = []
+        else:
+            self.config = json.loads(config)
+            self.config_lst_model = self.config.get("model")
 
     def _generate_cg_name(self, default=""):
         if default:
@@ -243,6 +263,7 @@ class ProjectManagement:
             return False
 
         cg_path = os.path.join(self.cg_directory, self.cg_name)
+        cg_hooks_py = os.path.join(cg_path, "hooks.py")
         if not self.force and not self.validate_path_ready_to_be_override(
             self.cg_name, self.cg_directory, path=cg_path
         ):
@@ -357,15 +378,26 @@ class ProjectManagement:
         else:
             _logger.info(f"Module template exists '{template_path}'")
 
-        self.search_and_replace_file(
-            template_hooks_py,
-            [
-                (
-                    'value["enable_template_wizard_view"] = False',
-                    'value["enable_template_wizard_view"] = True',
-                ),
-            ],
-        )
+        lst_template_hooks_py_replace = [
+            (
+                'value["enable_template_wizard_view"] = False',
+                'value["enable_template_wizard_view"] = True',
+            ),
+        ]
+
+        # Add model from config
+        if self.config:
+            str_lst_model = "; ".join(
+                [a.get("name") for a in self.config_lst_model]
+            )
+            old_str = 'value["template_model_name"] = ""'
+            new_str = f'value["template_model_name"] = "{str_lst_model}"'
+            lst_template_hooks_py_replace.append((old_str, new_str))
+
+            self.search_and_replace_file(
+                template_hooks_py,
+                lst_template_hooks_py_replace,
+            )
 
         # Execute all
         bd_name_template = (
@@ -430,6 +462,37 @@ class ProjectManagement:
         _logger.info(cmd)
         os.system(cmd)
         _logger.info(f"========= GENERATE {self.cg_name} =========")
+
+        # Add field from config
+        if self.config:
+            lst_update_cg = []
+            for model in self.config_lst_model:
+                model_name = model.get("name")
+                dct_field = {
+                    a.get("name"): {"ttype": a.get("type")}
+                    for a in model.get("fields")
+                }
+                if "name" not in dct_field.keys():
+                    dct_field["name"] = {"ttype": "char"}
+                old_str = (
+                    f'model_model = "{model_name}"\n       '
+                    " code_generator_id.add_update_model(model_model)"
+                )
+                new_str = (
+                    f'model_model = "{model_name}"\n        dct_field ='
+                    f" {dct_field}\n       "
+                    " code_generator_id.add_update_model(model_model,"
+                    " dct_field=dct_field)"
+                )
+                lst_update_cg.append((old_str, new_str))
+
+            # Force add menu and access
+            lst_update_cg.append(('"disable_generate_menu": True,', ""))
+            lst_update_cg.append(('"disable_generate_access": True,', ""))
+            self.search_and_replace_file(
+                cg_hooks_py,
+                lst_update_cg,
+            )
 
         if self._coverage:
             cmd = (
@@ -509,6 +572,7 @@ def main():
         force=config.force,
         keep_bd_alive=config.keep_bd_alive,
         coverage=config.coverage,
+        config=config.config,
     )
     if project.msg_error:
         return -1
