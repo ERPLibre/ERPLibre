@@ -870,11 +870,7 @@ open_terminal:
 ############
 .PHONY: format
 format:
-	./script/make.sh format_code_generator
-	./script/make.sh format_code_generator_template
-	./script/make.sh format_script
-	./script/make.sh format_erplibre_addons
-	./script/make.sh format_supported_addons
+	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
 .PHONY: format_code_generator
 format_code_generator:
