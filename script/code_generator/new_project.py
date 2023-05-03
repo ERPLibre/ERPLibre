@@ -468,10 +468,16 @@ class ProjectManagement:
             lst_update_cg = []
             for model in self.config_lst_model:
                 model_name = model.get("name")
-                dct_field = {
-                    a.get("name"): {"ttype": a.get("type")}
-                    for a in model.get("fields")
-                }
+                dct_field = {}
+                for a in model.get("fields"):
+                    dct_value = {"ttype": a.get("type")}
+                    if "relation" in a.keys():
+                        dct_value["relation"] = a["relation"]
+                    if "relation_field" in a.keys():
+                        dct_value["relation_field"] = a["relation_field"]
+                    if "description" in a.keys():
+                        dct_value["field_description"] = a["description"]
+                    dct_field[a.get("name")] = dct_value
                 if "name" not in dct_field.keys():
                     dct_field["name"] = {"ttype": "char"}
                 old_str = (
