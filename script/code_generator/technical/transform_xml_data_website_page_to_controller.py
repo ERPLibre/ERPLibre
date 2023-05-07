@@ -116,17 +116,17 @@ def main():
             f'get_{"_".join(url.replace("-", "_").strip("/").split("/"))}'
         )
 
-#         template = f"""
-# @http.route(
-#     ["{url}"],
-#     type="http",
-#     auth="user",
-#     website=True,
-# )
-# def {method_name}(self, **kw):
-#     return request.env["ir.ui.view"].render_template(
-#         "{module_name}.{view_id}",
-#     )
+        #         template = f"""
+        # @http.route(
+        #     ["{url}"],
+        #     type="http",
+        #     auth="user",
+        #     website=True,
+        # )
+        # def {method_name}(self, **kw):
+        #     return request.env["ir.ui.view"].render_template(
+        #         "{module_name}.{view_id}",
+        #     )
         template = f"""
 @http.route(
     ["{url}"],

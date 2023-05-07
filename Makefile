@@ -624,6 +624,15 @@ test_full_fast:
 	# TODO This test is broken in parallel
 	#./script/make.sh test_code_generator_hello_world
 
+.PHONY: test_full_fast_debug
+test_full_fast_debug:
+	./script/make.sh clean
+	# Need to create a BD to create cache _cache_erplibre_base
+	./script/database/db_restore.py --database test
+	./script/test/run_parallel_test.py --keep_cache
+	# TODO This test is broken in parallel
+	#./script/make.sh test_code_generator_hello_world
+
 .PHONY: test_full_fast_coverage
 test_full_fast_coverage:
 	./script/make.sh clean
@@ -861,11 +870,7 @@ open_terminal:
 ############
 .PHONY: format
 format:
-	./script/make.sh format_code_generator
-	./script/make.sh format_code_generator_template
-	./script/make.sh format_script
-	./script/make.sh format_erplibre_addons
-	./script/make.sh format_supported_addons
+	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
 .PHONY: format_code_generator
 format_code_generator:
@@ -1106,11 +1111,12 @@ stat_module_evolution_per_year_OCA:
 # documentation all
 .PHONY: doc
 doc:
-	./script/make.sh doc_dev
-	./script/make.sh doc_migration
-	./script/make.sh doc_test
-	./script/make.sh doc_user
-	./script/make.sh doc_markdown
+#	./script/make.sh doc_dev
+#	./script/make.sh doc_migration
+#	./script/make.sh doc_test
+#	./script/make.sh doc_user
+#	./script/make.sh doc_markdown
+	parallel ::: "./script/make.sh doc_dev" "./script/make.sh doc_migration" "./script/make.sh doc_test" "./script/make.sh doc_user" "./script/make.sh doc_markdown"
 
 # documentation clean all
 .PHONY: doc_clean
