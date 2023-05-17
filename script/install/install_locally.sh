@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
-source .venv/bin/activate
 EL_USER=${USER}
 EL_HOME=$PWD
 EL_HOME_ODOO="${EL_HOME}/odoo"
@@ -95,7 +94,6 @@ if [[ ! -f ${VENV_REPO_PATH} ]]; then
 fi
 
 # Make .venv active
-source .venv/bin/activate
 
 # Install Multilingual Markdown Generator if missing
 if [[ ! -f ${VENV_MULTILINGUAL_MARKDOWN_PATH} ]]; then

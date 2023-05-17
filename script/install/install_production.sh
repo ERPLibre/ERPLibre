@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
-source .venv/bin/activate
+
 echo -e "\n---- Create ERPLIBRE system user ----"
 sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPLIBRE' --group ${EL_USER}
 #The user should also be added to the sudo'ers group.

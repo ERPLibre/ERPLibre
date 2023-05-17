@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
-source .venv/bin/activate
+
 TEMP_FILENAME_NGINX_AVAILABLE="localhost"
 NEW_EL_WEBSITE_NAME="${EL_WEBSITE_NAME}"
 if [[ -z "${EL_WEBSITE_NAME}" ]]; then
