@@ -882,7 +882,7 @@ format_code_generator:
 format_erplibre_addons:
 	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
-	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
+	./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
 	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
 	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
