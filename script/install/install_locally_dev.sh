@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
-source .venv/bin/activate
+
 ./script/install/install_locally.sh
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
