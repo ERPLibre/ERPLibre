@@ -85,7 +85,7 @@ To generate database images in directory `./image_db`, run:
 ```bash
 make db_clean_cache
 make config_gen_all
-make image_db_create_all
+make image_db_create_all_parallel
 ```
 
 To test it, you need to clean caches and install it:

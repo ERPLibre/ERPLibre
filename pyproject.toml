@@ -12,7 +12,7 @@ target-version = [ "py37",]
 
 [tool.poetry]
 name = "ERPLibre"
-version = "1.4.0"
+version = "1.5.0"
 description = "Easy way to configure Odoo community"
 license = "AGPL-3.0-or-later"
 authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]

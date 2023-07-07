@@ -1,7 +1,7 @@
 version: "3.3"
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.4.0
+    image: technolibre/erplibre:1.5.0
     ports:
       - 8069:8069
       - 8071:8071
