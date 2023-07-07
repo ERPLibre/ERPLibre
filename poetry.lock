@@ -2423,6 +2423,18 @@ files = [
 decorator = "*"
 
 [[package]]
+name = "odoorpc"
+version = "0.9.0"
+description = "OdooRPC is a Python package providing an easy way to pilot your Odoo servers through RPC."
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "OdooRPC-0.9.0-py2.py3-none-any.whl", hash = "sha256:95a0d40c94c76a097870379a411180f81da164917a27d891a935894105f46704"},
+    {file = "OdooRPC-0.9.0.tar.gz", hash = "sha256:936adc52871b4c9d6b921c73421acd88f73442b17a71a49f34de6dbcf54d7964"},
+]
+
+[[package]]
 name = "ofxparse"
 version = "0.16"
 description = "Tools for working with the OFX (Open Financial Exchange) file format"
@@ -5869,4 +5881,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.16"
-content-hash = "09686cf272f3fa469be683dca2bf7511127c34ee36260dcf8031fca1f0a8c254"
+content-hash = "e3d80bd8df1d6e0f9b0234ad53565bc66f98a0b77952743e4a237283fe19b1fe"
