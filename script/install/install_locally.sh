@@ -119,8 +119,8 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
     ${VENV_PATH}/bin/poetry --version
     # Fix broken poetry by installing ignored dependence
-    ${VENV_PATH}/bin/pip install vatnumber
-    ${VENV_PATH}/bin/pip install suds-jurko
+    #    ${VENV_PATH}/bin/pip install vatnumber
+    #    ${VENV_PATH}/bin/pip install suds-jurko
     #    ${VENV_PATH}/bin/poetry lock --no-update
     ${VENV_PATH}/bin/poetry install
     retVal=$?
