@@ -39,8 +39,6 @@ RUN cd $ODOO_PREFIX && \
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
     ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/pip install vatnumber && \
-    ./.venv/bin/pip install suds-jurko && \
     ./.venv/bin/pip install poetry==1.3.1 && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install

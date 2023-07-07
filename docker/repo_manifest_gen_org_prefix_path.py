@@ -24,8 +24,7 @@ addonsDirs = [abspath(join(addonsBaseDir, f)) for f in listdir(addonsBaseDir) if
               isdir(join(addonsBaseDir, f))]
 
 # addonsDirs.insert(0, "/usr/lib/python3/dist-packages/odoo/addons/")
-# TODO path addons/addons is not exist in docker, so force to add it
-# addonsDirs.insert(0, "/ERPLibre/addons/addons")
+addonsDirs.insert(0, "/ERPLibre/addons/addons")
 addonsDirs.insert(0, "/ERPLibre/odoo/addons/")
 
 config = configparser.ConfigParser()
