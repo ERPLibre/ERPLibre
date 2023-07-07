@@ -24,11 +24,13 @@ make addons_install_code_generator_basic
 make run_code_generator
 ```
 
+TODO
 ```bash
 make addons_install_code_generator_featured
 make run_code_generator
 ```
 
+TODO
 ```bash
 make addons_install_code_generator_full
 make run_code_generator

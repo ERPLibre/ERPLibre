@@ -77,6 +77,8 @@ make run_code_generator
 
 <!-- [fr] -->
 Générateur de code avec fonctionnalités avancées :
+<!-- [en] -->
+TODO
 <!-- [common] -->
 ```bash
 make addons_install_code_generator_featured
@@ -85,6 +87,8 @@ make run_code_generator
 
 <!-- [fr] -->
 Générateur de code avec fonctionnalités complètes :
+<!-- [en] -->
+TODO
 <!-- [common] -->
 ```bash
 make addons_install_code_generator_full

@@ -45,12 +45,6 @@ RUN cd $ODOO_PREFIX && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
 
-RUN cd $ODOO_PREFIX/.venv && \
-    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ./multilang_md.py && \
-    chmod +x ./multilang_md.py && \
-    sed -i 1d ./multilang_md.py && \
-    sed -i "1 i #!./.venv/bin/python" ./multilang_md.py
-
 RUN cd $ODOO_PREFIX && \
     head /etc/odoo/odoo.conf && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \

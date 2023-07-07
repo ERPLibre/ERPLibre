@@ -95,16 +95,6 @@ fi
 
 # Make .venv active
 
-# Install Multilingual Markdown Generator if missing
-if [[ ! -f ${VENV_MULTILINGUAL_MARKDOWN_PATH} ]]; then
-    echo "\n---- Install Multilingual Markdown Generator ----"
-    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    chmod +x ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    sed -i 1d ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    PYTHON_HASHBANG="#!./.venv/bin/python"
-    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-fi
-
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env

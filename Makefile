@@ -1190,4 +1190,4 @@ doc_clean_user:
 # documentation markdown
 .PHONY: doc_markdown
 doc_markdown:
-	./.venv/multilang_md.py $(shell pwd)/doc/CODE_GENERATOR.base.md
+	./.venv/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md

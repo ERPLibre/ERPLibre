@@ -2017,6 +2017,22 @@ files = [
 ]
 
 [[package]]
+name = "mmg"
+version = "1.0.3"
+description = "Command Line Interface to Generate i18n Markdown"
+category = "main"
+optional = false
+python-versions = ">=3.6, <4"
+files = [
+    {file = "mmg-1.0.3-py3-none-any.whl", hash = "sha256:00f9a17ede9262ab90f04b17574b0168265a261b2891d0c3fc7f79786b941d0b"},
+    {file = "mmg-1.0.3.tar.gz", hash = "sha256:2a7d1e67589850273db904dc0a1ffc11348ed7e88b458c84a54909283d7e7f12"},
+]
+
+[package.dependencies]
+click = ">=7.1.2"
+emoji = ">=0.6.0"
+
+[[package]]
 name = "mock"
 version = "2.0.0"
 description = "Rolling backport of unittest.mock for all Pythons"
@@ -5853,4 +5869,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.16"
-content-hash = "f708624b9c9470c14fadb74f15b61ba72e1d637a3be936a3aa36601b8b84182c"
+content-hash = "09686cf272f3fa469be683dca2bf7511127c34ee36260dcf8031fca1f0a8c254"
