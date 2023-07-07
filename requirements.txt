@@ -8,6 +8,7 @@ openupgradelib
 unidiff
 colorama
 wheel
+mmg
 
 # For OSX
 cython

@@ -30,7 +30,7 @@ First, install dependencies to run docker, check script `./script/install/instal
 
 The docker volume is bound to the directory name, therefore create a unique directory name and run:
 ```bash
-wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.4.0/docker-compose.yml
+wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.5.0/docker-compose.yml
 docker-compose up -d
 ```
 

@@ -95,16 +95,6 @@ fi
 
 # Make .venv active
 
-# Install Multilingual Markdown Generator if missing
-if [[ ! -f ${VENV_MULTILINGUAL_MARKDOWN_PATH} ]]; then
-    echo "\n---- Install Multilingual Markdown Generator ----"
-    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    chmod +x ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    sed -i 1d ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-    PYTHON_HASHBANG="#!./.venv/bin/python"
-    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_MULTILINGUAL_MARKDOWN_PATH}
-fi
-
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env
@@ -119,8 +109,8 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
     ${VENV_PATH}/bin/poetry --version
     # Fix broken poetry by installing ignored dependence
-    ${VENV_PATH}/bin/pip install vatnumber
-    ${VENV_PATH}/bin/pip install suds-jurko
+    #    ${VENV_PATH}/bin/pip install vatnumber
+    #    ${VENV_PATH}/bin/pip install suds-jurko
     #    ${VENV_PATH}/bin/poetry lock --no-update
     ${VENV_PATH}/bin/poetry install
     retVal=$?

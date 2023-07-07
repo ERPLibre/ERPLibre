@@ -1,4 +1,4 @@
-FROM technolibre/erplibre-base:1.4.0
+FROM technolibre/erplibre-base:1.5.0
 
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
@@ -39,17 +39,9 @@ RUN cd $ODOO_PREFIX && \
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
     ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/pip install vatnumber && \
-    ./.venv/bin/pip install suds-jurko && \
     ./.venv/bin/pip install poetry==1.3.1 && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
-
-RUN cd $ODOO_PREFIX/.venv && \
-    curl https://raw.githubusercontent.com/ERPLibre/multilingual-markdown/master/multilang_md.py > ./multilang_md.py && \
-    chmod +x ./multilang_md.py && \
-    sed -i 1d ./multilang_md.py && \
-    sed -i "1 i #!./.venv/bin/python" ./multilang_md.py
 
 RUN cd $ODOO_PREFIX && \
     head /etc/odoo/odoo.conf && \

@@ -403,8 +403,8 @@ image_db_create_erplibre_package_wiki:
 
 .PHONY: image_db_create_erplibre_package_dms
 image_db_create_erplibre_package_dms:
-#	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_dms
-#	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_dms
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_dms
+	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_dms
 	./script/addons/install_addons.sh image_creation_erplibre_package_dms muk_dms,muk_dms_access,muk_dms_view,muk_web_preview,muk_web_preview_audio,muk_web_preview_csv,muk_web_preview_image,muk_web_preview_markdown,muk_web_preview_msoffice,muk_web_preview_opendocument,muk_web_preview_rst,muk_web_preview_text,muk_web_preview_video
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_dms --restore_image erplibre_package_dms
 
@@ -1190,4 +1190,4 @@ doc_clean_user:
 # documentation markdown
 .PHONY: doc_markdown
 doc_markdown:
-	./.venv/multilang_md.py $(shell pwd)/doc/CODE_GENERATOR.base.md
+	./.venv/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md

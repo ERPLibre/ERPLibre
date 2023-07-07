@@ -7,6 +7,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2023-07-07
+
 **Migration note**
 
 Because new update of Python and Poetry, recreate virtual environment.
@@ -34,16 +36,26 @@ Do a backup of your database and update all module :
 - Makefile can generate image DB in parallel with `image_db_create_all_parallel`
 - Makefile can run all code_generator with `run_parallel_cg` and `run_parallel_cg_template`
 - Script to generate Pycharm configuration and exclude directory
+- Support docker alpha+beta
+- Limit memory execution when install in develop
+- Template nginx configuration
+- Script code count statistic
+- Script show OCA evolution module statistic
+- Windows development support, check documentation installation
+- New project (code generator to create module) support params configuration
+- Module sync_external_model to synchronise Odoo models with module
 
 ## Changed
 
-- Odoo 12.0 update from 22-07-2020 to 10-10-2022
+- Odoo 12.0 update from 22-07-2020 to 01-01-2023
 - Update pip dependency with security update
     - Pillow==9.3.0
-    - gitpython==3.1.29
     - psycopg2==2.9.5
+    - Werkzeug==0.16.1
+    - check diff of file pyproject.toml for all information
 - Update to Python==3.7.16
 - Update poetry==1.3.1
+- Update multilingual-markdown==1.0.3
 - Update imagedb with all Odoo update
 - Repo documentation-user from Odoo change to documentation
 - Repo odooaktiv/QuotationRevision is deleted
@@ -51,10 +63,16 @@ Do a backup of your database and update all module :
 - Rename module project_task_subtask_time_range => project_time_budget
 - Rename module project_task_time_range => project_time_range
 - Refactor script emplacement, create directory in ./script/ per subject
+- Use command parallel in Makefile
+- Update sphinx version
+- Improve script location
 
 ### Fixed
 
 - Debian 11 installation script
+- Test result
+- OSX installation (not finish to support)
+- Poetry update support '~='
 
 ### Removed
 
@@ -68,6 +86,8 @@ Do a backup of your database and update all module :
     - Module helpdesk_mailing_list
     - Module helpdesk_join_team
 - Module project_time_management
+- Support of vatnumber, too old
+- Deprecated python dependency like pycrypto
 
 ## [1.4.0] - 2022-10-05
 
@@ -383,7 +403,9 @@ Because addons repository has change, config file need to be updated.
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.5.0...HEAD
+
+[1.5.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.4.0...v1.5.0
 
 [1.4.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.3.0...v1.4.0
 
