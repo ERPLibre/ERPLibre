@@ -64,8 +64,6 @@
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
-  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" groups="addons"/>
-  <project name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" remote="ERPLibre" groups="addons"/>
   <project name="event.git" path="addons/OCA_event" remote="OCA" groups="addons"/>
   <project name="field-service.git" path="addons/OCA_field-service" remote="OCA" groups="addons"/>
   <project name="fleet.git" path="addons/OCA_fleet" remote="OCA" groups="addons"/>
