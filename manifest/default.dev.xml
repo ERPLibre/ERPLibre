@@ -26,10 +26,7 @@
   
   <default remote="ERPLibre" revision="14.0" sync-j="4" sync-c="true"/>
   
-  <project name="ERPLibre_image_db.git" path="ERPLibre_image_db" remote="ERPLibre" groups="odoo"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
-  <project name="Property-Management_odoo.git" path="addons/kinjal-sorathiya_Property-Management_odoo" remote="kinjal-sorathiya" revision="master" groups="addons"/>
-  <project name="QuotationRevision.git" path="addons/MathBenTech_QuotationRevision" remote="MathBenTech" groups="addons"/>
   <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
@@ -63,20 +60,17 @@
   <project name="delivery-carrier.git" path="addons/OCA_delivery-carrier" remote="OCA" groups="addons"/>
   <project name="deltatech.git" path="addons/dhongu_deltatech" remote="dhongu" groups="addons"/>
   <project name="design-themes.git" path="addons/odoo_design-themes" remote="odoo" groups="addons"/>
-  <project name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" groups="addons"/>
   <project name="documentation.git" path="doc/odoo_documentation" remote="odoo" groups="odoo"/>
-  <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="12.0_module_donation_website" groups="addons"/>
+  <project name="donation.git" path="addons/OCA_donation" remote="OCA" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
-  <project name="erplibre-3D-printing-addons.git" path="addons/ERPLibre_erplibre-3D-printing-addons" remote="ERPLibre" groups="addons"/>
-  <project name="erplibre-family-management.git" path="addons/MathBenTech_erplibre-family-management" remote="MathBenTech" groups="addons"/>
   <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" groups="addons"/>
   <project name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" remote="ERPLibre" groups="addons"/>
   <project name="event.git" path="addons/OCA_event" remote="OCA" groups="addons"/>
   <project name="field-service.git" path="addons/OCA_field-service" remote="OCA" groups="addons"/>
   <project name="fleet.git" path="addons/OCA_fleet" remote="OCA" groups="addons"/>
   <project name="geospatial.git" path="addons/OCA_geospatial" remote="OCA" groups="addons"/>
-  <project name="helpdesk.git" path="addons/OCA_helpdesk" remote="OCA" revision="12.0_dev" groups="addons"/>
+  <project name="helpdesk.git" path="addons/OCA_helpdesk" remote="OCA" groups="addons"/>
   <project name="hr.git" path="addons/OCA_hr" remote="OCA" groups="addons"/>
   <project name="interface-github.git" path="addons/OCA_interface-github" remote="OCA" groups="addons"/>
   <project name="knowledge.git" path="addons/OCA_knowledge" remote="OCA" groups="addons"/>
@@ -85,23 +79,13 @@
   <project name="maintenance.git" path="addons/OCA_maintenance" remote="OCA" groups="addons"/>
   <project name="management-system.git" path="addons/OCA_management-system" remote="OCA" groups="addons"/>
   <project name="manufacture.git" path="addons/OCA_manufacture" remote="OCA" groups="addons"/>
-  <project name="margin-analysis.git" path="addons/OCA_margin-analysis" remote="OCA" revision="12.0_sale_margin_editor" groups="addons"/>
+  <project name="margin-analysis.git" path="addons/OCA_margin-analysis" remote="OCA" groups="addons"/>
   <project name="medical-fhir.git" path="addons/tegin_medical-fhir" remote="tegin" groups="addons"/>
   <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" groups="addons"/>
-  <project name="muk_base.git" path="addons/muk-it_muk_base" remote="muk-it" groups="addons"/>
-  <project name="muk_dms.git" path="addons/muk-it_muk_dms" remote="muk-it" groups="addons"/>
-  <project name="muk_docs.git" path="addons/muk-it_muk_docs" remote="muk-it" groups="addons"/>
-  <project name="muk_misc.git" path="addons/muk-it_muk_misc" remote="muk-it" groups="addons"/>
-  <project name="muk_quality.git" path="addons/muk-it_muk_quality" remote="muk-it" groups="addons"/>
-  <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" revision="12.0_dev" groups="addons"/>
-  <project name="muk_website.git" path="addons/muk-it_muk_website" remote="muk-it" revision="12.0_remove_autoinstall" groups="addons"/>
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
   <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons"/>
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" groups="addons"/>
-  <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" groups="addons"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
-  <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" remote="TechnoLibre" groups="addons"/>
-  <project name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" groups="addons"/>
   <project name="odoo-development.git" path="doc/itpp-labs_odoo-development" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
@@ -111,7 +95,6 @@
   <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" groups="addons"/>
-  <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-stock-addons.git" path="addons/Numigi_odoo-stock-addons" remote="Numigi" groups="addons"/>
@@ -119,8 +102,8 @@
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" groups="addons"/>
-  <project name="odoo.git" path="odoo" remote="odoo" revision="ERPLibre/12.0" clone-depth="10" groups="odoo"/>
-  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="12.0_remote_autoinstall" groups="addons"/>
+  <project name="odoo.git" path="odoo" remote="odoo" clone-depth="10" groups="odoo"/>
+  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA"  groups="addons"/>
   <project name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons"/>
   <project name="odooplm.git" path="addons/OmniaGit_odooplm" remote="OmniaGit" groups="addons"/>
@@ -132,17 +115,15 @@
   <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" groups="addons"/>
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
   <project name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" groups="addons"/>
-  <project name="product_rating_app.git" path="addons/odooaktiv_product_rating_app" remote="odooaktiv" groups="addons"/>
   <project name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" groups="addons"/>
-  <project name="project.git" path="addons/OCA_project" remote="OCA" revision="12.0_fix_conflict_project_key" groups="addons"/>
+  <project name="project.git" path="addons/OCA_project" remote="OCA" groups="addons"/>
   <project name="purchase-workflow.git" path="addons/OCA_purchase-workflow" remote="OCA" groups="addons"/>
   <project name="queue.git" path="addons/OCA_queue" remote="OCA" groups="addons"/>
   <project name="reporting-engine.git" path="addons/OCA_reporting-engine" remote="OCA" groups="addons"/>
   <project name="rma.git" path="addons/OCA_rma" remote="OCA" groups="addons"/>
   <project name="saas-addons.git" path="addons/it-projects-llc_saas-addons" remote="it-projects-llc" groups="addons"/>
   <project name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" groups="addons"/>
-  <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
-  <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" groups="addons"/>
+  <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" groups="addons"/>
   <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons"/>
   <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" groups="addons"/>
   <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons"/>
@@ -152,7 +133,7 @@
   <project name="social.git" path="addons/OCA_social" remote="OCA" groups="addons"/>
   <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
   <project name="storage.git" path="addons/OCA_storage" remote="OCA" groups="addons"/>
-  <project name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" revision="12.0_support_project_agile_timesheet" groups="addons"/>
+  <project name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" groups="addons"/>
   <project name="vertical-association.git" path="addons/OCA_vertical-association" remote="OCA" groups="addons"/>
   <project name="vertical-hotel.git" path="addons/OCA_vertical-hotel" remote="OCA" groups="addons"/>
   <project name="vertical-isp.git" path="addons/OCA_vertical-isp" remote="OCA" groups="addons"/>
@@ -160,6 +141,6 @@
   <project name="web.git" path="addons/OCA_web" remote="OCA" groups="addons"/>
   <project name="website-addons.git" path="addons/itpp-labs_website-addons" remote="itpp-labs" groups="addons"/>
   <project name="website-cms.git" path="addons/OCA_website-cms" remote="OCA" groups="addons"/>
-  <project name="website.git" path="addons/OCA_website" remote="OCA" revision="12.0_dev" groups="addons"/>
+  <project name="website.git" path="addons/OCA_website" remote="OCA" groups="addons"/>
   <project name="wms.git" path="addons/OCA_wms" remote="OCA" groups="addons"/>
 </manifest>
