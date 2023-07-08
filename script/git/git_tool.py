@@ -443,6 +443,7 @@ class GitTool:
         dct_project={},
         default_remote=None,
         keep_original=False,
+        default_branch=DEFAULT_BRANCH,
     ):
         """
         Generate repo manifest
@@ -453,6 +454,7 @@ class GitTool:
         :param default_remote: dict of default remote
         :param keep_original: if True, can manage multiple organization with same name,
            but with different fetch url
+        :param default_branch: default branch name
         :return:
         """
         if not output:
@@ -517,7 +519,7 @@ class GitTool:
                     OrderedDict(
                         [
                             ("@remote", repo.original_organization),
-                            ("@revision", DEFAULT_BRANCH),
+                            ("@revision", default_branch),
                             ("@sync-j", "4"),
                             ("@sync-c", "true"),
                         ]
@@ -570,7 +572,7 @@ class GitTool:
                 OrderedDict(
                     [
                         ("@remote", default_remote.get("@remote")),
-                        ("@revision", DEFAULT_BRANCH),
+                        ("@revision", default_branch),
                         ("@sync-j", "4"),
                         ("@sync-c", "true"),
                     ]

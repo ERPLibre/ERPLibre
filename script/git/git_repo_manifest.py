@@ -46,6 +46,11 @@ def get_config():
         default="manifest/default.dev.xml",
         help="The manifest file path to generate.",
     )
+    parser.add_argument(
+        "--default_branch",
+        default=False,
+        help="The manifest default branch.",
+    )
     args = parser.parse_args()
     return args
 
@@ -78,12 +83,16 @@ def main():
     else:
         dct_remote = {}
         dct_project = {}
+    kwargs = {}
+    if config.default_branch:
+        kwargs["default_branch"] = config.default_branch
     git_tool.generate_repo_manifest(
         lst_repo_organization,
         output=f"{config.dir}{config.manifest}",
         dct_remote=dct_remote,
         dct_project=dct_project,
         keep_original=True,
+        **kwargs
     )
     git_tool.generate_generate_config()
 

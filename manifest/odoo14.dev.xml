@@ -18,14 +18,13 @@
   <remote name="novacode-nl" fetch="https://github.com/ERPLibre/"/>
   <remote name="obayit" fetch="https://github.com/ERPLibre/"/>
   <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
-  <remote name="odoo_origin" fetch="https://github.com/odoo/"/>
   <remote name="odooaktiv" fetch="https://github.com/ERPLibre/"/>
   <remote name="odoomates" fetch="https://github.com/ERPLibre/"/>
   <remote name="openeducat" fetch="https://github.com/ERPLibre/"/>
   <remote name="pledra" fetch="https://github.com/ERPLibre/"/>
   <remote name="tegin" fetch="https://github.com/ERPLibre/"/>
   
-  <default remote="ERPLibre" revision="14.0" sync-j="4" sync-c="true"/>
+  <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true"/>
   
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" groups="base"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="dev_12.0" groups="addons"/>
@@ -66,7 +65,6 @@
   <project name="design-themes.git" path="addons/odoo_design-themes" remote="odoo" groups="addons,code_generator,image_db"/>
   <project name="development.git" path="addons/MathBenTech_development" remote="MathBenTech" groups="addons,base"/>
   <project name="documentation-user.git" path="doc/odoo_documentation-user" remote="odoo" groups="odoo"/>
-  <project name="documentation.git" path="doc/odoo_documentation" remote="odoo_origin" groups="odoo"/>
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" revision="12.0_module_donation_website" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
@@ -102,17 +100,17 @@
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" groups="addons,base"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" remote="TechnoLibre" revision="12.0" groups="addons,code_generator,image_db"/>
+  <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" revision="12.0" remote="TechnoLibre" groups="addons,code_generator,image_db"/>
   <project name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="12.0" groups="addons,code_generator,image_db"/>
   <project name="odoo-development.git" path="doc/itpp-labs_odoo-development" remote="itpp-labs" revision="12.0_dev" groups="odoo"/>
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
   <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" groups="addons"/>
+  <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
   <project name="odoo-hr-addons.git" path="addons/Numigi_odoo-hr-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-module-migrator.git" path="script/OCA_odoo-module-migrator" remote="OCA" revision="master" groups="odoo"/>
   <project name="odoo-partner-addons.git" path="addons/Numigi_odoo-partner-addons" remote="Numigi" revision="12.0_dev" groups="addons,base,image_db"/>
-  <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-addons.git" path="addons/Numigi_odoo-product-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
+  <project name="odoo-port-docs.git" path="doc/itpp-labs_odoo-port-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-product-configurator.git" path="addons/pledra_odoo-product-configurator" remote="pledra" groups="addons"/>
   <project name="odoo-project-addons.git" path="addons/Numigi_odoo-project-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-purchase-addons.git" path="addons/Numigi_odoo-purchase-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
