@@ -469,15 +469,17 @@ class GitTool:
 
         # Fill with configuration
         for dct_value in dct_remote.values():
-            lst_remote.append(
-                OrderedDict(
-                    [
-                        ("@name", dct_value.get("@name")),
-                        ("@fetch", dct_value.get("@fetch")),
-                    ]
+            remote_name = dct_value.get("@name")
+            if remote_name not in lst_remote_name:
+                lst_remote.append(
+                    OrderedDict(
+                        [
+                            ("@name", remote_name),
+                            ("@fetch", dct_value.get("@fetch")),
+                        ]
+                    )
                 )
-            )
-            lst_remote_name.append(dct_value.get("@name"))
+                lst_remote_name.append(remote_name)
         for dct_value in dct_project.values():
             lst_project_info = [
                 ("@name", dct_value.get("@name")),

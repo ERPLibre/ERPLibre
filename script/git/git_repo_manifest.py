@@ -41,6 +41,11 @@ def get_config():
         help="Create a new manifest and clear old configuration.",
     )
     parser.add_argument(
+        "--keep_origin",
+        action="store_true",
+        help="Create origin remote. TODO.",
+    )
+    parser.add_argument(
         "-m",
         "--manifest",
         default="manifest/default.dev.xml",
@@ -91,8 +96,8 @@ def main():
         output=f"{config.dir}{config.manifest}",
         dct_remote=dct_remote,
         dct_project=dct_project,
-        keep_original=True,
-        **kwargs
+        keep_original=config.keep_origin,
+        **kwargs,
     )
     git_tool.generate_generate_config()
 
