@@ -28,16 +28,7 @@ printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> ${EL_CONFIG_FILE}
 printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons/addons," >> ${EL_CONFIG_FILE}
 printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
-    printf "${EL_HOME}/ERPLibre_image_db," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/CybroOdoo_OpenHRMS," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/ERPLibre_erplibre-3D-printing-addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/ERPLibre_erplibre_theme_addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/MathBenTech_QuotationRevision," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/MathBenTech_erplibre-family-management," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/MathBenTech_scrummer," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Numigi_odoo-base-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Numigi_odoo-entertainment-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Numigi_odoo-git-addons," >> ${EL_CONFIG_FILE}
@@ -131,8 +122,6 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_wms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OmniaGit_odooplm," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/Smile-SA_odoo_addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/TechnoLibre_odoo-code-generator," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/TechnoLibre_odoo-code-generator-template," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ajepe_odoo-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
@@ -140,21 +129,11 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/itpp-labs_access-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/itpp-labs_pos-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/itpp-labs_website-addons," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/kinjal-sorathiya_Property-Management_odoo," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_base," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_dms," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_docs," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_misc," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_quality," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_web," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/muk-it_muk_website," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/novacode-nl_odoo-formio," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/obayit_odoo_dhtmlxgantt," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odoo_design-themes," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/odooaktiv_product_rating_app," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odoomates_odooapps," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/openeducat_openeducat_erp," >> ${EL_CONFIG_FILE}
-    printf "${EL_HOME}/addons/pledra_odoo-product-configurator," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/tegin_medical-fhir," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/doc/itpp-labs_odoo-development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/doc/itpp-labs_odoo-port-docs," >> ${EL_CONFIG_FILE}
