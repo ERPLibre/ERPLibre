@@ -20,3 +20,5 @@ xlsxwriter
 suds-jurko
 vatnumber
 dns
+dataclasses
+extract_msg
