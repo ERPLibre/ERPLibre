@@ -61,7 +61,8 @@ Execute to generate Repo manifest
 
 ## Move database from prod to dev
 
-Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a database
+Copy the database image into `./image_db/prod_client.zip` and run `make db_restore_prod_client`. This will create a
+database
 named `prod_client` ready to test.
 
 When moving database from prod to your dev environment, you want to remove email servers, backups and install user test
@@ -219,6 +220,24 @@ Run the installation, `make install_dev`.
 Update poetry, `./script/poetry/poetry_update.py`.
 
 Create docker, `make docker_build`.
+
+### Python version major change
+
+When you need to change python 3.7.17 to 3.8.10, do :
+
+```bash
+rm -r .venv
+make install_dev
+./.venv/bin/poetry lock --no-update
+```
+
+And update file script/install/install_locally.sh
+
+`ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/`
+
+to
+
+`ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.8/site-packages/`
 
 # Pull request
 

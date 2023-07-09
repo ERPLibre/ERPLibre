@@ -24,7 +24,7 @@ if [[ ! -d "./addons/addons" ]]; then
 fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=3.7.16
+PYTHON_VERSION=3.8.10
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 VENV_PATH=./.venv
@@ -125,4 +125,4 @@ rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
-ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/
+ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.8/site-packages/
