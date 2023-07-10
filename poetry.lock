@@ -2856,12 +2856,12 @@ files = [
 
 [[package]]
 name = "ofxparse"
-version = "0.19"
+version = "0.21"
 description = "Tools for working with the OFX (Open Financial Exchange) file format"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ofxparse-0.19.tar.gz", hash = "sha256:d8c81fd5089332106da1a2e8919c412c7c677f08af04d557ca767701a04e0918"},
+    {file = "ofxparse-0.21.tar.gz", hash = "sha256:057ab68d31270dece4d1a47662096aa76341968aaee145ffc711cb44cbd5c4a7"},
 ]
 
 [package.dependencies]
@@ -3250,13 +3250,13 @@ Wand = ">=0.6.10"
 
 [[package]]
 name = "phonenumbers"
-version = "8.13.15"
+version = "8.13.16"
 description = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
 optional = false
 python-versions = "*"
 files = [
-    {file = "phonenumbers-8.13.15-py2.py3-none-any.whl", hash = "sha256:634b277dc53933962961697211746f2fb7bf945a6725a853a1556cdb4a7531e4"},
-    {file = "phonenumbers-8.13.15.tar.gz", hash = "sha256:adf80fc0027ce8eac990f5e1d3fa00022b481133d65fa40c1c40ae9020fc5a66"},
+    {file = "phonenumbers-8.13.16-py2.py3-none-any.whl", hash = "sha256:d7ca6b392eac44b50b923c6dc661525c73b21fa506723d2540c72de3db023442"},
+    {file = "phonenumbers-8.13.16.tar.gz", hash = "sha256:92772b142eac9f3aeb0e87958c436996ac16d468d96646483997c8a57517933b"},
 ]
 
 [[package]]
@@ -5654,13 +5654,13 @@ h11 = ">=0.9.0,<1"
 
 [[package]]
 name = "xlrd"
-version = "1.1.0"
+version = "1.2.0"
 description = "Library for developers to extract data from Microsoft Excel (tm) spreadsheet files"
 optional = false
-python-versions = "*"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 files = [
-    {file = "xlrd-1.1.0-py2.py3-none-any.whl", hash = "sha256:83a1d2f1091078fb3f65876753b5302c5cfb6a41de64b9587b74cefa75157148"},
-    {file = "xlrd-1.1.0.tar.gz", hash = "sha256:8a21885513e6d915fe33a8ee5fdfa675433b61405ba13e2a69e62ee36828d7e2"},
+    {file = "xlrd-1.2.0-py2.py3-none-any.whl", hash = "sha256:e551fb498759fa3a5384a94ccd4c3c02eb7c00ea424426e212ac0c57be9dfbde"},
+    {file = "xlrd-1.2.0.tar.gz", hash = "sha256:546eb36cee8db40c3eaa46c351e67ffee6eeb5fa2650b71bc4c758a29a1b29b2"},
 ]
 
 [[package]]
@@ -5693,6 +5693,16 @@ optional = false
 python-versions = "*"
 files = [
     {file = "xmlformatter-0.2.4.tar.gz", hash = "sha256:6d93c4bc04cffb1d4cf6eb9d9034018e9b264e4554269e7da67539ba4bff03f5"},
+]
+
+[[package]]
+name = "xmlrunner"
+version = "1.7.7"
+description = "PyUnit-based test runner with JUnit like XML reporting."
+optional = false
+python-versions = "*"
+files = [
+    {file = "xmlrunner-1.7.7.tar.gz", hash = "sha256:5a6113d049eca7646111ee657266966e5bbfb0b5ceb2e83ee0772e16d7110f39"},
 ]
 
 [[package]]
@@ -5887,4 +5897,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.10"
-content-hash = "f8bb6ce81d5bba0bee5c81e24007915364b08d7cb375eebfbf5296c7d07b3909"
+content-hash = "a997ef9502d1782b8611d83173a7cfdc43260be66f8d4dbbad2adec17a154400"
