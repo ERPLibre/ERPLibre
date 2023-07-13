@@ -95,6 +95,14 @@ fi
 
 # Make .venv active
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  echo -e "============================================================="
+  echo -e "============================================================="
+  echo -e "=======>source .venv/bin/activate here!!!    <==============="
+  echo -e "============================================================="
+  echo -e "============================================================="
+  source .venv/bin/activate
+fi
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env
@@ -126,3 +134,4 @@ rm -rf artifacts
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
 ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.8/site-packages/
+echo -e "====> test ok"
