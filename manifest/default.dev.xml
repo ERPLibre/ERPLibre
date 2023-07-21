@@ -25,7 +25,8 @@
   <remote name="tegin" fetch="https://github.com/tegin/"/>
   
   <default remote="ERPLibre" revision="14.0" sync-j="4" sync-c="true"/>
-  
+
+  <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" groups="base"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
   <project name="access-addons.git" path="addons/itpp-labs_access-addons" remote="itpp-labs" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
