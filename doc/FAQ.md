@@ -85,6 +85,16 @@ git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@m
 git cherry-pick -m 1 --strategy-option theirs HASH
 ```
 
+## Service git-daemon already running, error bind
+
+This error occur when force stop (ctrl+c) a script like `./script/manifest/update_manifest_local_dev.sh`
+
+The error into console is similar to `Could not bind to 0.0.0.0: Address already in use`
+
+```bash
+pkill -f git-daemon
+```
+
 ## git-repo
 
 ### error.GitError fatal bad revision
