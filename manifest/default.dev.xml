@@ -61,7 +61,6 @@
   <project name="delivery-carrier.git" path="addons/OCA_delivery-carrier" remote="OCA" groups="addons"/>
   <project name="deltatech.git" path="addons/dhongu_deltatech" remote="dhongu" groups="addons"/>
   <project name="design-themes.git" path="addons/odoo_design-themes" remote="odoo" groups="addons"/>
-  <project name="documentation.git" path="doc/odoo_documentation" remote="odoo" groups="odoo"/>
   <project name="donation.git" path="addons/OCA_donation" remote="OCA" groups="addons"/>
   <project name="e-commerce.git" path="addons/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
