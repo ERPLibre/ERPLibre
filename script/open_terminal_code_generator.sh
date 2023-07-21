@@ -3,10 +3,10 @@
 working_path=`readlink -f .`
 paths=(
 "${working_path}/"
-"${working_path}/addons/TechnoLibre_odoo-code-generator"
-"${working_path}/addons/TechnoLibre_odoo-code-generator-template"
-"${working_path}/addons/ERPLibre_erplibre_addons"
-"${working_path}/addons/OCA_server-tools"
+#"${working_path}/addons/TechnoLibre_odoo-code-generator"
+#"${working_path}/addons/TechnoLibre_odoo-code-generator-template"
+#"${working_path}/addons/ERPLibre_erplibre_addons"
+#"${working_path}/addons/OCA_server-tools"
 
 )
 cmd_before="cd "

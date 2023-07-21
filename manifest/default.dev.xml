@@ -6,7 +6,7 @@
   <remote name="Numigi" fetch="https://github.com/Numigi/"/>
   <remote name="OCA" fetch="https://github.com/OCA/"/>
   <remote name="OmniaGit" fetch="https://github.com/OmniaGit/"/>
-  <remote name="Smile-SA" fetch="https://github.com/Smile-SA/"/>
+  <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
   <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ajepe/"/>
   <remote name="camptocamp" fetch="https://github.com/camptocamp/"/>
@@ -17,7 +17,7 @@
   <remote name="muk-it" fetch="https://github.com/muk-it/"/>
   <remote name="novacode-nl" fetch="https://github.com/novacode-nl/"/>
   <remote name="obayit" fetch="https://github.com/obayit/"/>
-  <remote name="odoo" fetch="https://github.com/odoo/"/>
+  <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
   <remote name="odooaktiv" fetch="https://github.com/odooaktiv/"/>
   <remote name="odoomates" fetch="https://github.com/odoomates/"/>
   <remote name="openeducat" fetch="https://github.com/openeducat/"/>
@@ -100,8 +100,8 @@
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" groups="addons"/>
-  <project name="odoo.git" path="odoo" remote="odoo" clone-depth="10" groups="odoo"/>
-  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA"  groups="addons"/>
+  <project name="odoo.git" path="odoo" remote="odoo" clone-depth="10" revision="ERPLibre/14.0" groups="odoo"/>
+  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" revision="14.0_dev" groups="addons"/>
   <project name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons"/>
   <project name="odooplm.git" path="addons/OmniaGit_odooplm" remote="OmniaGit" groups="addons"/>
