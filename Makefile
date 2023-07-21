@@ -357,7 +357,7 @@ image_db_create_erplibre_package_project:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_project
 	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_project
 	#./script/addons/install_addons.sh image_creation_erplibre_package_project erplibre_base_quebec
-	./script/addons/install_addons.sh image_creation_erplibre_package_accounting l10n_ca
+	./script/addons/install_addons.sh image_creation_erplibre_package_project l10n_ca
 	#./script/addons/install_addons.sh image_creation_erplibre_package_project project,project_chatter,project_default_task_stage,project_form_with_dates,project_hide_create_sale_order,project_iteration,project_iteration_parent_only,project_iteration_parent_type_required,project_portal_hide_timesheets,project_portal_parent_task,project_remaining_hours_update,project_stage,project_stage_allow_timesheet,project_stage_no_quick_create,project_task_date_planned,project_task_deadline_from_project,project_task_full_text_search,project_task_id_in_display_name,project_task_link,project_task_reference,project_task_resource_type,project_task_search_parent_subtask,project_task_stage_external_mail,project_task_subtask_same_project,project_task_type,project_template,project_template_numigi,project_template_timesheet,project_type,project_time_budget,project_time_range
 	./script/addons/install_addons.sh image_creation_erplibre_package_project project,project_chatter,project_default_task_stage,project_form_with_dates,project_hide_create_sale_order,project_iteration,project_iteration_parent_only,project_iteration_parent_type_required,project_portal_hide_timesheets,project_portal_parent_task,project_remaining_hours_update,project_stage,project_stage_allow_timesheet,project_stage_no_quick_create,project_task_date_planned,project_task_deadline_from_project,project_task_full_text_search,project_task_id_in_display_name,project_task_link,project_task_reference,project_task_resource_type,project_task_search_parent_subtask,project_task_stage_external_mail,project_task_subtask_same_project,project_task_type,project_type,project_time_budget,project_time_range
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_project --restore_image erplibre_package_project
@@ -367,7 +367,7 @@ image_db_create_erplibre_package_purchase:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_purchase
 	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_purchase
 	#./script/addons/install_addons.sh image_creation_erplibre_package_purchase erplibre_base_quebec
-	./script/addons/install_addons.sh image_creation_erplibre_package_accounting l10n_ca
+	./script/addons/install_addons.sh image_creation_erplibre_package_purchase l10n_ca
 	#./script/addons/install_addons.sh image_creation_erplibre_package_purchase purchase,purchase_mrp,purchase_requisition,purchase_stock,product_supplier_info_helpers,purchase_consignment,purchase_consignment_delivery_expense,purchase_consignment_inventory,purchase_consignment_inventory_line_domain,purchase_estimated_time_arrival,purchase_invoice_empty_lines,purchase_invoice_from_picking,purchase_partner_products,purchase_warning_minimum_amount
 	./script/addons/install_addons.sh image_creation_erplibre_package_purchase purchase,purchase_mrp,purchase_requisition,purchase_stock,product_supplier_info_helpers,purchase_estimated_time_arrival,purchase_partner_products
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_purchase --restore_image erplibre_package_purchase
@@ -377,7 +377,7 @@ image_db_create_erplibre_package_sale:
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database image_creation_erplibre_package_sale
 	./.venv/bin/python3 ./odoo/odoo-bin db --clone --from_database image_creation_erplibre_base --database image_creation_erplibre_package_sale
 	#./script/addons/install_addons.sh image_creation_erplibre_package_sale erplibre_base_quebec,crm_team_quebec
-	./script/addons/install_addons.sh image_creation_erplibre_package_accounting l10n_ca
+	./script/addons/install_addons.sh image_creation_erplibre_package_sale l10n_ca
 	#./script/addons/install_addons.sh image_creation_erplibre_package_sale sale,sale_crm,sale_expense,sale_management,sale_margin,sale_mrp,sale_purchase,sale_quotation_builder,sale_stock,sale_timesheet,sales_team,product_create_group,product_dimension,product_dimension_numigi,product_extra_views,product_extra_views_purchase,product_extra_views_sale,product_extra_views_stock,product_kit,product_panel_shortcut,product_reference,product_reference_list_view,product_variant_button_complete_form,sale_order_line_limit,sale_degroup_tax,payment,payment_transfer,purchase,stock
 	./script/addons/install_addons.sh image_creation_erplibre_package_sale sale,sale_crm,sale_expense,sale_management,sale_margin,sale_mrp,sale_purchase,sale_quotation_builder,sale_stock,sale_timesheet,sales_team,product_create_group,product_extra_views,product_extra_views_purchase,product_extra_views_sale,product_extra_views_stock,product_kit,product_panel_shortcut,product_reference,product_reference_list_view,product_variant_button_complete_form,payment,payment_transfer,purchase,stock
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_erplibre_package_sale --restore_image erplibre_package_sale
@@ -455,7 +455,7 @@ image_db_create_all:
 #	./script/make.sh image_db_create_erplibre_package_website
 #	./script/make.sh image_db_create_erplibre_package_wiki
 #	./script/make.sh image_db_create_erplibre_package_dms
-	./script/make.sh image_db_create_test_website_attachments
+	#./script/make.sh image_db_create_test_website_attachments
 	#./script/make.sh config_gen_all
 
 .PHONY: image_db_create_all_parallel
