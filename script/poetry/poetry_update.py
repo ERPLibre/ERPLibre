@@ -100,7 +100,7 @@ def combine_requirements(config):
                     continue
                 if "#" in b:
                     # remove comments at the end of module
-                    b = b[:b.index("#")].strip()
+                    b = b[: b.index("#")].strip()
 
                 # Regroup requirement
                 for sign in lst_sign:
@@ -139,7 +139,9 @@ def combine_requirements(config):
                     dct_requirements_module_filename[b].append(filename)
                 lst_requirements.append(b)
 
-    dct_requirements = get_manifest_external_dependencies(dct_requirements, lst_sign)
+    dct_requirements = get_manifest_external_dependencies(
+        dct_requirements, lst_sign
+    )
 
     # Merge all requirement by insensitive
     dct_requirement_insensitive = {}
