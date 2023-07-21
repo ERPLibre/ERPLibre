@@ -87,10 +87,14 @@ git cherry-pick -m 1 --strategy-option theirs HASH
 
 ## git update manifest
 
-### Error fatal: unable to allocate any listen sockets on port 9418
+### Service git-daemon already running, error bind or Error fatal: unable to allocate any listen sockets on port 9418
+
+This error occur when force stop (ctrl+c) a script like `./script/manifest/update_manifest_local_dev.sh`
+
+The error into console is similar to `Could not bind to 0.0.0.0: Address already in use`
 
 ```bash
-pkill git-daemon
+pkill -f git-daemon
 ```
 
 ## git-repo
@@ -159,11 +163,10 @@ sudo docker network create localnetwork --subnet 10.0.1.0/24
 
 And create `docker-compose.override.yml` at root project with
 
-
 ```yaml
 version: '3'
 networks:
-  default:
-    external:
-      name: localnetwork
+    default:
+        external:
+            name: localnetwork
 ```
