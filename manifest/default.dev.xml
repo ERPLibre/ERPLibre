@@ -68,7 +68,7 @@
   <project name="field-service.git" path="addons/OCA_field-service" remote="OCA" groups="addons"/>
   <project name="fleet.git" path="addons/OCA_fleet" remote="OCA" groups="addons"/>
   <project name="geospatial.git" path="addons/OCA_geospatial" remote="OCA" groups="addons"/>
-  <project name="helpdesk.git" path="addons/OCA_helpdesk" remote="OCA" groups="addons"/>
+  <project name="helpdesk.git" path="addons/OCA_helpdesk" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
   <project name="hr.git" path="addons/OCA_hr" remote="OCA" groups="addons"/>
   <project name="interface-github.git" path="addons/OCA_interface-github" remote="OCA" groups="addons"/>
   <project name="knowledge.git" path="addons/OCA_knowledge" remote="OCA" groups="addons"/>
