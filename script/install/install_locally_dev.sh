@@ -9,6 +9,13 @@ if [[ $retVal -ne 0 ]]; then
     exit 1
 fi
 
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  echo -e "====> in locally dev"
+  echo -e "====> source .venv/bin/activate"
+  source .venv/bin/activate
+  echo -e "====> after source .venv/bin/activate"
+fi
+
 # Update git-repo
 ./script/manifest/update_manifest_local_dev.sh
 retVal=$?

@@ -13,9 +13,14 @@ EL_USER=${USER}
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo  "\n---- Install PostgreSQL Server ----"
-brew install postgresql@15
-brew install postgis
-brew services start postgresql@15
+if which psql >/dev/null 2>&1; then
+  echo "postgresql is already installed, skipping"
+else
+  echo "Postgresql not installed, so we will install it"
+  brew install postgresql@15
+  brew install postgis
+  brew services start postgresql@15
+fi
 
 echo  "\n---- Creating the ERPLibre PostgreSQL User  ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
@@ -25,6 +30,7 @@ sudo su - postgres -c "CREATE EXTENSION postgis;\nCREATE EXTENSION postgis_topol
 # Install Dependencies
 #--------------------------------------------------
 echo  "\n--- Installing Python 3 + pip3 --"
+#TODO is python@3.7 line here still usefull?? Should we get rid of it?
 brew install git python@3.7 wget parallel mariadb
 brew link git
 brew link wget
