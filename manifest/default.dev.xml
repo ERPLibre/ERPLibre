@@ -128,7 +128,7 @@
   <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons"/>
   <project name="server-env.git" path="addons/OCA_server-env" remote="OCA" groups="addons"/>
   <project name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" groups="addons"/>
-  <project name="server-ux.git" path="addons/OCA_server-ux" remote="OCA" groups="addons"/>
+  <project name="server-ux.git" path="addons/OCA_server-ux" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
   <project name="social.git" path="addons/OCA_social" remote="OCA" groups="addons"/>
   <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
   <project name="storage.git" path="addons/OCA_storage" remote="OCA" groups="addons"/>
