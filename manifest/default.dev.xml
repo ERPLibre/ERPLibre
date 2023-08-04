@@ -81,6 +81,7 @@
   <project name="medical-fhir.git" path="addons/tegin_medical-fhir" remote="tegin" groups="addons"/>
   <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" groups="addons"/>
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
+  <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" groups="addons"/>
   <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons"/>
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" groups="addons"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
