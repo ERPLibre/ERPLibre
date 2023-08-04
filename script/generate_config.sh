@@ -129,6 +129,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/itpp-labs_access-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/itpp-labs_pos-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/itpp-labs_website-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/muk-it_muk_web," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/novacode-nl_odoo-formio," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/obayit_odoo_dhtmlxgantt," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odoo_design-themes," >> ${EL_CONFIG_FILE}
