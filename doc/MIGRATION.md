@@ -37,3 +37,29 @@ make docker_show_databases
 - Run script `make install_dev`
 - Restart your daemon
 - Regenerate master password manually
+
+## Migration Odoo 12 to Odoo 13
+
+Replace BD to your database name.
+
+First, be sure all addons is updated with script.
+
+```bash
+./script/addons/update_addons_all.sh BD
+```
+
+Execute migration with OpenUpgrade.
+
+```bash
+make config_gen_migration
+./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d BD
+```
+
+## Migration Odoo 13 to Odoo 14
+
+Replace BD to your database name.
+
+```bash
+make config_gen_migration
+./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d BD
+```
