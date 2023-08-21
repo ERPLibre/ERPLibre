@@ -106,6 +106,7 @@
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons"/>
   <project name="odooplm.git" path="addons/OmniaGit_odooplm" remote="OmniaGit" groups="addons"/>
   <project name="openeducat_erp.git" path="addons/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
+  <project name="OpenUpgrade.git" path="addons/OCA_OpenUpgrade" remote="OCA" clone-depth="10" groups="migration"/>
   <project name="operating-unit.git" path="addons/OCA_operating-unit" remote="OCA" groups="addons"/>
   <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" groups="addons"/>
   <project name="pos-addons.git" path="addons/itpp-labs_pos-addons" remote="itpp-labs" groups="addons"/>
