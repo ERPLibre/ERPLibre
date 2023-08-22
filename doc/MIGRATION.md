@@ -42,6 +42,14 @@ make docker_show_databases
 
 Replace BD to your database name.
 
+First, be sure all addons is updated with script.
+
+```bash
+./script/addons/update_addons_all.sh BD
+```
+
+Execute migration with OpenUpgrade.
+
 ```bash
 make config_gen_migration
 ./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0  --update all --stop-after-init -d BD
