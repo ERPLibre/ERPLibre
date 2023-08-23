@@ -36,7 +36,7 @@ then
 elif [ "$IS_RELEASE" == false ]
 then
   # Add commit hash when not a release
-  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_$(git rev-parse --short HEAD)"
+  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_odoo14_$(git rev-parse --short HEAD)"
 fi
 
 
