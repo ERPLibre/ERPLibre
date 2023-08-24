@@ -150,3 +150,29 @@ Add line at the end of config.conf
 ```
 limit_memory_hard = 0
 ```
+
+## Docker
+
+### Error non-overlapping IPv4 address pool
+
+You got this error when you start a
+docker-compose: `ERROR: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network`
+
+It's because the subnet is limited, you need to change it.
+
+Create a network :
+
+```bash
+docker network create localnetwork --subnet 10.0.1.0/24
+```
+
+Create a new file `docker-compose.override.yml` at the root of ERPLibre, at same level of your docker-compose.yml and
+fill with:
+
+```yaml
+version: '3'
+networks:
+  default:
+    external:
+      name: localnetwork
+```

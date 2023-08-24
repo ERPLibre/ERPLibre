@@ -24,3 +24,4 @@ get-poetry.py
 artifacts
 wkhtmltox*
 cache
+docker-compose.override.yml
