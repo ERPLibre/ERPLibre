@@ -75,7 +75,10 @@ pyproj==3.2.1
 # to fix build
 validators==0.20.0
 sphinx==4.3.2
+
+# Fix error
 greenlet==0.4.17
+gevent==20.9.0
 
 # For some module
 img2pdf
