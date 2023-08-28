@@ -28,6 +28,9 @@ RUN apt-get update \
     xz-utils \
     git \
     wget \
+    tig \
+    vim \
+    htop \
     make \
     libssl-dev \
     zlib1g-dev \
