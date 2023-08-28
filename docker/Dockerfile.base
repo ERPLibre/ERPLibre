@@ -31,7 +31,11 @@ RUN apt-get update \
     vim \
     htop \
     tig \
+    cmake \
     wget \
+    tig \
+    vim \
+    htop \
     make \
     libssl-dev \
     zlib1g-dev \
