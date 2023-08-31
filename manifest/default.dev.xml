@@ -116,6 +116,7 @@
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
   <project name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" groups="addons"/>
   <project name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" groups="addons"/>
+  <project name="project-agile.git" path="addons/OCA_project-agile" remote="OCA" groups="addons"/>
   <project name="project.git" path="addons/OCA_project" remote="OCA" groups="addons"/>
   <project name="purchase-workflow.git" path="addons/OCA_purchase-workflow" remote="OCA" groups="addons"/>
   <project name="queue.git" path="addons/OCA_queue" remote="OCA" groups="addons"/>
