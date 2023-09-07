@@ -98,10 +98,14 @@ cd /[EL_USER]/erplibre
 ## Move prod database to dev
 
 When moving prod database to your dev environment, you want to remove email servers and install user test to test the
-database. WARNING, this is not safe for production, you will expose all data. Run:
+database. WARNING, this is not safe for production, you will expose all data.
+
+1. Copy your database image to directory image_db, exemple the image name is `my_db.zip`
+1. Run
 
 ```bash
-./script/database/migrate_prod_to_test.sh DATABASE
+./script/database/db_restore.py --clean_cache --database test_my_db --image my_db
+./script/addons/update_prod_to_dev.sh test_my_db
 ```
 
 ## Update production
