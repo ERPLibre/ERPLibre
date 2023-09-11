@@ -17,6 +17,8 @@ if [[ $retVal -ne 0 ]]; then
     exit 1
 fi
 
+npm install
+
 ## Install maintainer-tools
 #cd script/OCA_maintainer-tools || exit
 ## virtualenv is not installed by default

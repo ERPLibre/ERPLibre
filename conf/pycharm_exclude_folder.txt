@@ -10,3 +10,4 @@ doc/odoo_documentation-user
 artifacts
 cache
 htmlcov
+node_modules

@@ -35,8 +35,7 @@ echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
 sudo npm install -g less
-sudo npm install -g prettier
-sudo npm install -g prettier @prettier/plugin-xml
+npm install
 
 echo 'export PATH="/usr/local/opt/openssl@1.1/bin:$PATH"' >> ~/.zshrc
 
