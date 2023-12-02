@@ -496,9 +496,9 @@ async def test_exec(
                         hook.write(new_hook_line)
 
         # Format editing code before commit
-        await lib_asyncio.run_command_get_output(
-            "./script/maintenance/black.sh", temp_dir_name
-        )
+        # await lib_asyncio.run_command_get_output(
+        #     "./script/maintenance/format.sh", temp_dir_name
+        # )
 
         # init repo with git
         for dir_to_git in lst_path_to_add_config:
