@@ -8,7 +8,9 @@ import os
 import sys
 import time
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.firefox.service import Service
@@ -21,7 +23,16 @@ class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
         self.video_recorder = None
-        self.filename = "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
+        if self.config.video_suffix:
+            self.filename = (
+                f"video_{self.config.video_suffix}_"
+                + time.strftime("%Y_%m_%d-%H_%M_%S")
+                + ".webm"
+            )
+        else:
+            self.filename = (
+                "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
+            )
         self.driver = None
 
     def configure(self):
@@ -70,6 +81,7 @@ class SeleniumLib(object):
 
         # Ajout de l'enregistrement
         if self.config.record_mode:
+            # Create recording
             new_path = os.path.normpath(
                 os.path.join(os.path.dirname(__file__), "..", "..")
             )
@@ -164,6 +176,95 @@ class SeleniumLib(object):
 
         return ele[0]
 
+    def get_all_element(self, by: str = By.ID, value: str = None, timeout=5):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.visibility_of_all_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
+
+    def wait_new_element_and_click(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=5,
+        inject_cursor=False,
+    ):
+        new_element = self.wait_new_element(
+            by=by, value=value, delay_wait=delay_wait, timeout=timeout
+        )
+        if new_element:
+            if inject_cursor:
+                self.inject_cursor()
+            self.click_with_mouse_move(element=new_element, no_scroll=True)
+        return new_element
+
+    def wait_new_element(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=5,
+        timeout_wait=None,
+    ):
+        element = None
+        # TODO support timeout_wait
+        while element is None:
+            time.sleep(delay_wait)
+            try:
+                element = self.get_element(by, value, timeout)
+            except TimeoutException as e:
+                pass
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        return element
+
+    def wait_add_new_element_and_click(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        new_element = self.wait_add_new_element(
+            by=by, value=value, delay_wait=delay_wait, timeout=timeout
+        )
+        self.click_with_mouse_move(element=new_element, no_scroll=True)
+        return new_element
+
+    def wait_add_new_element(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        all_element_init = self.get_all_element(by=by, value=value)
+        len_all_element_init = len(all_element_init)
+        len_all_element = len_all_element_init
+        all_element = []
+        while len_all_element_init == len_all_element:
+            time.sleep(delay_wait)
+            all_element = self.get_all_element(by=by, value=value)
+            len_all_element = len(all_element)
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        new_element = all_element[-1]
+        return new_element
+
+    def wait_increment_number_text_and_click(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        element_init = self.get_element(by=by, value=value, timeout=timeout)
+        actual_number = int(element_init.text)
+        number_goal = actual_number + 1
+        while actual_number < number_goal:
+            time.sleep(delay_wait)
+            element_goal = self.get_element(
+                by=by, value=value, timeout=timeout
+            )
+            actual_number = int(element_goal.text)
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        self.click_with_mouse_move(element=element_init, no_scroll=True)
+        return element_init
+
     def click_with_mouse_move(
         self,
         by: str = By.ID,
@@ -172,9 +273,13 @@ class SeleniumLib(object):
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
+        element: WebElement = None,
     ):
         # ele = self.driver.find_element(by, value)
-        ele = self.get_element(by, value, timeout)
+        if element:
+            ele = element
+        else:
+            ele = self.get_element(by, value, timeout)
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
@@ -185,14 +290,17 @@ class SeleniumLib(object):
             ActionChains(self.driver).move_to_element(ele).perform()
         time.sleep(self.config.selenium_default_delay)
         wait = WebDriverWait(self.driver, timeout)
-        button = wait.until(
-            EC.element_to_be_clickable(
-                (
-                    by,
-                    value,
+        if element:
+            button = wait.until(EC.element_to_be_clickable(element))
+        else:
+            button = wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        by,
+                        value,
+                    )
                 )
             )
-        )
         button.click()
 
     def click_canvas_form(
@@ -368,7 +476,50 @@ class SeleniumLib(object):
           cursor.style.top = e.pageY - 5 + 'px';
         });
         """
-        self.driver.execute_script(cursor_script)
+        try:
+            try:
+                self.driver.execute_script(cursor_script)
+            except Exception as e:
+                time.sleep(1)
+                print("Error execute script cursor, wait 1 second")
+                self.driver.execute_script(cursor_script)
+        except Exception as e:
+            time.sleep(3)
+            print("Error execute script cursor, wait 3 second")
+            self.driver.execute_script(cursor_script)
+
+    def scenario_create_new_account_with_random_user(
+        self, show_cursor=False, def_action_before_submit=None
+    ):
+        # Click no account
+        if show_cursor:
+            self.inject_cursor()
+        self.click_with_mouse_move(
+            By.XPATH, "/html/body/div[1]/main/div/form/div[3]/div[1]/a[1]"
+        )
+
+        # Trouvez les éléments du formulaire
+        if show_cursor:
+            self.inject_cursor()
+
+        # Remplissez le courriel et le mot de passe
+        first_name = self.get_french_word_no_space_no_accent()
+        password = first_name.lower()
+        second_name = self.get_french_word_no_space_no_accent()
+        full_name = f"{first_name} {second_name}"
+        domain = self.get_french_word_no_space_no_accent().lower()
+
+        self.input_text_with_mouse_move(
+            By.NAME, "login", f"{password}@{domain}.com"
+        )
+        self.input_text_with_mouse_move(By.NAME, "name", full_name)
+        self.input_text_with_mouse_move(By.NAME, "password", password)
+        self.input_text_with_mouse_move(By.NAME, "confirm_password", password)
+        if def_action_before_submit:
+            def_action_before_submit()
+        self.click_with_mouse_move(
+            By.XPATH, "/html/body/div[1]/main/div/form/div[6]/button"
+        )
 
     def open_tab(self, url):
         # Open a new window
@@ -389,6 +540,34 @@ class SeleniumLib(object):
     def start_record(self):
         # Démarrer l'enregistrement
         if self.config.record_mode:
+            # Sync before record
+            has_sync_error = False
+            if self.config.sync_file_record_read:
+                if not self.config.sync_file_record_write:
+                    print(
+                        "Error, cannot sync, missing 'sync_file_record_write'"
+                    )
+                    has_sync_error = True
+            if self.config.sync_file_record_write:
+                if not self.config.sync_file_record_read:
+                    print(
+                        "Error, cannot sync, missing 'sync_file_record_read'"
+                    )
+                    has_sync_error = True
+            if (
+                not has_sync_error
+                and self.config.sync_file_record_read
+                and self.config.sync_file_record_write
+            ):
+                # Do sync
+                file_name_1 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_write}"
+                file_name_2 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_read}"
+                with open(file_name_1, "w") as file:
+                    file.write(f"Recording {self.filename}\n")
+                while not os.path.exists(file_name_2):
+                    var_wait_time = 0.001
+                    print(f"File {self.filename} wait {var_wait_time} seconds")
+                    time.sleep(var_wait_time)
             self.video_recorder.start()
 
     def stop_record(self):
@@ -399,6 +578,7 @@ class SeleniumLib(object):
             time.sleep(self.config.selenium_video_time_waiting_end)
             self.video_recorder.stop()
             print("End of recording video")
+            print(self.filename)
 
             if self.config.selenium_video_auto_play_video:
                 print(f"Play video {self.filename}")
@@ -455,6 +635,27 @@ def fill_parser(parser):
         "--record_mode",
         action="store_true",
         help="Start recording (not finish to be implemented).",
+    )
+    parser.add_argument(
+        "--video_suffix",
+        default="",
+        help="Will modify video name.",
+    )
+    parser.add_argument(
+        "--sync_file_record_read",
+        default="",
+        help=(
+            "Will sync and check file from tmp before record, write before"
+            " read."
+        ),
+    )
+    parser.add_argument(
+        "--sync_file_record_write",
+        default="",
+        help=(
+            "Will sync and check file from tmp before record, write before"
+            " read."
+        ),
     )
     group_record.add_argument(
         "--selenium_video_time_waiting_end",

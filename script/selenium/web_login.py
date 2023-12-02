@@ -105,6 +105,7 @@ def run(config, selenium_tool):
     if config.open_dashboard:
         selenium_tool.click(
             "/html/body/header/nav/div/div[1]/div[2]/div/div/div/ul/li[3]/a",
+            timeout=15,
         )
 
     # Open conversation chat
