@@ -7,6 +7,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Added
+
+- Selenium script to increase open software client interface and automated some actions.
+- FAQ about kill git-daemon
+
+## Changed
+
+- Guide to move dev to prod
+- Update docker buster to bullseye
+- Improve format script to help code-generator
+- Improve PyCharm script
+- Support OSX for open-terminal
+
+### Fixed
+
+- NPM installation locally and not globally
+
 ## [1.5.0] - 2023-07-07
 
 **Migration note**
