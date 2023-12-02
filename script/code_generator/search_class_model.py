@@ -212,8 +212,8 @@ def main():
         with open(hooks_file_path, "w") as source:
             source.write(new_file_content)
 
-        # Call black
-        os.system(f"./script/maintenance/black.sh {hooks_file_path}")
+        # Call format all file
+        os.system(f"./script/maintenance/format.sh {hooks_file_path}")
 
     return 0
 

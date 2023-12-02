@@ -49,7 +49,17 @@ cd "$3" || exit 1
 git checkout -- "*.po*"
 
 cd - || exit 1
-./script/maintenance/black.sh "$3"
+#./script/maintenance/format.sh "$3"
+# Itéré pour chaque module et formater
+IFS=','
+# Diviser la chaîne en un tableau
+read -ra elements <<<"$4"
+# Itérer sur les éléments
+for element in "${elements[@]}"; do
+  echo "Format ${3}/${element}"
+  ./script/maintenance/format.sh "${3}/${element}"
+done
+
 echo "TEST ${2}"
 ./script/code_generator/check_git_change_code_generator.sh "$3"
 retVal=$?
