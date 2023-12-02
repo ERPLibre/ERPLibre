@@ -71,7 +71,7 @@
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
   <project name="erplibre-3D-printing-addons.git" path="addons/ERPLibre_erplibre-3D-printing-addons" remote="ERPLibre" groups="addons"/>
   <project name="erplibre-family-management.git" path="addons/MathBenTech_erplibre-family-management" remote="MathBenTech" groups="addons,code_generator"/>
-  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" groups="addons,base"/>
+  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" revision="12.0_erplibre_devops" groups="addons,base"/>
   <project name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" remote="ERPLibre" groups="addons,code_generator,image_db"/>
   <project name="event.git" path="addons/OCA_event" remote="OCA" groups="addons"/>
   <project name="field-service.git" path="addons/OCA_field-service" remote="OCA" groups="addons"/>
@@ -101,8 +101,8 @@
   <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-business-spending-management-quebec-canada.git" path="addons/MathBenTech_odoo-business-spending-management-quebec-canada" remote="MathBenTech" groups="addons,base"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" revision="12.0_dev" groups="addons"/>
-  <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" revision="12.0" remote="TechnoLibre" groups="addons,code_generator,image_db"/>
-  <project name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="12.0" groups="addons,code_generator,image_db"/>
+  <project name="odoo-code-generator-template.git" path="addons/TechnoLibre_odoo-code-generator-template" revision="12.0_new_format" remote="TechnoLibre" groups="addons,code_generator,image_db"/>
+  <project name="odoo-code-generator.git" path="addons/TechnoLibre_odoo-code-generator" remote="TechnoLibre" revision="12.0_support_wizard" groups="addons,code_generator,image_db"/>
   <project name="odoo-development.git" path="doc/itpp-labs_odoo-development" remote="itpp-labs" revision="12.0_dev" groups="odoo"/>
   <project name="odoo-entertainment-addons.git" path="addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-git-addons.git" path="addons/Numigi_odoo-git-addons" remote="Numigi" groups="addons"/>
