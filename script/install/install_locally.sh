@@ -75,6 +75,7 @@ if [[ ! -d ${VENV_PATH} ]]; then
         exit 1
     fi
 fi
+source ./.venv/bin/activate
 
 #if [[ ! -d "${POETRY_PATH}" ]]; then
 #    # Delete directory ~/.poetry and .venv to force update to new version

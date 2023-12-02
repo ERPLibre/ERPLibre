@@ -24,3 +24,5 @@ get-poetry.py
 artifacts
 wkhtmltox*
 cache
+
+node_modules

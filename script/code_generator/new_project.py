@@ -58,6 +58,11 @@ def get_config():
         help="Module name to create",
     )
     parser.add_argument(
+        "--odoo_config",
+        default="./config.conf",
+        help="Odoo config path",
+    )
+    parser.add_argument(
         "--config",
         help="""Configuration to create models with fields and type. JSON style.
         Example : "{\"model\":[{\"name\":\"a\",\"fields\":[{\"name\":\"a\",\"type\":\"char\"}]}]}" """,
@@ -116,12 +121,14 @@ class ProjectManagement:
         keep_bd_alive=False,
         coverage=False,
         config="",
+        odoo_config="./config.conf",
     ):
         self.force = force
         self._coverage = coverage
         self.keep_bd_alive = keep_bd_alive
         self.msg_error = ""
         self.has_config_update = False
+        self.odoo_config = odoo_config
 
         self.module_directory = module_directory
         if not os.path.exists(self.module_directory):
@@ -522,7 +529,7 @@ class ProjectManagement:
             os.system(cmd)
 
         # Validate
-        if not os.path.exists(template_path):
+        if not os.path.exists(module_path):
             _logger.error(f"Module not exists '{module_path}'")
             return False
         else:
@@ -532,7 +539,7 @@ class ProjectManagement:
 
     def update_config(self):
         config = configparser.ConfigParser()
-        config.read("./config.conf")
+        config.read(self.odoo_config)
         addons_path = config.get("options", "addons_path")
         lst_addons_path = addons_path.split(",")
         lst_directory = list(
@@ -579,6 +586,7 @@ def main():
         keep_bd_alive=config.keep_bd_alive,
         coverage=config.coverage,
         config=config.config,
+        odoo_config=config.odoo_config,
     )
     if project.msg_error:
         return -1

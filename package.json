@@ -1,0 +1,11 @@
+{
+  "name": "erplibre",
+  "description": "Easy installation of Odoo",
+  "version": "1.5.0",
+  "license": "AGPLv3",
+  "homepage": "https://erplibre.ca",
+  "devDependencies": {
+    "@prettier/plugin-xml": "==2.2.0",
+    "prettier": "==2.8.8"
+  }
+}

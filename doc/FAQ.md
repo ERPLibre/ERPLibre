@@ -85,6 +85,14 @@ git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@m
 git cherry-pick -m 1 --strategy-option theirs HASH
 ```
 
+## git update manifest
+
+### Error fatal: unable to allocate any listen sockets on port 9418
+
+```bash
+pkill git-daemon
+```
+
 ## git-repo
 
 ### error.GitError fatal bad revision
