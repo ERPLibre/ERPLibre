@@ -70,7 +70,7 @@
   <project name="edi.git" path="addons/OCA_edi" remote="OCA" groups="addons"/>
   <project name="erplibre-3D-printing-addons.git" path="addons/ERPLibre_erplibre-3D-printing-addons" remote="ERPLibre" groups="addons"/>
   <project name="erplibre-family-management.git" path="addons/MathBenTech_erplibre-family-management" remote="MathBenTech" groups="addons,code_generator"/>
-  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" groups="addons,base"/>
+  <project name="erplibre_addons.git" path="addons/ERPLibre_erplibre_addons" remote="ERPLibre" revision="12.0_erplibre_devops" groups="addons,base"/>
   <project name="erplibre_theme_addons.git" path="addons/ERPLibre_erplibre_theme_addons" remote="ERPLibre" groups="addons,code_generator,image_db"/>
   <project name="event.git" path="addons/OCA_event" remote="OCA" groups="addons"/>
   <project name="field-service.git" path="addons/OCA_field-service" remote="OCA" groups="addons"/>

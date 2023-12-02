@@ -7,6 +7,74 @@ LOG_FILE := ./.venv/make_test.log
 .PHONY: all
 all: doc
 
+#########
+# Robot #
+#########
+.PHONY: robot_libre
+robot_libre:
+	echo "Robot Libre"
+	echo "Sorry for your lost data"
+	echo "Generate repository"
+	./script/manifest/update_manifest_local_dev.sh "-g base,image_db,code_generator"
+	echo "Generate new fast configuration repo"
+	./script/git/git_repo_update_group.py --group base,code_generator
+	echo "Generate configuration"
+	./script/generate_config.sh
+	./script/git/git_change_remote_https_to_git.py
+	echo "Create database robotlibre"
+	./script/database/db_restore.py --database robotlibre
+	echo "Install devops"
+	./script/addons/install_addons.sh robotlibre erplibre_devops
+
+.PHONY: robot_libre_update
+robot_libre_update:
+	./run.sh --limit-time-real 999999 --no-http --stop-after-init --dev cg -d robotlibre -i erplibre_devops -u erplibre_devops
+
+.PHONY: robot_libre_run
+robot_libre_run:
+	./run.sh -d robotlibre
+
+.PHONY: robot_libre_me
+robot_libre_me:
+	./script/make.sh robot_libre
+	./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_me_only
+robot_libre_me_only:
+	./script/make.sh robot_libre
+	IS_ONLY_ME=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_me_auto
+robot_libre_me_auto:
+	./script/make.sh robot_libre
+	IS_ME_AUTO=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_me_auto_force
+robot_libre_me_auto_force:
+	./script/make.sh robot_libre
+	IS_ME_AUTO_FORCE=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_me_only_auto_force
+robot_libre_me_only_auto_force:
+	./script/make.sh robot_libre
+	IS_ONLY_ME=TRUE IS_ME_AUTO_FORCE=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_open
+robot_libre_open:
+	./.venv/bin/python ./script/selenium/web_login_open_me_devops.py
+
+.PHONY: robot_libre_format
+robot_libre_format:
+	parallel ::: "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/erplibre_devops" "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/erplibre_devops_me"
+
+.PHONY: robot_libre_generate
+robot_libre_generate:
+	./script/code_generator/new_project.py -f -d ./addons/ERPLibre_erplibre_addons -m erplibre_devops
+
+.PHONY: run_db
+run_db:
+	./run.sh -d $(bd)
+
 ###############
 #  Detect OS  #
 ###############
