@@ -119,6 +119,8 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
         echo "Poetry installation error."
         exit 1
     fi
+    # Fix pip installation missing package
+    ${VENV_PATH}/bin/pip install selenium
 fi
 
 # Delete artifacts created by pip, cause error in next "poetry install"
