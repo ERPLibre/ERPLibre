@@ -92,6 +92,25 @@ win_unicode_console
 # Security issue, depend on extract-msg 0.36.1
 chardet==5.0.0
 extract-msg==0.36.1
+extract_msg==0.36.1
+
+# Limitation because python3.7
+argcomplete==3.1.1
+responses==0.23.1
+dnspython==2.3.0
+acme==2.6.0
+altair==5.0.1
+pycountry==22.3.5
+email-validator==2.1.0
+email_validator==2.1.0
+sphinx-rtd-theme==1.2.2
+sphinx_rtd_theme==1.2.2
+uvloop==0.17.0
+coverage==7.2.7
+websocket-client==1.6.1
+websocket_client==1.6.1
+mmg==1.0.3
+giturlparse==0.10.0
 
 # Force version for security update
 pyyaml==6.0

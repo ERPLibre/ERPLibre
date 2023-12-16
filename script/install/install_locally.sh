@@ -33,7 +33,7 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
-POETRY_VERSION=1.3.1
+POETRY_VERSION=1.5.1
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
