@@ -26,6 +26,6 @@ code_generator_template_demo_website_multiple_snippet,./odoo/odoo-bin,--limit-ti
 code_generator_template_demo_website_snippet,./odoo/odoo-bin,--limit-time-real 999999 --no-http -c config.conf --stop-after-init --dev cg -d template -i code_generator_template_demo_website_snippet,code_generator_template,
 create demo internal,./script/code_generator/new_project.py,-m demo_internal -d addons/TechnoLibre_odoo-code-generator-template,new cg project,
 run_robotlibre,./odoo/odoo-bin,--limit-time-real 999999 -c config.conf -d robotlibre,robotlibre,
-run_robotlibre_update,./odoo/odoo-bin,--limit-time-real 999999 --no-http --stop-after-init --dev cg -d robotlibre -i erplibre_devops -u erplibre_devops,robotlibre,
+run_robotlibre_update,./odoo/odoo-bin,--limit-time-real 999999 -c config.conf --no-http --stop-after-init --dev cg -d robotlibre -i erplibre_devops -u erplibre_devops,robotlibre,
 run_robotlibre_generate,./script/code_generator/new_project.py,-f -d ./addons/ERPLibre_erplibre_addons -m erplibre_devops,robotlibre,
 
