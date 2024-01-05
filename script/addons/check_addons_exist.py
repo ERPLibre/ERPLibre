@@ -43,6 +43,11 @@ def get_config():
         action="store_true",
         help="Enable debug output",
     )
+    parser.add_argument(
+        "--output_path",
+        action="store_true",
+        help="Print path if module exist",
+    )
     args = parser.parse_args()
     return args
 
@@ -97,10 +102,15 @@ def main():
         )
     if dct_module_exist:
         for key, lst_value in dct_module_exist.items():
+            is_print_value = False
             if len(lst_value) != 1:
+                is_print_value = True
                 is_good = False
                 module_list = "'" + "', '".join(lst_value) + "'"
                 _logger.error(f"Conflict modules: {module_list}")
+            elif lst_value and config.output_path:
+                is_print_value = True
+            if is_print_value:
                 for value in lst_value:
                     print(value)
 
