@@ -61,7 +61,7 @@ robot_libre_me_only_auto_force:
 
 .PHONY: robot_libre_open
 robot_libre_open:
-	./.venv/bin/python ./script/selenium/web_login_open_me_devops.py
+	./.venv/bin/python ./script/selenium/web_login.py --open_me_devops
 
 .PHONY: robot_libre_format
 robot_libre_format:
