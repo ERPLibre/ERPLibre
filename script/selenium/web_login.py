@@ -3,11 +3,13 @@
 import argparse
 import os
 import sys
+import time
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException
 
 
 def get_config():
@@ -78,6 +80,15 @@ def click(driver, xpath, time=5):
         )
     )
     button.click()
+
+
+def check_bot_chat_and_close(driver):
+    try:
+        xpath_button = "/html/body/div[3]/div[1]/span[2]/a[2]"
+        button = driver.find_element(By.XPATH, xpath_button)
+        click(driver, xpath_button)
+    except Exception:
+        print("element not found")
 
 
 def run(config):
@@ -190,7 +201,7 @@ def run(config):
     connexion_button.click()
 
     # Attendez que l'élément soit cliquable
-    wait = WebDriverWait(driver, 5)
+    # wait = WebDriverWait(driver, 5)
     # menu_toggle = wait.until(
     #     EC.element_to_be_clickable((By.XPATH, "/html/body/header/nav/ul[1]/li/a"))
     # )
@@ -218,6 +229,8 @@ def run(config):
             driver,
             "/html/body/div[1]/main/div[2]/div/div/table/tbody/tr[1]/td[2]",
         )
+        # Remove chat bot if open, because will crash wizard div[4] (to div[5])
+        check_bot_chat_and_close(driver)
         if config.open_me_devops_auto:
             click(
                 driver,
@@ -230,32 +243,62 @@ def run(config):
 
             # CG self
             # Bouton modifier
+            # click(
+            #     driver,
+            #     "/html/body/div[1]/main/div[1]/div[2]/div/div/div[1]/button[1]",
+            # )
+            # Tab Code
+            # click(
+            #     driver,
+            #     "/html/body/div[1]/main/div[2]/div/div/div[7]/ul/li[2]/a",
+            # )
+            # Bouton Plan
             click(
                 driver,
-                "/html/body/div[1]/main/div[1]/div[2]/div/div/div[1]/button[1]",
+                "/html/body/div[1]/main/div[2]/div/div/div[1]/div/button[1]",
             )
-            # Tab CG
+
+            # Bouton autopoiesis
             click(
                 driver,
-                "/html/body/div[1]/main/div[2]/div/div/div[7]/ul/li[3]/a",
+                "/html/body/div[4]/div/div/main/div/div/div[5]/table[2]/tbody/tr[2]/td[1]/button",
             )
+
+            # Bouton devops regenerate
+            click(
+                driver,
+                "/html/body/div[4]/div/div/main/div/div/div[6]/table[2]/tbody/tr[2]/td/button",
+            )
+
             if config.open_me_devops_auto_force:
                 # Disable «Stop Execution if Env Not Clean
+                # click(
+                #     driver,
+                #     "/html/body/div[1]/main/div[2]/div/div/div[7]/div/div[2]/div[6]/table[2]/tbody/tr[3]/td[2]/div/label",
+                # )
+                # Option Force Generate
                 click(
                     driver,
-                    "/html/body/div[1]/main/div[2]/div/div/div[7]/div/div[3]/div[2]/table[2]/tbody/tr/td[1]/label",
+                    "/html/body/div[4]/div/div/main/div/div/div[8]/table/tbody/tr[2]/td[1]/label",
                 )
+
             # Gen
+            # click(
+            #     driver,
+            #     "/html/body/div[1]/main/div[2]/div/div/div[7]/div/div[2]/div[2]/table[1]/tbody/tr/td[1]/button",
+            # )
+
+            # Next state
             click(
                 driver,
-                "/html/body/div[1]/main/div[2]/div/div/div[7]/div/div[3]/div[2]/table[1]/tbody/tr[2]/td[1]/button",
+                "/html/body/div[4]/div/div/footer/div/footer/div/button[1]",
             )
 
             # Check error
-            click(
-                driver,
-                "/html/body/div[1]/main/div[2]/div/div/div[7]/ul/li[14]/a",
-            )
+            # click(
+            #     driver,
+            #     "/html/body/div[1]/main/div[2]/div/div/div[7]/ul/li[13]/a",
+            # )
             # click(driver, "/html/body/div[1]/main/div[2]/div/div/div[6]/div/div[14]/div/div[2]/table/tbody/tr[1]", time=60*2)
 
     # Arrêter l'enregistrement
