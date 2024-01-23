@@ -255,7 +255,6 @@ def update_config(
 
 
 async def test_exec(
-    config,
     path_module_check: str,
     generated_module=None,
     generate_path=None,
@@ -267,6 +266,8 @@ async def test_exec(
     install_path=None,
     run_in_sandbox=False,
     restore_db_image_name="erplibre_base",
+    keep_cache=False,
+    coverage=False,
 ) -> Tuple[str, int]:
     test_result = ""
     test_status = 0
@@ -300,7 +301,7 @@ async def test_exec(
     destination_path = None
     temp_dir_name = None
     if run_in_sandbox:
-        if config.keep_cache:
+        if keep_cache:
             temp_dir = tempfile.mkdtemp()
             temp_dir_name = temp_dir
         else:
@@ -582,7 +583,7 @@ async def test_exec(
     if not test_status and lst_init_module_name:
         # Install required module
         str_test = ",".join(lst_init_module_name)
-        if config.coverage:
+        if coverage:
             script_name = (
                 "./script/addons/coverage_install_addons_dev.sh"
                 if tested_module
@@ -638,7 +639,7 @@ async def test_exec(
     if not test_status and tested_module and generated_module:
         cmd = (
             "./script/code_generator/coverage_install_and_test_code_generator.sh"
-            if config.coverage
+            if coverage
             else "./script/code_generator/install_and_test_code_generator.sh"
         )
         # Finally, the test
@@ -722,10 +723,11 @@ async def run_demo_test(config) -> Tuple[str, int]:
         "demo_website_snippet",
     ]
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         lst_init_module_name=lst_test_name,
         test_name="demo_test",
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
 
     return res, status
@@ -736,7 +738,6 @@ async def run_code_generator_migrator_demo_mariadb_sql_example_1_test(
 ) -> Tuple[str, int]:
     # Migrator
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="demo_mariadb_sql_example_1",
         tested_module="code_generator_migrator_demo_mariadb_sql_example_1",
@@ -748,6 +749,8 @@ async def run_code_generator_migrator_demo_mariadb_sql_example_1_test(
         ],
         test_name="mariadb_test-migrator",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
 
     return res, status
@@ -758,7 +761,6 @@ async def run_code_generator_template_demo_mariadb_sql_example_1_test(
 ) -> Tuple[str, int]:
     # Template
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="code_generator_demo_mariadb_sql_example_1",
         tested_module="code_generator_template_demo_mariadb_sql_example_1",
@@ -769,6 +771,8 @@ async def run_code_generator_template_demo_mariadb_sql_example_1_test(
         ],
         test_name="mariadb_test-template",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
 
     return res, status
@@ -779,7 +783,6 @@ async def run_code_generator_demo_mariadb_sql_example_1_test(
 ) -> Tuple[str, int]:
     # Code generator
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="demo_mariadb_sql_example_1",
         lst_init_module_name=[
@@ -788,6 +791,8 @@ async def run_code_generator_demo_mariadb_sql_example_1_test(
         tested_module="code_generator_demo_mariadb_sql_example_1",
         test_name="mariadb_test-code-generator",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
 
     return res, status
@@ -806,12 +811,13 @@ async def run_code_generator_data_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_data_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -831,12 +837,13 @@ async def run_code_generator_data_test_part_2(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_data_part_2_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -857,13 +864,14 @@ async def run_code_generator_export_website_attachments_test(
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_export_website_attachments_test",
         run_in_sandbox=True,
         restore_db_image_name="test_website_attachments",
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -882,12 +890,13 @@ async def run_code_generator_theme_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_theme_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -918,12 +927,13 @@ async def run_code_generator_generic_all_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_generic_all_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -946,12 +956,13 @@ async def run_code_generator_website_snippet_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_website_snippet_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -994,12 +1005,13 @@ async def run_code_generator_demo_generic_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_demo_generic_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1018,11 +1030,12 @@ async def run_code_generator_demo_test(config) -> Tuple[str, int]:
     ]
     # Multiple
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_demo_test",
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1042,12 +1055,13 @@ async def run_code_generator_inherit_test(config) -> Tuple[str, int]:
     ]
     # Inherit
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_inherit_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1066,12 +1080,13 @@ async def run_code_generator_auto_backup_test(config) -> Tuple[str, int]:
     ]
     # Auto-backup
     res, status = await test_exec(
-        config,
         "./addons/OCA_server-tools/auto_backup",
         generated_module=",".join(lst_generated_module),
         tested_module=",".join(lst_tested_module),
         test_name="code_generator_auto_backup_test",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1086,7 +1101,6 @@ async def run_code_generator_template_demo_portal_test(
     test_status = 0
     # Template
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="code_generator_demo_portal",
         tested_module="code_generator_template_demo_portal",
@@ -1096,6 +1110,8 @@ async def run_code_generator_template_demo_portal_test(
         ],
         test_name="code_generator_template_demo_portal",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1110,7 +1126,6 @@ async def run_code_generator_template_demo_internal_test(
     test_status = 0
     # Template
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="code_generator_demo_internal",
         tested_module="code_generator_template_demo_internal",
@@ -1120,6 +1135,8 @@ async def run_code_generator_template_demo_internal_test(
         ],
         test_name="code_generator_template_demo_internal",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1134,7 +1151,6 @@ async def run_code_generator_template_demo_internal_inherit_test(
     test_status = 0
     # Template
     res, status = await test_exec(
-        config,
         "./addons/TechnoLibre_odoo-code-generator-template",
         generated_module="code_generator_demo_internal_inherit",
         tested_module="code_generator_template_demo_internal_inherit",
@@ -1144,6 +1160,8 @@ async def run_code_generator_template_demo_internal_inherit_test(
         ],
         test_name="code_generator_template_demo_internal_inherit",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
@@ -1158,7 +1176,6 @@ async def run_code_generator_template_demo_sysadmin_cron_test(
     test_status = 0
     # Template
     res, status = await test_exec(
-        config,
         "./addons/OCA_server-tools/auto_backup",
         generated_module="code_generator_auto_backup",
         generate_path="./addons/OCA_server-tools/",
@@ -1170,6 +1187,8 @@ async def run_code_generator_template_demo_sysadmin_cron_test(
         test_name="code_generator_template_demo_sysadmin_cron",
         install_path="./addons/TechnoLibre_odoo-code-generator-template",
         run_in_sandbox=True,
+        keep_cache=config.keep_cache,
+        coverage=config.coverage,
     )
     test_result += res
     test_status += status
