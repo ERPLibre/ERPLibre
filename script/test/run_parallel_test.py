@@ -9,7 +9,9 @@ import sys
 import tempfile
 import time
 import uuid
+import json
 from typing import Tuple
+from collections import defaultdict
 
 import aioshutil
 import git
@@ -26,6 +28,7 @@ logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
 
 LOG_FILE = "./.venv/make_test.log"
+CONFIG_TESTCASE_JSON = "./script/test/config_testcase.json"
 
 
 def get_config():
@@ -70,6 +73,17 @@ def get_config():
         "--debug",
         action="store_true",
         help="Enable asyncio debugging",
+    )
+    parser.add_argument(
+        "--json_model",
+        help="Model of data to run test in json",
+    )
+    parser.add_argument(
+        "--output_result_dir",
+        help=(
+            "A path of existing directory, will export a file per test with"
+            " status/result and log."
+        ),
     )
     args = parser.parse_args()
     return args
@@ -178,6 +192,29 @@ def print_log(lst_task, tpl_result):
                 f.write("\n")
 
 
+def print_log_output_into_dir(tpl_result, output_dir):
+    date_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for i, result in enumerate(tpl_result):
+        log = result[0]
+        status = result[1]
+        test_name = result[2]
+        test_name_file_name = test_name.replace(" ", "")
+        time_execution = result[3]
+        log_file = os.path.join(output_dir, test_name_file_name)
+        with open(log_file, "w") as f:
+            f.write(f"{status}\n")
+            f.write(f"{test_name}\n")
+            f.write(f"{time_execution}\n")
+            f.write(f"{date_now}\n")
+            status_str = "PASS" if not status else "FAIL"
+            f.write(
+                f"\nTest execution {i + 1} - {status_str} - {test_name}\n\n"
+            )
+            if log:
+                f.write(log)
+                f.write("\n")
+
+
 async def run_command(*args, test_name=None):
     # Create subprocess
     start_time = time.time()
@@ -262,16 +299,19 @@ async def test_exec(
     search_class_module=None,
     script_after_init_check=None,
     lst_init_module_name=None,
+    file_to_restore=None,
+    file_to_restore_origin=False,
     test_name=None,
     install_path=None,
-    run_in_sandbox=False,
+    run_in_sandbox=True,
     restore_db_image_name="erplibre_base",
     keep_cache=False,
     coverage=False,
-) -> Tuple[str, int]:
+) -> Tuple[str, int, str, float]:
+    time_init = datetime.datetime.now()
     test_result = ""
     test_status = 0
-    new_destination_path = None
+    origin_path_module_check = path_module_check
     if search_class_module:
         if install_path is not None:
             path_template_to_generate = os.path.join(
@@ -314,6 +354,7 @@ async def test_exec(
         lst_path_to_add_config = []
         lst_path_to_remove_config = []
         if not os.path.exists(path_module_check):
+            # TODO wrong return
             return (
                 f"Error var path_module_check '{path_module_check}' not"
                 " exist.",
@@ -370,6 +411,7 @@ async def test_exec(
                     )
                 )
                 if not s_lst_path_tested_module:
+                    # TODO wrong return
                     return (
                         f"Error cannot find module '{path_module_check}' not"
                         " exist.",
@@ -461,6 +503,7 @@ async def test_exec(
                                 )
                                 break
                         if nb_space_indentation is None:
+                            # TODO wrong return
                             return (
                                 f"Cannot find keys '{lst_f_key}' in"
                                 f" {hook_file}",
@@ -556,7 +599,9 @@ async def test_exec(
 
     # Leave when detect anomaly in check before start
     if test_status:
-        return test_result, test_status
+        delta = datetime.datetime.now() - time_init
+        total_time = delta.total_seconds()
+        return test_result, test_status, test_name, total_time
 
     # Execute script before start
     if script_after_init_check and not test_status:
@@ -678,7 +723,27 @@ async def test_exec(
         test_result += res
         test_status += status
 
-    return test_result, test_status
+    if file_to_restore:
+        lst_file_to_ignore = file_to_restore.strip().split(",")
+        if file_to_restore_origin:
+            repo_demo_portal = git.Repo(origin_path_module_check)
+        else:
+            repo_demo_portal = git.Repo(path_module_check)
+
+        status_to_check = repo_demo_portal.git.status("-s")
+        if all([f"D {a}" in status_to_check for a in lst_file_to_ignore]):
+            # Revert it
+            for file_name in lst_file_to_ignore:
+                repo_demo_portal.git.checkout(file_name)
+        else:
+            test_status += 1
+            test_result += (
+                f"\n\nFAIL - inspect to delete file {lst_file_to_ignore}"
+            )
+
+    delta = datetime.datetime.now() - time_init
+    total_time = delta.total_seconds()
+    return test_result, test_status, test_name, total_time
 
 
 def check_git_change():
@@ -708,552 +773,126 @@ def check_git_change():
     return not status
 
 
-# START TEST
+async def run_test_command(
+    script_path: str, test_name: str
+) -> Tuple[str, int, str, float]:
+    time_init = datetime.datetime.now()
+    res, status = await run_command(script_path, test_name=test_name)
+    delta = datetime.datetime.now() - time_init
+    total_time = delta.total_seconds()
+    return res, status, test_name, total_time
 
 
-async def run_demo_test(config) -> Tuple[str, int]:
-    lst_test_name = [
-        "demo_helpdesk_data",
-        "demo_internal",
-        "demo_internal_inherit",
-        "demo_mariadb_sql_example_1",
-        "demo_portal",
-        "demo_website_data",
-        "demo_website_leaflet",
-        "demo_website_snippet",
-    ]
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        lst_init_module_name=lst_test_name,
-        test_name="demo_test",
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-
-    return res, status
-
-
-async def run_code_generator_migrator_demo_mariadb_sql_example_1_test(
-    config,
-) -> Tuple[str, int]:
-    # Migrator
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="demo_mariadb_sql_example_1",
-        tested_module="code_generator_migrator_demo_mariadb_sql_example_1",
-        script_after_init_check=(
-            "./script/database/restore_mariadb_sql_example_1.sh"
-        ),
-        lst_init_module_name=[
-            "code_generator_portal",
-        ],
-        test_name="mariadb_test-migrator",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-
-    return res, status
-
-
-async def run_code_generator_template_demo_mariadb_sql_example_1_test(
-    config,
-) -> Tuple[str, int]:
-    # Template
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="code_generator_demo_mariadb_sql_example_1",
-        tested_module="code_generator_template_demo_mariadb_sql_example_1",
-        search_class_module="demo_mariadb_sql_example_1",
-        lst_init_module_name=[
-            "code_generator_portal",
-            "demo_mariadb_sql_example_1",
-        ],
-        test_name="mariadb_test-template",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-
-    return res, status
-
-
-async def run_code_generator_demo_mariadb_sql_example_1_test(
-    config,
-) -> Tuple[str, int]:
-    # Code generator
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="demo_mariadb_sql_example_1",
-        lst_init_module_name=[
-            "code_generator_portal",
-        ],
-        tested_module="code_generator_demo_mariadb_sql_example_1",
-        test_name="mariadb_test-code-generator",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-
-    return res, status
-
-
-async def run_code_generator_data_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_helpdesk_data",
-        # "demo_website_data",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_export_helpdesk",
-        # "code_generator_demo_export_website",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_data_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_data_test_part_2(config) -> Tuple[str, int]:
-    # TODO merge this test into run_code_generator_data_test
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_website_data",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_export_website",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_data_part_2_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_export_website_attachments_test(
-    config,
-) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_website_attachments_data",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_export_website_attachments",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_export_website_attachments_test",
-        run_in_sandbox=True,
-        restore_db_image_name="test_website_attachments",
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_theme_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "theme_website_demo_code_generator",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_theme_website",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_theme_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_generic_all_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_internal",
-        "demo_portal",
-        "demo_helpdesk_data",
-        "demo_website_data",
-        "demo_website_leaflet",
-        "demo_website_snippet",
-        "theme_website_demo_code_generator",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_internal",
-        "code_generator_demo_portal",
-        "code_generator_demo_export_helpdesk",
-        "code_generator_demo_export_website",
-        "code_generator_demo_website_leaflet",
-        "code_generator_demo_website_snippet",
-        "code_generator_demo_theme_website",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_generic_all_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_website_snippet_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_website_leaflet",
-        "demo_website_snippet",
-        "demo_website_multiple_snippet",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_website_leaflet",
-        "code_generator_demo_website_snippet",
-        "code_generator_demo_website_multiple_snippet",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_website_snippet_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    if "code_generator_demo_website_multiple_snippet" in lst_tested_module:
-        # Because code_generator_demo_website_multiple_snippet depend on code_generator_demo_portal, it will
-        # execute it and this delete file demo_portal/i18n/demo_portal.pot and demo_portal/i18n/fr_CA.po
-        lst_file_is_delete = [
-            "demo_portal/i18n/demo_portal.pot",
-            "demo_portal/i18n/fr_CA.po",
-        ]
-        path_to_check = os.path.join(
-            "addons", "TechnoLibre_odoo-code-generator-template"
-        )
-        repo_demo_portal = git.Repo(path_to_check)
-        status_to_check = repo_demo_portal.git.status("-s")
-        if all([f"D {a}" in status_to_check for a in lst_file_is_delete]):
-            # Revert it
-            for file_name in lst_file_is_delete:
-                repo_demo_portal.git.checkout(file_name)
-        else:
-            test_status += 1
-            test_result += (
-                f"\n\nFAIL - inspect to delete file ${lst_file_is_delete}"
+def run_all_test(config) -> bool:
+    if config.json_model:
+        json_model = config.json_model
+    else:
+        with open(CONFIG_TESTCASE_JSON) as config_json:
+            json_model = config_json.read()
+    dct_model_test = json.loads(json_model)
+    lst_test = dct_model_test.get("lst_test")
+    if not lst_test:
+        _logger.error("Model missing attribute 'lst_test'.")
+        return False
+    # Sort test by sequence
+    dct_task = defaultdict(list)
+    dct_task_name = defaultdict(list)
+    for dct_test in lst_test:
+        sequence = dct_test.get("sequence", 0)
+        cb_coroutine = None
+        test_name = None
+        if dct_test.get("run_command"):
+            test_name = dct_test.get("test_name")
+            if not test_name:
+                raise ValueError(
+                    "Missing attribute 'test_name' into the json_model."
+                )
+            script = dct_test.get("script")
+            if not script:
+                raise ValueError(
+                    "Missing attribute 'script' into the json_model."
+                )
+            cb_coroutine = run_test_command(script, test_name)
+        elif dct_test.get("run_test_exec"):
+            path_module_check = dct_test.get("path_module_check")
+            if not path_module_check:
+                raise ValueError(
+                    "Missing attribute 'path_module_check' into the"
+                    " json_model."
+                )
+            generated_module = dct_test.get("generated_module")
+            generate_path = dct_test.get("generate_path")
+            tested_module = dct_test.get("tested_module")
+            search_class_module = dct_test.get("search_class_module")
+            script_after_init_check = dct_test.get("script_after_init_check")
+            init_module_name = dct_test.get("init_module_name")
+            lst_init_module_name = None
+            if init_module_name:
+                lst_init_module_name = init_module_name.split(",")
+            test_name = dct_test.get("test_name")
+            if not test_name:
+                raise ValueError(
+                    "Missing attribute 'test_name' into the json_model."
+                )
+            file_to_restore = dct_test.get("file_to_restore")
+            file_to_restore_origin = dct_test.get(
+                "file_to_restore_origin", False
             )
-
-    return test_result, test_status
-
-
-async def run_code_generator_demo_generic_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_internal",
-        "demo_portal",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_internal",
-        "code_generator_demo_portal",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_demo_generic_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_demo_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "code_generator_demo",
-    ]
-    lst_tested_module = [
-        "code_generator_demo",
-    ]
-    # Multiple
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_demo_test",
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_inherit_test(config) -> Tuple[str, int]:
-    # TODO can be merge into code_generator_multiple
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "demo_internal_inherit",
-    ]
-    lst_tested_module = [
-        "code_generator_demo_internal_inherit",
-    ]
-    # Inherit
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_inherit_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_auto_backup_test(config) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    lst_generated_module = [
-        "auto_backup",
-    ]
-    lst_tested_module = [
-        "code_generator_auto_backup",
-    ]
-    # Auto-backup
-    res, status = await test_exec(
-        "./addons/OCA_server-tools/auto_backup",
-        generated_module=",".join(lst_generated_module),
-        tested_module=",".join(lst_tested_module),
-        test_name="code_generator_auto_backup_test",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_template_demo_portal_test(
-    config,
-) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    # Template
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="code_generator_demo_portal",
-        tested_module="code_generator_template_demo_portal",
-        search_class_module="demo_portal",
-        lst_init_module_name=[
-            "demo_portal",
-        ],
-        test_name="code_generator_template_demo_portal",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_template_demo_internal_test(
-    config,
-) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    # Template
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="code_generator_demo_internal",
-        tested_module="code_generator_template_demo_internal",
-        search_class_module="demo_internal",
-        lst_init_module_name=[
-            "demo_internal",
-        ],
-        test_name="code_generator_template_demo_internal",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_template_demo_internal_inherit_test(
-    config,
-) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    # Template
-    res, status = await test_exec(
-        "./addons/TechnoLibre_odoo-code-generator-template",
-        generated_module="code_generator_demo_internal_inherit",
-        tested_module="code_generator_template_demo_internal_inherit",
-        search_class_module="demo_internal_inherit",
-        lst_init_module_name=[
-            "demo_internal_inherit",
-        ],
-        test_name="code_generator_template_demo_internal_inherit",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_code_generator_template_demo_sysadmin_cron_test(
-    config,
-) -> Tuple[str, int]:
-    test_result = ""
-    test_status = 0
-    # Template
-    res, status = await test_exec(
-        "./addons/OCA_server-tools/auto_backup",
-        generated_module="code_generator_auto_backup",
-        generate_path="./addons/OCA_server-tools/",
-        tested_module="code_generator_template_demo_sysadmin_cron",
-        search_class_module="auto_backup",
-        lst_init_module_name=[
-            "auto_backup",
-        ],
-        test_name="code_generator_template_demo_sysadmin_cron",
-        install_path="./addons/TechnoLibre_odoo-code-generator-template",
-        run_in_sandbox=True,
-        keep_cache=config.keep_cache,
-        coverage=config.coverage,
-    )
-    test_result += res
-    test_status += status
-
-    return test_result, test_status
-
-
-async def run_helloworld_test(config) -> Tuple[str, int]:
-    res, status = await run_command(
-        "./test/code_generator/hello_world.sh", test_name="helloworld_test"
-    )
-
-    return res, status
-
-
-def run_all_test(config) -> None:
-    # low in time, at the end for more speed
-    task_list = [
-        run_code_generator_migrator_demo_mariadb_sql_example_1_test(config),
-        run_code_generator_template_demo_mariadb_sql_example_1_test(config),
-        run_code_generator_demo_mariadb_sql_example_1_test(config),
-        run_code_generator_auto_backup_test(config),
-        run_code_generator_template_demo_portal_test(config),
-        run_code_generator_template_demo_internal_test(config),
-        run_code_generator_template_demo_internal_inherit_test(config),
-        run_code_generator_template_demo_sysadmin_cron_test(config),
-        run_code_generator_demo_test(config),
-        # Begin to run generic test
-        # run_code_generator_generic_all_test(config),
-        run_code_generator_data_test(config),
-        run_code_generator_data_test_part_2(config),
-        run_code_generator_export_website_attachments_test(config),
-        run_code_generator_theme_test(config),
-        run_code_generator_website_snippet_test(config),
-        run_code_generator_demo_generic_test(config),
-        # End run generic test
-        run_code_generator_inherit_test(config),
-        run_demo_test(config),
-    ]
-    task_second_list = [
-        # TODO Will cause conflict with the other because write in code_generator_demo/hooks.py
-        run_helloworld_test(config),
-    ]
-
-    _logger.info("First list task")
-    lib_asyncio.print_summary_task(task_list)
-    _logger.info("Second list task")
-    lib_asyncio.print_summary_task(task_second_list)
-
-    _logger.info("First execution")
-    tpl_result = lib_asyncio.execute(config, task_list)
-    _logger.info("Second execution")
-    tpl_result_second = lib_asyncio.execute(config, task_second_list)
-
-    # Extra
-    tpl_result_total = tpl_result + tpl_result_second
-    task_list_total = task_list + task_second_list
-    print_log(task_list_total, tpl_result_total)
-    status = check_result(task_list_total, tpl_result_total)
+            install_path = dct_test.get("install_path")
+            run_in_sandbox = dct_test.get("run_in_sandbox", True)
+            restore_db_image_name = dct_test.get(
+                "restore_db_image_name", "erplibre_base"
+            )
+            keep_cache = config.keep_cache
+            coverage = config.coverage
+            cb_coroutine = test_exec(
+                path_module_check,
+                generated_module=generated_module,
+                generate_path=generate_path,
+                tested_module=tested_module,
+                search_class_module=search_class_module,
+                script_after_init_check=script_after_init_check,
+                lst_init_module_name=lst_init_module_name,
+                file_to_restore=file_to_restore,
+                file_to_restore_origin=file_to_restore_origin,
+                test_name=test_name,
+                install_path=install_path,
+                run_in_sandbox=run_in_sandbox,
+                restore_db_image_name=restore_db_image_name,
+                keep_cache=keep_cache,
+                coverage=coverage,
+            )
+        if cb_coroutine:
+            dct_task[sequence].append(cb_coroutine)
+            dct_task_name[sequence].append(test_name)
+    lst_sequence = sorted(list(dct_task.keys()))
+    # Print summary
+    total_tpl_result = []
+    total_tpl_task = []
+    # Print summary
+    for sequence in lst_sequence:
+        lst_task = dct_task[sequence]
+        lst_task_name = dct_task_name[sequence]
+        print(f"sequence {sequence}")
+        lib_asyncio.print_summary_task(lst_task, lst_task_name=lst_task_name)
+    # Execute in sequence
+    for sequence in lst_sequence:
+        lst_task = dct_task[sequence]
+        tpl_result, has_asyncio_error = lib_asyncio.execute(config, lst_task)
+        total_tpl_result.extend(tpl_result)
+        total_tpl_task.extend(lst_task)
+    print_log(total_tpl_task, total_tpl_result)
+    status = check_result(total_tpl_task, total_tpl_result)
     if status:
         log_file_print = LOG_FILE
     else:
         log_file_print = f"{Fore.RED}{LOG_FILE}{Fore.RESET}"
 
+    if config.output_result_dir:
+        print_log_output_into_dir(total_tpl_result, config.output_result_dir)
+
     print(f"Log file {log_file_print}")
+    return status
 
 
 def main():
@@ -1269,14 +908,15 @@ def main():
         success = check_git_change()
     else:
         success = True
+    status = False
     if success:
-        run_all_test(config)
+        status = run_all_test(config)
     end_time = time.time()
     diff_sec = end_time - start_time
     # print(f"Time execution {diff_sec:.3f}s")
     print(f"Time execution {datetime.timedelta(seconds=diff_sec)}")
 
-    return 0
+    return int(not status)
 
 
 if __name__ == "__main__":

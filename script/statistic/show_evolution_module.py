@@ -229,7 +229,7 @@ def main():
         clone_repo(i, a, config.force_git_fetch)
         for i, a in enumerate(lst_repo_url)
     ]
-    lst_repo_path = lib_asyncio.execute(
+    lst_repo_path, has_asyncio_error = lib_asyncio.execute(
         config, lst_task_clone, use_uvloop=True
     )
 
@@ -268,13 +268,15 @@ def main():
             min_i = i * MAX_COROUTINE
             max_i = min((i + 1) * MAX_COROUTINE, len(lst_task))
             _logger.info(f"Partial execution {min_i} to {max_i}")
-            tpl_result = lib_asyncio.execute(
+            tpl_result, has_asyncio_error = lib_asyncio.execute(
                 config, lst_task[min_i:max_i], use_uvloop=True
             )
             lst_result += tpl_result
         tpl_result = lst_result
     else:
-        tpl_result = lib_asyncio.execute(config, lst_task, use_uvloop=True)
+        tpl_result, has_asyncio_error = lib_asyncio.execute(
+            config, lst_task, use_uvloop=True
+        )
     _logger.info("Analyse information")
     dct_result = defaultdict(lambda: defaultdict(int))
     dct_result_unique = defaultdict(set)

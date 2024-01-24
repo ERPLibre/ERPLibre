@@ -39,6 +39,27 @@ async def run_command_get_output(*args, cwd=None):
     return stdout.decode()
 
 
+async def run_shell_get_output(cmd, cwd=None):
+    if cwd is not None:
+        process = await asyncio.create_subprocess_shell(
+            cmd,
+            # stdout must a pipe to be accessible as process.stdout
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+        )
+    else:
+        process = await asyncio.create_subprocess_shell(
+            cmd,
+            # stdout must a pipe to be accessible as process.stdout
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    # Wait for the subprocess to finish
+    stdout, stderr = await process.communicate()
+    return stdout.decode()
+
+
 async def run_command_get_output_and_status(*args, cwd=None):
     if cwd is not None:
         process = await asyncio.create_subprocess_exec(
@@ -60,13 +81,18 @@ async def run_command_get_output_and_status(*args, cwd=None):
     return stdout.decode(), stderr.decode(), process.returncode
 
 
-def print_summary_task(task_list):
-    for task in task_list:
-        print(task.cr_code.co_name)
+def print_summary_task(task_list, lst_task_name=None):
+    for i, task in enumerate(task_list):
+        if lst_task_name:
+            task_name = lst_task_name[i]
+            print(f"{i} - {task.cr_code.co_name} - {task_name}")
+        else:
+            print(f"{i} - {task.cr_code.co_name}")
 
 
 def execute(config, lst_task, use_uvloop=False):
-
+    error_detected = False
+    return_value = None
     if not config.no_parallel and asyncio.get_event_loop().is_closed():
         asyncio.set_event_loop(asyncio.new_event_loop())
 
@@ -85,14 +111,23 @@ def execute(config, lst_task, use_uvloop=False):
         if use_uvloop:
             uvloop.install()
         loop = asyncio.get_event_loop()
+        # Can fix when cannot attach child to loop
+        # if sys.platform != "win32":
+        #     policy = asyncio.get_event_loop_policy()
+        #     watcher = asyncio.SafeChildWatcher()
+        #     watcher.attach_loop(loop)
+        #     policy.set_child_watcher(watcher)
         if config.debug:
             loop.set_debug(True)
         try:
             commands = asyncio.gather(*lst_task)
             return_value = loop.run_until_complete(commands)
+        except RuntimeError as e:
+            error_detected = True
+            print(e)
         finally:
             loop.close()
-    return return_value
+    return return_value, error_detected
 
 
 class AsyncioPool:
