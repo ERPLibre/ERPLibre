@@ -10,8 +10,8 @@ all: doc
 #########
 # Robot #
 #########
-.PHONY: robot_libre
-robot_libre:
+.PHONY: robot_libre_pre
+robot_libre_pre:
 	echo "Robot Libre"
 	echo "Sorry for your lost data"
 	echo "Generate repository"
@@ -23,21 +23,24 @@ robot_libre:
 	./script/git/git_change_remote_https_to_git.py
 	echo "Create database robotlibre"
 	./script/database/db_restore.py --database robotlibre
+
+.PHONY: robot_libre
+robot_libre:
+	./script/make.sh robot_libre_pre
 	echo "Install devops"
 	./script/addons/install_addons.sh robotlibre erplibre_devops
 
-.PHONY: robot_libre_update
-robot_libre_update:
-	./run.sh --limit-time-real 999999 --no-http --stop-after-init --dev cg -d robotlibre -i erplibre_devops -u erplibre_devops
-
-.PHONY: robot_libre_run
-robot_libre_run:
-	./run.sh -d robotlibre
+.PHONY: robot_libre_extra
+robot_libre_extra:
+	./script/make.sh robot_libre_pre
+	echo "Install erplibre_devops and erplibre_devops_extra"
+	./script/addons/install_addons.sh robotlibre erplibre_devops,erplibre_devops_extra
 
 .PHONY: robot_libre_me
 robot_libre_me:
-	./script/make.sh robot_libre
-	./run.sh -d robotlibre -i erplibre_devops_me
+	./script/make.sh robot_libre_pre
+	echo "Install erplibre_devops, erplibre_devops_me and erplibre_devops_extra"
+	./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
 
 .PHONY: robot_libre_me_only
 robot_libre_me_only:
@@ -58,6 +61,14 @@ robot_libre_me_auto_force:
 robot_libre_me_only_auto_force:
 	./script/make.sh robot_libre
 	IS_ONLY_ME=TRUE IS_ME_AUTO_FORCE=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+
+.PHONY: robot_libre_update
+robot_libre_update:
+	./run.sh --limit-time-real 999999 --no-http --stop-after-init --dev cg -d robotlibre -i erplibre_devops -u erplibre_devops
+
+.PHONY: robot_libre_run
+robot_libre_run:
+	./run.sh -d robotlibre
 
 .PHONY: robot_libre_open
 robot_libre_open:
