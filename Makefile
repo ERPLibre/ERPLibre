@@ -10,9 +10,9 @@ all: doc
 #########
 # Robot #
 #########
-.PHONY: robot_libre_pre
-robot_libre_pre:
-	echo "Robot Libre"
+.PHONY: robot_libre_init
+robot_libre_init:
+	echo "Robot Libre init"
 	echo "Sorry for your lost data"
 	echo "Generate repository"
 	./script/manifest/update_manifest_local_dev.sh "-g base,image_db,code_generator"
@@ -21,6 +21,9 @@ robot_libre_pre:
 	echo "Generate configuration"
 	./script/generate_config.sh
 	./script/git/git_change_remote_https_to_git.py
+
+.PHONY: robot_libre_pre
+robot_libre_pre:
 	echo "Create database robotlibre"
 	./script/database/db_restore.py --database robotlibre
 
