@@ -15,7 +15,7 @@ robot_libre_all:
 	echo "Install all for robot_libre"
 	./script/make.sh robot_libre_init
 	./script/make.sh robot_libre_pre
-	./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
+	OPEN_DASHBOARD=TRUE ./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
 
 .PHONY: robot_libre_init
 robot_libre_init:
@@ -50,7 +50,7 @@ robot_libre_extra:
 robot_libre_me:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops, erplibre_devops_me and erplibre_devops_extra"
-	./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
+	OPEN_DASHBOARD=TRUE ./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
 
 .PHONY: robot_libre_me_only
 robot_libre_me_only:
