@@ -15,7 +15,7 @@ robot_libre_all:
 	echo "Install all for robot_libre"
 	./script/make.sh robot_libre_init
 	./script/make.sh robot_libre_pre
-	OPEN_DASHBOARD=TRUE ./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
+	OPEN_DASHBOARD=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
 
 .PHONY: robot_libre_init
 robot_libre_init:
@@ -38,39 +38,39 @@ robot_libre_pre:
 robot_libre:
 	./script/make.sh robot_libre_pre
 	echo "Install devops"
-	./script/addons/install_addons.sh robotlibre erplibre_devops
+	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
 
 .PHONY: robot_libre_extra
 robot_libre_extra:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops and erplibre_devops_extra"
-	./script/addons/install_addons.sh robotlibre erplibre_devops,erplibre_devops_extra
+	./script/addons/install_addons_dev.sh robotlibre erplibre_devops,erplibre_devops_extra
 
 .PHONY: robot_libre_me
 robot_libre_me:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops, erplibre_devops_me and erplibre_devops_extra"
-	OPEN_DASHBOARD=TRUE ./run.sh -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
+	OPEN_DASHBOARD=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
 
 .PHONY: robot_libre_me_only
 robot_libre_me_only:
 	./script/make.sh robot_libre
-	IS_ONLY_ME=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+	IS_ONLY_ME=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops_me
 
 .PHONY: robot_libre_me_auto
 robot_libre_me_auto:
 	./script/make.sh robot_libre
-	IS_ME_AUTO=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+	IS_ME_AUTO=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops_me
 
 .PHONY: robot_libre_me_auto_force
 robot_libre_me_auto_force:
 	./script/make.sh robot_libre
-	IS_ME_AUTO_FORCE=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+	IS_ME_AUTO_FORCE=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops_me
 
 .PHONY: robot_libre_me_only_auto_force
 robot_libre_me_only_auto_force:
 	./script/make.sh robot_libre
-	IS_ONLY_ME=TRUE IS_ME_AUTO_FORCE=TRUE ./run.sh -d robotlibre -i erplibre_devops_me
+	IS_ONLY_ME=TRUE IS_ME_AUTO_FORCE=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops_me
 
 .PHONY: robot_libre_update
 robot_libre_update:
