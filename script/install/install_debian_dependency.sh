@@ -21,6 +21,9 @@ elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
+elif [[ "${OS}" == *"Ubuntu"* ]]; then
+  echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
 else
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
   exit 1
