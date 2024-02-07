@@ -10,6 +10,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.firefox.service import Service
+from subprocess import getoutput
 
 
 def get_config():
@@ -54,6 +56,14 @@ def get_config():
             "By default, will be in dark mode, because the main developer"
             " like it!"
         ),
+    )
+    parser.add_argument(
+        "--firefox_binary_path",
+        help="Can specify firefox path to open selenium.",
+    )
+    parser.add_argument(
+        "--gecko_binary_path",
+        help="Can specify firefox path to open selenium.",
     )
     parser.add_argument(
         "--url",
@@ -109,9 +119,30 @@ def run(config):
     firefox_options.set_preference(
         "permissions.default.desktop-notification", 1
     )
+    firefox_services = None
+    if config.firefox_binary_path:
+        firefox_services = Service(executable_path=config.firefox_binary_path)
+    if config.gecko_binary_path:
+        firefox_options.binary_location = config.gecko_binary_path
 
     # Créez une instance du navigateur Firefox avec les options de navigation privée
-    driver = webdriver.Firefox(options=firefox_options)
+    try:
+        driver = webdriver.Firefox(
+            options=firefox_options, service=firefox_services
+        )
+    except Exception:
+        print("Cannot open Firefox profile, so will force firefox snap for Ubuntu users.")
+        firefox_services = Service(
+            executable_path=getoutput(
+                "find /snap/firefox -name geckodriver"
+            ).split("\n")[-1]
+        )
+        firefox_options.binary_location = getoutput(
+            "find /snap/firefox -name firefox"
+        ).split("\n")[-1]
+        driver = webdriver.Firefox(
+            options=firefox_options, service=firefox_services
+        )
 
     # Ajout de l'enregistrement
     if config.record_mode:
