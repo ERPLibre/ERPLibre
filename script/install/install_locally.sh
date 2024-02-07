@@ -42,6 +42,9 @@ echo ${LOCAL_PYTHON_EXEC}
 
 if [[ ! -d "${PYENV_PATH}" ]]; then
     echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
+    # export PYENV_GIT_TAG=v2.3.35
+    # To change version
+    # rm ~/.pyenv to uninstall it
     curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
 fi
 
