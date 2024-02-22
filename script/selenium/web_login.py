@@ -136,7 +136,10 @@ def run(config):
             options=firefox_options, service=firefox_services
         )
     except Exception:
-        print("Cannot open Firefox profile, so will force firefox snap for Ubuntu users.")
+        print(
+            "Cannot open Firefox profile, so will force firefox snap for"
+            " Ubuntu users."
+        )
         firefox_services = Service(
             executable_path=getoutput(
                 "find /snap/firefox -name geckodriver"

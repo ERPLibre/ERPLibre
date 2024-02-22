@@ -49,6 +49,9 @@ def get_config():
         help="Don't show output of difference.",
     )
     parser.add_argument("--git_gui", action="store_true", help="Open git gui.")
+    parser.add_argument(
+        "--git_cola", action="store_true", help="Open git cola."
+    )
     parser.add_argument("--meld", action="store_true", help="Open meld.")
     parser.add_argument(
         "--clear",
@@ -64,7 +67,7 @@ def main():
     # path = tempfile.mkdtemp()
     path = tempfile.NamedTemporaryFile().name
     if os.path.exists(config.directory1) and os.path.exists(config.directory2):
-        if config.git_gui:
+        if config.git_gui or config.git_cola:
             shutil.copytree(config.directory1, path)
             shutil.copy2("./.gitignore", path)
             # repo = Repo(path)
@@ -79,8 +82,9 @@ def main():
             if not config.quiet:
                 print(status)
 
+            cmd = "git cola" if config.git_cola else "git gui"
             try:
-                subprocess.call(f"cd {path};git gui", shell=True)
+                subprocess.call(f"cd {path};{cmd}", shell=True)
             except:
                 pass
             if config.clear:
