@@ -879,8 +879,15 @@ def run_all_test(config) -> bool:
     for sequence in lst_sequence:
         lst_task = dct_task[sequence]
         tpl_result, has_asyncio_error = lib_asyncio.execute(config, lst_task)
-        total_tpl_result.extend(tpl_result)
-        total_tpl_task.extend(lst_task)
+        if tpl_result:
+            total_tpl_result.extend(tpl_result)
+        else:
+            _logger.error("tpl_result is empty.")
+        if lst_task:
+            total_tpl_task.extend(lst_task)
+        else:
+            _logger.error("tpl_task is empty.")
+
     print_log(total_tpl_task, total_tpl_result)
     status = check_result(total_tpl_task, total_tpl_result)
     if status:
