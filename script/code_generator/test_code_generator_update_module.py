@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import sys
+from colorama import Fore, Style
 
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
@@ -75,12 +76,12 @@ def main():
 
     if lst_result_wrong:
         _logger.error(
-            "FAIL - Some modules wasn't updated, did you execute the code"
-            f" generator? {lst_result_wrong}"
+            f"{Fore.RED}FAIL{Style.RESET_ALL} - Some modules wasn't updated,"
+            f" did you execute the code generator? {lst_result_wrong}"
         )
         return -1
     elif lst_result_good:
-        _logger.info("SUCCESS - All modules are updated.")
+        _logger.info(f"{Fore.GREEN}SUCCESS{Style.RESET_ALL}  - All modules are updated.")
 
     return 0
 

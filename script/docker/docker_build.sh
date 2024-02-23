@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 . ./env_var.sh
+Red='\033[0;31m'         # Red
+Color_Off='\033[0m'      # Text Reset
 
 ARGS=""
 IS_RELEASE=false
@@ -50,7 +52,7 @@ echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-    echo "Error ./script/docker/docker_build.sh when execute docker_update_version.py"
+    echo -e "${Red}Error${Color_Off} ./script/docker/docker_build.sh when execute docker_update_version.py"
     exit 1
 fi
 

@@ -5,6 +5,7 @@ import os
 import webbrowser
 from collections import OrderedDict
 from typing import List
+from colorama import Fore, Style
 
 import git
 import xmltodict
@@ -307,9 +308,10 @@ class GitTool:
                 url = repo_root.git.remote("get-url", "origin")
             except Exception as e:
                 print(
-                    "WARNING: Missing origin remote, use default url "
-                    f"{DEFAULT_REMOTE_URL}. Suggest to add a remote origin: \n"
-                    f"> git remote add origin {DEFAULT_REMOTE_URL}"
+                    f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: Missing origin"
+                    f" remote, use default url {DEFAULT_REMOTE_URL}. Suggest"
+                    " to add a remote origin: \n> git remote add origin"
+                    f" {DEFAULT_REMOTE_URL}"
                 )
                 url = DEFAULT_REMOTE_URL
             url, url_https, url_git = self.get_url(url)
@@ -694,7 +696,10 @@ class GitTool:
                 continue
             line_split = line.split(",")
             if len(line_split) != 4:
-                print(f"Error with line {line}, suppose to have only 4 ','.")
+                print(
+                    f"{Fore.RED}Error{Style.RESET_ALL} with line {line},"
+                    " suppose to have only 4 ','."
+                )
                 exit(1)
             url, path, revision, clone_depth = line_split
             # Validate url
@@ -962,7 +967,10 @@ class GitTool:
                 parsed_url.repo
             ].forks.post(**args)
             if status == 404:
-                print("Error when forking repo %s" % forked_repo)
+                print(
+                    f"{Fore.RED}Error{Style.RESET_ALL} when forking repo"
+                    f" {forked_repo}"
+                )
                 exit(1)
             else:
                 try:

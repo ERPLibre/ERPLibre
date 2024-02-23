@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import sys
+from colorama import Fore, Style
 
 from git import Repo
 
@@ -91,8 +92,8 @@ def main():
         path2 = value2.get("@path")
         if path1 != path2:
             print(
-                f"WARNING id {i}, path of git are different. "
-                f"Input1 {path1}, input2 {path2}"
+                f"{Fore.YELLOW}WARNING{Style.RESET_ALL} id {i}, path of git"
+                f" are different. Input1 {path1}, input2 {path2}"
             )
             continue
 
