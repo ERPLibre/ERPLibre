@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # TODO addons website need to be install before to install the theme
+Red='\033[0;31m'         # Red
+Color_Off='\033[0m'      # Text Reset
+
 # Argument 3 is config
 if [[ $# -eq 3 ]]; then
   ./script/addons/check_addons_exist.py -m "$2" -c "$3"
@@ -8,7 +11,7 @@ else
 fi
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo "Error check_addons_exist.py into install_addons.sh"
+  echo -e "${Red}Error${Color_Off} check_addons_exist.py into install_addons.sh"
   exit 1
 fi
 
@@ -22,6 +25,6 @@ fi
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo "Error run.sh into install_addons_theme.sh"
+  echo -e "${Red}Error${Color_Off} run.sh into install_addons_theme.sh"
   exit 1
 fi

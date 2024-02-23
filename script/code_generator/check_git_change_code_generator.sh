@@ -84,15 +84,15 @@ check_git() {
   fi
   if [ -z "$output" ]; then
     if [ $# -gt 1 ]; then
-      echo "PASS - ${REP}/${2}"
+      echo -e "${Green}PASS${Color_Off} - ${REP}/${2}"
     else
-      echo "PASS - ${REP}"
+      echo -e "${Green}PASS${Color_Off} - ${REP}"
     fi
   else
     if [ $# -gt 1 ]; then
-      echo -e "${Red}FAIL - ${REP}${2}${Color_Off}"
+      echo -e "${Red}FAIL${Color_Off} - ${REP}${2}"
     else
-      echo -e "${Red}FAIL - ${REP}${Color_Off}"
+      echo -e "${Red}FAIL${Color_Off} - ${REP}"
     fi
     echo -e "${BRed}${output}${Color_Off}"
     cd - >/dev/null || exit

@@ -13,6 +13,9 @@ EL_HOME_ODOO="${EL_HOME}/odoo"
 #EL_MINIMAL_ADDONS="False"
 #EL_INSTALL_NGINX="True"
 
+Red='\033[0;31m'         # Red
+Color_Off='\033[0m'      # Text Reset
+
 ./script/generate_config.sh
 
 #echo -e "\n---- Install Odoo with addons module ----"
@@ -57,7 +60,7 @@ if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
     echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
     yes n|pyenv install ${PYTHON_VERSION}
     if [[ $retVal -ne 0 ]]; then
-        echo "Error when installing pyenv"
+        echo -e "${Red}Error${Color_Off} when installing pyenv"
         exit 1
     fi
 fi

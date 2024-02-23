@@ -15,7 +15,7 @@ from collections import defaultdict
 
 import aioshutil
 import git
-from colorama import Fore
+from colorama import Fore, Style
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -150,14 +150,14 @@ def check_result(task_list, tpl_result):
         status = False
 
     if lst_warning:
-        print(f"{Fore.YELLOW}{len(lst_warning)} WARNING{Fore.RESET}")
+        print(f"{Fore.YELLOW}{len(lst_warning)} WARNING{Style.RESET_ALL}")
         i = 0
         for warning in lst_warning:
             i += 1
             print(f"[{i}]{warning}")
 
     if lst_error:
-        print(f"{Fore.RED}{len(lst_error)} ERROR{Fore.RESET}")
+        print(f"{Fore.RED}{len(lst_error)} ERROR{Style.RESET_ALL}")
         i = 0
         for error in lst_error:
             i += 1
@@ -165,13 +165,13 @@ def check_result(task_list, tpl_result):
 
     if lst_error or lst_warning:
         str_result = (
-            f"{Fore.RED}{len(lst_error)} ERROR"
-            f" {Fore.YELLOW}{len(lst_warning)} WARNING"
+            f"{Fore.RED}{len(lst_error)} ERROR{Style.RESET_ALL}"
+            f" {Fore.YELLOW}{len(lst_warning)} WARNING{Style.RESET_ALL}"
         )
     else:
-        str_result = f"{Fore.GREEN}SUCCESS 🍰"
+        str_result = f"{Fore.GREEN}SUCCESS{Style.RESET_ALL} 🍰"
 
-    print(f"{Fore.BLUE}Summary TEST {str_result}{Fore.RESET}")
+    print(f"{Fore.BLUE}Summary TEST {str_result}{Style.RESET_ALL}")
     return status
 
 
@@ -182,7 +182,11 @@ def print_log(lst_task, tpl_result):
     with open(LOG_FILE, "w") as f:
         for i, task in enumerate(lst_task):
             result = tpl_result[i]
-            status_str = "PASS" if not result[1] else "FAIL"
+            status_str = (
+                f"{Fore.GREEN}PASS{Style.RESET_ALL}"
+                if not result[1]
+                else f"{Fore.RED}FAIL{Style.RESET_ALL}"
+            )
             f.write(
                 f"\nTest execution {i + 1} - {status_str} -"
                 f" {task.cr_code.co_name}\n\n"
@@ -206,7 +210,11 @@ def print_log_output_into_dir(tpl_result, output_dir):
             f.write(f"{test_name}\n")
             f.write(f"{time_execution}\n")
             f.write(f"{date_now}\n")
-            status_str = "PASS" if not status else "FAIL"
+            status_str = (
+                f"{Fore.GREEN}PASS{Style.RESET_ALL}"
+                if not status
+                else f"{Fore.RED}FAIL{Style.RESET_ALL}"
+            )
             f.write(
                 f"\nTest execution {i + 1} - {status_str} - {test_name}\n\n"
             )
@@ -232,7 +240,11 @@ async def run_command(*args, test_name=None):
     # Return stdout + stderr, returncode
     str_out = "\n" + stdout.decode().strip() + "\n" if stdout else ""
     str_err = "\n" + stderr.decode().strip() + "\n" if stderr else ""
-    status_str = "FAIL" if process.returncode else "PASS"
+    status_str = (
+        f"{Fore.RED}FAIL{Style.RESET_ALL}"
+        if process.returncode
+        else f"{Fore.GREEN}PASS{Style.RESET_ALL}"
+    )
     if test_name:
         str_output_init = (
             f"\n\n{status_str} [{test_name}] [{diff_sec:.3f}s] Execute"
@@ -356,8 +368,8 @@ async def test_exec(
         if not os.path.exists(path_module_check):
             # TODO wrong return
             return (
-                f"Error var path_module_check '{path_module_check}' not"
-                " exist.",
+                f"{Fore.RED}Error{Style.RESET_ALL} var path_module_check"
+                f" '{path_module_check}' not exist.",
                 -1,
             )
 
@@ -413,8 +425,8 @@ async def test_exec(
                 if not s_lst_path_tested_module:
                     # TODO wrong return
                     return (
-                        f"Error cannot find module '{path_module_check}' not"
-                        " exist.",
+                        f"{Fore.RED}Error{Style.RESET_ALL} cannot find module"
+                        f" '{path_module_check}' not exist.",
                         -1,
                     )
                 else:
@@ -738,7 +750,8 @@ async def test_exec(
         else:
             test_status += 1
             test_result += (
-                f"\n\nFAIL - inspect to delete file {lst_file_to_ignore}"
+                f"\n\n{Fore.RED}FAIL{Style.RESET_ALL} - inspect to delete file"
+                f" {lst_file_to_ignore}"
             )
 
     delta = datetime.datetime.now() - time_init
@@ -893,7 +906,7 @@ def run_all_test(config) -> bool:
     if status:
         log_file_print = LOG_FILE
     else:
-        log_file_print = f"{Fore.RED}{LOG_FILE}{Fore.RESET}"
+        log_file_print = f"{Fore.RED}{LOG_FILE}{Style.RESET_ALL}"
 
     if config.output_result_dir:
         print_log_output_into_dir(total_tpl_result, config.output_result_dir)
