@@ -8,6 +8,15 @@ LOG_FILE := ./.venv/make_test.log
 all: doc
 
 #########
+# TDM   #
+#########
+.PHONY: robot_libre_tdm
+robot_libre_tdm:
+	./script/make.sh robot_libre_pre
+	echo "Install erplibre_devops_tdm, erplibre_devops and erplibre_devops_extra"
+	./script/addons/install_addons_dev.sh robotlibre erplibre_devops,erplibre_devops_extra,erplibre_devops_tdm
+
+#########
 # Robot #
 #########
 .PHONY: robot_libre_all
