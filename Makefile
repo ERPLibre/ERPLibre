@@ -8,13 +8,27 @@ LOG_FILE := ./.venv/make_test.log
 all: doc
 
 #########
-# TDM   #
+# TdM   #
 #########
 .PHONY: robot_libre_tdm
 robot_libre_tdm:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops_tdm, erplibre_devops and erplibre_devops_extra"
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops,erplibre_devops_extra,erplibre_devops_tdm
+
+.PHONY: tdm
+tdm:
+	./script/database/db_restore.py --database tdm
+	./script/addons/install_addons_dev.sh tdm tdm,membership,website,portal,crm,helpdesk_mgmt
+
+.PHONY: tdm_dev
+tdm_dev:
+	./script/database/db_restore.py --database tdm_dev
+	./script/addons/install_addons_dev.sh tdm_dev tdm,membership,website,portal
+
+.PHONY: tdm_dev_run
+tdm_dev_run:
+	./run.sh -d tdm_dev
 
 #########
 # Robot #
