@@ -30,6 +30,10 @@ tdm_dev:
 tdm_dev_run:
 	./run.sh -d tdm_dev
 
+.PHONY: tdm_format
+tdm_format:
+	parallel ::: "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/tdm" "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/erplibre_devops_tdm"
+
 #########
 # Robot #
 #########
