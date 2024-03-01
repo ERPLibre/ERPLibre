@@ -21,10 +21,18 @@ tdm:
 	./script/database/db_restore.py --database tdm
 	./script/addons/install_addons_dev.sh tdm tdm,membership,website,portal,crm,helpdesk_mgmt
 
+.PHONY: tdm_run
+tdm_run:
+	./run.sh -d tdm
+
 .PHONY: tdm_dev
 tdm_dev:
 	./script/database/db_restore.py --database tdm_dev
 	./script/addons/install_addons_dev.sh tdm_dev tdm,membership,website,portal
+
+.PHONY: tdm_dev_update
+tdm_dev_update:
+	./script/addons/install_addons_dev.sh tdm_dev tdm
 
 .PHONY: tdm_dev_run
 tdm_dev_run:
