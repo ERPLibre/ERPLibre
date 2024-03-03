@@ -39,6 +39,13 @@ robot_libre:
 	./script/make.sh robot_libre_pre
 	echo "Install devops"
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
+	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database robotlibre --restore_image robotlibre_last
+
+.PHONY: robot_libre_fast
+robot_libre_fast:
+	echo "FAST! RobotLibre"
+	./script/database/db_restore.py --database robotlibre --image robotlibre_last
+	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
 
 .PHONY: robot_libre_extra
 robot_libre_extra:
