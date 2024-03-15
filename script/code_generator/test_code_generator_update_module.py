@@ -81,7 +81,9 @@ def main():
         )
         return -1
     elif lst_result_good:
-        _logger.info(f"{Fore.GREEN}SUCCESS{Style.RESET_ALL}  - All modules are updated.")
+        _logger.info(
+            f"{Fore.GREEN}SUCCESS{Style.RESET_ALL}  - All modules are updated."
+        )
 
     return 0
 
