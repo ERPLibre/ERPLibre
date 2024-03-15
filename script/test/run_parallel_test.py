@@ -486,6 +486,12 @@ async def test_exec(
                         s_first_path = destination_path
 
                     hook_file = os.path.join(new_s_first_path, "hooks.py")
+                    if not os.path.exists(hook_file):
+                        test_status += 1
+                        test_result += f"Hook file '{hook_file}' not exist."
+                        delta = datetime.datetime.now() - time_init
+                        total_time = delta.total_seconds()
+                        return test_result, test_status, test_name, total_time
                     with open(hook_file) as hook:
                         hook_line = hook.read()
                         has_template = (
@@ -576,6 +582,12 @@ async def test_exec(
             lst_path_to_remove_config=lst_path_to_remove_config,
             module_name=generated_module,
         )
+        if not os.path.exists(new_config_path):
+            test_status += 1
+            test_result += f"Config file '{new_config_path}' not exist."
+            delta = datetime.datetime.now() - time_init
+            total_time = delta.total_seconds()
+            return test_result, test_status, test_name, total_time
     else:
         new_config_path = None
 
