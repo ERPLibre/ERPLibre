@@ -13,6 +13,7 @@
   <remote name="dhongu" fetch="https://github.com/ERPLibre/"/>
   <remote name="it-projects-llc" fetch="https://github.com/ERPLibre/"/>
   <remote name="itpp-labs" fetch="https://github.com/ERPLibre/"/>
+  <remote name="JayVora-SerpentCS" fetch="https://github.com/ERPLibre/"/>
   <remote name="kinjal-sorathiya" fetch="https://github.com/ERPLibre/"/>
   <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
   <remote name="novacode-nl" fetch="https://github.com/ERPLibre/"/>
@@ -143,6 +144,7 @@
   <project name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" groups="addons"/>
   <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
   <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="12.0_dev" groups="addons,base"/>
+  <project name="SerpentCS_Contributions.git" path="addons/JayVora-SerpentCS_SerpentCS_Contributions" remote="JayVora-SerpentCS" groups="addons,code_generator,base"/>
   <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons,base,image_db"/>
   <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons,base"/>
