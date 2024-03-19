@@ -32,6 +32,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/ERPLibre_erplibre-3D-printing-addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre_theme_addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/JayVora-SerpentCS_SerpentCS_Contributions," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_QuotationRevision," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/MathBenTech_erplibre-family-management," >> ${EL_CONFIG_FILE}
