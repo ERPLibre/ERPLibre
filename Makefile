@@ -46,6 +46,12 @@ robot_libre_fast:
 	echo "FAST! RobotLibre"
 	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database _cache_robotlibre_last
 	./script/database/db_restore.py --database robotlibre --image robotlibre_last
+
+.PHONY: robot_libre_fast_update
+robot_libre_fast_update:
+	echo "FAST! RobotLibre with update"
+	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database _cache_robotlibre_last
+	./script/database/db_restore.py --database robotlibre --image robotlibre_last
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
 
 .PHONY: robot_libre_extra
