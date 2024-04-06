@@ -1,7 +1,8 @@
 #!./.venv/bin/python
 import argparse
 
-# import glob
+import astor
+import json
 import ast
 import logging
 import os
@@ -47,6 +48,19 @@ def get_config():
         "--with_inherit",
         action="store_true",
         help="Will search inherit model",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Return result in json",
+    )
+    parser.add_argument(
+        "--extract_field",
+        action="store_true",
+        help=(
+            "Return list of field for each model, detected. With inherit"
+            " information"
+        ),
     )
     parser.add_argument(
         "-q",
@@ -108,6 +122,64 @@ def search_and_replace(
     return new_file_content
 
 
+def extract_lambda(node):
+    result = astor.to_source(node).strip().replace("\n", "")
+    if result[0] == "(" and result[-1] == ")":
+        result = result[1:-1]
+    return result
+
+
+def fill_search_field(ast_obj, var_name="", py_filename=""):
+    ast_obj_type = type(ast_obj)
+    result = None
+    if ast_obj_type is ast.Str:
+        result = ast_obj.s
+    elif ast_obj_type is ast.Lambda:
+        result = extract_lambda(ast_obj)
+    elif ast_obj_type is ast.NameConstant:
+        result = ast_obj.value
+    elif ast_obj_type is ast.Num:
+        result = ast_obj.n
+    elif ast_obj_type is ast.UnaryOp:
+        if type(ast_obj.op) is ast.USub:
+            # value is negative
+            result = ast_obj.operand.n * -1
+        else:
+            _logger.warning(
+                f"Cannot support keyword of variable {var_name} type"
+                f" {ast_obj_type} operator {type(ast_obj.op)} in filename"
+                f" {py_filename}."
+            )
+    elif ast_obj_type is ast.Name:
+        result = ast_obj.id
+    elif ast_obj_type is ast.Attribute:
+        # Support -> fields.Date.context_today
+        parent_node = ast_obj
+        lst_call_lambda = []
+        while hasattr(parent_node, "value"):
+            lst_call_lambda.insert(0, parent_node.attr)
+            parent_node = parent_node.value
+        lst_call_lambda.insert(0, parent_node.id)
+        result = ".".join(lst_call_lambda)
+    elif ast_obj_type is ast.List:
+        result = [fill_search_field(a, var_name) for a in ast_obj.elts]
+    elif ast_obj_type is ast.Dict:
+        result = {
+            fill_search_field(k, var_name): fill_search_field(
+                ast_obj.values[i], var_name
+            )
+            for (i, k) in enumerate(ast_obj.keys)
+        }
+    elif ast_obj_type is ast.Tuple:
+        result = tuple([fill_search_field(a, var_name) for a in ast_obj.elts])
+    else:
+        _logger.warning(
+            f"Cannot support keyword of variable {var_name} type"
+            f" {ast_obj_type} in filename {py_filename}."
+        )
+    return result
+
+
 def main():
     config = get_config()
     if not os.path.exists(config.directory):
@@ -116,6 +188,7 @@ def main():
     lst_model_name = []
     lst_model_inherit_name = []
     lst_search_target = ("_name",)
+    dct_model = {}
 
     lst_search_inherit_target = ("_inherit",) if config.with_inherit else []
 
@@ -135,23 +208,29 @@ def main():
                 if type(children) == ast.ClassDef:
                     # Detect good _name
                     for node in children.body:
+                        # Search models
                         if (
                             type(node) is ast.Assign
                             and node.targets
                             and type(node.targets[0]) is ast.Name
                             # and node.targets[0].id in ("_name",)
+                            # and node.targets[0].id in ("_name", "_inherit")
                             and type(node.value) is ast.Str
                         ):
+                            model_name = ""
+                            is_inherit = False
                             if (
                                 lst_search_target
                                 and node.targets[0].id in lst_search_target
                             ):
                                 if node.value.s in lst_model_name:
+                                    is_duplicated = True
                                     _logger.warning(
                                         "Duplicated model name"
                                         f" {node.value.s} from file {py_file}"
                                     )
                                 else:
+                                    model_name = node.value.s
                                     lst_model_name.append(node.value.s)
 
                             if (
@@ -159,13 +238,54 @@ def main():
                                 and node.targets[0].id
                                 in lst_search_inherit_target
                             ):
+                                is_inherit = True
                                 if node.value.s in lst_model_inherit_name:
                                     _logger.warning(
                                         "Duplicated model inherit name"
                                         f" {node.value.s} from file {py_file}"
                                     )
                                 else:
+                                    model_name = node.value.s
                                     lst_model_inherit_name.append(node.value.s)
+                            dct_fields = {}
+                            if model_name:
+                                dct_model[model_name] = {
+                                    "fields": dct_fields,
+                                    "model_name": model_name,
+                                    "is_inherit": is_inherit,
+                                }
+                            # Detect fields
+                            # TODO do it!
+                            if model_name and (
+                                type(node.value) is ast.Str
+                                and node.value.s == model_name
+                                or type(node.value) is ast.List
+                                and model_name
+                                in [a.s for a in node.value.elts]
+                            ):
+                                find_children = children
+                                for sequence, node in enumerate(
+                                    find_children.body
+                                ):
+                                    if (
+                                        type(node) is ast.Assign
+                                        and type(node.value) is ast.Call
+                                        and node.value.func.value.id
+                                        == "fields"
+                                    ):
+                                        var_name = node.targets[0].id
+                                        d = {
+                                            "name": var_name,
+                                            "type": node.value.func.attr,
+                                            "sequence": sequence,
+                                        }
+                                        dct_fields[var_name] = d
+                                        for keyword in node.value.keywords:
+                                            value = fill_search_field(
+                                                keyword.value, var_name
+                                            )
+                                            if value is not None:
+                                                d[keyword.arg] = value
     lst_model_name.sort()
     lst_model_inherit_name.sort()
     models_name = "; ".join(lst_model_name)
@@ -175,12 +295,16 @@ def main():
         if ignored_inherit in lst_model_inherit_name:
             lst_model_inherit_name.remove(ignored_inherit)
     models_inherit_name = "; ".join(lst_model_inherit_name)
-    if not models_name:
-        _logger.warning(f"Missing models class in {config.directory}")
-    elif not config.quiet:
-        # _logger.info(models_name)
-        print(models_name)
-        print(models_inherit_name)
+    if not config.json:
+        if not models_name:
+            _logger.warning(f"Missing models class in {config.directory}")
+        elif not config.quiet:
+            # _logger.info(models_name)
+            print(models_name)
+            print(models_inherit_name)
+    else:
+        output = json.dumps(dct_model)
+        print(output)
 
     if config.template_dir:
         if not os.path.exists(config.template_dir):
