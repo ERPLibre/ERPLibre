@@ -28,6 +28,7 @@
 
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" groups="base"/>
   <project name="OpenHRMS.git" path="addons/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
+  <project name="CybroAddons.git" path="addons/CybroOdoo_CybroAddons" remote="CybroOdoo" groups="addons"/>
   <project name="account-analytic.git" path="addons/OCA_account-analytic" remote="OCA" groups="addons"/>
   <project name="account-budgeting.git" path="addons/OCA_account-budgeting" remote="OCA" groups="addons"/>
   <project name="account-closing.git" path="addons/OCA_account-closing" remote="OCA" groups="addons"/>
