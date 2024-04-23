@@ -183,8 +183,8 @@ Note, the goal is to call `env['ir.module.module'].update_list()`.
 Restart the docker :
 
 ```bash
-docker-compose down
-docker-compose up -d
+docker compose down
+docker compose up -d
 ```
 
 Revert the command in docker-compose.yml.
@@ -192,7 +192,7 @@ Revert the command in docker-compose.yml.
 You can validate in log the update, you need to find `odoo.modules.loading: updating modules list`, check
 
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## Update all

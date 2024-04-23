@@ -38,7 +38,7 @@ then
 
 elif [[ "$ENV" == "dev" ]] && [  -z ${CURRENT_UID} ]
 then
-    echo 'Please run as follows : CURRENT_UID=$(id -u):$(id -g) docker-compose up'
+    echo 'Please run as follows : CURRENT_UID=$(id -u):$(id -g) docker compose up'
     exit 1
 fi
 

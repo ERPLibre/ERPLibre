@@ -19,6 +19,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Improve format script to help code-generator
 - Improve PyCharm script
 - Support OSX for open-terminal
+- Remove docker-compose and replace by docker compose
 
 ### Fixed
 

@@ -69,4 +69,4 @@ docker build ${ARGS} -f Dockerfile.base -t ${ERPLIBRE_DOCKER_BASE_VERSION} .
 docker build ${ARGS} -f Dockerfile.prod.pkg -t ${ERPLIBRE_DOCKER_PROD_VERSION} .
 
 cd -
-docker-compose up -d
+docker compose up -d

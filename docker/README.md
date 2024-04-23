@@ -38,15 +38,15 @@ docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 Go at the root of this git project.
 ```bash
 cd ERPLibre
-docker-compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 ### Diagnostic Docker-Compose
 
 Show docker-compose information
 ```bash
-docker-compose ps
-docker-compose logs IMAGE_NAME
+docker compose ps
+docker compose logs IMAGE_NAME
 ```
 
 Show docker information
@@ -90,7 +90,7 @@ docker rmi $(docker images -q)
 
 Delete volumes
 ```bash
-docker-compose rm -v
+docker compose rm -v
 ```
 
 Delete containers
