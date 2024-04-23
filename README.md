@@ -17,8 +17,7 @@ make install
 ```
 Update your configuration if you need to run from another interface than 127.0.0.1, file `config.conf`
 ```
-#xmlrpc_interface = 127.0.0.1
-#netrpc_interface = 127.0.0.1
+xmlrpc_interface = 0.0.0.0
 ```
 Ready to execute:
 ```bash

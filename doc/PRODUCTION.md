@@ -74,9 +74,8 @@ sudo systemctl -feu [EL_USER]
 Comment the following line in `/[EL_USER]/erplibre/config.conf`
 
 ```
-#xmlrpc_interface = 127.0.0.1
-#netrpc_interface = 127.0.0.1
-#proxy_mode = True
+xmlrpc_interface = 0.0.0.0
+proxy_mode = True
 ```
 
 Add your address ip server_name in nginx config `/etc/nginx/sites-available/[EL_WEBSITE_NAME]`
