@@ -3,6 +3,7 @@ from __future__ import print_function
 import argparse
 import os.path
 import shutil
+from colorama import Fore, Style
 
 import yaml  # pip install PyYAML
 from agithub.GitHub import GitHub  # pip install agithub
@@ -169,7 +170,10 @@ def fork_and_clone_repo(
             parsed_url.repo
         ].forks.post(**args)
         if status == 404:
-            print("Error when forking repo %s" % forked_repo)
+            print(
+                f"{Fore.RED}FAIL{Style.RESET_ALL} when forking repo"
+                f" {forked_repo}"
+            )
             exit(1)
         else:
             print("Forked %s to %s" % (upstream_url, forked_repo["html_url"]))

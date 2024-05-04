@@ -935,15 +935,15 @@ clean_test:
 # run docker
 .PHONY: docker_run
 docker_run:
-	docker-compose up
+	docker compose up
 
 .PHONY: docker_run_daemon
 docker_run_daemon:
-	docker-compose up -d
+	docker compose up -d
 
 .PHONY: docker_stop
 docker_stop:
-	docker-compose down
+	docker compose down
 
 .PHONY: docker_restart_daemon
 docker_restart_daemon:
@@ -956,11 +956,11 @@ docker_show_databases:
 
 .PHONY: docker_show_logs_live
 docker_show_logs_live:
-	docker-compose logs -f
+	docker compose logs -f
 
 .PHONY: docker_show_process
 docker_show_process:
-	docker-compose ps
+	docker compose ps
 
 .PHONY: docker_exec_erplibre
 docker_exec_erplibre:

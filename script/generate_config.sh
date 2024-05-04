@@ -169,7 +169,6 @@ printf "max_cron_threads = 2\n" >> ${EL_CONFIG_FILE}
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "workers = 2\n" >> ${EL_CONFIG_FILE}
     printf "xmlrpc_interface = 127.0.0.1\n" >> ${EL_CONFIG_FILE}
-    printf "netrpc_interface = 127.0.0.1\n" >> ${EL_CONFIG_FILE}
     printf "proxy_mode = True\n" >> ${EL_CONFIG_FILE}
 else
     printf "workers = 0\n" >> ${EL_CONFIG_FILE}

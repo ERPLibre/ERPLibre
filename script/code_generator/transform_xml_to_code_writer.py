@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 from xml.dom import Node, minidom
+from colorama import Fore, Style
 
 from code_writer import CodeWriter
 
@@ -109,7 +110,7 @@ def main():
 
     mydoc = minidom.parse(config.file)
     if not mydoc:
-        print(f"Error, cannot parse {config.file}")
+        print(f"{Fore.RED}Error{Style.RESET_ALL}, cannot parse {config.file}")
         sys.exit(1)
 
     cw.emit("from lxml.builder import E")
