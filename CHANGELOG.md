@@ -12,6 +12,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Selenium script to increase open software client interface and automated some actions.
 - FAQ about kill git-daemon
 - Support Ubuntu 23.10
+- ADD repo JayVora-SerpentCS_SerpentCS_Contributions
 
 ## Changed
 
