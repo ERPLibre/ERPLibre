@@ -40,6 +40,11 @@ def get_config():
         ),
     )
     parser.add_argument(
+        "--open_dashboard",
+        action="store_true",
+        help="Open application Board.",
+    )
+    parser.add_argument(
         "--not_private_mode",
         action="store_true",
         help="Default is private mode.",
@@ -98,7 +103,7 @@ def check_bot_chat_and_close(driver):
         button = driver.find_element(By.XPATH, xpath_button)
         click(driver, xpath_button)
     except Exception:
-        print("element not found")
+        print("Chatbot cannot be found, stop searching it.")
 
 
 def run(config):
@@ -253,6 +258,9 @@ def run(config):
     #     )
     # )
 
+    # Remove chatbot if open, because will crash wizard div[4] (to div[5])
+    check_bot_chat_and_close(driver)
+
     # Open View
     if config.open_me_devops:
         click(
@@ -263,8 +271,6 @@ def run(config):
             driver,
             "/html/body/div[1]/main/div[2]/div/div/table/tbody/tr[1]/td[2]",
         )
-        # Remove chat bot if open, because will crash wizard div[4] (to div[5])
-        check_bot_chat_and_close(driver)
         if config.open_me_devops_auto:
             click(
                 driver,
@@ -334,6 +340,11 @@ def run(config):
             #     "/html/body/div[1]/main/div[2]/div/div/div[7]/ul/li[13]/a",
             # )
             # click(driver, "/html/body/div[1]/main/div[2]/div/div/div[6]/div/div[14]/div/div[2]/table/tbody/tr[1]", time=60*2)
+    elif config.open_dashboard:
+        click(
+            driver,
+            "/html/body/header/nav/div/div[1]/div[2]/div/div/div/ul/li[3]/a",
+        )
 
     # Arrêter l'enregistrement
     if config.record_mode:
