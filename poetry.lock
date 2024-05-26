@@ -3934,6 +3934,22 @@ pyasn1 = ">=0.3.7"
 pyasn1_modules = ">=0.1.5"
 
 [[package]]
+name = "python-pptx"
+version = "0.6.23"
+description = "Generate and manipulate Open XML PowerPoint (.pptx) files"
+optional = false
+python-versions = "*"
+files = [
+    {file = "python-pptx-0.6.23.tar.gz", hash = "sha256:587497ff28e779ab18dbb074f6d4052893c85dedc95ed75df319364f331fedee"},
+    {file = "python_pptx-0.6.23-py3-none-any.whl", hash = "sha256:dd0527194627a2b7cc05f3ba23ecaa2d9a0d5ac9b6193a28ed1b7a716f4217d4"},
+]
+
+[package.dependencies]
+lxml = ">=3.1.0"
+Pillow = ">=3.3.2"
+XlsxWriter = ">=0.5.7"
+
+[[package]]
 name = "python-slugify"
 version = "8.0.4"
 description = "A Python slugify application that also handles Unicode"
@@ -5897,4 +5913,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.16"
-content-hash = "daafced3196c2e1f7e6e1643526e6a4ebee154ffa655838389ec77c1a1e3bc8c"
+content-hash = "d11bb566a572c11f877da18ad40e49cdba7fd7c34231530214f9efec48f6484f"
