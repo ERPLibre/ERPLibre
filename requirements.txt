@@ -36,7 +36,8 @@ coverage
 # For logical test
 docutils==0.17.1
 flake8<6.0.0
-git+https://github.com/oca/pylint-odoo.git
+git+https://github.com/oca/pylint-odoo.git@v8.0.19
+pylint-odoo==8.0.19
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
 xmlformatter
@@ -111,6 +112,16 @@ websocket-client==1.6.1
 websocket_client==1.6.1
 mmg==1.0.3
 giturlparse==0.10.0
+jira==2.0.0
+code-writer==1.1.1
+code_writer==1.1.1
+wheel==0.42.0
+validators==0.20.0
+azure-identity==1.15.0
+azure.identity==1.15.0
+azure-storage-blob==12.19.0
+azure.storage.blob==12.19.0
+sqlparse==0.4.4
 
 # Force version for security update
 pyyaml==6.0
@@ -122,7 +133,7 @@ Babel==2.9.1
 reportlab==3.6.5
 urllib3>=1.26.13
 requests==2.28.1
-boto3>=1.20.41
+boto3==1.33.13
 PyPDF2==1.27.9
 mako==1.2.2
 pyjwt==2.5.0
