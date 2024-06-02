@@ -152,7 +152,7 @@
   <project name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" revision="12.0_dev" groups="addons,base"/>
   <project name="server-ux.git" path="addons/OCA_server-ux" remote="OCA" groups="addons,base"/>
   <project name="social.git" path="addons/OCA_social" remote="OCA" groups="addons,base"/>
-  <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
+  <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" revision="12.0_dev" groups="addons"/>
   <project name="storage.git" path="addons/OCA_storage" remote="OCA" groups="addons"/>
   <project name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" revision="12.0_support_project_agile_timesheet" groups="addons"/>
   <project name="vertical-association.git" path="addons/OCA_vertical-association" remote="OCA" groups="addons"/>
