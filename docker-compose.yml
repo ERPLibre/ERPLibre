@@ -19,7 +19,9 @@ services:
     # not behind a proxy
     #command: odoo --workers 0
     # behind a proxy
-    #command: odoo --workers 2
+    #command: odoo --workers 2 --proxy-mode
+    # For production ready
+    #command: odoo --workers 2 --proxy-mode --no-database-list
     command: odoo
     volumes:
       # See the volume section at the end of the file
