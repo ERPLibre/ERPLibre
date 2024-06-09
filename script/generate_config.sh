@@ -113,6 +113,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_website-cms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_wms," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OmniaGit_odooplm," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/TechnoLibre_nutrition_libre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/camptocamp_odoo-cloud-platform," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/dhongu_deltatech," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/it-projects-llc_saas-addons," >> ${EL_CONFIG_FILE}

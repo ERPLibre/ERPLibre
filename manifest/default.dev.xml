@@ -82,6 +82,7 @@
   <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" groups="addons"/>
   <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons"/>
   <project name="muk_web.git" path="addons/muk-it_muk_web" remote="muk-it" groups="addons"/>
+  <project name="nutrition_libre_addons.git" path="addons/TechnoLibre_nutrition_libre_addons" remote="TechnoLibre" groups="addons"/>
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
   <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
   <project name="odoo-module-migrator.git" path="script/OCA_odoo-module-migrator" remote="OCA" revision="master" groups="odoo"/>
