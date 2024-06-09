@@ -266,7 +266,7 @@ image_db_create_erplibre_demo:
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_demo --restore_image erplibre_demo_base
 	#./script/addons/install_addons.sh image_creation_demo website,erplibre_website_snippets_basic_html,erplibre_website_snippets_cards,erplibre_website_snippets_structures,erplibre_website_snippets_timelines,website_form_builder,muk_website_branding,website_snippet_anchor,website_anchor_smooth_scroll,website_snippet_all,crm,website_crm,crm_team_quebec,website_livechat,website_sale,erplibre_base_quebec,website_snippet_product_category,website_snippet_carousel_product,stock,purchase,website_sale_management,project,pos_sale,muk_pos_branding,hr
 	./script/addons/install_addons.sh image_creation_demo website
-	./script/addons/install_addons_theme.sh image_creation_demo theme_default
+	#./script/addons/install_addons_theme.sh image_creation_demo theme_default
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database image_creation_demo --restore_image erplibre_demo_full
 
 #.PHONY: image_db_create_erplibre_code_generator
@@ -435,20 +435,20 @@ image_db_create_all:
 	#./script/make.sh config_gen_image_db
 	./script/database/db_restore.py --clean_cache
 	./script/make.sh image_db_create_erplibre_base
-	./script/make.sh image_db_create_erplibre_website
+	#./script/make.sh image_db_create_erplibre_website
 	#./script/make.sh image_db_create_erplibre_code_generator
 	./script/make.sh image_db_create_erplibre_demo
-	./script/make.sh image_db_create_erplibre_package_accounting
-	./script/make.sh image_db_create_erplibre_package_business_requirements
-	./script/make.sh image_db_create_erplibre_package_contract
-	./script/make.sh image_db_create_erplibre_package_crm
-	./script/make.sh image_db_create_erplibre_package_e_commerce
-	./script/make.sh image_db_create_erplibre_package_field_service
-	./script/make.sh image_db_create_erplibre_package_helpdesk
+#	./script/make.sh image_db_create_erplibre_package_accounting
+#	./script/make.sh image_db_create_erplibre_package_business_requirements
+#	./script/make.sh image_db_create_erplibre_package_contract
+#	./script/make.sh image_db_create_erplibre_package_crm
+#	./script/make.sh image_db_create_erplibre_package_e_commerce
+#	./script/make.sh image_db_create_erplibre_package_field_service
+#	./script/make.sh image_db_create_erplibre_package_helpdesk
 	#./script/make.sh image_db_create_erplibre_package_hr
-	./script/make.sh image_db_create_erplibre_package_project
-	./script/make.sh image_db_create_erplibre_package_purchase
-	./script/make.sh image_db_create_erplibre_package_sale
+#	./script/make.sh image_db_create_erplibre_package_project
+#	./script/make.sh image_db_create_erplibre_package_purchase
+#	./script/make.sh image_db_create_erplibre_package_sale
 	#./script/make.sh image_db_create_erplibre_package_scrummer
 #	./script/make.sh image_db_create_erplibre_package_stock
 #	./script/make.sh image_db_create_erplibre_package_timesheet
