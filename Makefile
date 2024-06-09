@@ -30,6 +30,15 @@ else
 	endif
 endif
 
+####################
+#  NutritionLibre  #
+####################
+
+.PHONY: nutrition_libre_init
+nutrition_libre_init:
+	./script/database/db_restore.py --database nutrition_libre --image erplibre_base
+	./script/addons/install_addons.sh nutrition_libre website_slides
+
 #########
 #  RUN  #
 #########
