@@ -37,7 +37,16 @@ endif
 .PHONY: nutrition_libre_init
 nutrition_libre_init:
 	./script/database/db_restore.py --database nutrition_libre --image erplibre_base
-	./script/addons/install_addons.sh nutrition_libre website_slides
+	./script/addons/install_addons.sh nutrition_libre website_slides,contacts,survey
+
+.PHONY: nutrition_libre_format
+nutrition_libre_format:
+	parallel ::: "./script/maintenance/format.sh addons/TechnoLibre_nutrition_libre_addons"
+
+.PHONY: nutrition_libre_migrate_clienta
+nutrition_libre_migrate_clienta:
+	./script/make.sh nutrition_libre_init
+	./script/addons/install_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
 
 #########
 #  RUN  #
