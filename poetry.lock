@@ -1502,6 +1502,23 @@ http2 = ["h2 (>=3,<5)"]
 socks = ["socksio (==1.*)"]
 
 [[package]]
+name = "humanize"
+version = "4.6.0"
+description = "Python humanize utilities"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "humanize-4.6.0-py3-none-any.whl", hash = "sha256:401201aca462749773f02920139f302450cb548b70489b9b4b92be39fe3c3c50"},
+    {file = "humanize-4.6.0.tar.gz", hash = "sha256:5f1f22bc65911eb1a6ffe7659bd6598e33dcfeeb904eb16ee1e705a09bf75916"},
+]
+
+[package.dependencies]
+importlib-metadata = {version = "*", markers = "python_version < \"3.8\""}
+
+[package.extras]
+tests = ["freezegun", "pytest", "pytest-cov"]
+
+[[package]]
 name = "idna"
 version = "3.4"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -6120,4 +6137,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.7.16"
-content-hash = "8fa66a24d2b774e633d771760dec7c21a82c1989f57cee23c0f515a2cd2e74bb"
+content-hash = "4f8d2c1303bc22a58fe8c3b8fb162d943c3a3dec2d3c597610298aeefafa8c35"

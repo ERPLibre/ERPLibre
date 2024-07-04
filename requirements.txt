@@ -69,6 +69,7 @@ shapely==1.8.5
 # Code generator
 mysqlclient==2.1.1
 python-pptx
+humanize==4.6.0
 
 # pyproj >=3.3.0 is not compatible with python 3.7
 pyproj==3.2.1
