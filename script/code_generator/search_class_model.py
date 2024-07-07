@@ -166,7 +166,8 @@ def fill_search_field(ast_obj, var_name="", py_filename=""):
             # default=uuid.uuid4().hex
             _logger.warning(
                 f"Cannot support keyword of variable {var_name} type"
-                f" {ast_obj_type} in filename {py_filename}, because parent_node is type ast.Call."
+                f" {ast_obj_type} in filename {py_filename}, because"
+                " parent_node is type ast.Call."
             )
     elif ast_obj_type is ast.List:
         result = [fill_search_field(a, var_name) for a in ast_obj.elts]
