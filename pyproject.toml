@@ -177,6 +177,8 @@ xmltodict = "^0.13.0"
 zeep = "3.2.0"
 zipp = ">=3.6.0"
 zxcvbn = "^4.4.28"
+pymssql = "^2.3.0"
+filetype = "^1.2.0"
 
 [tool.poetry.dev-dependencies]
 websocket_client = "^1.1.0"
