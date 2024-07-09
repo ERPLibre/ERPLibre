@@ -16,7 +16,7 @@ PROJECT_NAME = os.path.basename(os.getcwd())
 IDEA_PATH = "./.idea"
 IDEA_MISC = os.path.join(IDEA_PATH, "misc.xml")
 IDEA_WORKSPACE = os.path.join(IDEA_PATH, "workspace.xml")
-IDEA_PROJECT_IML = os.path.join(IDEA_PATH, PROJECT_NAME + ".iml")
+IDEA_PROJECT_IML = os.path.join(IDEA_PATH, "erplibre_" + PROJECT_NAME + ".iml")
 
 PATH_EXCLUDE_FOLDER = "./conf/pycharm_exclude_folder.txt"
 if os.path.isfile(PATH_EXCLUDE_FOLDER):
