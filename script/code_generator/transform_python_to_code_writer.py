@@ -7,8 +7,6 @@ import sys
 
 from code_writer import CodeWriter
 
-from script.git.git_tool import GitTool
-
 # import tokenize
 
 
@@ -18,8 +16,6 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = GitTool.get_project_config()
-
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
