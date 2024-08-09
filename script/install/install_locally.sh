@@ -33,7 +33,7 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
-POETRY_VERSION=1.5.0
+POETRY_VERSION=1.8.3
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
@@ -125,4 +125,4 @@ rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
-ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.8/site-packages/
+ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.10/site-packages/
