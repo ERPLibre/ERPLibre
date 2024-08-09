@@ -98,6 +98,9 @@ def combine_requirements(config):
                 b = a.strip()
                 if not b or b[0] == "#":
                     continue
+                if " @ " in b:
+                    # Support when requirement line is like "package @ git+https://URL"
+                    b = b.split("@ ")[1]
                 if "#" in b:
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
