@@ -24,7 +24,7 @@ if [[ ! -d "./addons/addons" ]]; then
 fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=3.8.10
+PYTHON_VERSION=3.10.14
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 VENV_PATH=./.venv
