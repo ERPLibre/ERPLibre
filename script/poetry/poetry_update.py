@@ -104,6 +104,13 @@ def combine_requirements(config):
                 if "#" in b:
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
+                comment_depend = ""
+                if except_sign in b:
+                    # TODO support python_version into comment_depend, check odoo/requirements.txt
+                    b, comment_depend = b.split(except_sign)
+                    b = b.strip()
+                    comment_depend = comment_depend.strip()
+                    # print(comment_depend)
 
                 # Regroup requirement
                 for sign in lst_sign:
@@ -119,17 +126,18 @@ def combine_requirements(config):
                             module_name = b[: b.find(sign)]
                         module_name = module_name.strip()
                         # Special condition for ";", ignore it
-                        if except_sign in b:
-                            for ignore_string in ignore_requirements:
-                                if ignore_string in b:
-                                    break
-                            if ignore_string in b:
-                                break
-                            # lst_requirements_with_condition.add(module_name)
-                            value = b[: b.find(except_sign)].strip()
-                            # dct_special_condition[module_name].append(b)
-                        else:
-                            value = b
+                        # if except_sign in b:
+                        #     for ignore_string in ignore_requirements:
+                        #         if ignore_string in b:
+                        #             break
+                        #     if ignore_string in b:
+                        #         break
+                        #     # lst_requirements_with_condition.add(module_name)
+                        #     value = b[: b.find(except_sign)].strip()
+                        #     # dct_special_condition[module_name].append(b)
+                        # else:
+                        #     value = b
+                        value = b
                         dct_requirements[module_name].add(value)
                         filename = str(requirements_filename)
                         dct_requirements_module_filename[value].append(
@@ -293,7 +301,7 @@ def combine_requirements(config):
     lst_ignored_key = []
     for key in dct_requirements.keys():
         for ignored in lst_ignore:
-            if ignored == key:
+            if ignored == key.strip():
                 lst_ignored_key.append(key)
     for key in lst_ignored_key:
         del dct_requirements[key]
