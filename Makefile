@@ -38,8 +38,9 @@ endif
 .PHONY: nutrition_libre_init
 nutrition_libre_init:
 	./script/database/db_restore.py --database nutrition_libre --image erplibre_base
-	./script/addons/install_addons.sh nutrition_libre website_slides,contacts,survey,marketplace_elearning,website_elearning_video,om_account_accountant,account_payment_mode,account_commission,l10n_fr_state,l10n_fr_department_oversea,mass_mailing,loyalty,payment_custom,sale_discount_display_amount,sale_fixed_discount
-	# event,website_event_sale,partner_contact_gender,partner_contact_birthdate
+	./script/addons/install_addons.sh nutrition_libre website_slides,contacts,survey,website_elearning_video,om_account_accountant,account_payment_mode,l10n_fr_state,l10n_fr_department_oversea,mass_mailing,loyalty,payment_custom,sale_discount_display_amount,sale_fixed_discount,event,website_event_sale
+	# marketplace_elearning,account_commission
+	# partner_contact_gender,partner_contact_birthdate
 	# muk_web_theme
 	# dynamic_accounts_report
 	# om_account_accountant
