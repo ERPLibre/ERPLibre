@@ -16,6 +16,7 @@ version = "1.5.0"
 description = "Easy way to configure Odoo community"
 license = "AGPL-3.0-or-later"
 authors = [ "Mathieu Benoit <mathben@technolibre.ca>",]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10.14"
