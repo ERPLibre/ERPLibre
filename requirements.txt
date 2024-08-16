@@ -21,6 +21,8 @@ googletrans-py==4.0.0
 # Ignore it, need another version of requests
 # infobip-api-python-sdk==5.0.0
 
+# Module extra unknown name
+filetype
 PyPDF2
 
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
