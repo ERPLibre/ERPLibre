@@ -1,3 +1,7 @@
+# ERPLibre Poetry requirement
+iscompatible
+toml
+
 # Module voice_to_text
 SpeechRecognition==3.10.0
 
@@ -41,3 +45,7 @@ reportlab==3.5.59
 urllib3==1.26.5
 Werkzeug==2.0.2
 xlrd==1.2.0
+
+# Force python 3.10 over odoo/requirements.txt to remove warning
+num2words==0.5.13
+xlsxwriter==1.4.5
