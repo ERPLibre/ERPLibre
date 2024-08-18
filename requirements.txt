@@ -2,6 +2,22 @@
 iscompatible
 toml
 
+# ERPLibre script
+giturlparse
+agithub
+GitPython==3.1.30
+retrying
+xmltodict
+openupgradelib
+unidiff
+colorama
+wheel
+cloudflare
+# mmg # depend on weasyprint 59.0 and depend on old version pillow 9.0.1
+
+# For OSX
+cython
+
 # Module voice_to_text
 SpeechRecognition==3.10.0
 
