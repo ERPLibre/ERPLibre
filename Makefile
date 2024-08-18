@@ -65,6 +65,7 @@ nutrition_libre_migrate_clienta:
 nutrition_libre_cg_migrate_clienta:
 	#./script/make.sh nutrition_libre_init
 	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
 #	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image cg_migrate_sqlserver_clienta
 #	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image cg_migrate_sqlserver_clienta_$(DATENOW)
 
@@ -72,6 +73,7 @@ nutrition_libre_cg_migrate_clienta:
 nutrition_libre_cg_migrate_clienta_2:
 	./script/database/db_restore.py --database nutrition_libre_2 --image nutrition_libre_last
 	./script/addons/install_addons.sh nutrition_libre_2 cg_migrate_data_hook_clienta
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2_$(DATENOW)
 
