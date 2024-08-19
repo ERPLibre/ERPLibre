@@ -39,7 +39,7 @@ RUN cd $ODOO_PREFIX && \
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
     ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/pip install poetry==1.5.0 && \
+    ./.venv/bin/pip install poetry==1.8.3 && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
 
