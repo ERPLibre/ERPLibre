@@ -1,4 +1,4 @@
-FROM  python:3.10.14-slim-bookworm
+FROM  python:3.10.14-slim-bullseye
 MAINTAINER TechnoLibre <docker@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
