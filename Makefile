@@ -38,7 +38,7 @@ endif
 .PHONY: nutrition_libre_init
 nutrition_libre_init:
 	./script/database/db_restore.py --database nutrition_libre --image erplibre_base
-	./script/addons/install_addons.sh nutrition_libre website_slides,contacts,survey,website_elearning_video,om_account_accountant,account_payment_mode,l10n_fr_state,l10n_fr_department_oversea,mass_mailing,loyalty,payment_custom,sale_discount_display_amount,sale_fixed_discount,event,website_event_sale
+	./script/addons/install_addons.sh nutrition_libre website_slides,contacts,survey,website_elearning_video,om_account_accountant,account_payment_mode,l10n_fr_state,l10n_fr_department_oversea,mass_mailing,loyalty,payment_custom,sale_discount_display_amount,sale_fixed_discount,event,website_event_sale,website_sale_stock,sale_stock,stock
 	# marketplace_elearning,account_commission
 	# partner_contact_gender,partner_contact_birthdate
 	# muk_web_theme
@@ -59,21 +59,28 @@ nutrition_libre_format:
 nutrition_libre_migrate_clienta:
 	#./script/make.sh nutrition_libre_init
 	./script/addons/install_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
+	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image nutrition_libre_migrate_sqlserver_clienta
 
 .PHONY: nutrition_libre_cg_migrate_clienta
 nutrition_libre_cg_migrate_clienta:
 	#./script/make.sh nutrition_libre_init
 	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
-#	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image cg_migrate_sqlserver_clienta
-#	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image cg_migrate_sqlserver_clienta_$(DATENOW)
+	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta,cg_migrate_data_hook_clienta_update_1
+
+.PHONY: nutrition_libre_cg_migrate_clienta_update
+nutrition_libre_cg_migrate_clienta_update:
+	#./script/make.sh nutrition_libre_init
+	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
 
 .PHONY: nutrition_libre_cg_migrate_clienta_2
 nutrition_libre_cg_migrate_clienta_2:
 	./script/database/db_restore.py --database nutrition_libre_2 --image nutrition_libre_last
 	./script/addons/install_addons.sh nutrition_libre_2 cg_migrate_data_hook_clienta
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
+	./script/addons/install_addons.sh nutrition_libre_2 cg_migrate_data_hook_clienta_update_1
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta,cg_migrate_data_hook_clienta_update_1
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2_$(DATENOW)
 
