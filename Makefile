@@ -34,6 +34,10 @@ endif
 ####################
 #  NutritionLibre  #
 ####################
+.PHONY: nutrition_libre_setup
+nutrition_libre_setup:
+	./script/git/git_repo_update_group.py --group base,nutrition_libre
+	./script/generate_config.sh
 
 .PHONY: nutrition_libre_run
 nutrition_libre_run:
@@ -48,11 +52,16 @@ nutrition_libre_format:
 	parallel ::: "./script/maintenance/format.sh addons/TechnoLibre_nutrition_libre_addons"
 
 # Phase 1
-.PHONY: nutrition_libre_cg_migrate_clienta
-nutrition_libre_cg_migrate_clienta:
+.PHONY: nutrition_libre_migrate_clienta_phase1
+nutrition_libre_migrate_clienta_phase1:
 	#./script/make.sh nutrition_libre_init
-	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
+	./script/addons/install_addons.sh nutrition_libre nutrition_libre_migrate_clienta_phase1
+	./script/addons/uninstall_addons.sh nutrition_libre nutrition_libre_migrate_clienta_phase1
+
+.PHONY: nutrition_libre_init_fast
+nutrition_libre_init_fast:
+	echo "FAST! nutrition libre"
+	./script/database/db_restore.py --database nutrition_libre --image cg_migrate_sqlserver_clienta_nutrition_libre_2
 
 # Phase 0
 .PHONY: nutrition_libre_init
@@ -65,11 +74,6 @@ nutrition_libre_init:
 	# dynamic_accounts_report
 	# om_account_accountant
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image nutrition_libre_last
-
-.PHONY: nutrition_libre_init_fast
-nutrition_libre_init_fast:
-	echo "FAST! nutrition libre"
-	./script/database/db_restore.py --database nutrition_libre --image nutrition_libre_last
 
 .PHONY: nutrition_libre_migrate_clienta
 nutrition_libre_migrate_clienta:
