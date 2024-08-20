@@ -35,6 +35,26 @@ endif
 #  NutritionLibre  #
 ####################
 
+.PHONY: nutrition_libre_run
+nutrition_libre_run:
+	./run.sh --database nutrition_libre
+
+.PHONY: nutrition_libre_run_2
+nutrition_libre_run_2:
+	./run.sh --database nutrition_libre_2
+
+.PHONY: nutrition_libre_format
+nutrition_libre_format:
+	parallel ::: "./script/maintenance/format.sh addons/TechnoLibre_nutrition_libre_addons"
+
+# Phase 1
+.PHONY: nutrition_libre_cg_migrate_clienta
+nutrition_libre_cg_migrate_clienta:
+	#./script/make.sh nutrition_libre_init
+	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta
+	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta
+
+# Phase 0
 .PHONY: nutrition_libre_init
 nutrition_libre_init:
 	./script/database/db_restore.py --database nutrition_libre --image erplibre_base
@@ -51,46 +71,20 @@ nutrition_libre_init_fast:
 	echo "FAST! nutrition libre"
 	./script/database/db_restore.py --database nutrition_libre --image nutrition_libre_last
 
-.PHONY: nutrition_libre_format
-nutrition_libre_format:
-	parallel ::: "./script/maintenance/format.sh addons/TechnoLibre_nutrition_libre_addons"
-
 .PHONY: nutrition_libre_migrate_clienta
 nutrition_libre_migrate_clienta:
 	#./script/make.sh nutrition_libre_init
 	./script/addons/install_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
-	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
+	./script/addons/uninstall_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre --restore_image nutrition_libre_migrate_sqlserver_clienta
-
-.PHONY: nutrition_libre_cg_migrate_clienta
-nutrition_libre_cg_migrate_clienta:
-	#./script/make.sh nutrition_libre_init
-	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta
-	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta,cg_migrate_data_hook_clienta_update_1
-
-.PHONY: nutrition_libre_cg_migrate_clienta_update
-nutrition_libre_cg_migrate_clienta_update:
-	#./script/make.sh nutrition_libre_init
-	./script/addons/install_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta_update_1
 
 .PHONY: nutrition_libre_cg_migrate_clienta_2
 nutrition_libre_cg_migrate_clienta_2:
 	./script/database/db_restore.py --database nutrition_libre_2 --image nutrition_libre_last
-	./script/addons/install_addons.sh nutrition_libre_2 cg_migrate_data_hook_clienta
-	./script/addons/install_addons.sh nutrition_libre_2 cg_migrate_data_hook_clienta_update_1
-	./script/addons/uninstall_addons.sh nutrition_libre cg_migrate_data_hook_clienta,cg_migrate_data_hook_clienta_update_1
+	./script/addons/install_addons.sh nutrition_libre_2 nutrition_libre_migrate_sqlserver_clienta
+	./script/addons/uninstall_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2_$(DATENOW)
-
-.PHONY: nutrition_libre_run
-nutrition_libre_run:
-	./run.sh --database nutrition_libre
-
-.PHONY: nutrition_libre_run_2
-nutrition_libre_run_2:
-	./run.sh --database nutrition_libre_2
 
 #########
 #  RUN  #
