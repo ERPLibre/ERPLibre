@@ -38,6 +38,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_account-financial-tools," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-fiscal-rule," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-invoice-reporting," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-invoicing," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-payment," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-reconcile," >> ${EL_CONFIG_FILE}
