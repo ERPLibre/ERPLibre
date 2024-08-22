@@ -29,6 +29,7 @@ printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons/addons," >> ${EL_
 printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/CybroOdoo_CybroAddons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_account-invoicing," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_bank-payment," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_product-attribute," >> ${EL_CONFIG_FILE}
@@ -37,6 +38,8 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_server-brand," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_server-tools," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_social," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_survey," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_website," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/TechnoLibre_nutrition_libre_addons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/odoomates_odooapps," >> ${EL_CONFIG_FILE}
 fi
