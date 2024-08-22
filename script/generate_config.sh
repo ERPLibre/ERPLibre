@@ -103,6 +103,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/OCA_social," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_stock-logistics-warehouse," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_storage," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_survey," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_timesheet," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_vertical-association," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_vertical-hotel," >> ${EL_CONFIG_FILE}
