@@ -190,13 +190,13 @@ If these last steps to set up your development environment were unsuccessful, fo
 
 ## Manual Installation
 
-### Install Python 3.7.16
+### Install Python 3.10.14
 You can delete the files that are left over in your home directory regarding the python installation when the steps have been completed succesfully. 
 ```bash
 cd ~
-wget https://www.python.org/ftp/python/3.7.16/Python-3.7.16.tgz
-tar -xzf Python-3.7.16.tgz
-cd Python-3.7.16
+wget https://www.python.org/ftp/python/3.10.14/Python-3.10.14.tgz
+tar -xzf Python-3.10.14.tgz
+cd Python-3.10.14
 ./configure --enable-optimizations
 make -j $(nproc)
 sudo make install
@@ -205,13 +205,13 @@ sudo make install
 ### Verify the installation
 
 ```bash
-python3.7
+python3.10
 ```
 
-### Set Python 3.7.16 as default
+### Set Python 3.10.14 as default
 
 ```bash
-alias python='/usr/local/bin/python3.7'
+alias python='/usr/local/bin/python3.10'
 source ~/.bashrc
 ```
 
