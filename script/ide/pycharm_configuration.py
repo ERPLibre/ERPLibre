@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import sys
+import glob
 
 import xmltodict
 
@@ -16,7 +17,6 @@ PROJECT_NAME = os.path.basename(os.getcwd())
 IDEA_PATH = "./.idea"
 IDEA_MISC = os.path.join(IDEA_PATH, "misc.xml")
 IDEA_WORKSPACE = os.path.join(IDEA_PATH, "workspace.xml")
-IDEA_PROJECT_IML = os.path.join(IDEA_PATH, "erplibre_" + PROJECT_NAME + ".iml")
 
 PATH_EXCLUDE_FOLDER = "./conf/pycharm_exclude_folder.txt"
 if os.path.isfile(PATH_EXCLUDE_FOLDER):
@@ -86,16 +86,20 @@ def main():
         f"Missing {IDEA_PATH} path, are you sure you run this script at root"
         " of the project, are you sure you have a Pycharm project?",
     )
+    # Find a file ended by iml and take it
+    project_path = None
+    for file in glob.glob(IDEA_PATH + "/*.iml"):
+        project_path = file
+        break
     die(
-        not os.path.isfile(IDEA_PROJECT_IML),
-        f"Missing {IDEA_PROJECT_IML} file, wait after Pycharm analyze file to"
+        not project_path,
+        f"Missing .iml file into {IDEA_PATH}, wait after Pycharm analyze file to"
         " create Python environnement.",
     )
+
     if config.init:
         has_execute = True
-        read_xml_and_execute(
-            IDEA_PROJECT_IML, add_exclude_folder, "init", config
-        )
+        read_xml_and_execute(project_path, add_exclude_folder, "init", config)
 
     die(
         not os.path.isfile(IDEA_MISC),
