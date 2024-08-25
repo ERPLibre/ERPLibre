@@ -14,19 +14,19 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 
 echo -e "* Create server config file"
 
-touch ${EL_CONFIG_FILE}
+touch "${EL_CONFIG_FILE}"
 echo -e "* Creating server config file"
-printf '[options] \n; This is the password that allows database operations:\n' > ${EL_CONFIG_FILE}
-printf "admin_passwd = ${EL_SUPERADMIN}\n" >> ${EL_CONFIG_FILE}
-printf "db_host = False\n" >> ${EL_CONFIG_FILE}
-printf "db_port = False\n" >> ${EL_CONFIG_FILE}
-printf "db_user = ${EL_USER}\n" >> ${EL_CONFIG_FILE}
-printf "db_password = False\n" >> ${EL_CONFIG_FILE}
-printf "xmlrpc_port = ${EL_PORT}\n" >> ${EL_CONFIG_FILE}
-printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> ${EL_CONFIG_FILE}
+printf '[options] \n; This is the password that allows database operations:\n' > "${EL_CONFIG_FILE}"
+printf "admin_passwd = ${EL_SUPERADMIN}\n" >> "${EL_CONFIG_FILE}"
+printf "db_host = False\n" >> "${EL_CONFIG_FILE}"
+printf "db_port = False\n" >> "${EL_CONFIG_FILE}"
+printf "db_user = ${EL_USER}\n" >> "${EL_CONFIG_FILE}"
+printf "db_password = False\n" >> "${EL_CONFIG_FILE}"
+printf "xmlrpc_port = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
+printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
-printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons/addons," >> ${EL_CONFIG_FILE}
-printf "${EL_HOME}/addons/OCA_web," >> ${EL_CONFIG_FILE}
+printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons/addons," >> "${EL_CONFIG_FILE}"
+printf "${EL_HOME}/addons/OCA_web," >> "${EL_CONFIG_FILE}"
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/CybroOdoo_OpenHRMS," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre-3D-printing-addons," >> ${EL_CONFIG_FILE}
@@ -163,14 +163,14 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/script/OCA_maintainer-tools," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/script/OCA_odoo-module-migrator," >> ${EL_CONFIG_FILE}
 fi
-printf "\n" >> ${EL_CONFIG_FILE}
+printf "\n" >> "${EL_CONFIG_FILE}"
 
-printf "max_cron_threads = 2\n" >> ${EL_CONFIG_FILE}
+printf "max_cron_threads = 2\n" >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
-    printf "workers = 2\n" >> ${EL_CONFIG_FILE}
-    printf "xmlrpc_interface = 127.0.0.1\n" >> ${EL_CONFIG_FILE}
-    printf "proxy_mode = True\n" >> ${EL_CONFIG_FILE}
+    printf "workers = 2\n" >> "${EL_CONFIG_FILE}"
+    printf "xmlrpc_interface = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
+    printf "proxy_mode = True\n" >> "${EL_CONFIG_FILE}"
 else
-    printf "workers = 0\n" >> ${EL_CONFIG_FILE}
+    printf "workers = 0\n" >> "${EL_CONFIG_FILE}"
 fi

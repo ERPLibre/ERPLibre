@@ -52,6 +52,7 @@ RUN apt-get update \
     libbz2-dev \
     zlib1g-dev \
     libssl-dev \
+    libcairo2-dev \
     openssl \
     libgdbm-dev \
     libgdbm-compat-dev \

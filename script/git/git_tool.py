@@ -397,7 +397,7 @@ class GitTool:
                 continue
             str_repo = (
                 f'    printf "${{EL_HOME}}/{repo.get("path")}," >> '
-                "${EL_CONFIG_FILE}\n"
+                '"${EL_CONFIG_FILE}"\n'
             )
             lst_result.append(str_repo)
         with open(filename_locally) as file:
