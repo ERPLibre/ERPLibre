@@ -109,8 +109,8 @@ def main():
         break
     die(
         not project_path,
-        f"Missing .iml file into {IDEA_PATH}, wait after Pycharm analyze file to"
-        " create Python environnement.",
+        f"Missing .iml file into {IDEA_PATH}, wait after Pycharm analyze file"
+        " to create Python environnement.",
     )
 
     if config.init:

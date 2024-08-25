@@ -402,7 +402,7 @@ def call_poetry_add_build_dependency():
 
 
 def get_list_ignored():
-    with open("./ignore_requirements.txt", "r") as f:
+    with open("./requirement/ignore_requirements.txt", "r") as f:
         lst_ignore_requirements = [a.strip() for a in f.readlines()]
     return lst_ignore_requirements
 

@@ -99,7 +99,11 @@ robot_libre_run:
 
 .PHONY: robot_libre_open
 robot_libre_open:
-	./.venv/bin/python ./script/selenium/web_login.py --open_me_devops
+	./.venv/bin/python ./script/selenium/web_login.py
+
+.PHONY: robot_libre_open_record
+robot_libre_open_record:
+	./.venv/bin/python ./script/selenium/web_login.py --record_mode
 
 .PHONY: robot_libre_format
 robot_libre_format:
