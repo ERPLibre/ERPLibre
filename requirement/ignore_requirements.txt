@@ -20,3 +20,4 @@ xlsxwriter
 suds-jurko
 vatnumber
 dns
+pypiwin32
