@@ -31,6 +31,7 @@ brew link wget
 
 echo  "\n--- Installing extra --"
 brew install parallel
+brew install swig
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
