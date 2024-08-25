@@ -1,10 +1,17 @@
-FROM technolibre/erplibre-base:1.5.0
+ARG ERPLIBRE_IMAGE_NAME=1.5.0
 
+FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
+
+ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
+ARG ODOO_VERSION=16.0
+ARG POETRY_VERSION=1.8.3
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
 ENV BRANCH_ERPLIBRE $WORKING_BRANCH
 ENV COMMIT_ERPLIBRE $WORKING_HASH
+ENV COMMIT_ERPLIBRE $WORKING_HASH
+ENV DOCKER_BUILD=true
 
 RUN cat /etc/os-release
 
@@ -27,27 +34,48 @@ RUN cd ; mkdir -p .bin/ && \
     git checkout $COMMIT_ERPLIBRE
 
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     python -m venv .venv
 
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
     chmod +x ./.venv/repo
 
 RUN cd $ODOO_PREFIX && \
-    ./script/manifest/update_manifest_dev.sh
+    ls  -lha /ERPLibre && \
+    echo "${ERPLIBRE_VERSION}" && \
+    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}"
+
+RUN cd $ODOO_PREFIX && ls ./manifest -la && \
+    ls  -lha /ERPLibre && \
+    ./script/manifest/update_manifest_local_dev.sh
+
+RUN apt update && \
+    apt install -y libgirepository1.0-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
-    ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/pip install poetry==1.3.1 && \
+    ls  -lha /ERPLibre && \
+    echo "${ERPLIBRE_VERSION}" && \
+    ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
+    ./.venv/bin/pip install "poetry==${POETRY_VERSION}" && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     npm install
 
+# Create link to addons
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
+    ln -s "addons.odoo${ODOO_VERSION}" addons
+
+RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     head /etc/odoo/odoo.conf && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf

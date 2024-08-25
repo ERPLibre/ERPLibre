@@ -109,8 +109,8 @@ def main():
         break
     die(
         not project_path,
-        f"Missing .iml file into {IDEA_PATH}, wait after Pycharm analyze file to"
-        " create Python environnement.",
+        f"Missing .iml file into {IDEA_PATH}, wait after Pycharm analyze file"
+        " to create Python environnement.",
     )
 
     if config.init:
@@ -415,6 +415,11 @@ def add_exclude_folder(dct_xml, file_name, config):
     )
     lst_exclude_folder = dct_content.get("excludeFolder")
 
+    # lst_to_exclude = ["./.venv.*", "./addons.*"]
+    lst_to_exclude = ["./.venv.*", "./addons"]
+    for s_exclude in lst_to_exclude:
+        for dir_venv in glob.glob(s_exclude):
+            LST_EXCLUDE_FOLDER.append(dir_venv[2:])
     lst_exclude_item = [f"file://$MODULE_DIR$/{a}" for a in LST_EXCLUDE_FOLDER]
 
     if lst_exclude_folder:

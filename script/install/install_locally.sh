@@ -22,13 +22,15 @@ Color_Off='\033[0m'      # Text Reset
 #git submodule update --init
 
 # Generate empty addons if missing
-if [[ ! -d "./addons/addons" ]]; then
-    mkdir -p ./addons/addons
+path_addons_addons="./addons.odoo${EL_ODOO_VERSION}/addons"
+if [[ ! -d "${path_addons_addons}" ]]; then
+    mkdir -p "${path_addons_addons}"
 fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=3.7.16
-PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
+# example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
+PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_VERSION" | sed 's/\.[^\.]*$//')
+PYENV_VERSION_PATH=${PYENV_PATH}/versions/${EL_PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 VENV_PATH=./.venv
 LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
@@ -36,58 +38,61 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
-POETRY_VERSION=1.5.1
 
-echo "Python path version home"
-echo ${PYENV_VERSION_PATH}
-echo "Python path version local"
-echo ${LOCAL_PYTHON_EXEC}
+if [[ ! -n "${DOCKER_BUILD}" ]]; then
+  echo "Python path version home"
+  echo ${PYENV_VERSION_PATH}
+  echo "Python path version local"
+  echo ${LOCAL_PYTHON_EXEC}
 
-if [[ ! -d "${PYENV_PATH}" ]]; then
-    echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
-    # export PYENV_GIT_TAG=v2.3.35
-    # To change version
-    # rm ~/.pyenv to uninstall it
-    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+  if [[ ! -d "${PYENV_PATH}" ]]; then
+      echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
+      # export PYENV_GIT_TAG=v2.3.35
+      # To change version
+      # rm ~/.pyenv to uninstall it
+      curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+  fi
+
+  echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
+  export PATH="${PYENV_PATH}/bin:$PATH"
+  eval "$(pyenv init -)"
+  eval "$(pyenv virtualenv-init -)"
+
+  if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
+      echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
+      yes n|pyenv install ${PYTHON_VERSION}
+      if [[ $retVal -ne 0 ]]; then
+          echo -e "${Red}Error${Color_Off} when installing pyenv"
+          exit 1
+      fi
+  fi
+
+  pyenv local ${PYTHON_VERSION}
+
+  if [[ ! -d ${VENV_PATH} ]]; then
+      echo -e "\n---- Create Virtual environment Python ----"
+      if [[ -e ${PYTHON_EXEC} ]]; then
+          ${PYTHON_EXEC} -m venv .venv
+          retVal=$?
+            if [[ $retVal -ne 0 ]]; then
+                echo "Virtual environment, error when creating .venv"
+                exit 1
+            fi
+      else
+          echo "Missing pyenv, please refer installation guide."
+          exit 1
+      fi
+  fi
+  source ./.venv/bin/activate
+else
+  mkdir .venv
 fi
-
-echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
-export PATH="${PYENV_PATH}/bin:$PATH"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
-
-if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
-    echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
-    yes n|pyenv install ${PYTHON_VERSION}
-    if [[ $retVal -ne 0 ]]; then
-        echo -e "${Red}Error${Color_Off} when installing pyenv"
-        exit 1
-    fi
-fi
-
-pyenv local ${PYTHON_VERSION}
-
-if [[ ! -d ${VENV_PATH} ]]; then
-    echo -e "\n---- Create Virtual environment Python ----"
-    if [[ -e ${PYTHON_EXEC} ]]; then
-        ${PYTHON_EXEC} -m venv .venv
-        retVal=$?
-          if [[ $retVal -ne 0 ]]; then
-              echo "Virtual environment, error when creating .venv"
-              exit 1
-          fi
-    else
-        echo "Missing pyenv, please refer installation guide."
-        exit 1
-    fi
-fi
-source ./.venv/bin/activate
 
 #if [[ ! -d "${POETRY_PATH}" ]]; then
 #    # Delete directory ~/.poetry and .venv to force update to new version
 #    echo -e "\n---- Installing poetry ${LOCAL_PYTHON_EXEC} for reliable python package ----"
 #    # TODO self update poetry with `poetry self update ${POETRY_VERSION}`
-#    curl -sSL https://install.python-poetry.org | POETRY_VERSION=${POETRY_VERSION} ${LOCAL_PYTHON_EXEC} - -y
+#    curl -sSL https://install.python-poetry.org | POETRY_VERSION=${EL_POETRY_VERSION} ${LOCAL_PYTHON_EXEC} - -y
 #fi
 
 # Install git-repo if missing
@@ -113,20 +118,20 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 
 # Delete artifacts created by pip, cause error in next "poetry install"
 if [[ ! -f "${POETRY_PATH}" ]]; then
-    ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
+    ${VENV_PATH}/bin/pip install poetry==${EL_POETRY_VERSION}
     ${VENV_PATH}/bin/poetry --version
     # Fix broken poetry by installing ignored dependence
     #    ${VENV_PATH}/bin/pip install vatnumber
     #    ${VENV_PATH}/bin/pip install suds-jurko
     #    ${VENV_PATH}/bin/poetry lock --no-update
-    ${VENV_PATH}/bin/poetry install
+    # To fix keyring problem when installation is blocked, use
+    export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    ${VENV_PATH}/bin/poetry install --no-root -vvv
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
-        echo "Poetry installation error."
+        echo "Poetry installation error with status ${retVal}"
         exit 1
     fi
-    # Fix pip installation missing package
-    ${VENV_PATH}/bin/pip install selenium
 fi
 
 # Delete artifacts created by pip, cause error in next "poetry install"
@@ -134,4 +139,4 @@ rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
-ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/
+ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/.venv/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"

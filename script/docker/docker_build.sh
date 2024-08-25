@@ -3,12 +3,23 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
+ERPLIBRE_IMAGE_NAME=$(cat .erplibre-semver-version|xargs)
+ERPLIBRE_VERSION_MAIN=$(cat .erplibre-version|xargs)
+ODOO_VERSION=$(cat .odoo-version|xargs)
+PYTHON_VERSION=$(cat .python-version|xargs)
+POETRY_VERSION=$(cat .poetry-version|xargs)
+
+IS_DEBIAN_BOOKWORM=true
+IS_DEBIAN_BULLSEYE=true
+# or IS_DEBIAN_BUSTER
 ARGS=""
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
 IS_RELEASE_BETA=false
 ERPLIBRE_DOCKER_BASE="technolibre/erplibre-base"
 ERPLIBRE_DOCKER_PROD="technolibre/erplibre"
+
+output_version=""
 
 for arg in "$@"
 do
@@ -24,8 +35,34 @@ do
     elif [ "$arg" == "--release_beta" ]
     then
         IS_RELEASE_BETA=true
+    elif [ "$arg" == "--odoo_16" ]
+    then
+        output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
+    elif [ "$arg" == "--odoo_14" ]
+    then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
+        output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
+    elif [ "$arg" == "--odoo_12" ]
+    then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
+        output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
     fi
 done
+
+if [ "$output_version" != "" ]; then
+    ODOO_VERSION=$(echo "$output_version" | awk 'NR==1')
+    POETRY_VERSION=$(echo "$output_version" | awk 'NR==2')
+    PYTHON_VERSION=$(echo "$output_version" | awk 'NR==3')
+    ERPLIBRE_VERSION_MAIN=$(echo "$output_version" | awk 'NR==4')
+fi
+
+echo "Build with"
+echo $ERPLIBRE_VERSION_MAIN
+echo $ODOO_VERSION
+echo $PYTHON_VERSION
+echo $POETRY_VERSION
 
 if [ "$IS_RELEASE_ALPHA" == true ]
 then
@@ -44,11 +81,14 @@ fi
 
 ERPLIBRE_DOCKER_BASE_VERSION="${ERPLIBRE_DOCKER_BASE}:${ERPLIBRE_VERSION}"
 ERPLIBRE_DOCKER_PROD_VERSION="${ERPLIBRE_DOCKER_PROD}:${ERPLIBRE_VERSION}"
+ERPLIBRE_VERSION_MAIN="odoo${ODOO_VERSION}_python${PYTHON_VERSION}"
 
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
-./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD}
+./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker
+
+ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ODOO_VERSION=${ODOO_VERSION} --build-arg POETRY_VERSION=${POETRY_VERSION} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
@@ -58,8 +98,15 @@ fi
 
 cd docker
 
-ARGS="${ARGS} --build-arg=WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg=WORKING_HASH=$(git rev-parse --verify HEAD)"
+ARGS="${ARGS} --build-arg WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg WORKING_HASH=$(git rev-parse --verify HEAD)"
 
+if [ "$IS_DEBIAN_BOOKWORM" == true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
+elif [ "$IS_DEBIAN_BOOKWORM" != true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=bullseye --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=cecbf5a6abbd68d324a7cd6c51ec843d71e98951"
+elif [ "IS_DEBIAN_BULLSEYE" != true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=buster --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=d9f259a67e05e1c221d48b504453645e6c491fab"
+fi
 set -e
 
 # Build base

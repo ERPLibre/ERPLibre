@@ -24,6 +24,7 @@ factur-x
 
 # For ERPLibre project
 RandomWords
+selenium==4.11.2
 
 # For testing
 websocket-client
@@ -59,7 +60,11 @@ webcolors==1.13
 openpyxl==3.1.3
 
 # For deployment
-cloudflare
+cloudflare==3.0.1
+
+# Fix build
+pymssql==2.3.0
+cython==3.0.10
 
 # For multilang_md.py
 click
@@ -71,7 +76,7 @@ shapely==1.8.5
 
 # Code generator
 mysqlclient==2.1.1
-python-pptx
+python-pptx==0.6.23
 humanize==4.6.0
 
 # pyproj >=3.3.0 is not compatible with python 3.7
@@ -89,6 +94,9 @@ numpy==1.21.1
 feedparser==6.0.10
 geojson<3.0.0
 
+# Fix poetry
+olefile==0.47
+
 # asyncio
 aioshutil<1.2
 tqdm
@@ -103,6 +111,11 @@ extract-msg==0.36.1
 extract_msg==0.36.1
 
 # Limitation because python3.7
+furo==2021.2.21b25
+ovh==1.1.2
+#requests-oauthlib==1.3.1
+greenlet==0.4.14
+gevent==1.5.0
 argcomplete==3.1.1
 responses==0.23.1
 dnspython==2.3.0
@@ -129,6 +142,7 @@ azure.identity==1.15.0
 azure-storage-blob==12.19.0
 azure.storage.blob==12.19.0
 sqlparse==0.4.4
+zeep==4.2.1
 
 # Force version for security update
 pyyaml==6.0

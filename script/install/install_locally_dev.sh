@@ -5,6 +5,9 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
+echo ""
+echo "RUN ./script/install/install_locally.sh"
+echo ""
 ./script/install/install_locally.sh
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
@@ -13,6 +16,9 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 # Update git-repo
+echo ""
+echo "RUN ./script/manifest/update_manifest_local_dev.sh"
+echo ""
 ./script/manifest/update_manifest_local_dev.sh
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
