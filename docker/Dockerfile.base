@@ -31,7 +31,11 @@ RUN apt-get update \
     vim \
     htop \
     tig \
+    cmake \
     wget \
+    tig \
+    vim \
+    htop \
     make \
     libssl-dev \
     zlib1g-dev \
@@ -61,6 +65,7 @@ RUN apt-get update \
     libncursesw5-dev \
     libffi-dev \
     uuid-dev \
+    swig \
     && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb \
     && echo 'd9f259a67e05e1c221d48b504453645e6c491fab wkhtmltox.deb' | sha1sum -c - \
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \

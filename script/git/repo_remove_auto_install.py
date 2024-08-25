@@ -13,7 +13,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
-from script.git.git_tool import GitTool
+from script.git import git_tool as g_tool
 
 _logger = logging.getLogger(__name__)
 
@@ -39,34 +39,65 @@ def get_config():
         default="./",
         help="Path of repo to change remote, including submodule.",
     )
+    parser.add_argument(
+        "--addons_dir",
+        help=(
+            "Path of addons to remove auto_install. If empty, will take all"
+            " repo from manifest."
+        ),
+    )
+    parser.add_argument(
+        "--ignore_commit",
+        action="store_true",
+        help="Will not do git commit and push.",
+    )
+    parser.add_argument(
+        "--ignore_push",
+        action="store_true",
+        help="Will not do git push.",
+    )
     args = parser.parse_args()
     return args
 
 
 def main():
     config = get_config()
-    git_tool = GitTool()
+    git_tool = g_tool.GitTool()
 
-    lst_repo = git_tool.get_source_repo_addons(
-        repo_path=config.dir, add_repo_root=False
-    )
-    lst_repo_organization = [
-        git_tool.get_transformed_repo_info_from_url(
-            a.get("url"),
-            repo_path=config.dir,
-            get_obj=True,
-            is_submodule=a.get("is_submodule"),
-            sub_path=a.get("sub_path"),
-            revision=a.get("revision"),
-            clone_depth=a.get("clone_depth"),
+    if not config.addons_dir:
+        lst_repo = git_tool.get_source_repo_addons(
+            repo_path=config.dir, add_repo_root=False
         )
-        for a in lst_repo
-    ]
+        lst_repo_organization = [
+            git_tool.get_transformed_repo_info_from_url(
+                a.get("url"),
+                repo_path=config.dir,
+                get_obj=True,
+                is_submodule=a.get("is_submodule"),
+                sub_path=a.get("sub_path"),
+                revision=a.get("revision"),
+                clone_depth=a.get("clone_depth"),
+            )
+            for a in lst_repo
+        ]
+    else:
+        organization = os.path.basename(config.addons_dir)
+        # TODO information is wrong, need to extract organisation and repo_name
+        lst_repo_organization = [
+            g_tool.Struct(
+                **{
+                    "organization": organization,
+                    "path": config.addons_dir,
+                    "relative_path": config.addons_dir,
+                    "repo_name": config.addons_dir,
+                }
+            )
+        ]
 
     lst_ignore_repo = ["odoo"]
 
     i = 0
-    total = len(lst_repo)
+    total = len(lst_repo_organization)
     branch_name = "12.0_dev"
     for repo in lst_repo_organization:
         i += 1
@@ -77,29 +108,31 @@ def main():
             print(f"Ignore {repo.repo_name}.")
             continue
 
-        git_repo = Repo(repo.relative_path)
-        # Force checkout branch if exist
-        try:
-            git_repo.git.checkout(branch_name)
-            is_checkout_branch = True
-        except GitCommandError:
+        if not config.ignore_commit:
+            git_repo = Repo(repo.relative_path)
+            # Force checkout branch if exist
             try:
-                git_repo.git.checkout(
-                    "-t", f"{repo.organization}/{branch_name}"
-                )
+                git_repo.git.checkout(branch_name)
                 is_checkout_branch = True
             except GitCommandError:
-                pass
+                try:
+                    git_repo.git.checkout(
+                        "-t", f"{repo.organization}/{branch_name}"
+                    )
+                    is_checkout_branch = True
+                except GitCommandError:
+                    pass
 
         has_change = get_manifest_external_dependencies(repo)
 
-        if has_change:
+        if has_change and not config.ignore_commit:
             if not is_checkout_branch:
                 git_repo.git.checkout("-b", branch_name)
             # change branch, commit and push
             git_repo.git.add(".")
             git_repo.git.commit("-m", "Set all module auto_install at False")
-            git_repo.git.push("-u", repo.organization, branch_name)
+            if not config.ignore_push:
+                git_repo.git.push("-u", repo.organization, branch_name)
 
 
 def get_lst_manifest_py(relative_path):

@@ -87,10 +87,14 @@ git cherry-pick -m 1 --strategy-option theirs HASH
 
 ## git update manifest
 
-### Error fatal: unable to allocate any listen sockets on port 9418
+### Service git-daemon already running, error bind or Error fatal: unable to allocate any listen sockets on port 9418
+
+This error occur when force stop (ctrl+c) a script like `./script/manifest/update_manifest_local_dev.sh`
+
+The error into console is similar to `Could not bind to 0.0.0.0: Address already in use`
 
 ```bash
-pkill git-daemon
+pkill -f git-daemon
 ```
 
 ## git-repo
@@ -149,21 +153,28 @@ Add line at the end of config.conf
 limit_memory_hard = 0
 ```
 
-### Docker - All interface bind docker
+## Docker - All interface bind docker
 
-Create a subnet
+### Error non-overlapping IPv4 address pool
+
+You got this error when you start a
+docker-compose: `ERROR: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network`
+
+It's because the subnet is limited, you need to change it.
+
+Create a subnet :
 
 ```bash
-sudo docker network create localnetwork --subnet 10.0.1.0/24
+docker network create localnetwork --subnet 10.0.1.0/24
 ```
 
-And create `docker-compose.override.yml` at root project with
-
+Create a new file `docker-compose.override.yml` at the root of ERPLibre, at same level of your docker-compose.yml and
+fill with:
 
 ```yaml
 version: '3'
 networks:
-  default:
-    external:
-      name: localnetwork
+    default:
+        external:
+            name: localnetwork
 ```

@@ -89,8 +89,8 @@ def combine_requirements(config):
     ignore_requirements = ["sys_platform == 'win32'", "python_version < '3.7'"]
     dct_requirements = defaultdict(set)
     lst_requirements_file = get_lst_requirements_txt()
-    lst_requirements_with_condition = set()
-    dct_special_condition = defaultdict(list)
+    # lst_requirements_with_condition = set()
+    # dct_special_condition = defaultdict(list)
     dct_requirements_module_filename = defaultdict(list)
     for requirements_filename in lst_requirements_file:
         with open(requirements_filename, "r") as f:
@@ -98,6 +98,19 @@ def combine_requirements(config):
                 b = a.strip()
                 if not b or b[0] == "#":
                     continue
+                if " @ " in b:
+                    # Support when requirement line is like "package @ git+https://URL"
+                    b = b.split("@ ")[1]
+                if "#" in b:
+                    # remove comments at the end of module
+                    b = b[: b.index("#")].strip()
+                comment_depend = ""
+                if except_sign in b:
+                    # TODO support python_version into comment_depend, check odoo/requirements.txt
+                    b, comment_depend = b.split(except_sign)
+                    b = b.strip()
+                    comment_depend = comment_depend.strip()
+                    # print(comment_depend)
 
                 # Regroup requirement
                 for sign in lst_sign:
@@ -113,17 +126,18 @@ def combine_requirements(config):
                             module_name = b[: b.find(sign)]
                         module_name = module_name.strip()
                         # Special condition for ";", ignore it
-                        if except_sign in b:
-                            for ignore_string in ignore_requirements:
-                                if ignore_string in b:
-                                    break
-                            if ignore_string in b:
-                                break
-                            lst_requirements_with_condition.add(module_name)
-                            value = b[: b.find(except_sign)].strip()
-                            dct_special_condition[module_name].append(b)
-                        else:
-                            value = b
+                        # if except_sign in b:
+                        #     for ignore_string in ignore_requirements:
+                        #         if ignore_string in b:
+                        #             break
+                        #     if ignore_string in b:
+                        #         break
+                        #     # lst_requirements_with_condition.add(module_name)
+                        #     value = b[: b.find(except_sign)].strip()
+                        #     # dct_special_condition[module_name].append(b)
+                        # else:
+                        #     value = b
+                        value = b
                         dct_requirements[module_name].add(value)
                         filename = str(requirements_filename)
                         dct_requirements_module_filename[value].append(
@@ -136,7 +150,9 @@ def combine_requirements(config):
                     dct_requirements_module_filename[b].append(filename)
                 lst_requirements.append(b)
 
-    dct_requirements = get_manifest_external_dependencies(dct_requirements)
+    dct_requirements = get_manifest_external_dependencies(
+        dct_requirements, lst_sign
+    )
 
     # Merge all requirement by insensitive
     dct_requirement_insensitive = {}
@@ -285,12 +301,13 @@ def combine_requirements(config):
     lst_ignored_key = []
     for key in dct_requirements.keys():
         for ignored in lst_ignore:
-            if ignored == key:
+            if ignored == key.strip():
                 lst_ignored_key.append(key)
     for key in lst_ignored_key:
         del dct_requirements[key]
 
     with open("./.venv/build_dependency.txt", "w") as f:
+        # TODO remove all comment
         f.writelines([f"{list(a)[0]}\n" for a in dct_requirements.values()])
 
 
@@ -340,7 +357,7 @@ def delete_dependency_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def get_manifest_external_dependencies(dct_requirements):
+def get_manifest_external_dependencies(dct_requirements, lst_sign):
     lst_manifest_file = get_lst_manifest_py()
     lst_dct_ext_depend = []
     for manifest_file in lst_manifest_file:
@@ -358,11 +375,16 @@ def get_manifest_external_dependencies(dct_requirements):
             if not python:
                 continue
             for depend in python:
-                requirement = dct_requirements.get(depend)
+                # TODO duplicate code, check combine_requirements()
+                module_name = depend
+                for sign in lst_sign:
+                    if sign in depend:
+                        module_name = depend[: depend.find(sign)].strip()
+                requirement = dct_requirements.get(module_name)
                 if requirement:
                     requirement.add(depend)
                 else:
-                    dct_requirements[depend] = set([depend])
+                    dct_requirements[module_name] = set([depend])
 
     return dct_requirements
 

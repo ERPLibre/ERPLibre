@@ -34,3 +34,13 @@ Change version in file `./script/install/install_locally.sh` into constant `POET
 Erase directory `~/.poetry` and `./get-poetry.py`.
 
 Run installation script for OS, check `./script/install/install_locally.sh`.
+
+# FAQ
+
+## Got error "file could not be opened successfully"
+
+Delete cache at root of the project
+
+```bash
+rm -r cache
+```
