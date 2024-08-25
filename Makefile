@@ -185,6 +185,7 @@ install:install_os install_dev
 
 .PHONY: install_dev
 install_dev:
+	./script/version/update_env_version.py
 	./script/install/install_locally_dev.sh
 
 # Install this for the first time of dev environment

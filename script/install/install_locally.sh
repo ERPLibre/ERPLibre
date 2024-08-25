@@ -27,7 +27,9 @@ if [[ ! -d "./addons/addons" ]]; then
 fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=3.7.16
+PYTHON_VERSION=$(cat .python-version | xargs)
+# example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
+PYTHON_VERSION_MAJOR=$(echo "$PYTHON_VERSION" | sed 's/\.[^\.]*$//')
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 VENV_PATH=./.venv
@@ -36,7 +38,7 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
-POETRY_VERSION=1.5.1
+POETRY_VERSION=$(cat .poetry-version | xargs)
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
@@ -134,4 +136,4 @@ rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
-ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/
+ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/.venv/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
