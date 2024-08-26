@@ -90,6 +90,13 @@ if [[ $retVal -ne 0 ]]; then
   echo "apt-get pyenv dependencies installation error."
   exit 1
 fi
+# Dependencies for selenium
+sudo apt-get install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "apt-get selenium dependencies installation error."
+  exit 1
+fi
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 sudo apt-get update
