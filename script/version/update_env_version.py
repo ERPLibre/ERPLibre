@@ -1,15 +1,10 @@
 #!./.venv/bin/python
 import argparse
-import csv
 import logging
 import json
 import os
 import shutil
-import subprocess
 import sys
-import glob
-
-import xmltodict
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -53,8 +48,10 @@ def main():
 
     die(
         not os.path.isfile(VERSION_DATA_FILE),
-        f"Missing {VERSION_DATA_FILE} path, are you sure you run this script"
-        " at root of the project?",
+        (
+            f"Missing {VERSION_DATA_FILE} path, are you sure you run this"
+            " script at root of the project?"
+        ),
     )
 
     with open(VERSION_DATA_FILE) as txt:
@@ -94,18 +91,23 @@ def main():
 
     # Validate actual environment
     expected_venv_name = f".venv_{detect_version}"
-    actuel_venv_is_symlink = os.path.islink(VENV_FILE)
-    if actuel_venv_is_symlink:
-        # Validate version at symlink
-        ref_symlink_env = os.readlink(VENV_FILE).strip("/")
-        if expected_venv_name == ref_symlink_env:
-            _logger.info("The system configuration is good.")
+    venv_exist = os.path.exists(VENV_FILE)
+    if venv_exist:
+        actuel_venv_is_symlink = os.path.islink(VENV_FILE)
+        if actuel_venv_is_symlink:
+            # Validate version at symlink
+            ref_symlink_env = os.readlink(VENV_FILE).strip("/")
+            if expected_venv_name == ref_symlink_env:
+                _logger.info("The system configuration is good.")
+            else:
+                _logger.info("Generate environnement")
         else:
-            _logger.info("Generate environnement")
+            # Move it and create a symlink
+            shutil.move(VENV_FILE, expected_venv_name)
+            os.symlink(expected_venv_name, VENV_FILE)
     else:
-        # Move it and create a symlink
-        shutil.move(VENV_FILE, expected_venv_name)
-        os.symlink(expected_venv_name, VENV_FILE)
+        _logger.info("You need to run installation script : make install_dev")
+        # TODO do a validation and take default value
     if not has_execute:
         _logger.info("Nothing to do")
 
