@@ -10,7 +10,7 @@ Into Ubuntu, minimal dependency:
 sudo apt install make git curl
 ```
 
-Into Ubuntu, developper dependency:
+Into Ubuntu, developer dependency:
 
 ```bash
 sudo apt install make build-essential libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev libbz2-dev libldap2-dev libsasl2-dev
