@@ -39,6 +39,11 @@ def get_config():
         action="store_true",
         help="List all supported version.",
     )
+    parser.add_argument(
+        "--install",
+        action="store_true",
+        help="Install environnement.",
+    )
     args = parser.parse_args()
 
     return args
@@ -51,10 +56,8 @@ def main():
 
     die(
         not os.path.isfile(VERSION_DATA_FILE),
-        (
-            f"Missing {VERSION_DATA_FILE} path, are you sure you run this"
-            " script at root of the project?"
-        ),
+        f"Missing {VERSION_DATA_FILE} path, are you sure you run this"
+        " script at root of the project?",
     )
 
     with open(VERSION_DATA_FILE) as txt:
@@ -102,8 +105,15 @@ def main():
             ref_symlink_env = os.readlink(VENV_FILE).strip("/")
             if expected_venv_name == ref_symlink_env:
                 _logger.info("The system configuration is good.")
+            elif config.install:
+                _logger.info("Installation.")
             else:
-                _logger.info("Generate environnement")
+                _logger.info(
+                    "Your environnement is different than expected. You have"
+                    f" '{ref_symlink_env}', but we expect"
+                    f" '{expected_venv_name}'. Relaunch this script with"
+                    " --install argument."
+                )
         else:
             # Move it and create a symlink
             shutil.move(VENV_FILE, expected_venv_name)
