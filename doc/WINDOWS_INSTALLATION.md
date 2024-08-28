@@ -153,14 +153,16 @@ sudo su - postgres -c "createuser -s USERNAME" 2>/dev/null || true
 Ensure all dependencies are installed correctly. Re-run the following command to fix any broken dependencies:
 ```bash
 sudo apt-get install -f
-
+```
 ### PostgreSQL Not Starting
 Check the PostgreSQL service status with the following command:
 ```bash
 sudo service postgresql status
+```
 If PostgreSQL is not running, try restarting it with:
 ```bash
 sudo service postgresql restart
+```
 
 
 ## Running ERPLibre
