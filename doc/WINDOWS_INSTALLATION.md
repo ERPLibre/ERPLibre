@@ -147,6 +147,21 @@ Add role to PostgresSQL, change `USERNAME` field in the command with your UNIX u
 sudo service postgresql start
 sudo su - postgres -c "createuser -s USERNAME" 2>/dev/null || true
 ```
+## Common Problems During Installation
+
+### Error During `make install`
+Ensure all dependencies are installed correctly. Re-run the following command to fix any broken dependencies:
+```bash
+sudo apt-get install -f
+
+### PostgreSQL Not Starting
+Check the PostgreSQL service status with the following command:
+```bash
+sudo service postgresql status
+If PostgreSQL is not running, try restarting it with:
+```bash
+sudo service postgresql restart
+
 
 ## Running ERPLibre
 
@@ -241,14 +256,15 @@ wsl.exe
 ![Shell Path - Terminal](image/shell_path.png)
 
 ### High Memory Usage warnings
-
-Click on `Help` in the toolbar and choose `Change Memory Settings` to increase the memory heap of the IDE.
+If you experience high memory usage, click on `Help` in the toolbar and choose `Change Memory Settings` to increase the memory heap of the IDE.
 
 ### Missing or incorrect imported modules
-PyCharm may ignore some information from the `requirements.txt` and `pyproject.toml` from the project (such as their specific versions). If you have problems at runtime or while debugging with a certain module, search for the correct version of that specific module and reinstall it from PyCharm's package manager.
+PyCharm might not fully recognize some details from `requirements.txt` and `pyproject.toml` (e.g., specific module versions). If you encounter issues at runtime or while debugging, search for the correct version of the module and reinstall it using PyCharm's package manager.
 
 ### Can't run ERPLibre from PyCharm
-Run the following command in the root of the project from the terminal in PyCharm or WSL2
+
+If ERPLibre fails to run from PyCharm, execute the following command in the root directory of the project from the terminal in PyCharm or WSL2:
+
 ```bash
 ./script/ide/pycharm_configuration.py
 ```
@@ -258,8 +274,20 @@ Run `htop` from the terminal in PyCharm or WSL2 and close the python processes r
 
 ## References
 [WSL Installation](https://learn.microsoft.com/en-us/windows/wsl/install)
+Comprehensive guide on installing Windows Subsystem for Linux (WSL) on Windows.
+
+[PostgreSQL Official Documentation](https://www.postgresql.org/docs/)
+Official PostgreSQL documentation for troubleshooting common issues and learning more about PostgreSQL commands and configuration.
+
+[PyCharm Installation and Configuration](https://www.jetbrains.com/pycharm/quickstart/)
+Quick start guide for setting up and configuring PyCharm, including handling Python modules and environment setup.
+
+[WSL Troubleshooting](https://learn.microsoft.com/en-us/windows/wsl/troubleshoot)
+Troubleshooting guide for common issues encountered in WSL, providing solutions for various problems that may arise.
 
 [Linux GUI](https://hub.tcno.co/windows/wsl/desktop-gui/)
+Instructions for setting up a graphical user interface (GUI) in WSL, which might be helpful for better integration of Linux applications.
 
 [Memory Problem](https://www.aleksandrhovhannisyan.com/blog/limiting-memory-usage-in-wsl-2/)
+Guide on how to manage and limit memory usage in WSL 2 to avoid high memory consumption issues.
 
