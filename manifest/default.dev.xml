@@ -46,6 +46,7 @@
   <project name="brand.git" path="addons/OCA_brand" remote="OCA" groups="addons"/>
   <project name="business-requirement.git" path="addons/OCA_business-requirement" remote="OCA" groups="addons"/>
   <project name="commission.git" path="addons/OCA_commission" remote="OCA" groups="addons"/>
+  <project name="calendar.git" path="addons/OCA_calendar" remote="OCA" groups="addons"/>
   <project name="community-data-files.git" path="addons/OCA_community-data-files" remote="OCA" groups="addons"/>
   <project name="connector-ecommerce.git" path="addons/OCA_connector-ecommerce" remote="OCA" groups="addons"/>
   <project name="connector-interfaces.git" path="addons/OCA_connector-interfaces" remote="OCA" groups="addons"/>
