@@ -23,7 +23,8 @@
   <remote name="openeducat" fetch="https://github.com/openeducat/"/>
   <remote name="pledra" fetch="https://github.com/pledra/"/>
   <remote name="tegin" fetch="https://github.com/tegin/"/>
-  
+  <remote name="vertelab" fetch="https://github.com/vertelab/"/>
+
   <default remote="ERPLibre" revision="16.0" sync-j="4" sync-c="true"/>
 
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" groups="base"/>
@@ -87,6 +88,7 @@
   <project name="odoo-cloud-platform.git" path="addons/camptocamp_odoo-cloud-platform" remote="camptocamp" groups="addons"/>
   <project name="odoo-formio.git" path="addons/novacode-nl_odoo-formio" remote="novacode-nl" groups="addons"/>
   <project name="odoo-module-migrator.git" path="script/OCA_odoo-module-migrator" remote="OCA" revision="master" groups="odoo"/>
+  <project name="odoo-calendar.git" path="addons/vertelab_odoo-calendar" remote="vertelab" groups="addons"/>
   <project name="odoo.git" path="odoo" remote="odoo" clone-depth="10" revision="ERPLibre/16.0" groups="odoo"/>
   <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons,nutrition_libre"/>
   <project name="odooplm.git" path="addons/OmniaGit_odooplm" remote="OmniaGit" groups="addons"/>
