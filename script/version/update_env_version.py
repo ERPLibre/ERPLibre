@@ -31,8 +31,8 @@ def get_config():
     """
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="""\
-        Change environnement from supported version, check file conf/supported_version_erplibre.json
+        description=f"""\
+        Change environnement from supported version, check file {VERSION_DATA_FILE}
 """,
         epilog="""\
 """,
@@ -171,7 +171,19 @@ class Update:
             and not self.config.erplibre_version
             and not self.config.erplibre_package
         ):
-            return
+            # Take default version
+            default_data = [
+                key
+                for key, value in self.data_version.items()
+                if value.get("default")
+            ]
+            if not default_data:
+                _logger.error(
+                    "Cannot find default version into file"
+                    f" {VERSION_DATA_FILE}"
+                )
+                sys.exit(1)
+            self.data_version = default_data[0]
         has_new_version = False
         if self.config.erplibre_version:
             data = self.data_version.get(self.config.erplibre_version)
@@ -250,23 +262,20 @@ class Update:
         path_expected_manifest_name = os.path.join(
             ".", "manifest", self.expected_manifest_name
         )
-        manifest_link_exist = os.path.exists(path_expected_manifest_name)
-        if manifest_link_exist:
+        manifest_expected_exist = os.path.exists(path_expected_manifest_name)
+        if manifest_expected_exist:
             # TODO check if link exist, delete it if wrong, else not exist, create it
-            self.execute_log.append(f"")
             actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
             if actuel_manifest_is_symlink:
                 ref_symlink_manifest = os.readlink(MANIFEST_FILE_PATH).strip(
                     "/"
                 )
-                if self.expected_venv_name == ref_symlink_manifest:
-                    pass
-                os.system(f"rm -rf {MANIFEST_FILE_PATH}")
-                self.execute_log.append(f"Remove symlink {MANIFEST_FILE_PATH}")
+                if self.expected_manifest_name != ref_symlink_manifest:
+                    os.system(f"rm -rf {MANIFEST_FILE_PATH}")
+                    self.execute_log.append(f"Remove symlink {MANIFEST_FILE_PATH}")
             # Generate a link
             actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
             if not actuel_manifest_is_symlink:
-                # os.symlink(self.expected_venv_name, VENV_FILE)
                 cmd_symlink_manifest = (
                     "cd manifest;ln -s"
                     f" {self.expected_manifest_name} {MANIFEST_FILE};cd -"
@@ -305,17 +314,16 @@ class Update:
                 install_system=self.config.install,
                 install_dev=self.config.install_dev,
             )
-
-        # Re-update if launch installation
-        actuel_venv_is_symlink = os.path.islink(VENV_FILE)
-        if not actuel_venv_is_symlink:
-            # Move it and create a symlink
-            shutil.move(VENV_FILE, self.expected_venv_name)
-            os.symlink(self.expected_venv_name, VENV_FILE)
-            self.execute_log.append(
-                f"Create symbolic link {self.expected_venv_name} to"
-                f" {VENV_FILE}"
-            )
+            # Re-update if launch installation
+            actuel_venv_is_symlink = os.path.islink(VENV_FILE)
+            if not actuel_venv_is_symlink:
+                # Move it and create a symlink
+                shutil.move(VENV_FILE, self.expected_venv_name)
+                os.symlink(self.expected_venv_name, VENV_FILE)
+                self.execute_log.append(
+                    f"Create symbolic link {self.expected_venv_name} to"
+                    f" {VENV_FILE}"
+                )
 
     def print_log(self):
         if not self.execute_log:
