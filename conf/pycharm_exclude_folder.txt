@@ -1,4 +1,3 @@
-.venv
 .repo
 script/OCA_maintainer-tools
 script/OCA_odoo-module-migrator
