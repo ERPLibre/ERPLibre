@@ -26,3 +26,5 @@ wkhtmltox*
 cache
 node_modules
 docker-compose.override.yml
+
+manifest/default.dev.xml
