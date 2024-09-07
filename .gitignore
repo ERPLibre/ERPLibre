@@ -28,3 +28,5 @@ node_modules
 docker-compose.override.yml
 
 manifest/default.dev.xml
+poetry.lock
+pyproject.toml

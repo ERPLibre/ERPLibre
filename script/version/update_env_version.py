@@ -95,6 +95,8 @@ def get_config():
     if args.force:
         args.force_install = True
         args.force_repo = True
+    if not (args.install or args.install_dev) and args.force_install:
+        args.force_install = False
 
     return args
 
@@ -230,65 +232,82 @@ class Update:
 
     def validate_environment(self):
         need_relaunch_script_dev = False
+        self.update_link_file(
+            "Virtual environnement",
+            VENV_FILE,
+            self.expected_venv_name,
+            is_directory=True,
+            do_delete_source=self.config.install_dev
+            or self.config.force_install,
+        )
         # Validate .venv
-        venv_exist = os.path.exists(VENV_FILE)
-        if venv_exist:
-            actuel_venv_is_symlink = os.path.islink(VENV_FILE)
-            actuel_venv_is_dir = os.path.isdir(VENV_FILE)
-            if actuel_venv_is_symlink:
-                # Validate version at symlink
-                ref_symlink_env = os.readlink(VENV_FILE).strip("/")
-                if self.expected_venv_name == ref_symlink_env:
-                    _logger.info("The system configuration is good.")
-                else:
-                    _logger.info(
-                        "Your environnement is different than expected. You"
-                        f" have '{ref_symlink_env}', but we expect"
-                        f" '{self.expected_venv_name}'."
-                    )
-                    if not self.config.install_dev:
-                        need_relaunch_script_dev = True
-            elif actuel_venv_is_dir:
-                self.do_backup_venv = True
-            else:
-                _logger.warning(
-                    f"Don't know what '{VENV_FILE}' file is, can you check?"
-                )
-
-        elif not self.config.install_dev:
-            need_relaunch_script_dev = True
+        # venv_exist = os.path.exists(VENV_FILE)
+        # if venv_exist:
+        #     actuel_venv_is_symlink = os.path.islink(VENV_FILE)
+        #     actuel_venv_is_dir = os.path.isdir(VENV_FILE)
+        #     if actuel_venv_is_symlink:
+        #         # Validate version at symlink
+        #         ref_symlink_env = os.readlink(VENV_FILE).strip("/")
+        #         if self.expected_venv_name == ref_symlink_env:
+        #             _logger.info("The system configuration is good.")
+        #         else:
+        #             _logger.info(
+        #                 "Your environnement is different than expected. You"
+        #                 f" have '{ref_symlink_env}', but we expect"
+        #                 f" '{self.expected_venv_name}'."
+        #             )
+        #             if not self.config.install_dev:
+        #                 need_relaunch_script_dev = True
+        #     elif actuel_venv_is_dir:
+        #         self.do_backup_venv = True
+        #     else:
+        #         _logger.warning(
+        #             f"Don't know what '{VENV_FILE}' file is, can you check?"
+        #         )
+        #
+        # elif not self.config.install_dev:
+        #     need_relaunch_script_dev = True
         # TODO do a validation and take default value
         # Validate manifest
         path_expected_manifest_name = os.path.join(
             ".", "manifest", self.expected_manifest_name
         )
-        manifest_expected_exist = os.path.exists(path_expected_manifest_name)
-        if manifest_expected_exist:
-            # TODO check if link exist, delete it if wrong, else not exist, create it
-            actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
-            if actuel_manifest_is_symlink:
-                ref_symlink_manifest = os.readlink(MANIFEST_FILE_PATH).strip(
-                    "/"
-                )
-                if self.expected_manifest_name != ref_symlink_manifest:
-                    os.system(f"rm -rf {MANIFEST_FILE_PATH}")
-                    self.execute_log.append(f"Remove symlink {MANIFEST_FILE_PATH}")
-            # Generate a link
-            actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
-            if not actuel_manifest_is_symlink:
-                cmd_symlink_manifest = (
-                    "cd manifest;ln -s"
-                    f" {self.expected_manifest_name} {MANIFEST_FILE};cd -"
-                )
-                os.system(cmd_symlink_manifest)
-                self.execute_log.append(
-                    f"Create symbolic link {self.expected_manifest_name} to"
-                    f" {MANIFEST_FILE}"
-                )
-        else:
-            _logger.error(f"Missing manifest '{path_expected_manifest_name}'")
-            return
-        if need_relaunch_script_dev:
+        self.update_link_file(
+            "Git repositories",
+            MANIFEST_FILE_PATH,
+            path_expected_manifest_name,
+            do_delete_source=True,
+        )
+        # manifest_expected_exist = os.path.exists(path_expected_manifest_name)
+        # if manifest_expected_exist:
+        #     # TODO check if link exist, delete it if wrong, else not exist, create it
+        #     actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
+        #     if actuel_manifest_is_symlink:
+        #         ref_symlink_manifest = os.readlink(MANIFEST_FILE_PATH).strip(
+        #             "/"
+        #         )
+        #         if self.expected_manifest_name != ref_symlink_manifest:
+        #             os.system(f"rm -rf {MANIFEST_FILE_PATH}")
+        #             self.execute_log.append(
+        #                 f"Remove symlink {MANIFEST_FILE_PATH}"
+        #             )
+        #     # Generate a link
+        #     actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
+        #     if not actuel_manifest_is_symlink:
+        #         cmd_symlink_manifest = (
+        #             "cd manifest;ln -s"
+        #             f" {self.expected_manifest_name} {MANIFEST_FILE};cd -"
+        #         )
+        #         os.system(cmd_symlink_manifest)
+        #         self.execute_log.append(
+        #             f"Create symbolic link {self.expected_manifest_name} to"
+        #             f" {MANIFEST_FILE}"
+        #         )
+        # else:
+        #     _logger.error(f"Missing manifest '{path_expected_manifest_name}'")
+        #     return
+        venv_exist = os.path.exists(VENV_FILE)
+        if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
 
     def update_environment(self):
@@ -342,6 +361,112 @@ class Update:
             self.execute_log.append(f"Dev installation")
             status = os.system("./script/install/install_locally_dev.sh")
         return status
+
+    def update_link_file(
+        self,
+        component_name,
+        source_file,
+        target_file,
+        is_directory=False,
+        do_delete_source=False,
+        sub_directory=None,
+    ):
+        """Call to create a symbolic link
+        0. check if file is symlink or file/directory
+        1.
+        Case 1 : origin file exist, need to be switched by a symlink and rename it;
+        Case 2 : no file, check if new version exist and symlink it;
+        Case 3 : source file is symlink, and wrong direction, erase it. If new version exist, symlink it.
+        Good case : source file is symlink, and good redirection.
+        """
+        # TODO support case symlink is invalid
+        if not source_file or not target_file:
+            _logger.error("Source file or target file is empty.")
+        source_file_exist = os.path.exists(source_file)
+        target_file_exist = os.path.exists(target_file)
+        do_symlink = False
+        # Case 1
+        if source_file_exist:
+            source_file_is_symlink = os.path.islink(source_file)
+            if not source_file_is_symlink:
+                # Check if source type
+                if is_directory:
+                    source_file_is_directory = os.path.isdir(source_file)
+                    if not source_file_is_directory:
+                        _logger.error(
+                            f"{component_name} - Source '{source_file}' is"
+                            " expected to be a directory and it's not."
+                        )
+                        os.system(f"ls -lha {source_file}")
+                        sys.exit(1)
+                    else:
+                        do_switch_origin_sim = True
+                else:
+                    source_file_is_file = os.path.isfile(source_file)
+                    if not source_file_is_file:
+                        _logger.error(
+                            f"{component_name} - Source '{source_file}' is"
+                            " expected to be a file and it's not."
+                        )
+                        os.system(f"ls -lha {source_file}")
+                        sys.exit(1)
+                    else:
+                        do_switch_origin_sim = True
+                if do_switch_origin_sim:
+                    # Check if not erase an existing
+                    if target_file_exist:
+                        # Create a backup
+                        new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
+                    else:
+                        new_target_file = target_file
+                    # Move it and create a symlink
+                    shutil.move(source_file, new_target_file)
+                    do_symlink = True
+                    # os.symlink(new_target_file, source_file)
+                    # self.execute_log.append(
+                    #     f"Create symbolic link {new_target_file} to"
+                    #     f" {source_file}"
+                    # )
+            else:
+                # Case 3
+                # Is symlink
+                ref_symlink_source = os.readlink(source_file).strip("/")
+                if ref_symlink_source == target_file:
+                    _logger.info("The system configuration is good.")
+                elif do_delete_source:
+                    # symlink, delete it if wrong
+                    os.system(f"rm {source_file}")
+                    self.execute_log.append(f"Delete file {source_file}")
+                    if target_file_exist:
+                        do_symlink = True
+
+        elif target_file_exist:
+            # Case 2
+            do_symlink = True
+        if do_symlink:
+            lst_path_target = os.path.split(target_file.strip("./"))
+            lst_path_source = os.path.split(source_file.strip("./"))
+            if len(lst_path_target) == 1:
+                os.symlink(target_file, source_file)
+                self.execute_log.append(
+                    f"Create symbolic link {target_file} to {source_file}"
+                )
+            else:
+                file_target = lst_path_target[-1]
+                file_source = lst_path_source[-1]
+                # TODO compare lst_path_source avec lst_path_target, si différent ,faire le path
+                cd_path_target = (
+                    "." + os.sep + os.sep.join(lst_path_target[:-1])
+                )
+                cmd_symlink_manifest = (
+                    f"cd {cd_path_target};ln -s"
+                    f" {file_target} {file_source};cd -"
+                )
+                os.system(cmd_symlink_manifest)
+                self.execute_log.append(
+                    f"Create symbolic link {file_target} to"
+                    f" {file_source} from path {cd_path_target}"
+                )
 
 
 def main():
