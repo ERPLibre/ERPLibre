@@ -19,8 +19,14 @@ VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 VERSION_PYTHON_FILE = os.path.join(".python-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VENV_FILE = os.path.join(".venv")
+VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
+MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
 MANIFEST_FILE_PATH = os.path.join(".", "manifest", MANIFEST_FILE)
+PYPROJECT_FILE = os.path.join("pyproject.toml")
+PYPROJECT_TEMPLATE_FILE = "pyproject.%s.toml"
+POETRY_LOCK_FILE = os.path.join("poetry.lock")
+POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
 
 
 def get_config():
@@ -115,6 +121,11 @@ class Update:
         self.new_version_poetry = None
         self.expected_venv_name = None
         self.expected_manifest_name = None
+        self.expected_manifest_path = None
+        self.expected_pyproject_name = None
+        self.expected_pyproject_path = None
+        self.expected_poetry_lock_name = None
+        self.expected_poetry_lock_path = None
         self.do_backup_venv = False
 
     def check_version_data(self):
@@ -222,16 +233,34 @@ class Update:
             self.new_version_python = self.python_version
             # TODO needs to detect actual poetry? No?
 
-        self.expected_venv_name = f".venv_{self.new_version_erplibre}"
+        self.expected_venv_name = (
+            VENV_TEMPLATE_FILE % self.new_version_erplibre
+        )
         self.expected_manifest_name = (
-            f"default.dev.odoo{self.new_version_odoo}.xml"
+            MANIFEST_TEMPLATE_FILE % self.new_version_odoo
+        )
+        self.expected_manifest_path = os.path.join(
+            ".", "manifest", self.expected_manifest_name
+        )
+        self.expected_pyproject_name = (
+            PYPROJECT_TEMPLATE_FILE % self.new_version_erplibre
+        )
+        self.expected_pyproject_path = os.path.join(
+            ".", "requirement", self.expected_pyproject_name
+        )
+
+        self.expected_poetry_lock_name = (
+            POETRY_LOCK_TEMPLATE_FILE % self.new_version_erplibre
+        )
+        self.expected_poetry_lock_path = os.path.join(
+            ".", "requirement", self.expected_poetry_lock_name
         )
 
         if self.config.erplibre_package:
             _logger.warning("Not supported erplibre_package configuration")
 
     def validate_environment(self):
-        need_relaunch_script_dev = False
+        # Validate .venv
         self.update_link_file(
             "Virtual environnement",
             VENV_FILE,
@@ -240,75 +269,29 @@ class Update:
             do_delete_source=self.config.install_dev
             or self.config.force_install,
         )
-        # Validate .venv
-        # venv_exist = os.path.exists(VENV_FILE)
-        # if venv_exist:
-        #     actuel_venv_is_symlink = os.path.islink(VENV_FILE)
-        #     actuel_venv_is_dir = os.path.isdir(VENV_FILE)
-        #     if actuel_venv_is_symlink:
-        #         # Validate version at symlink
-        #         ref_symlink_env = os.readlink(VENV_FILE).strip("/")
-        #         if self.expected_venv_name == ref_symlink_env:
-        #             _logger.info("The system configuration is good.")
-        #         else:
-        #             _logger.info(
-        #                 "Your environnement is different than expected. You"
-        #                 f" have '{ref_symlink_env}', but we expect"
-        #                 f" '{self.expected_venv_name}'."
-        #             )
-        #             if not self.config.install_dev:
-        #                 need_relaunch_script_dev = True
-        #     elif actuel_venv_is_dir:
-        #         self.do_backup_venv = True
-        #     else:
-        #         _logger.warning(
-        #             f"Don't know what '{VENV_FILE}' file is, can you check?"
-        #         )
-        #
-        # elif not self.config.install_dev:
-        #     need_relaunch_script_dev = True
-        # TODO do a validation and take default value
-        # Validate manifest
-        path_expected_manifest_name = os.path.join(
-            ".", "manifest", self.expected_manifest_name
-        )
-        self.update_link_file(
-            "Git repositories",
-            MANIFEST_FILE_PATH,
-            path_expected_manifest_name,
-            do_delete_source=True,
-        )
-        # manifest_expected_exist = os.path.exists(path_expected_manifest_name)
-        # if manifest_expected_exist:
-        #     # TODO check if link exist, delete it if wrong, else not exist, create it
-        #     actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
-        #     if actuel_manifest_is_symlink:
-        #         ref_symlink_manifest = os.readlink(MANIFEST_FILE_PATH).strip(
-        #             "/"
-        #         )
-        #         if self.expected_manifest_name != ref_symlink_manifest:
-        #             os.system(f"rm -rf {MANIFEST_FILE_PATH}")
-        #             self.execute_log.append(
-        #                 f"Remove symlink {MANIFEST_FILE_PATH}"
-        #             )
-        #     # Generate a link
-        #     actuel_manifest_is_symlink = os.path.islink(MANIFEST_FILE_PATH)
-        #     if not actuel_manifest_is_symlink:
-        #         cmd_symlink_manifest = (
-        #             "cd manifest;ln -s"
-        #             f" {self.expected_manifest_name} {MANIFEST_FILE};cd -"
-        #         )
-        #         os.system(cmd_symlink_manifest)
-        #         self.execute_log.append(
-        #             f"Create symbolic link {self.expected_manifest_name} to"
-        #             f" {MANIFEST_FILE}"
-        #         )
-        # else:
-        #     _logger.error(f"Missing manifest '{path_expected_manifest_name}'")
-        #     return
         venv_exist = os.path.exists(VENV_FILE)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
+        # Validate Git repo
+        self.update_link_file(
+            "Git repositories",
+            MANIFEST_FILE_PATH,
+            self.expected_manifest_path,
+            do_delete_source=True,
+        )
+        # Validate Poetry
+        self.update_link_file(
+            "Poetry project toml",
+            PYPROJECT_FILE,
+            self.expected_pyproject_path,
+            do_delete_source=True,
+        )
+        self.update_link_file(
+            "Poetry lock",
+            POETRY_LOCK_FILE,
+            self.expected_poetry_lock_path,
+            do_delete_source=True,
+        )
 
     def update_environment(self):
         do_action = bool(any([self.config.install_dev, self.config.install]))
@@ -369,7 +352,6 @@ class Update:
         target_file,
         is_directory=False,
         do_delete_source=False,
-        sub_directory=None,
     ):
         """Call to create a symbolic link
         0. check if file is symlink or file/directory
@@ -381,7 +363,9 @@ class Update:
         """
         # TODO support case symlink is invalid
         if not source_file or not target_file:
-            _logger.error("Source file or target file is empty.")
+            _logger.error(
+                f"{component_name}:Source file or target file is empty."
+            )
         source_file_exist = os.path.exists(source_file)
         target_file_exist = os.path.exists(target_file)
         do_symlink = False
@@ -430,43 +414,95 @@ class Update:
             else:
                 # Case 3
                 # Is symlink
+                lst_path_source = [
+                    a for a in os.path.split(remove_dot_path(source_file)) if a
+                ]
                 ref_symlink_source = os.readlink(source_file).strip("/")
-                if ref_symlink_source == target_file:
-                    _logger.info("The system configuration is good.")
+                lst_path_symlink_source = [
+                    a
+                    for a in os.path.split(remove_dot_path(ref_symlink_source))
+                    if a
+                ]
+                if (
+                    len(lst_path_source) != len(lst_path_symlink_source)
+                    and len(lst_path_symlink_source) == 1
+                ):
+                    ref_symlink_source_from_root = os.path.join(
+                        ".",
+                        os.sep.join(lst_path_source[:-1]),
+                        ref_symlink_source,
+                    )
+                else:
+                    ref_symlink_source_from_root = ref_symlink_source
+                do_delete_source = do_delete_source or os.path.exists(
+                    target_file
+                )
+                if ref_symlink_source_from_root == target_file:
+                    _logger.info(
+                        f"{component_name}:The system configuration is good."
+                    )
                 elif do_delete_source:
+                    _logger.warning(
+                        f"{component_name}:The file '{source_file}' link"
+                        f" '{ref_symlink_source_from_root}' will be delete and"
+                        f" link to '{target_file}'."
+                    )
                     # symlink, delete it if wrong
                     os.system(f"rm {source_file}")
-                    self.execute_log.append(f"Delete file {source_file}")
+                    self.execute_log.append(
+                        f"{component_name}:Delete file {source_file}"
+                    )
                     if target_file_exist:
                         do_symlink = True
+                else:
+                    _logger.warning(
+                        f"{component_name}:The actual link is"
+                        f" '{ref_symlink_source_from_root}', but expect to be"
+                        f" '{target_file}'."
+                    )
 
         elif target_file_exist:
             # Case 2
             do_symlink = True
         if do_symlink:
-            lst_path_target = os.path.split(target_file.strip("./"))
-            lst_path_source = os.path.split(source_file.strip("./"))
-            if len(lst_path_target) == 1:
+            lst_path_target = [
+                a for a in os.path.split(remove_dot_path(target_file)) if a
+            ]
+            lst_path_source = [
+                a for a in os.path.split(remove_dot_path(source_file)) if a
+            ]
+            if len(lst_path_source) == 1:
                 os.symlink(target_file, source_file)
                 self.execute_log.append(
-                    f"Create symbolic link {target_file} to {source_file}"
+                    f"{component_name}:Create symbolic link {source_file} to"
+                    f" {target_file}"
                 )
             else:
-                file_target = lst_path_target[-1]
-                file_source = lst_path_source[-1]
-                # TODO compare lst_path_source avec lst_path_target, si différent ,faire le path
+                target_file_name = lst_path_target[-1]
+                source_file_name = lst_path_source[-1]
+                # TODO compare lst_path_source avec lst_path_target, si différent, faire le path
                 cd_path_target = (
                     "." + os.sep + os.sep.join(lst_path_target[:-1])
                 )
                 cmd_symlink_manifest = (
                     f"cd {cd_path_target};ln -s"
-                    f" {file_target} {file_source};cd -"
+                    f" {target_file_name} {source_file_name};cd -"
                 )
                 os.system(cmd_symlink_manifest)
                 self.execute_log.append(
-                    f"Create symbolic link {file_target} to"
-                    f" {file_source} from path {cd_path_target}"
+                    f"{component_name}:Create symbolic link"
+                    f" {source_file_name} to {target_file_name} from path"
+                    f" {cd_path_target}"
                 )
+
+
+def remove_dot_path(path):
+    """
+    if path is ./path/2, will return path/2
+    """
+    if path.startswith("./"):
+        return path[2:]
+    return path
 
 
 def main():
