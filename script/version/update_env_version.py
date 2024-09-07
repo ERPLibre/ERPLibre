@@ -322,10 +322,12 @@ class Update:
                 # Move it and create a symlink
                 shutil.move(VENV_FILE, self.expected_venv_name)
                 os.symlink(self.expected_venv_name, VENV_FILE)
-                self.execute_log.append(
+                msg = (
                     f"Create symbolic link {self.expected_venv_name} to"
                     f" {VENV_FILE}"
                 )
+                _logger.info(msg)
+                self.execute_log.append(msg)
 
     def print_log(self):
         if not self.execute_log:
@@ -334,6 +336,12 @@ class Update:
         _logger.info("List of execution log :")
         for log_info in self.execute_log:
             _logger.info("\t" + log_info)
+
+    def pycharm_update(self):
+        pycharm_is_installed = os.path.exists(".idea")
+        if not pycharm_is_installed or not self.execute_log:
+            return
+        os.system("./script/ide/pycharm_configuration.py --init")
 
     def install_erplibre(self, install_system=False, install_dev=False):
         status = 0
@@ -359,6 +367,7 @@ class Update:
         Case 1 : origin file exist, need to be switched by a symlink and rename it;
         Case 2 : no file, check if new version exist and symlink it;
         Case 3 : source file is symlink, and wrong direction, erase it. If new version exist, symlink it.
+        Case 4: origin file exist, but it's a wrong symlink
         Good case : source file is symlink, and good redirection.
         """
         # TODO support case symlink is invalid
@@ -367,11 +376,23 @@ class Update:
                 f"{component_name}:Source file or target file is empty."
             )
         source_file_exist = os.path.exists(source_file)
+        source_file_is_symlink = os.path.islink(source_file)
         target_file_exist = os.path.exists(target_file)
         do_symlink = False
+        # Case 4
+        if source_file_is_symlink and not source_file_exist:
+            _logger.error(
+                f"{component_name}:File '{source_file}' is a wrong symlink,"
+                " delete it."
+            )
+            os.system(f"rm {source_file}")
+            self.execute_log.append(
+                f"{component_name}:Delete file {source_file}"
+            )
+            source_file_is_symlink = False
+
         # Case 1
         if source_file_exist:
-            source_file_is_symlink = os.path.islink(source_file)
             if not source_file_is_symlink:
                 # Check if source type
                 if is_directory:
@@ -406,11 +427,6 @@ class Update:
                     # Move it and create a symlink
                     shutil.move(source_file, new_target_file)
                     do_symlink = True
-                    # os.symlink(new_target_file, source_file)
-                    # self.execute_log.append(
-                    #     f"Create symbolic link {new_target_file} to"
-                    #     f" {source_file}"
-                    # )
             else:
                 # Case 3
                 # Is symlink
@@ -473,10 +489,12 @@ class Update:
             ]
             if len(lst_path_source) == 1:
                 os.symlink(target_file, source_file)
-                self.execute_log.append(
+                msg = (
                     f"{component_name}:Create symbolic link {source_file} to"
                     f" {target_file}"
                 )
+                _logger.info(msg)
+                self.execute_log.append(msg)
             else:
                 target_file_name = lst_path_target[-1]
                 source_file_name = lst_path_source[-1]
@@ -489,11 +507,13 @@ class Update:
                     f" {target_file_name} {source_file_name};cd -"
                 )
                 os.system(cmd_symlink_manifest)
-                self.execute_log.append(
+                msg = (
                     f"{component_name}:Create symbolic link"
                     f" {source_file_name} to {target_file_name} from path"
                     f" {cd_path_target}"
                 )
+                _logger.info(msg)
+                self.execute_log.append(msg)
 
 
 def remove_dot_path(path):
@@ -523,6 +543,8 @@ def main():
     update.validate_environment()
     update.update_environment()
     update.print_log()
+
+    update.pycharm_update()
 
 
 def die(cond, message, code=1):
