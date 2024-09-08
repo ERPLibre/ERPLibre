@@ -2,6 +2,7 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+# This script need only basic importation
 import argparse
 import logging
 import json
@@ -152,6 +153,7 @@ class Update:
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
+        erplibre_version_to_search = f"python{self.python_version}_odoo{self.odoo_version}"
 
         # Detect key actual version
         self.detected_version_erplibre = None
@@ -161,18 +163,15 @@ class Update:
                 and value.get("python_version") == self.python_version
             ):
                 self.detected_version_erplibre = key
+                _logger.info(f"Detected erplibre version {erplibre_version_to_search}")
                 break
         if not self.detected_version_erplibre:
             _logger.error(
-                "The actual version is not configured into"
+                f"The actual version '{erplibre_version_to_search}' is not configured into"
                 f" '{VERSION_DATA_FILE}'. Please update this file before"
                 " continue."
             )
             return False
-        else:
-            _logger.info(
-                f"Detected version '{self.detected_version_erplibre}'"
-            )
 
         return True
 
