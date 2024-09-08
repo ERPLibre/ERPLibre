@@ -19,6 +19,7 @@ PROJECT_NAME = os.path.basename(os.getcwd())
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 VERSION_PYTHON_FILE = os.path.join(".python-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
+VERSION_POETRY_FILE = os.path.join(".poetry-version")
 VENV_FILE = os.path.join(".venv")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
@@ -45,7 +46,8 @@ def get_config():
 """,
     )
     parser.add_argument(
-        "--list_version",
+        "-l",
+        "--list",
         action="store_true",
         help="List all supported version.",
     )
@@ -139,12 +141,15 @@ class Update:
         with open(VERSION_DATA_FILE) as txt:
             self.data_version = json.load(txt)
 
-        if self.config.list_version:
+        if self.config.list:
             for key, value in self.data_version.items():
                 print(f"{key}: {value}")
 
     def detect_version(self):
         # Detect actual version
+        if not os.path.exists(VERSION_PYTHON_FILE) or not os.path.exists(VERSION_ODOO_FILE):
+            _logger.info("New installation, cannot detect actual version.")
+            return False
         with open(VERSION_PYTHON_FILE) as txt:
             self.python_version = txt.read().strip()
         with open(VERSION_ODOO_FILE) as txt:
@@ -156,7 +161,6 @@ class Update:
         erplibre_version_to_search = f"python{self.python_version}_odoo{self.odoo_version}"
 
         # Detect key actual version
-        self.detected_version_erplibre = None
         for key, value in self.data_version.items():
             if (
                 value.get("odoo_version") == self.odoo_version
@@ -293,6 +297,7 @@ class Update:
         )
 
     def update_environment(self):
+        status = True
         do_action = bool(any([self.config.install_dev, self.config.install]))
         if self.do_backup_venv and do_action:
             venv_backup_name = (
@@ -311,7 +316,7 @@ class Update:
             self.execute_log.append(f"Remove ./{VENV_FILE}")
         if self.config.install or self.config.install_dev:
             _logger.info("Installation.")
-            self.install_erplibre(
+            status = self.install_erplibre(
                 install_system=self.config.install,
                 install_dev=self.config.install_dev,
             )
@@ -327,6 +332,7 @@ class Update:
                 )
                 _logger.info(msg)
                 self.execute_log.append(msg)
+        return status
 
     def print_log(self):
         if not self.execute_log:
@@ -344,6 +350,14 @@ class Update:
 
     def install_erplibre(self, install_system=False, install_dev=False):
         status = 0
+        # Always overwrite version
+        with open(VERSION_PYTHON_FILE, "w") as txt:
+            txt.write(self.new_version_python)
+        with open(VERSION_ODOO_FILE, "w") as txt:
+            txt.write(self.new_version_odoo)
+        with open(VERSION_POETRY_FILE, "w") as txt:
+            txt.write(self.new_version_poetry)
+
         if install_system:
             self.execute_log.append(f"System installation")
             status = os.system("./script/install/install_dev.sh")
@@ -531,9 +545,7 @@ def main():
     update.check_version_data()
 
     _logger.info("Detect version")
-    status = update.detect_version()
-    if not status:
-        return
+    update.detect_version()
 
     _logger.info("Validate version")
     update.validate_version()
