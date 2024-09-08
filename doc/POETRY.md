@@ -44,3 +44,47 @@ Delete cache at root of the project
 ```bash
 rm -r cache
 ```
+
+## Configure a proxy with poetry
+
+The proxy will create a cache of all downloads.
+
+https://github.com/EpicWink/proxpi
+
+Install and run the server
+
+```bash
+pip3 install 'git+https://github.com/EpicWink/proxpi.git'
+PROXPI_BINARY_FILE_MIME_TYPE=1 FLASK_APP=proxpi.server flask run
+```
+
+Or by docker-compose, add the environment
+```
+services:
+  proxpi:
+    restart: unless-stopped
+    ports:
+      - '5000:5000'
+    image: epicwink/proxpi:latest
+    environment:
+      - PROXPI_BINARY_FILE_MIME_TYPE=1
+```
+
+Add this configuration into the pyproject.toml
+
+```toml
+[[tool.poetry.source]]
+name = "proxpi"
+url = "http://localhost:5000/index/"
+default = true
+secondary = false
+```
+
+TIPS, maybe before `poetry install` into installation script, need to do `poetry lock --no-update`
+
+In development, a solution without configuring pyproject.toml, update installation script like :
+
+```bash
+${VENV_PATH}/bin/poetry self add git+https://github.com/mathben/poetry-plugin-pypi-proxy.git[plugin]
+PIP_INDEX_URL=http://127.0.0.1:5000/index/ ${VENV_PATH}/bin/poetry install
+```
