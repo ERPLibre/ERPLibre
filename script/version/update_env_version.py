@@ -29,6 +29,10 @@ PYPROJECT_FILE = os.path.join("pyproject.toml")
 PYPROJECT_TEMPLATE_FILE = "pyproject.%s.toml"
 POETRY_LOCK_FILE = os.path.join("poetry.lock")
 POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
+PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
+PIP_REQUIREMENT_TEMPLATE_FILE = "requirements.%s.txt"
+PIP_IGNORE_REQUIREMENT_FILE = os.path.join("requirement", "ignore_requirements.txt")
+PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
 
 
 def get_config():
@@ -258,6 +262,12 @@ class Update:
         self.expected_poetry_lock_path = os.path.join(
             ".", "requirement", self.expected_poetry_lock_name
         )
+        self.expected_pip_requirement_name = (
+            PIP_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
+        )
+        self.expected_pip_ignore_requirement_name = (
+            PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
+        )
 
         if self.config.erplibre_package:
             _logger.warning("Not supported erplibre_package configuration")
@@ -282,7 +292,7 @@ class Update:
             self.expected_manifest_path,
             do_delete_source=True,
         )
-        # Validate Poetry
+        # Validate Poetry and pip
         self.update_link_file(
             "Poetry project toml",
             PYPROJECT_FILE,
@@ -293,6 +303,18 @@ class Update:
             "Poetry lock",
             POETRY_LOCK_FILE,
             self.expected_poetry_lock_path,
+            do_delete_source=True,
+        )
+        self.update_link_file(
+            "Pip requirement.txt",
+            PIP_REQUIREMENT_FILE,
+            self.expected_pip_requirement_name,
+            do_delete_source=True,
+        )
+        self.update_link_file(
+            "Pip ignore_requirement.txt",
+            PIP_IGNORE_REQUIREMENT_FILE,
+            self.expected_pip_ignore_requirement_name,
             do_delete_source=True,
         )
 
