@@ -31,7 +31,9 @@ POETRY_LOCK_FILE = os.path.join("poetry.lock")
 POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
 PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
 PIP_REQUIREMENT_TEMPLATE_FILE = "requirements.%s.txt"
-PIP_IGNORE_REQUIREMENT_FILE = os.path.join("requirement", "ignore_requirements.txt")
+PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
+    "requirement", "ignore_requirements.txt"
+)
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
 
 
@@ -151,7 +153,9 @@ class Update:
 
     def detect_version(self):
         # Detect actual version
-        if not os.path.exists(VERSION_PYTHON_FILE) or not os.path.exists(VERSION_ODOO_FILE):
+        if not os.path.exists(VERSION_PYTHON_FILE) or not os.path.exists(
+            VERSION_ODOO_FILE
+        ):
             _logger.info("New installation, cannot detect actual version.")
             return False
         with open(VERSION_PYTHON_FILE) as txt:
@@ -162,7 +166,9 @@ class Update:
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
-        erplibre_version_to_search = f"python{self.python_version}_odoo{self.odoo_version}"
+        erplibre_version_to_search = (
+            f"python{self.python_version}_odoo{self.odoo_version}"
+        )
 
         # Detect key actual version
         for key, value in self.data_version.items():
@@ -171,7 +177,9 @@ class Update:
                 and value.get("python_version") == self.python_version
             ):
                 self.detected_version_erplibre = key
-                _logger.info(f"Detected erplibre version {erplibre_version_to_search}")
+                _logger.info(
+                    f"Detected erplibre version {erplibre_version_to_search}"
+                )
                 break
         if not self.detected_version_erplibre:
             _logger.error(
@@ -265,8 +273,14 @@ class Update:
         self.expected_pip_requirement_name = (
             PIP_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
         )
+        self.expected_pip_requirement_path = os.path.join(
+            ".", "requirement", self.expected_pip_requirement_name
+        )
         self.expected_pip_ignore_requirement_name = (
             PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
+        )
+        self.expected_pip_ignore_requirement_path = os.path.join(
+            ".", "requirement", self.expected_pip_ignore_requirement_name
         )
 
         if self.config.erplibre_package:
@@ -308,13 +322,13 @@ class Update:
         self.update_link_file(
             "Pip requirement.txt",
             PIP_REQUIREMENT_FILE,
-            self.expected_pip_requirement_name,
+            self.expected_pip_requirement_path,
             do_delete_source=True,
         )
         self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,
-            self.expected_pip_ignore_requirement_name,
+            self.expected_pip_ignore_requirement_path,
             do_delete_source=True,
         )
 
