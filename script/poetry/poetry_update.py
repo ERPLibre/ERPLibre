@@ -66,7 +66,7 @@ def get_lst_requirements_txt():
         a
         for a in Path(".").rglob("requirements.[tT][xX][tT]")
         if not os.path.dirname(a).startswith(".repo/")
-        and not os.path.dirname(a).startswith(".venv/")
+        and not os.path.dirname(a).startswith(".venv")
     ]
     return lst
 
