@@ -35,6 +35,7 @@ PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
+ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
 
 def get_config():
@@ -166,9 +167,7 @@ class Update:
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
-        erplibre_version_to_search = (
-            f"python{self.python_version}_odoo{self.odoo_version}"
-        )
+        erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (self.odoo_version, self.python_version)
 
         # Detect key actual version
         for key, value in self.data_version.items():
@@ -235,9 +234,7 @@ class Update:
             self.new_version_odoo = self.config.odoo_version
             has_new_version = True
         if has_new_version:
-            self.new_version_erplibre = (
-                f"python{self.new_version_python}_odoo{self.new_version_odoo}"
-            )
+            self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (self.new_version_odoo, self.new_version_python)
         else:
             _logger.info(
                 "No difference between detected version and new version:"
