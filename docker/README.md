@@ -2,7 +2,7 @@
 
 Those images are prepared to permit better portability and reproducibility of ERPLibre release.
 
-Due the the growing code of ERPLibre, it could also simplify development.
+Due the growing code of ERPLibre, it could also simplify development.
 
 NOTE: Those Dockerfiles themselves are in heavy development for now. Incompatibilities between releases are normal until the interface is stabilized.
 

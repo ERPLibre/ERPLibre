@@ -5,6 +5,8 @@ ARG WORKING_BRANCH
 ARG WORKING_HASH
 ENV BRANCH_ERPLIBRE $WORKING_BRANCH
 ENV COMMIT_ERPLIBRE $WORKING_HASH
+ENV COMMIT_ERPLIBRE $WORKING_HASH
+ENV DOCKER_BUILD=true
 
 RUN cat /etc/os-release
 
@@ -27,35 +29,7 @@ RUN cd ; mkdir -p .bin/ && \
     git checkout $COMMIT_ERPLIBRE
 
 RUN cd $ODOO_PREFIX && \
-    python -m venv .venv
-
-RUN cd $ODOO_PREFIX && \
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
-    chmod +x ./.venv/repo
-
-RUN cd $ODOO_PREFIX && \
-    ./script/manifest/update_manifest_dev.sh
-
-# Install Poetry
-RUN cd $ODOO_PREFIX && \
-    ./.venv/bin/pip install --upgrade pip && \
-    ./.venv/bin/pip install poetry==$(cat .poetry-version | xargs) && \
-    ./.venv/bin/poetry --version && \
-    ./.venv/bin/poetry install
-
-# Install local npm
-RUN cd $ODOO_PREFIX && \
-    npm install
-
-RUN cd $ODOO_PREFIX && \
-    head /etc/odoo/odoo.conf && \
-    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
-    head /etc/odoo/odoo.conf
-
-RUN cp /etc/odoo/odoo.conf /odoo.conf
-
-#RUN mkdir '/home/odoo/.local'
-#RUN chown -R odoo '/home/odoo/.local'
+    make install_odoo_12
 
 USER odoo
 

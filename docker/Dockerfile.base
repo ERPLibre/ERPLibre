@@ -88,19 +88,6 @@ RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/
 RUN npm install -g rtlcss less prettier @prettier/plugin-xml \
     && ln -fs /usr/local/bin/lessc /usr/bin/lessc
 
-# Install python with pyenv
-# Reference https://github.com/bopen/docker-ubuntu-pyenv
-#COPY pyenv-version.txt python-versions.txt /
-
-#RUN git clone -b `cat /pyenv-version.txt` --single-branch --depth 1 https://github.com/pyenv/pyenv.git $PYENV_ROOT \
-#    && for version in `cat /python-versions.txt`; do pyenv install $version; done \
-#    && pyenv global `cat /python-versions.txt` \
-#    && find $PYENV_ROOT/versions -type d '(' -name '__pycache__' -o -name 'test' -o -name 'tests' ')' -exec rm -rf '{}' + \
-#    && find $PYENV_ROOT/versions -type f '(' -name '*.pyo' -o -name '*.exe' ')' -exec rm -f '{}' + \
-#    && rm -rf /tmp/* \
-#    && python --version \
-#    && python3 --version
-
 # Install git-repo
 RUN cd ; mkdir -p .bin/ && \
     git config --global color.ui false   && \

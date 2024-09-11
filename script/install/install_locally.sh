@@ -40,50 +40,54 @@ VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 POETRY_PATH=${VENV_PATH}/bin/poetry
 POETRY_VERSION=$(cat .poetry-version | xargs)
 
-echo "Python path version home"
-echo ${PYENV_VERSION_PATH}
-echo "Python path version local"
-echo ${LOCAL_PYTHON_EXEC}
+if [[ ! -n "${DOCKER_BUILD}" ]]; then
+  echo "Python path version home"
+  echo ${PYENV_VERSION_PATH}
+  echo "Python path version local"
+  echo ${LOCAL_PYTHON_EXEC}
 
-if [[ ! -d "${PYENV_PATH}" ]]; then
-    echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
-    # export PYENV_GIT_TAG=v2.3.35
-    # To change version
-    # rm ~/.pyenv to uninstall it
-    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+  if [[ ! -d "${PYENV_PATH}" ]]; then
+      echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
+      # export PYENV_GIT_TAG=v2.3.35
+      # To change version
+      # rm ~/.pyenv to uninstall it
+      curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+  fi
+
+  echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
+  export PATH="${PYENV_PATH}/bin:$PATH"
+  eval "$(pyenv init -)"
+  eval "$(pyenv virtualenv-init -)"
+
+  if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
+      echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
+      yes n|pyenv install ${PYTHON_VERSION}
+      if [[ $retVal -ne 0 ]]; then
+          echo -e "${Red}Error${Color_Off} when installing pyenv"
+          exit 1
+      fi
+  fi
+
+  pyenv local ${PYTHON_VERSION}
+
+  if [[ ! -d ${VENV_PATH} ]]; then
+      echo -e "\n---- Create Virtual environment Python ----"
+      if [[ -e ${PYTHON_EXEC} ]]; then
+          ${PYTHON_EXEC} -m venv .venv
+          retVal=$?
+            if [[ $retVal -ne 0 ]]; then
+                echo "Virtual environment, error when creating .venv"
+                exit 1
+            fi
+      else
+          echo "Missing pyenv, please refer installation guide."
+          exit 1
+      fi
+  fi
+  source ./.venv/bin/activate
+else
+  mkdir .venv
 fi
-
-echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
-export PATH="${PYENV_PATH}/bin:$PATH"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
-
-if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
-    echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
-    yes n|pyenv install ${PYTHON_VERSION}
-    if [[ $retVal -ne 0 ]]; then
-        echo -e "${Red}Error${Color_Off} when installing pyenv"
-        exit 1
-    fi
-fi
-
-pyenv local ${PYTHON_VERSION}
-
-if [[ ! -d ${VENV_PATH} ]]; then
-    echo -e "\n---- Create Virtual environment Python ----"
-    if [[ -e ${PYTHON_EXEC} ]]; then
-        ${PYTHON_EXEC} -m venv .venv
-        retVal=$?
-          if [[ $retVal -ne 0 ]]; then
-              echo "Virtual environment, error when creating .venv"
-              exit 1
-          fi
-    else
-        echo "Missing pyenv, please refer installation guide."
-        exit 1
-    fi
-fi
-source ./.venv/bin/activate
 
 #if [[ ! -d "${POETRY_PATH}" ]]; then
 #    # Delete directory ~/.poetry and .venv to force update to new version
