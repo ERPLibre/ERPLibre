@@ -588,7 +588,8 @@ def main():
     update.update_environment()
     update.print_log()
 
-    update.pycharm_update()
+    if update.config.install:
+        update.pycharm_update()
 
 
 def die(cond, message, code=1):

@@ -189,6 +189,22 @@ install_dev:
 	#	./script/install/install_locally_dev.sh
 	./script/version/update_env_version.py --install_dev
 
+.PHONY: install_odoo_16
+install_odoo_16:
+	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14 --install_dev
+
+.PHONY: install_odoo_14
+install_odoo_14:
+	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.10 --install_dev
+
+.PHONY: install_odoo_12
+install_odoo_12:
+	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.16 --install_dev
+
+.PHONY: install_show_version
+install_show_version:
+	./script/version/update_env_version.py -l
+
 # Install this for the first time of dev environment
 .PHONY: install_os
 install_os:
@@ -1030,6 +1046,13 @@ format_script_isort_only:
 .PHONY: log_show_test
 log_show_test:
 	vim ${LOG_FILE}
+
+##########
+# poetry #
+##########
+.PHONY: poetry_update
+poetry_update:
+	./script/poetry/poetry_update.py
 
 ###########
 #  clean  #
