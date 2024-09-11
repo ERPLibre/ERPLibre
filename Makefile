@@ -1191,3 +1191,8 @@ doc_clean_user:
 .PHONY: doc_markdown
 doc_markdown:
 	./.venv/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md
+
+# Cache
+.PHONY: clear_cache
+clear_cache:
+	rm -rf cache artifacts .coverage coverage.json
