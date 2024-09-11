@@ -121,7 +121,7 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     #    ${VENV_PATH}/bin/pip install vatnumber
     #    ${VENV_PATH}/bin/pip install suds-jurko
     #    ${VENV_PATH}/bin/poetry lock --no-update
-    ${VENV_PATH}/bin/poetry install
+    ${VENV_PATH}/bin/poetry install --no-root
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
         echo "Poetry installation error."

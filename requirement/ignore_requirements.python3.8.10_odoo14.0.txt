@@ -22,4 +22,4 @@ vatnumber
 dns
 dataclasses
 extract_msg
-pywin32
+pypiwin32
