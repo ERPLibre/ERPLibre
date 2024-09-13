@@ -347,6 +347,15 @@ class Update:
         if self.config.force_install:
             os.system(f"rm -rf ./{VENV_FILE}")
             self.execute_log.append(f"Remove ./{VENV_FILE}")
+
+        # Always overwrite version
+        with open(VERSION_PYTHON_FILE, "w") as txt:
+            txt.write(self.new_version_python)
+        with open(VERSION_ODOO_FILE, "w") as txt:
+            txt.write(self.new_version_odoo)
+        with open(VERSION_POETRY_FILE, "w") as txt:
+            txt.write(self.new_version_poetry)
+
         if self.config.install or self.config.install_dev:
             _logger.info("Installation.")
             status = self.install_erplibre(
@@ -383,13 +392,6 @@ class Update:
 
     def install_erplibre(self, install_system=False, install_dev=False):
         status = 0
-        # Always overwrite version
-        with open(VERSION_PYTHON_FILE, "w") as txt:
-            txt.write(self.new_version_python)
-        with open(VERSION_ODOO_FILE, "w") as txt:
-            txt.write(self.new_version_odoo)
-        with open(VERSION_POETRY_FILE, "w") as txt:
-            txt.write(self.new_version_poetry)
 
         if install_system:
             self.execute_log.append(f"System installation")
