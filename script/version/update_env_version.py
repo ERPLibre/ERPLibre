@@ -191,6 +191,7 @@ class Update:
         return True
 
     def validate_version(self):
+        dct_data_version = {}
         if (
             not self.config.python_version
             and not self.config.poetry_version
@@ -210,7 +211,8 @@ class Update:
                     f" {VERSION_DATA_FILE}"
                 )
                 sys.exit(1)
-            self.data_version = default_data[0]
+            dct_data_version = self.data_version.get(default_data[0])
+
         has_new_version = False
         if self.config.erplibre_version:
             data = self.data_version.get(self.config.erplibre_version)
@@ -240,10 +242,17 @@ class Update:
                 "No difference between detected version and new version:"
                 f" {self.detected_version_erplibre}"
             )
-            self.new_version_erplibre = self.detected_version_erplibre
-            self.new_version_odoo = self.odoo_version
-            self.new_version_python = self.python_version
-            # TODO needs to detect actual poetry? No?
+            if not dct_data_version:
+                _logger.error("Cannot find dct_data_version")
+            else:
+                self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (dct_data_version.get("odoo_version"), dct_data_version.get("python_version"))
+                self.new_version_odoo = dct_data_version.get("odoo_version")
+                self.new_version_python = dct_data_version.get("python_version")
+                self.new_version_poetry = dct_data_version.get("poetry_version")
+                # self.new_version_erplibre = self.detected_version_erplibre
+                # self.new_version_odoo = self.odoo_version
+                # self.new_version_python = self.python_version
+                # TODO needs to detect actual poetry? No?
 
         self.expected_venv_name = (
             VENV_TEMPLATE_FILE % self.new_version_erplibre

@@ -29,7 +29,42 @@ RUN cd ; mkdir -p .bin/ && \
     git checkout $COMMIT_ERPLIBRE
 
 RUN cd $ODOO_PREFIX && \
-    make install_odoo_12
+    python -m venv .venv
+
+RUN cd $ODOO_PREFIX && \
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
+    chmod +x ./.venv/repo
+
+RUN cd $ODOO_PREFIX && \
+    ./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.16
+
+RUN cd $ODOO_PREFIX && ls ./manifest -la && \
+    ./script/manifest/update_manifest_local_dev.sh
+
+RUN apt update && \
+    apt install -y libgirepository1.0-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN cd $ODOO_PREFIX && \
+    ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
+    ./.venv/bin/pip install poetry==$(cat .poetry-version | xargs) && \
+    ./.venv/bin/poetry --version && \
+    ./.venv/bin/poetry install
+
+# Install local npm
+RUN cd $ODOO_PREFIX && \
+    npm install
+
+RUN cd $ODOO_PREFIX && \
+    head /etc/odoo/odoo.conf && \
+    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
+    head /etc/odoo/odoo.conf
+
+RUN cp /etc/odoo/odoo.conf /odoo.conf
+
+#RUN mkdir '/home/odoo/.local'
+#RUN chown -R odoo '/home/odoo/.local'
 
 USER odoo
 
