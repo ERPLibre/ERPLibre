@@ -1,0 +1,121 @@
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f4f4f9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.calculator-box {
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+    width: 400px;
+    text-align: center;
+    transition: background-color 0.3s;
+    background-color: #ffffff; /* Ajout d'une couleur de fond blanche pour plus de contraste */
+}
+
+h3 {
+    color: #ff7fa7;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+label {
+    font-size: 16px;
+    font-weight: bold;
+    color: #444;
+}
+
+.form-control {
+    width: calc(100% - 20px); /* Ajuster la largeur pour tenir compte du padding */
+    padding: 10px;
+    margin-top: 5px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+}
+
+.form-control-index {
+    width: 30%; /* Ajuster la largeur pour une meilleure lisibilité */
+    padding: 10px;
+    margin-top: 5px;
+    border-radius: 5px;
+    border: 1px solid #ccc;
+    background-color: #f7f1f3;
+}
+
+.btn {
+    background-color: #ff7fa7;
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+.btn:hover {
+    background-color: #ff507f;
+}
+
+#resultats {
+    font-family: cursive;
+    margin-top: 10px;
+    color: #333;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    width: calc(100% - 40px); /* Ajuster la largeur pour tenir compte du padding */
+    max-width: 450px; /* Limiter la largeur maximale */
+    height: auto; /* Ajuster la hauteur automatiquement */
+    transition: background-color 0.3s;
+}
+
+#recalculerBtn {
+    margin-top: 20px;
+    display: none; /* Masquer le bouton par défaut */
+}
+
+#canvasContainer {
+    display: none;
+    text-align: center;
+}
+
+input[type="radio"] + label {
+    font-size: 14px;
+    margin-right: 10px;
+    color: #555;
+}
+
+input[type="radio"] {
+    margin-right: 5px;
+}
+
+#curveImage {
+    width: auto; /* Ajuster la largeur automatiquement */
+    height: auto; /* Ajuster la hauteur automatiquement */
+}
+
+#curveCanvas {
+    width: 100%; /* S'adapte à la largeur du conteneur */
+    height: auto; /* Ajuste la hauteur automatiquement */
+}
+
+@media (max-width: 600px) {
+    .calculator-box {
+        width: 90%;
+    }
+
+    .form-control, .form-control-index {
+        width: 100%;
+    }
+}

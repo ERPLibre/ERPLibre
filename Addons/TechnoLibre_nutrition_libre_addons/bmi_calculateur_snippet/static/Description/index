@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur IMC et Percentile</title>
+</head>
+<body>
+    <h1>Calculateur d'IMC et de Percentiles pour Enfants</h1>
+    <p>Ce module ajoute un snippet interactif à votre site web, permettant aux utilisateurs de calculer facilement l'Indice de Masse Corporelle (IMC) et les percentiles pour les enfants. Il s'adresse à deux groupes d'âge : les bébés (0-24 mois) et les enfants (24-96 mois). En plus de déterminer l'IMC, il fournit des informations sur les percentiles, aidant ainsi à évaluer le développement physique des enfants en comparant leurs mesures avec les normes de croissance.</p>
+    <p>Les utilisateurs peuvent entrer les informations suivantes : âge, taille, poids, et choisir les unités de mesure. Le calculateur convertit automatiquement les unités si nécessaire, calcule l'IMC et affiche le résultat avec une interprétation basée sur les normes de croissance actuelles. Des graphiques illustrant les percentiles sont également fournis pour une compréhension visuelle.</p>
+    <p>Ce snippet est conçu pour être facile à intégrer dans votre site web, offrant une fonctionnalité pratique pour les parents, les pédiatres, et les professionnels de la santé.</p>
+</body>
+</html>

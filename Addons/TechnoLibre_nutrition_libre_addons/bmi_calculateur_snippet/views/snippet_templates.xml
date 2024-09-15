@@ -1,0 +1,64 @@
+<odoo>
+    <template id="bmi_calculator_snippet" name="BMI Calculator Snippet">
+    <div class="oe_structure" data-snippet="s_bmi_snippet" data-name="BMI Calculator Snippet">
+        <section class="s_bmi_snippet">
+            <div class="container">
+                <div class="calculator-box" id="calculatorBox">
+                    <h3>Calculateur de Percentile et d'IMC</h3>
+
+                    <div class="form-group">
+                        <input type="radio" id="bebe" name="ageGroup" value="Bebe" checked="checked"/>
+                        <label for="bebe">Bébé (0-24 mois)</label>
+
+                        <input type="radio" id="enfant" name="ageGroup" value="Enfant"/>
+                        <label for="enfant">Enfant (24-96 mois)</label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Sexe:</label>
+                        <input type="radio" id="garcon" name="gender" value="Garcon" checked="checked"/>
+                        <label for="garcon">Garçon</label>
+
+                        <input type="radio" id="fille" name="gender" value="Fille"/>
+                        <label for="fille">Fille</label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="age">Âge: &nbsp;</label>
+                        <input type="number" id="age" class="form-control" placeholder="Entrez l'âge en mois"/>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taille">Taille:</label>
+                        <input type="number" id="taille" class="form-control" placeholder="Entrez la taille"/>
+                        <select id="tailleUnit" class="form-control-index">
+                            <option value="cm">CM</option>
+                            <option value="pouces">Pouces</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="poids">Poids:</label>
+                        <input type="number" id="poids" class="form-control" placeholder="Entrez le poids"/>
+                        <select id="poidsUnit" class="form-control-index">
+                            <option value="kg">KG</option>
+                            <option value="livres">Livres</option>
+                        </select>
+                    </div>
+
+                    <button type="button" class="btn" onclick="calculerIMCPercentile()">CALCULER</button>
+                </div>
+
+                <!-- Canvas and Image Container -->
+                <div id="canvasContainer">
+                    <canvas id="curveCanvas" width="400" height="360"></canvas>
+                    <img id="curveImage" src="" alt=""/>
+                </div>
+
+                <div id="resultats"></div>
+                <button id="recalculerBtn" class="btn" onclick="recalculer()">RECALCULER</button>
+            </div>
+        </section>
+        </div>
+    </template>
+</odoo>
