@@ -89,6 +89,9 @@ numpy==1.21.1
 feedparser==6.0.10
 geojson<3.0.0
 
+# Fix poetry
+olefile==0.47
+
 # asyncio
 aioshutil<1.2
 tqdm
