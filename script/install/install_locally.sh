@@ -128,7 +128,7 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/poetry install --no-root
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
-        echo "Poetry installation error."
+        echo "Poetry installation error with status ${retVal}"
         exit 1
     fi
     # Fix pip installation missing package
