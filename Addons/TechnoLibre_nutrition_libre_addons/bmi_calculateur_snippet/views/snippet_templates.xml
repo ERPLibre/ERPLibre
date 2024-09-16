@@ -24,7 +24,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="age">Âge: &nbsp;</label>
+                        <label for="age">Âge: </label>
                         <input type="number" id="age" class="form-control" placeholder="Entrez l'âge en mois"/>
                     </div>
 

@@ -7,7 +7,7 @@
     'category': 'Website',
     'author': 'Adil',
     'website': 'http://www.votre-website.com',
-    'depends': ['base', 'website'], # Assure-toi que le module 'website' est installé
+    'depends': ['website'], # Assure-toi que le module 'website' est installé
     'data': [
         'views/assets.xml',  # Chemin des assets pour le CSS et JS
         'views/snippet_templates.xml',  # Fichier template pour les snippets
@@ -15,12 +15,11 @@
     'assets': {
         'web.assets_frontend': [
             # Utilisation des chemins complets pour CSS et JS
-            'TechnoLibre_nutrition_libre_addons/bmi_calculateur_snippet/static/src/css/snippet_style.css',
-            'TechnoLibre_nutrition_libre_addons/bmi_calculateur_snippet/static/src/js/bmi_calculator.js',
+            'bmi_calculateur_snippet/static/src/css/snippet_style.css',
+            'bmi_calculateur_snippet/static/src/js/bmi_calculator.js',
         ],
     },
     'application': True,  # Si tu veux que ce soit une application visible
     'installable': True,
-    'auto_install': False,  # False signifie qu'il n'est pas installé automatiquement
     'license': 'LGPL-3',
 }
