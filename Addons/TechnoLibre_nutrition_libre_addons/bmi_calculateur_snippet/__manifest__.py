@@ -9,7 +9,7 @@
     'website': 'http://www.votre-website.com',
     'depends': ['base', 'website'], # Assure-toi que le module 'website' est installé
     'data': [
-        '/views/assets.xml',  # Chemin des assets pour le CSS et JS
+        'views/assets.xml',  # Chemin des assets pour le CSS et JS
         'views/snippet_templates.xml',  # Fichier template pour les snippets
     ],
     'assets': {
