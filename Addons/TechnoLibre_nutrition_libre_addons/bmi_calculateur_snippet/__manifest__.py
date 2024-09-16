@@ -7,9 +7,9 @@
     'category': 'Website',
     'author': 'Adil',
     'website': 'http://www.votre-website.com',
-    'depends': ['website'],  # Assure-toi que le module 'website' est installé
+    'depends': ['base', 'website'], # Assure-toi que le module 'website' est installé
     'data': [
-        '/static/web/assets.xml',  # Chemin des assets pour le CSS et JS
+        '/views/assets.xml',  # Chemin des assets pour le CSS et JS
         'views/snippet_templates.xml',  # Fichier template pour les snippets
     ],
     'assets': {
