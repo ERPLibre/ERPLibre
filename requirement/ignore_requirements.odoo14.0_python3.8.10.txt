@@ -24,3 +24,4 @@ dataclasses
 extract_msg
 pypiwin32
 cv2
+speech_recognition
