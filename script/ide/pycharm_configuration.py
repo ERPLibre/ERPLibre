@@ -38,7 +38,7 @@ def get_config():
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
-        Manipulate configuration for your IDE Pycharm about ERPLibre. 
+        Manipulate configuration for your IDE Pycharm about ERPLibre.
         This script manage only Python configuration, other configuration will be ignore.
 """,
         epilog="""\
@@ -65,10 +65,22 @@ def get_config():
         action="store_true",
         help="Initialize minimum configuration for Pycharm.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Remove old data and replace it.",
+    )
     args = parser.parse_args()
 
-    if args.init or args.list_configuration or args.list_configuration_full:
+    if (
+        args.init
+        or args.list_configuration
+        or args.list_configuration_full
+        or args.overwrite
+    ):
         args.configuration = True
+        if args.overwrite:
+            args.init = True
     else:
         args.configuration = False
 
@@ -78,6 +90,7 @@ def get_config():
 def main():
     has_execute = False
     config = get_config()
+    _logger.info(f"Work on directory {os.getcwd()}")
 
     # TODO modifier vcs.xml pour le mapping des répertoires git
 
@@ -124,6 +137,7 @@ def main():
 
 
 def read_xml_and_execute(file_name, cb, name, config):
+    _logger.info(f"Pycharm configuration on file {file_name}")
     with open(file_name) as xml:
         xml_as_string = xml.read()
         dct_project_xml = xmltodict.parse(xml_as_string)
@@ -137,8 +151,7 @@ def read_xml_and_execute(file_name, cb, name, config):
             xml.write(xml_format)
         _logger.info(f"File {file_name} has been write.")
         subprocess.call(
-            "prettier --tab-width 2 --print-width 999999 --write"
-            f" '{file_name}'",
+            f"script/maintenance/prettier_xml.sh '{file_name}'",
             shell=True,
         )
     else:
@@ -154,6 +167,28 @@ def add_configuration(dct_xml, file_name, config):
         not bool(lst_component),
         f"Missing 'project/component' into {file_name}",
     )
+    # Add python configuration
+    dct_component_py_conf = [
+        a
+        for a in lst_component
+        if a.get("@name") == "PyConsoleOptionsProvider"
+    ]
+    if dct_component_py_conf:
+        # TODO check and force value
+        pass
+    else:
+        lst_component.append(
+            {
+                "@name": "PyConsoleOptionsProvider",
+                "option": {
+                    "@name": "myShowDebugConsoleByDefault",
+                    "@value": "false",
+                },
+            }
+        )
+        has_change = True
+
+    # Add configuration
     dct_component = [
         a for a in lst_component if a.get("@name") == "RunManager"
     ]
@@ -161,12 +196,12 @@ def add_configuration(dct_xml, file_name, config):
         # Create it
         dct_component = {
             "@name": "RunManager",
-            "@selected": "Python.pycharm_configuration",
-            "recent_temporary": {
-                "list": {
-                    "item": {"@itemvalue": "Python.pycharm_configuration"}
-                }
-            },
+            # "@selected": "Python.pycharm_configuration",
+            # "recent_temporary": {
+            #     "list": {
+            #         "item": {"@itemvalue": "Python.pycharm_configuration"}
+            #     }
+            # },
             "configuration": [],
             "list": {"item": []},
         }
@@ -223,116 +258,124 @@ def add_configuration(dct_xml, file_name, config):
         for conf in lst_configuration:
             print(f"\t{conf}")
 
-    if config.init:
-        if os.path.isfile(PATH_DEFAULT_CONFIGURATION):
-            with open(PATH_DEFAULT_CONFIGURATION) as txt:
-                for default_conf in csv.DictReader(txt):
-                    conf_name = default_conf.get("name")
-                    conf_folder = default_conf.get("folder")
-                    conf_script_path = default_conf.get("script_path")
-                    conf_script_path_replace = (
-                        conf_script_path
-                        if not conf_script_path.startswith("./")
-                        else f"$PROJECT_DIR${conf_script_path[1:]}"
+    last_default = None
+    if not config.init:
+        return has_change
+    if not os.path.isfile(PATH_DEFAULT_CONFIGURATION):
+        _logger.error(f"Cannot read file '{PATH_DEFAULT_CONFIGURATION}'")
+        return has_change
+    with open(PATH_DEFAULT_CONFIGURATION) as txt:
+        for default_conf in csv.DictReader(txt):
+            conf_name = default_conf.get("name")
+            conf_folder = default_conf.get("folder")
+            conf_script_path = default_conf.get("script_path")
+            conf_default = bool(default_conf.get("default"))
+            if conf_default:
+                last_default = f"Python.{conf_name}"
+            conf_script_path_replace = (
+                conf_script_path
+                if not conf_script_path.startswith("./")
+                else f"$PROJECT_DIR${conf_script_path[1:]}"
+            )
+            conf_parameter = default_conf.get("parameters")
+            s_unique_key = (
+                f"d {conf_folder} s {conf_script_path} p {conf_parameter}"
+            )
+            if (
+                config.overwrite
+                or s_unique_key not in lst_unique_configuration
+            ):
+                # add it!
+                if not config.overwrite and conf_name in lst_configuration:
+                    _logger.error(
+                        f"Cannot add configuration name '{conf_name}',"
+                        " already exist. Delete it manually."
                     )
-                    conf_parameter = default_conf.get("parameters")
-                    s_unique_key = (
-                        f"d {conf_folder} s"
-                        f" {conf_script_path} p"
-                        f" {conf_parameter}"
+                else:
+                    has_change = True
+                    lst_xml_configuration_name.append(
+                        {"@itemvalue": f"Python.{conf_name}"}
                     )
-                    if s_unique_key not in lst_unique_configuration:
-                        # add it!
-                        if conf_name in lst_configuration:
-                            _logger.error(
-                                f"Cannot add configuration name '{conf_name}',"
-                                " already exist. Delete it manually."
-                            )
-                        else:
-                            has_change = True
-                            lst_xml_configuration_name.append(
-                                {"@itemvalue": f"Python.conf_name"}
-                            )
-                            conf_full = {
-                                "@name": conf_name,
-                                "@type": "PythonConfigurationType",
-                                "@factoryName": "Python",
-                                "module": {"@name": PROJECT_NAME},
-                                "option": [
-                                    {
-                                        "@name": "INTERPRETER_OPTIONS",
-                                        "@value": "",
-                                    },
-                                    {"@name": "PARENT_ENVS", "@value": "true"},
-                                    {
-                                        "@name": "SDK_HOME",
-                                        "@value": (
-                                            "$PROJECT_DIR$/.venv/bin/python"
-                                        ),
-                                    },
-                                    {
-                                        "@name": "WORKING_DIRECTORY",
-                                        "@value": "$PROJECT_DIR$",
-                                    },
-                                    {
-                                        "@name": "IS_MODULE_SDK",
-                                        "@value": "false",
-                                    },
-                                    {
-                                        "@name": "ADD_CONTENT_ROOTS",
-                                        "@value": "true",
-                                    },
-                                    {
-                                        "@name": "ADD_SOURCE_ROOTS",
-                                        "@value": "true",
-                                    },
-                                    {
-                                        "@name": "SCRIPT_NAME",
-                                        "@value": conf_script_path_replace,
-                                    },
-                                    {
-                                        "@name": "PARAMETERS",
-                                        "@value": conf_parameter,
-                                    },
-                                    {
-                                        "@name": "SHOW_COMMAND_LINE",
-                                        "@value": "false",
-                                    },
-                                    {
-                                        "@name": "EMULATE_TERMINAL",
-                                        "@value": "false",
-                                    },
-                                    {
-                                        "@name": "MODULE_MODE",
-                                        "@value": "false",
-                                    },
-                                    {
-                                        "@name": "REDIRECT_INPUT",
-                                        "@value": "false",
-                                    },
-                                    {"@name": "INPUT_FILE", "@value": ""},
-                                ],
-                                "envs": {
-                                    "env": {
-                                        "@name": "PYTHONUNBUFFERED",
-                                        "@value": "1",
-                                    }
-                                },
-                                "EXTENSION": {
-                                    "@ID": "PythonCoverageRunConfigurationExtension",
-                                    "@runner": "coverage.py",
-                                },
-                                "method": {"@v": "2"},
+                    conf_full = {
+                        "@name": conf_name,
+                        "@type": "PythonConfigurationType",
+                        "@factoryName": "Python",
+                        "module": {"@name": PROJECT_NAME},
+                        "option": [
+                            {
+                                "@name": "INTERPRETER_OPTIONS",
+                                "@value": "",
+                            },
+                            {"@name": "PARENT_ENVS", "@value": "true"},
+                            {
+                                "@name": "SDK_HOME",
+                                "@value": "$PROJECT_DIR$/.venv/bin/python",
+                            },
+                            {
+                                "@name": "WORKING_DIRECTORY",
+                                "@value": "$PROJECT_DIR$",
+                            },
+                            {
+                                "@name": "IS_MODULE_SDK",
+                                "@value": "false",
+                            },
+                            {
+                                "@name": "ADD_CONTENT_ROOTS",
+                                "@value": "true",
+                            },
+                            {
+                                "@name": "ADD_SOURCE_ROOTS",
+                                "@value": "true",
+                            },
+                            {
+                                "@name": "SCRIPT_NAME",
+                                "@value": conf_script_path_replace,
+                            },
+                            {
+                                "@name": "PARAMETERS",
+                                "@value": conf_parameter,
+                            },
+                            {
+                                "@name": "SHOW_COMMAND_LINE",
+                                "@value": "false",
+                            },
+                            {
+                                "@name": "EMULATE_TERMINAL",
+                                "@value": "false",
+                            },
+                            {
+                                "@name": "MODULE_MODE",
+                                "@value": "false",
+                            },
+                            {
+                                "@name": "REDIRECT_INPUT",
+                                "@value": "false",
+                            },
+                            {"@name": "INPUT_FILE", "@value": ""},
+                        ],
+                        "envs": {
+                            "env": {
+                                "@name": "PYTHONUNBUFFERED",
+                                "@value": "1",
                             }
-                            if conf_folder:
-                                conf_full["@folderName"] = conf_folder
-                            lst_configuration_full.insert(0, conf_full)
-                    else:
-                        _logger.info(
-                            f"Configuration already exist: '{s_unique_key}'"
-                        )
-        else:
-            _logger.error(f"Cannot read file '{PATH_DEFAULT_CONFIGURATION}'")
+                        },
+                        "EXTENSION": {
+                            "@ID": "PythonCoverageRunConfigurationExtension",
+                            "@runner": "coverage.py",
+                        },
+                        "method": {"@v": "2"},
+                    }
+                    if conf_folder:
+                        conf_full["@folderName"] = conf_folder
+                    lst_configuration_full.insert(0, conf_full)
+            else:
+                _logger.info(f"Configuration already exist: '{s_unique_key}'")
+
+    if last_default:
+        dct_component["@selected"] = last_default
+        dct_component["recent_temporary"] = {
+            "list": {"item": {"@itemvalue": last_default}}
+        }
     return has_change
 
 

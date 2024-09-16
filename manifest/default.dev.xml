@@ -7,6 +7,7 @@
   <remote name="OCA" fetch="https://github.com/OCA/"/>
   <remote name="OmniaGit" fetch="https://github.com/OmniaGit/"/>
   <remote name="Smile-SA" fetch="https://github.com/ERPLibre/"/>
+<<<<<<< HEAD
   <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ajepe/"/>
   <remote name="camptocamp" fetch="https://github.com/camptocamp/"/>
@@ -17,6 +18,19 @@
   <remote name="muk-it" fetch="https://github.com/muk-it/"/>
   <remote name="novacode-nl" fetch="https://github.com/novacode-nl/"/>
   <remote name="obayit" fetch="https://github.com/obayit/"/>
+=======
+  <remote name="TechnoLibre" fetch="https://github.com/ERPLibre/"/>
+  <remote name="ajepe" fetch="https://github.com/ERPLibre/"/>
+  <remote name="camptocamp" fetch="https://github.com/ERPLibre/"/>
+  <remote name="dhongu" fetch="https://github.com/ERPLibre/"/>
+  <remote name="it-projects-llc" fetch="https://github.com/ERPLibre/"/>
+  <remote name="itpp-labs" fetch="https://github.com/ERPLibre/"/>
+  <remote name="JayVora-SerpentCS" fetch="https://github.com/ERPLibre/"/>
+  <remote name="kinjal-sorathiya" fetch="https://github.com/ERPLibre/"/>
+  <remote name="muk-it" fetch="https://github.com/ERPLibre/"/>
+  <remote name="novacode-nl" fetch="https://github.com/ERPLibre/"/>
+  <remote name="obayit" fetch="https://github.com/ERPLibre/"/>
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
   <remote name="odoo" fetch="https://github.com/ERPLibre/"/>
   <remote name="odooaktiv" fetch="https://github.com/odooaktiv/"/>
   <remote name="odoomates" fetch="https://github.com/odoomates/"/>
@@ -106,6 +120,7 @@
   <project name="rma.git" path="addons/OCA_rma" remote="OCA" groups="addons"/>
   <project name="saas-addons.git" path="addons/it-projects-llc_saas-addons" remote="it-projects-llc" groups="addons"/>
   <project name="sale-reporting.git" path="addons/OCA_sale-reporting" remote="OCA" groups="addons"/>
+<<<<<<< HEAD
   <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" groups="addons,nutrition_libre"/>
   <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons,base"/>
   <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" groups="addons"/>
@@ -116,6 +131,19 @@
   <project name="social.git" path="addons/OCA_social" remote="OCA" groups="addons,nutrition_libre"/>
   <project name="survey.git" path="addons/OCA_survey" remote="ERPLibre" revision="16.0_survey_odoo_debranding" groups="addons,nutrition_libre"/>
   <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
+=======
+  <project name="sale-workflow.git" path="addons/OCA_sale-workflow" remote="OCA" revision="12.0_modules_sale_order_line" groups="addons"/>
+  <project name="scrummer.git" path="addons/MathBenTech_scrummer" remote="MathBenTech" revision="12.0_dev" groups="addons,base"/>
+  <project name="SerpentCS_Contributions.git" path="addons/JayVora-SerpentCS_SerpentCS_Contributions" remote="JayVora-SerpentCS" groups="addons,code_generator,base"/>
+  <project name="server-auth.git" path="addons/OCA_server-auth" remote="OCA" groups="addons,base,image_db"/>
+  <project name="server-backend.git" path="addons/OCA_server-backend" remote="OCA" revision="12.0_dev" groups="addons"/>
+  <project name="server-brand.git" path="addons/OCA_server-brand" remote="OCA" groups="addons,base"/>
+  <project name="server-env.git" path="addons/OCA_server-env" remote="OCA" groups="addons"/>
+  <project name="server-tools.git" path="addons/OCA_server-tools" remote="OCA" revision="12.0_dev" groups="addons,base"/>
+  <project name="server-ux.git" path="addons/OCA_server-ux" remote="OCA" groups="addons,base"/>
+  <project name="social.git" path="addons/OCA_social" remote="OCA" groups="addons,base"/>
+  <project name="stock-logistics-warehouse.git" path="addons/OCA_stock-logistics-warehouse" remote="OCA" revision="12.0_dev" groups="addons"/>
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
   <project name="storage.git" path="addons/OCA_storage" remote="OCA" groups="addons"/>
   <project name="timesheet.git" path="addons/OCA_timesheet" remote="OCA" groups="addons"/>
   <project name="vertical-association.git" path="addons/OCA_vertical-association" remote="OCA" groups="addons"/>

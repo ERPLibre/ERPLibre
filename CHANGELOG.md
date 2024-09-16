@@ -7,6 +7,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Added
+
+- Selenium script to increase open software client interface and automated some actions.
+- FAQ about kill git-daemon
+- Support Ubuntu 23.10
+- ADD repo JayVora-SerpentCS_SerpentCS_Contributions
+
+## Changed
+
+- Guide to move dev to prod
+- Update docker buster to bullseye
+- Improve format script to help code-generator
+- Improve PyCharm script
+- Support OSX for open-terminal
+- Remove docker-compose and replace by docker compose
+- Update Poetry 1.3.1 to 1.5.1
+- Test can be launched with a json configuration and support log/result individually
+- Script to search docker compose into the system
+- Script search class model can output into json format and support field information
+
+### Fixed
+
+- NPM installation locally and not globally
+
 ## [1.5.0] - 2023-07-07
 
 **Migration note**

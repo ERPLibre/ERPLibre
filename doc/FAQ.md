@@ -85,7 +85,13 @@ git rebase -i HEAD~4 -x "git commit --amend --author 'Author Name <author.name@m
 git cherry-pick -m 1 --strategy-option theirs HASH
 ```
 
+<<<<<<< HEAD
 ## Service git-daemon already running, error bind
+=======
+## git update manifest
+
+### Service git-daemon already running, error bind or Error fatal: unable to allocate any listen sockets on port 9418
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
 
 This error occur when force stop (ctrl+c) a script like `./script/manifest/update_manifest_local_dev.sh`
 
@@ -151,7 +157,11 @@ Add line at the end of config.conf
 limit_memory_hard = 0
 ```
 
+<<<<<<< HEAD
 ## Docker
+=======
+## Docker - All interface bind docker
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
 
 ### Error non-overlapping IPv4 address pool
 
@@ -160,7 +170,11 @@ docker-compose: `ERROR: could not find an available, non-overlapping IPv4 addres
 
 It's because the subnet is limited, you need to change it.
 
+<<<<<<< HEAD
 Create a network :
+=======
+Create a subnet :
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
 
 ```bash
 docker network create localnetwork --subnet 10.0.1.0/24
@@ -172,7 +186,14 @@ fill with:
 ```yaml
 version: '3'
 networks:
+<<<<<<< HEAD
   default:
     external:
       name: localnetwork
 ```
+=======
+    default:
+        external:
+            name: localnetwork
+```
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f

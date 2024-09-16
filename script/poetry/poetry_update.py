@@ -3,9 +3,9 @@ import argparse
 import ast
 import logging
 import os
-import sys
 from collections import OrderedDict, defaultdict
 from pathlib import Path
+from colorama import Fore, Style
 
 import iscompatible
 import toml
@@ -283,8 +283,8 @@ def combine_requirements(config):
                         ]
                     )
                     print(
-                        f"WARNING - Not compatible {str_versions} - "
-                        f"{str_result_choose}."
+                        f"{Fore.YELLOW}WARNING{Style.RESET_ALL} - Not"
+                        f" compatible {str_versions} - {str_result_choose}."
                     )
             elif len(lst_version_requirement) == 1:
                 result = lst_version_requirement[0][0]

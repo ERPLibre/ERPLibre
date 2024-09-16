@@ -13,6 +13,9 @@ EL_HOME_ODOO="${EL_HOME}/odoo"
 #EL_MINIMAL_ADDONS="False"
 #EL_INSTALL_NGINX="True"
 
+Red='\033[0;31m'         # Red
+Color_Off='\033[0m'      # Text Reset
+
 ./script/generate_config.sh
 
 #echo -e "\n---- Install Odoo with addons module ----"
@@ -33,7 +36,11 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
+<<<<<<< HEAD
 POETRY_VERSION=1.8.3
+=======
+POETRY_VERSION=1.5.1
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
 
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
@@ -42,6 +49,9 @@ echo ${LOCAL_PYTHON_EXEC}
 
 if [[ ! -d "${PYENV_PATH}" ]]; then
     echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
+    # export PYENV_GIT_TAG=v2.3.35
+    # To change version
+    # rm ~/.pyenv to uninstall it
     curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
 fi
 
@@ -54,7 +64,7 @@ if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
     echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
     yes n|pyenv install ${PYTHON_VERSION}
     if [[ $retVal -ne 0 ]]; then
-        echo "Error when installing pyenv"
+        echo -e "${Red}Error${Color_Off} when installing pyenv"
         exit 1
     fi
 fi
@@ -75,6 +85,7 @@ if [[ ! -d ${VENV_PATH} ]]; then
         exit 1
     fi
 fi
+source ./.venv/bin/activate
 
 #if [[ ! -d "${POETRY_PATH}" ]]; then
 #    # Delete directory ~/.poetry and .venv to force update to new version
@@ -118,6 +129,8 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
         echo "Poetry installation error."
         exit 1
     fi
+    # Fix pip installation missing package
+    ${VENV_PATH}/bin/pip install selenium
 fi
 
 # Delete artifacts created by pip, cause error in next "poetry install"

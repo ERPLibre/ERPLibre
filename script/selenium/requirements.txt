@@ -1,0 +1,5 @@
+# Selenium video
+PyGObject==3.44.1
+gst
+# python-vlc
+python-randomword-fr

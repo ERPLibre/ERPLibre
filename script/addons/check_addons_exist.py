@@ -22,6 +22,7 @@ def get_config():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
         Check if module exist and is not multiple here to manage conflict.
+        Return 0 if success, return 1 if missing module, return 2 if multiple same module
 """,
         epilog="""\
 """,
@@ -42,6 +43,11 @@ def get_config():
         "--debug",
         action="store_true",
         help="Enable debug output",
+    )
+    parser.add_argument(
+        "--output_path",
+        action="store_true",
+        help="Print path if module exist",
     )
     args = parser.parse_args()
     return args
@@ -88,8 +94,10 @@ def main():
             lst_module_not_exist.append(module)
 
     is_good = True
+    error_missing_module = False
     if lst_module_not_exist:
         is_good = False
+        error_missing_module = True
         module_list = "'" + "', '".join(lst_module_not_exist) + "'"
         _logger.error(
             "Missing"
@@ -97,14 +105,19 @@ def main():
         )
     if dct_module_exist:
         for key, lst_value in dct_module_exist.items():
+            is_print_value = False
             if len(lst_value) != 1:
+                is_print_value = True
                 is_good = False
                 module_list = "'" + "', '".join(lst_value) + "'"
                 _logger.error(f"Conflict modules: {module_list}")
+            elif lst_value and config.output_path:
+                is_print_value = True
+            if is_print_value:
                 for value in lst_value:
                     print(value)
 
-    if dct_module_exist_empty:
+    if dct_module_exist_empty and not config.output_path:
         for key, lst_value in dct_module_exist_empty.items():
             module_list = "'" + "', '".join(lst_value) + "'"
             _logger.warning(
@@ -112,7 +125,11 @@ def main():
                 f" {module_list}"
             )
 
-    return 0 if is_good else -1
+    if not is_good:
+        if error_missing_module:
+            return 1
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

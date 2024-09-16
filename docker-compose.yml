@@ -19,8 +19,15 @@ services:
     # not behind a proxy
     #command: odoo --workers 0
     # behind a proxy
+<<<<<<< HEAD
     command: odoo --workers 4
     #command: odoo
+=======
+    #command: odoo --workers 2 --proxy-mode
+    # For production ready
+    #command: odoo --workers 2 --proxy-mode --no-database-list
+    command: odoo
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
     volumes:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo

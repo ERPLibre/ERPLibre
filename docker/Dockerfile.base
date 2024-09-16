@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 FROM  python:3.10.14-slim-bullseye
+=======
+FROM  python:3.7.17-slim-bullseye
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
 MAINTAINER TechnoLibre <docker@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
@@ -27,6 +31,13 @@ RUN apt-get update \
     npm \
     xz-utils \
     git \
+<<<<<<< HEAD
+=======
+    tree \
+    vim \
+    htop \
+    tig \
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
     cmake \
     wget \
     tig \
@@ -52,6 +63,7 @@ RUN apt-get update \
     libbz2-dev \
     zlib1g-dev \
     libssl-dev \
+    libcairo2-dev \
     openssl \
     libgdbm-dev \
     libgdbm-compat-dev \
@@ -61,8 +73,13 @@ RUN apt-get update \
     libffi-dev \
     uuid-dev \
     swig \
+<<<<<<< HEAD
     && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb \
     && echo 'cecbf5a6abbd68d324a7cd6c51ec843d71e98951 wkhtmltox.deb' | sha1sum -c - \
+=======
+    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb \
+    && echo 'd9f259a67e05e1c221d48b504453645e6c491fab wkhtmltox.deb' | sha1sum -c - \
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
     && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
 

@@ -1,0 +1,149 @@
+{
+    "lst_test": [
+        {
+            "run_command": true,
+            "test_name": "helloworld_test",
+            "sequence": 10,
+            "script": "./test/code_generator/hello_world.sh",
+            "note": "Test helloword_test Will cause conflict with the other because write in code_generator_demo/hooks.py"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_theme_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "theme_website_demo_code_generator",
+            "tested_module": "code_generator_demo_theme_website"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_demo_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "code_generator_demo",
+            "tested_module": "code_generator_demo"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_data_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_helpdesk_data",
+            "tested_module": "code_generator_demo_export_helpdesk"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_data_part_2_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_website_data",
+            "tested_module": "code_generator_demo_export_website",
+            "note": "Merge to code_generator_data_test when fix double export data."
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_inherit_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_internal_inherit",
+            "tested_module": "code_generator_demo_internal_inherit"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_template_demo_internal",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "code_generator_demo_internal",
+            "tested_module": "code_generator_template_demo_internal",
+            "search_class_module": "demo_internal",
+            "init_module_name": "demo_internal"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_template_demo_portal",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "code_generator_demo_portal",
+            "tested_module": "code_generator_template_demo_portal",
+            "search_class_module": "demo_portal",
+            "init_module_name": "demo_portal"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "mariadb_test_template",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "code_generator_demo_mariadb_sql_example_1",
+            "tested_module": "code_generator_template_demo_mariadb_sql_example_1",
+            "search_class_module": "demo_mariadb_sql_example_1",
+            "init_module_name": "code_generator_portal,demo_mariadb_sql_example_1"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "mariadb_test_migrator",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_mariadb_sql_example_1",
+            "tested_module": "code_generator_migrator_demo_mariadb_sql_example_1",
+            "script_after_init_check": "./script/database/restore_mariadb_sql_example_1.sh",
+            "init_module_name": "code_generator_portal"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "mariadb_test_code_generator",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_mariadb_sql_example_1",
+            "tested_module": "code_generator_demo_mariadb_sql_example_1",
+            "init_module_name": "code_generator_portal"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_template_demo_internal_inherit",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "code_generator_demo_internal_inherit",
+            "tested_module": "code_generator_template_demo_internal_inherit",
+            "search_class_module": "demo_internal_inherit",
+            "init_module_name": "demo_internal_inherit"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_template_demo_sysadmin_cron",
+            "path_module_check": "./addons/OCA_server-tools/auto_backup",
+            "generated_module": "code_generator_auto_backup",
+            "generated_path": "./addons/OCA_server-tools/",
+            "tested_module": "code_generator_template_demo_sysadmin_cron",
+            "search_class_module": "auto_backup",
+            "init_module_name": "auto_backup",
+            "install_path": "./addons/TechnoLibre_odoo-code-generator-template"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_export_website_attachments_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_website_attachments_data",
+            "tested_module": "code_generator_demo_export_website_attachments",
+            "restore_db_image_name": "test_website_attachments"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_demo_generic_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_internal,demo_portal",
+            "tested_module": "code_generator_demo_internal,code_generator_demo_portal"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_website_snippet_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "generated_module": "demo_website_leaflet,demo_website_snippet,demo_website_multiple_snippet",
+            "tested_module": "code_generator_demo_website_leaflet,code_generator_demo_website_snippet,code_generator_demo_website_multiple_snippet",
+            "file_to_restore": "demo_portal/i18n/demo_portal.pot,demo_portal/i18n/fr_CA.po",
+            "file_to_restore_origin": true,
+            "note": "Because code_generator_demo_website_multiple_snippet depend on code_generator_demo_portal, it will execute it and this delete file demo_portal/i18n/demo_portal.pot and demo_portal/i18n/fr_CA.po"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "demo_test",
+            "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
+            "init_module_name": "demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet"
+        },
+        {
+            "run_test_exec": true,
+            "test_name": "code_generator_auto_backup_test",
+            "path_module_check": "./addons/OCA_server-tools/auto_backup",
+            "generated_module": "auto_backup",
+            "tested_module": "code_generator_auto_backup"
+        }
+    ]
+}

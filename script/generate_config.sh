@@ -30,6 +30,36 @@ printf "${EL_HOME}/addons/OCA_web," >> "${EL_CONFIG_FILE}"
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons/CybroOdoo_CybroAddons," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/ERPLibre_erplibre_addons," >> ${EL_CONFIG_FILE}
+<<<<<<< HEAD
+=======
+    printf "${EL_HOME}/addons/ERPLibre_erplibre_theme_addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/JayVora-SerpentCS_SerpentCS_Contributions," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/MathBenTech_QuotationRevision," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/MathBenTech_development," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/MathBenTech_erplibre-family-management," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/MathBenTech_odoo-business-spending-management-quebec-canada," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/MathBenTech_scrummer," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-base-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-entertainment-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-git-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-hr-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-partner-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-product-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-project-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-purchase-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-stock-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-survey-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-timesheet-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/Numigi_odoo-web-addons," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-analytic," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-budgeting," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-closing," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-consolidation," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-financial-reporting," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-financial-tools," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-fiscal-rule," >> ${EL_CONFIG_FILE}
+    printf "${EL_HOME}/addons/OCA_account-invoice-reporting," >> ${EL_CONFIG_FILE}
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
     printf "${EL_HOME}/addons/OCA_account-invoicing," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_bank-payment," >> ${EL_CONFIG_FILE}
     printf "${EL_HOME}/addons/OCA_product-attribute," >> ${EL_CONFIG_FILE}
@@ -50,7 +80,10 @@ printf "max_cron_threads = 2\n" >> "${EL_CONFIG_FILE}"
 if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
     printf "workers = 2\n" >> "${EL_CONFIG_FILE}"
     printf "xmlrpc_interface = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
+<<<<<<< HEAD
     printf "netrpc_interface = 127.0.0.1\n" >> "${EL_CONFIG_FILE}"
+=======
+>>>>>>> 4b3ece52fa90618e255a713584238719e1f50e7f
     printf "proxy_mode = True\n" >> "${EL_CONFIG_FILE}"
 else
     printf "workers = 0\n" >> "${EL_CONFIG_FILE}"

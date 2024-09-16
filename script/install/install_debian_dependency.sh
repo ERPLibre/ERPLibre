@@ -21,6 +21,9 @@ elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
+elif [[ "${OS}" == *"Ubuntu"* ]]; then
+  echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
 else
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
   exit 1
@@ -89,74 +92,46 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+
 if [ "18.04" == "${UBUNTU_VERSION}" ]; then
   sudo apt remove nodeJS npm
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.2/install.sh | bash
-  chmod +x ~/.nvm/nvm.sh
-  . $NVM_DIR/nvm.sh && nvm install 16.15.1
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "nvm installation error."
-    exit 1
-  fi
-  source ~/.bashrc
-  npm install npm@latest -g
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install npm lastest installation error."
-    exit 1
-  fi
-  npm install -g rtlcss
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install rtlcss installation error."
-    exit 1
-  fi
-  npm install -g less
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install less installation error."
-    exit 1
-  fi
+  NODE_MAJOR=16
 else
-  curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash -
-  sudo apt-get install -y nodejs
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "apt-get nodejs installation error."
-    exit 1
-  fi
-  sudo npm install npm@latest -g
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install npm lastest installation error."
-    exit 1
-  fi
-  sudo npm install -g rtlcss
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install rtlcss installation error."
-    exit 1
-  fi
-  sudo npm install -g less
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "npm install less installation error."
-    exit 1
-  fi
+  NODE_MAJOR=20
+fi
+
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+sudo apt-get update
+sudo apt-get install nodejs -y
+
+sudo npm install npm@latest -g
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "npm install npm lastest installation error."
+  exit 1
+fi
+sudo npm install -g rtlcss
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "npm install rtlcss installation error."
+  exit 1
+fi
+sudo npm install -g less
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "npm install less installation error."
+  exit 1
 fi
 
 echo -e "\n---- Test tool ----"
-sudo npm install -g prettier
+npm install
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo "npm install prettier installation error."
-  exit 1
-fi
-sudo npm install -g prettier @prettier/plugin-xml
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "npm install prettier plugin-xml installation error."
+  echo "npm install prettier + plugin-xml installation error."
   exit 1
 fi
 

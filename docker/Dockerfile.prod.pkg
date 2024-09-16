@@ -43,6 +43,10 @@ RUN cd $ODOO_PREFIX && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
 
+# Install local npm
+RUN cd $ODOO_PREFIX && \
+    npm install
+
 RUN cd $ODOO_PREFIX && \
     head /etc/odoo/odoo.conf && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \

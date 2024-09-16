@@ -74,9 +74,8 @@ sudo systemctl -feu [EL_USER]
 Comment the following line in `/[EL_USER]/erplibre/config.conf`
 
 ```
-#xmlrpc_interface = 127.0.0.1
-#netrpc_interface = 127.0.0.1
-#proxy_mode = True
+xmlrpc_interface = 0.0.0.0
+proxy_mode = True
 ```
 
 Add your address ip server_name in nginx config `/etc/nginx/sites-available/[EL_WEBSITE_NAME]`
@@ -98,10 +97,14 @@ cd /[EL_USER]/erplibre
 ## Move prod database to dev
 
 When moving prod database to your dev environment, you want to remove email servers and install user test to test the
-database. WARNING, this is not safe for production, you will expose all data. Run:
+database. WARNING, this is not safe for production, you will expose all data.
+
+1. Copy your database image to directory image_db, exemple the image name is `my_db.zip`
+1. Run
 
 ```bash
-./script/database/migrate_prod_to_test.sh DATABASE
+./script/database/db_restore.py --clean_cache --database test_my_db --image my_db
+./script/addons/update_prod_to_dev.sh test_my_db
 ```
 
 ## Update production
@@ -179,8 +182,8 @@ Note, the goal is to call `env['ir.module.module'].update_list()`.
 Restart the docker :
 
 ```bash
-docker-compose down
-docker-compose up -d
+docker compose down
+docker compose up -d
 ```
 
 Revert the command in docker-compose.yml.
@@ -188,7 +191,7 @@ Revert the command in docker-compose.yml.
 You can validate in log the update, you need to find `odoo.modules.loading: updating modules list`, check
 
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ## Update all

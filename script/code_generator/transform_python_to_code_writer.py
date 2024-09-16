@@ -1,13 +1,10 @@
 #!./.venv/bin/python
 import argparse
-import logging
-import os
+import uuid
 import subprocess
 import sys
 
 from code_writer import CodeWriter
-
-from script.git.git_tool import GitTool
 
 # import tokenize
 
@@ -18,8 +15,6 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = GitTool.get_project_config()
-
     # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -92,6 +87,7 @@ def main():
 
     cw.emit("from code_writer import CodeWriter")
     cw.emit("cw = CodeWriter()")
+    unique_str = f"#{uuid.uuid4().hex}#"
 
     no_line = 1
     with open(config.file, "r") as file:
@@ -99,7 +95,13 @@ def main():
             nb_tab, nb_space = count_space_tab(line)
             diff_tab = nb_tab - last_nb_tab
             new_line = line.strip()
+
+            # Support \, because with cw.emit("\") this will break
+            new_line = new_line.replace("\\", "\\\\")
+            # Support " into string
             new_line = new_line.replace('"', '\\"')
+            # Fix """
+            new_line = new_line.replace('\\"\\"\\"', unique_str)
 
             status_no_tab = add_line(
                 cw, new_line, no_line, nb_tab, no_tab, no_tab, nb_space
@@ -109,7 +111,16 @@ def main():
 
             last_nb_tab = nb_tab
             no_line += 1
-    cw.emit("print(cw.render())")
+    argument_print = ""
+    if line[-1] != "\n":
+        # Remove last endline if missing
+        argument_print = ", end=''"
+    # Ignore last character, it's an empty space
+    # TODO find another technique to support """, instead of using uuid
+    cw.emit(
+        f"print(cw.render()[:-1].replace('{unique_str}',"
+        f' \'"""\'){argument_print})'
+    )
 
     output = cw.render()
     if config.output:
@@ -120,7 +131,14 @@ def main():
 
 
 def add_line(
-    cw, line, no_line, nb_indent, no_indent, init_no_intend, nb_space
+    cw,
+    line,
+    no_line,
+    nb_indent,
+    no_indent,
+    init_no_intend,
+    nb_space,
+    deindent=False,
 ):
     """
     Recursive check indent and write line
@@ -139,22 +157,27 @@ def add_line(
         sys.exit(-1)
 
     if nb_indent == -1:
-        cw.emit('cw.emit("")')
-        return 0
+        if no_indent > 0:
+            cw.emit_raw(" " * no_indent * 4 + f"cw.emit()\n")
+            return no_indent
+        else:
+            cw.emit("cw.emit()")
+            return 0
     elif nb_indent == no_indent:
         if nb_indent == 0:
             cw.emit(f'cw.emit("{line}")')
             return 0
         elif nb_indent == 1:
-            if no_indent != init_no_intend:
+            if no_indent != init_no_intend and not deindent:
                 cw.emit(f"with cw.indent({4 + nb_space if nb_space else ''}):")
             with cw.indent():
                 cw.emit(f'cw.emit("{line}")')
         elif nb_indent == 2:
             if nb_indent - 1 > init_no_intend:
                 cw.emit(f"with cw.indent():")
+            # TODO support indent with cw.emit_raw
             with cw.indent():
-                if no_indent != init_no_intend:
+                if no_indent != init_no_intend and not deindent:
                     cw.emit(
                         f"with cw.indent({4 + nb_space if nb_space else ''}):"
                     )
@@ -167,7 +190,7 @@ def add_line(
                 if nb_indent - 1 > init_no_intend:
                     cw.emit(f"with cw.indent():")
                 with cw.indent():
-                    if no_indent != init_no_intend:
+                    if no_indent != init_no_intend and not deindent:
                         cw.emit(
                             "with"
                             f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -184,7 +207,7 @@ def add_line(
                     if nb_indent - 1 > init_no_intend:
                         cw.emit(f"with cw.indent():")
                     with cw.indent():
-                        if no_indent != init_no_intend:
+                        if no_indent != init_no_intend and not deindent:
                             cw.emit(
                                 "with"
                                 f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -204,7 +227,7 @@ def add_line(
                         if nb_indent - 1 > init_no_intend:
                             cw.emit(f"with cw.indent():")
                         with cw.indent():
-                            if no_indent != init_no_intend:
+                            if no_indent != init_no_intend and not deindent:
                                 cw.emit(
                                     "with"
                                     f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -227,7 +250,10 @@ def add_line(
                             if nb_indent - 1 > init_no_intend:
                                 cw.emit(f"with cw.indent():")
                             with cw.indent():
-                                if no_indent != init_no_intend:
+                                if (
+                                    no_indent != init_no_intend
+                                    and not deindent
+                                ):
                                     cw.emit(
                                         "with"
                                         f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -253,7 +279,10 @@ def add_line(
                                 if nb_indent - 1 > init_no_intend:
                                     cw.emit(f"with cw.indent():")
                                 with cw.indent():
-                                    if no_indent != init_no_intend:
+                                    if (
+                                        no_indent != init_no_intend
+                                        and not deindent
+                                    ):
                                         cw.emit(
                                             "with"
                                             f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -282,7 +311,10 @@ def add_line(
                                     if nb_indent - 1 > init_no_intend:
                                         cw.emit(f"with cw.indent():")
                                     with cw.indent():
-                                        if no_indent != init_no_intend:
+                                        if (
+                                            no_indent != init_no_intend
+                                            and not deindent
+                                        ):
                                             cw.emit(
                                                 "with"
                                                 f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -314,7 +346,10 @@ def add_line(
                                         if nb_indent - 1 > init_no_intend:
                                             cw.emit(f"with cw.indent():")
                                         with cw.indent():
-                                            if no_indent != init_no_intend:
+                                            if (
+                                                no_indent != init_no_intend
+                                                and not deindent
+                                            ):
                                                 cw.emit(
                                                     "with"
                                                     f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -349,7 +384,10 @@ def add_line(
                                             if nb_indent - 1 > init_no_intend:
                                                 cw.emit(f"with cw.indent():")
                                             with cw.indent():
-                                                if no_indent != init_no_intend:
+                                                if (
+                                                    no_indent != init_no_intend
+                                                    and not deindent
+                                                ):
                                                     cw.emit(
                                                         "with"
                                                         f" cw.indent({4 + nb_space if nb_space else ''}):"
@@ -1141,6 +1179,7 @@ def add_line(
                 no_indent - 1,
                 init_no_intend,
                 nb_space,
+                deindent=True,
             )
         else:
             # indent
