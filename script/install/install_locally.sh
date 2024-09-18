@@ -112,7 +112,9 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     #    ${VENV_PATH}/bin/pip install vatnumber
     #    ${VENV_PATH}/bin/pip install suds-jurko
     #    ${VENV_PATH}/bin/poetry lock --no-update
-    ${VENV_PATH}/bin/poetry install
+    # To fix keyring problem when installation is blocked, use
+    export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    ${VENV_PATH}/bin/poetry install --no-root -vvv
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
         echo "Poetry installation error."
