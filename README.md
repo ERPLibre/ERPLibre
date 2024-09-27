@@ -75,6 +75,26 @@ For more information, read [Docker guide](./docker/README.md).
 
 [Guide to run ERPLibre in development environment](./doc/DEVELOPMENT.md).
 
+### Pycharm
+
+First open
+
+```bash
+make pycharm_open
+```
+
+Close it, and configure
+
+```bash
+make pycharm_configure
+```
+
+Open it
+
+```bash
+make pycharm_open
+```
+
 # Execution
 
 [Guide to run ERPLibre with different case](./doc/RUN.md).
