@@ -177,6 +177,13 @@ run_parallel_cg_template:
 run_parallel_cg_migrator:
 	parallel < ./conf/list_cg_migrator_test.txt
 
+############
+#  VERSION #
+############
+.PHONY: version
+version:
+	./script/version/update_env_version.py
+
 #############
 #  INSTALL  #
 #############
