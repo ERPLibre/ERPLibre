@@ -35,6 +35,12 @@ Update your configuration if you need to run from another interface than 127.0.0
 xmlrpc_interface = 0.0.0.0
 ```
 
+Show version :
+
+```bash
+make version
+```
+
 Ready to execute:
 
 ```bash
