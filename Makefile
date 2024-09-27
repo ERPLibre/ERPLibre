@@ -1339,3 +1339,15 @@ doc_markdown:
 .PHONY: clear_cache
 clear_cache:
 	rm -rf cache artifacts .coverage coverage.json
+
+#######
+# IDE #
+#######
+.PHONY: pycharm_open
+pycharm_open:
+	~/.local/share/JetBrains/Toolbox/scripts/pycharm .
+
+.PHONY: pycharm_configure
+pycharm_configure:
+	./script/ide/pycharm_configuration.py --init
+
