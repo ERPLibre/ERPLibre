@@ -257,7 +257,11 @@ class GitTool:
         """
         lst_filter_group = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
-        filename = f"{repo_path}{manifest_file}"
+        if manifest_file.startswith("/home/"):
+            # This is a absolute path
+            filename = manifest_file
+        else:
+            filename = f"{repo_path}{manifest_file}"
         lst_repo = []
         with open(filename) as xml:
             xml_as_string = xml.read()
