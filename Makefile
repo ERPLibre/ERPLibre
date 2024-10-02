@@ -231,6 +231,13 @@ install_docker_debian:
 install_docker_ubuntu:
 	./script/install/install_ubuntu_docker.sh
 
+###################
+#  Environnement  #
+###################
+.PHONY: pyenv_update
+pyenv_update:
+	~/.pyenv/bin/pyenv update
+
 #####################
 #  DB installation  #
 #####################
