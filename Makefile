@@ -206,7 +206,7 @@ install_odoo_14:
 
 .PHONY: install_odoo_12
 install_odoo_12:
-	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.16 --install_dev
+	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --install_dev
 
 .PHONY: install_show_version
 install_show_version:
