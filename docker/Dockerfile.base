@@ -1,4 +1,4 @@
-FROM  python:3.7.17-slim-bullseye
+FROM  python:3.12.7-slim-bullseye
 MAINTAINER TechnoLibre <docker@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
@@ -66,13 +66,13 @@ RUN apt-get update \
     libffi-dev \
     uuid-dev \
     swig \
-    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb \
-    && echo 'd9f259a67e05e1c221d48b504453645e6c491fab wkhtmltox.deb' | sha1sum -c - \
+    && curl -o wkhtmltox.deb -sSL https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb \
+    && echo 'cecbf5a6abbd68d324a7cd6c51ec843d71e98951 wkhtmltox.deb' | sha1sum -c - \
     && apt-get install -y --no-install-recommends ./wkhtmltox.deb \
     && rm -rf /var/lib/apt/lists/* wkhtmltox.deb
 
 # Install latest postgresql-client
-RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ buster-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
+RUN echo 'deb http://apt.postgresql.org/pub/repos/apt/ bullseye-pgdg main' > /etc/apt/sources.list.d/pgdg.list \
 	&& GNUPGHOME="$(mktemp -d)" \
 	&& export GNUPGHOME \
 	&& repokey='B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8' \

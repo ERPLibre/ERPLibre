@@ -29,6 +29,7 @@ RUN apt-get update \
             python3-watchdog \
             python3-xlrd \
             python3-xlwt \
+            cython \
             xz-utils \
             git \
             iproute2 \
