@@ -36,7 +36,7 @@ RUN cd $ODOO_PREFIX && \
     chmod +x ./.venv/repo
 
 RUN cd $ODOO_PREFIX && \
-    ./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.16
+    ./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ./script/manifest/update_manifest_local_dev.sh
