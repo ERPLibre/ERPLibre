@@ -1,8 +1,8 @@
-ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
 ARG ERPLIBRE_IMAGE_NAME=1.5.0
 
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
+ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
@@ -51,6 +51,7 @@ RUN apt update && \
 
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
+    echo "${ERPLIBRE_VERSION}" && \
     ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
     ./.venv/bin/pip install poetry==$(cat .poetry-version | xargs) && \
     ./.venv/bin/poetry --version && \
