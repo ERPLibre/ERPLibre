@@ -51,6 +51,11 @@ def get_config():
         default="./docker/Dockerfile.prod.pkg",
         help="Docker prod file to update.",
     )
+    parser.add_argument(
+        "--ignore_edit_docker",
+        action="store_true",
+        help="Will not edit dockerfile.",
+    )
     args = parser.parse_args()
     args.base_version = f"{args.base}:{args.version}"
     args.prod_version = f"{args.prod}:{args.version}"
@@ -119,7 +124,8 @@ def edit_docker_prod(config):
 def main():
     config = get_config()
     edit_text(config)
-    edit_docker_prod(config)
+    if not config.ignore_edit_docker:
+        edit_docker_prod(config)
 
 
 if __name__ == "__main__":

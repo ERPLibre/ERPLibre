@@ -1,4 +1,7 @@
-FROM technolibre/erplibre-base:1.5.0
+ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
+ARG ERPLIBRE_IMAGE_NAME=1.5.0
+
+FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
@@ -36,7 +39,8 @@ RUN cd $ODOO_PREFIX && \
     chmod +x ./.venv/repo
 
 RUN cd $ODOO_PREFIX && \
-    ./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20
+    echo "${ERPLIBRE_VERSION}" && \
+    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}"
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ./script/manifest/update_manifest_local_dev.sh

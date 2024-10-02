@@ -114,7 +114,7 @@ And restart docker service. You can delete or move all older locations of docker
 
 # Update docker
 When building your docker with script
-> make docker_build
+> make docker_build_odoo_16
 
 List your docker version
 > docker images

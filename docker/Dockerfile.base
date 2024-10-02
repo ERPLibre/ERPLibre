@@ -1,6 +1,5 @@
-#FROM  python:3.10.14-slim-bookworm
-FROM  python:3.8.20-slim-bookworm
-#FROM  python:3.7.16-slim-bookworm
+ARG PYTHON_VERSION=3.10.14
+FROM  python:${PYTHON_VERSION}-slim-bookworm
 MAINTAINER TechnoLibre <docker@technolibre.ca>
 
 SHELL ["/bin/bash", "-xo", "pipefail", "-c"]

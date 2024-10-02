@@ -3,6 +3,10 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
+ERPLIBRE_VERSION_MAIN=odoo16.0_python3.10.14
+ERPLIBRE_IMAGE_NAME=1.5.0
+PYTHON_VERSION=3.10.14
+
 ARGS=""
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
@@ -24,6 +28,18 @@ do
     elif [ "$arg" == "--release_beta" ]
     then
         IS_RELEASE_BETA=true
+    elif [ "$arg" == "--odoo_16" ]
+    then
+        PYTHON_VERSION=3.10.14
+        ODOO_VERSION=16.0
+    elif [ "$arg" == "--odoo_14" ]
+    then
+        PYTHON_VERSION=3.8.10
+        ODOO_VERSION=14.0
+    elif [ "$arg" == "--odoo_12" ]
+    then
+        PYTHON_VERSION=3.7.17
+        ODOO_VERSION=12.0
     fi
 done
 
@@ -44,11 +60,14 @@ fi
 
 ERPLIBRE_DOCKER_BASE_VERSION="${ERPLIBRE_DOCKER_BASE}:${ERPLIBRE_VERSION}"
 ERPLIBRE_DOCKER_PROD_VERSION="${ERPLIBRE_DOCKER_PROD}:${ERPLIBRE_VERSION}"
+ERPLIBRE_VERSION_MAIN="odoo${ODOO_VERSION}_python${PYTHON_VERSION}"
 
 echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
-./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD}
+./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker
+
+ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then

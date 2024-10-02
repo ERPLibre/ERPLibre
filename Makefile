@@ -1129,9 +1129,17 @@ docker_exec_erplibre_repo_show_status:
 	./script/docker/docker_repo_show_status.sh
 
 # build docker
-.PHONY: docker_build
-docker_build:
-	./script/docker/docker_build.sh
+.PHONY: docker_build_odoo_16
+docker_build_odoo_16:
+	./script/docker/docker_build.sh --odoo_16
+
+.PHONY: docker_build_odoo_14
+docker_build_odoo_14:
+	./script/docker/docker_build.sh --odoo_14
+
+.PHONY: docker_build_odoo_12
+docker_build_odoo_12:
+	./script/docker/docker_build.sh --odoo_12
 
 # build docker release
 .PHONY: docker_build_release
