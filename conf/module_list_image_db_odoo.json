@@ -1,0 +1,89 @@
+{
+    "odoo12.0_base": {
+        "base": "",
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "erplibre_info",
+                    "fetchmail_notify_error_to_sender",
+                    "fetchmail_thread_default",
+                    "mail_debrand",
+                    "mail_history",
+                    "muk_branding",
+                    "muk_mail_branding",
+                    "muk_utils",
+                    "muk_web_branding",
+                    "muk_web_theme",
+                    "muk_web_theme_mail",
+                    "muk_web_utils",
+                    "partner_no_vat",
+                    "partner_quebec_tz",
+                    "remove_odoo_enterprise",
+                    "web_diagram_position",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_base": {
+        "base": "",
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "fetchmail_notify_error_to_sender",
+                    "mail_debrand",
+                    "partner_no_vat",
+                    "remove_odoo_enterprise",
+                    "smile_many2many_tags_clickable",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_base_demo": {
+        "base": "",
+        "with_demo": true,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "fetchmail_notify_error_to_sender",
+                    "mail_debrand",
+                    "partner_no_vat",
+                    "remove_odoo_enterprise",
+                    "smile_many2many_tags_clickable",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_website": {
+        "base": "odoo14.0_base",
+        "image_list": [
+            {
+                "module": [
+                    "website"
+                ],
+                "theme": "theme_default"
+            },
+            {
+                "pkg_name": "crm",
+                "module": [
+                    "crm",
+                    "website_crm"
+                ]
+            }
+        ]
+    }
+}

@@ -583,8 +583,8 @@ image_db_create_all:
 .PHONY: image_db_create_all_parallel
 image_db_create_all_parallel:
 	./script/database/db_restore.py --clean_cache
-	./script/make.sh image_db_create_erplibre_base
-	parallel < ./conf/image_db_create.txt
+	./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel | bash
+	./script/database/db_restore.py --clean_cache
 
 .PHONY: image_db_create_test_website_attachments
 image_db_create_test_website_attachments:

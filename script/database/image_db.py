@@ -7,6 +7,7 @@ import configparser
 import getpass
 import logging
 import os
+from collections import defaultdict
 import uuid
 import time
 import json
@@ -49,16 +50,22 @@ SUGGESTION
     )
     parser.add_argument(
         "--odoo_version",
-        default="16.0",
         help=(
-            "Odoo version, example 12.0 or 16.0"
+            "Force Odoo version, example 12.0 or 16.0, if empty, use from .odoo-version file"
         ),
     )
     parser.add_argument(
         "--generate_list_only",
         action="store_true",
         help=(
-            "Generate list for parallel command in bash to run all package from odoo_version"
+            "Generate list command in bash to run all package from odoo_version"
+        ),
+    )
+    parser.add_argument(
+        "--generate_bash_cmd_parallel",
+        action="store_true",
+        help=(
+            "Generate list with parallel command in bash to run all package from odoo_version"
         ),
     )
     parser.add_argument(
@@ -73,11 +80,13 @@ SUGGESTION
 def main():
     config = get_config()
     if not config.odoo_version:
-        _logger.error("Need to specify Odoo version")
-        sys.exit(1)
-    if config.odoo_version not in ["12.0", "13.0", "14.0", "15.0", "16.0", "17.0", "18.0"]:
-        _logger.error("Odoo version must be between 12.0 and 18.0")
-        sys.exit(1)
+        # Fill it from system
+        filename_odoo_version = ".odoo-version"
+        if not os.path.isfile(filename_odoo_version):
+            _logger.error(f"Missing file {filename_odoo_version}")
+            sys.exit(1)
+        with open(".odoo-version", "r") as f:
+            config.odoo_version = f.readline()
 
     # Open configuration file
     config_file = os.path.join("conf", f"module_list_image_db_odoo.json")
@@ -94,6 +103,57 @@ def main():
             if image_db_name.startswith(odoo_prefix_version):
                 # First always need to be a base
                 print(f"{PYTHON_BIN} ./script/database/image_db.py --odoo_version {config.odoo_version} --image {image_db_name}")
+        sys.exit(0)
+
+    if config.generate_bash_cmd_parallel:
+        dct_depend_image = defaultdict(list)
+        lst_total_image = []
+
+        lst_distribute_image = []
+        lst_queue_parallel = []
+        # Search dependency
+        for image_db_name, dct_image_db in dct_config_all_image.items():
+            if not image_db_name.startswith(odoo_prefix_version):
+                continue
+            if image_db_name in lst_total_image:
+                _logger.error(f"Duplicate image_db_name: {image_db_name}")
+                sys.exit(1)
+            base_name = dct_image_db.get("base", "")
+            dct_depend_image[base_name].append(image_db_name)
+            lst_total_image.append(image_db_name)
+
+        # Reorder it
+        max_iter = 1000
+        i = 0
+        while dct_depend_image and i < max_iter:
+            i += 1
+
+            if "" in dct_depend_image.keys():
+                # Get from empty key for root dependency
+                lst_module = dct_depend_image.get("")
+                lst_queue_parallel.append(lst_module)
+                lst_distribute_image = lst_module[:]
+                del dct_depend_image[""]
+            else:
+                # Search if dependency already into list
+                lst_module = []
+                lst_key_to_delete = []
+                for key_to_check, lst_value in dct_depend_image.items():
+                    if key_to_check in lst_distribute_image:
+                        # Dependency find
+                        lst_key_to_delete.append(key_to_check)
+                        lst_distribute_image.extend(lst_value)
+                        lst_module.extend(lst_value)
+                lst_queue_parallel.append(lst_module)
+                for key_to_delete in lst_key_to_delete:
+                    del dct_depend_image[key_to_delete]
+
+        # print command to execute
+        lst_cmd = []
+        for lst_mod in lst_queue_parallel:
+            cmd = 'parallel ::: ' + " ".join([f'"./.venv/bin/python3 ./script/database/image_db.py --odoo_version {config.odoo_version} --image {a}"' for a in lst_mod])
+            lst_cmd.append(cmd)
+        print("\n".join(lst_cmd))
         sys.exit(0)
 
     image_name_to_generate = config.image if config.image else f"{odoo_prefix_version}_base"
