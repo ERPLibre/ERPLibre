@@ -29,6 +29,56 @@
             }
         ]
     },
+    "odoo12.0_base_demo": {
+        "base": "",
+        "with_demo": true,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "erplibre_info",
+                    "fetchmail_notify_error_to_sender",
+                    "fetchmail_thread_default",
+                    "mail_debrand",
+                    "mail_history",
+                    "muk_branding",
+                    "muk_mail_branding",
+                    "muk_utils",
+                    "muk_web_branding",
+                    "muk_web_theme",
+                    "muk_web_theme_mail",
+                    "muk_web_utils",
+                    "partner_no_vat",
+                    "partner_quebec_tz",
+                    "remove_odoo_enterprise",
+                    "web_diagram_position",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo12.0_website": {
+        "base": "odoo12.0_base",
+        "image_list": [
+            {
+                "module": [
+                    "website",
+                    "website_odoo_debranding"
+                ],
+                "theme": "theme_default"
+            },
+            {
+                "pkg_name": "crm",
+                "module": [
+                    "crm",
+                    "website_crm"
+                ]
+            }
+        ]
+    },
     "odoo14.0_base": {
         "base": "",
         "image_list": [
@@ -68,12 +118,104 @@
             }
         ]
     },
+    "odoo14.0_base_demo_adv": {
+        "base": "odoo14.0_base_demo",
+        "with_demo": true,
+        "image_list": [
+            {
+                "pkg_name": "website_ecommerce",
+                "theme": "theme_default",
+                "module": [
+                    "l10n_ca",
+                    "crm",
+                    "website_crm",
+                    "website_livechat",
+                    "website_sale",
+                    "stock",
+                    "purchase",
+                    "website_sale_management"
+                ]
+            },
+            {
+                "pkg_name": "full_ecommerce",
+                "module": [
+                    "account_financial_report",
+                    "account_fiscal_year_closing",
+                    "account_tax_balance",
+                    "accounting_pdf_reports",
+                    "document_page",
+                    "fieldservice",
+                    "helpdesk_mgmt",
+                    "mis_builder_cash_flow",
+                    "om_account_accountant",
+                    "om_account_asset",
+                    "om_account_budget",
+                    "partner_statement",
+                    "payment",
+                    "payment_transfer",
+                    "portal",
+                    "product_create_group",
+                    "product_extra_views",
+                    "product_extra_views_purchase",
+                    "product_extra_views_sale",
+                    "product_extra_views_stock",
+                    "product_kit",
+                    "product_panel_shortcut",
+                    "product_reference",
+                    "product_reference_list_view",
+                    "product_supplier_info_helpers",
+                    "product_variant_button_complete_form",
+                    "project",
+                    "purchase_estimated_time_arrival",
+                    "purchase_mrp",
+                    "purchase_partner_products",
+                    "purchase_requisition",
+                    "purchase_stock",
+                    "sale",
+                    "sale_crm",
+                    "sale_expense",
+                    "sale_management",
+                    "sale_margin",
+                    "sale_mrp",
+                    "sale_purchase",
+                    "sale_quotation_builder",
+                    "sale_stock",
+                    "sale_timesheet",
+                    "sales_team",
+                    "website_blog",
+                    "website_crm_privacy_policy",
+                    "website_event",
+                    "website_event_questions",
+                    "website_event_sale",
+                    "website_event_track",
+                    "website_form",
+                    "website_form_project",
+                    "website_forum",
+                    "website_google_tag_manager",
+                    "website_hr_recruitment",
+                    "website_legal_page",
+                    "website_links",
+                    "website_livechat",
+                    "website_mail",
+                    "website_mail_channel",
+                    "website_mass_mailing",
+                    "website_membership",
+                    "website_odoo_debranding",
+                    "website_partner",
+                    "website_payment",
+                    "website_slides",
+                    "website_snippet_country_dropdown"
+                ]
+            }
+        ]
+    },
     "odoo14.0_website": {
         "base": "odoo14.0_base",
         "image_list": [
             {
                 "module": [
-                    "website"
+                    "website",
+                    "website_odoo_debranding"
                 ],
                 "theme": "theme_default"
             },
@@ -82,6 +224,36 @@
                 "module": [
                     "crm",
                     "website_crm"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_website_crm": {
+        "base": "odoo14.0_website",
+        "image_list": [
+            {
+                "pkg_name": "crm",
+                "module": [
+                    "crm",
+                    "website_crm"
+                ]
+            },
+            {
+                "pkg_name": "crm_chat",
+                "module": [
+                    "website_livechat"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_website_ecommerce": {
+        "base": "odoo14.0_website",
+        "delay": 1,
+        "image_list": [
+            {
+                "module": [
+                    "l10n_ca",
+                    "website_sale"
                 ]
             }
         ]

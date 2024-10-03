@@ -3,8 +3,6 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
-import configparser
-import getpass
 import logging
 import os
 from collections import defaultdict
@@ -12,7 +10,6 @@ import uuid
 import time
 import json
 import sys
-from subprocess import check_output
 import subprocess
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -20,6 +17,8 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv/bin/python3"
+IMAGE_DB_BIN = f"{PYTHON_BIN} ./script/database/image_db.py"
+
 
 def get_config():
     """Parse command line arguments, extracting the config file name,
@@ -51,21 +50,32 @@ SUGGESTION
     parser.add_argument(
         "--odoo_version",
         help=(
-            "Force Odoo version, example 12.0 or 16.0, if empty, use from .odoo-version file"
+            "Force Odoo version, example 12.0 or 16.0, if empty, use from"
+            " .odoo-version file"
         ),
     )
     parser.add_argument(
         "--generate_list_only",
         action="store_true",
         help=(
-            "Generate list command in bash to run all package from odoo_version"
+            "Generate list command in bash to run all package from"
+            " odoo_version"
         ),
     )
     parser.add_argument(
         "--generate_bash_cmd_parallel",
         action="store_true",
         help=(
-            "Generate list with parallel command in bash to run all package from odoo_version"
+            "Generate list with parallel command in bash to run all package"
+            " from odoo_version"
+        ),
+    )
+    parser.add_argument(
+        "--check_addons_exist",
+        action="store_true",
+        help=(
+            "Will return an error and stop execution if detect a non existing"
+            " addons from actual odoo version."
         ),
     )
     parser.add_argument(
@@ -100,9 +110,39 @@ def main():
     odoo_prefix_version = f"odoo{config.odoo_version}"
     if config.generate_list_only:
         for image_db_name, dct_image_db in dct_config_all_image.items():
-            if image_db_name.startswith(odoo_prefix_version):
+            if image_db_name.startswith(
+                odoo_prefix_version
+            ) or dct_image_db.get("disable"):
                 # First always need to be a base
-                print(f"{PYTHON_BIN} ./script/database/image_db.py --odoo_version {config.odoo_version} --image {image_db_name}")
+                print(
+                    f"{IMAGE_DB_BIN} --odoo_version"
+                    f" {config.odoo_version} --image {image_db_name}"
+                )
+        sys.exit(0)
+
+    if config.check_addons_exist:
+        lst_module_to_check = set()
+        for image_db_name, dct_image_db in dct_config_all_image.items():
+            if not image_db_name.startswith(
+                odoo_prefix_version
+            ) or dct_image_db.get("disable"):
+                continue
+            lst_image_list = dct_image_db.get("image_list")
+            for dct_image_config in lst_image_list:
+                lst_module = dct_image_config.get("module")
+                lst_module_to_check.update(lst_module)
+        lst_module_missing = []
+        for module_to_check in lst_module_to_check:
+            cmd_check = f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {module_to_check}"
+            status = run_cmd(cmd_check, quiet=True, sys_exit=False)
+            if status:
+                lst_module_missing.append(module_to_check)
+        if lst_module_missing:
+            print(f"Missing module :")
+            print(sorted(lst_module_missing))
+            sys.exit(1)
+        else:
+            print("No module missing")
         sys.exit(0)
 
     if config.generate_bash_cmd_parallel:
@@ -111,9 +151,12 @@ def main():
 
         lst_distribute_image = []
         lst_queue_parallel = []
+        dct_image_delay = defaultdict(int)
         # Search dependency
         for image_db_name, dct_image_db in dct_config_all_image.items():
-            if not image_db_name.startswith(odoo_prefix_version):
+            if not image_db_name.startswith(
+                odoo_prefix_version
+            ) or dct_image_db.get("disable"):
                 continue
             if image_db_name in lst_total_image:
                 _logger.error(f"Duplicate image_db_name: {image_db_name}")
@@ -121,6 +164,7 @@ def main():
             base_name = dct_image_db.get("base", "")
             dct_depend_image[base_name].append(image_db_name)
             lst_total_image.append(image_db_name)
+            dct_image_delay[image_db_name] = dct_image_db.get("delay", 0)
 
         # Reorder it
         max_iter = 1000
@@ -138,12 +182,25 @@ def main():
                 # Search if dependency already into list
                 lst_module = []
                 lst_key_to_delete = []
+                lst_distribute_image_to_append = []
                 for key_to_check, lst_value in dct_depend_image.items():
                     if key_to_check in lst_distribute_image:
                         # Dependency find
-                        lst_key_to_delete.append(key_to_check)
-                        lst_distribute_image.extend(lst_value)
-                        lst_module.extend(lst_value)
+                        # Search for delay
+                        has_delay = False
+                        for value_module in lst_value:
+                            delay = dct_image_delay.get(value_module)
+                            if delay:
+                                has_delay = True
+                                dct_image_delay[value_module] = delay - 1
+                            elif value_module not in lst_distribute_image:
+                                lst_distribute_image_to_append.append(
+                                    value_module
+                                )
+                                lst_module.append(value_module)
+                        if not has_delay:
+                            lst_key_to_delete.append(key_to_check)
+                lst_distribute_image.extend(lst_distribute_image_to_append)
                 lst_queue_parallel.append(lst_module)
                 for key_to_delete in lst_key_to_delete:
                     del dct_depend_image[key_to_delete]
@@ -151,15 +208,40 @@ def main():
         # print command to execute
         lst_cmd = []
         for lst_mod in lst_queue_parallel:
-            cmd = 'parallel ::: ' + " ".join([f'"./.venv/bin/python3 ./script/database/image_db.py --odoo_version {config.odoo_version} --image {a}"' for a in lst_mod])
+            if not lst_mod:
+                continue
+            str_module = " ".join(lst_mod)
+            cmd = f"echo 'Generate imageDB : [{str_module}]'\n"
+            if len(lst_mod) > 1:
+                cmd += "parallel ::: " + " ".join(
+                    [
+                        f'"{IMAGE_DB_BIN} --odoo_version'
+                        f' {config.odoo_version} --image {a}"'
+                        for a in lst_mod
+                    ]
+                )
+            else:
+                cmd += (
+                    f"{IMAGE_DB_BIN} --odoo_version"
+                    f" {config.odoo_version} --image {lst_mod[0]}"
+                )
+
             lst_cmd.append(cmd)
         print("\n".join(lst_cmd))
         sys.exit(0)
 
-    image_name_to_generate = config.image if config.image else f"{odoo_prefix_version}_base"
+    image_name_to_generate = (
+        config.image if config.image else f"{odoo_prefix_version}_base"
+    )
     dct_config_image = dct_config_all_image.get(image_name_to_generate)
 
-    bd_temp_name = f"temp_img_create_{image_name_to_generate}_{uuid.uuid4().hex[:6]}"
+    if dct_config_image.get("disable"):
+        _logger.info("Ignore this image DB generation, because it's disabled.")
+        sys.exit(1)
+
+    bd_temp_name = (
+        f"temp_img_create_{image_name_to_generate}_{uuid.uuid4().hex[:6]}"
+    )
 
     # Summary
     # Step 0, drop and restore
@@ -173,17 +255,25 @@ def main():
     all_temp_bd = []
 
     # Step 0, drop and restore
-    cmd_drop_db = f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {bd_temp_name}"
+    cmd_drop_db = (
+        f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {bd_temp_name}"
+    )
     all_temp_bd.append(bd_temp_name)
     run_cmd(cmd_drop_db)
     if not base_image_name or base_image_name == image_name_to_generate:
         with_demo = dct_config_image.get("with_demo")
         # Create a new one
-        cmd = f"{PYTHON_BIN} ./odoo/odoo-bin db --create --database {bd_temp_name}"
+        cmd = (
+            f"{PYTHON_BIN} ./odoo/odoo-bin db --create --database"
+            f" {bd_temp_name}"
+        )
         if with_demo:
             cmd += " --demo"
     else:
-        cmd = f"./script/database/db_restore.py --database {bd_temp_name} --image {base_image_name}"
+        cmd = (
+            "./script/database/db_restore.py --database"
+            f" {bd_temp_name} --image {base_image_name}"
+        )
     run_cmd(cmd)
     for dct_value in dct_config_image.get("image_list"):
         pkg_name = dct_value.get("pkg_name", "")
@@ -195,41 +285,63 @@ def main():
         # Step 3, install theme
         module_theme = dct_value.get("theme")
         if module_theme:
-            cmd = f"./script/addons/install_addons_theme.sh {bd_temp_name} {module_theme}"
+            cmd = (
+                "./script/addons/install_addons_theme.sh"
+                f" {bd_temp_name} {module_theme}"
+            )
             run_cmd(cmd)
         # Step 4, create image_db by backup
-        module_image_name = image_name_to_generate if not pkg_name else f"{image_name_to_generate}_{pkg_name}"
-        cmd = f"{PYTHON_BIN} ./odoo/odoo-bin db --backup --database {bd_temp_name} --restore_image {module_image_name}"
+        module_image_name = (
+            image_name_to_generate
+            if not pkg_name
+            else f"{image_name_to_generate}_{pkg_name}"
+        )
+        cmd = (
+            f"{PYTHON_BIN} ./odoo/odoo-bin db --backup --database"
+            f" {bd_temp_name} --restore_image {module_image_name}"
+        )
         run_cmd(cmd)
         # Step 5, loop to 1 with same bd name for next package
 
     # Step 6, clean if ask
     if not config.keep_database:
         for db_name in all_temp_bd:
-            cmd_drop_db = f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {db_name}"
+            cmd_drop_db = (
+                f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {db_name}"
+            )
             run_cmd(cmd_drop_db)
-    _logger.info("End of execution image_db.py")
 
-def run_cmd(cmd):
+
+def run_cmd(cmd, quiet=False, sys_exit=True):
     # status = os.system(cmd)
     # if status != 0:
     #     _logger.error(f"Command failed : '{cmd}'")
     #     sys.exit(status)
-    _logger.info(f"Run cmd: {cmd}")
+    if not quiet:
+        _logger.info(f"Run cmd: {cmd}")
     debut = time.time()
-    process = subprocess.Popen(cmd, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    for line in process.stdout:
-        _logger.info(line)
+    process = subprocess.Popen(
+        cmd,
+        shell=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     stdout, stderr = process.communicate()
     fin = time.time()
     status_code = process.returncode
-    if stderr:
+    if stderr and not quiet:
         _logger.error(stderr)
     execution_time = fin - debut
-    _logger.info(f"Time execution: {execution_time:.2f} seconds\n")
+    if not quiet:
+        _logger.info(f"Time execution: {execution_time:.2f} seconds\n")
     if status_code != 0:
-        _logger.error(f"Command failed : '{cmd}'")
-        sys.exit(status_code)
+        if not quiet:
+            _logger.error(f"Command failed : '{cmd}'")
+        if sys_exit:
+            sys.exit(status_code)
+    return status_code
+
 
 if __name__ == "__main__":
     main()
