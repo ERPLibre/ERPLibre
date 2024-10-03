@@ -18,6 +18,7 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
 
+PYTHON_BIN = ".venv/bin/python3"
 
 def get_config():
     """Parse command line arguments, extracting the config file name,
@@ -40,7 +41,6 @@ SUGGESTION
     )
     parser.add_argument(
         "--image",
-        default="erplibre_base",
         help=(
             "Image name to restore, from directory image_db, filename without"
             " '.zip'. Example, use erplibre_base to use image"
@@ -61,13 +61,6 @@ SUGGESTION
             "Generate list for parallel command in bash to run all package from odoo_version"
         ),
     )
-    # parser.add_argument(
-    #     "--restore_image_db_base",
-    #     default="base",
-    #     help=(
-    #         "Will restore this database before install module. If empty or same of configuration, will create a new one."
-    #     ),
-    # )
     parser.add_argument(
         "--keep_database",
         action="store_true",
@@ -79,20 +72,34 @@ SUGGESTION
 
 def main():
     config = get_config()
-    # Find good conf file
-    config_file = os.path.join("conf", f"module_list_image_db_odoo{config.odoo_version}.json")
+    if not config.odoo_version:
+        _logger.error("Need to specify Odoo version")
+        sys.exit(1)
+    if config.odoo_version not in ["12.0", "13.0", "14.0", "15.0", "16.0", "17.0", "18.0"]:
+        _logger.error("Odoo version must be between 12.0 and 18.0")
+        sys.exit(1)
+
+    # Open configuration file
+    config_file = os.path.join("conf", f"module_list_image_db_odoo.json")
     if not os.path.exists(config_file):
         _logger.error(f"Configuration file {config_file} does not exist.")
         sys.exit(1)
+
     with open(config_file, "r") as f:
         dct_config_all_image = json.load(f)
-    dct_config_image = dct_config_all_image.get(config.image)
 
+    odoo_prefix_version = f"odoo{config.odoo_version}"
     if config.generate_list_only:
-        print("ok")
+        for image_db_name, dct_image_db in dct_config_all_image.items():
+            if image_db_name.startswith(odoo_prefix_version):
+                # First always need to be a base
+                print(f"{PYTHON_BIN} ./script/database/image_db.py --odoo_version {config.odoo_version} --image {image_db_name}")
+        sys.exit(0)
 
-    python_bin = ".venv/bin/python3"
-    bd_temp_name = f"temp_img_create_{config.image}_{uuid.uuid4().hex[:6]}"
+    image_name_to_generate = config.image if config.image else f"{odoo_prefix_version}_base"
+    dct_config_image = dct_config_all_image.get(image_name_to_generate)
+
+    bd_temp_name = f"temp_img_create_{image_name_to_generate}_{uuid.uuid4().hex[:6]}"
 
     # Summary
     # Step 0, drop and restore
@@ -102,33 +109,46 @@ def main():
     # Step 4, create image_db by backup
     # Step 5, loop to 1 with same bd name
 
-    restore_image_db_base = f"odoo{config.odoo_version}_{config.restore_image_db_base}"
+    base_image_name = dct_config_image.get("base")
+    all_temp_bd = []
+
     # Step 0, drop and restore
-    cmd_drop_db = f"{python_bin} ./odoo/odoo-bin db --drop --database {bd_temp_name}"
+    cmd_drop_db = f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {bd_temp_name}"
+    all_temp_bd.append(bd_temp_name)
     run_cmd(cmd_drop_db)
-    if not config.restore_image_db_base or restore_image_db_base == config.image:
+    if not base_image_name or base_image_name == image_name_to_generate:
+        with_demo = dct_config_image.get("with_demo")
         # Create a new one
-        cmd = f"{python_bin} ./odoo/odoo-bin db --create --database {bd_temp_name}"
+        cmd = f"{PYTHON_BIN} ./odoo/odoo-bin db --create --database {bd_temp_name}"
+        if with_demo:
+            cmd += " --demo"
     else:
-        cmd = f"{python_bin} ./odoo/odoo-bin db --clone --from_database {restore_image_db_base} --database {bd_temp_name}"
+        cmd = f"./script/database/db_restore.py --database {bd_temp_name} --image {base_image_name}"
     run_cmd(cmd)
-    for component_name, dct_value in dct_config_image.items():
+    for dct_value in dct_config_image.get("image_list"):
+        pkg_name = dct_value.get("pkg_name", "")
         # Step 1, install addons
         lst_module = ",".join(dct_value.get("module"))
         cmd = f"./script/addons/install_addons.sh {bd_temp_name} {lst_module}"
         run_cmd(cmd)
         # Step 2, uninstall if need it
         # Step 3, install theme
+        module_theme = dct_value.get("theme")
+        if module_theme:
+            cmd = f"./script/addons/install_addons_theme.sh {bd_temp_name} {module_theme}"
+            run_cmd(cmd)
         # Step 4, create image_db by backup
-        module_image_name = config.image if not component_name else f"{config.image}_{component_name}"
-        cmd = f"{python_bin} ./odoo/odoo-bin db --backup --database {bd_temp_name} --restore_image {module_image_name}"
+        module_image_name = image_name_to_generate if not pkg_name else f"{image_name_to_generate}_{pkg_name}"
+        cmd = f"{PYTHON_BIN} ./odoo/odoo-bin db --backup --database {bd_temp_name} --restore_image {module_image_name}"
         run_cmd(cmd)
+        # Step 5, loop to 1 with same bd name for next package
 
-        # Step 5, loop to 1 with same bd name
     # Step 6, clean if ask
     if not config.keep_database:
-        run_cmd(cmd_drop_db)
-    print("ok")
+        for db_name in all_temp_bd:
+            cmd_drop_db = f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {db_name}"
+            run_cmd(cmd_drop_db)
+    _logger.info("End of execution image_db.py")
 
 def run_cmd(cmd):
     # status = os.system(cmd)
