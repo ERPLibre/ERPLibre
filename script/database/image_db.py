@@ -233,10 +233,16 @@ def main():
                         if not has_delay:
                             lst_key_to_delete.append(key_to_check)
                 lst_distribute_image.extend(lst_distribute_image_to_append)
-                lst_queue_parallel.append(lst_module)
+                if lst_module:
+                    lst_queue_parallel.append(lst_module)
                 for key_to_delete in lst_key_to_delete:
                     del dct_depend_image[key_to_delete]
 
+        # not finish to empty the queue
+        if dct_depend_image:
+            _logger.info("Missing dependencies, auto-run all image generation for last execution")
+            for depend_image, lst_module in dct_depend_image.items():
+                lst_queue_parallel.append(lst_module)
         # print command to execute
         lst_cmd = []
         for lst_mod in lst_queue_parallel:
