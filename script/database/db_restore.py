@@ -39,7 +39,6 @@ SUGGESTION
     parser.add_argument("-d", "--database", help="Database to manipulate.")
     parser.add_argument(
         "--image",
-        default="erplibre_base",
         help=(
             "Image name to restore, from directory image_db, filename without"
             " '.zip'. Example, use erplibre_base to use image"
@@ -76,6 +75,11 @@ def main():
     config = get_config()
 
     arg_base = "./.venv/bin/python3 ./odoo/odoo-bin db"
+
+    if not config.image:
+        with open(".odoo-version", "r") as f:
+            odoo_version = f.readline()
+            config.image = f"odoo{odoo_version}_base"
 
     # check if it needs master password from config file
     has_config_file = True
