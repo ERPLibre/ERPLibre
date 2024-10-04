@@ -412,6 +412,11 @@ image_db_create_all_parallel:
 	./script/database/db_restore.py --clean_cache
 	#./script/make.sh image_db_create_test_website_attachments
 
+.PHONY: image_db_show_list_data
+image_db_show_list_data:
+	./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel
+	#./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel --odoo_version 12.0
+
 .PHONY: image_db_create_test_website_attachments
 image_db_create_test_website_attachments:
 	./script/database/db_restore.py --database code_generator_test_website_attachements --image test_website_attachments
