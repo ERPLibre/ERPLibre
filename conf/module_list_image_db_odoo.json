@@ -277,14 +277,13 @@
         "disable": false,
         "image_list": [
             {
-                "pkg_name": "crm",
                 "module": [
                     "crm",
                     "website_crm"
                 ]
             },
             {
-                "pkg_name": "crm_chat",
+                "pkg_name": "chat",
                 "module": [
                     "website_livechat"
                 ]
@@ -345,16 +344,23 @@
                 ]
             },
             {
-                "pkg_name": "full_ecommerce",
+                "pkg_name": "full",
                 "module": [
                     "account_financial_report",
                     "account_fiscal_year_closing",
                     "account_tax_balance",
                     "accounting_pdf_reports",
+                    "agreement_legal",
                     "document_page",
                     "fieldservice",
                     "helpdesk_mgmt",
+                    "hr_attendance",
+                    "hr_holidays",
+                    "hr_payroll_community",
                     "hr_timesheet",
+                    "hr_skills",
+                    "fleet",
+                    "maintenance",
                     "mis_builder_cash_flow",
                     "mgmtsystem",
                     "mrp",
@@ -365,6 +371,7 @@
                     "partner_statement",
                     "payment",
                     "payment_transfer",
+                    "plm",
                     "portal",
                     "pos_sale",
                     "product_extra_views",
@@ -378,6 +385,7 @@
                     "purchase_mrp",
                     "purchase_requisition",
                     "purchase_stock",
+                    "rma",
                     "sale",
                     "sale_crm",
                     "sale_expense",
@@ -390,6 +398,8 @@
                     "sale_timesheet",
                     "sales_team",
                     "survey",
+                    "repair",
+                    "web_pwa_oca",
                     "website_blog",
                     "website_crm_privacy_policy",
                     "website_event",
