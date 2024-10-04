@@ -71,6 +71,11 @@ SUGGESTION
         ),
     )
     parser.add_argument(
+        "--show_list_only",
+        action="store_true",
+        help="Show list of all package about Odoo version",
+    )
+    parser.add_argument(
         "--check_addons_exist",
         action="store_true",
         help=(
@@ -108,16 +113,40 @@ def main():
         dct_config_all_image = json.load(f)
 
     odoo_prefix_version = f"odoo{config.odoo_version}"
-    if config.generate_list_only:
+
+    if config.show_list_only:
+        lst_image_to_show = set()
         for image_db_name, dct_image_db in dct_config_all_image.items():
-            if image_db_name.startswith(
+            if not image_db_name.startswith(
                 odoo_prefix_version
             ) or dct_image_db.get("disable"):
-                # First always need to be a base
-                print(
-                    f"{IMAGE_DB_BIN} --odoo_version"
-                    f" {config.odoo_version} --image {image_db_name}"
-                )
+                continue
+            # First always need to be a base
+            image_list = dct_image_db.get("image_list")
+            for dct_image in image_list:
+                pkg_name = dct_image.get("pkg_name")
+                if pkg_name:
+                    sub_image_db_name = f"{image_db_name}_{pkg_name}"
+                else:
+                    sub_image_db_name = image_db_name
+                lst_image_to_show.add(sub_image_db_name)
+
+        lst_to_show = sorted(lst_image_to_show)
+        for image_to_show in lst_to_show:
+            print(image_to_show)
+        sys.exit(0)
+
+    if config.generate_list_only:
+        for image_db_name, dct_image_db in dct_config_all_image.items():
+            if not image_db_name.startswith(
+                odoo_prefix_version
+            ) or dct_image_db.get("disable"):
+                continue
+            # First always need to be a base
+            print(
+                f"{IMAGE_DB_BIN} --odoo_version"
+                f" {config.odoo_version} --image {image_db_name}"
+            )
         sys.exit(0)
 
     if config.check_addons_exist:
@@ -133,7 +162,10 @@ def main():
                 lst_module_to_check.update(lst_module)
         lst_module_missing = []
         for module_to_check in lst_module_to_check:
-            cmd_check = f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {module_to_check}"
+            cmd_check = (
+                f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m"
+                f" {module_to_check}"
+            )
             status = run_cmd(cmd_check, quiet=True, sys_exit=False)
             if status:
                 lst_module_missing.append(module_to_check)
