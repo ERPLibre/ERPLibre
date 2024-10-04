@@ -1,37 +1,7 @@
 {
     "odoo12.0_base": {
         "base": "",
-        "image_list": [
-            {
-                "module": [
-                    "auth_user_case_insensitive",
-                    "auto_backup",
-                    "disable_odoo_online",
-                    "erplibre_info",
-                    "fetchmail_notify_error_to_sender",
-                    "fetchmail_thread_default",
-                    "mail_debrand",
-                    "mail_history",
-                    "muk_branding",
-                    "muk_mail_branding",
-                    "muk_utils",
-                    "muk_web_branding",
-                    "muk_web_theme",
-                    "muk_web_theme_mail",
-                    "muk_web_utils",
-                    "partner_no_vat",
-                    "partner_quebec_tz",
-                    "remove_odoo_enterprise",
-                    "web_diagram_position",
-                    "web_responsive",
-                    "web_timeline"
-                ]
-            }
-        ]
-    },
-    "odoo12.0_base_demo": {
-        "base": "",
-        "with_demo": true,
+        "disable": false,
         "image_list": [
             {
                 "module": [
@@ -62,6 +32,7 @@
     },
     "odoo12.0_website": {
         "base": "odoo12.0_base",
+        "disable": false,
         "image_list": [
             {
                 "module": [
@@ -83,9 +54,9 @@
     },
     "odoo12.0_website_crm": {
         "base": "odoo12.0_website",
+        "disable": false,
         "image_list": [
             {
-                "pkg_name": "crm",
                 "module": [
                     "crm",
                     "crm_team_quebec",
@@ -93,7 +64,7 @@
                 ]
             },
             {
-                "pkg_name": "crm_chat",
+                "pkg_name": "chat",
                 "module": [
                     "website_livechat"
                 ]
@@ -102,6 +73,7 @@
     },
     "odoo12.0_website_ecommerce": {
         "base": "odoo12.0_website",
+        "disable": false,
         "delay": 1,
         "image_list": [
             {
@@ -113,8 +85,41 @@
             }
         ]
     },
+    "odoo12.0_base_demo": {
+        "base": "",
+        "disable": false,
+        "with_demo": true,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "erplibre_info",
+                    "fetchmail_notify_error_to_sender",
+                    "fetchmail_thread_default",
+                    "mail_debrand",
+                    "mail_history",
+                    "muk_branding",
+                    "muk_mail_branding",
+                    "muk_utils",
+                    "muk_web_branding",
+                    "muk_web_theme",
+                    "muk_web_theme_mail",
+                    "muk_web_utils",
+                    "partner_no_vat",
+                    "partner_quebec_tz",
+                    "remove_odoo_enterprise",
+                    "web_diagram_position",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
     "odoo12.0_base_demo_adv": {
         "base": "odoo12.0_base_demo",
+        "disable": false,
         "with_demo": true,
         "image_list": [
             {
@@ -136,26 +141,48 @@
                 ]
             },
             {
-                "pkg_name": "full_ecommerce",
+                "pkg_name": "full",
                 "module": [
                     "account_financial_report",
                     "account_fiscal_year_closing",
                     "account_tax_balance",
                     "accounting_pdf_reports",
+                    "agreement",
+                    "business_requirement",
                     "document_page",
                     "fieldservice",
+                    "fleet",
                     "helpdesk_mgmt",
                     "hr_timesheet",
+                    "maintenance",
+                    "mgmtsystem",
                     "mis_builder_cash_flow",
+                    "mrp",
+                    "muk_dms",
+                    "muk_dms_access",
+                    "muk_dms_view",
                     "muk_pos_branding",
+                    "muk_web_preview",
+                    "muk_web_preview_audio",
+                    "muk_web_preview_csv",
+                    "muk_web_preview_image",
+                    "muk_web_preview_markdown",
+                    "muk_web_preview_msoffice",
+                    "muk_web_preview_opendocument",
+                    "muk_web_preview_rst",
+                    "muk_web_preview_text",
+                    "muk_web_preview_video",
+                    "note",
                     "om_account_accountant",
                     "om_account_asset",
                     "om_account_budget",
                     "partner_statement",
                     "payment",
                     "payment_transfer",
+                    "plm",
                     "portal",
                     "pos_sale",
+                    "product_configurator",
                     "product_create_group",
                     "product_extra_views",
                     "product_extra_views_purchase",
@@ -173,6 +200,7 @@
                     "purchase_partner_products",
                     "purchase_requisition",
                     "purchase_stock",
+                    "repair",
                     "sale",
                     "sale_crm",
                     "sale_expense",
@@ -184,6 +212,7 @@
                     "sale_stock",
                     "sale_timesheet",
                     "sales_team",
+                    "survey",
                     "website_blog",
                     "website_crm_privacy_policy",
                     "website_event",
@@ -206,13 +235,15 @@
                     "website_partner",
                     "website_payment",
                     "website_slides",
-                    "website_snippet_country_dropdown"
+                    "website_snippet_country_dropdown",
+                    "wms"
                 ]
             }
         ]
     },
     "odoo14.0_base": {
         "base": "",
+        "disable": false,
         "image_list": [
             {
                 "module": [
@@ -230,8 +261,54 @@
             }
         ]
     },
+    "odoo14.0_website": {
+        "base": "odoo14.0_base",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "website",
+                    "website_odoo_debranding"
+                ],
+                "theme": "theme_default"
+            }
+        ]
+    },
+    "odoo14.0_website_crm": {
+        "base": "odoo14.0_website",
+        "disable": false,
+        "image_list": [
+            {
+                "pkg_name": "crm",
+                "module": [
+                    "crm",
+                    "website_crm"
+                ]
+            },
+            {
+                "pkg_name": "crm_chat",
+                "module": [
+                    "website_livechat"
+                ]
+            }
+        ]
+    },
+    "odoo14.0_website_ecommerce": {
+        "base": "odoo14.0_website",
+        "disable": false,
+        "delay": 1,
+        "image_list": [
+            {
+                "module": [
+                    "l10n_ca",
+                    "website_sale"
+                ]
+            }
+        ]
+    },
     "odoo14.0_base_demo": {
         "base": "",
+        "disable": false,
         "with_demo": true,
         "image_list": [
             {
@@ -252,6 +329,7 @@
     },
     "odoo14.0_base_demo_adv": {
         "base": "odoo14.0_base_demo",
+        "disable": false,
         "with_demo": true,
         "image_list": [
             {
@@ -280,6 +358,9 @@
                     "helpdesk_mgmt",
                     "hr_timesheet",
                     "mis_builder_cash_flow",
+                    "mgmtsystem",
+                    "mrp",
+                    "note",
                     "om_account_accountant",
                     "om_account_asset",
                     "om_account_budget",
@@ -316,6 +397,7 @@
                     "sale_stock",
                     "sale_timesheet",
                     "sales_team",
+                    "survey",
                     "website_blog",
                     "website_crm_privacy_policy",
                     "website_event",
@@ -339,48 +421,6 @@
                     "website_payment",
                     "website_slides",
                     "website_snippet_country_dropdown"
-                ]
-            }
-        ]
-    },
-    "odoo14.0_website": {
-        "base": "odoo14.0_base",
-        "image_list": [
-            {
-                "module": [
-                    "website",
-                    "website_odoo_debranding"
-                ],
-                "theme": "theme_default"
-            }
-        ]
-    },
-    "odoo14.0_website_crm": {
-        "base": "odoo14.0_website",
-        "image_list": [
-            {
-                "pkg_name": "crm",
-                "module": [
-                    "crm",
-                    "website_crm"
-                ]
-            },
-            {
-                "pkg_name": "crm_chat",
-                "module": [
-                    "website_livechat"
-                ]
-            }
-        ]
-    },
-    "odoo14.0_website_ecommerce": {
-        "base": "odoo14.0_website",
-        "delay": 1,
-        "image_list": [
-            {
-                "module": [
-                    "l10n_ca",
-                    "website_sale"
                 ]
             }
         ]
