@@ -65,16 +65,148 @@
         "image_list": [
             {
                 "module": [
+                    "erplibre_website_snippets_basic_html",
+                    "erplibre_website_snippets_cards",
+                    "erplibre_website_snippets_structures",
+                    "erplibre_website_snippets_timelines",
+                    "muk_website_branding",
                     "website",
-                    "website_odoo_debranding"
+                    "website_anchor_smooth_scroll",
+                    "website_form_builder",
+                    "website_odoo_debranding",
+                    "website_snippet_all",
+                    "website_snippet_anchor"
                 ],
                 "theme": "theme_default"
-            },
+            }
+        ]
+    },
+    "odoo12.0_website_crm": {
+        "base": "odoo12.0_website",
+        "image_list": [
             {
                 "pkg_name": "crm",
                 "module": [
                     "crm",
+                    "crm_team_quebec",
                     "website_crm"
+                ]
+            },
+            {
+                "pkg_name": "crm_chat",
+                "module": [
+                    "website_livechat"
+                ]
+            }
+        ]
+    },
+    "odoo12.0_website_ecommerce": {
+        "base": "odoo12.0_website",
+        "delay": 1,
+        "image_list": [
+            {
+                "module": [
+                    "configure_quebec_tax",
+                    "l10n_ca",
+                    "website_sale"
+                ]
+            }
+        ]
+    },
+    "odoo12.0_base_demo_adv": {
+        "base": "odoo12.0_base_demo",
+        "with_demo": true,
+        "image_list": [
+            {
+                "pkg_name": "website_ecommerce",
+                "theme": "theme_default",
+                "module": [
+                    "configure_quebec_tax",
+                    "crm",
+                    "crm_team_quebec",
+                    "l10n_ca",
+                    "purchase",
+                    "stock",
+                    "website_crm",
+                    "website_livechat",
+                    "website_sale",
+                    "website_sale_management",
+                    "website_snippet_carousel_product",
+                    "website_snippet_product_category"
+                ]
+            },
+            {
+                "pkg_name": "full_ecommerce",
+                "module": [
+                    "account_financial_report",
+                    "account_fiscal_year_closing",
+                    "account_tax_balance",
+                    "accounting_pdf_reports",
+                    "document_page",
+                    "fieldservice",
+                    "helpdesk_mgmt",
+                    "hr_timesheet",
+                    "mis_builder_cash_flow",
+                    "muk_pos_branding",
+                    "om_account_accountant",
+                    "om_account_asset",
+                    "om_account_budget",
+                    "partner_statement",
+                    "payment",
+                    "payment_transfer",
+                    "portal",
+                    "pos_sale",
+                    "product_create_group",
+                    "product_extra_views",
+                    "product_extra_views_purchase",
+                    "product_extra_views_sale",
+                    "product_extra_views_stock",
+                    "product_kit",
+                    "product_panel_shortcut",
+                    "product_reference",
+                    "product_reference_list_view",
+                    "product_supplier_info_helpers",
+                    "product_variant_button_complete_form",
+                    "project",
+                    "purchase_estimated_time_arrival",
+                    "purchase_mrp",
+                    "purchase_partner_products",
+                    "purchase_requisition",
+                    "purchase_stock",
+                    "sale",
+                    "sale_crm",
+                    "sale_expense",
+                    "sale_management",
+                    "sale_margin",
+                    "sale_mrp",
+                    "sale_purchase",
+                    "sale_quotation_builder",
+                    "sale_stock",
+                    "sale_timesheet",
+                    "sales_team",
+                    "website_blog",
+                    "website_crm_privacy_policy",
+                    "website_event",
+                    "website_event_questions",
+                    "website_event_sale",
+                    "website_event_track",
+                    "website_form",
+                    "website_form_project",
+                    "website_forum",
+                    "website_google_tag_manager",
+                    "website_hr_recruitment",
+                    "website_legal_page",
+                    "website_links",
+                    "website_livechat",
+                    "website_mail",
+                    "website_mail_channel",
+                    "website_mass_mailing",
+                    "website_membership",
+                    "website_odoo_debranding",
+                    "website_partner",
+                    "website_payment",
+                    "website_slides",
+                    "website_snippet_country_dropdown"
                 ]
             }
         ]
@@ -126,13 +258,13 @@
                 "pkg_name": "website_ecommerce",
                 "theme": "theme_default",
                 "module": [
-                    "l10n_ca",
                     "crm",
+                    "l10n_ca",
+                    "purchase",
+                    "stock",
                     "website_crm",
                     "website_livechat",
                     "website_sale",
-                    "stock",
-                    "purchase",
                     "website_sale_management"
                 ]
             },
@@ -146,6 +278,7 @@
                     "document_page",
                     "fieldservice",
                     "helpdesk_mgmt",
+                    "hr_timesheet",
                     "mis_builder_cash_flow",
                     "om_account_accountant",
                     "om_account_asset",
@@ -154,6 +287,7 @@
                     "payment",
                     "payment_transfer",
                     "portal",
+                    "pos_sale",
                     "product_create_group",
                     "product_extra_views",
                     "product_extra_views_purchase",
@@ -218,13 +352,6 @@
                     "website_odoo_debranding"
                 ],
                 "theme": "theme_default"
-            },
-            {
-                "pkg_name": "crm",
-                "module": [
-                    "crm",
-                    "website_crm"
-                ]
             }
         ]
     },
