@@ -19,6 +19,9 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
   cmd_after=";gnome-terminal --tab -- bash -c 'git status;bash';"
   LONGCMD=""
   for t in "${paths[@]}"; do
+    if [[ ! -e "${t}" ]]; then
+      continue
+    fi
     if $first_iteration; then
       LONGCMD+="${cmd_before}${t}${cmd_after_first}"
       first_iteration=false
