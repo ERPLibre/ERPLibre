@@ -24,6 +24,7 @@ factur-x
 
 # For ERPLibre project
 RandomWords
+selenium==4.11.2
 
 # For testing
 websocket-client

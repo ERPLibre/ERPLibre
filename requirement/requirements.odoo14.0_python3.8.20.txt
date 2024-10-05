@@ -9,6 +9,7 @@ unidiff
 colorama
 wheel
 mmg==1.0.3
+selenium
 
 # For OSX
 cython
