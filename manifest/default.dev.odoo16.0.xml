@@ -94,6 +94,7 @@
   <project name="partner-contact.git" path="addons/OCA_partner-contact" remote="OCA" groups="addons"/>
   <project name="pos.git" path="addons/OCA_pos" remote="OCA" groups="addons"/>
   <project name="product-attribute.git" path="addons/OCA_product-attribute" remote="OCA" groups="addons"/>
+  <project name="product-configurator.git" path="addons/OCA_product-configurator" remote="OCA" groups="addons"/>
   <project name="product-pack.git" path="addons/OCA_product-pack" remote="OCA" groups="addons"/>
   <project name="product-variant.git" path="addons/OCA_product-variant" remote="OCA" groups="addons"/>
   <project name="project-reporting.git" path="addons/OCA_project-reporting" remote="OCA" groups="addons"/>
