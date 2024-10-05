@@ -111,6 +111,7 @@ def get_config():
     if args.force:
         args.force_install = True
         args.force_repo = True
+    args.is_in_installation = args.install or args.install_dev
     if not (args.install or args.install_dev) and args.force_install:
         args.force_install = False
 
@@ -365,7 +366,7 @@ class Update:
         with open(VERSION_POETRY_FILE, "w") as txt:
             txt.write(self.new_version_poetry)
 
-        if self.config.install or self.config.install_dev:
+        if self.config.is_in_installation:
             _logger.info("Installation.")
             status = self.install_erplibre(
                 install_system=self.config.install,
@@ -601,9 +602,14 @@ def main():
     update.update_environment()
     update.print_log()
 
-    if update.config.install:
+    if update.config.is_in_installation:
+        # Update pycharm configuration
         update.pycharm_update()
 
+        # Update OCB configuration
+        status = os.system(f"make config_gen_all")
+        if not status:
+            sys.exit(status)
 
 def die(cond, message, code=1):
     if cond:
