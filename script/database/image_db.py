@@ -263,6 +263,7 @@ def main():
                     f"{IMAGE_DB_BIN} --odoo_version"
                     f" {config.odoo_version} --image {lst_mod[0]}"
                 )
+            cmd += "\nstatus=$?; [ $status -ne 0 ] && exit $status"
 
             lst_cmd.append(cmd)
         print("\n".join(lst_cmd))
@@ -272,6 +273,10 @@ def main():
         config.image if config.image else f"{odoo_prefix_version}_base"
     )
     dct_config_image = dct_config_all_image.get(image_name_to_generate)
+
+    if not dct_config_image:
+        _logger.error(f"Cannot retrieve image name '{image_name_to_generate}'")
+        sys.exit(1)
 
     if dct_config_image.get("disable"):
         _logger.info("Ignore this image DB generation, because it's disabled.")
