@@ -426,5 +426,184 @@
                 ]
             }
         ]
+    },
+    "odoo16.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_website": {
+        "base": "odoo16.0_base",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "website",
+                    "website_odoo_debranding"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_website_crm": {
+        "base": "odoo16.0_website",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "crm",
+                    "website_crm"
+                ]
+            },
+            {
+                "pkg_name": "chat",
+                "module": [
+                    "website_livechat"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_website_ecommerce": {
+        "base": "odoo16.0_website",
+        "disable": false,
+        "delay": 1,
+        "image_list": [
+            {
+                "module": [
+                    "l10n_ca",
+                    "website_sale"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_base_demo": {
+        "base": "",
+        "disable": false,
+        "with_demo": true,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_base_demo_adv_broke": {
+        "base": "odoo16.0_base_demo",
+        "disable": true,
+        "with_demo": true,
+        "image_list": [
+            {
+                "module": [
+                    "project_mrp",
+                    "mrp",
+                    "purchase_mrp",
+                    "sale_mrp"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_base_demo_adv": {
+        "base": "odoo16.0_base_demo",
+        "disable": false,
+        "with_demo": true,
+        "image_list": [
+            {
+                "pkg_name": "website_ecommerce",
+                "module": [
+                    "crm",
+                    "l10n_ca",
+                    "purchase",
+                    "stock",
+                    "website_crm",
+                    "website_livechat",
+                    "website_sale"
+                ]
+            },
+            {
+                "pkg_name": "full",
+                "module": [
+                    "account_financial_report",
+                    "account_tax_balance",
+                    "accounting_pdf_reports",
+                    "document_page",
+                    "fieldservice",
+                    "helpdesk_mgmt",
+                    "hr_attendance",
+                    "hr_holidays",
+                    "hr_payroll_community",
+                    "hr_timesheet",
+                    "hr_skills",
+                    "fleet",
+                    "maintenance",
+                    "mis_builder_cash_flow",
+                    "mgmtsystem",
+                    "note",
+                    "om_account_accountant",
+                    "om_account_asset",
+                    "om_account_budget",
+                    "partner_statement",
+                    "payment",
+                    "plm",
+                    "portal",
+                    "pos_sale",
+                    "project",
+                    "purchase_requisition",
+                    "purchase_stock",
+                    "rma",
+                    "sale",
+                    "sale_crm",
+                    "sale_expense",
+                    "sale_management",
+                    "sale_margin",
+                    "sale_purchase",
+                    "sale_quotation_builder",
+                    "sale_stock",
+                    "sale_timesheet",
+                    "sales_team",
+                    "survey",
+                    "repair",
+                    "web_pwa_oca",
+                    "website_blog",
+                    "website_crm_privacy_policy",
+                    "website_event",
+                    "website_event_questions",
+                    "website_event_sale",
+                    "website_event_track",
+                    "website_form_project",
+                    "website_forum",
+                    "website_google_tag_manager",
+                    "website_hr_recruitment",
+                    "website_legal_page",
+                    "website_links",
+                    "website_livechat",
+                    "website_mail",
+                    "website_mass_mailing",
+                    "website_membership",
+                    "website_odoo_debranding",
+                    "website_partner",
+                    "website_payment",
+                    "website_slides",
+                    "website_snippet_country_dropdown"
+                ]
+            }
+        ]
     }
 }
