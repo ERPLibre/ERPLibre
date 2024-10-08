@@ -86,9 +86,16 @@ nutrition_libre_migrate_clienta:
 nutrition_libre_cg_migrate_clienta_2:
 	./script/database/db_restore.py --database nutrition_libre_2 --image nutrition_libre_last
 	./script/addons/install_addons.sh nutrition_libre_2 nutrition_libre_migrate_sqlserver_clienta
-	./script/addons/uninstall_addons.sh nutrition_libre nutrition_libre_migrate_sqlserver_clienta
+	./script/addons/uninstall_addons.sh nutrition_libre_2 nutrition_libre_migrate_sqlserver_clienta
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2
 	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database nutrition_libre_2 --restore_image cg_migrate_sqlserver_clienta_nutrition_libre_2_$(DATENOW)
+
+.PHONY: nutrition_libre_migrate_8_oct_2024
+nutrition_libre_migrate_8_oct_2024:
+	./script/database/db_restore.py --database nutrition_libre --image 2024_10_08_03_00_17
+	#./script/addons/install_addons.sh nutrition_libre nutrition_libre_migrate_data_course
+	./script/addons/update_prod_to_dev.sh nutrition_libre
+	./script/database/db_restore.py --clean_cache
 
 #########
 #  RUN  #
