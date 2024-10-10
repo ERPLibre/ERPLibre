@@ -515,6 +515,7 @@
                     "project_mrp",
                     "mrp",
                     "purchase_mrp",
+                    "hr_payroll_community",
                     "sale_mrp"
                 ]
             }
@@ -526,20 +527,14 @@
         "with_demo": true,
         "image_list": [
             {
-                "pkg_name": "website_ecommerce",
+                "pkg_name": "full",
                 "module": [
                     "crm",
                     "l10n_ca",
                     "purchase",
                     "stock",
                     "website_crm",
-                    "website_livechat",
-                    "website_sale"
-                ]
-            },
-            {
-                "pkg_name": "full",
-                "module": [
+                    "website_sale",
                     "account_financial_report",
                     "account_tax_balance",
                     "accounting_pdf_reports",
@@ -548,7 +543,6 @@
                     "helpdesk_mgmt",
                     "hr_attendance",
                     "hr_holidays",
-                    "hr_payroll_community",
                     "hr_timesheet",
                     "hr_skills",
                     "fleet",
