@@ -348,7 +348,8 @@ class Update:
             ADDONS_PATH,
             self.expected_addons_name,
             is_directory=True,
-            do_delete_source=True,
+            do_delete_source=self.config.install_dev
+            or self.config.force_install,
         )
 
     def update_environment(self):
@@ -384,19 +385,24 @@ class Update:
                 install_system=self.config.install,
                 install_dev=self.config.install_dev,
             )
+
             # Re-update if launch installation
-            actuel_venv_is_symlink = os.path.islink(VENV_FILE)
-            if not actuel_venv_is_symlink:
-                # Move it and create a symlink
-                shutil.move(VENV_FILE, self.expected_venv_name)
-                os.symlink(self.expected_venv_name, VENV_FILE)
-                msg = (
-                    f"Create symbolic link {self.expected_venv_name} to"
-                    f" {VENV_FILE}"
-                )
-                _logger.info(msg)
-                self.execute_log.append(msg)
+            self._update_directory_to_link(VENV_FILE, self.expected_venv_name)
+            self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
         return status
+
+    def _update_directory_to_link(self, dir_to_check, link_name):
+        actuel_venv_is_symlink = os.path.islink(dir_to_check)
+        if not actuel_venv_is_symlink:
+            # Move it and create a symlink
+            shutil.move(dir_to_check, link_name)
+            os.symlink(link_name, dir_to_check)
+            msg = (
+                f"Create symbolic link {link_name} to"
+                f" {dir_to_check}"
+            )
+            _logger.info(msg)
+            self.execute_log.append(msg)
 
     def print_log(self):
         if not self.execute_log:
@@ -449,7 +455,7 @@ class Update:
         source_file_is_symlink = os.path.islink(source_file)
         target_file_exist = os.path.exists(target_file)
         if not target_file_exist:
-            _logger.warning(f"'{target_file_exist}' not exist.")
+            _logger.warning(f"'{target_file}' not exist.")
         do_symlink = False
         # Case 4
         if source_file_is_symlink and not source_file_exist:
