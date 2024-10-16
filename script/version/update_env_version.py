@@ -347,6 +347,7 @@ class Update:
             "Directory 'addons'",
             ADDONS_PATH,
             self.expected_addons_name,
+            is_directory=True,
             do_delete_source=True,
         )
 
