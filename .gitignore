@@ -12,6 +12,7 @@ config.conf
 coverage*
 
 .repo
+addons
 !addons/
 addons/*
 !script/addons
