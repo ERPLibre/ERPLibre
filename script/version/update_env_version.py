@@ -202,19 +202,23 @@ class Update:
             and not self.config.erplibre_version
             and not self.config.erplibre_package
         ):
-            # Take default version
-            default_data = [
-                key
-                for key, value in self.data_version.items()
-                if value.get("default")
-            ]
-            if not default_data:
-                _logger.error(
-                    "Cannot find default version into file"
-                    f" {VERSION_DATA_FILE}"
-                )
-                sys.exit(1)
-            dct_data_version = self.data_version.get(default_data[0])
+            dct_data_version = {}
+            if self.detected_version_erplibre:
+                dct_data_version = self.data_version.get(self.detected_version_erplibre)
+            if not dct_data_version:
+                # Take default version
+                default_data = [
+                    key
+                    for key, value in self.data_version.items()
+                    if value.get("default")
+                ]
+                if not default_data:
+                    _logger.error(
+                        "Cannot find default version into file"
+                        f" {VERSION_DATA_FILE}"
+                    )
+                    sys.exit(1)
+                dct_data_version = self.data_version.get(default_data[0])
 
         has_new_version = False
         if self.config.erplibre_version:
