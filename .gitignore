@@ -15,6 +15,7 @@ coverage*
 !addons/
 addons/*
 !script/addons
+addons.*
 doc/itpp*
 doc/odoo*
 script/OCA*

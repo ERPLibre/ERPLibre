@@ -21,6 +21,7 @@ VERSION_PYTHON_FILE = os.path.join(".python-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 VENV_FILE = os.path.join(".venv")
+ADDONS_PATH = os.path.join("addons")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -35,6 +36,7 @@ PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
+ADDONS_TEMPLATE_FILE = "addons.%s"
 ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
 
@@ -280,6 +282,9 @@ class Update:
         self.expected_pip_requirement_name = (
             PIP_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
         )
+        self.expected_addons_name = (
+            ADDONS_TEMPLATE_FILE % self.new_version_erplibre
+        )
         self.expected_pip_requirement_path = os.path.join(
             ".", "requirement", self.expected_pip_requirement_name
         )
@@ -336,6 +341,12 @@ class Update:
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,
             self.expected_pip_ignore_requirement_path,
+            do_delete_source=True,
+        )
+        self.update_link_file(
+            "Directory 'addons'",
+            ADDONS_PATH,
+            self.expected_addons_name,
             do_delete_source=True,
         )
 
