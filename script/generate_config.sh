@@ -12,8 +12,6 @@ EL_CONFIG_FILE="${EL_HOME}/config.conf"
 #EL_MINIMAL_ADDONS="False"
 #EL_INSTALL_NGINX="True"
 
-echo -e "* Create server config file"
-
 touch "${EL_CONFIG_FILE}"
 echo -e "* Creating server config file"
 printf '[options] \n; This is the password that allows database operations:\n' > "${EL_CONFIG_FILE}"

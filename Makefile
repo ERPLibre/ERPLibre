@@ -1013,6 +1013,26 @@ repo_use_all_https:
 config_install:
 	./script/generate_config.sh
 
+.PHONY: config_update
+config_update:
+	./run.sh -c config.conf -s --stop-after-init
+
+.PHONY: config_update_over_proxy
+config_update_over_proxy:
+	./run.sh -c config.conf -s --stop-after-init --max-cron-threads 2 --workers 2 --xmlrpc-interface 127.0.0.1 --proxy-mode
+
+.PHONY: config_update_dev
+config_update_dev:
+	./run.sh -c config.conf -s --stop-after-init --max-cron-threads 4 --workers 4
+
+.PHONY: config_update_dev_mono
+config_update_dev_mono:
+	./run.sh -c config.conf -s --stop-after-init --workers 0
+
+.PHONY: config_clear
+config_clear:
+	rm -f ./config.conf
+
 # generate config all repo
 .PHONY: config_gen_all
 config_gen_all:
