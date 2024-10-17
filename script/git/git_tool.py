@@ -402,7 +402,7 @@ class GitTool:
                 continue
             update_repo = repo.get("path")
             if update_repo == "addons":
-                update_repo += ".${EL_ODOO_VERSION}"
+                update_repo += ".${{EL_ODOO_VERSION}}"
             str_repo = (
                 f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 '"${EL_CONFIG_FILE}"\n'
