@@ -2,4 +2,4 @@
 
 rm -fr ./.repo
 rm -rf ./odoo ./addons*/* ./script/OCA* ./image_db ./doc/itpp* ./doc/odoo_*
-mkdir -p addons/addons
+#mkdir -p addons/addons
