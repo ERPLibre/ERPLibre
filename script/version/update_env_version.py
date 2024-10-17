@@ -410,7 +410,7 @@ class Update:
             for addons_path in os.listdir("."):
                 if (
                     addons_path.startswith("addons")
-                    and addons_path != f"addons.{self.new_version_odoo}"
+                    and addons_path != f"addons.odoo{self.new_version_odoo}"
                 ):
                     os.rename(addons_path, addons_path + "TEMP")
 
