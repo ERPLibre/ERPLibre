@@ -22,7 +22,7 @@ Color_Off='\033[0m'      # Text Reset
 #git submodule update --init
 
 # Generate empty addons if missing
-path_addons_addons = "./addons.odoo${EL_ODOO_VERSION}/addons"
+path_addons_addons="./addons.odoo${EL_ODOO_VERSION}/addons"
 if [[ ! -d "${path_addons_addons}" ]]; then
     mkdir -p "${path_addons_addons}"
 fi
