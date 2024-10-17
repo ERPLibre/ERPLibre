@@ -348,14 +348,14 @@ class Update:
             self.expected_pip_ignore_requirement_path,
             do_delete_source=True,
         )
-        status &= self.update_link_file(
-            "Directory 'addons'",
-            ADDONS_PATH,
-            self.expected_addons_name,
-            is_directory=True,
-            do_delete_source=self.config.install_dev
-            or self.config.force_install,
-        )
+        # status &= self.update_link_file(
+        #     "Directory 'addons'",
+        #     ADDONS_PATH,
+        #     self.expected_addons_name,
+        #     is_directory=True,
+        #     do_delete_source=self.config.install_dev
+        #     or self.config.force_install,
+        # )
         return status
 
     def update_environment(self):
