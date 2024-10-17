@@ -395,7 +395,7 @@ class Update:
 
             # Re-update if launch installation
             self._update_directory_to_link(VENV_FILE, self.expected_venv_name)
-            self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
+            # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
         return status
 
     def _update_directory_to_link(self, dir_to_check, link_name):
