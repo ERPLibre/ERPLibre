@@ -15,6 +15,7 @@ coverage*
 addons
 !addons/
 addons/*
+addons*/*
 !script/addons
 addons.*
 doc/itpp*
@@ -33,6 +34,7 @@ docker-compose.override.yml
 manifest/default.dev.xml
 poetry.lock
 pyproject.toml
+.erplibre-version
 .odoo-version
 .poetry-version
 .python-version

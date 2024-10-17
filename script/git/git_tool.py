@@ -400,8 +400,11 @@ class GitTool:
             # Exception, ignore addons/OCA_web and root
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
+            update_repo = repo.get("path")
+            if update_repo == "addons":
+                update_repo += ".${EL_ODOO_VERSION}"
             str_repo = (
-                f'    printf "${{EL_HOME}}/{repo.get("path")}," >> '
+                f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 '"${EL_CONFIG_FILE}"\n'
             )
             lst_result.append(str_repo)

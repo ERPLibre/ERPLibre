@@ -303,8 +303,9 @@ class Update:
             _logger.warning("Not supported erplibre_package configuration")
 
     def validate_environment(self):
+        status = True
         # Validate .venv
-        self.update_link_file(
+        status &= self.update_link_file(
             "Virtual environnement",
             VENV_FILE,
             self.expected_venv_name,
@@ -316,38 +317,38 @@ class Update:
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
         # Validate Git repo
-        self.update_link_file(
+        status &= self.update_link_file(
             "Git repositories",
             MANIFEST_FILE_PATH,
             self.expected_manifest_path,
             do_delete_source=True,
         )
         # Validate Poetry and pip
-        self.update_link_file(
+        status &= self.update_link_file(
             "Poetry project toml",
             PYPROJECT_FILE,
             self.expected_pyproject_path,
             do_delete_source=True,
         )
-        self.update_link_file(
+        status &= self.update_link_file(
             "Poetry lock",
             POETRY_LOCK_FILE,
             self.expected_poetry_lock_path,
             do_delete_source=True,
         )
-        self.update_link_file(
+        status &= self.update_link_file(
             "Pip requirement.txt",
             PIP_REQUIREMENT_FILE,
             self.expected_pip_requirement_path,
             do_delete_source=True,
         )
-        self.update_link_file(
+        status &= self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,
             self.expected_pip_ignore_requirement_path,
             do_delete_source=True,
         )
-        self.update_link_file(
+        status &= self.update_link_file(
             "Directory 'addons'",
             ADDONS_PATH,
             self.expected_addons_name,
@@ -355,6 +356,7 @@ class Update:
             do_delete_source=self.config.install_dev
             or self.config.force_install,
         )
+        return status
 
     def update_environment(self):
         status = True
@@ -384,6 +386,7 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation:
+            # TODO need to be force if installation path is all good, return True
             _logger.info("Installation.")
             status = self.install_erplibre(
                 install_system=self.config.install,
@@ -451,6 +454,7 @@ class Update:
         Good case : source file is symlink, and good redirection.
         """
         # TODO support case symlink is invalid
+        status = False
         if not source_file or not target_file:
             _logger.error(
                 f"{component_name}:Source file or target file is empty."
@@ -539,6 +543,7 @@ class Update:
                     _logger.info(
                         f"{component_name}:The system configuration is good."
                     )
+                    status = True
                 elif do_delete_source:
                     _logger.warning(
                         f"{component_name}:The file '{source_file}' link"
@@ -596,7 +601,7 @@ class Update:
                 )
                 _logger.info(msg)
                 self.execute_log.append(msg)
-
+        return status
 
 def remove_dot_path(path):
     """
@@ -620,8 +625,9 @@ def main():
     update.validate_version()
 
     _logger.info("Validate environment")
-    update.validate_environment()
-    update.update_environment()
+    status = update.validate_environment()
+    if update.config.force_install or not status:
+        update.update_environment()
     update.print_log()
 
     if update.config.is_in_installation:

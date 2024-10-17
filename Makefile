@@ -200,13 +200,29 @@ install_dev:
 install_odoo_16:
 	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14 --install_dev
 
+.PHONY: switch_odoo_16
+switch_odoo_16:
+	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14
+
 .PHONY: install_odoo_14
 install_odoo_14:
-	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.10 --install_dev
+	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20 --install_dev
+
+.PHONY: switch_odoo_14
+switch_odoo_14:
+	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20
 
 .PHONY: install_odoo_12
 install_odoo_12:
 	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --install_dev
+
+.PHONY: switch_odoo_12
+switch_odoo_12:
+	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17
+
+#.PHONY: install_update_odoo
+#install_update_odoo:
+#	./script/version/update_env_version.py --install_dev --update_addons
 
 .PHONY: install_show_version
 install_show_version:
