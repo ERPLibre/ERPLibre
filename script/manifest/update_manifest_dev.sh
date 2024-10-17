@@ -7,5 +7,4 @@
 
 # Update git-repo
 ./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b $(git rev-parse --verify HEAD) -m ${EL_MANIFEST_DEV}
-#./.venv/repo sync --force-sync
-./.venv/repo sync --force-sync -v
+./.venv/repo sync -v

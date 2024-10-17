@@ -15,6 +15,6 @@ else
 fi
 
 ./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --verify HEAD) -m ${MANIFEST_TARGET} "$@"
-./.venv/repo sync -v --force-sync -m ${MANIFEST_TARGET}
+./.venv/repo sync -v -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}

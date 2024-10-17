@@ -18,6 +18,7 @@ _logger = logging.getLogger(__name__)
 PROJECT_NAME = os.path.basename(os.getcwd())
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 VERSION_PYTHON_FILE = os.path.join(".python-version")
+VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 VENV_FILE = os.path.join(".venv")
@@ -170,7 +171,10 @@ class Update:
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
-        erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (self.odoo_version, self.python_version)
+        erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (
+            self.odoo_version,
+            self.python_version,
+        )
 
         # Detect key actual version
         for key, value in self.data_version.items():
@@ -185,9 +189,9 @@ class Update:
                 break
         if not self.detected_version_erplibre:
             _logger.error(
-                f"The actual version '{erplibre_version_to_search}' is not configured into"
-                f" '{VERSION_DATA_FILE}'. Please update this file before"
-                " continue."
+                f"The actual version '{erplibre_version_to_search}' is not"
+                f" configured into '{VERSION_DATA_FILE}'. Please update this"
+                " file before continue."
             )
             return False
 
@@ -204,7 +208,9 @@ class Update:
         ):
             dct_data_version = {}
             if self.detected_version_erplibre:
-                dct_data_version = self.data_version.get(self.detected_version_erplibre)
+                dct_data_version = self.data_version.get(
+                    self.detected_version_erplibre
+                )
             if not dct_data_version:
                 # Take default version
                 default_data = [
@@ -243,7 +249,10 @@ class Update:
             self.new_version_odoo = self.config.odoo_version
             has_new_version = True
         if has_new_version:
-            self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (self.new_version_odoo, self.new_version_python)
+            self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (
+                self.new_version_odoo,
+                self.new_version_python,
+            )
         else:
             _logger.info(
                 "No difference between detected version and new version:"
@@ -252,10 +261,17 @@ class Update:
             if not dct_data_version:
                 _logger.error("Cannot find dct_data_version")
             else:
-                self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (dct_data_version.get("odoo_version"), dct_data_version.get("python_version"))
+                self.new_version_erplibre = ERPLIBRE_TEMPLATE_VERSION % (
+                    dct_data_version.get("odoo_version"),
+                    dct_data_version.get("python_version"),
+                )
                 self.new_version_odoo = dct_data_version.get("odoo_version")
-                self.new_version_python = dct_data_version.get("python_version")
-                self.new_version_poetry = dct_data_version.get("poetry_version")
+                self.new_version_python = dct_data_version.get(
+                    "python_version"
+                )
+                self.new_version_poetry = dct_data_version.get(
+                    "poetry_version"
+                )
                 # self.new_version_erplibre = self.detected_version_erplibre
                 # self.new_version_odoo = self.odoo_version
                 # self.new_version_python = self.python_version
@@ -382,12 +398,22 @@ class Update:
         # Always overwrite version
         with open(VERSION_PYTHON_FILE, "w") as txt:
             txt.write(self.new_version_python)
+        with open(VERSION_ERPLIBRE_FILE, "w") as txt:
+            txt.write(self.new_version_erplibre)
         with open(VERSION_ODOO_FILE, "w") as txt:
             txt.write(self.new_version_odoo)
         with open(VERSION_POETRY_FILE, "w") as txt:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation:
+            # To support multiple addons directory, change name before run git repo
+            for addons_path in os.listdir("."):
+                if (
+                    addons_path.startswith("addons")
+                    and addons_path != f"addons.{self.new_version_odoo}"
+                ):
+                    os.rename(addons_path, addons_path + "TEMP")
+
             # TODO need to be force if installation path is all good, return True
             _logger.info("Installation.")
             status = self.install_erplibre(
@@ -398,6 +424,15 @@ class Update:
             # Re-update if launch installation
             self._update_directory_to_link(VENV_FILE, self.expected_venv_name)
             # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
+
+            # To support multiple addons directory, remove TEMP
+            for addons_path in os.listdir("."):
+                if (
+                    addons_path.startswith("addons")
+                    and addons_path != f"addons.{self.new_version_odoo}"
+                    and addons_path.endswith("TEMP")
+                ):
+                    os.rename(addons_path, addons_path[:-4])
         return status
 
     def _update_directory_to_link(self, dir_to_check, link_name):
@@ -406,10 +441,7 @@ class Update:
             # Move it and create a symlink
             shutil.move(dir_to_check, link_name)
             os.symlink(link_name, dir_to_check)
-            msg = (
-                f"Create symbolic link {link_name} to"
-                f" {dir_to_check}"
-            )
+            msg = f"Create symbolic link {link_name} to {dir_to_check}"
             _logger.info(msg)
             self.execute_log.append(msg)
 
@@ -605,6 +637,7 @@ class Update:
                 self.execute_log.append(msg)
         return status
 
+
 def remove_dot_path(path):
     """
     if path is ./path/2, will return path/2
@@ -641,6 +674,7 @@ def main():
         status = os.system(f"make config_gen_all")
         if not status:
             sys.exit(status)
+
 
 def die(cond, message, code=1):
     if cond:
