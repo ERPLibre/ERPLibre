@@ -220,6 +220,12 @@ install_odoo_12:
 switch_odoo_12:
 	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17
 
+.PHONY: install_odoo_all_version
+install_odoo_all_version:
+	./script/make.sh install_odoo_12
+	./script/make.sh install_odoo_14
+	./script/make.sh install_odoo_16
+
 #.PHONY: install_update_odoo
 #install_update_odoo:
 #	./script/version/update_env_version.py --install_dev --update_addons

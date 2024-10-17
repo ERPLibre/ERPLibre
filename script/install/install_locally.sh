@@ -22,15 +22,15 @@ Color_Off='\033[0m'      # Text Reset
 #git submodule update --init
 
 # Generate empty addons if missing
-#if [[ ! -d "./addons/addons" ]]; then
-#    mkdir -p ./addons/addons
-#fi
+path_addons_addons = "./addons.odoo${EL_ODOO_VERSION}/addons"
+if [[ ! -d "${path_addons_addons}" ]]; then
+    mkdir -p "${path_addons_addons}"
+fi
 
 PYENV_PATH=~/.pyenv
-PYTHON_VERSION=$(cat .python-version | xargs)
 # example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
-PYTHON_VERSION_MAJOR=$(echo "$PYTHON_VERSION" | sed 's/\.[^\.]*$//')
-PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
+PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_VERSION" | sed 's/\.[^\.]*$//')
+PYENV_VERSION_PATH=${PYENV_PATH}/versions/${EL_PYTHON_VERSION}
 PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 VENV_PATH=./.venv
 LOCAL_PYTHON_EXEC=${VENV_PATH}/bin/python
@@ -38,7 +38,6 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
-POETRY_VERSION=$(cat .poetry-version | xargs)
 
 if [[ ! -n "${DOCKER_BUILD}" ]]; then
   echo "Python path version home"
@@ -93,7 +92,7 @@ fi
 #    # Delete directory ~/.poetry and .venv to force update to new version
 #    echo -e "\n---- Installing poetry ${LOCAL_PYTHON_EXEC} for reliable python package ----"
 #    # TODO self update poetry with `poetry self update ${POETRY_VERSION}`
-#    curl -sSL https://install.python-poetry.org | POETRY_VERSION=${POETRY_VERSION} ${LOCAL_PYTHON_EXEC} - -y
+#    curl -sSL https://install.python-poetry.org | POETRY_VERSION=${EL_POETRY_VERSION} ${LOCAL_PYTHON_EXEC} - -y
 #fi
 
 # Install git-repo if missing
@@ -119,7 +118,7 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 
 # Delete artifacts created by pip, cause error in next "poetry install"
 if [[ ! -f "${POETRY_PATH}" ]]; then
-    ${VENV_PATH}/bin/pip install poetry==${POETRY_VERSION}
+    ${VENV_PATH}/bin/pip install poetry==${EL_POETRY_VERSION}
     ${VENV_PATH}/bin/poetry --version
     # Fix broken poetry by installing ignored dependence
     #    ${VENV_PATH}/bin/pip install vatnumber
