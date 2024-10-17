@@ -287,7 +287,7 @@ class Update:
             PIP_REQUIREMENT_TEMPLATE_FILE % self.new_version_erplibre
         )
         self.expected_addons_name = (
-            ADDONS_TEMPLATE_FILE % self.new_version_erplibre
+            ADDONS_TEMPLATE_FILE % self.new_version_odoo
         )
         self.expected_pip_requirement_path = os.path.join(
             ".", "requirement", self.expected_pip_requirement_name
