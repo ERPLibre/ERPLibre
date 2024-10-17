@@ -1052,6 +1052,7 @@ config_clear:
 # generate config all repo
 .PHONY: config_gen_all
 config_gen_all:
+	echo "config_gen_all"
 	./script/git/git_repo_update_group.py
 	./script/generate_config.sh
 

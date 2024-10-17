@@ -22,9 +22,9 @@ Color_Off='\033[0m'      # Text Reset
 #git submodule update --init
 
 # Generate empty addons if missing
-if [[ ! -d "./addons/addons" ]]; then
-    mkdir -p ./addons/addons
-fi
+#if [[ ! -d "./addons/addons" ]]; then
+#    mkdir -p ./addons/addons
+#fi
 
 PYENV_PATH=~/.pyenv
 PYTHON_VERSION=$(cat .python-version | xargs)

@@ -416,7 +416,8 @@ def add_exclude_folder(dct_xml, file_name, config):
     lst_exclude_folder = dct_content.get("excludeFolder")
 
     # TODO add all directory .venv.* into LST_EXCLUDE_FOLDER
-    lst_to_exclude = ["./.venv.*", "./addons.*"]
+    # lst_to_exclude = ["./.venv.*", "./addons.*"]
+    lst_to_exclude = ["./.venv.*"]
     for s_exclude in lst_to_exclude:
         for dir_venv in glob.glob(s_exclude):
             LST_EXCLUDE_FOLDER.append(dir_venv[2:])

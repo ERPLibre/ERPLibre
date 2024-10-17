@@ -348,6 +348,8 @@ class Update:
             self.expected_pip_ignore_requirement_path,
             do_delete_source=True,
         )
+        if not os.path.isdir(self.expected_addons_name):
+            status = False
         # status &= self.update_link_file(
         #     "Directory 'addons'",
         #     ADDONS_PATH,
@@ -635,6 +637,7 @@ def main():
         update.pycharm_update()
 
         # Update OCB configuration
+        # TODO ignore this if installation fail
         status = os.system(f"make config_gen_all")
         if not status:
             sys.exit(status)
