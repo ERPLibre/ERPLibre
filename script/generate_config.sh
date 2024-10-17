@@ -154,4 +154,7 @@ if [[ ${EL_INSTALL_NGINX} = "True" ]]; then
 fi
 
 # Update and fix the config.conf
-make config_update
+# Fix only the configuration if installation is done
+if [ -f "./.venv/bin/activate" ] && [ -f "./odoo/odoo-bin" ]; then
+    make config_update
+fi
