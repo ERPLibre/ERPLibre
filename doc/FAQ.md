@@ -178,3 +178,16 @@ networks:
         external:
             name: localnetwork
 ```
+
+## Pycharm inotify watches limit Linux
+
+Please read this: https://intellij-support.jetbrains.com/hc/en-us/articles/15268113529362-Inotify-Watches-Limit-Linux
+
+Validate it works:
+
+```bash
+cat /proc/sys/fs/inotify/max_user_watches
+```
+
+Tips, when doing `sudo sysctl -p --system`, validate the order of the process, another process can overwrite your new
+value.
