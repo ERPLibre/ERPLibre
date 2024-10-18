@@ -443,7 +443,11 @@ class Update:
 
             # To support multiple addons directory, remove TEMP
             for addons_path in os.listdir("."):
-                if addons_path.startswith("addons") and addons_path != addons_path_with_version and addons_path.endswith("TEMP"):
+                if (
+                    addons_path.startswith("addons")
+                    and addons_path != addons_path_with_version
+                    and addons_path.endswith("TEMP")
+                ):
                     os.rename(addons_path, addons_path[:-4])
             for addons_path in os.listdir("."):
                 if addons_path.startswith("addons"):

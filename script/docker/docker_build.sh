@@ -3,9 +3,11 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
-ERPLIBRE_VERSION_MAIN=odoo16.0_python3.10.14
-ERPLIBRE_IMAGE_NAME=1.5.0
-PYTHON_VERSION=3.10.14
+ERPLIBRE_IMAGE_NAME=$(cat .erplibre-semver-version|xargs)
+ERPLIBRE_VERSION_MAIN=$(cat .erplibre-version|xargs)
+ODOO_VERSION=$(cat .odoo-version|xargs)
+PYTHON_VERSION=$(cat .python-version|xargs)
+POETRY_VERSION=$(cat .poetry-version|xargs)
 
 ARGS=""
 IS_RELEASE=false
@@ -13,6 +15,8 @@ IS_RELEASE_ALPHA=false
 IS_RELEASE_BETA=false
 ERPLIBRE_DOCKER_BASE="technolibre/erplibre-base"
 ERPLIBRE_DOCKER_PROD="technolibre/erplibre"
+
+output_version=""
 
 for arg in "$@"
 do
@@ -30,18 +34,28 @@ do
         IS_RELEASE_BETA=true
     elif [ "$arg" == "--odoo_16" ]
     then
-        PYTHON_VERSION=3.10.14
-        ODOO_VERSION=16.0
+        output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
     elif [ "$arg" == "--odoo_14" ]
     then
-        PYTHON_VERSION=3.8.10
-        ODOO_VERSION=14.0
+        output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
     elif [ "$arg" == "--odoo_12" ]
     then
-        PYTHON_VERSION=3.7.17
-        ODOO_VERSION=12.0
+        output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
     fi
 done
+
+if [ "$output_version" != "" ]; then
+    ODOO_VERSION=$(echo "$output_version" | awk 'NR==1')
+    POETRY_VERSION=$(echo "$output_version" | awk 'NR==2')
+    PYTHON_VERSION=$(echo "$output_version" | awk 'NR==3')
+    ERPLIBRE_VERSION_MAIN=$(echo "$output_version" | awk 'NR==4')
+fi
+
+echo "Build with"
+echo $ERPLIBRE_VERSION_MAIN
+echo $ODOO_VERSION
+echo $PYTHON_VERSION
+echo $POETRY_VERSION
 
 if [ "$IS_RELEASE_ALPHA" == true ]
 then
@@ -67,7 +81,7 @@ echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 # Rewrite docker-compose
 ./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker
 
-ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
+ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ODOO_VERSION=${ODOO_VERSION} --build-arg POETRY_VERSION=${POETRY_VERSION} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then

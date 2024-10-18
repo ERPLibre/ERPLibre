@@ -34,6 +34,7 @@ docker-compose.override.yml
 manifest/default.dev.xml
 poetry.lock
 pyproject.toml
+.erplibre-semver-version
 .erplibre-version
 .odoo-version
 .poetry-version
