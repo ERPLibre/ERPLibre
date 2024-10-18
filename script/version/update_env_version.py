@@ -406,11 +406,12 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation:
+            addons_path_with_version = f"addons.odoo{self.new_version_odoo}"
             # To support multiple addons directory, change name before run git repo
             for addons_path in os.listdir("."):
                 if (
                     addons_path.startswith("addons")
-                    and addons_path != f"addons.odoo{self.new_version_odoo}"
+                    and addons_path != addons_path_with_version
                 ):
                     os.rename(addons_path, addons_path + "TEMP")
 
@@ -429,10 +430,14 @@ class Update:
             for addons_path in os.listdir("."):
                 if (
                     addons_path.startswith("addons")
-                    and addons_path != f"addons.{self.new_version_odoo}"
+                    and addons_path != addons_path_with_version
                     and addons_path.endswith("TEMP")
                 ):
                     os.rename(addons_path, addons_path[:-4])
+            # Force create addons link
+            if os.path.isdir(ADDONS_PATH):
+                os.remove(ADDONS_PATH)
+            os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
 
     def _update_directory_to_link(self, dir_to_check, link_name):
