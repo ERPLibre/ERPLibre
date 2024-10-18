@@ -409,7 +409,9 @@ class GitTool:
                 f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 '"${EL_CONFIG_FILE}"\n'
             )
-            lst_result.append(str_repo)
+            # Ignore repo if not starting by addons
+            if update_repo.startswith("addons"):
+                lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()
         # search place to add/replace lines

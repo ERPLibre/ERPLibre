@@ -121,9 +121,6 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/odoomates_odooapps," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/openeducat_openeducat_erp," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/tegin_medical-fhir," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/script/OCA_OpenUpgrade," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/script/OCA_maintainer-tools," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/script/OCA_odoo-module-migrator," >> "${EL_CONFIG_FILE}"
 fi
 printf "\n" >> "${EL_CONFIG_FILE}"
 
