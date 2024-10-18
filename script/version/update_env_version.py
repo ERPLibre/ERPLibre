@@ -90,6 +90,11 @@ def get_config():
         help="Install environnement.",
     )
     parser.add_argument(
+        "--switch",
+        action="store_true",
+        help="Will only update the system by switch environnement.",
+    )
+    parser.add_argument(
         "--install_dev",
         action="store_true",
         help="Install developer environment.",
@@ -115,6 +120,7 @@ def get_config():
         args.force_install = True
         args.force_repo = True
     args.is_in_installation = args.install or args.install_dev
+    args.is_in_switch = args.switch
     if not (args.install or args.install_dev) and args.force_install:
         args.force_install = False
 
@@ -405,7 +411,7 @@ class Update:
         with open(VERSION_POETRY_FILE, "w") as txt:
             txt.write(self.new_version_poetry)
 
-        if self.config.is_in_installation:
+        if self.config.is_in_installation or self.config.is_in_switch:
             addons_path_with_version = f"addons.odoo{self.new_version_odoo}"
             # To support multiple addons directory, change name before run git repo
             for addons_path in os.listdir("."):
@@ -416,24 +422,36 @@ class Update:
                     os.rename(addons_path, addons_path + "TEMP")
 
             # TODO need to be force if installation path is all good, return True
-            _logger.info("Installation.")
-            status = self.install_erplibre(
-                install_system=self.config.install,
-                install_dev=self.config.install_dev,
-            )
+            if self.config.is_in_installation:
+                _logger.info("Installation.")
+                status = self.install_erplibre(
+                    install_system=self.config.install,
+                    install_dev=self.config.install_dev,
+                )
 
-            # Re-update if launch installation
-            self._update_directory_to_link(VENV_FILE, self.expected_venv_name)
-            # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
+                # Re-update if launch installation
+                self._update_directory_to_link(
+                    VENV_FILE, self.expected_venv_name
+                )
+                # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
+            elif self.config.is_in_switch:
+                _logger.info("Switch")
+                self.execute_log.append(f"System update")
+                status = os.system(
+                    "./script/manifest/update_manifest_local_dev.sh"
+                )
 
             # To support multiple addons directory, remove TEMP
             for addons_path in os.listdir("."):
-                if (
-                    addons_path.startswith("addons")
-                    and addons_path != addons_path_with_version
-                    and addons_path.endswith("TEMP")
-                ):
+                if addons_path.startswith("addons") and addons_path != addons_path_with_version and addons_path.endswith("TEMP"):
                     os.rename(addons_path, addons_path[:-4])
+            for addons_path in os.listdir("."):
+                if addons_path.startswith("addons"):
+                    # In same time, force to create addons if not existing
+                    addons_dir_path = os.path.join(addons_path, "addons")
+                    if not os.path.isdir(addons_dir_path):
+                        os.makedirs(addons_dir_path)
+
             # Force create addons link
             if os.path.isdir(ADDONS_PATH):
                 os.remove(ADDONS_PATH)

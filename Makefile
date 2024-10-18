@@ -202,7 +202,8 @@ install_odoo_16:
 
 .PHONY: switch_odoo_16
 switch_odoo_16:
-	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14
+	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.14 --switch
+	./script/make.sh config_gen_all
 
 .PHONY: install_odoo_14
 install_odoo_14:
@@ -210,7 +211,8 @@ install_odoo_14:
 
 .PHONY: switch_odoo_14
 switch_odoo_14:
-	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20
+	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20 --switch
+	./script/make.sh config_gen_all
 
 .PHONY: install_odoo_12
 install_odoo_12:
@@ -218,7 +220,8 @@ install_odoo_12:
 
 .PHONY: switch_odoo_12
 switch_odoo_12:
-	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17
+	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --switch
+	./script/make.sh config_gen_all
 
 .PHONY: install_odoo_all_version
 install_odoo_all_version:
