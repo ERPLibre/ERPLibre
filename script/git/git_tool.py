@@ -401,8 +401,10 @@ class GitTool:
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
             update_repo = repo.get("path")
-            if update_repo == "addons":
-                update_repo += f".${{EL_ODOO_VERSION}}"
+            # Use variable instead of hardcoded path
+            if update_repo.startswith("addons.odoo"):
+                lst_path = update_repo.split("/", 1)
+                update_repo = f"addons.odoo${{EL_ODOO_VERSION}}/" + lst_path[1]
             str_repo = (
                 f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 '"${EL_CONFIG_FILE}"\n'
