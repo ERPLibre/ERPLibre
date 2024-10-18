@@ -671,9 +671,12 @@ def main():
 
         # Update OCB configuration
         # TODO ignore this if installation fail
+        # TODO this cause an error at first execution, need to source ./.venv/bin/activate and rerun
         status = os.system(f"make config_gen_all")
         if not status:
-            sys.exit(status)
+            print("Please run:")
+            print("source ./.venv/bin/activate")
+            print("make config_gen_all")
 
 
 def die(cond, message, code=1):
