@@ -2,7 +2,9 @@ ARG ERPLIBRE_IMAGE_NAME=1.5.0
 
 FROM technolibre/erplibre-base:${ERPLIBRE_IMAGE_NAME}
 
-ARG ERPLIBRE_VERSION=odoo16.0_python3.10.14
+ARG ERPLIBRE_VERSION=$(cat .erplibre-version | xargs)
+ARG ODOO_VERSION=$(cat .odoo-version | xargs)
+ARG POETRY_VERSION=$(cat .poetry-version | xargs)
 ENV REPO_MANIFEST_URL https://github.com/ERPLibre/ERPLibre
 ARG WORKING_BRANCH
 ARG WORKING_HASH
@@ -32,17 +34,21 @@ RUN cd ; mkdir -p .bin/ && \
     git checkout $COMMIT_ERPLIBRE
 
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     python -m venv .venv
 
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
     chmod +x ./.venv/repo
 
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}"
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
+    ls  -lha /ERPLibre && \
     ./script/manifest/update_manifest_local_dev.sh
 
 RUN apt update && \
@@ -51,17 +57,25 @@ RUN apt update && \
 
 # Install Poetry
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
     ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
-    ./.venv/bin/pip install poetry==$(cat .poetry-version | xargs) && \
+    ./.venv/bin/pip install "poetry==${ODOO_VERSION}"" && \
     ./.venv/bin/poetry --version && \
     ./.venv/bin/poetry install
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     npm install
 
+# Create link to addons
 RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
+    ln -s "addons.odoo ${ODOO_VERSION}" addons
+
+RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     head /etc/odoo/odoo.conf && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
