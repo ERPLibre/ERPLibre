@@ -698,10 +698,13 @@ def main():
         update.pycharm_update()
 
         # Update OCB configuration
+        os.system("./.venv/bin/python ./script/git/git_repo_update_group.py")
+        os.system("./script/generate_config.sh")
         # TODO ignore this if installation fail
+
         # TODO this cause an error at first execution, need to source ./.venv/bin/activate and rerun
-        subprocess.run(['source', './.venv/bin/activate'], shell=True)
-        subprocess.run(['make', 'config_gen_all'])
+        # subprocess.run(['source', './.venv/bin/activate'], shell=True)
+        # subprocess.run(['make', 'config_gen_all'])
         # status = os.system(f"make config_gen_all")
         #
         # if not status:
