@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import time
+import subprocess
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -484,7 +485,7 @@ class Update:
         pycharm_is_installed = os.path.exists(".idea")
         if not pycharm_is_installed or not self.execute_log:
             return
-        os.system("./script/ide/pycharm_configuration.py --init")
+        os.system("./.venv/bin/python ./script/ide/pycharm_configuration.py --init")
 
     def install_erplibre(self, install_system=False, install_dev=False):
         status = 0
@@ -699,11 +700,14 @@ def main():
         # Update OCB configuration
         # TODO ignore this if installation fail
         # TODO this cause an error at first execution, need to source ./.venv/bin/activate and rerun
-        status = os.system(f"make config_gen_all")
-        if not status:
-            print("Please run:")
-            print("source ./.venv/bin/activate")
-            print("make config_gen_all")
+        subprocess.run(['source', './.venv/bin/activate'], shell=True)
+        subprocess.run(['make', 'config_gen_all'])
+        # status = os.system(f"make config_gen_all")
+        #
+        # if not status:
+        #     print("Please run:")
+        #     print("source ./.venv/bin/activate")
+        #     print("make config_gen_all")
 
 
 def die(cond, message, code=1):
