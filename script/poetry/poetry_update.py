@@ -61,18 +61,26 @@ def get_config():
 
 
 def get_lst_requirements_txt():
-    # Ignore some item in list
-    lst = [
-        a
-        for a in Path(".").rglob("requirements.[tT][xX][tT]")
-        if not os.path.dirname(a).startswith(".repo/")
-        and not os.path.dirname(a).startswith(".venv")
-    ]
-    return lst
+    return get_file_from_glob("requirements.[tT][xX][tT]")
 
 
 def get_lst_manifest_py():
-    return list(Path(".").rglob("__manifest__.py"))
+    return get_file_from_glob("__manifest__.py")
+
+def get_file_from_glob(glob_txt):
+    with open(".odoo-version") as txt:
+        odoo_version = txt.read()
+    # with open(".erplibre-version") as txt:
+    #     erplibre_version = txt.read()
+    lst_v = []
+    for a in Path(".").rglob(glob_txt):
+        a_dirname = os.path.dirname(a)
+        if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
+            continue
+        if a_dirname.startswith("addons") and not a_dirname.startswith(f"addons.odoo{odoo_version}"):
+            continue
+        lst_v.append(a)
+    return lst_v
 
 
 def combine_requirements(config):
