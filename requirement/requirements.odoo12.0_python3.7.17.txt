@@ -142,6 +142,7 @@ azure.identity==1.15.0
 azure-storage-blob==12.19.0
 azure.storage.blob==12.19.0
 sqlparse==0.4.4
+zeep==4.2.1
 
 # Force version for security update
 pyyaml==6.0
