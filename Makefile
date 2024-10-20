@@ -229,6 +229,14 @@ install_odoo_all_version:
 	./script/make.sh install_odoo_14
 	./script/make.sh install_odoo_16
 
+.PHONY: install_odoo_all_version_dev
+install_odoo_all_version_dev:
+	echo "Open Pycharm, close it before install Odoo and reopen at the end"
+	pycharm .
+	./script/make.sh install_odoo_12
+	./script/make.sh install_odoo_14
+	./script/make.sh install_odoo_16
+
 #.PHONY: install_update_odoo
 #install_update_odoo:
 #	./script/version/update_env_version.py --install_dev --update_addons
