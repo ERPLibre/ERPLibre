@@ -9,6 +9,9 @@ ODOO_VERSION=$(cat .odoo-version|xargs)
 PYTHON_VERSION=$(cat .python-version|xargs)
 POETRY_VERSION=$(cat .poetry-version|xargs)
 
+IS_DEBIAN_BOOKWORM=true
+IS_DEBIAN_BULLSEYE=true
+# or IS_DEBIAN_BUSTER
 ARGS=""
 IS_RELEASE=false
 IS_RELEASE_ALPHA=false
@@ -37,9 +40,13 @@ do
         output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
     elif [ "$arg" == "--odoo_14" ]
     then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
         output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
     elif [ "$arg" == "--odoo_12" ]
     then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
         output_version=$(python ./script/version/get_version.py --odoo_version 12.0)
     fi
 done
@@ -91,8 +98,15 @@ fi
 
 cd docker
 
-ARGS="${ARGS} --build-arg=WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg=WORKING_HASH=$(git rev-parse --verify HEAD)"
+ARGS="${ARGS} --build-arg WORKING_BRANCH=$(git rev-parse --abbrev-ref HEAD) --build-arg WORKING_HASH=$(git rev-parse --verify HEAD)"
 
+if [ "$IS_DEBIAN_BOOKWORM" == true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=bookworm --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=e9f95436298c77cc9406bd4bbd242f4771d0a4b2"
+elif [ "$IS_DEBIAN_BOOKWORM" != true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=bullseye --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=cecbf5a6abbd68d324a7cd6c51ec843d71e98951"
+elif [ "IS_DEBIAN_BULLSEYE" != true ]; then
+  ARGS="${ARGS} --build-arg DEBIAN_NAME=buster --build-arg URL_WKHTMLTOX=github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.buster_amd64.deb --build-arg SHA1SUM_WKTHMLTOX=d9f259a67e05e1c221d48b504453645e6c491fab"
+fi
 set -e
 
 # Build base

@@ -6,11 +6,6 @@
         "default": true,
         "note": "Official support ERPLibre 1.5.0"
     },
-    "odoo14.0_python3.8.10": {
-        "odoo_version": "14.0",
-        "python_version": "3.8.10",
-        "poetry_version": "1.5.0"
-    },
     "odoo14.0_python3.8.20": {
         "odoo_version": "14.0",
         "python_version": "3.8.20",
