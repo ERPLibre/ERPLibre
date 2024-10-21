@@ -7,7 +7,9 @@ import webbrowser
 from collections import OrderedDict
 from typing import List
 
+import time
 import git
+import requests
 import xmltodict
 from agithub.GitHub import GitHub  # pip install agithub
 from colorama import Fore, Style
@@ -239,13 +241,14 @@ class GitTool:
         return lst_repo
 
     def get_repo_info_manifest_xml(
-        self, repo_path: str = "./", add_root: bool = False, filter_group=None
+        self, repo_path: str = "./", add_root: bool = False, filter_group=None, manifest_file: str=""
     ) -> list:
         """
         Get information about manifest of Repo from repo_path
         :param repo_path: path of repo to get information about submodule
         :param add_root: add information about root repository
         :param filter_group: filter manifest by group if exist, separate by comma for multiple group
+        :param manifest_file: force a manifest file to be read
         :return:
         [{
             "url": original_url,
@@ -257,7 +260,8 @@ class GitTool:
         }]
         """
         lst_filter_group = filter_group.split(",") if filter_group else []
-        manifest_file = self.get_manifest_file(repo_path=repo_path)
+        if not manifest_file:
+            manifest_file = self.get_manifest_file(repo_path=repo_path)
         if manifest_file.startswith("/home/"):
             # This is a absolute path
             filename = manifest_file
@@ -956,6 +960,32 @@ class GitTool:
             for pull in lst_pull:
                 print(pull.get("html_url"))
         return lst_pull
+
+    def get_root_forked_repo(self, upstream_url: str):
+        redo = False
+        count_redo = 0
+        while not redo:
+            try:
+                parts = upstream_url.split("/")
+                owner = parts[-2]
+                repo_name = parts[-1].split(".")[0]
+
+                # Effectuer la requête à l'API GitHub
+                # TODO validate it's a github repo
+                response = requests.get(f"https://api.github.com/repos/{owner}/{repo_name}")
+                response.raise_for_status()  # Lever une exception en cas d'erreur HTTP
+
+                data = response.json()
+                if data.get("fork"):
+                    return data.get("parent", {}).get("html_url")
+                else:
+                    return upstream_url
+            except requests.exceptions.RequestException as e:
+                print(f"Erreur lors de la requête à l'API GitHub : {e}")
+                count_redo += 1
+                time.sleep(1)
+                if count_redo > 3:
+                    redo = True
 
     def fork_repo(
         self, upstream_url: str, github_token: str, organization_name: str = ""
