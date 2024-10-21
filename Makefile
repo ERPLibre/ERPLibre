@@ -424,8 +424,8 @@ image_db_create_test_website_attachments:
 
 .PHONY: image_diff_base_website
 image_diff_base_website:
-	#./script/manifest/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
-	./script/manifest/compare_backup.py --backup_1 odoo12.0_base --backup_2 odoo12.0_website
+	#./script/database/compare_backup.py --backup_file_1 ./image_db/erplibre_base.zip --backup_file_2 ./image_db/erplibre_website.zip
+	./script/database/compare_backup.py --backup_1 odoo12.0_base --backup_2 odoo12.0_website
 
 #########################
 #  Addons installation  #
