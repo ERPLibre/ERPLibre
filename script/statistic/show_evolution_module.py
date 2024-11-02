@@ -1,4 +1,7 @@
-#!./.venv/bin/python
+#!/usr/bin/env python3
+# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
 import argparse
 import datetime
 import logging
@@ -56,6 +59,8 @@ DCT_VERSION_RELEASE = {
     "14.0": datetime.datetime.strptime("2020-10-01", "%Y-%m-%d").date(),
     "15.0": datetime.datetime.strptime("2021-10-01", "%Y-%m-%d").date(),
     "16.0": datetime.datetime.strptime("2022-10-01", "%Y-%m-%d").date(),
+    "17.0": datetime.datetime.strptime("2023-10-01", "%Y-%m-%d").date(),
+    "18.0": datetime.datetime.strptime("2024-10-01", "%Y-%m-%d").date(),
 }
 CSV_HEADER_MODULE_NAME = "Nom technique"
 # TODO use rich progress bar when clone
@@ -146,7 +151,7 @@ def get_config():
     parser.add_argument(
         "-b",
         "--branches",
-        default="6.1,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0",
+        default="6.1,7.0,8.0,9.0,10.0,11.0,12.0,13.0,14.0,15.0,16.0,17.0,18.0",
         help="Branch to analyse, separate by ','",
     )
     parser.add_argument(
@@ -226,8 +231,8 @@ def main():
     # Clone all repo
     _logger.info(f"Clone repo")
     lst_task_clone = [
-        clone_repo(i, a, config.force_git_fetch)
-        for i, a in enumerate(lst_repo_url)
+        clone_repo(i, repo_url, config.force_git_fetch)
+        for i, repo_url in enumerate(lst_repo_url)
     ]
     lst_repo_path, has_asyncio_error = lib_asyncio.execute(
         config, lst_task_clone, use_uvloop=True
@@ -303,7 +308,9 @@ def main():
         if before_date:
             str_extra = f" before {before_date}"
         print(f"Stat nb module by branch name{str_extra}")
-        for branch_name, count_module in dct_branch_result.items():
+        lst_key_order = sorted([float(a) for a in dct_branch_result.keys()])
+        for branch_name in lst_key_order:
+            count_module = dct_branch_result.get(str(branch_name))
             print(f"{branch_name}\t{count_module}")
     for before_date, set_result in dct_result_unique.items():
         str_extra = ""
@@ -465,6 +472,8 @@ async def extract_module(lst_branch, repo, path, before_date):
         return_value["lst_module"] = lst_module_installable
         return_value["lst_uninstallable_module"] = lst_module_uninstallable
         lst_result.append(return_value)
+    if not lst_result:
+        print(f"No result for repo {repo}")
     return lst_result
 
 
@@ -487,6 +496,7 @@ async def clone_repo(i, repo_url, force_fetch):
 
 
 def get_OCA_repo_list(config):
+    # TODO instead using CSV file source repo, use repo from all manifest, need an algorithm to extract all
     with open(CST_FILE_SOURCE_REPO_ADDONS) as file:
         all_lines = file.readlines()
         if all_lines:

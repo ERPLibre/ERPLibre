@@ -63,7 +63,7 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig -y
+sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."
@@ -88,6 +88,13 @@ sudo apt-get install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev c
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get pyenv dependencies installation error."
+  exit 1
+fi
+# Dependencies for selenium
+sudo apt-get install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "apt-get selenium dependencies installation error."
   exit 1
 fi
 

@@ -4,17 +4,17 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
     OS=$(lsb_release -si)
     VERSION=$(cat /etc/issue)
     if [[ "${OS}" == *"Ubuntu"* ]]; then
-        if [[  "${VERSION}" == Ubuntu\ 18.04* || "${VERSION}" == Ubuntu\ 20.04* || "${VERSION}" == Ubuntu\ 22.04* || "${VERSION}" == Ubuntu\ 22.10* || "${VERSION}" == Ubuntu\ 23.04* || "${VERSION}" == Ubuntu\ 23.10* ]]; then
+        if [[  "${VERSION}" == Ubuntu\ 18.04* || "${VERSION}" == Ubuntu\ 20.04* || "${VERSION}" == Ubuntu\ 22.04* || "${VERSION}" == Ubuntu\ 22.10* || "${VERSION}" == Ubuntu\ 23.04* || "${VERSION}" == Ubuntu\ 23.10* || "${VERSION}" == Ubuntu\ 24.04* ]]; then
             echo  "\n---- linux-gnu installation process started ----"
             ./script/install/install_debian_dependency.sh
         else
-            echo "Your version is not supported, only support 18.04, 20.04 and 22.04 - 23.10 : ${VERSION}"
+            echo "Your version is not supported, only support 18.04, 20.04 and 22.04 - 24.04 : ${VERSION}"
         fi
     elif [[ "${OS}" == *"Debian"* ]]; then
         ./script/install/install_debian_dependency.sh
     else
         ./script/install/install_debian_dependency.sh
-        echo "Your Linux system is not supported, only support Ubuntu 18.04 or Ubuntu 20.04 or Ubuntu 22.04 - Ubuntu 23.10."
+        echo "Your Linux system is not supported, only support Ubuntu 18.04 or Ubuntu 20.04 or Ubuntu 22.04 - Ubuntu 23.10 - Ubuntu 24.04 ."
     fi
 elif [[ "${OSTYPE}" == "darwin"* ]]; then
     echo  "\n---- Darwin installation process started ----"

@@ -6,6 +6,10 @@ EL_USER="erplibre"
 EL_HOME="/${EL_USER}"
 EL_HOME_ERPLIBRE="${EL_HOME}/erplibre"
 EL_HOME_ODOO="${EL_HOME_ERPLIBRE}/odoo"
+EL_ODOO_VERSION=$(cat ".odoo-version" | xargs)
+EL_POETRY_VERSION=$(cat ".poetry-version" | xargs)
+EL_PYTHON_VERSION=$(cat ".python-version" | xargs)
+EL_ERPLIBRE_VERSION=$(cat ".erplibre-version" | xargs)
 # The default port where this Odoo instance will run under (provided you use the command -c in the terminal)
 # Set to true if you want to install it, false if you don't need it or have it already installed.
 EL_INSTALL_WKHTMLTOPDF="True"

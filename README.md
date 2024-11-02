@@ -18,7 +18,7 @@ Into Ubuntu, minimal dependency:
 sudo apt install make git curl
 ```
 
-Into Ubuntu, developper dependency:
+Into Ubuntu, developer dependency:
 
 ```bash
 sudo apt install make build-essential libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev libbz2-dev libldap2-dev libsasl2-dev
@@ -31,16 +31,22 @@ git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 ```
 
-Support Ubuntu 18.04, 20.04 and OSX. The installation duration is more than 30 minutes.
+Support Ubuntu 20.04, 22.04, 24.04 and OSX. The installation duration is more than 30 minutes.
 
 ```bash
-make install
+make install_odoo_16
 ```
 
 Update your configuration if you need to run from another interface than 127.0.0.1, file `config.conf`
 
 ```
 xmlrpc_interface = 0.0.0.0
+```
+
+Show version :
+
+```bash
+make version
 ```
 
 Ready to execute:
@@ -74,6 +80,26 @@ For more information, read [Docker guide](./docker/README.md).
 ## Development guide
 
 [Guide to run ERPLibre in development environment](./doc/DEVELOPMENT.md).
+
+### Pycharm
+
+First open
+
+```bash
+make pycharm_open
+```
+
+Close it, and configure
+
+```bash
+make pycharm_configure
+```
+
+Open it
+
+```bash
+make pycharm_open
+```
 
 # Execution
 

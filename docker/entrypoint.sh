@@ -79,7 +79,7 @@ case "$1" in
             if [[ "${STOP_BEFORE_INIT}" == "True" ]] ; then
               sleep 999999
             fi
-            ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
+            /ERPLibre/.venv/bin/python ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
             if [[ "${UPDATE_ALL_DB}" == "True" ]] ; then
               # --stop-after-init
               exec ./.venv/bin/python $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
@@ -93,7 +93,7 @@ case "$1" in
         if [[ "${STOP_BEFORE_INIT}" == "True" ]] ; then
           sleep 999999
         fi
-        ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
+        /ERPLibre/.venv/bin/python ./docker/wait-for-psql.py ${DB_ARGS[@]} --timeout=30
         if [[ "${UPDATE_ALL_DB}" == "True" ]] ; then
           exec ./.venv/bin/python $ODOO_EXEC_BIN "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
         else

@@ -1,4 +1,7 @@
-#!./.venv/bin/python
+#!/usr/bin/env python3
+# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
 import argparse
 import logging
 import os
@@ -47,6 +50,11 @@ def get_config():
         "--docker_prod",
         default="./docker/Dockerfile.prod.pkg",
         help="Docker prod file to update.",
+    )
+    parser.add_argument(
+        "--ignore_edit_docker",
+        action="store_true",
+        help="Will not edit dockerfile.",
     )
     args = parser.parse_args()
     args.base_version = f"{args.base}:{args.version}"
@@ -116,7 +124,8 @@ def edit_docker_prod(config):
 def main():
     config = get_config()
     edit_text(config)
-    edit_docker_prod(config)
+    if not config.ignore_edit_docker:
+        edit_docker_prod(config)
 
 
 if __name__ == "__main__":

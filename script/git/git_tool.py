@@ -1,6 +1,7 @@
-#!./.venv/bin/python
-# © 2020 TechnoLibre (http://www.technolibre.ca)
-# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
+#!/usr/bin/env python3
+# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
 import os
 import webbrowser
 from collections import OrderedDict
@@ -256,7 +257,11 @@ class GitTool:
         """
         lst_filter_group = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
-        filename = f"{repo_path}{manifest_file}"
+        if manifest_file.startswith("/home/"):
+            # This is a absolute path
+            filename = manifest_file
+        else:
+            filename = f"{repo_path}{manifest_file}"
         lst_repo = []
         with open(filename) as xml:
             xml_as_string = xml.read()
@@ -395,11 +400,18 @@ class GitTool:
             # Exception, ignore addons/OCA_web and root
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
+            update_repo = repo.get("path")
+            # Use variable instead of hardcoded path
+            if update_repo.startswith("addons.odoo"):
+                lst_path = update_repo.split("/", 1)
+                update_repo = f"addons.odoo${{EL_ODOO_VERSION}}/" + lst_path[1]
             str_repo = (
-                f'    printf "${{EL_HOME}}/{repo.get("path")}," >> '
+                f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 '"${EL_CONFIG_FILE}"\n'
             )
-            lst_result.append(str_repo)
+            # Ignore repo if not starting by addons
+            if update_repo.startswith("addons"):
+                lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()
         # search place to add/replace lines
