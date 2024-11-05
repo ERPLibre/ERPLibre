@@ -17,7 +17,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Changed
 
 - Guide to move dev to prod
-- Update docker buster to bullseye
+- Update Docker buster to bullseye
 - Improve format script to help code-generator
 - Improve PyCharm script
 - Support OSX for open-terminal
@@ -26,6 +26,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Test can be launched with a json configuration and support log/result individually
 - Script to search docker compose into the system
 - Script search class model can output into json format and support field information
+- Improve Docker minimal installation docs in README for Ubuntu, test with Debian (https://github.com/ERPLibre/ERPLibre/issues/73)
 
 ### Fixed
 
@@ -33,9 +34,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.5.0] - 2023-07-07
 
-**Migration note**
+**Migration notes**
 
-Because new update of Python and Poetry, recreate virtual environment.
+Because of new updates of Python and Poetry, recreate the virtual environment.
 
 ```bash
 rm -rf ~/.poetry
@@ -47,7 +48,7 @@ rm -rf ./.venv
 make install
 ```
 
-Do a backup of your database and update all module :
+Do a backup of your database and update all modules :
 
 ```bash
 ./run.sh --no-http --stop-after-init -d DATABASE -u all
