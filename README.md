@@ -7,6 +7,8 @@ It is based on a set of production-ready modules, supported by the Odoo Communit
 ecosystem of specialized companies. This solution ensures digital sovereignty in a local environment while integrating
 pre-trained Generative Transformers (GPT), bringing an additional dimension to data management and automation.
 
+Follow us on Mastodon : https://fosstodon.org/@erplibre
+
 # Installation
 
 Select a guide to install your environment.
