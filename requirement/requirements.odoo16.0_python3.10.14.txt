@@ -16,6 +16,7 @@ cloudflare
 selenium
 # mmg # depend on weasyprint 59.0 and depend on old version pillow 9.0.1
 uvloop
+python-randomword-fr
 
 # For OSX
 cython
