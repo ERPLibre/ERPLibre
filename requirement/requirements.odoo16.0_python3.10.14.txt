@@ -73,3 +73,6 @@ xlrd==1.2.0
 # Force python 3.10 over odoo/requirements.txt to remove warning
 num2words==0.5.13
 xlsxwriter==1.4.5
+
+# Fix vonage package depend on vonage-verify-v2 1.1.3, but not exist into pip
+vonage-verify-v2==1.1.4
