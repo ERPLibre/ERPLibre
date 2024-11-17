@@ -115,7 +115,7 @@
   <project name="server-tools.git" path="addons.odoo16.0/OCA_server-tools" remote="ERPLibre" revision="ERPLibre/16.0" groups="addons"/>
   <project name="server-ux.git" path="addons.odoo16.0/OCA_server-ux" remote="OCA" groups="addons"/>
   <project name="social.git" path="addons.odoo16.0/OCA_social" remote="OCA" groups="addons"/>
-  <project name="survey.git" path="addons.odoo16.0/OCA_survey" remote="ERPLibre" revision="16.0_survey_odoo_debranding" groups="addons"/>
+  <project name="survey.git" path="addons.odoo16.0/OCA_survey" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
   <project name="stock-logistics-warehouse.git" path="addons.odoo16.0/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
   <project name="storage.git" path="addons.odoo16.0/OCA_storage" remote="OCA" groups="addons"/>
   <project name="timesheet.git" path="addons.odoo16.0/OCA_timesheet" remote="OCA" groups="addons"/>
