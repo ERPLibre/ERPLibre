@@ -46,6 +46,7 @@ PyPDF2
 
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
+pre-commit
 
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
 cryptography==3.4.8

@@ -769,6 +769,17 @@ files = [
 pycparser = "*"
 
 [[package]]
+name = "cfgv"
+version = "3.4.0"
+description = "Validate configuration and produce human readable error messages."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "cfgv-3.4.0-py2.py3-none-any.whl", hash = "sha256:b7265b1f29fd3316bfcd2b330d63d024f2bfd8bcb8b0272f8e19a504856c48f9"},
+    {file = "cfgv-3.4.0.tar.gz", hash = "sha256:e52591d4c5f5dead8e0f673fb16db7949d2cfb3f7da4582893288f0ded8fe560"},
+]
+
+[[package]]
 name = "chardet"
 version = "4.0.0"
 description = "Universal encoding detector for Python 2 and 3"
@@ -1406,6 +1417,17 @@ wrapt = ">=1.10,<2"
 
 [package.extras]
 dev = ["PyTest", "PyTest-Cov", "bump2version (<1)", "sphinx (<2)", "tox"]
+
+[[package]]
+name = "distlib"
+version = "0.3.9"
+description = "Distribution utilities"
+optional = false
+python-versions = "*"
+files = [
+    {file = "distlib-0.3.9-py2.py3-none-any.whl", hash = "sha256:47f8c22fd27c27e25a65601af709b38e4f0a45ea4fc2e710f65755fa8caaaf87"},
+    {file = "distlib-0.3.9.tar.gz", hash = "sha256:a60f20dea646b8a33f3e7772f74dc0b2d0772d2837ee1342a00645c81edf9403"},
+]
 
 [[package]]
 name = "distro"
@@ -2314,12 +2336,12 @@ docs = ["Sphinx"]
 
 [[package]]
 name = "gst"
-version = "0.1.0"
+version = "0.1.2"
 description = "Git status tool"
 optional = false
 python-versions = "*"
 files = [
-    {file = "gst-0.1.0.tar.gz", hash = "sha256:47fd137b187196f99c33b9acb664d2016916c0a9ea87c17f07a4cac206aeccb8"},
+    {file = "gst-0.1.2-py3-none-any.whl", hash = "sha256:822fba61f3b86264be3bfdec135ee0ee960acb7371c57e0b964d8cbfab491c38"},
 ]
 
 [[package]]
@@ -2479,6 +2501,20 @@ files = [
     {file = "hyperframe-6.0.1-py3-none-any.whl", hash = "sha256:0ec6bafd80d8ad2195c4f03aacba3a8265e57bc4cff261e802bf39970ed02a15"},
     {file = "hyperframe-6.0.1.tar.gz", hash = "sha256:ae510046231dc8e9ecb1a6586f63d2347bf4c8905914aa84ba585ae85f28a914"},
 ]
+
+[[package]]
+name = "identify"
+version = "2.6.2"
+description = "File identification library for Python"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "identify-2.6.2-py2.py3-none-any.whl", hash = "sha256:c097384259f49e372f4ea00a19719d95ae27dd5ff0fd77ad630aa891306b82f3"},
+    {file = "identify-2.6.2.tar.gz", hash = "sha256:fab5c716c24d7a789775228823797296a2994b075fb6080ac83a102772a98cbd"},
+]
+
+[package.extras]
+license = ["ukkonen"]
 
 [[package]]
 name = "idna"
@@ -2999,13 +3035,13 @@ source = ["Cython (>=0.29.7)"]
 
 [[package]]
 name = "lxml-html-clean"
-version = "0.3.1"
+version = "0.4.1"
 description = "HTML cleaner from lxml project"
 optional = false
 python-versions = "*"
 files = [
-    {file = "lxml_html_clean-0.3.1-py3-none-any.whl", hash = "sha256:081e6378c68ebb4113940ed82a3534c99e24ba1ca5ad5ce8868c7c4d264618f1"},
-    {file = "lxml_html_clean-0.3.1.tar.gz", hash = "sha256:d9f7d8ae36092f4ed5079cfbf95ff06d3c6fd04f4a861422ce251ece72d3c4b5"},
+    {file = "lxml_html_clean-0.4.1-py3-none-any.whl", hash = "sha256:b704f2757e61d793b1c08bf5ad69e4c0b68d6696f4c3c1429982caf90050bcaf"},
+    {file = "lxml_html_clean-0.4.1.tar.gz", hash = "sha256:40c838bbcf1fc72ba4ce811fbb3135913017b27820d7c16e8bc412ae1d8bc00b"},
 ]
 
 [package.dependencies]
@@ -3728,6 +3764,17 @@ six = "*"
 tests = ["pytest (>=5.2)"]
 
 [[package]]
+name = "nodeenv"
+version = "1.9.1"
+description = "Node.js virtual environment builder"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
+files = [
+    {file = "nodeenv-1.9.1-py2.py3-none-any.whl", hash = "sha256:ba11c9782d29c27c70ffbdda2d7415098754709be8a7056d79a737cd901155c9"},
+    {file = "nodeenv-1.9.1.tar.gz", hash = "sha256:6ec12890a2dab7946721edbfbcd91f3319c6ccc9aec47be7c7e6b7011ee6645f"},
+]
+
+[[package]]
 name = "num2words"
 version = "0.5.13"
 description = "Modules to convert numbers to words. Easily extensible."
@@ -4300,13 +4347,13 @@ pillow = "*"
 
 [[package]]
 name = "phonenumbers"
-version = "8.13.49"
+version = "8.13.50"
 description = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
 optional = false
 python-versions = "*"
 files = [
-    {file = "phonenumbers-8.13.49-py2.py3-none-any.whl", hash = "sha256:e17140955ab3d8f9580727372ea64c5ada5327932d6021ef6fd203c3db8c8139"},
-    {file = "phonenumbers-8.13.49.tar.gz", hash = "sha256:e608ccb61f0bd42e6db1d2c421f7c22186b88f494870bf40aa31d1a2718ab0ae"},
+    {file = "phonenumbers-8.13.50-py2.py3-none-any.whl", hash = "sha256:bb95dbc0d9979c51f7ad94bcd780784938958861fbb4b75a2fe39ccd3d58954a"},
+    {file = "phonenumbers-8.13.50.tar.gz", hash = "sha256:e05ac6fb7b98c6d719a87ea895b9fc153673b4a51f455ec9afaf557ef4629da6"},
 ]
 
 [[package]]
@@ -4423,6 +4470,24 @@ pywin32 = {version = ">=226", markers = "platform_system == \"Windows\""}
 docs = ["sphinx (>=1.7.1)"]
 redis = ["redis"]
 tests = ["pytest (>=5.4.1)", "pytest-cov (>=2.8.1)", "pytest-mypy (>=0.8.0)", "pytest-timeout (>=2.1.0)", "redis", "sphinx (>=6.0.0)", "types-redis"]
+
+[[package]]
+name = "pre-commit"
+version = "4.0.1"
+description = "A framework for managing and maintaining multi-language pre-commit hooks."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "pre_commit-4.0.1-py2.py3-none-any.whl", hash = "sha256:efde913840816312445dc98787724647c65473daefe420785f885e8ed9a06878"},
+    {file = "pre_commit-4.0.1.tar.gz", hash = "sha256:80905ac375958c0444c65e9cebebd948b3cdb518f335a091a670a89d652139d2"},
+]
+
+[package.dependencies]
+cfgv = ">=2.0.0"
+identify = ">=1.0.0"
+nodeenv = ">=0.11.1"
+pyyaml = ">=5.1"
+virtualenv = ">=20.10.0"
 
 [[package]]
 name = "premailer"
@@ -5002,13 +5067,13 @@ setuptools = "*"
 
 [[package]]
 name = "pyjwt"
-version = "2.9.0"
+version = "2.10.0"
 description = "JSON Web Token implementation in Python"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "PyJWT-2.9.0-py3-none-any.whl", hash = "sha256:3b02fb0f44517787776cf48f2ae25d8e14f300e6d7545a4315cee571a415e850"},
-    {file = "pyjwt-2.9.0.tar.gz", hash = "sha256:7e1e5b56cc735432a7369cbfa0efe50fa113ebecdc04ae6922deba8b84582d0c"},
+    {file = "PyJWT-2.10.0-py3-none-any.whl", hash = "sha256:543b77207db656de204372350926bed5a86201c4cbff159f623f79c7bb487a15"},
+    {file = "pyjwt-2.10.0.tar.gz", hash = "sha256:7628a7eb7938959ac1b26e819a1df0fd3259505627b575e4bad6d08f76db695c"},
 ]
 
 [package.dependencies]
@@ -6677,13 +6742,13 @@ six = ">=1.12.0"
 
 [[package]]
 name = "telesign"
-version = "2.2.3"
+version = "2.2.5"
 description = "TeleSign SDK"
 optional = false
 python-versions = "*"
 files = [
-    {file = "telesign-2.2.3-py2.py3-none-any.whl", hash = "sha256:77b5a80ebea7e7b0b83a21c1a9a450e97a3eac0e34e5e6fdd45de2f140f0a2dc"},
-    {file = "telesign-2.2.3.tar.gz", hash = "sha256:a5c3bcc6e2bf81e74ea73d26bf4f41cfec1379f7833860f61f27b22ff0ab8a9a"},
+    {file = "telesign-2.2.5-py2.py3-none-any.whl", hash = "sha256:7ae0009d4a6a0b29a44273398c75c31d256110d68264736f342e72e6e42f4268"},
+    {file = "telesign-2.2.5.tar.gz", hash = "sha256:361ca6a8c2dc67cf604f5a1024d6c7cfacc079f3149eba593001deacd9c4555e"},
 ]
 
 [package.dependencies]
@@ -6957,18 +7022,18 @@ test = ["vcrpy (>=1.10.3)"]
 
 [[package]]
 name = "twilio"
-version = "9.3.6"
+version = "9.3.7"
 description = "Twilio API client and TwiML generator"
 optional = false
 python-versions = ">=3.7.0"
 files = [
-    {file = "twilio-9.3.6-py2.py3-none-any.whl", hash = "sha256:c5d7f4cfeb50a7928397b8f819c8f7fb2bb956a1a2cabbda1df1d7a40f9ce1d7"},
-    {file = "twilio-9.3.6.tar.gz", hash = "sha256:d42691f7fe1faaa5ba82942f169bfea4d7f01a0a542a456d82018fb49bd1f5b2"},
+    {file = "twilio-9.3.7-py2.py3-none-any.whl", hash = "sha256:7d5d05140530f0eaf60d6a810c88da443cb2e6aad18a0830e4cb0ccd7b338d30"},
+    {file = "twilio-9.3.7.tar.gz", hash = "sha256:0f747f6c29b0ddc50a55e51739abb28c83b83d97917b02e784119058a310db05"},
 ]
 
 [package.dependencies]
 aiohttp = ">=3.8.4"
-aiohttp-retry = ">=2.8.3"
+aiohttp-retry = "2.8.3"
 PyJWT = ">=2.0.0,<3.0.0"
 requests = ">=2.0.0"
 
@@ -7131,6 +7196,26 @@ files = [
 ]
 
 [[package]]
+name = "virtualenv"
+version = "20.27.1"
+description = "Virtual Python Environment builder"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "virtualenv-20.27.1-py3-none-any.whl", hash = "sha256:f11f1b8a29525562925f745563bfd48b189450f61fb34c4f9cc79dd5aa32a1f4"},
+    {file = "virtualenv-20.27.1.tar.gz", hash = "sha256:142c6be10212543b32c6c45d3d3893dff89112cc588b7d0879ae5a1ec03a47ba"},
+]
+
+[package.dependencies]
+distlib = ">=0.3.7,<1"
+filelock = ">=3.12.2,<4"
+platformdirs = ">=3.9.1,<5"
+
+[package.extras]
+docs = ["furo (>=2023.7.26)", "proselint (>=0.13)", "sphinx (>=7.1.2,!=7.3)", "sphinx-argparse (>=0.4)", "sphinxcontrib-towncrier (>=0.2.1a0)", "towncrier (>=23.6)"]
+test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess (>=1)", "flaky (>=3.7)", "packaging (>=23.1)", "pytest (>=7.4)", "pytest-env (>=0.8.2)", "pytest-freezer (>=0.4.8)", "pytest-mock (>=3.11.1)", "pytest-randomly (>=3.12)", "pytest-timeout (>=2.1)", "setuptools (>=68)", "time-machine (>=2.10)"]
+
+[[package]]
 name = "vobject"
 version = "0.9.6.1"
 description = "A full-featured Python package for parsing and creating iCalendar and vCard files"
@@ -7145,62 +7230,65 @@ python-dateutil = ">=2.4.0"
 
 [[package]]
 name = "vonage"
-version = "3.99.5a0"
+version = "4.0.0"
 description = "Python Server SDK for using Vonage APIs"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage-3.99.5a0-py3-none-any.whl", hash = "sha256:1664b6a0ccfa4dbc3862b9f8b89df54182df5570cbb298372a27947289333a8e"},
-    {file = "vonage-3.99.5a0.tar.gz", hash = "sha256:299c70f64fea0ea12e13302b72b4917e5c645fe670a6921bc291d642320a150f"},
+    {file = "vonage-4.0.0-py3-none-any.whl", hash = "sha256:b755d61af19b9969d2bd9b347fe875146520823e62e64080b5717de2e349a3b6"},
+    {file = "vonage-4.0.0.tar.gz", hash = "sha256:2621a0a004420c052e4443910d8a83215cbe3558f7212abd4df737fa7a21790c"},
 ]
 
 [package.dependencies]
-vonage-account = ">=1.0.1"
-vonage-application = ">=1.0.2"
-vonage-http-client = ">=1.4.1"
-vonage-messages = ">=1.2.1"
-vonage-number-insight = ">=1.0.1"
-vonage-numbers = ">=1.0.1"
-vonage-sms = ">=1.1.2"
-vonage-subaccounts = ">=1.0.2"
-vonage-users = ">=1.1.3"
-vonage-utils = ">=1.1.3"
-vonage-verify = ">=1.1.2"
-vonage-verify-v2 = ">=1.1.3"
-vonage-video = ">=1.0.0"
-vonage-voice = ">=1.0.4"
+vonage-account = ">=1.1.0"
+vonage-application = ">=2.0.0"
+vonage-http-client = ">=1.4.3"
+vonage-messages = ">=1.2.3"
+vonage-network-auth = ">=1.0.1"
+vonage-network-number-verification = ">=1.0.1"
+vonage-network-sim-swap = ">=1.1.1"
+vonage-number-insight = ">=1.0.5"
+vonage-numbers = ">=1.0.3"
+vonage-sms = ">=1.1.4"
+vonage-subaccounts = ">=1.0.4"
+vonage-users = ">=1.2.0"
+vonage-utils = ">=1.1.4"
+vonage-verify = ">=2.0.0"
+vonage-verify-legacy = ">=1.0.0"
+vonage-video = ">=1.0.3"
+vonage-voice = ">=1.0.6"
 
 [[package]]
 name = "vonage-account"
-version = "1.0.1"
+version = "1.1.0"
 description = "Vonage Account API package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_account-1.0.1-py3-none-any.whl", hash = "sha256:340fe9f1175e6b98885f535fbb05396c8308514b2def939d2b671f8017be36ab"},
-    {file = "vonage_account-1.0.1.tar.gz", hash = "sha256:6f392e2bb6121fc2d329b6fc3732a457a56567dff69e5a4b4d09bcf56c846045"},
+    {file = "vonage_account-1.1.0-py3-none-any.whl", hash = "sha256:24e9a016d63cf1bf039533a43c5595ca502b0d204c5d8c5f13f5dff002793ba7"},
+    {file = "vonage_account-1.1.0.tar.gz", hash = "sha256:210409ac8c9441257aacea86189d6ed8e4345938dc9e9a5c10b436e962c148ad"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.1"
-vonage-utils = ">=1.1.3"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-application"
-version = "1.0.2"
+version = "2.0.0"
 description = "Vonage Application API package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_application-1.0.2-py3-none-any.whl", hash = "sha256:2d57676d20ef2f9e10084e52f24f752cd8cf25e4349f673f5480e510ea47dd05"},
-    {file = "vonage_application-1.0.2.tar.gz", hash = "sha256:7e4a61272c2e15692f5eccf75c5c527d77824761c9b0b39d6bacb7578a08ef16"},
+    {file = "vonage_application-2.0.0-py3-none-any.whl", hash = "sha256:049fa520434aaaabd9bc6981f7fdae5b58b5f7a87e411bc6de114113c5c6536a"},
+    {file = "vonage_application-2.0.0.tar.gz", hash = "sha256:642d281ddaedb2873ba38f41f715c4fc0592232ef669d92f8636ac312ab6051a"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.1"
-vonage-utils = ">=1.1.3"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-http-client"
@@ -7237,99 +7325,149 @@ vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-messages"
-version = "1.2.1"
+version = "1.2.3"
 description = "Vonage messages package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_messages-1.2.1-py3-none-any.whl", hash = "sha256:f89d5bbdae1d772b170074886027728c7244f5f076100163d82726e50e68f48a"},
-    {file = "vonage_messages-1.2.1.tar.gz", hash = "sha256:a464f1d88166af0b686bb87351e81c74b524da50d3d2921674523636f80fae1d"},
+    {file = "vonage_messages-1.2.3-py3-none-any.whl", hash = "sha256:d20265cff55a7e5c791cb840205a446913add0a6326b342edaa44cd45cea9447"},
+    {file = "vonage_messages-1.2.3.tar.gz", hash = "sha256:a2fde7ad1fb24ab12b8f3349db18a075deb91ceeff416f455c270ddf28ce1a7a"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.1"
-vonage-utils = ">=1.1.3"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
+
+[[package]]
+name = "vonage-network-auth"
+version = "1.0.1"
+description = "Package for working with Network APIs that require Oauth2 in Python."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "vonage_network_auth-1.0.1-py3-none-any.whl", hash = "sha256:0ea569ad0801dfedb08c5837584fd371ee48933dd97203d2d77c9d234b686c9f"},
+    {file = "vonage_network_auth-1.0.1.tar.gz", hash = "sha256:7ed4de3ad9ebb70119f096d5e1f2388205eb65e0db81fd6d80382c079d4451ff"},
+]
+
+[package.dependencies]
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
+
+[[package]]
+name = "vonage-network-number-verification"
+version = "1.0.1"
+description = "Package for working with the Vonage Number Verification Network API."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "vonage_network_number_verification-1.0.1-py3-none-any.whl", hash = "sha256:b14ea52e4340f694863d57eb66ee5ddfceea08b8b4de7cc69baa829e5e6ccb25"},
+    {file = "vonage_network_number_verification-1.0.1.tar.gz", hash = "sha256:a28ab7221eb5a7170cf7f4f9fe7be4d22e24df22b217a0396ea4782d0b81ddba"},
+]
+
+[package.dependencies]
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-network-auth = ">=1.0.0"
+vonage-utils = ">=1.1.4"
+
+[[package]]
+name = "vonage-network-sim-swap"
+version = "1.1.1"
+description = "Package for working with the Vonage Sim Swap Network API."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "vonage_network_sim_swap-1.1.1-py3-none-any.whl", hash = "sha256:9d0c459a4c28b3715ed22f7008e1f4661d2eb06751ecb7fc5cf6dfca0aefea8e"},
+    {file = "vonage_network_sim_swap-1.1.1.tar.gz", hash = "sha256:7ae4d3ff4c21528af9a73d61d21bccb9b048478b2b56500fa8dd8ec02b8258cd"},
+]
+
+[package.dependencies]
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-network-auth = ">=1.0.0"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-number-insight"
-version = "1.0.1"
+version = "1.0.5"
 description = "Vonage Number Insight package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_number_insight-1.0.1-py3-none-any.whl", hash = "sha256:c00ca1ad6513b6393b902d2f3bc6261ecffafb99c933d635af360d42938da09e"},
-    {file = "vonage_number_insight-1.0.1.tar.gz", hash = "sha256:d9d7b5cdad2e76901f116a58d79b3532034ff3dc34989bf6c37636a33f7724f2"},
+    {file = "vonage_number_insight-1.0.5-py3-none-any.whl", hash = "sha256:e54a0561b7e065bfc8ded9f0919063dde45d5fc566645228dafb9e484675b8c7"},
+    {file = "vonage_number_insight-1.0.5.tar.gz", hash = "sha256:edc6c8006dddfcf2637c21873b2cc79ca30b736f900b1f71abdfe8076c31142b"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.1"
-vonage-utils = ">=1.1.3"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-numbers"
-version = "1.0.1"
+version = "1.0.3"
 description = "Vonage Numbers package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_numbers-1.0.1-py3-none-any.whl", hash = "sha256:ba81fb8898bc59eb0fbfd9b347331202b21bd18839d7e8f344f92f7c7ec98ca5"},
-    {file = "vonage_numbers-1.0.1.tar.gz", hash = "sha256:51b7d5ae75540e21d7ccd8090b4c4ab57a275929e6153b9813a7900f24a7aae5"},
+    {file = "vonage_numbers-1.0.3-py3-none-any.whl", hash = "sha256:f36fc7574a138f605a29801f8664391a0f11893f3c79d9d55d8dea3859c0176d"},
+    {file = "vonage_numbers-1.0.3.tar.gz", hash = "sha256:e6ed05d05c0a86d5c4746d3fc69518439822b5f8519c4eda2e130cda79313264"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.1"
-vonage-utils = ">=1.1.3"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-sms"
-version = "1.1.2"
+version = "1.1.4"
 description = "Vonage SMS package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_sms-1.1.2-py3-none-any.whl", hash = "sha256:90349b46263f3c0515e356df669221c682b5d4267a5eb6e815933aec7aaa2c4d"},
-    {file = "vonage_sms-1.1.2.tar.gz", hash = "sha256:634e510d3e38f38f4fdced4356525e43c2b31b318ca7e536cc5ceb325393fbcb"},
+    {file = "vonage_sms-1.1.4-py3-none-any.whl", hash = "sha256:8ac5477c12d0d2e9dc5ecd2148fa448eee0171af7a9978032bd779d326af3549"},
+    {file = "vonage_sms-1.1.4.tar.gz", hash = "sha256:18531e563a32a3cbf482f7cd4598c1cd1e65522c30cd630b974ff2640d24d8ea"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.3.1"
-vonage-utils = ">=1.1.1"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-subaccounts"
-version = "1.0.2"
+version = "1.0.4"
 description = "Vonage Subaccounts API package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_subaccounts-1.0.2-py3-none-any.whl", hash = "sha256:35fb885ad9713caaf266585fdf57d1043d28c19e1a8f4fcff2f457112cac27c1"},
-    {file = "vonage_subaccounts-1.0.2.tar.gz", hash = "sha256:9d7629eced4774e4e77ebb95a1d491eda6acdaf557b9e026778c281e3886159b"},
+    {file = "vonage_subaccounts-1.0.4-py3-none-any.whl", hash = "sha256:c8ec1b78e9e975ae29939e426412f4e4eb662dbdef799de60dc1ff5da007cea9"},
+    {file = "vonage_subaccounts-1.0.4.tar.gz", hash = "sha256:2fe5af046765224783e26c110702adaf79fd3e4c7d4388e98fdf840cff898479"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.0"
-vonage-utils = ">=1.1.2"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-users"
-version = "1.1.3"
+version = "1.2.0"
 description = "Vonage Users package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_users-1.1.3-py3-none-any.whl", hash = "sha256:9dc7c4420b688fb7bce7e2646c4c8524072a46832f22ed662dae553c2979ab89"},
-    {file = "vonage_users-1.1.3.tar.gz", hash = "sha256:d08a4a97ed6159a9b61800c3ba3966209deaa0e9286a5ed462093e8379fcf0c2"},
+    {file = "vonage_users-1.2.0-py3-none-any.whl", hash = "sha256:f32f566ce69a7cae31747de89d4552e79290149e3abae5f45735f9897351f7ca"},
+    {file = "vonage_users-1.2.0.tar.gz", hash = "sha256:091524fb46116eed8aaba567c52154e4212fd5003f4703382a0a866567049e78"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.3.1"
-vonage-utils = ">=1.1.2"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-utils"
@@ -7347,19 +7485,35 @@ pydantic = ">=2.9.2"
 
 [[package]]
 name = "vonage-verify"
-version = "1.1.2"
+version = "2.0.0"
 description = "Vonage verify package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_verify-1.1.2-py3-none-any.whl", hash = "sha256:af5384a79a84f9ed3abe8029911d4db399d5b828b7bb85e761df8c982fbfd9cd"},
-    {file = "vonage_verify-1.1.2.tar.gz", hash = "sha256:261d6966e3be1d1f928a1e91c6f252e05a48fc284051ff3c77332d2cca0cda56"},
+    {file = "vonage_verify-2.0.0-py3-none-any.whl", hash = "sha256:27baef5fe0f4a482a6db2eab6e39aacef9927917dc0b09840a81425d5d6ea766"},
+    {file = "vonage_verify-2.0.0.tar.gz", hash = "sha256:7663dfad065f4ccc6fb59dfc14df5fe17dc02757e372f027c2fa2e56862de6bb"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.3.1"
-vonage-utils = ">=1.1.1"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
+
+[[package]]
+name = "vonage-verify-legacy"
+version = "1.0.0"
+description = "Vonage legacy verify package"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "vonage_verify_legacy-1.0.0-py3-none-any.whl", hash = "sha256:5f17913826eca736ce5f90def3f98b5f1e2d7ed625cdee7f3bf175bb08576118"},
+    {file = "vonage_verify_legacy-1.0.0.tar.gz", hash = "sha256:62af73848cda503c64456f4e8957ca6d1ed34d875302017d25ec019932f79fb2"},
+]
+
+[package.dependencies]
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-verify-v2"
@@ -7379,35 +7533,35 @@ vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-video"
-version = "1.0.0"
+version = "1.0.3"
 description = "Vonage video package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_video-1.0.0-py3-none-any.whl", hash = "sha256:6b58516fd338c931e415df043d84e7bbfae20f18c162eadbcb52e2a8457c0c3f"},
-    {file = "vonage_video-1.0.0.tar.gz", hash = "sha256:86b573d5a91b46313ecc26c303cb65a220a5f61806091b56ae3161296d31cca9"},
+    {file = "vonage_video-1.0.3-py3-none-any.whl", hash = "sha256:53e3648acbf4881bf5a4ed2fa9c0edbad137ffe90e24746d90a115f380414559"},
+    {file = "vonage_video-1.0.3.tar.gz", hash = "sha256:77638a8c44512a8bbeefc858d2230c2617fd21d0215ee1f5e0d2cea475268413"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.4.0"
-vonage-utils = ">=1.1.2"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "vonage-voice"
-version = "1.0.4"
+version = "1.0.6"
 description = "Vonage voice package"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "vonage_voice-1.0.4-py3-none-any.whl", hash = "sha256:0cfb62062e52163813dd426b379922c7518a257dc2e26e786d1d7df9f35e3077"},
-    {file = "vonage_voice-1.0.4.tar.gz", hash = "sha256:7c39e87b9e05f3fe3416965395713270753ae88315b2f14d1d01072be8a04654"},
+    {file = "vonage_voice-1.0.6-py3-none-any.whl", hash = "sha256:3f497a3a96516a194da9d3768c489873818a76a05cf5055bb9a34d8086fccb69"},
+    {file = "vonage_voice-1.0.6.tar.gz", hash = "sha256:4dd9c004285ef6ceeb05ad2f8f8ca575430f40de95888859dc23bfa777be31ad"},
 ]
 
 [package.dependencies]
-pydantic = ">=2.7.1"
-vonage-http-client = ">=1.3.1"
-vonage-utils = ">=1.1.2"
+pydantic = ">=2.9.2"
+vonage-http-client = ">=1.4.3"
+vonage-utils = ">=1.1.4"
 
 [[package]]
 name = "wasabi"
@@ -7898,4 +8052,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10.14"
-content-hash = "edf5b6ed2196618ed0c5ad54b3ae54f6da858f44088bb8fb64274961c47d33e1"
+content-hash = "013685af43d97e6690bd9d78c5b0cad086603405499d52fa2e8b81c813caf4d5"
