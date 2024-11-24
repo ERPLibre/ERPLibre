@@ -57,6 +57,7 @@ cd ERPLibre
 Support Ubuntu 20.04, 22.04, 24.04 and OSX. The installation duration is more than 30 minutes.
 
 ```bash
+make install_os
 make install_odoo_16
 ```
 
