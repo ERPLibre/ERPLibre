@@ -12,18 +12,23 @@ EL_USER=${USER}
 ## https://github.com/odoo/odoo/wiki/Wkhtmltopdf ):
 # Ubuntu 20.04
 UBUNTU_VERSION=$(lsb_release -rs)
+DEBIAN_VERSION=$(lsb_release -cs)
 OS=$(lsb_release -si)
-if [ "20.04" == "${UBUNTU_VERSION}" ]; then
+if [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
+elif [ "20.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-elif [ "22.04" == "${UBUNTU_VERSION}" ]; then
-  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
 elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
-  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
+  if [ "bookworm" == "${DEBIAN_VERSION}" ]; then
+    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
+  else
+    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bullseye_amd64.deb
+  fi
 elif [[ "${OS}" == *"Ubuntu"* ]]; then
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
-  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 else
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
   exit 1
