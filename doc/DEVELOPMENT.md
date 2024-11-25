@@ -286,3 +286,10 @@ Use [prettier](https://github.com/prettier/prettier)
 ```bash
 ./script/maintenance/prettier.sh --tab-width 4 ./addons/TechnoLibre_odoo-code-generator
 ```
+
+# Pre-commit
+
+You can install pre-commit to auto-format and check lint with OCA configuration. This
+will run before commit with git.
+
+Check https://github.com/OCA/maintainer-tools/wiki/Install-pre-commit
