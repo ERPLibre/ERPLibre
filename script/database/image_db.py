@@ -240,7 +240,10 @@ def main():
 
         # not finish to empty the queue
         if dct_depend_image:
-            _logger.info("Missing dependencies, auto-run all image generation for last execution")
+            _logger.info(
+                "Missing dependencies, auto-run all image generation for last"
+                " execution"
+            )
             for depend_image, lst_module in dct_depend_image.items():
                 lst_queue_parallel.append(lst_module)
         # print command to execute

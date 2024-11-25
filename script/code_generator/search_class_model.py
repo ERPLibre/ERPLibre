@@ -119,9 +119,7 @@ def search_and_replace(
     #     new_file_content = (
     #         f'{f_lines[:t_index_second_quote]}"{models_name}"{f_lines[t_index_third_quote + len(second_char):]}'
     #     )
-    new_file_content = (
-        f'{f_lines[:t_index_second_quote]}"{models_name}"{f_lines[t_index_third_quote + len(second_char):]}'
-    )
+    new_file_content = f'{f_lines[:t_index_second_quote]}"{models_name}"{f_lines[t_index_third_quote + len(second_char):]}'
     return new_file_content
 
 

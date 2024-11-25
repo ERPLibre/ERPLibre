@@ -67,6 +67,7 @@ def get_lst_requirements_txt():
 def get_lst_manifest_py():
     return get_file_from_glob("__manifest__.py")
 
+
 def get_file_from_glob(glob_txt):
     with open(".odoo-version") as txt:
         odoo_version = txt.read()
@@ -77,7 +78,9 @@ def get_file_from_glob(glob_txt):
         a_dirname = os.path.dirname(a)
         if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
             continue
-        if a_dirname.startswith("addons") and not a_dirname.startswith(f"addons.odoo{odoo_version}"):
+        if a_dirname.startswith("addons") and not a_dirname.startswith(
+            f"addons.odoo{odoo_version}"
+        ):
             continue
         lst_v.append(a)
     return lst_v

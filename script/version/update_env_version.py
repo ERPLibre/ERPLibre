@@ -483,7 +483,9 @@ class Update:
         pycharm_is_installed = os.path.exists(".idea")
         if not pycharm_is_installed or not self.execute_log:
             return
-        os.system("./.venv/bin/python ./script/ide/pycharm_configuration.py --init")
+        os.system(
+            "./.venv/bin/python ./script/ide/pycharm_configuration.py --init"
+        )
 
     def install_erplibre(self):
         self.execute_log.append(f"Dev installation")
