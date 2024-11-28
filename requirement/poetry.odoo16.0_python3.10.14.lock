@@ -961,29 +961,30 @@ s3 = ["boto3"]
 
 [[package]]
 name = "cmake"
-version = "3.31.0.1"
+version = "3.31.1"
 description = "CMake is an open-source, cross-platform family of tools designed to build, test and package software"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "cmake-3.31.0.1-py3-none-macosx_10_10_universal2.whl", hash = "sha256:0bfb1c002f950ce34816d141d61e1def73549465c3ecce9b37e7a7ba966bbed3"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:5f0f0fddca1b52e98d8229c4f862ba2c2327a8aadad3f0bf3579fd6e3054c5d1"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:cb6a80b422a116796d5650e076396eb6f5d218a093dc2e9a57e4c5456269b23c"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5e20285159870023f4ed1bf05b4b2e414acca5b298a601a07769c8564fbfebe8"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:789b69efc404effbd8506c81874bd5c7fad0a2aed009adc624b03fd24d5e083d"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:701835343aabc0798fe7b4a3eeb5388011119a8b2753d93c2de6f4d174b3a150"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:c67fb0367749797b8a5a1c154c463a626c8427cde09c8402e0e7afbe772dff47"},
-    {file = "cmake-3.31.0.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:15866c85417d986f5f813c4826e1588aa3bbba93a5a1e5e432b4e44b2298a13a"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:01651560102fe957b7f6e466186ed90ab254874facb7371a64c7255e3b34f089"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_1_i686.whl", hash = "sha256:7739445b63ccad62715193116fe29bb48425e82dc8014c32c87503232d986270"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_1_ppc64le.whl", hash = "sha256:d73a57c8974f50448edf5b12fde8988e307da654e1a06ad3bdc50297446637f0"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_1_s390x.whl", hash = "sha256:c1bc721fb526e1398b15809d2f8599f0b7349c364b94515558a80140ca209b15"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:fde5eae9aa9357ac21f567624c9af4085b160908e8f4f703ef58e3f4c65b88c1"},
-    {file = "cmake-3.31.0.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:c987b0c30d9996fcdddccfbaefc0f8126f21cbf74f24fc3373d76136672597bc"},
-    {file = "cmake-3.31.0.1-py3-none-win32.whl", hash = "sha256:6a6936d5165ede55498e698f42fe33a58bb920644f3987069a13c9ad420ff7b7"},
-    {file = "cmake-3.31.0.1-py3-none-win_amd64.whl", hash = "sha256:64989a8d095ea056f2492ba4c78ea6f0240841d5ddb4e32cd5b7535c767c7863"},
-    {file = "cmake-3.31.0.1-py3-none-win_arm64.whl", hash = "sha256:48aefa1c288bfba6c2fbcbb58b88985e3a9eeb795d7ab97e97f02f675de55c25"},
-    {file = "cmake-3.31.0.1.tar.gz", hash = "sha256:8e513610a59b0a8bc3e85edf10aebe835dcd613d216bae98e7f2f9f84f6f9b53"},
+    {file = "cmake-3.31.1-py3-none-macosx_10_10_universal2.whl", hash = "sha256:b105b171b830de26422a1a2d3ed54540e90438b87bbd07e4d1c53b95766b9a77"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:167753a1c8c708a9462eb4b2dba9eb4a51a0dbb88a52fe4057b2f0d58cef33df"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:5a26673cdb1b6d3e5bdb799becd7e92bb64515f95e4aa70a137a2a5030c2e940"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e5d993fb9093061ffc3c4fd73297d7e4821e93be26c9fd6adf8b2b4116370084"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8c76ee41bf4a63e2d3a0ba96f8f1d226bde0d01bb7d5b8638c30a18de2518f74"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7eb8c23ab0069c40676c4dd2e2ea39de6a18aae6e155dde6073427e11f92b2f3"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:412ef66b056628d7fe40fc8ceff3d5e2c1123782f29f5dfcbd4f7587a5d03df0"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b5f390336617fe476d36415c33e40de61c7381cd3b3657450f03d2c2f99e99a5"},
+    {file = "cmake-3.31.1-py3-none-manylinux_2_31_armv7l.whl", hash = "sha256:c38a478d87280aaaf133f69dea507eefd6503584eda79b641c767d80add1e4fe"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:8584be174494458cbd1c2fef3da6f721b975f70d181a898f0d028a807ca4ee1c"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_1_i686.whl", hash = "sha256:b67ba0f3e3e4391f0dc1d8f734c57a1532cf8e24605a8470bb90b4bf88789605"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_1_ppc64le.whl", hash = "sha256:ed9fb18f8a7ad7ca483a34c8d4d400d7465f602626fdb478fc086f488297ec8d"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_1_s390x.whl", hash = "sha256:995d72c96feb64790bfc13a54bde5bd783685441c1532e1da7402a3f4705d0d9"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:585ef94540a99a7acbc7001721d5d897df2e80a549a05b17e660e8a813fc9cc1"},
+    {file = "cmake-3.31.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:7882f58fd4e7d7d87c9afa43e3e2b68f0621d5ad77bef76d9d5de99bb3d5f0d3"},
+    {file = "cmake-3.31.1-py3-none-win32.whl", hash = "sha256:1b1e1f610ff11f7674dae4b048e92481ed3bb6f4d346fbd015ab548ef542c2be"},
+    {file = "cmake-3.31.1-py3-none-win_amd64.whl", hash = "sha256:18e542c6e21b6f8d4ae1b219e894b00789ec78b4da800e3a60920dee4e33d575"},
+    {file = "cmake-3.31.1-py3-none-win_arm64.whl", hash = "sha256:9cee057f067c14bdee78ce3f56b9396051f744d20a409f0945052582f36020b5"},
+    {file = "cmake-3.31.1.tar.gz", hash = "sha256:45e09ef6fc5a0d3d4cac11bfee43ba3f9925f301660630d3d1e5457fbe12ecdf"},
 ]
 
 [package.extras]
@@ -3858,18 +3859,22 @@ numpy = ">=1.15"
 
 [[package]]
 name = "numpy-stl"
-version = "3.1.2"
+version = "3.2.0"
 description = "Library to make reading, writing and modifying both binary and ascii STL files easy."
 optional = false
-python-versions = ">3.6.0"
+python-versions = ">3.9.0"
 files = [
-    {file = "numpy_stl-3.1.2-py3-none-any.whl", hash = "sha256:a55288340c837378bf44753a1c595c6823312995acda97f27ed04db4ff1d25f3"},
-    {file = "numpy_stl-3.1.2.tar.gz", hash = "sha256:72b46950dfa3642df1c7b873cfa78a548533724b907478c567db42fdf57ee3d2"},
+    {file = "numpy_stl-3.2.0-py3-none-any.whl", hash = "sha256:697c81b107231362460aaedf4647e81ba54f54f59c896772fea7904c9c439da5"},
+    {file = "numpy_stl-3.2.0.tar.gz", hash = "sha256:5a20c3f79cddaa0abc6a4b99f5486aceed4f88152f29b19a57acc844e183fd4d"},
 ]
 
 [package.dependencies]
 numpy = "*"
 python-utils = ">=3.4.5"
+
+[package.extras]
+docs = ["mock", "python-utils", "sphinx"]
+tests = ["Sphinx", "cov-core", "coverage", "cython", "docutils", "execnet", "flake8", "numpy", "pep8", "py", "pyflakes", "pytest", "pytest-cache", "pytest-cov", "python-utils", "wheel"]
 
 [[package]]
 name = "oauth2"
@@ -3986,13 +3991,13 @@ full = ["XLMMacroDeobfuscator"]
 
 [[package]]
 name = "openai"
-version = "1.54.4"
+version = "1.55.2"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "openai-1.54.4-py3-none-any.whl", hash = "sha256:0d95cef99346bf9b6d7fbf57faf61a673924c3e34fa8af84c9ffe04660673a7e"},
-    {file = "openai-1.54.4.tar.gz", hash = "sha256:50f3656e45401c54e973fa05dc29f3f0b0d19348d685b2f7ddb4d92bf7b1b6bf"},
+    {file = "openai-1.55.2-py3-none-any.whl", hash = "sha256:3027c7fa4a33ed759f4a3d076093fcfa1c55658660c889bec33f651e2dc77922"},
+    {file = "openai-1.55.2.tar.gz", hash = "sha256:5cc0b1162b65dcdf670b4b41448f18dd470d2724ca04821ab1e86b6b4e88650b"},
 ]
 
 [package.dependencies]
@@ -5067,13 +5072,13 @@ setuptools = "*"
 
 [[package]]
 name = "pyjwt"
-version = "2.10.0"
+version = "2.10.1"
 description = "JSON Web Token implementation in Python"
 optional = false
 python-versions = ">=3.9"
 files = [
-    {file = "PyJWT-2.10.0-py3-none-any.whl", hash = "sha256:543b77207db656de204372350926bed5a86201c4cbff159f623f79c7bb487a15"},
-    {file = "pyjwt-2.10.0.tar.gz", hash = "sha256:7628a7eb7938959ac1b26e819a1df0fd3259505627b575e4bad6d08f76db695c"},
+    {file = "PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb"},
+    {file = "pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953"},
 ]
 
 [package.dependencies]
@@ -6105,13 +6110,13 @@ pydantic = ["pydantic (>=2.0)"]
 
 [[package]]
 name = "selenium"
-version = "4.26.1"
+version = "4.27.1"
 description = "Official Python bindings for Selenium WebDriver"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "selenium-4.26.1-py3-none-any.whl", hash = "sha256:1db3f3a0cd5bb07624fa8a3905a6fdde1595a42185a0617077c361dc53d104fb"},
-    {file = "selenium-4.26.1.tar.gz", hash = "sha256:7640f3f08ae7f4e450f895678e8a10a55eb4e4ca18311ed675ecc4684b96b683"},
+    {file = "selenium-4.27.1-py3-none-any.whl", hash = "sha256:b89b1f62b5cfe8025868556fe82360d6b649d464f75d2655cb966c8f8447ea18"},
+    {file = "selenium-4.27.1.tar.gz", hash = "sha256:5296c425a75ff1b44d0d5199042b36a6d1ef76c04fb775b97b40be739a9caae2"},
 ]
 
 [package.dependencies]
@@ -7642,13 +7647,13 @@ watchdog = ["watchdog"]
 
 [[package]]
 name = "wheel"
-version = "0.45.0"
+version = "0.45.1"
 description = "A built-package format for Python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "wheel-0.45.0-py3-none-any.whl", hash = "sha256:52f0baa5e6522155090a09c6bd95718cc46956d1b51d537ea5454249edb671c7"},
-    {file = "wheel-0.45.0.tar.gz", hash = "sha256:a57353941a3183b3d5365346b567a260a0602a0f8a635926a7dede41b94c674a"},
+    {file = "wheel-0.45.1-py3-none-any.whl", hash = "sha256:708e7481cc80179af0e556bbf0cc00b8444c7321e2700b8d8580231d13017248"},
+    {file = "wheel-0.45.1.tar.gz", hash = "sha256:661e1abd9198507b1409a20c02106d9670b2576e916d58f520316666abca6729"},
 ]
 
 [package.extras]
@@ -8052,4 +8057,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10.14"
-content-hash = "013685af43d97e6690bd9d78c5b0cad086603405499d52fa2e8b81c813caf4d5"
+content-hash = "87b9b4598fc2cc74ea89bc3394016dda80c31ec9e19a97c0e0d934971df1b9a3"
