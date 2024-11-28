@@ -4351,6 +4351,19 @@ files = [
 pillow = "*"
 
 [[package]]
+name = "pdfminer"
+version = "20191125"
+description = "PDF parser and analyzer"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "pdfminer-20191125.tar.gz", hash = "sha256:9e700bc731300ed5c8936343c1dd4529638184198e54e91dd2b59b64a755dc01"},
+]
+
+[package.dependencies]
+pycryptodome = "*"
+
+[[package]]
 name = "phonenumbers"
 version = "8.13.50"
 description = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
@@ -8057,4 +8070,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10.14"
-content-hash = "87b9b4598fc2cc74ea89bc3394016dda80c31ec9e19a97c0e0d934971df1b9a3"
+content-hash = "6628b50203788f5705d72bf91f39005f666f81d0960a60c4476f87dab9066163"

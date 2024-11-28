@@ -81,3 +81,5 @@ vonage-verify-v2==1.1.4
 # Fix poetry
 hubspot-api-client==10.0.0
 
+# Optional Odoo
+pdfminer
