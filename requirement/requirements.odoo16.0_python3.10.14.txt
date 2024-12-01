@@ -53,7 +53,7 @@ cryptography==3.4.8
 freezegun==0.3.15
 gevent==21.8.0
 greenlet==1.1.2
-Jinja2==2.11.3
+Jinja2==3.1.4
 libsass==0.20.1
 lxml==4.6.5
 MarkupSafe==1.1.1
