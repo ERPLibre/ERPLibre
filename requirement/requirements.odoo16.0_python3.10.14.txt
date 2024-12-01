@@ -5,7 +5,7 @@ toml
 # ERPLibre script
 giturlparse
 agithub
-GitPython==3.1.30
+GitPython==3.1.41
 retrying
 xmltodict
 openupgradelib
