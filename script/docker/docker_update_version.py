@@ -91,9 +91,9 @@ def edit_text(config):
         if is_find:
             key = "image:"
             value = lst_docker_info[i]
-            lst_docker_info[
-                i
-            ] = f"{value[:value.find(key) + len(key)]} {config.prod_version}\n"
+            lst_docker_info[i] = (
+                f"{value[:value.find(key) + len(key)]} {config.prod_version}\n"
+            )
             break
         if "ERPLibre" in docker_info:
             is_find = True

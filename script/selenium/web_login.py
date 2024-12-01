@@ -38,13 +38,13 @@ def run(config, selenium_tool):
     try:
         connexion_button = selenium_tool.driver.find_element(
             By.XPATH,
-            "/html/body/div/div/div/form/div[3]/button"
+            "/html/body/div/div/div/form/div[3]/button",
             # '//button[contains(text(), "Log in")]'
         )
     except Exception:
         connexion_button = selenium_tool.driver.find_element(
             By.XPATH,
-            "/html/body/div/main/div/form/div[3]/button"
+            "/html/body/div/main/div/form/div[3]/button",
             # '//button[contains(text(), "Connexion")]'
         )
 

@@ -2,7 +2,7 @@
 
 ERPLibre is a CRM/ERP platform including automated installation, maintenance, and development of open source modules of
 the Odoo community version. It is a "soft-fork" of the Odoo Community Edition (OCE), meaning it aims at contributing back
-upstream. 
+upstream.
 It is based on a set of production-ready modules, supported by the Odoo Community Association (OCA) and an
 ecosystem of specialized companies. This solution ensures digital sovereignty in a local environment while integrating
 pre-trained Generative Transformers (GPT), bringing an additional dimension to data management and automation.
@@ -17,7 +17,7 @@ Select a guide to install your environment.
 
 This has been tested in Debian 12 and Ubuntu 24.04 LTS.
 
-**Note** : This is meant for a test environment, on a local network or similar environment not directly exposed to the Internet. 
+**Note** : This is meant for a test environment, on a local network or similar environment not directly exposed to the Internet.
 
 1. Make sure Docker and nginx web server are installed:<BR>
 ```sudo apt install docker docker-compose nginx```
@@ -59,6 +59,7 @@ cd ERPLibre
 Support Ubuntu 20.04, 22.04, 24.04 and OSX. The installation duration is more than 30 minutes.
 
 ```bash
+make install_os
 make install_odoo_16
 ```
 

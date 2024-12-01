@@ -423,18 +423,16 @@ class Update:
                     os.rename(addons_path, addons_path + "TEMP")
 
             # TODO need to be force if installation path is all good, return True
-            if self.config.is_in_installation:
+            if self.config.install_dev:
                 _logger.info("Installation.")
-                status = self.install_erplibre(
-                    install_system=self.config.install,
-                    install_dev=self.config.install_dev,
-                )
+                status = self.install_erplibre()
 
                 # Re-update if launch installation
-                self._update_directory_to_link(
-                    VENV_FILE, self.expected_venv_name
-                )
-                # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
+                if self.config.install_dev:
+                    self._update_directory_to_link(
+                        VENV_FILE, self.expected_venv_name
+                    )
+                    # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
             elif self.config.is_in_switch:
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
@@ -485,17 +483,18 @@ class Update:
         pycharm_is_installed = os.path.exists(".idea")
         if not pycharm_is_installed or not self.execute_log:
             return
-        os.system("./.venv/bin/python ./script/ide/pycharm_configuration.py --init")
+        os.system(
+            "./.venv/bin/python ./script/ide/pycharm_configuration.py --init"
+        )
 
-    def install_erplibre(self, install_system=False, install_dev=False):
-        status = 0
+    def install_erplibre(self):
+        self.execute_log.append(f"Dev installation")
+        status = os.system("./script/install/install_locally_dev.sh")
+        return status
 
-        if install_system:
-            self.execute_log.append(f"System installation")
-            status = os.system("./script/install/install_dev.sh")
-        if install_dev and not status:
-            self.execute_log.append(f"Dev installation")
-            status = os.system("./script/install/install_locally_dev.sh")
+    def install_system(self):
+        self.execute_log.append(f"System installation")
+        status = os.system("./script/install/install_dev.sh")
         return status
 
     def update_link_file(
@@ -688,12 +687,20 @@ def main():
     update.validate_version()
 
     _logger.info("Validate environment")
-    status = update.validate_environment()
-    if update.config.force_install or not status:
+    status = 0
+    if update.config.install_dev or update.config.is_in_switch:
+        status = update.validate_environment()
+    if update.config.install:
+        status = update.install_system()
+    if (
+        update.config.force_install
+        or update.config.install_dev
+        or update.config.is_in_switch
+    ) and not status:
         update.update_environment()
     update.print_log()
 
-    if update.config.is_in_installation:
+    if update.config.install_dev:
         # Update pycharm configuration
         update.pycharm_update()
 

@@ -106,7 +106,10 @@ if [[ ! -f ${VENV_REPO_PATH} ]]; then
 fi
 
 # Make .venv active
-
+if [[ "${OSTYPE}" == "darwin"* ]]; then
+  echo -e "=======>source .venv/bin/activate here!!!    <==============="
+  source .venv/bin/activate
+fi
 echo -e "\n---- Installing poetry dependency ----"
 ${VENV_PATH}/bin/pip install --upgrade pip
 # Force python instead of changing env

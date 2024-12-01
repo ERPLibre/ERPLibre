@@ -34,6 +34,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Script search class model can output into json format and support field information
 - Improve Docker minimal installation docs in README for Ubuntu, test with Debian (https://github.com/ERPLibre/ERPLibre/issues/73)
 - Statistic script to show evolution module into ERPLibre support Odoo 17 and Odoo 18
+- Latest version wkhtmltopdf 0.12.6.1-3
 
 ### Fixed
 
@@ -41,6 +42,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Improve python code writer efficience
 - Config generator supporting space into ERPLibre directory
 - Script to update Poetry support @ URL
+- OSX and recent Ubuntu installation
 
 ## [1.5.0] - 2023-07-07
 
