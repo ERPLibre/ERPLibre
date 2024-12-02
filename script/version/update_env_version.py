@@ -4,13 +4,13 @@
 
 # This script need only basic importation
 import argparse
-import logging
 import json
+import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
-import subprocess
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -457,7 +457,15 @@ class Update:
 
             # Force create addons link
             if os.path.isdir(ADDONS_PATH):
-                os.remove(ADDONS_PATH)
+                if os.path.islink(ADDONS_PATH):
+                    os.remove(ADDONS_PATH)
+                else:
+                    os.rename(
+                        ADDONS_PATH,
+                        ADDONS_PATH
+                        + "_"
+                        + time.strftime('%Yy%mm%dd-%Hh%Mm%Ss'),
+                    )
             os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
 
