@@ -14,7 +14,7 @@ if [ ! -f "${CONFIG_PATH}" ]; then
   fi
 fi
 
-coverage run -p ./odoo/odoo-bin -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --log-level=test --test-enable --stop-after-init "$@"
+coverage run -p ./odoo/odoo-bin -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --log-level=test --test-enable --no-http --stop-after-init "$@"
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "${Red}Error${Color_Off} run.sh"

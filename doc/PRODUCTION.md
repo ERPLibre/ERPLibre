@@ -112,7 +112,7 @@ database. WARNING, this is not safe for production, you will expose all data.
 Update all features.
 
 ```bash
-./run.sh --limit-time-real 99999 --stop-after-init -u all -d DATABASE
+./run.sh --limit-time-real 99999 --no-http --stop-after-init -u all -d DATABASE
 ```
 
 # Postgresql

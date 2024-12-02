@@ -49,17 +49,17 @@ Great idea to run it when updating Odoo, it updates each module database.
 First execution, install you requirements, choose a new database.
 
 ```bash
-./run.sh -d [DATABASE] -i [module to test] --test-enable --stop-after-init --log-level=test
+./run.sh -d [DATABASE] -i [module to test] --test-enable --no-http --stop-after-init --log-level=test
 ```
 
 Execute your test on a specific module.
 
 ```bash
-./run.sh -d [DATABASE] -u [module to test] --test-enable --stop-after-init --log-level=test
+./run.sh -d [DATABASE] -u [module to test] --test-enable --no-http --stop-after-init --log-level=test
 ```
 
 Execute your test on a specific module with tags.
 
 ```bash
-./run.sh -d [DATABASE] -u [module to test] --test-enable --stop-after-init --log-level=test --test-tags [module_name][tags]
+./run.sh -d [DATABASE] -u [module to test] --test-enable --no-http --stop-after-init --log-level=test --test-tags [module_name][tags]
 ```
