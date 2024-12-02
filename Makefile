@@ -938,6 +938,7 @@ config_install:
 
 .PHONY: config_update
 config_update:
+	# Need http to configure the file config.conf, or will disable it
 	./run.sh -c config.conf -s --stop-after-init
 
 .PHONY: config_update_over_proxy
