@@ -17,6 +17,8 @@ selenium
 # mmg # depend on weasyprint 59.0 and depend on old version pillow 9.0.1
 uvloop
 python-randomword-fr
+isort
+pykeepass
 
 # For OSX
 cython
@@ -51,7 +53,7 @@ pre-commit
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
 cryptography==3.4.8
 freezegun==0.3.15
-gevent==21.8.0
+gevent==21.12.0
 greenlet==1.1.2
 Jinja2==2.11.3
 libsass==0.20.1
@@ -66,7 +68,7 @@ PyPDF2==1.26.0
 python-ldap==3.4.0
 pyusb==1.0.2
 requests==2.30.0
-reportlab==3.5.59
+reportlab==3.6.5
 urllib3==1.26.5
 Werkzeug==2.0.2
 xlrd==1.2.0
@@ -83,3 +85,18 @@ hubspot-api-client==10.0.0
 
 # Optional Odoo
 pdfminer
+
+# Optional PyDev
+pydevd-odoo
+
+# For fixing module ocr_data_retrieval check file ocr_data_retrieval/models/ocr_data_template.py
+spacy==3.8.2
+
+# Fix update dateutil from odoo
+python-dateutil>=2.8.2
+
+# Extra module
+meteostat
+
+# Force upgrade package to fix Ubuntu 25.04
+virtualenv==20.30.0
