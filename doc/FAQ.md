@@ -122,6 +122,36 @@ git reset --hard REF_OF_REMOTES/m
 > git reset --hard remotes/origin/rel/8953/zd552kl/7.1.1-11.40.208
 ```
 
+### fatal: GitCommandError: git command failure
+
+Example of error after an installation with git-repo:
+
+```
+raise GitCommandError(
+git_command.GitCommandError: GitCommandError: git command failure
+    Project: manifests
+    Args: rev-list ^e96a83f03665ecc1b151331776909be32d5e2c7b HEAD --
+    Stdout:
+None
+    Stderr:
+fatal: bad revision 'HEAD'
+Skipped fetching project manifests (already have persistent ref)
+fatal: GitCommandError: git command failure
+    Project: manifests
+    Args: rev-list ^HEAD c8e64956f188f77abcfa7ff0e764af97162d3071 --
+    Stdout:
+None
+    Stderr:
+fatal: bad revision '^HEAD'
+```
+
+Solution: Check files into directory `cd .repo/manifests` with commande `git status`. If
+you
+have some differences in stage, you can try `git reset --hard` and redo the
+installation.
+
+If it's not working, re-clone the repo and do a fresh installation.
+
 ## OSX installation
 
 ### Docker installation
