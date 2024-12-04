@@ -45,7 +45,7 @@ RUN cd $ODOO_PREFIX && \
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
-    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}"
+    ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
