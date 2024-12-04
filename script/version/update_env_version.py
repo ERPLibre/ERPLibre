@@ -101,6 +101,11 @@ def get_config():
         help="Install developer environment.",
     )
     parser.add_argument(
+        "--partial_install",
+        action="store_true",
+        help="Preparation environment file, without installation. Docker need this",
+    )
+    parser.add_argument(
         "--force_install",
         action="store_true",
         help="Will erase .venv and create symbolic link after installation.",
@@ -696,13 +701,14 @@ def main():
 
     _logger.info("Validate environment")
     status = 0
-    if update.config.install_dev or update.config.is_in_switch:
+    if update.config.install_dev or update.config.partial_install or update.config.is_in_switch:
         status = update.validate_environment()
     if update.config.install:
         status = update.install_system()
     if (
         update.config.force_install
         or update.config.install_dev
+        or update.config.partial_install
         or update.config.is_in_switch
     ) and not status:
         update.update_environment()
