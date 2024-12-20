@@ -727,6 +727,13 @@ tag_push_all:
 open_terminal:
 	./script/open_terminal_code_generator.sh
 
+##############
+#  selenium  #
+##############
+.PHONY: open_selenium
+open_selenium:
+	./.venv/bin/python ./script/selenium/web_login.py
+
 ############
 #  format  #
 ############
