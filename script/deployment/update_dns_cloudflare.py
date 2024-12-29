@@ -27,17 +27,19 @@ def get_config():
         Can update all old_ip to new_ip.
         When auto_sync is enable:
         Check zone and name on cloudflare and compare with public ip, update all old ip with new ip if different.
-        You need your profile in file ~/.cloudflare/cloudflare.cfg
+        1-you need a valid python3 interpreter running with cloudflare module installed:
+            pip3 install cloudflare==2.20.0
+        2-You need your profile in file ~/.cloudflare/cloudflare.cfg
         Example:
-        [profil_name]
-        email=email@email.com
-        token=TOKEN
+            [profil_name]
+            email=email@email.com
+            token=TOKEN (Use the global API key so that it works)
 
         Configure locally a crontab and adapt it, crontab -e, specify an existing DNS
         Example each 5 minutes:
-        */5 * * * * USERNAME cd /home/USERNAME/ERPLibre && ./script/deployment/update_dns_cloudflare.py --profile profil_name --zone_name example.com --dns_name example.com --auto_sync
+        */5 * * * * USERNAME cd /home/USERNAME/ERPLibre && python3 script/deployment/update_dns_cloudflare.py --profile profil_name --zone_name example.com --dns_name example.com --auto_sync
         Example each minute:
-        * * * * * USERNAME cd /home/USERNAME/ERPLibre && ./script/deployment/update_dns_cloudflare.py --profile profil_name --zone_name example.com --dns_name example.com --auto_sync
+        * * * * * USERNAME cd /home/USERNAME/ERPLibre && python3 script/deployment/update_dns_cloudflare.py --profile profil_name --zone_name example.com --dns_name example.com --auto_sync
 """,
         epilog="""\
 """,
