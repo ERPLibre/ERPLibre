@@ -133,30 +133,61 @@ CAUTION, this will delete user's home, it's irrevocable.
 
 # Update ip when public ip change with CloudFlare and crontab
 
+First you need a valid python3 interpreter running with cloudflare module installed: (make sure your pip3 pointing the right python3)
+
+```bash
+pip3 install cloudflare==2.20.0
+```
+
+Then you need to create the cfg files with credentials for your cloudflare account.
+
 ```bash
 mkdir ~/.cloudflare
 ```
-
 Edit ~/.cloudflare/cloudflare.cfg
 
 ```
 [PROFILE_NAME]
 email=EMAIL
-token=TOKEN
+token=TOKEN (Use the global API key so that it works)
 ```
 
-Add your cron
+Add your cron and specify the python3 you want to use with it.
+- USER is the local user with permissions to execute the script
+- PATH is path to inside of ERPLibre/deployment/ folder
+- PROFILE_NAME must match the PROFILE_NAME in cloudflare.cfg
+- CLOUDFLARE_ZONE_NAME is the name of the website zone on cloudflare
+- DNS_NAME is the name of one DNS A record name available on that zone
+
+Notes:
+- Only one crontab is required because the script will automatically research all available zones with outdated ip and update them on all A records.
+- For each crontab run, if public IP did not change compared to what is on cloudflare, the script will not do unnecessary changes and let everything as is.
 
 ```bash
 vim /etc/crontab
 # Add
-*/5 * * * * USER cd PATH && ./script/deployment/update_dns_cloudflare.py --profile PROFILE_NAME --zone_name CLOUDFLARE_ZONE_NAME --dns_name DNS_NAME --auto_sync
+*/5 * * * * USER cd PATH && python3 script/deployment/update_dns_cloudflare.py --profile PROFILE_NAME --zone_name CLOUDFLARE_ZONE_NAME --dns_name DNS_NAME --auto_sync
 ```
 
 Check log with
 
 ```bash
 sudo journalctl -feu cron
+```
+
+If you want to log what is happening and when the script is run, like logging when ip changes, you can add a logging part to your cron
+
+```bash
+vim /etc/crontab
+# Add
+*/5 * * * * USER cd PATH && python3 script/deployment/update_dns_cloudflare.py --profile PROFILE_NAME --zone_name CLOUDFLARE_ZONE_NAME --dns_name DNS_NAME --auto_sync > /home/USER/logs/update_dns_ZONE_NAME.log 2>&1
+
+```
+
+You can then read all logs with this command (Need to have ts installed: sudo apt install moreutils)
+
+```bash
+tail -f /home/USER/logs/update_dns_ZONE_NAME.log | ts
 ```
 
 # Docker
