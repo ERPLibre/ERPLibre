@@ -195,6 +195,28 @@ class SeleniumLib(object):
         )
         button.click()
 
+    def click_canvas_form(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        timeout: int = 5,
+        form="carre",
+    ):
+
+        # ele = self.driver.find_element(by, value)
+        ele = self.get_element(by, value, timeout)
+        actions = ActionChains(self.driver)
+        actions.move_to_element_with_offset(ele, -50, -50)
+        actions.click_and_hold()
+        if form == "carre":
+            actions.move_by_offset(50, 0)
+            actions.move_by_offset(0, 50)
+            actions.move_by_offset(-50, 0)
+            actions.move_by_offset(0, -50)
+
+        actions.release()
+        actions.perform()
+
     def input_text_with_mouse_move(
         self,
         by: str = By.ID,
@@ -402,7 +424,7 @@ def fill_parser(parser):
         "--selenium_default_delay",
         default=0.4,
         type=float,
-        help="Pause at the end before close video.",
+        help="Pause at the end of an action.",
     )
 
     group_browser = parser.add_argument_group(title="Browser")
