@@ -8,7 +8,6 @@ import sys
 import time
 
 import selenium_lib
-
 from selenium.webdriver.common.by import By
 
 

@@ -2,21 +2,22 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-from randomwordfr import RandomWordFr
-import re
 import os
+import re
 import sys
 import time
+from subprocess import getoutput
+
+from randomwordfr import RandomWordFr
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.firefox.service import Service
-from subprocess import getoutput
-from selenium.webdriver import ActionChains
-from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 
 
 class SeleniumLib(object):
@@ -35,7 +36,7 @@ class SeleniumLib(object):
             )
         self.driver = None
 
-    def configure(self):
+    def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
         firefox_options = webdriver.FirefoxOptions()
         if not self.config.not_private_mode:
@@ -133,7 +134,8 @@ class SeleniumLib(object):
             )
 
         # Ouvrez la page web
-        self.driver.get(f"{self.config.url}/web")
+        if not ignore_open_web:
+            self.driver.get(f"{self.config.url}/web")
 
         # Close tab opening by DarkReader
         if self.config.not_private_mode and not self.config.no_dark_mode:
@@ -540,6 +542,8 @@ class SeleniumLib(object):
     def start_record(self):
         # Démarrer l'enregistrement
         if self.config.record_mode:
+            if self.config.record_wait_before_start_time:
+                time.sleep(int(self.config.record_wait_before_start_time))
             # Sync before record
             has_sync_error = False
             if self.config.sync_file_record_read:
@@ -635,6 +639,10 @@ def fill_parser(parser):
         "--record_mode",
         action="store_true",
         help="Start recording (not finish to be implemented).",
+    )
+    group_record.add_argument(
+        "--record_wait_before_start_time",
+        help="Time to wait in second before start recording.",
     )
     parser.add_argument(
         "--video_suffix",
