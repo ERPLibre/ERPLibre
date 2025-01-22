@@ -34,18 +34,24 @@ def run(config, selenium_tool):
     # Trouvez les éléments du formulaire
     courriel_input = selenium_tool.driver.find_element(By.NAME, "login")
     mot_de_passe_input = selenium_tool.driver.find_element(By.NAME, "password")
-    try:
-        connexion_button = selenium_tool.driver.find_element(
-            By.XPATH,
-            "/html/body/div/div/div/form/div[3]/button",
-            # '//button[contains(text(), "Log in")]'
-        )
-    except Exception:
-        connexion_button = selenium_tool.driver.find_element(
-            By.XPATH,
-            "/html/body/div/main/div/form/div[3]/button",
-            # '//button[contains(text(), "Connexion")]'
-        )
+    div_connexion_button = selenium_tool.driver.find_element(
+        By.CLASS_NAME, "oe_login_buttons"
+    )
+    connexion_button = div_connexion_button.find_element(
+        By.CLASS_NAME, "btn-primary"
+    )
+    # try:
+    #     connexion_button = selenium_tool.driver.find_element(
+    #         By.XPATH,
+    #         "/html/body/div/div/div/form/div[3]/button",
+    #         # '//button[contains(text(), "Log in")]'
+    #     )
+    # except Exception:
+    #     connexion_button = selenium_tool.driver.find_element(
+    #         By.XPATH,
+    #         "/html/body/div/main/div/form/div[3]/button",
+    #         # '//button[contains(text(), "Connexion")]'
+    #     )
 
     # Remplissez le courriel et le mot de passe
     courriel_input.send_keys(config.default_email_auth)
