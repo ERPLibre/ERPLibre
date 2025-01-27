@@ -383,6 +383,21 @@
         name: sshd
         state: restarted
 
+    - name: Ensure apt-listbugs is installed
+      apt:
+        name: apt-listbugs
+        state: present
+
+    - name: Ensure debsums is installed
+      apt:
+        name: debsums
+        state: present
+
+    - name: Ensure needrestart is installed
+      apt:
+        name: needrestart
+        state: present
+
     # 14. Ensure log rotation is enabled and configured
     - name: Ensure rsyslog is installed
       apt:
