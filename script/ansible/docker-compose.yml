@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  ##########################################################
+  # 1) STEPCA - Autorité de certification ACME interne
+  ##########################################################
+  stepca:
+    image: smallstep/step-ca:latest
+    container_name: stepca
+    environment:
+      STEPPATH: /home/step
+    volumes:
+      - ./step_data:/home/step
+    expose:
+      - '9000'  # Port interne (ACME / API)
+    networks:
+      - back_net
+
+  ##########################################################
+  # 2) KEYCLOAK
+  ##########################################################
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command: >
+      start-dev
+      --http-relative-path /auth
+    expose:
+      - '8080'
+    networks:
+      - back_net
+
+  ##########################################################
+  # 3) ERPLibre : MySQL (erplibre_db) + PHP-FPM (erplibre_php)
+  ##########################################################
+  erplibre_db:
+    image: mysql:5.7
+    container_name: erplibre_db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: erplibre
+      MYSQL_USER: erplibre
+      MYSQL_PASSWORD: erplibre
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --collation-server=utf8mb4_unicode_ci
+      --character-set-server=utf8mb4
+    volumes:
+      - ./erplibre_db_data:/var/lib/mysql
+    networks:
+      - back_net
+
+  erplibre_php:
+    # Dans l'idéal, tu construis l'image depuis le code ERPLibre (backend).
+    # Sinon, s'ils fournissent une image Docker "prête à l'emploi", utilise-la ici.
+    build:
+      context: ./backend
+    container_name: erplibre_php
+    environment:
+      DB_HOST: erplibre_db
+      DB_DATABASE: erplibre
+      DB_USERNAME: erplibre
+      DB_PASSWORD: erplibre
+    expose:
+      - "9000"
+    depends_on:
+      - erplibre_db
+    networks:
+      - back_net
+
+  ##########################################################
+  # 4) CERTBOT - pour récupérer des certs depuis StepCA
+  ##########################################################
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    volumes:
+      - ./certs:/etc/letsencrypt
+    networks:
+      - back_net
+    # Pas d'expose: on l'invoque manuellement ou via cron
+
+  ##########################################################
+  # 5) NGINX - Reverse Proxy unique pour tout
+  ##########################################################
+  nginx:
+    image: nginx:latest
+    container_name: nginx_proxy
+    depends_on:
+      - stepca
+      - keycloak
+      - erplibre_php
+      - erplibre_db
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs
+    networks:
+      - front_net
+      - back_net
+
+networks:
+  front_net:
+    driver: bridge
+  back_net:
+    driver: bridge
+

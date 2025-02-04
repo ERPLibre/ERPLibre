@@ -1,0 +1,130 @@
+- name: Installation et Configuration de Step-CA
+  hosts: Kbr001
+  become: yes
+  vars:
+    stepca_user: step
+    stepca_group: step
+    stepca_home: /home/step
+    stepca_data_dir: /home/step/.step
+    stepca_service: step-ca
+    stepca_port: 9000
+    stepca_domain: "certificats.delaviorne.net"
+    stepca_init_password: "ChangeMe123!"  # À CHANGER
+    stepca_provisioner: "admin"
+
+  tasks:
+    ##################################################################
+    # 1️⃣ Installation de Step-CA et Step-CLI
+    ##################################################################
+    - name: Télécharger et installer Step-CLI et Step-CA (Ubuntu/Debian)
+      apt:
+        deb: "{{ item }}"
+      with_items:
+        - "https://dl.smallstep.com/cli/docs-ca-install/latest/step-cli_amd64.deb"
+        - "https://dl.smallstep.com/certificates/docs-ca-install/latest/step-ca_amd64.deb"
+      when: ansible_os_family == "Debian"
+
+    - name: Télécharger et installer Step-CLI et Step-CA (CentOS/RHEL)
+      yum:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - "https://dl.smallstep.com/gh-release/certificates/pkg/latest/step-cli_amd64.rpm"
+        - "https://dl.smallstep.com/gh-release/certificates/pkg/latest/step-ca_amd64.rpm"
+      when: ansible_os_family == "RedHat"
+
+    - name: Vérifier l'installation de Step-CA et Step-CLI
+      command: step version
+      register: step_version
+      changed_when: false
+
+    ##################################################################
+    # 2️⃣ Création de l'utilisateur Step-CA
+    ##################################################################
+    - name: Créer l'utilisateur Step-CA
+      user:
+        name: "{{ stepca_user }}"
+        comment: "Utilisateur pour Step-CA"
+        home: "{{ stepca_home }}"
+        shell: /bin/false
+        createhome: yes
+
+    - name: Créer le dossier de configuration Step-CA
+      file:
+        path: "{{ stepca_data_dir }}"
+        state: directory
+        owner: "{{ stepca_user }}"
+        group: "{{ stepca_group }}"
+        mode: '0755'
+
+    ##################################################################
+    # 3️⃣ Initialisation de Step-CA
+    ##################################################################
+    - name: Vérifier si Step-CA est déjà initialisé
+      stat:
+        path: "{{ stepca_data_dir }}/ca.json"
+      register: ca_json
+
+    - name: Initialiser Step-CA (si nécessaire)
+      command: step ca init --name "My Internal CA" --dns "{{ stepca_domain }}" --address ":{{ stepca_port }}" --provisioner "{{ stepca_provisioner }}" --password-file /tmp/stepca_pass
+      args:
+        creates: "{{ stepca_data_dir }}/ca.json"
+      become_user: "{{ stepca_user }}"
+      when: not ca_json.stat.exists
+
+    - name: Supprimer le fichier de mot de passe temporaire
+      file:
+        path: /tmp/stepca_pass
+        state: absent
+
+    ##################################################################
+    # 4️⃣ Création du service systemd
+    ##################################################################
+    - name: Configurer Step-CA comme un service systemd
+      copy:
+        dest: "/etc/systemd/system/{{ stepca_service }}.service"
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Step CA Service
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/step-ca {{ stepca_data_dir }}/ca.json
+          Restart=always
+          User={{ stepca_user }}
+          Group={{ stepca_group }}
+          Environment=STEPPATH={{ stepca_data_dir }}
+          WorkingDirectory={{ stepca_data_dir }}
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Recharger systemd
+      command: systemctl daemon-reload
+
+    - name: Activer et démarrer Step-CA
+      systemd:
+        name: "{{ stepca_service }}"
+        enabled: yes
+        state: started
+
+    ##################################################################
+    # 5️⃣ Vérification du service
+    ##################################################################
+    - name: Vérifier que Step-CA tourne bien
+      shell: "systemctl is-active {{ stepca_service }}"
+      register: stepca_status
+      failed_when: stepca_status.stdout != "active"
+      changed_when: false
+
+    - name: Tester si Step-CA répond sur le port {{ stepca_port }}
+      uri:
+        url: "https://localhost:{{ stepca_port }}/acme/acme-directory"
+        method: GET
+        status_code: 200
+        validate_certs: no
+      register: stepca_test
+      failed_when: stepca_test.status != 200
+      changed_when: false
+

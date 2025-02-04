@@ -1,0 +1,19 @@
+- name: Étendre la partition root avec growpart et resize2fs
+  hosts: laPoste
+  become: yes
+  tasks:
+
+    - name: Installer cloud-utils (nécessaire pour growpart)
+      apt:
+        name: cloud-guest-utils
+        state: present
+      ignore_errors: yes
+
+    - name: Étendre la partition root avec growpart
+      command: "growpart /dev/sda 1"
+      ignore_errors: yes
+
+    - name: Étendre le système de fichiers ext4
+      command: "resize2fs /dev/sda1"
+      ignore_errors: yes
+

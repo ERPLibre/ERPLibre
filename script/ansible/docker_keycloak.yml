@@ -1,0 +1,42 @@
+---
+- name: Déployer Keycloak dans Docker
+  hosts: Kbr001 
+  become: true
+
+  tasks:
+    - name: Télécharger l'image Docker Keycloak
+      docker_image:
+        name: quay.io/keycloak/keycloak
+        tag: latest
+        source: pull
+
+    - name: Créer un répertoire pour les données de Keycloak
+      file:
+        path: /opt/keycloak
+        state: directory
+        mode: '0755'
+
+    - name: Exécuter le conteneur Keycloak
+      docker_container:
+        name: keycloak
+        image: quay.io/keycloak/keycloak:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "8080:8080"
+          - "8443:8443"
+        volumes:
+          - /opt/keycloak:/opt/keycloak/data
+        env:
+          KEYCLOAK_ADMIN: "admin"
+          KEYCLOAK_ADMIN_PASSWORD: "admin"
+        command: start-dev
+
+    - name: Afficher l'état du conteneur Keycloak en cours d'exécution
+      command: docker ps
+      register: docker_ps_output
+
+    - name: Imprimer l'état de Keycloak
+      debug:
+        var: docker_ps_output.stdout
+

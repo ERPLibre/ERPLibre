@@ -1,0 +1,55 @@
+---
+- name: Ajouter les agents
+  hosts: Kbr001
+  become: yes
+  tasks:
+
+    - name: Installer GPG si manquant
+      apt:
+        name: gnupg
+        state: present
+
+    # 1. Ajouter la clé publique du dépôt Icinga
+    - name: Ajouter la clé GPG du dépôt Icinga
+      apt_key:
+        url: https://packages.icinga.com/icinga.key
+        state: present
+
+    # 2. Ajouter le dépôt Icinga (Debian/Ubuntu)
+    - name: Ajouter le dépôt Icinga pour Debian/Ubuntu
+      apt_repository:
+        repo: "deb https://packages.icinga.com/{{ ansible_distribution | lower }} icinga-{{ ansible_distribution_release | lower }} main"
+        state: present
+
+    # 3. Mettre à jour le cache APT
+    - name: Mettre à jour le cache APT
+      apt:
+        update_cache: yes
+
+    # 4. Installer les paquets nécessaires d'Icinga
+    - name: Installer les paquets Icinga
+      apt:
+        name:
+          - icinga2
+          - monitoring-plugins
+        state: latest
+
+    - name: Install QEMU Guest Agent
+      apt:
+        name: qemu-guest-agent
+        state: present
+
+    - name: Enable and start QEMU Guest Agent
+      systemd:
+        name: qemu-guest-agent
+        enabled: yes
+        state: started
+
+    - name: Verify QEMU Guest Agent is running
+      shell: systemctl is-active qemu-guest-agent
+      register: qemu_status
+      changed_when: false
+
+    - name: Display QEMU Guest Agent status
+      debug:
+        msg: "QEMU Guest Agent is {{ qemu_status.stdout }}"

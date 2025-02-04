@@ -1,0 +1,552 @@
+---
+- name: Apply security hardening based on Linys recommendations
+  hosts: Kbr001 
+  become: yes
+  tasks:
+    - name: Ensure UFW is installed
+      apt:
+        name: ufw
+        state: present
+
+    - name: Allow SSH immediately
+      command: ufw allow 22/tcp
+
+    - name: Set default policy to deny incoming traffic
+      command: ufw default deny incoming
+
+    - name: Set default policy to allow outgoing traffic
+      command: ufw default allow outgoing
+
+    - name: Allow HTTP and HTTPS
+      command: ufw allow {{ item }}/tcp
+      loop:
+        - 80
+        - 443
+
+    - name: Allow ICINGA2 ports
+      command: ufw allow 5665/tcp
+
+    - name: Allow OpenVPN port
+      command: ufw allow 1194/udp
+
+    - name: Enable UFW without confirmation
+      command: echo "y" | ufw enable
+
+    - name: Verify UFW rules
+      command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    - name: Display UFW configuration
+      debug:
+        msg: "{{ ufw_status.stdout }}"
+
+    # 4. Installation des mises à jour & des rustines
+    - name: Mettre à jour la liste des paquets APT
+      apt:
+        update_cache: yes
+
+    - name: Mettre à jour uniquement les paquets installés
+      apt:
+        upgrade: yes
+
+
+    # 5. Ensure correct file permissions on sensitive files
+    - name: Set permissions on /etc/passwd
+      file:
+        path: /etc/passwd
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Set permissions on /etc/shadow
+      file:
+        path: /etc/shadow
+        owner: root
+        group: shadow
+        mode: '0640'
+
+    - name: Set permissions on /etc/group
+      file:
+        path: /etc/group
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Set permissions on /etc/gshadow
+      file:
+        path: /etc/gshadow
+        owner: root
+        group: shadow
+        mode: '0640'
+
+    # 6. Disable core dumps (to prevent information leakage)
+    - name: Disable core dumps
+      lineinfile:
+        path: /etc/security/limits.conf
+        line: '* hard core 0'
+        state: present
+
+    - name: Ensure core dumps are disabled via sysctl
+      sysctl:
+        name: fs.suid_dumpable
+        value: '0'
+        state: present
+        sysctl_set: yes
+
+    # 7. Restrict cron jobs
+    - name: Restrict cron jobs to root and authorized users
+      file:
+        path: /etc/cron.deny
+        state: absent
+
+    - name: Ensure /etc/cron.allow exists and has correct permissions
+      file:
+        path: /etc/cron.allow
+        state: touch
+        owner: root
+        group: root
+        mode: '0640'
+
+    # 7. Améliorer la sécurité des répertoires temporaires
+    - name: Install libpam-tmpdir and apt-listbugs
+      apt:
+        name:
+          - libpam-tmpdir
+        state: present
+
+    # 8. Disable IPv6 if not in use
+    - name: Disable IPv6 via sysctl
+      sysctl:
+        name: net.ipv6.conf.all.disable_ipv6
+        value: '1'
+        state: present
+        sysctl_set: yes
+        reload: yes
+
+    # Adjust kernel and sysctl parameters for hardening
+    - name: Disable TTY line discipline autoload
+      sysctl:
+        name: dev.tty.ldisc_autoload
+        value: '0'
+        state: present
+        sysctl_set: yes
+
+    - name: Use PID in core dump filenames
+      sysctl:
+        name: kernel.core_uses_pid
+        value: '1'
+        state: present
+        sysctl_set: yes
+
+    # ATTENTION !!! IRRÉVERSIBLE !!! PAS TOUCHE AVANT SNAPSHOT !!!
+    #- name: Disable loading of kernel modules after boot
+    #  sysctl:
+    #    name: kernel.modules_disabled
+    #    value: '1'
+    #    state: present
+    #    sysctl_set: yes
+
+    - name: Disable unprivileged BPF
+      sysctl:
+        name: kernel.unprivileged_bpf_disabled
+        value: '1'
+        state: present
+        sysctl_set: yes
+
+    - name: Restrict ptrace to parent processes only
+      sysctl:
+        name: kernel.yama.ptrace_scope
+        value: '1'
+        state: present
+        sysctl_set: yes
+
+    - name: Harden BPF JIT compilation
+      sysctl:
+        name: net.core.bpf_jit_harden
+        value: '2'
+        state: present
+        sysctl_set: yes
+
+    - name: Enable reverse path filtering for IPv4
+      sysctl:
+        name: net.ipv4.conf.all.rp_filter
+        value: '1'
+        state: present
+        sysctl_set: yes
+
+    - name: Disable sending of ICMP redirects for IPv4
+      sysctl:
+        name: net.ipv4.conf.all.send_redirects
+        value: '0'
+        state: present
+        sysctl_set: yes
+
+    - name: Disable accepting of ICMP redirects by default for IPv4
+      sysctl:
+        name: net.ipv4.conf.default.accept_redirects
+        value: '0'
+        state: present
+        sysctl_set: yes
+
+    - name: Enable logging of suspicious packets for default IPv4
+      sysctl:
+        name: net.ipv4.conf.default.log_martians
+        value: '1'
+        state: present
+        sysctl_set: yes
+
+    - name: Disable accepting of ICMP redirects by default for IPv6
+      sysctl:
+        name: net.ipv6.conf.default.accept_redirects
+        value: '0'
+        state: present
+        sysctl_set: yes
+
+    # 9. Ensure auditing is configured (auditd)
+    - name: Install auditd
+      apt:
+        name: auditd
+        state: present
+
+    - name: Ensure auditd service is enabled and running
+      service:
+        name: auditd
+        state: started
+        enabled: yes
+
+    # 12. Enable AppArmor (or SELinux on supported systems)
+    - name: Ensure AppArmor is enabled and running
+      service:
+        name: apparmor
+        state: started
+        enabled: yes
+
+    # 13. Create a banner for unauthorized access
+    - name: Create a message of the day (MOTD) banner
+      copy:
+        dest: /etc/motd
+        content: |
+
+          ********************** AVERTISSEMENT ***********************
+
+          Ce système est strictement réservé aux utilisateurs autorisés
+          Toute tentative d'accès non autorisé est interdite et peut
+          être signalée aux autorités compétentes.
+
+          Votre activité peut être surveillée et enregistrée.
+          En continuant, vous acceptez ces conditions.
+
+
+          ************************ WARNING ***************************
+
+          This system is strictly for authorized users only.
+          Any unauthorized access attempts are prohibited and may
+          be reported to the appropriate authorities.
+
+          Your activity may be monitored and logged.
+          By proceeding, you accept these terms.
+
+        owner: root
+        group: root
+        mode: '0644'
+
+    # 14. Apply SSH hardening configuration
+    
+    - name: Backup the current sshd_config
+      copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.bak
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: yes
+        backup: yes
+
+    - name: Ensure banner is displayed on SSH login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Banner'
+        line: 'Banner /etc/motd'
+        state: present
+
+    - name: Backup the current sshd_config
+      copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.bak
+        owner: root
+        group: root
+        mode: '0644'
+        remote_src: yes
+        backup: yes
+
+    - name: Ensure the PermitRootLogin is set to no (disable root login)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+
+    - name: Ensure PasswordAuthentication is set to no (force key-based authentication)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+
+    - name: Disable empty passwords
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitEmptyPasswords'
+        line: 'PermitEmptyPasswords no'
+        state: present
+
+    - name: Set MaxAuthTries to 3 (limit authentication attempts)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?MaxAuthTries'
+        line: 'MaxAuthTries 3'
+        state: present
+
+    - name: Set MaxSessions to 2 (limit open sessions)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?MaxSessions'
+        line: 'MaxSessions 2'
+        state: present
+
+    - name: Disable X11 forwarding
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?X11Forwarding'
+        line: 'X11Forwarding no'
+        state: present
+
+    - name: Disable TCP forwarding
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowTcpForwarding'
+        line: 'AllowTcpForwarding no'
+        state: present
+
+    - name: Disable agent forwarding
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowAgentForwarding'
+        line: 'AllowAgentForwarding no'
+        state: present
+
+    - name: Set ClientAliveInterval to 300 seconds (5 minutes)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?ClientAliveInterval'
+        line: 'ClientAliveInterval 300'
+        state: present
+
+    - name: Set ClientAliveCountMax to 0 (disconnect inactive sessions)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?ClientAliveCountMax'
+        line: 'ClientAliveCountMax 0'
+        state: present
+
+    - name: Set LoginGraceTime to 30 seconds
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?LoginGraceTime'
+        line: 'LoginGraceTime 30'
+        state: present
+
+    - name: Set UsePAM to yes
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?UsePAM'
+        line: 'UsePAM yes'
+        state: present
+
+    - name: Disable SSH version 1 (only use version 2)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Protocol'
+        line: 'Protocol 2'
+        state: present
+
+    - name: Disable DNS lookup for SSH (improve performance)
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?UseDNS'
+        line: 'UseDNS no'
+        state: present
+
+    - name: Restart SSH service to apply changes
+      service:
+        name: sshd
+        state: restarted
+
+    # 14. Ensure log rotation is enabled and configured
+    - name: Ensure rsyslog is installed
+      apt:
+        name: rsyslog
+        state: present
+
+    - name: Ensure logrotate is installed
+      apt:
+        name: logrotate
+        state: present
+
+    - name: Create logrotate configuration for rsyslog
+      copy:
+        dest: /etc/logrotate.d/rsyslog
+        content: |
+          /var/log/syslog
+          {
+              rotate 7
+              daily
+              missingok
+              notifempty
+              delaycompress
+              compress
+              postrotate
+                  /usr/lib/rsyslog/rsyslog-rotate > /dev/null 2>&1 || true
+              endscript
+          }
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Verify logrotate configuration
+      shell: logrotate -d /etc/logrotate.conf
+      register: logrotate_test
+      ignore_errors: yes
+
+    - name: Debug logrotate output
+      debug:
+        var: logrotate_test.stdout
+
+    # 1. Update sysctl parameters
+    - name: Apply recommended sysctl settings
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      with_items:
+        - { key: "fs.protected_fifos", value: "2" }
+        - { key: "kernel.kptr_restrict", value: "2" }
+        - { key: "kernel.sysrq", value: "0" }
+        - { key: "net.ipv4.conf.all.accept_redirects", value: "0" }
+        - { key: "net.ipv4.conf.all.log_martians", value: "1" }
+        - { key: "net.ipv4.tcp_syncookies", value: "1" }
+        - { key: "net.ipv6.conf.all.accept_redirects", value: "0" }
+
+    # 5. Install fail2ban
+    - name: Install fail2ban
+      package:
+        name: fail2ban
+        state: present
+
+    - name: Ensure fail2ban service is running
+      service:
+        name: fail2ban
+        state: started
+        enabled: true
+
+    # 6. Install and configure Chkrootkit
+    - name: Ensure chkrootkit is installed
+      apt:
+        name: chkrootkit
+        state: present
+        update_cache: yes
+
+    - name: Create directory for chkrootkit logs
+      file:
+        path: /var/log/chkrootkit
+        state: directory
+        mode: '0755'
+
+    - name: Create chkrootkit daily scan script
+      copy:
+        dest: /etc/cron.daily/chkrootkit
+        content: |
+          #!/bin/bash
+          LOGFILE="/var/log/chkrootkit/chkrootkit.log"
+          echo "Chkrootkit scan on $(date)" > "$LOGFILE"
+          chkrootkit >> "$LOGFILE" 2>&1
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Run immediate chkrootkit scan
+      command: chkrootkit
+      register: chkrootkit_scan
+
+    - name: Debug chkrootkit scan results
+      debug:
+        var: chkrootkit_scan.stdout
+
+    # 5. Install lynis & auditer la machine
+    - name: Installer Lynis
+      apt:
+        name: lynis
+        state: present
+
+    - name: Exécuter un audit de sécurité
+      command: lynis audit system
+      register: lynis_output
+
+    - name: Afficher le résultat de l'audit Lynis
+      debug:
+        var: lynis_output.stdout
+
+    # 6. Full AIDE setup from scratch
+
+    - name: Install AIDE package
+      ansible.builtin.package:
+        name: aide
+        state: present
+
+    - name: Deploy AIDE configuration file
+      ansible.builtin.copy:
+        content: |
+          database=file:/var/lib/aide/aide.db.gz
+          database_out=file:/var/lib/aide/aide.db.new.gz
+          gzip_dbout=yes
+
+          # Define groups for rules
+          NORMAL = p+i+n+u+g+s+m+c+acl+selinux+sha256
+          F = sha256+ftype
+
+          # Directories and files to monitor
+          /etc    NORMAL
+          /bin    NORMAL
+          /sbin   NORMAL
+          /usr/bin NORMAL
+          /usr/sbin NORMAL
+          /var/log F
+        dest: /etc/aide/aide.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Remove any existing AIDE database (if any)
+      ansible.builtin.file:
+        path: /var/lib/aide/aide.db.gz
+        state: absent
+
+    - name: Initialize AIDE database
+      command: aide --init --config=/etc/aide/aide.conf
+      args:
+        creates: /var/lib/aide/aide.db.new.gz
+
+    - name: Replace old AIDE database with the new one
+      command: mv /var/lib/aide/aide.db.new.gz /var/lib/aide/aide.db.gz
+      args:
+        creates: /var/lib/aide/aide.db.gz
+
+    - name: Schedule AIDE periodic checks with cron
+      ansible.builtin.cron:
+        name: "AIDE periodic integrity check"
+        user: root
+        job: "/usr/bin/aide --check --config=/etc/aide/aide.conf"
+        special_time: daily
+

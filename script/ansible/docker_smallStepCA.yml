@@ -1,0 +1,39 @@
+---
+- name: Déployer Smallstep CA dans Docker
+  hosts: "10101"
+  become: true
+
+  tasks:
+    - name: Télécharger l'image Docker Smallstep CA
+      docker_image:
+        name: smallstep/step-ca
+        tag: latest
+        source: pull
+
+    - name: Créer un répertoire pour les données de Smallstep CA
+      file:
+        path: /opt/smallstep-ca
+        state: directory
+        mode: '0755'
+
+    - name: Exécuter le conteneur Smallstep CA
+      docker_container:
+        name: smallstep-ca
+        image: smallstep/step-ca:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "9000:9000"
+        volumes:
+          - /opt/smallstep-ca:/home/step
+        env:
+          STEP_CA_PASSWORD: "changeit"
+
+    - name: Afficher l'état du conteneur Smallstep CA en cours d'exécution
+      command: docker ps
+      register: docker_ps_output
+
+    - name: Imprimer l'état de Smallstep CA
+      debug:
+        var: docker_ps_output.stdout
+

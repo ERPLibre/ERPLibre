@@ -1,0 +1,116 @@
+- name: Installation et configuration de Mailcow sur Debian 12.9
+  hosts: laPoste
+  become: yes
+  vars:
+    mailcow_dir: "/opt/mailcow"
+    mailcow_domain: "mail.exemple.com"
+
+  tasks:
+
+    - name: Mettre à jour le système
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Installer les dépendances nécessaires
+      apt:
+        name:
+          - curl
+          - git
+          - sudo
+          - ufw
+          - unzip
+          - wget
+          - bash-completion
+          - dnsutils
+          - python3-pip
+        state: present
+
+    - name: Désactiver systemd-resolved
+      systemd:
+        name: systemd-resolved
+        enabled: no
+        state: stopped
+
+    - name: Supprimer resolv.conf et définir un nouveau DNS
+      file:
+        path: /etc/resolv.conf
+        state: absent
+
+    - name: Configurer un DNS de secours
+      copy:
+        dest: /etc/resolv.conf
+        content: "nameserver 8.8.8.8\n"
+
+    - name: Vérifier si Mailcow est déjà installé
+      stat:
+        path: "{{ mailcow_dir }}/docker-compose.yml"
+      register: mailcow_installed
+
+    - name: Cloner le dépôt Mailcow
+      git:
+        repo: "https://github.com/mailcow/mailcow-dockerized.git"
+        dest: "{{ mailcow_dir }}"
+        version: "master"
+      when: not mailcow_installed.stat.exists
+
+#   - name: Générer le fichier de configuration Mailcow
+#     command:
+#       cmd: "./generate_config.sh"
+#       chdir: "{{ mailcow_dir }}"
+
+#   - name: Vérifier si le fichier mailcow.conf existe
+#     stat:
+#       path: "{{ mailcow_dir }}/mailcow.conf"
+#     register: mailcow_config
+
+#   - name: Créer le fichier mailcow.conf s'il n'existe pas
+#     copy:
+#       dest: "{{ mailcow_dir }}/mailcow.conf"
+#       content: "MAILCOW_HOSTNAME={{ mailcow_domain }}\nDISABLE_IPV6=y\n"
+#     when: not mailcow_config.stat.exists
+
+    - name: Télécharger les images Docker Mailcow
+      command:
+        cmd: "docker compose pull"
+        chdir: "{{ mailcow_dir }}"
+
+    - name: Démarrer Mailcow avec Docker Compose
+      command:
+        cmd: "docker compose up -d"
+        chdir: "{{ mailcow_dir }}"
+
+    - name: Ouvrir les ports nécessaires avec UFW
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "80"
+        - "443"
+        - "25"
+        - "465"
+        - "587"
+        - "993"
+        - "995"
+
+    - name: Activer UFW
+      ufw:
+        state: enabled
+
+    - name: Redémarrer le conteneur acme-mailcow pour générer les certificats SSL
+      command:
+        cmd: "docker compose restart acme-mailcow"
+        chdir: "{{ mailcow_dir }}"
+
+    - name: Générer la clé DKIM et afficher la configuration DNS
+      command:
+        cmd: "docker compose exec -T rspamd-mailcow rspamadm dkim_keygen -d {{ mailcow_domain }}"
+        chdir: "{{ mailcow_dir }}"
+      register: dkim_output
+
+    - name: Afficher la clé DKIM à ajouter dans le DNS
+      debug:
+        msg: "{{ dkim_output.stdout }}"
+

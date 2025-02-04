@@ -1,0 +1,161 @@
+---
+- name: Setup Docker and deploy containers for Smallstep CA, NGINX+Certbot, and Keycloak
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      command: >
+        curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+    - name: Add Docker repository
+      copy:
+        content: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable\n"
+        dest: /etc/apt/sources.list.d/docker.list
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
+        update_cache: yes
+
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Install Docker Compose
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)"
+        dest: /usr/local/bin/docker-compose
+        mode: "0755"
+
+    - name: Create directory for Docker Compose setup
+      file:
+        path: /opt/docker-setup
+        state: directory
+        mode: "0755"
+
+    - name: Deploy Docker Compose file
+      copy:
+        dest: /opt/docker-setup/docker-compose.yml
+        content: |
+          version: '3.8'
+          services:
+            step-ca:
+              image: smallstep/step-ca:latest
+              container_name: step-ca
+              ports:
+                - "9000:9000"
+              volumes:
+                - step-ca-data:/home/step
+              environment:
+                - STEP_CA_PASSWORD=T1l0u!
+
+            keycloak:
+              image: quay.io/keycloak/keycloak:latest
+              container_name: keycloak
+              command: start-dev
+              ports:
+                - "8080:8080"
+              environment:
+                - KEYCLOAK_ADMIN=admin
+                - KEYCLOAK_ADMIN_PASSWORD=T1l0u!
+
+            nginx:
+              image: nginx:latest
+              container_name: nginx
+              ports:
+                - "80:80"
+                - "443:443"
+              volumes:
+                - nginx-config:/etc/nginx/sites-available
+                - nginx-enabled:/etc/nginx/sites-enabled
+                - nginx-certbot:/etc/letsencrypt
+              depends_on:
+                - step-ca
+                - keycloak
+
+            certbot:
+              image: certbot/certbot:latest
+              container_name: certbot
+              entrypoint: ["/bin/bash", "-c", "trap exit TERM; while :; do sleep 6h & wait; done;"]
+              volumes:
+                - nginx-certbot:/etc/letsencrypt
+                - certbot-config:/var/lib/letsencrypt
+
+          volumes:
+            step-ca-data:
+            nginx-config:
+            nginx-enabled:
+            nginx-certbot:
+            certbot-config:
+
+    - name: Start Docker Compose services
+      command: docker-compose up -d
+      args:
+        chdir: /opt/docker-setup
+
+    - name: Configure NGINX for Smallstep CA
+      copy:
+        dest: /opt/docker-setup/sites-available/step-ca.conf
+        content: |
+          server {
+              listen 443 ssl;
+              server_name step-ca.your_domain.com;
+
+              ssl_certificate /etc/letsencrypt/live/step-ca.kbr.net/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/step-ca.kbr.net/privkey.pem;
+
+              location / {
+                  proxy_pass http://step-ce.kbr.net:9000/;
+              }
+          }
+
+    - name: Configure NGINX for Keycloak
+      copy:
+        dest: /opt/docker-setup/sites-available/keycloak.conf
+        content: |
+          server {
+              listen 443 ssl;
+              server_name keycloak.kbr.net;
+
+              ssl_certificate /etc/letsencrypt/live/keycloak.kbr.net/fullchain.pem;
+              ssl_certificate_key /etc/letsencrypt/live/keycloak.kbr.net/privkey.pem;
+
+              location / {
+                  proxy_pass http://keycloak.kbr.net:8080/;
+              }
+          }
+
+    - name: Link site configurations
+      file:
+        src: /etc/nginx/sites-available/{{ item }}
+        dest: /etc/nginx/sites-enabled/{{ item }}
+        state: link
+      with_items:
+        - step-ca.conf
+        - keycloak.conf
+
+    - name: Test NGINX configuration
+      command: nginx -t
+
+    - name: Restart NGINX
+      systemd:
+        name: nginx
+        state: restarted
+
