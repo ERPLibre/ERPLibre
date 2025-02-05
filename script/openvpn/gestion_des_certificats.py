@@ -3,11 +3,12 @@ import subprocess
 import sys
 
 def add_client(client_name):
-    """Ajoute un nouveau client OpenVPN."""
+    """Ajoute un nouveau client OpenVPN et génère un fichier .ovpn."""
     command = f"easyrsa build-client-full {client_name} nopass"
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     if result.returncode == 0:
         print(f"Client {client_name} ajouté avec succès.")
+        generate_client_ovpn(client_name)
     else:
         print(f"Erreur lors de l'ajout du client {client_name}: {result.stderr}")
 
@@ -41,6 +42,7 @@ def delete_client(client_name):
         f"/etc/openvpn/easy-rsa/pki/private/{client_name}.key",
         f"/etc/openvpn/easy-rsa/pki/issued/{client_name}.crt",
         f"/etc/openvpn/easy-rsa/pki/reqs/{client_name}.req",
+        f"/etc/openvpn/client-configs/{client_name}.ovpn"
     ]
     
     for path in paths:
@@ -57,6 +59,23 @@ def check_server_status():
         print("Le serveur OpenVPN est actif.")
     else:
         print("Le serveur OpenVPN est inactif ou en erreur.")
+
+def generate_client_ovpn(client_name):
+    """Génère un fichier .ovpn pour le client avec la clé privée."""
+    base_config = "/etc/openvpn/client-configs/base.conf"
+    client_config = f"/etc/openvpn/client-configs/{client_name}.ovpn"
+    
+    ca_cert = f"/etc/openvpn/easy-rsa/pki/ca.crt"
+    client_cert = f"/etc/openvpn/easy-rsa/pki/issued/{client_name}.crt"
+    client_key = f"/etc/openvpn/easy-rsa/pki/private/{client_name}.key"
+    
+    with open(base_config, "r") as base_file, open(client_config, "w") as client_file:
+        client_file.write(base_file.read())
+        client_file.write("<ca>\n" + open(ca_cert).read() + "</ca>\n")
+        client_file.write("<cert>\n" + open(client_cert).read() + "</cert>\n")
+        client_file.write("<key>\n" + open(client_key).read() + "</key>\n")
+    
+    print(f"Fichier {client_config} généré avec succès.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
