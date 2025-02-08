@@ -1,6 +1,6 @@
 ---
 - name: Ajouter les agents
-  hosts: Kbr001
+  hosts: leChoixDuSysadmin
   become: yes
   tasks:
 

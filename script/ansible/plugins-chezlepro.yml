@@ -1,6 +1,6 @@
 ---
 - name: Installer les plugins de Chezlepro
-  hosts: Kbr001
+  hosts: leChoixDuSysadmin
   become: true
 
   tasks:

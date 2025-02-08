@@ -1,5 +1,5 @@
 - name: Installation et Configuration de Step-CA
-  hosts: Kbr001
+  hosts: leChoixDuSysadmin
   become: yes
   vars:
     stepca_user: step

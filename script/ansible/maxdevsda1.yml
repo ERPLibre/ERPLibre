@@ -1,5 +1,5 @@
 - name: Étendre la partition root avec growpart et resize2fs
-  hosts: laPoste
+  hosts: leChoixDuSysadmin
   become: yes
   tasks:
 

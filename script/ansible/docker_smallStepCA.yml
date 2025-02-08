@@ -1,6 +1,6 @@
 ---
 - name: Déployer Smallstep CA dans Docker
-  hosts: "10101"
+  hosts: leChoixDuSysadmin
   become: true
 
   tasks:

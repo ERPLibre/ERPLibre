@@ -1,6 +1,6 @@
 ---
 - name: Apply security hardening based on Linys recommendations
-  hosts: kbr
+  hosts: leChoixDuSysadmin
   become: yes
   tasks:
     - name: Ensure UFW is installed
@@ -383,10 +383,10 @@
         name: sshd
         state: restarted
 
-    - name: Ensure apt-listbugs is installed
-      apt:
-        name: apt-listbugs
-        state: present
+#    - name: Ensure apt-listbugs is installed
+#      apt:
+#        name: apt-listbugs
+#        state: present
 
     - name: Ensure debsums is installed
       apt:

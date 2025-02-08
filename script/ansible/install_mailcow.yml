@@ -1,5 +1,5 @@
 - name: Installation et configuration de Mailcow sur Debian 12.9
-  hosts: laPoste
+  hosts: leChoixDuSysadmin
   become: yes
   vars:
     mailcow_dir: "/opt/mailcow"
@@ -82,7 +82,7 @@
 
     - name: Ouvrir les ports nécessaires avec UFW
       ufw:
-        rule: allow
+        rule: leChoixDuSysadminow
         port: "{{ item }}"
         proto: tcp
       loop:

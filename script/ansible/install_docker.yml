@@ -1,6 +1,6 @@
 ---
 - name: Install Docker on Debian 12
-  hosts: Kbr001
+  hosts: leChoixDuSysadmin
   become: true
 
   tasks:

@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+
+# Configuration de l'analyseur d'arguments
+parser = argparse.ArgumentParser(description="Exécute un playbook Ansible sur des cibles spécifiées en utilisant une clé SSH associée à un royaume.")
+parser.add_argument("playbook", help="Nom du playbook Ansible à exécuter (sans l'extension .yml)")
+parser.add_argument("--royaume", required=True, help="Identifiant du royaume pour sélectionner la clé SSH correspondante")
+parser.add_argument("--cibles", nargs="+", required=True, help="Liste des adresses IP des cibles")
+
+# Analyse des arguments
+args = parser.parse_args()
+
+# Génération du nom du fichier d'inventaire
+inventaire = f"./{args.playbook}.hosts"
+
+# Génération du contenu du fichier d'inventaire
+contenu_inventaire = "[cibles]\n" + "\n".join(args.cibles)
+
+# Écriture du fichier d'inventaire
+with open(inventaire, "w") as fichier:
+    fichier.write(contenu_inventaire)
+
+print(f"✅ Fichier d'inventaire généré : {inventaire}")
+
+# Chemin de la clé privée basée sur le royaume
+cle_ssh = f"~/.ssh/id_ed25519_{args.royaume}"
+
+# Construction de la commande Ansible
+commande = [
+    "ansible-playbook",
+    f"{args.playbook}.yml",
+    "-i", inventaire,
+    "--private-key", cle_ssh,
+    "-K"  # Demande le mot de passe sudo si nécessaire
+]
+
+print(f"🚀 Exécution de : {' '.join(commande)}")
+

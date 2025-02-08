@@ -1,6 +1,6 @@
 ---
 - name: Setup Docker and deploy containers for Smallstep CA, NGINX+Certbot, and Keycloak
-  hosts: all
+  hosts: leChoixDuSysadmin
   become: true
 
   tasks:

@@ -1,6 +1,6 @@
 ---
 - name: Déployer Keycloak dans Docker
-  hosts: Kbr001 
+  hosts: leChoixDuSysadmin 
   become: true
 
   tasks:

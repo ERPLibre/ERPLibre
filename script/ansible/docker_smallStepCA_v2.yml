@@ -1,6 +1,6 @@
 ---
 - name: Deploy Smallstep CA with Docker Compose
-  hosts: Kbr001
+  hosts: leChoixDuSysadmin
   become: true
   tasks:
     - name: Create the directory for Docker Compose

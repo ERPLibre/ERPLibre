@@ -1,6 +1,6 @@
 ---
 - name: Add grouped Python plugins as CheckCommands in Icinga Director
-  hosts: localhost
+  hosts: leChoixDuSysadmin
   gather_facts: no
   vars:
     # Grouped plugins by functionality
