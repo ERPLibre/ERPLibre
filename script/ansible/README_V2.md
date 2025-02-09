@@ -1,37 +1,15 @@
-```markdown
-# Guide Debian
+## Guide Debian
 
-## Sommaire
-
-1. [Introduction](#introduction)
-2. [Installation d'Ansible sur le nœud de contrôle](#installation-dansible-sur-le-nœud-de-contrôle)
-3. [Initialisation du compte Ansible sur le nœud de contrôle](#initialisation-du-compte-ansible-sur-le-nœud-de-contrôle)
-4. [Initialisation du compte Ansible sur un nœud géré (Optionnel)](#initialisation-du-compte-ansible-sur-un-nœud-géré-optionnel)
-5. [Intégration dans l'écosystème Proxmox](#intégration-dans-lécosystème-proxmox)
-6. [Méthode simplifiée pour exécuter des playbooks](#méthode-simplifiée-pour-exécuter-des-playbooks)
-7. [Exécution d'un playbook sur plusieurs machines](#exécution-dun-playbook-sur-plusieurs-machines)
-
-## Introduction
-
-Ce guide fournit des instructions détaillées pour installer et configurer Ansible sur Debian, ainsi que son intégration dans un environnement Proxmox.
+Config de base Ansible & comment je l'ai intégré dans mon écosystème numérique Proxmox.
 
 ## Installation d'Ansible sur le nœud de contrôle
 
-Mettez à jour les paquets et installez Ansible :
+Mettez à jour les paquets et installez Ansible sur le noeud de contrôle :
 
 ```bash
 sudo apt update
 sudo apt install ansible
 ```
-
-**Exemple supplémentaire :** Si vous préférez utiliser `pip` pour installer Ansible, vous pouvez exécuter :
-
-```bash
-sudo apt install python3-pip
-pip3 install ansible --user
-```
-
-Cette méthode est particulièrement utile si vous souhaitez installer une version spécifique d'Ansible ou si vous rencontrez des problèmes avec les dépôts APT. citeturn0search7
 
 ## Initialisation du compte Ansible sur le nœud de contrôle
 
@@ -46,19 +24,20 @@ cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
 exit
 ```
 
-*Remarque :* Vous pouvez exécuter `ansible-playbook -i <fichier d'inventaire>` au lieu des trois commandes suivantes :
+*Remarque : Par défaut, ansible cherche l'inventaire des machines à traiter dans /etc/ansible/hosts
+Alternativement, il est possible de lancer la commande ansible-playbook -i <fichier d'inventaire>*
 
 ```bash
 sudo mkdir /etc/ansible
 sudo chmod 755 /etc/ansible
-sudo touch /etc/ansible/hosts.conf
+sudo touch /etc/ansible/hosts
 ```
 
-## Initialisation du compte Ansible sur un nœud géré (Optionnel)
+## Initialisation du compte Ansible sur un nœud géré
 
-Cette étape est optionnelle si le nœud est créé avec le script `ADDVM`.
+*NOTE : Optionnel si le nœud est créé avec le script `ADDVM` (voir ./script/proxmox).*
 
-Sur le nœud géré, créez et configurez le compte `ansible` :
+**D'abord, sur le nœud géré, créez et configurez le compte `ansible` :**
 
 ```bash
 sudo useradd -m -s /bin/bash ansible
@@ -70,7 +49,7 @@ touch ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-Récupérez la clé publique SSH du compte `ansible` du nœud de contrôle :
+**Ensuite, récupérez la clé publique SSH du compte `ansible` du nœud de contrôle :**
 
 ```bash
 scp <fqdn_du_nœud_de_contrôle>:~/.ssh/id_ed25519.pub ~/.ssh/id_ed25519.pub
@@ -80,7 +59,9 @@ exit
 
 ## Intégration dans l'écosystème Proxmox
 
-Pour segmenter et sécuriser les environnements gérés par Ansible, nous utilisons le concept de "royaume". Un "royaume" correspond à un environnement spécifique, tel que "kbr-dev", pour lequel une paire de clés SSH unique est générée et utilisée.
+Pour segmenter et sécuriser les environnements gérés par Ansible, j'ai introduit le concept de "royaume".
+
+Un "royaume" correspond à un environnement spécifique, tel que "dev-projetX", pour lequel une paire de clés SSH unique est générée et utilisée.
 
 **Étape 1 : Génération de la paire de clés du royaume Ansible**
 
@@ -101,30 +82,45 @@ scp ~/.ssh/id_ed25519_dev-projetX.pub root@<hyperviseur>:/etc/pve/priv
 
 **Étape 3 : Injection de la clé lors de la création de la VM**
 
-Sur un hyperviseur, utilisez la commande `addvm` pour injecter la clé appropriée.
+Sur un hyperviseur, utilisez la commande `addvm` (qui utilise un csv) pour injecter la clé appropriée.
 
-*Exemple de fichier `intrants.txt` :*
+*Exemple : `nouvelles_vm.csv` :*
 
 ```
-vm_id,vm_royaume,vm_name,vm_disk_size,ip_address,gateway,dns_servers,vm_memory,vm_cores,vm_vlan
-10101,kbr-dev,sys-01,32,10.10.1.101/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001
+vm_id,vm_royaume,vm_name,vm_disk_size,vm_vlan,ip_address,gateway,dns_servers,vm_memory,vm_cores
+10101,dev-projetX,dev-sys-01,32,1001,10.10.1.101/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4
 ```
 
 ## Méthode simplifiée pour exécuter des playbooks
 
-Pour exécuter un playbook sur des hôtes spécifiques sans modifier le fichier d'inventaire, utilisez le script `playbook-adhoc` :
+Pour exécuter un playbook sur des hôtes spécifiques sans se soucier d'un fichier d'inventaire
+j'ai créé le script `playbook-adhoc`. Voici comment l'utiliser :
 
 ```bash
-./playbook-adhoc <PLAYBOOK> <IP1> [<IP2> ...]
+./playbook-adhoc <ROYAUME> <PLAYBOOK> <IP1> [<IP2> ...]
 ```
 
 *Exemple :*
 
 ```bash
-./playbook-adhoc integrations 192.168.0.100 10.10.4.56
+./playbook-adhoc dev-projetX integrations 192.168.0.100 10.10.4.56
 ```
 
-Ce script crée un fichier d'inventaire nommé `<PLAYBOOK>.hosts` et l'utilise pour exécuter le playbook.
+Ce script crée un fichier d'inventaire nommé `integrations.hosts` et l'utiliser pour exécuter le playbook integrations.yml.
+Fichier integrations.hosts:
+
+```
+[leChoixDuSysadmin]
+192.168.0.100
+10.10.4.56
+```
+
+*** NOTE IMPORTANTE ***
+Pour que ca fonctionne, il fait que l'entête du playbook ait ceci :
+
+```
+  hosts: leChoixDuSysadmin 
+```
 
 ## Exécution d'un playbook sur plusieurs machines
 
