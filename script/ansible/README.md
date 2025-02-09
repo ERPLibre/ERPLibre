@@ -49,12 +49,21 @@ exit
 ********** INTÉGRATION DANS MON ÉCOSYSTÈME PROXMOX **************
 *********** QUI REND L'ÉTAPE PRÉCÉDENTE OBSOLÈTE ****************
 
-Tout part de la création d'un set de clés sur une machine de controle
-et d'un fichier de mots de passe sur les hyperviseurs.
+Concept de "royaume" pour segmenter et sécuriser les environnements gérés par Ansible:
+
+Un "royaume" correspond à un environnement spécifique, tel que "kbr-dev", pour lequel une paire de clés SSH unique est générée et utilisée. Cette approche permet d'isoler les différents environnements et de renforcer la sécurité en limitant l'accès aux ressources selon le royaume associé.
+
+Concrètement, pour chaque royaume, une paire de clés SSH est créée sur le noeud de contrôle. Ensuite, la clé publique est copiée dans le répertoire /etc/pve/priv/ des hyperviseurs Proxmox.
+
+Lors de la création des machines virtuelles (VM), la clé publique correspondante est injectée via Cloud-Init, en fonction du royaume spécifié.
+
+De plus, un fichier de configuration nommé /etc/pve/priv/royaumes.ini contient les associations entre chaque royaume et le mot de passe à utiliser pour le compte Ansible sur les VM.
+
+Cette organisation vise à assurer une séparation claire entre les environnements, facilitant ainsi une gestion plus sécurisée et structurée des déploiements automatisés avec Ansible.
 
 Arbitrairement, ca sera toujours le compte "ansible" qu'on utilisera
 
-L'identifiant du royaume sera une chaîne de caractères qu'on utilisera
+L'identifiant du royaume est une courte chaîne de caractères.  Elle sert aussi à 
 pour renseigner la nomenclature des fichiers de clés, d'un pool dans PROXMOX
 ainsi que les noms des vm.
 
@@ -89,7 +98,7 @@ Exemple :
 Création d'un royaume nommé "dev-projetX"
 
 ÉTAPE 1 -> SET DE CLÉS DU ROYAUME ANSIBLE
-Se fait sur la machine d'ou se lancent les playbook ansible.
+Se fait sur la machine d'ou se lancent les playbook ansible (le noeud de contrôle).
 
 ```bash
 su ansible
@@ -97,10 +106,10 @@ ajoutRoyaumeAnsible dev-projetX"
 ```
 
 ÉTAPE 2 -> RENDRE LA CLÉ ACCESSIBLE DANS TOUT L'ÉCOSYSTÈME
-COPIER LE FICHIER .pub dans le répertoire /etc/pve d'un des hyperviseurs. (peu importe lequel)
+COPIER LE FICHIER .pub dans le répertoire /etc/pve/priv d'un hyperviseur. (peu importe lequel)
 scp ~/.ssh/id_ed25519_<royaume>.pub root@<hyperviseur>:/etc/pve/priv
 
-ÉTAPE 3 -> INJECTION DE LA CLÉ AU MOMENT DE LA CRÉATION DELA VM
+ÉTAPE 3 -> INJECTION DE LA CLÉ AU MOMENT DE LA CRÉATION DE LA VM
 Se fait sur un hyperviseur
 
 C'est avec la commande addvm (voir dans script/proxmox) que sera injectée la bonne clé.
@@ -126,6 +135,16 @@ Ce script va créer un fichier d'inventaire nommé <PLAYBOOK>.hosts et s'en serv
 
 Exemple : playbook-adhoc integrations 192.168.0.100 10.10.4.56
 
+cette commande va créer le fichier integrations.hosts : 
+
+```
+[leChoixDuSysadmin]
+192.168.0.100
+10.10.4.56
+
+et puis lancer le playbook comme suit :
+
+
 ********************************************************************************************************************
 MÉTHODE PERMETTANT D'EXÉCUTER UN PLAYBOOK SUR UN GRAND NOMBRE DE MACHINES 
 
@@ -136,18 +155,22 @@ Créer et renseigner le fichier `/etc/ansible/hosts.conf`
 
 ```bash
 IP=$(ip a | grep -oP '(?<=inet )(.*)(?=/)' | head -n 2 | awk 'NR==2')
-echo "[webservers]" | sudo tee -a /etc/ansible/hosts.conf
+echo "[leChoixDuSysadmin]" | sudo tee -a /etc/ansible/hosts.conf
 echo "$IP" | sudo tee -a /etc/ansible/hosts.conf
 ```
 
 Le résultat devrait ressembler à ceci :
 
 ```
-[webservers]
+[leChoixDuSysadmin]
 192.168.1.100
 ```
+****** NOTE IMPORTANTE *********
+dans les playbook, il doit être mentionné "hosts : leChoixDuSysadmin"
+c'est une contrainte que j'ai induite avec le script "playbook-adhoc".
 
-Exécuter les playbooks :
+
+Exécuter un playbook :
 
 ```bash
 sudo -u ansible ansible-playbook ./script/ansible/durcissement_se.yml --ask-become-pass [-i <fichier d'inventaire>]
