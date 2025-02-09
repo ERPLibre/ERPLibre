@@ -1,5 +1,3 @@
-Bien sûr, j'ai enrichi le document en ajoutant un sommaire interactif pour faciliter la navigation, ainsi que des exemples supplémentaires pour l'installation d'Ansible sur Debian. Voici la version améliorée :
-
 ```markdown
 # Guide Debian
 
