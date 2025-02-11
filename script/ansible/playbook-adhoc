@@ -5,12 +5,13 @@ import sys
 import subprocess
 
 # Vérifier les arguments
-if len(sys.argv) < 3:
-    print("❌ Utilisation: ./playbook-adhoc <PLAYBOOK> <IP1> [<IP2> ...]")
+if len(sys.argv) < 4:
+    print("❌ Utilisation: ./playbook-adhoc <PLAYBOOK> <ROYAUME> <IP1> [<IP2> ...]")
     sys.exit(1)
 
 PLAYBOOK = sys.argv[1]
-TARGETS = sys.argv[2:]
+ROYAUME = sys.argv[2]
+TARGETS = sys.argv[3:]
 
 # Générer le nom du fichier d'inventaire
 inventaireDuSysadmin = f"./{PLAYBOOK}.hosts"
@@ -28,8 +29,11 @@ with open(inventaireDuSysadmin, "w") as file:
 
 print(f"✅ Fichier d'inventaire généré : {inventaireDuSysadmin}")
 
+# Construire le chemin de la clé privée en fonction du royaume
+private_key = f"~/.ssh/id_ed25519_ansible_{ROYAUME}"
+
 # Exécuter le playbook Ansible
-command = f"ansible-playbook {PLAYBOOK}.yml -K -i {inventaireDuSysadmin} --private-key ~/.ssh/id_ed25519_ansible_Projet_KBR"
+command = f"ansible-playbook {PLAYBOOK}.yml -K -i {inventaireDuSysadmin} --private-key {private_key}"
 print(f"🚀 Exécution de : {command}")
 
 try:

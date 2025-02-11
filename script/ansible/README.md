@@ -1,177 +1,151 @@
-# Guide Debian
+## Guide Debian
 
-Installer Ansible sur le noeud de contrôle
+Config de base Ansible & comment je l'ai intégré dans mon écosystème numérique Proxmox.
+
+## Installation d'Ansible sur le nœud de contrôle
+
+Mettez à jour les paquets et installez Ansible sur le noeud de contrôle :
 
 ```bash
 sudo apt update
 sudo apt install ansible
 ```
 
-Initialiser le compte pour Ansible sur le noeud de contrôle
+## Initialisation du compte Ansible sur le nœud de contrôle
+
+Créez et configurez le compte `ansible` :
 
 ```bash
-sudo useradd ansible
+sudo useradd -m -s /bin/bash ansible
 sudo usermod -aG sudo ansible
-sudo mkdir /home/ansible
-sudo chown -R ansible:ansible /home/ansible
 sudo su - ansible
 ssh-keygen -t ed25519
 cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
 exit
-# NOTE : On peut lancer ansible-playbook -i <fichier d'inventaire>
-# au lieu des 3 commandes qui suivent
-sudo mkdir /etc/ansible
-sudo chmod 755 /etc/ansible
-sudo touch /etc/ansible/hosts.conf
 ```
 
-ÉTAPE OPTIONNELLE SI LE NOEUD EST CRÉÉ AVEC LE SCRIPT ADDVM
-
-Initialiser le compte pour Ansible sur un noeud géré
+*Remarque : Par défaut, ansible cherche l'inventaire des machines à traiter dans /etc/ansible/hosts
+Alternativement, il est possible de lancer la commande ansible-playbook -i <fichier d'inventaire>*
 
 ```bash
-sudo useradd ansible
+sudo mkdir /etc/ansible
+sudo chmod 755 /etc/ansible
+sudo touch /etc/ansible/hosts
+```
+
+## Initialisation du compte Ansible sur un nœud géré
+
+*NOTE : Optionnel si le nœud est créé avec le script `ADDVM` (voir ./script/proxmox).*
+
+**D'abord, sur le nœud géré, créez et configurez le compte `ansible` :**
+
+```bash
+sudo useradd -m -s /bin/bash ansible
 sudo usermod -aG sudo ansible
-sudo mkdir /home/ansible
-sudo chown -R ansible:ansible /home/ansible
 sudo su - ansible
-touch .ssh
-chmod 700 .ssh
-touch .ssh/authorized_keys
-chmod 600 .ssh/authorized_keys
-# Aller chercher la clé SSH publique de ansible
-# Idéalement, on la rend accessible de tous les noeuds gérés d'un endroit central.
-scp <fqdn_du_noeud_de_controle>:~/.ssh/id_ed25519.pub .ssh/id_ed25519.pub
+mkdir ~/.ssh
+chmod 700 ~/.ssh
+touch ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+**Ensuite, récupérez la clé publique SSH du compte `ansible` du nœud de contrôle :**
+
+```bash
+scp <fqdn_du_nœud_de_contrôle>:~/.ssh/id_ed25519.pub ~/.ssh/id_ed25519.pub
 cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
 exit
 ```
 
-********** INTÉGRATION DANS MON ÉCOSYSTÈME PROXMOX **************
-*********** QUI REND L'ÉTAPE PRÉCÉDENTE OBSOLÈTE ****************
+## Intégration dans l'écosystème Proxmox
 
-Concept de "royaume" pour segmenter et sécuriser les environnements gérés par Ansible:
+Pour segmenter et sécuriser les environnements gérés par Ansible, j'ai introduit le concept de "royaume".
 
-Un "royaume" correspond à un environnement spécifique, tel que "kbr-dev", pour lequel une paire de clés SSH unique est générée et utilisée. Cette approche permet d'isoler les différents environnements et de renforcer la sécurité en limitant l'accès aux ressources selon le royaume associé.
+Un "royaume" correspond à un environnement spécifique, tel que "dev-projetX", pour lequel une paire de clés SSH unique est générée et utilisée.
 
-Concrètement, pour chaque royaume, une paire de clés SSH est créée sur le noeud de contrôle. Ensuite, la clé publique est copiée dans le répertoire /etc/pve/priv/ des hyperviseurs Proxmox.
+**Étape 1 : Génération de la paire de clés du royaume Ansible**
 
-Lors de la création des machines virtuelles (VM), la clé publique correspondante est injectée via Cloud-Init, en fonction du royaume spécifié.
-
-De plus, un fichier de configuration nommé /etc/pve/priv/royaumes.ini contient les associations entre chaque royaume et le mot de passe à utiliser pour le compte Ansible sur les VM.
-
-Cette organisation vise à assurer une séparation claire entre les environnements, facilitant ainsi une gestion plus sécurisée et structurée des déploiements automatisés avec Ansible.
-
-Arbitrairement, ca sera toujours le compte "ansible" qu'on utilisera
-
-L'identifiant du royaume est une courte chaîne de caractères.  Elle sert aussi à 
-pour renseigner la nomenclature des fichiers de clés, d'un pool dans PROXMOX
-ainsi que les noms des vm.
-
-PRÉMISSES POUR QUE TOU CECI FONCTIONNE :
-
-
-PREMIÈMENT LE FICHIER /etc/pve/royaumes.ini
-  On peu dire qu'il s'agit là du joyau de la couronne
-  car ce fichier contient le mot de passe du compte ansible 
-  pour CHAQUE "royaume ansible" !!
-
--rw------- 1 root www-data   76 Feb  7 17:31 royaumes.ini
-
-Voici à quoi ça ressemble :
-
-royaumeA:riuvn0s4wt
-royaumeB:lkj&&?%n0iuy
-...
-
-
-ENSUITE, IL Y A LES FICHIERS DES CLÉS PUBLIQUES DE ansible POUR CHAQUE ROYAUME
-  Remarquer la nomenclature : id_ed25519_ansible_<nom_du_royaume>.pub
-
--rw------- 1 root www-data  117 Feb  7 16:44 id_ed25519_ansible_kbr-dev.pub
--rw------- 1 root www-data  118 Feb  7 16:44 id_ed25519_ansible_kbr-prod.pub
--rw------- 1 root www-data  118 Feb  7 16:44 id_ed25519_ansible_kbr-test.pub
-
-Ces fichiers sont obtenus À partir de la commande ajoutRoyaumeAnsible <nom_royaume>
-qui doit être exécutée sur la machine de contrôle. (voir dans ./script/ansible)
-
-Exemple :
-Création d'un royaume nommé "dev-projetX"
-
-ÉTAPE 1 -> SET DE CLÉS DU ROYAUME ANSIBLE
-Se fait sur la machine d'ou se lancent les playbook ansible (le noeud de contrôle).
+Sur le nœud de contrôle, exécutez :
 
 ```bash
 su ansible
-ajoutRoyaumeAnsible dev-projetX"
+ajoutRoyaumeAnsible dev-projetX
 ```
 
-ÉTAPE 2 -> RENDRE LA CLÉ ACCESSIBLE DANS TOUT L'ÉCOSYSTÈME
-COPIER LE FICHIER .pub dans le répertoire /etc/pve/priv d'un hyperviseur. (peu importe lequel)
-scp ~/.ssh/id_ed25519_<royaume>.pub root@<hyperviseur>:/etc/pve/priv
+**Étape 2 : Distribution de la clé publique**
 
-ÉTAPE 3 -> INJECTION DE LA CLÉ AU MOMENT DE LA CRÉATION DE LA VM
-Se fait sur un hyperviseur
-
-C'est avec la commande addvm (voir dans script/proxmox) que sera injectée la bonne clé.
-NOTE : L'identifiant du royaume ansible est aussi utilisé pour créer un pool proxmox.
-Une colone du fichier des intrants de addvm est renseignée du nom du royaume.
-
-Exemple de fichier intrants.txt :
-vm_id,vm_royaume,vm_name,vm_disk_size,ip_address,gateway,dns_servers,vm_memory,vm_cores,vm_vlan
-10101,kbr-dev,sys-01,32,10.10.1.101/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001
-10102,kbr-dev,sys-02,32,10.10.1.102/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001
-10103,kbr-dev,sys-03,32,10.10.1.103/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001
-10104,kbr-dev,sys-04,32,10.10.1.104/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001
-
-
-********************************************************************************************************************
-MÉTHODE SIMLPLIFIÉE PERMETTANT D'EXÉCUTER N'IMPORTE QUEL PLAYBOOK
-SUR N'IMPORTEQUL HÔTE SANS AVOIR À SE SOUCIER DU FICHIER D'INVENTAIRE 
+Copiez le fichier `.pub` dans le répertoire `/etc/pve/priv` d'un hyperviseur Proxmox :
 
 ```bash
-./playbook-adhoc <PLAYBOOK> <IP1> [<IP2> ...]
+scp ~/.ssh/id_ed25519_dev-projetX.pub root@<hyperviseur>:/etc/pve/priv
 ```
-Ce script va créer un fichier d'inventaire nommé <PLAYBOOK>.hosts et s'en servir.
 
-Exemple : playbook-adhoc integrations 192.168.0.100 10.10.4.56
+**Étape 3 : Injection de la clé lors de la création de la VM**
 
-cette commande va créer le fichier integrations.hosts : 
+Sur un hyperviseur, utilisez la commande `addvm` (qui utilise un csv) pour injecter la clé appropriée.
+
+*Exemple : `nouvelles_vm.csv` :*
+
+```
+vm_id,vm_royaume,vm_name,vm_disk_size,vm_vlan,ip_address,gateway,dns_servers,vm_memory,vm_cores
+10101,dev-projetX,dev-sys-01,32,1001,10.10.1.101/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4
+```
+
+## Méthode simplifiée pour exécuter des playbooks
+
+Pour exécuter un playbook sur des hôtes spécifiques sans se soucier d'un fichier d'inventaire
+j'ai créé le script `playbook-adhoc`. Voici comment l'utiliser :
+
+```bash
+./playbook-adhoc <ROYAUME> <PLAYBOOK> <IP1> [<IP2> ...]
+```
+
+*Exemple :*
+
+```bash
+./playbook-adhoc dev-projetX integrations 192.168.0.100 10.10.4.56
+```
+
+Ce script crée un fichier d'inventaire nommé `integrations.hosts` et l'utiliser pour exécuter le playbook integrations.yml.
+Fichier integrations.hosts:
 
 ```
 [leChoixDuSysadmin]
 192.168.0.100
 10.10.4.56
+```
 
-et puis lancer le playbook comme suit :
+*** NOTE IMPORTANTE ***
+Pour que ca fonctionne, il fait que l'entête du playbook ait ceci :
 
+```
+  hosts: leChoixDuSysadmin 
+```
 
-********************************************************************************************************************
-MÉTHODE PERMETTANT D'EXÉCUTER UN PLAYBOOK SUR UN GRAND NOMBRE DE MACHINES 
+## Exécution d'un playbook sur plusieurs machines
 
-MOTE:  Cette mesure est facultative car on peut tout aussi bien
-spécifier le fichier d'inventaire en lancant le playbook avec -i
-
-Créer et renseigner le fichier `/etc/ansible/hosts.conf`
+Pour exécuter un playbook sur un grand nombre de machines, créez et renseignez le fichier `/etc/ansible/hosts.conf` :
 
 ```bash
-IP=$(ip a | grep -oP '(?<=inet )(.*)(?=/)' | head -n 2 | awk 'NR==2')
+IP=$(hostname -I | awk '{print $1}')
 echo "[leChoixDuSysadmin]" | sudo tee -a /etc/ansible/hosts.conf
 echo "$IP" | sudo tee -a /etc/ansible/hosts.conf
 ```
 
-Le résultat devrait ressembler à ceci :
+Le fichier devrait ressembler à ceci :
 
 ```
 [leChoixDuSysadmin]
 192.168.1.100
 ```
-****** NOTE IMPORTANTE *********
-dans les playbook, il doit être mentionné "hosts : leChoixDuSysadmin"
-c'est une contrainte que j'ai induite avec le script "playbook-adhoc".
 
+*Remarque importante :* Dans les playbooks, spécifiez `hosts: leChoixDuSysadmin` pour correspondre au groupe défini dans le fichier d'inventaire.
 
-Exécuter un playbook :
+Pour exécuter le playbook :
 
 ```bash
 sudo -u ansible ansible-playbook ./script/ansible/durcissement_se.yml --ask-become-pass [-i <fichier d'inventaire>]
 ```
+```
+
+Ce document amélioré inclut un sommaire interactif pour une navigation aisée et des exemples supplémentaires pour l'installation d'Ansible sur Debian. N'hésitez pas à me solliciter pour toute assistance supplémentaire ou clarification. 

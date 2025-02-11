@@ -1,0 +1,12 @@
+[Unit]
+Description=Auto Grow Disk Partition and Filesystem
+After=local-fs.target
+
+[Service]
+ExecStart=/usr/local/bin/autogrow.sh
+Type=oneshot
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
+
