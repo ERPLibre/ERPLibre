@@ -68,6 +68,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_geospatial," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_helpdesk," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_hr," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_hr-holidays," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_interface-github," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_knowledge," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_l10n-canada," >> "${EL_CONFIG_FILE}"
