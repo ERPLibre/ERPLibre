@@ -1,8 +1,0 @@
-vm_id,vm_name,vm_disk_size,ip_address,gateway,dns_servers,vm_memory,vm_cores,vm_vlan,vm_pool,ssh_key
-10101,kbr-dev-sys-01,32,10.10.1.101/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-10102,kbr-dev-sys-02,32,10.10.1.102/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-10103,kbr-dev-sys-03,32,10.10.1.103/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-10104,kbr-dev-sys-04,32,10.10.1.104/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-10105,kbr-dev-adm-01,16,10.10.1.105/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-10106,kbr-dev-adm-02,16,10.10.1.106/24,10.10.1.254,10.10.0.10 10.10.0.20,2048,4,1001,ProjetKBR,/etc/pve/priv/ansible_ed25519_kbr.pub
-

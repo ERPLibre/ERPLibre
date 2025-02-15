@@ -1,13 +1,38 @@
 #!/bin/bash
 
-# Fichier de configuration
-CONFIG_FILE="vm_dev.csv"
+# Vérifier si un argument a été fourni
+if [ -z "$1" ]; then
+    echo "Erreur : aucun nom de fichier spécifié."
+    echo "Usage : $0 nom_de_base_du_fichier"
+    exit 1
+fi
 
-# Vérification du fichier de configuration
+# Nom de base du fichier fourni en argument
+nom_base="$1"
+
+# Ajouter l'extension .vm.cfg
+CONFIG_FILE="${nom_base}.vm.cfg"
+
+# Vérifier si le fichier avec l'extension existe
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "Fichier de configuration introuvable : $CONFIG_FILE"
+    echo "Erreur : le fichier '$CONFIG_FILE' n'existe pas."
+    exit 1
+fi
+
+# Fichier des royaumes
+ROYAUMES_FILE="/etc/pve/priv/royaumes.ini"
+
+# Vérification des fichiers de configuration
+if [ ! -f "$ROYAUMES_FILE" ]; then
+  echo "Fichier des royaumes introuvable : $ROYAUMES_FILE"
   exit 1
 fi
+
+# Lire le fichier des royaumes et stocker les informations dans un tableau associatif
+declare -A ROYAUMES
+while IFS=':' read -r royaume motdepasse; do
+  ROYAUMES["$royaume"]="$motdepasse"
+done < "$ROYAUMES_FILE"
 
 # Lire la première ligne pour obtenir les noms des colonnes
 IFS=',' read -r -a COLUMNS < "$CONFIG_FILE"
@@ -23,8 +48,23 @@ tail -n +2 "$CONFIG_FILE" | while IFS=',' read -r ${COLUMNS[@]}; do
   done
 
   # Vérification des paramètres essentiels
-  if [ -z "$vm_id" ] || [ -z "$vm_name" ] || [ -z "$ip_address" ] || [ -z "$vm_disk_size" ]; then
-    echo "Erreur : vm_id, vm_name, ip_address ou vm_disk_size manquant pour une ligne. Ignorée."
+  if [ -z "$vm_id" ] || [ -z "$vm_name" ] || [ -z "$ip_address" ] || [ -z "$vm_disk_size" ] || [ -z "$vm_royaume" ]; then
+    echo "Erreur : vm_id, vm_name, ip_address, vm_disk_size ou vm_royaume manquant pour une ligne. Ignorée."
+    continue
+  fi
+
+  # Récupérer le mot de passe associé au royaume
+  vm_password="${ROYAUMES[$vm_royaume]}"
+  if [ -z "$vm_password" ]; then
+    echo "Erreur : Aucun mot de passe trouvé pour le royaume '$vm_royaume'. Ignorée."
+    continue
+  fi
+  echo "Mot de passe : ${vm_password}"
+
+  # Déterminer le chemin de la clé SSH publique en fonction du royaume
+  ssh_key_path="/etc/pve/priv/id_ed25519_ansible_${vm_royaume}.pub"
+  if [ ! -f "$ssh_key_path" ]; then
+    echo "Erreur : Clé SSH publique introuvable pour le royaume '$vm_royaume' : $ssh_key_path"
     continue
   fi
 
@@ -33,34 +73,28 @@ tail -n +2 "$CONFIG_FILE" | while IFS=',' read -r ${COLUMNS[@]}; do
   qm set "$vm_id" --ide2 CephNVMe:cloudinit
   qm set "$vm_id" --boot c --bootdisk scsi0
   qm set "$vm_id" --scsihw virtio-scsi-single
-
-  # Associer une image cloud-init
   qm importdisk "$vm_id" /var/lib/vz/template/qcow/debian-12-genericcloud-amd64.qcow2 CephNVMe
   qm set "$vm_id" --scsi0 CephNVMe:vm-${vm_id}-disk-0
-
-  # Redimensionner le disque principal
-  #echo "Redimensionnement du disque principal à ${vm_disk_size}G pour la VM $vm_name"
-  #qm resize "$vm_id" scsi0 ${vm_disk_size}G
-
-  # Configurer Cloud-init
-  qm set "$vm_id" --ciuser ansible
-  qm set "$vm_id" --cipassword T0rp1n0uch3.
-  qm set "$vm_id" --sshkey "$ssh_key"
+  qm set "$vm_id" --ciuser ansible --cipassword "$vm_password" --sshkey "$ssh_key_path"
   qm set "$vm_id" --ipconfig0 ip="$ip_address",gw="$gateway"
-  qm set "$vm_id" --nameserver "$(echo $dns_servers | tr '|' ',')"
+  qm set "$vm_id" --nameserver "$dns_servers"
 
-  # Vérifier si le pool existe, sinon le créer
-  #if ! pvesh get /pools | grep -q "\"$vm_pool\""; then
-  #    pvesh create /pools -poolid "$vm_pool"
+  # créer le pool
+  pool_name="$vm_royaume"
+  #if ! pvesh get /pools | grep -q "\"${pool_name}\""; then
+    echo "Création du pool : $pool_name"
+    pvesh create /pools -poolid "$pool_name"
   #fi
 
-  # Démarrer la VM (optionnel)
-   qm start "$vm_id"
+  # Ajouter la VM au pool
+  echo "Ajout de la VM $vm_name (ID: $vm_id) au pool $pool_name"
+  pvesh set /pools/"$pool_name" --vms "$vm_id"
+  #pvesh create /pools/"$pool_name"/vms -vmid "$vm_id"
 
-  # Redimensionner le disque principal
-  # echo "Redimensionnement du disque principal à ${vm_disk_size}G pour la VM $vm_name"
-  # qm resize "$vm_id" scsi0 ${vm_disk_size}G
+  # Démarrer la VM
+  qm start "$vm_id"
+  nohup ./goQ35.sh "$vm_id" -d 120 >> ./goQ35."$vm_id".log 2>&1 &
 
-  echo "VM $vm_name (ID: $vm_id) configurée avec succès."
+  echo "VM $vm_name (ID: $vm_id) configurée avec succès et ajoutée au pool $pool_name."
 done
 
