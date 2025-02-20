@@ -164,6 +164,7 @@ class SeleniumLib(object):
             )
         )
         button.click()
+        return button
 
     def get_element(self, by: str = By.ID, value: str = None, timeout=5):
         wait = WebDriverWait(self.driver, timeout)
@@ -177,6 +178,32 @@ class SeleniumLib(object):
         )
 
         return ele[0]
+
+    def get_element_not_visible(self, by: str = By.ID, value: str = None, timeout=5):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.presence_of_element_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
+
+    def get_elements_not_visible(self, by: str = By.ID, value: str = None, timeout=5):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.presence_of_all_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
 
     def get_all_element(self, by: str = By.ID, value: str = None, timeout=5):
         wait = WebDriverWait(self.driver, timeout)
