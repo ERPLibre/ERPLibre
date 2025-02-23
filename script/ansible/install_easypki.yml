@@ -1,0 +1,23 @@
+---
+- name: Installer easy-rsa, copier le script easypki et créer la PKI Projet_KBR
+  hosts: leChoixDuSysadmin
+  become: yes
+  tasks:
+    - name: Assurer que le paquet easy-rsa est installé
+      apt:
+        name: easy-rsa
+        state: present
+        update_cache: yes
+
+    - name: Copier le script easypki vers /usr/sbin
+      copy:
+        src: ../pki/easypki
+        dest: /usr/sbin/easypki
+        mode: '0755'
+
+    - name: Créer la PKI Projet_KBR dans /var/lib si elle n'existe pas déjà
+      command: "/usr/sbin/easypki Projet_KBR"
+      args:
+        chdir: /var/lib
+        creates: /var/lib/Projet_KBR
+
