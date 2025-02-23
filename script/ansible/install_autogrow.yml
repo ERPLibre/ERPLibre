@@ -1,0 +1,37 @@
+---
+- name: Deploy and configure autogrow service on Debian 12.9
+  hosts: leChoixDuSysadmin 
+  become: yes
+  tasks:
+
+    - name: Ensure /usr/local/bin directory exists
+      file:
+        path: /usr/local/bin
+        state: directory
+        mode: '0755'
+
+    - name: Copy autogrow script to /usr/local/bin
+      copy:
+        src: fichiers/autogrow.sh
+        dest: /usr/local/bin/autogrow.sh
+        mode: '0755'
+    
+    - name: Copy autogrow systemd service file
+      copy:
+        src: fichiers/autogrow.service
+        dest: /etc/systemd/system/autogrow.service
+        mode: '0644'
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+
+    - name: Enable autogrow service
+      systemd:
+        name: autogrow.service
+        enabled: yes
+    
+    - name: Start autogrow service
+      systemd:
+        name: autogrow.service
+        state: started
+

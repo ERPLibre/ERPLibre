@@ -1,0 +1,68 @@
+---
+- name: Add grouped Python plugins as CheckCommands in Icinga Director
+  hosts: leChoixDuSysadmin
+  gather_facts: no
+  vars:
+    # Grouped plugins by functionality
+    plugin_groups:
+      security_network:
+        - name: "001_ensure_ufw_is_installed"
+          path: "/usr/lib/nagios/plugins/001_ensure_ufw_is_installed.py"
+        - name: "002_allow_ssh_immediately"
+          path: "/usr/lib/nagios/plugins/002_allow_ssh_immediately.py"
+        - name: "003_set_default_policy_to_deny_incoming_traffic"
+          path: "/usr/lib/nagios/plugins/003_set_default_policy_to_deny_incoming_traffic.py"
+      permissions_access:
+        - name: "013_set_permissions_on_etc_passwd"
+          path: "/usr/lib/nagios/plugins/013_set_permissions_on_etc_passwd.py"
+        - name: "014_set_permissions_on_etc_shadow"
+          path: "/usr/lib/nagios/plugins/014_set_permissions_on_etc_shadow.py"
+      ssh_config:
+        - name: "040_ensure_the_permitrootlogin_is_set_to_no_disable_root_login"
+          path: "/usr/lib/nagios/plugins/040_ensure_the_permitrootlogin_is_set_to_no_disable_root_login.py"
+        - name: "041_ensure_passwordauthentication_is_set_to_no_force_key_based_authentication"
+          path: "/usr/lib/nagios/plugins/041_ensure_passwordauthentication_is_set_to_no_force_key_based_authentication.py"
+      audits_logs:
+        - name: "033_install_auditd"
+          path: "/usr/lib/nagios/plugins/033_install_auditd.py"
+        - name: "034_ensure_auditd_service_is_enabled_and_running"
+          path: "/usr/lib/nagios/plugins/034_ensure_auditd_service_is_enabled_and_running.py"
+      system_settings:
+        - name: "011_mettre_jour_la_liste_des_paquets_apt"
+          path: "/usr/lib/nagios/plugins/011_mettre_jour_la_liste_des_paquets_apt.py"
+        - name: "012_mettre_jour_uniquement_les_paquets_install_s"
+          path: "/usr/lib/nagios/plugins/012_mettre_jour_uniquement_les_paquets_install_s.py"
+      backups_banners:
+        - name: "036_create_a_message_of_the_day_motd_banner"
+          path: "/usr/lib/nagios/plugins/036_create_a_message_of_the_day_motd_banner.py"
+        - name: "037_backup_the_current_sshd_config"
+          path: "/usr/lib/nagios/plugins/037_backup_the_current_sshd_config.py"
+      security_integrity:
+        - name: "061_install_fail2ban"
+          path: "/usr/lib/nagios/plugins/061_install_fail2ban.py"
+        - name: "062_ensure_fail2ban_service_is_running"
+          path: "/usr/lib/nagios/plugins/062_ensure_fail2ban_service_is_running.py"
+
+  tasks:
+    - name: Add CheckCommands for each group of plugins
+      uri:
+        url: "https://adm-kbr.delaviorne.net/api/v1/checkcommand"
+        method: POST
+        headers:
+          Accept: "application/json"
+          Authorization: "Bearer your_api_token"
+        body:
+          object_name: "{{ item.name }}"
+          attrs:
+            command: "{{ item.path }}"
+            templates: ["configAudit"]
+            vars.agent: true
+        body_format: json
+        validate_certs: no
+      with_items: "{{ plugin_groups | combine }}"
+      register: results
+
+    - name: Debug results
+      debug:
+        var: results
+

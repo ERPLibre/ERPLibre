@@ -1,0 +1,57 @@
+---
+- name: Deploy Smallstep CA with Docker Compose
+  hosts: leChoixDuSysadmin
+  become: true
+  tasks:
+    - name: Create the directory for Docker Compose
+      file:
+        path: /opt/smallstep
+        state: directory
+        mode: '0755'
+
+    - name: Create the secrets directory for Smallstep
+      file:
+        path: /opt/smallstep/secrets
+        state: directory
+        mode: '0700'
+
+    - name: Create the password file for Smallstep CA
+      copy:
+        dest: /opt/smallstep/secrets/password
+        content: "T0rp1n0uch3."
+        mode: '0600'
+
+    - name: Create docker-compose.yml for Smallstep CA
+      copy:
+        dest: /opt/smallstep/docker-compose.yml
+        content: |
+          version: '3.8'
+          services:
+            step-ca:
+              image: smallstep/step-ca:latest
+              container_name: step-ca
+              ports:
+                - "443:443"
+              environment:
+                DOCKER_STEPCA_INIT_NAME: "MoiJeLConnais"
+                DOCKER_STEPCA_INIT_DNS_NAMES: "example.com,api.example.com"
+                DOCKER_STEPCA_INIT_PASSWORD_FILE: "/home/step/secrets/password"
+                DOCKER_STEPCA_INIT_PROVISIONER_NAME: "admin"
+                DOCKER_STEPCA_INIT_PROVISIONER_PASSWORD_FILE: "/home/step/secrets/password"
+              volumes:
+                - "/opt/smallstep/data:/home/step"
+                - "/opt/smallstep/secrets:/home/step/secrets"
+              restart: always
+        mode: '0644'
+
+    - name: Install Docker Compose (if not already installed)
+      apt:
+        name: docker-compose
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Start Smallstep CA with Docker Compose
+      command: docker-compose up -d
+      args:
+        chdir: /opt/smallstep
+

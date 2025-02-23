@@ -1,0 +1,19 @@
+---
+- name: Installer les plugins de Chezlepro
+  hosts: leChoixDuSysadmin
+  become: true
+
+  tasks:
+    - name: Créer le répertoire /usr/lib/nagios/plugins/chezlepro s'il n'existe pas
+      ansible.builtin.file:
+        path: /usr/lib/nagios/plugins/chezlepro
+        state: directory
+        mode: "0755"
+
+    - name: Synchroniser les plugins personnalisés
+      ansible.builtin.copy:
+        src: ./plugins/
+        dest: /usr/lib/nagios/plugins/chezlepro/
+        mode: "0755"
+        owner: root
+        group: root

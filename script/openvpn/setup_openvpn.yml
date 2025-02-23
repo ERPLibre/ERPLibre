@@ -1,0 +1,72 @@
+---
+- name: Installer les prérequis pour OpenVPN et Easy-RSA
+  hosts: vpn_server
+  become: yes
+  tasks:
+
+    - name: Mettre à jour la liste des paquets
+      apt:
+        update_cache: yes
+
+    - name: Installer OpenVPN et Easy-RSA
+      apt:
+        name:
+          - openvpn
+          - easy-rsa
+        state: present
+
+    - name: Créer le répertoire Easy-RSA
+      file:
+        path: /etc/openvpn/easy-rsa
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copier les fichiers Easy-RSA
+      command: cp -r /usr/share/easy-rsa/* /etc/openvpn/easy-rsa/
+      args:
+        creates: /etc/openvpn/easy-rsa/vars
+
+    - name: Initialiser le PKI
+      command: ./easyrsa init-pki
+      args:
+        chdir: /etc/openvpn/easy-rsa
+      when: not ansible_check_mode
+
+    - name: Générer un CA
+      command: ./easyrsa build-ca nopass
+      args:
+        chdir: /etc/openvpn/easy-rsa
+      when: not ansible_check_mode
+
+    - name: Générer la clé Diffie-Hellman
+      command: ./easyrsa gen-dh
+      args:
+        chdir: /etc/openvpn/easy-rsa
+      when: not ansible_check_mode
+
+    - name: Créer un fichier de configuration serveur
+      copy:
+        dest: /etc/openvpn/server.conf
+        content: |
+          port 1194
+          proto udp
+          dev tun
+          ca /etc/openvpn/easy-rsa/pki/ca.crt
+          cert /etc/openvpn/easy-rsa/pki/issued/server.crt
+          key /etc/openvpn/easy-rsa/pki/private/server.key
+          dh /etc/openvpn/easy-rsa/pki/dh.pem
+          server 10.8.0.0 255.255.255.0
+          keepalive 10 120
+          persist-key
+          persist-tun
+          status /var/log/openvpn-status.log
+          verb 3
+
+    - name: Activer et démarrer OpenVPN
+      systemd:
+        name: openvpn
+        enabled: yes
+        state: started
+
