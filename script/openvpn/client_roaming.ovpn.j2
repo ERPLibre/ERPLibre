@@ -1,0 +1,17 @@
+client
+dev tun
+proto {{ openvpn_proto }}
+remote {{ openvpn_server_ip }} {{ openvpn_port }}
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ecdh-curve X25519
+tls-version-min 1.2
+ca ca.crt
+cert client.crt
+key client.key
+tls-auth ta.key 1
+remote-cert-tls server
+cipher AES-256-CBC
+verb 3

@@ -1,0 +1,72 @@
+---
+- name: Installation et configuration d'OpenVPN avec Easy-RSA pour KBR
+  hosts: leChoixDuSysadmin
+  become: true
+  vars:
+    openvpn_server_ip: "{{ ansible_default_ipv4.address }}"
+    openvpn_port: 1194
+    openvpn_proto: udp
+    openvpn_pki_dir: /etc/openvpn/pki
+    easypki_script_src: files/easypki
+    easypki_script_dest: /usr/local/bin/easypki
+    openvpn_config_dir: /etc/openvpn
+    openvpn_clients_subnet: 10.8.0.0
+    openvpn_clients_netmask: 255.255.255.0
+    openvpn_tunnel_subnet: 10.9.0.0
+    openvpn_tunnel_netmask: 255.255.255.0
+  tasks:
+
+    - name: Installer Easy-RSA et OpenVPN
+      apt:
+        name:
+          - easy-rsa
+          - openvpn
+        state: present
+        update_cache: yes
+
+    - name: Copier le script de gestion PKI dans /usr/local/bin
+      copy:
+        src: "{{ easypki_script_src }}"
+        dest: "{{ easypki_script_dest }}"
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configurer OpenVPN pour les utilisateurs itinérants
+      template:
+        src: server_roaming.conf.j2
+        dest: "{{ openvpn_config_dir }}/server_roaming.conf"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configurer OpenVPN pour le tunnel VPN résilient
+      template:
+        src: server_tunnel.conf.j2
+        dest: "{{ openvpn_config_dir }}/server_tunnel.conf"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copier le fichier de configuration client itinérant
+      template:
+        src: client_roaming.ovpn.j2
+        dest: "{{ openvpn_config_dir }}/client_roaming.ovpn"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copier le fichier de configuration client tunnel VPN
+      template:
+        src: client_tunnel.ovpn.j2
+        dest: "{{ openvpn_config_dir }}/client_tunnel.ovpn"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Redémarrer et activer OpenVPN
+      systemd:
+        name: openvpn
+        state: restarted
+        enabled: yes
+

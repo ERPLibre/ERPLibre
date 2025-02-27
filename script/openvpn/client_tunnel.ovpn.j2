@@ -1,0 +1,23 @@
+port 1195
+proto {{ openvpn_proto }}
+dev tun
+ca {{ openvpn_pki_dir }}/ca.crt
+cert {{ openvpn_pki_dir }}/issued/server_tunnel.crt
+key {{ openvpn_pki_dir }}/private/server_tunnel.key
+dh none
+ecdh-curve X25519
+tls-version-min 1.2
+server {{ openvpn_tunnel_subnet }} {{ openvpn_tunnel_netmask }}
+persist-key
+persist-tun
+keepalive 10 120
+status /var/log/openvpn-status-tunnel.log
+verb 3
+
+# Paramètres spécifiques au tunnel résilient
+push "route 192.168.100.0 255.255.255.0"
+
+# Sécurisation TLS
+crl-verify {{ openvpn_pki_dir }}/crl.pem
+tls-auth {{ openvpn_pki_dir }}/ta.key 0
+
