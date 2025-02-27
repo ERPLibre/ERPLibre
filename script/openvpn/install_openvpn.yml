@@ -7,7 +7,7 @@
     openvpn_port: 1194
     openvpn_proto: udp
     openvpn_pki_dir: /etc/openvpn/pki
-    easypki_script_src: files/easypki
+    easypki_script_src: ../pki/easypki
     easypki_script_dest: /usr/local/bin/easypki
     openvpn_config_dir: /etc/openvpn
     openvpn_clients_subnet: 10.8.0.0
