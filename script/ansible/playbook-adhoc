@@ -14,7 +14,7 @@ ROYAUME = sys.argv[2]
 TARGETS = sys.argv[3:]
 
 # Générer le nom du fichier d'inventaire
-inventaireDuSysadmin = f"./{PLAYBOOK}.hosts"
+inventaireDuSysadmin = f"/tmp/adhoc.hosts"
 
 # Générer le contenu du fichier d'inventaire
 choixDuSysadmin = "\n".join([f"{ip}" for ip in TARGETS])
@@ -42,6 +42,6 @@ try:
 except subprocess.CalledProcessError:
     print("❌ Erreur lors de l'exécution du playbook.")
 
-# Ne pas supprimer le fichier d'inventaire pour une réutilisation éventuelle
-print(f"📂 Le fichier d'inventaire {inventaireDuSysadmin} est conservé.")
+# Supprimer le fichier temporaire
+os.remove(inventaireDuSysadmin)
 
