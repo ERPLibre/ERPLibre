@@ -10,6 +10,8 @@ set -e
 
 # Forcer le mode non interactif d'Easy-RSA
 export EASYRSA_BATCH=1
+export EASYRSA_ALGO=ec
+export EASYRSA_CURVE=secp384r1
 
 # Chemin vers l'exécutable Easy-RSA
 EASYRSA="/usr/share/easy-rsa/easyrsa"
@@ -25,7 +27,7 @@ ROYAUME="${PKI_NAME}"
 shift
 
 # Dossier de gestion de la PKI
-PKI_DIR="./${PKI_NAME}"
+PKI_DIR="/etc/openvpn"
 
 # Noms des CA subordonnées et de la CA principale renommée (copie)
 SUB_CA_UTIL="CA-utilisateur-${ROYAUME}"
