@@ -1,5 +1,3 @@
----
-
 # **📌 Étapes pour configurer les certificats sur iPhone et Android**
 ### **🔹 Objectif :**
 - **Importer le certificat client OpenVPN** dans l’appareil.
