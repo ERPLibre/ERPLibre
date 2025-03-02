@@ -8,6 +8,22 @@
 
 set -e
 
+# --- Validation du groupe vpnadmins et du compte ansible ---
+if ! getent group vpnadmins >/dev/null; then
+    echo "Le groupe vpnadmins n'existe pas. Création du groupe et ajout de l'utilisateur ansible..."
+    sudo groupadd vpnadmins
+    sudo usermod -aG vpnadmins ansible
+    echo "IMPORTANT : Veuillez fermer votre session et la rouvrir avant de déployer les changements sur le serveur."
+    exit 1
+fi
+
+if ! id -nG ansible | grep -qw vpnadmins; then
+    echo "L'utilisateur ansible n'est pas membre du groupe vpnadmins. Ajout de ansible au groupe vpnadmins..."
+    sudo usermod -aG vpnadmins ansible
+    echo "IMPORTANT : Veuillez fermer votre session et la rouvrir avant de déployer les changements sur le serveur."
+    exit 1
+fi
+
 # Forcer le mode non interactif d'Easy-RSA
 export EASYRSA_BATCH=1
 export EASYRSA_ALGO=ec
@@ -23,16 +39,16 @@ if [ $# -lt 1 ]; then
 fi
 
 PKI_NAME="$1"
-ROYAUME="${PKI_NAME}"
+ROYAUME=Projet_KBR
 shift
 
 # Dossier de gestion de la PKI
-PKI_DIR="/etc/openvpn/${ROYAUME}"
+PKI_DIR="/etc/openvpn/${PKI_NAME}"
 
 # Noms des CA subordonnées et de la CA principale renommée (copie)
-SUB_CA_UTIL="CA-utilisateur-${ROYAUME}"
-SUB_CA_MACH="CA-machine-${ROYAUME}"
-ROOT_CA="CA-${ROYAUME}"
+SUB_CA_UTIL="CA-utilisateur-${PKI_NAME}"
+SUB_CA_MACH="CA-machine-${PKI_NAME}"
+ROOT_CA="CA-${PKI_NAME}"
 
 # --- Fonction de nettoyage des certificats révoqués expirés ---
 cleanup_revoked() {
@@ -80,7 +96,6 @@ list_certificates_by_subca() {
       continue
     fi
     issuer=$(openssl x509 -in "$cert" -noout -issuer 2>/dev/null)
-    # Utilisation d'un pattern qui accepte les espaces autour de "="
     if echo "$issuer" | grep -q "CN *= *${subca}"; then
       exp=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
       echo "  $certname - Expiration : $exp"
@@ -174,6 +189,54 @@ case "$action" in
       mv pki/private/ca.key.main pki/private/ca.key
       popd > /dev/null
       echo "Certificat utilisateur '$CERT_NAME' créé/remplacé."
+
+      # --- Création du fichier .ovpn pour le client ---
+      echo "Création du fichier client .ovpn..."
+      cat <<OVPN_EOF > "${PKI_DIR}/${CERT_NAME}.ovpn"
+client
+dev tun
+proto udp
+remote symba.chezlepro.ca 1194
+# remote symba.chezlepro.ca 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-GCM
+data-ciphers AES-256-GCM
+<ca>
+$(cat "${PKI_DIR}/pki/CA-utilisateur-easy-rsa.chain.crt")
+</ca>
+<cert>
+$(cat "${PKI_DIR}/pki/issued/${CERT_NAME}.crt")
+</cert>
+<key>
+$(cat "${PKI_DIR}/pki/private/${CERT_NAME}.key")
+</key>
+<tls-auth>
+-----BEGIN OpenVPN Static key V1-----
+8368080c4dfdfcb059bf20b608b45f3e
+c57b56ff986cd87cff9f310e24f4ff3c
+8747ec0b923faaac94d8c9d11b819534
+a2372cc9ff2161305987bdec63d520ed
+fdd40ce0df53b68e7374cb3c2e8622db
+b29831775426403005f765241eb48d32
+7fd7535d66d90d2aec12337c833e3753
+5a865a072a64609cdf37faefd1cff219
+0d8b547cf21a2dd318e7e640a4cf83f7
+021e1c887f10aa9c9aee9b7caefa6b46
+6237839042734d45660064502c626303
+d958bc639a3a55334181474b25336ce2
+f186db83d3a866c3f68c84cf37df4573
+9e0b685e4265a668bd2bce9d61172170
+79ccbfb209c84025b641cfd850065f5c
+27bd96b208060d62c510ddfb3ef821c1
+-----END OpenVPN Static key V1-----
+</tls-auth>
+key-direction 1
+OVPN_EOF
+      echo "Fichier .ovpn créé : ${PKI_DIR}/${CERT_NAME}.ovpn"
     fi
     ;;
   --machine)
@@ -262,3 +325,7 @@ case "$action" in
     exit 1
     ;;
 esac
+
+# Ajustement aux permissions pour permettre au compte ansible d'avoir accès à la pki
+sudo chown -R root:vpnadmins ${PKI_DIR}/pki
+sudo chmod -R g+rx ${PKI_DIR}

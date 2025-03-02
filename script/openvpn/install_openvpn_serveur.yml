@@ -1,0 +1,31 @@
+- name: Déployer et configurer OpenVPN sur le serveur
+  hosts: leChoixDuSysadmin
+  become: yes
+  tasks:
+    - name: Installer OpenVPN
+      apt:
+        name: openvpn
+        state: present
+
+    - name: Déployer la configuration du VPN des utilisateurs
+      template:
+        src: rpv-symba.conf.j2
+        dest: /etc/openvpn/rpv-symba.conf
+
+    - name: Déployer la configuration du VPN pour l'admin système
+      template:
+        src: rpv-sysadmin.serveur.conf.j2
+        dest: /etc/openvpn/rpv-sysadmin.conf
+
+    - name: Démarrer l’instance symba
+      systemd:
+        name: openvpn@rpv-symba
+        enabled: yes
+        state: started
+
+    - name: Démarrer l’instance sysadmin
+      systemd:
+        name: openvpn@rpv-sysadmin
+        enabled: yes
+        state: started
+

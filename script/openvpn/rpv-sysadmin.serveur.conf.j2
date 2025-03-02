@@ -1,0 +1,21 @@
+port 1195
+proto udp
+dev tun
+ca /etc/openvpn/easy-rsa/pki/CA-machine-easy-rsa.chain.crt
+cert /etc/openvpn/easy-rsa/pki/issued/kbrdev-erp01.delaviorne.net.crt
+key /etc/openvpn/easy-rsa/pki/private/kbrdev-erp01.delaviorne.net.key
+dh none
+tls-groups secp384r1
+tls-auth /etc/openvpn/easy-rsa/ta.key 0
+crl-verify /etc/openvpn/easy-rsa/pki/crl.pem
+cipher AES-256-GCM
+data-ciphers AES-256-GCM
+topology subnet
+server 10.9.0.0 255.255.255.0
+push "route 172.17.0.0 255.255.0.0"
+push "route 10.10.10.10 255.255.255.255"
+keepalive 10 60
+persist-key
+persist-tun
+status /var/log/openvpn/rpv-sysadmin-status.log
+verb 4

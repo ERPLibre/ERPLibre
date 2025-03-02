@@ -1,0 +1,13 @@
+---
+- name: Synchronisation de la PKI OpenVPN
+  hosts: leChoixDuSysadmin
+  become: yes
+  tasks:
+    - name: Synchroniser la PKI vers la cible
+      synchronize:
+        src: "/etc/openvpn/easy-rsa"
+        dest: "/etc/openvpn/easy-rsa"
+        rsync_opts:
+          - "--exclude=ca.key"
+          - "--exclude=CA-*.key"
+
