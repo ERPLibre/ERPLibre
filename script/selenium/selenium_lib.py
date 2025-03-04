@@ -2,6 +2,7 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import datetime
 import os
 import re
 import sys
@@ -10,10 +11,14 @@ from subprocess import getoutput
 
 from randomwordfr import RandomWordFr
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    TimeoutException,
+)
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
@@ -179,7 +184,9 @@ class SeleniumLib(object):
 
         return ele[0]
 
-    def get_element_not_visible(self, by: str = By.ID, value: str = None, timeout=5):
+    def get_element_not_visible(
+        self, by: str = By.ID, value: str = None, timeout=5
+    ):
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_element_located(
@@ -192,7 +199,9 @@ class SeleniumLib(object):
 
         return ele
 
-    def get_elements_not_visible(self, by: str = By.ID, value: str = None, timeout=5):
+    def get_elements_not_visible(
+        self, by: str = By.ID, value: str = None, timeout=5
+    ):
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_all_elements_located(
@@ -303,6 +312,8 @@ class SeleniumLib(object):
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
         element: WebElement = None,
+        with_index: bool = False,
+        index_of_list: int = 0,
     ):
         # ele = self.driver.find_element(by, value)
         if element:
@@ -316,21 +327,45 @@ class SeleniumLib(object):
                     viewport_ele_by, viewport_ele_value, timeout
                 )
             self.scrollto_element(ele, viewport_ele=viewport_ele)
+            # ActionChains(self.driver).move_to_element(ele).click().perform()
             ActionChains(self.driver).move_to_element(ele).perform()
         time.sleep(self.config.selenium_default_delay)
         wait = WebDriverWait(self.driver, timeout)
         if element:
             button = wait.until(EC.element_to_be_clickable(element))
         else:
-            button = wait.until(
-                EC.element_to_be_clickable(
-                    (
-                        by,
-                        value,
+            if with_index:
+                buttons = wait.until(
+                    EC.presence_of_all_elements_located(
+                        (
+                            by,
+                            value,
+                        )
                     )
                 )
-            )
-        button.click()
+                button = buttons[index_of_list]
+            else:
+                button = wait.until(
+                    EC.element_to_be_clickable(
+                        (
+                            by,
+                            value,
+                        )
+                    )
+                )
+        try:
+            button.click()
+        except ElementClickInterceptedException as e:
+            try:
+                print(e)
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView(true);", button
+                )
+                button.click()
+            except ElementClickInterceptedException as e:
+                print(e)
+                self.driver.execute_script("arguments[0].click();", button)
+        return button
 
     def click_canvas_form(
         self,
@@ -375,6 +410,8 @@ class SeleniumLib(object):
                 )
             self.scrollto_element(ele, viewport_ele=viewport_ele)
             ActionChains(self.driver).move_to_element(ele).perform()
+
+        # Write content
         ele.send_keys(text_value)
         if delay_after > 0:
             time.sleep(delay_after)
@@ -565,6 +602,124 @@ class SeleniumLib(object):
             self.click(self.driver, xpath_button)
         except Exception:
             print("Chatbot cannot be found, stop searching it.")
+
+    # Website
+    def odoo_website_menu_click(self, from_text=""):
+        if not from_text:
+            raise Exception(
+                "Cannot click, empty parameter from method"
+                " odoo_website_menu_click"
+            )
+        button = self.click_with_mouse_move(
+            By.LINK_TEXT, from_text, timeout=30
+        )
+        return button
+
+    # Web
+    def odoo_fill_widget_char(self, field_name, text):
+        # Type input
+        text_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+        text_field.send_keys(text)
+        return text_field
+
+    def odoo_web_click_principal_menu(self):
+        # Click menu button
+        button = self.click_with_mouse_move(
+            By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
+        )
+        return button
+
+    def odoo_web_principal_menu_click_root_menu(self, from_text=""):
+        if not from_text:
+            raise Exception(
+                "Cannot click, empty parameter from method"
+                " odoo_web_principal_menu_click_root_menu"
+            )
+        button = self.click_with_mouse_move(
+            By.LINK_TEXT, from_text, timeout=30
+        )
+        # If not work, force it
+        # selenium_tool.driver.execute_script("arguments[0].click();", button)
+        return button
+
+    def odoo_web_action_button_new(self):
+        # From web view kanban, list
+        return self.click_with_mouse_move(
+            By.CLASS_NAME, "o-kanban-button-new", timeout=30
+        )
+
+    def odoo_web_kanban_click(self, button_text, btn_class="btn-primary"):
+        # From web view kanban, list
+        return self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, 'btn {btn_class} o_kanban_edit') and"
+            f" text()='{button_text}']",
+            timeout=30,
+        )
+
+    def odoo_web_form_notebook_tab_click(self, tab_text):
+        return self.click_with_mouse_move(
+            By.XPATH,
+            f"//a[text()='{tab_text}']",
+            timeout=30,
+        )
+
+    def odoo_fill_widget_selection(self, field_name, text):
+        return self.odoo_fill_widget_many2one(field_name, text)
+
+    def odoo_fill_widget_boolean(self, field_name, value):
+        self.driver.implicitly_wait(10)
+        checkbox_div = self.driver.find_element(
+            By.XPATH, f"//div[@name='{field_name}']"
+        )
+        checkbox = checkbox_div.find_element(
+            By.CSS_SELECTOR, 'input[type="checkbox"]'
+        )
+        is_selected = checkbox.get_attribute("selected")
+        # Check if already set
+        if is_selected == "true" and value:
+            return checkbox
+        elif is_selected is None and not value:
+            return checkbox
+        parent_element = checkbox.find_element(By.XPATH, "..")
+        parent_element.click()
+        return checkbox
+
+    def odoo_fill_widget_many2one(self, field_name, text):
+        # TODO read this file odoo/addons/web/static/src/js/fields/field_registry.js
+        div_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+
+        input_field = div_field.find_element(By.XPATH, ".//input")
+        input_field.send_keys(text)
+        # TODO improve speed by observation of comportement
+        time.sleep(0.5)
+        input_field.send_keys(Keys.ENTER)
+
+        return input_field
+
+    def odoo_fill_widget_date(self, field_name, date_to_select):
+        # Type date
+        self.driver.implicitly_wait(10)
+        checkbox_div = self.driver.find_element(
+            By.XPATH, f"//div[@name='{field_name}']"
+        )
+        checkbox_div.click()
+        # TODO improve speed by observation of comportement
+        time.sleep(0.5)
+        checkbox_date_div = self.driver.find_element(
+            By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
+        )
+        # time.sleep(0.5)
+        str_date_today = date_to_select.strftime("%Y-%m-%d")
+        new_value = checkbox_date_div.find_element(
+            By.XPATH, f"//td[@data-day='{str_date_today}']"
+        )
+        new_value.click()
+        return new_value
 
     def start_record(self):
         # Démarrer l'enregistrement
