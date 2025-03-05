@@ -617,6 +617,67 @@ class SeleniumLib(object):
             print("Chatbot cannot be found, stop searching it.")
 
     # Website
+    def odoo_show_robot_message(self, msg="Ho no!"):
+        # Injecter l'animation SVG dans la page
+        script_text = ""
+        if msg:
+            script_text = f"""
+                // Ajouter le texte
+                const textElement = document.createElement('div');
+                textElement.innerText = '{msg}';
+                textElement.style.color = '#FFFFFF';
+                textElement.style.fontSize = '24px';
+                textElement.style.marginBottom = '20px';
+                textElement.style.fontWeight = 'bold';
+
+                overlay.appendChild(textElement);
+            """
+        script = (
+            """
+            (function() {
+                // Créer un div pour l'overlay
+                const overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.style.zIndex = '9999';
+
+                // Contenu SVG du robot
+                const svgContent = `
+                    <svg class="robot-animation" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width: 150px; cursor: pointer;">
+                        <circle cx="32" cy="32" r="30" fill="#FF5252"/>
+                        <path fill="#FFF" d="M20 27h24l-6-12h-12z"/>
+                        <circle cx="24" cy="44" r="4" fill="#FFF"/>
+                        <circle cx="40" cy="44" r="4" fill="#FFF"/>
+                    </svg>
+                `;
+                """
+            + script_text
+            + """
+                // Ajouter le contenu SVG au div
+                overlay.innerHTML += svgContent;
+
+                // Ajouter un gestionnaire de clic pour supprimer l'overlay
+                overlay.onclick = function() {
+                    overlay.style.display = 'none';
+                };
+
+                // Ajouter l'overlay au corps du document
+                document.body.appendChild(overlay);
+            })();
+        """
+        )
+
+        # Exécuter le script pour injecter l'animation
+        self.driver.execute_script(script)
+        print(f"Script inject robot svg with msg '{msg}'")
+
     def odoo_website_menu_click(self, from_text=""):
         if not from_text:
             raise Exception(
@@ -639,9 +700,16 @@ class SeleniumLib(object):
 
     def odoo_web_click_principal_menu(self):
         # Click menu button
-        button = self.click_with_mouse_move(
-            By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
-        )
+        if self.odoo_version == "16.0":
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                "//button[contains(@class, 'dropdown-toggle') and .//i[contains(@class, 'oi-apps')]]",
+                timeout=10,
+            )
+        elif self.odoo_version == "14.0":
+            button = self.click_with_mouse_move(
+                By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
+            )
         return button
 
     def odoo_web_principal_menu_click_root_menu(self, from_text=""):
@@ -761,6 +829,21 @@ class SeleniumLib(object):
             timeout=30,
         )
 
+    # Web
+    def odoo_fill_widget_char(self, field_name, text, is_label=False):
+        # Type input
+        if self.odoo_version == "14.0":
+            text_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.NAME, field_name))
+            )
+        elif self.odoo_version == "16.0":
+            text_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, field_name))
+            )
+
+        text_field.send_keys(text)
+        return text_field
+
     def odoo_fill_widget_selection(self, field_name, text):
         return self.odoo_fill_widget_many2one(field_name, text)
 
@@ -791,7 +874,7 @@ class SeleniumLib(object):
         input_field = div_field.find_element(By.XPATH, ".//input")
         input_field.send_keys(text)
         # TODO improve speed by observation of comportement
-        time.sleep(0.5)
+        time.sleep(1)
         input_field.send_keys(Keys.ENTER)
 
         return input_field
