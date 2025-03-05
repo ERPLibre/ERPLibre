@@ -4,6 +4,7 @@
 
 import datetime
 import os
+import random
 import re
 import sys
 import time
@@ -399,6 +400,8 @@ class SeleniumLib(object):
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
+        clear_before: bool = False,
+        click_before: bool = False,
     ):
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value)
@@ -412,6 +415,16 @@ class SeleniumLib(object):
             ActionChains(self.driver).move_to_element(ele).perform()
 
         # Write content
+        if click_before:
+            # Need this to update a datetimepicker
+            ele.click()
+            time.sleep(0.3)
+        if clear_before:
+            ele.clear()
+            if click_before:
+                # Need this to update a datetimepicker
+                ele.click()
+                time.sleep(0.3)
         ele.send_keys(text_value)
         if delay_after > 0:
             time.sleep(delay_after)
@@ -776,6 +789,58 @@ class SeleniumLib(object):
                 # time.sleep(15)
                 # By external process
                 os.popen(f"vlc {self.filename}")
+
+    def generer_code_postal_quebec(self):
+        # Zip code from quebec canada
+        premieres_lettres = ["G", "H", "J"]
+
+        premiere_lettre = random.choice(premieres_lettres)
+
+        deuxieme_lettre = chr(random.randint(65, 90))
+        chiffre = str(random.randint(0, 9))
+        troisieme_lettre = chr(random.randint(65, 90))
+
+        code_postal = f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
+
+        return code_postal
+
+    def generer_numero_telephone_quebec(self):
+        # Number from quebec canada
+        indicateurs_regionaux = [
+            "418",
+            "438",
+            "450",
+            "514",
+            "579",
+            "581",
+            "819",
+            "873",
+        ]
+
+        indicatif = random.choice(indicateurs_regionaux)
+
+        numero = "".join(random.choices("0123456789", k=7))
+
+        numero_telephone = f"({indicatif}) {numero[:3]}-{numero[3:]}"
+
+        return numero_telephone
+
+    def generer_date_naissance(self, age_minimum=16):
+        annee_actuelle = datetime.datetime.now().year
+        annee_maximale = annee_actuelle - age_minimum
+
+        annee_minimale = 1900
+
+        annee_naissance = random.randint(annee_minimale, annee_maximale)
+
+        mois_naissance = random.randint(1, 12)
+        jour_naissance = random.randint(1, 28)
+
+        date_naissance = datetime.datetime(
+            annee_naissance, mois_naissance, jour_naissance
+        )
+
+        return date_naissance.strftime("%Y-%m-%d")
 
 
 def fill_parser(parser):
