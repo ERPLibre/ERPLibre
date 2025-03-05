@@ -657,6 +657,88 @@ class SeleniumLib(object):
         # selenium_tool.driver.execute_script("arguments[0].click();", button)
         return button
 
+    def odoo_web_form_click_statusbar_button_status(
+        self, status_label, timeout=10
+    ):
+        try:
+            status_button = self.click_with_mouse_move(
+                By.XPATH,
+                f"//button[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+                timeout=timeout,
+            )
+        except Exception as e:
+            status_button = self.click_with_mouse_move(
+                By.XPATH,
+                f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+                timeout=timeout,
+            )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_statusbar_button_status_floating(
+        self, status_label, timeout=10
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//span[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+            timeout=timeout,
+        )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_statusbar_button_status_plus(
+        self, status_label, timeout=10
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+            timeout=timeout,
+        )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_button_statusbar(
+        self, btn_label, btn_class="btn-primary"
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, '{btn_class}') and contains(span, '{btn_label}')]",
+            timeout=30,
+        )
+        print(f"Bouton du statusbar avec le label '{btn_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_button_action(self, btn_action):
+        status_button = self.click_with_mouse_move(
+            By.NAME,
+            btn_action,
+            timeout=30,
+        )
+        print(f"Bouton avec l'action '{btn_action}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_save_action(self):
+        status_button = self.click_with_mouse_move(
+            By.CLASS_NAME,
+            "o_form_button_save",
+            timeout=30,
+        )
+        print("Bouton avec l'action 'o_form_button_save' cliqué.")
+        return status_button
+
+    def odoo_web_kanban_card(self, card_label):
+        # From web view kanban, list
+        kanban_card = self.click_with_mouse_move(
+            By.XPATH,
+            f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]",
+            timeout=30,
+        )
+        # kanban_card = self.driver.find_element(By.XPATH,
+        #                                        f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]")
+        # kanban_card.click()
+        print(f"Carte Kanban avec le label '{card_label}' cliquée.")
+        return kanban_card
+
     def odoo_web_action_button_new(self):
         # From web view kanban, list
         return self.click_with_mouse_move(
