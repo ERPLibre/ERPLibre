@@ -30,6 +30,18 @@ else
 	endif
 endif
 
+
+# Example for update
+.PHONY: custom_run_example
+custom_run_example:
+	./run.sh -d example_prod
+
+.PHONY: custom_update_example
+custom_update_example:
+	./script/database/db_restore.py --database example_prod --image image_name_to_restore
+	./script/addons/update_addons_all.sh example_prod
+	./script/addons/update_prod_to_dev.sh example_prod
+
 #########
 #  RUN  #
 #########
