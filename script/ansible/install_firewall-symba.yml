@@ -1,0 +1,152 @@
+---
+- name: Configure Firewall with iptables securely
+  hosts: leChoixDuSysadmin
+  become: true
+  vars_files:
+    - firewall_symba.yml
+
+  tasks:
+
+    - name: Installer iptables-persistent et auditd
+      apt:
+        name:
+          - iptables-persistent
+          - auditd
+        state: present
+        update_cache: yes
+
+    - name: Appliquer les règles INPUT
+      iptables:
+        chain: INPUT
+        protocol: "{{ item.protocol }}"
+        destination_port: "{{ item.port }}"
+        source: "{{ item.source | default(omit) }}"
+        jump: "{{ item.action }}"
+      loop: "{{ rules_input }}"
+
+    - name: Appliquer les règles FORWARD
+      iptables:
+        chain: FORWARD
+        source: "{{ item.source }}"
+        destination: "{{ item.destination }}"
+        jump: "{{ item.action }}"
+      loop: "{{ rules_forward }}"
+
+    - name: Appliquer les règles OUTPUT
+      iptables:
+        chain: OUTPUT
+        protocol: "{{ item.protocol }}"
+        destination_port: "{{ item.port }}"
+        jump: "{{ item.action }}"
+      loop: "{{ rules_output }}"
+
+    - name: Activer le NAT pour Docker (Masquerading)
+      iptables:
+        table: nat
+        chain: POSTROUTING
+        source: "{{ item.source }}"
+        destination: "{{ item.destination }}"
+        jump: "{{ item.action }}"
+      loop: "{{ rules_nat_masquerade }}"
+
+    - name: Ajouter les règles de port forwarding (DNAT)
+      iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: "{{ item.proto }}"
+        destination_port: "{{ item.ext_port }}"
+        to_destination: "{{ item.int_ip }}:{{ item.int_port }}"
+        jump: DNAT
+      loop: "{{ rules_nat_dnat }}"
+
+    # 🔐 Protection contre brute-force SSH
+    - name: Limiter les connexions SSH à 3 tentatives par minute
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: 22
+        match: limit
+        limit: "3/min"
+        jump: ACCEPT
+
+    # 🔐 Protection SYN Flood (DDoS)
+    - name: Protection SYN Flood
+      iptables:
+        chain: INPUT
+        protocol: tcp
+        match: limit
+        limit: "10/s"
+        limit_burst: 20
+        jump: ACCEPT
+
+    - name: Autoriser le trafic loopback
+      iptables:
+        chain: INPUT
+        in_interface: lo
+        jump: ACCEPT
+
+    - name: Autoriser le trafic loopback (OUTPUT)
+      iptables:
+        chain: OUTPUT
+        out_interface: lo
+        jump: ACCEPT
+
+    - name: Autoriser les connexions déjà établies
+      iptables:
+        chain: "{{ item }}"
+        match: conntrack
+        ctstate: RELATED,ESTABLISHED
+        jump: ACCEPT
+      loop:
+        - INPUT
+        - FORWARD
+        - OUTPUT
+
+    # 📢 LOGGING 🔥
+    - name: Loguer le trafic bloqué en INPUT
+      iptables:
+        chain: INPUT
+        jump: LOG
+        log_prefix: "INPUT DROP: "
+        log_level: 4
+
+    - name: Loguer le trafic bloqué en FORWARD
+      iptables:
+        chain: FORWARD
+        jump: LOG
+        log_prefix: "FORWARD DROP: "
+        log_level: 4
+
+    - name: Loguer le trafic bloqué en OUTPUT
+      iptables:
+        chain: OUTPUT
+        jump: LOG
+        log_prefix: "OUTPUT DROP: "
+        log_level: 4
+
+    # 🚫 BLOQUER TOUT LE RESTE
+    - name: Bloquer tout autre trafic entrant
+      iptables:
+        chain: INPUT
+        jump: DROP
+
+    - name: Bloquer tout autre trafic forward
+      iptables:
+        chain: FORWARD
+        jump: DROP
+
+    - name: Bloquer tout autre trafic sortant
+      iptables:
+        chain: OUTPUT
+        jump: DROP
+
+    # 🔍 Surveillance des modifications d'iptables
+    #- name: Activer l’audit des modifications d’iptables
+    #  shell: "auditctl -w /sbin/iptables -p x -k firewall_change"
+
+    - name: Sauvegarder les règles iptables
+      shell: iptables-save > /etc/iptables/rules.v4
+
+    - name: Rendre les règles persistantes
+      command: netfilter-persistent save
+

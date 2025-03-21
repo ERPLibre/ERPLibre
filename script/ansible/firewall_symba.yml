@@ -1,0 +1,22 @@
+rules_input:
+  - { port: "22", action: "ACCEPT", protocol: "tcp" }  # SSH
+  - { port: "1194", action: "ACCEPT", protocol: "udp" } # RPV-SYMBA
+  - { port: "1195", action: "ACCEPT", protocol: "udp" } # RPV-SYSADMIN
+
+rules_forward:
+  - { source: "0.0.0.0/0", destination: "10.10.10.10/32", action: "ACCEPT" } # Autoriser le trafic vers les conteneurs
+  - { source: "0.0.0.0/0", destination: "172.17.0.0/16", action: "ACCEPT" } # Autoriser le trafic vers les conteneurs
+  - { source: "172.17.0.0/16", destination: "0.0.0.0/0", action: "ACCEPT" } # Autoriser les conteneurs à sortir
+
+rules_output:
+  - { port: "53", action: "ACCEPT", protocol: "udp" }  # Autoriser DNS sortant
+  - { port: "80", action: "ACCEPT", protocol: "tcp" }  # Autoriser HTTP sortant
+  - { port: "443", action: "ACCEPT", protocol: "tcp" } # Autoriser HTTPS sortant
+  - { port: "123", action: "ACCEPT", protocol: "udp" } # Autoriser NTP sortant
+
+rules_nat_masquerade:
+  - { source: "172.17.0.0/16", destination: "0.0.0.0/0", action: "MASQUERADE" } # Docker NAT
+
+rules_nat_dnat:
+  - { proto: "tcp", ext_port: "8080", int_port: "80", int_ip: "172.17.0.2", action: "DNAT" }  # Redirection HTTP vers un conteneur
+  - { proto: "tcp", ext_port: "8443", int_port: "443", int_ip: "172.17.0.3", action: "DNAT" } # Redirection HTTPS vers un autre conteneur
