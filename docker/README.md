@@ -112,6 +112,13 @@ You can change the docker directory by editing file `/etc/docker/daemon.json`
 ```
 And restart docker service. You can delete or move all older locations of docker.
 
+Or
+
+Add `--data-root /second_drive/docker` like example following into file `/lib/systemd/system/docker.service` :
+```
+ExecStart=/usr/bin/dockerd --data-root /second_drive/docker -H fd:// --containerd=/run/containerd/containerd.sock
+```
+
 # Update docker
 When building your docker with script
 > make docker_build_odoo_16
