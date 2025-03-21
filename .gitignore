@@ -41,3 +41,6 @@ pyproject.toml
 .python-version
 requirements.txt
 requirement/ignore_requirements.txt
+
+# Ansible
+script/ansible/*.hosts
