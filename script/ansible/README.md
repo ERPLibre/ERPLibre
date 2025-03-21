@@ -18,6 +18,7 @@ Créez et configurez le compte `ansible` :
 ```bash
 sudo useradd -m -s /bin/bash ansible
 sudo usermod -aG sudo ansible
+sudo passwd ansible
 sudo su - ansible
 ssh-keygen -t ed25519
 cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
@@ -42,6 +43,7 @@ sudo touch /etc/ansible/hosts
 ```bash
 sudo useradd -m -s /bin/bash ansible
 sudo usermod -aG sudo ansible
+sudo passwd ansible
 sudo su - ansible
 mkdir ~/.ssh
 chmod 700 ~/.ssh
@@ -119,7 +121,7 @@ Fichier integrations.hosts:
 Pour que ca fonctionne, il fait que l'entête du playbook ait ceci :
 
 ```
-  hosts: leChoixDuSysadmin 
+  hosts: leChoixDuSysadmin
 ```
 
 ## Exécution d'un playbook sur plusieurs machines
@@ -148,4 +150,4 @@ sudo -u ansible ansible-playbook ./script/ansible/durcissement_se.yml --ask-beco
 ```
 ```
 
-Ce document amélioré inclut un sommaire interactif pour une navigation aisée et des exemples supplémentaires pour l'installation d'Ansible sur Debian. N'hésitez pas à me solliciter pour toute assistance supplémentaire ou clarification. 
+Ce document amélioré inclut un sommaire interactif pour une navigation aisée et des exemples supplémentaires pour l'installation d'Ansible sur Debian. N'hésitez pas à me solliciter pour toute assistance supplémentaire ou clarification.
