@@ -1,0 +1,65 @@
+---
+- name: Installer et configurer NGINX avec Certbot
+  hosts: leChoixDuSysadmin
+  become: yes  # Exécution avec sudo
+  vars:
+    domain_name: "change.me"  # À remplacer par votre domaine
+    email: "someone@somewhere.lol"  # Adresse e-mail pour Let's Encrypt
+    nginx_conf_path: "/etc/nginx/sites-available/{{ domain_name }}"
+    nginx_conf_link: "/etc/nginx/sites-enabled/{{ domain_name }}"
+
+  tasks:
+    - name: Mettre à jour la liste des paquets
+      apt:
+        update_cache: yes
+
+    - name: Installer NGINX et Certbot
+      apt:
+        name:
+          - nginx
+          - certbot
+          - python3-certbot-nginx
+        state: present
+
+    - name: Créer un répertoire pour le site web
+      file:
+        path: "/var/www/{{ domain_name }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Déployer la configuration NGINX
+      template:
+        src: templates/nginx_vhost.conf.j2
+        dest: "{{ nginx_conf_path }}"
+      notify: Redémarrer NGINX
+
+    - name: Activer le site en créant un lien symbolique
+      file:
+        src: "{{ nginx_conf_path }}"
+        dest: "{{ nginx_conf_link }}"
+        state: link
+      notify: Redémarrer NGINX
+
+        #    - name: Vérifier que NGINX fonctionne avant la demande de certificat
+        #uri:
+        #url: "http://{{ domain_name }}"
+        #status_code: 200
+        #register: web_status
+        #until: web_status.status == 200
+        #retries: 5
+        #delay: 5
+
+    - name: Obtenir un certificat SSL avec Certbot
+      command: "certbot --nginx -d {{ domain_name }} --email {{ email }} --non-interactive --agree-tos"
+      args:
+        creates: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+      notify: Redémarrer NGINX
+
+  handlers:
+    - name: Redémarrer NGINX
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes

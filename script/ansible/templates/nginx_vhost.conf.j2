@@ -1,0 +1,92 @@
+upstream ERPLibre {
+  server 127.0.0.1:8069;
+}
+upstream ERPLibre_chat {
+  server 127.0.0.1:8072;
+}
+
+server {
+
+    listen 80;
+    server_name {{ domain_name }};
+
+    # Add Headers for erplibre proxy mode
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+
+    # erplibre request log files
+    access_log /var/log/nginx/{{ domain_name }}-access.log;
+    error_log /var/log/nginx/{{ domain_name }}-error.log;
+
+    # Increase proxy buffer size
+    proxy_buffers 16 64k;
+    proxy_buffer_size 128k;
+
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
+
+    # Force timeouts if the backend dies
+    proxy_next_upstream error timeout invalid_header http_500 http_502
+    http_503;
+
+    types {
+       text/less less;
+       text/scss scss;
+    }
+
+    # Enable data compression
+    gzip on;
+    gzip_min_length 1100;
+    gzip_buffers 4 32k;
+    gzip_types text/css text/less text/plain text/xml application/xml application/json application/javascript application/pdf image/jpeg image/png;
+    gzip_vary on;
+    client_header_buffer_size 4k;
+    large_client_header_buffers 4 64k;
+    client_max_body_size 1024M;
+
+    location / {
+       proxy_pass http://ERPLibre;
+       # by default, do not forward anything
+       proxy_redirect off;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+	proxy_read_timeout 720s;
+	proxy_connect_timeout 720s;
+	proxy_send_timeout 720s;
+	# Add Headers for odoo proxy mode
+	proxy_set_header X-Forwarded-Host $host;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Real-IP $remote_addr;    }
+
+    location /websocket {
+       proxy_pass http://ERPLibre_chat;
+	proxy_read_timeout 720s;
+        proxy_http_version 1.1;
+	proxy_set_header Upgrade $http_upgrade;
+	proxy_set_header Connection "upgrade";
+	proxy_connect_timeout 720s;
+	proxy_send_timeout 720s;
+	# Add Headers for odoo proxy mode
+	proxy_set_header X-Forwarded-Host $host;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	proxy_set_header X-Forwarded-Proto $scheme;
+	proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # cache some static data in memory for 60mins.
+    location ~ /[a-zA-Z0-9_-]*/static/ {
+       proxy_cache_valid 200 302 60m;
+       proxy_cache_valid 404 1m;
+       proxy_buffering on;
+       expires 864000;
+       proxy_pass http://ERPLibre;
+    }
+
+}
