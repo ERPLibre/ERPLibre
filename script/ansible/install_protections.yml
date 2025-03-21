@@ -1,45 +1,8 @@
 ---
 - name: Apply security hardening based on Linys recommendations
-  hosts: leChoixDuSysadmin 
+  hosts: leChoixDuSysadmin
   become: yes
   tasks:
-    - name: Ensure UFW is installed
-      apt:
-        name: ufw
-        state: present
-
-    - name: Allow SSH immediately
-      command: ufw allow 22/tcp
-
-    - name: Set default policy to deny incoming traffic
-      command: ufw default deny incoming
-
-    - name: Set default policy to allow outgoing traffic
-      command: ufw default allow outgoing
-
-    - name: Allow HTTP and HTTPS
-      command: ufw allow {{ item }}/tcp
-      loop:
-        - 80
-        - 443
-
-    - name: Allow ICINGA2 ports
-      command: ufw allow 5665/tcp
-
-    - name: Allow OpenVPN port
-      command: ufw allow 1194/udp
-
-    - name: Enable UFW without confirmation
-      command: echo "y" | ufw enable
-
-    - name: Verify UFW rules
-      command: ufw status verbose
-      register: ufw_status
-      changed_when: false
-
-    - name: Display UFW configuration
-      debug:
-        msg: "{{ ufw_status.stdout }}"
 
     # 4. Installation des mises à jour & des rustines
     - name: Mettre à jour la liste des paquets APT
@@ -252,7 +215,7 @@
         mode: '0644'
 
     # 14. Apply SSH hardening configuration
-    
+
     - name: Backup the current sshd_config
       copy:
         src: /etc/ssh/sshd_config
