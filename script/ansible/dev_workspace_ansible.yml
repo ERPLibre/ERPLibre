@@ -1,0 +1,53 @@
+---
+- name: Kernel hardening - sysctl
+  hosts: leChoixDuSysadmin
+  become: true
+
+  tasks:
+    - name: Configure sysctl settings for kernel hardening
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        sysctl_set: yes
+        reload: yes
+      loop:
+        - { key: fs.suid_dumpable, value: 0 }
+        - { key: kernel.core_uses_pid, value: 1 }
+        - { key: kernel.dmesg_restrict, value: 1 }
+        - { key: kernel.kptr_restrict, value: 2 }
+        - { key: kernel.sysrq, value: 0 }
+          # - { key: net.ipv4.conf.all.forwarding, value: 0 }
+        - { key: net.ipv4.conf.all.log_martians, value: 1 }
+        - { key: net.ipv4.conf.all.rp_filter, value: 1 }
+        - { key: net.ipv4.conf.all.send_redirects, value: 0 }
+        - { key: net.ipv4.conf.default.accept_redirects, value: 0 }
+        - { key: net.ipv4.conf.default.accept_source_route, value: 0 }
+        - { key: net.ipv4.conf.default.log_martians, value: 1 }
+        - { key: net.ipv6.conf.all.accept_redirects, value: 0 }
+        - { key: net.ipv6.conf.default.accept_redirects, value: 0 }
+
+    - name: Ensure settings are persistent in /etc/sysctl.conf or drop-in
+      copy:
+        dest: "/etc/sysctl.d/99-hardening.conf"
+        content: |
+          fs.suid_dumpable = 0
+          kernel.core_uses_pid = 1
+          kernel.dmesg_restrict = 1
+          kernel.kptr_restrict = 2
+          kernel.sysrq = 0
+          #net.ipv4.conf.all.forwarding = 0
+          net.ipv4.conf.all.log_martians = 1
+          net.ipv4.conf.all.rp_filter = 1
+          net.ipv4.conf.all.send_redirects = 0
+          net.ipv4.conf.default.accept_redirects = 0
+          net.ipv4.conf.default.accept_source_route = 0
+          net.ipv4.conf.default.log_martians = 1
+          net.ipv6.conf.all.accept_redirects = 0
+          net.ipv6.conf.default.accept_redirects = 0
+        mode: '0644'
+        owner: root
+        group: root
+
+    - name: Reload sysctl to apply new settings
+      command: sysctl --system
