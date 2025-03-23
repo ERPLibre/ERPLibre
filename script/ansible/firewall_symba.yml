@@ -2,7 +2,10 @@ rules_input:
   - { port: "22", action: "ACCEPT", protocol: "tcp" }  # SSH
   - { port: "1194", action: "ACCEPT", protocol: "udp" } # RPV-SYMBA
   - { port: "1195", action: "ACCEPT", protocol: "udp" } # RPV-SYSADMIN
-
+  - { port: "8069", action: "ACCEPT", protocol: "tcp", ctstate: "NEW" }
+  - { port: "8071", action: "ACCEPT", protocol: "tcp", ctstate: "NEW" }
+  - { port: "8072", action: "ACCEPT", protocol: "tcp", ctstate: "NEW" }
+  -
 rules_forward:
   - { source: "0.0.0.0/0", destination: "10.10.10.10/32", action: "ACCEPT" } # Autoriser le trafic vers les conteneurs
   - { source: "0.0.0.0/0", destination: "172.17.0.0/16", action: "ACCEPT" } # Autoriser le trafic vers les conteneurs
@@ -13,7 +16,10 @@ rules_output:
   - { port: "80", action: "ACCEPT", protocol: "tcp" }  # Autoriser HTTP sortant
   - { port: "443", action: "ACCEPT", protocol: "tcp" } # Autoriser HTTPS sortant
   - { port: "123", action: "ACCEPT", protocol: "udp" } # Autoriser NTP sortant
-
+  - { port: "8069", action: "ACCEPT", protocol: "tcp" }
+  - { port: "8071", action: "ACCEPT", protocol: "tcp" }
+  - { port: "8072", action: "ACCEPT", protocol: "tcp" }
+  -
 rules_nat_masquerade:
   - { source: "172.17.0.0/16", destination: "0.0.0.0/0", action: "MASQUERADE" } # Docker NAT
 
