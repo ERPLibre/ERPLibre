@@ -42,6 +42,12 @@ class SeleniumLib(object):
             )
         self.driver = None
 
+    def do_screenshot(self):
+        if self.config.scenario_screenshot:
+            self.driver.save_screenshot(
+                f"./screenshots/{self.config.scenario}_{str(int(time.time() * 10000))}.png"
+            )
+
     def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
         firefox_options = webdriver.FirefoxOptions()
