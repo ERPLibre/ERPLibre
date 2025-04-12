@@ -12,10 +12,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Support multiple Odoo version (12.0, 14.0, 16.0) in same workspace
     -  This will help for auto-migration module
 - Selenium script to increase open software client interface and automated some actions.
-    - Vidéo recording
+    - Video recording
     - Support scrolling and generate word
 - FAQ about kill git-daemon
-- Support Ubuntu 23.10 and 24.04
+- Support Arch Linux, Ubuntu 23.10 to 25.04
 - ADD repo JayVora-SerpentCS_SerpentCS_Contributions
 - ADD repo CybroOdoo_CybroAddons
 
@@ -39,10 +39,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - NPM installation locally and not globally
-- Improve python code writer efficience
+- Improve python code writer efficiency
 - Config generator supporting space into ERPLibre directory
 - Script to update Poetry support @ URL
 - OSX and recent Ubuntu installation
+- Cloudflare script integration
 
 ## [1.5.0] - 2023-07-07
 
