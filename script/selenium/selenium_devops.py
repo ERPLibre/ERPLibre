@@ -2,10 +2,11 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-import sys
 import argparse
-import web_login
+import sys
+
 import selenium_lib
+import web_login
 
 
 def run(config, selenium_tool):

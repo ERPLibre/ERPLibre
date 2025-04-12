@@ -4,13 +4,13 @@
 
 # This script need only basic importation
 import argparse
-import logging
 import json
+import logging
 import os
 import shutil
+import subprocess
 import sys
 import time
-import subprocess
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -99,6 +99,11 @@ def get_config():
         "--install_dev",
         action="store_true",
         help="Install developer environment.",
+    )
+    parser.add_argument(
+        "--partial_install",
+        action="store_true",
+        help="Preparation environment file, without installation. Docker need this",
     )
     parser.add_argument(
         "--force_install",
@@ -457,7 +462,15 @@ class Update:
 
             # Force create addons link
             if os.path.isdir(ADDONS_PATH):
-                os.remove(ADDONS_PATH)
+                if os.path.islink(ADDONS_PATH):
+                    os.remove(ADDONS_PATH)
+                else:
+                    os.rename(
+                        ADDONS_PATH,
+                        ADDONS_PATH
+                        + "_"
+                        + time.strftime('%Yy%mm%dd-%Hh%Mm%Ss'),
+                    )
             os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
 
@@ -688,13 +701,14 @@ def main():
 
     _logger.info("Validate environment")
     status = 0
-    if update.config.install_dev or update.config.is_in_switch:
+    if update.config.install_dev or update.config.partial_install or update.config.is_in_switch:
         status = update.validate_environment()
     if update.config.install:
         status = update.install_system()
     if (
         update.config.force_install
         or update.config.install_dev
+        or update.config.partial_install
         or update.config.is_in_switch
     ) and not status:
         update.update_environment()

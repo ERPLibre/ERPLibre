@@ -28,7 +28,7 @@
 
   <project name="ERPLibre_image_db.git" path="image_db" remote="ERPLibre" clone-depth="1" revision="main" groups="base"/>
   <project name="OpenHRMS.git" path="addons.odoo16.0/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons"/>
-  <project name="CybroAddons.git" path="addons.odoo16.0/CybroOdoo_CybroAddons" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
+  <project name="CybroAddons.git" path="addons.odoo16.0/CybroOdoo_CybroAddons" remote="ERPLibre" clone-depth="1" revision="16.0_dev" groups="addons"/>
   <project name="account-analytic.git" path="addons.odoo16.0/OCA_account-analytic" remote="OCA" groups="addons"/>
   <project name="account-budgeting.git" path="addons.odoo16.0/OCA_account-budgeting" remote="OCA" groups="addons"/>
   <project name="account-closing.git" path="addons.odoo16.0/OCA_account-closing" remote="OCA" groups="addons"/>
@@ -70,6 +70,7 @@
   <project name="geospatial.git" path="addons.odoo16.0/OCA_geospatial" remote="OCA" groups="addons"/>
   <project name="helpdesk.git" path="addons.odoo16.0/OCA_helpdesk" remote="OCA" groups="addons"/>
   <project name="hr.git" path="addons.odoo16.0/OCA_hr" remote="OCA" groups="addons"/>
+  <project name="hr-holidays.git" path="addons.odoo16.0/OCA_hr-holidays" remote="OCA" groups="addons"/>
   <project name="interface-github.git" path="addons.odoo16.0/OCA_interface-github" remote="OCA" groups="addons"/>
   <project name="knowledge.git" path="addons.odoo16.0/OCA_knowledge" remote="OCA" groups="addons"/>
   <project name="l10n-canada.git" path="addons.odoo16.0/OCA_l10n-canada" remote="OCA" groups="addons"/>
@@ -114,11 +115,12 @@
   <project name="server-env.git" path="addons.odoo16.0/OCA_server-env" remote="OCA" groups="addons"/>
   <project name="server-tools.git" path="addons.odoo16.0/OCA_server-tools" remote="ERPLibre" revision="ERPLibre/16.0" groups="addons"/>
   <project name="server-ux.git" path="addons.odoo16.0/OCA_server-ux" remote="OCA" groups="addons"/>
+  <project name="shift-planning.git" path="addons.odoo16.0/OCA_shift-planning" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
   <project name="social.git" path="addons.odoo16.0/OCA_social" remote="OCA" groups="addons"/>
   <project name="survey.git" path="addons.odoo16.0/OCA_survey" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
   <project name="stock-logistics-warehouse.git" path="addons.odoo16.0/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
   <project name="storage.git" path="addons.odoo16.0/OCA_storage" remote="OCA" groups="addons"/>
-  <project name="timesheet.git" path="addons.odoo16.0/OCA_timesheet" remote="OCA" groups="addons"/>
+  <project name="timesheet.git" path="addons.odoo16.0/OCA_timesheet" remote="ERPLibre" revision="16.0-refactor-hr_timesheet_begin_end" groups="addons"/>
   <project name="vertical-association.git" path="addons.odoo16.0/OCA_vertical-association" remote="OCA" groups="addons"/>
   <project name="vertical-hotel.git" path="addons.odoo16.0/OCA_vertical-hotel" remote="OCA" groups="addons"/>
   <project name="vertical-isp.git" path="addons.odoo16.0/OCA_vertical-isp" remote="OCA" groups="addons"/>

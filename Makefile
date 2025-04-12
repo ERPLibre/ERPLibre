@@ -30,6 +30,18 @@ else
 	endif
 endif
 
+
+# Example for update
+.PHONY: custom_run_example
+custom_run_example:
+	./run.sh -d example_prod
+
+.PHONY: custom_update_example
+custom_update_example:
+	./script/database/db_restore.py --database example_prod --image image_name_to_restore
+	./script/addons/update_addons_all.sh example_prod
+	./script/addons/update_prod_to_dev.sh example_prod
+
 #########
 #  RUN  #
 #########
@@ -727,6 +739,13 @@ tag_push_all:
 open_terminal:
 	./script/open_terminal_code_generator.sh
 
+##############
+#  selenium  #
+##############
+.PHONY: open_selenium
+open_selenium:
+	./.venv/bin/python ./script/selenium/web_login.py
+
 ############
 #  format  #
 ############
@@ -938,6 +957,7 @@ config_install:
 
 .PHONY: config_update
 config_update:
+	# Need http to configure the file config.conf, or will disable it
 	./run.sh -c config.conf -s --stop-after-init
 
 .PHONY: config_update_over_proxy

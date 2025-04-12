@@ -105,6 +105,10 @@ def combine_requirements(config):
     lst_requirements_file = get_lst_requirements_txt()
     # lst_requirements_with_condition = set()
     # dct_special_condition = defaultdict(list)
+
+    if not os.path.isfile(priority_filename_requirement):
+        _logger.error(f"File {priority_filename_requirement} not found.")
+
     dct_requirements_module_filename = defaultdict(list)
     for requirements_filename in lst_requirements_file:
         with open(requirements_filename, "r") as f:

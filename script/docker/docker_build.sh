@@ -67,15 +67,15 @@ echo $POETRY_VERSION
 if [ "$IS_RELEASE_ALPHA" == true ]
 then
   # Add commit hash when release alpha
-  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_ALPHA_$(git rev-parse --short HEAD)"
+  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_ALPHA_odoo_${ODOO_VERSION}_$(git rev-parse --short HEAD)"
 elif [ "$IS_RELEASE_BETA" == true ]
 then
   # Add commit hash when release beta
-  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_BETA_$(git rev-parse --short HEAD)"
+  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_BETA_odoo_${ODOO_VERSION}_$(git rev-parse --short HEAD)"
 elif [ "$IS_RELEASE" == false ]
 then
   # Add commit hash when not a release
-  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_$(git rev-parse --short HEAD)"
+  ERPLIBRE_VERSION="${ERPLIBRE_VERSION}_odoo_${ODOO_VERSION}_$(git rev-parse --short HEAD)"
 fi
 
 

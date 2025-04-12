@@ -2,29 +2,46 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-from randomwordfr import RandomWordFr
-import re
+import datetime
 import os
+import re
 import sys
 import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.firefox.service import Service
 from subprocess import getoutput
+
+from randomwordfr import RandomWordFr
+from selenium import webdriver
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    TimeoutException,
+)
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
         self.video_recorder = None
-        self.filename = "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
+        if self.config.video_suffix:
+            self.filename = (
+                f"video_{self.config.video_suffix}_"
+                + time.strftime("%Y_%m_%d-%H_%M_%S")
+                + ".webm"
+            )
+        else:
+            self.filename = (
+                "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
+            )
         self.driver = None
 
-    def configure(self):
+    def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
         firefox_options = webdriver.FirefoxOptions()
         if not self.config.not_private_mode:
@@ -70,6 +87,7 @@ class SeleniumLib(object):
 
         # Ajout de l'enregistrement
         if self.config.record_mode:
+            # Create recording
             new_path = os.path.normpath(
                 os.path.join(os.path.dirname(__file__), "..", "..")
             )
@@ -121,7 +139,8 @@ class SeleniumLib(object):
             )
 
         # Ouvrez la page web
-        self.driver.get(f"{self.config.url}/web")
+        if not ignore_open_web:
+            self.driver.get(f"{self.config.url}/web")
 
         # Close tab opening by DarkReader
         if self.config.not_private_mode and not self.config.no_dark_mode:
@@ -150,6 +169,7 @@ class SeleniumLib(object):
             )
         )
         button.click()
+        return button
 
     def get_element(self, by: str = By.ID, value: str = None, timeout=5):
         wait = WebDriverWait(self.driver, timeout)
@@ -164,6 +184,125 @@ class SeleniumLib(object):
 
         return ele[0]
 
+    def get_element_not_visible(
+        self, by: str = By.ID, value: str = None, timeout=5
+    ):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.presence_of_element_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
+
+    def get_elements_not_visible(
+        self, by: str = By.ID, value: str = None, timeout=5
+    ):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.presence_of_all_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
+
+    def get_all_element(self, by: str = By.ID, value: str = None, timeout=5):
+        wait = WebDriverWait(self.driver, timeout)
+        ele = wait.until(
+            EC.visibility_of_all_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+
+        return ele
+
+    def wait_new_element_and_click(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=5,
+        inject_cursor=False,
+    ):
+        new_element = self.wait_new_element(
+            by=by, value=value, delay_wait=delay_wait, timeout=timeout
+        )
+        if new_element:
+            if inject_cursor:
+                self.inject_cursor()
+            self.click_with_mouse_move(element=new_element, no_scroll=True)
+        return new_element
+
+    def wait_new_element(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=5,
+        timeout_wait=None,
+    ):
+        element = None
+        # TODO support timeout_wait
+        while element is None:
+            time.sleep(delay_wait)
+            try:
+                element = self.get_element(by, value, timeout)
+            except TimeoutException as e:
+                pass
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        return element
+
+    def wait_add_new_element_and_click(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        new_element = self.wait_add_new_element(
+            by=by, value=value, delay_wait=delay_wait, timeout=timeout
+        )
+        self.click_with_mouse_move(element=new_element, no_scroll=True)
+        return new_element
+
+    def wait_add_new_element(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        all_element_init = self.get_all_element(by=by, value=value)
+        len_all_element_init = len(all_element_init)
+        len_all_element = len_all_element_init
+        all_element = []
+        while len_all_element_init == len_all_element:
+            time.sleep(delay_wait)
+            all_element = self.get_all_element(by=by, value=value)
+            len_all_element = len(all_element)
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        new_element = all_element[-1]
+        return new_element
+
+    def wait_increment_number_text_and_click(
+        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+    ):
+        element_init = self.get_element(by=by, value=value, timeout=timeout)
+        actual_number = int(element_init.text)
+        number_goal = actual_number + 1
+        while actual_number < number_goal:
+            time.sleep(delay_wait)
+            element_goal = self.get_element(
+                by=by, value=value, timeout=timeout
+            )
+            actual_number = int(element_goal.text)
+            print(f"Waiting {delay_wait} seconds after value '{value}'")
+        self.click_with_mouse_move(element=element_init, no_scroll=True)
+        return element_init
+
     def click_with_mouse_move(
         self,
         by: str = By.ID,
@@ -172,9 +311,15 @@ class SeleniumLib(object):
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
+        element: WebElement = None,
+        with_index: bool = False,
+        index_of_list: int = 0,
     ):
         # ele = self.driver.find_element(by, value)
-        ele = self.get_element(by, value, timeout)
+        if element:
+            ele = element
+        else:
+            ele = self.get_element(by, value, timeout)
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
@@ -182,18 +327,67 @@ class SeleniumLib(object):
                     viewport_ele_by, viewport_ele_value, timeout
                 )
             self.scrollto_element(ele, viewport_ele=viewport_ele)
+            # ActionChains(self.driver).move_to_element(ele).click().perform()
             ActionChains(self.driver).move_to_element(ele).perform()
         time.sleep(self.config.selenium_default_delay)
         wait = WebDriverWait(self.driver, timeout)
-        button = wait.until(
-            EC.element_to_be_clickable(
-                (
-                    by,
-                    value,
+        if element:
+            button = wait.until(EC.element_to_be_clickable(element))
+        else:
+            if with_index:
+                buttons = wait.until(
+                    EC.presence_of_all_elements_located(
+                        (
+                            by,
+                            value,
+                        )
+                    )
                 )
-            )
-        )
-        button.click()
+                button = buttons[index_of_list]
+            else:
+                button = wait.until(
+                    EC.element_to_be_clickable(
+                        (
+                            by,
+                            value,
+                        )
+                    )
+                )
+        try:
+            button.click()
+        except ElementClickInterceptedException as e:
+            try:
+                print(e)
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView(true);", button
+                )
+                button.click()
+            except ElementClickInterceptedException as e:
+                print(e)
+                self.driver.execute_script("arguments[0].click();", button)
+        return button
+
+    def click_canvas_form(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        timeout: int = 5,
+        form="carre",
+    ):
+
+        # ele = self.driver.find_element(by, value)
+        ele = self.get_element(by, value, timeout)
+        actions = ActionChains(self.driver)
+        actions.move_to_element_with_offset(ele, -50, -50)
+        actions.click_and_hold()
+        if form == "carre":
+            actions.move_by_offset(50, 0)
+            actions.move_by_offset(0, 50)
+            actions.move_by_offset(-50, 0)
+            actions.move_by_offset(0, -50)
+
+        actions.release()
+        actions.perform()
 
     def input_text_with_mouse_move(
         self,
@@ -216,6 +410,8 @@ class SeleniumLib(object):
                 )
             self.scrollto_element(ele, viewport_ele=viewport_ele)
             ActionChains(self.driver).move_to_element(ele).perform()
+
+        # Write content
         ele.send_keys(text_value)
         if delay_after > 0:
             time.sleep(delay_after)
@@ -346,7 +542,50 @@ class SeleniumLib(object):
           cursor.style.top = e.pageY - 5 + 'px';
         });
         """
-        self.driver.execute_script(cursor_script)
+        try:
+            try:
+                self.driver.execute_script(cursor_script)
+            except Exception as e:
+                time.sleep(1)
+                print("Error execute script cursor, wait 1 second")
+                self.driver.execute_script(cursor_script)
+        except Exception as e:
+            time.sleep(3)
+            print("Error execute script cursor, wait 3 second")
+            self.driver.execute_script(cursor_script)
+
+    def scenario_create_new_account_with_random_user(
+        self, show_cursor=False, def_action_before_submit=None
+    ):
+        # Click no account
+        if show_cursor:
+            self.inject_cursor()
+        self.click_with_mouse_move(
+            By.XPATH, "/html/body/div[1]/main/div/form/div[3]/div[1]/a[1]"
+        )
+
+        # Trouvez les éléments du formulaire
+        if show_cursor:
+            self.inject_cursor()
+
+        # Remplissez le courriel et le mot de passe
+        first_name = self.get_french_word_no_space_no_accent()
+        password = first_name.lower()
+        second_name = self.get_french_word_no_space_no_accent()
+        full_name = f"{first_name} {second_name}"
+        domain = self.get_french_word_no_space_no_accent().lower()
+
+        self.input_text_with_mouse_move(
+            By.NAME, "login", f"{password}@{domain}.com"
+        )
+        self.input_text_with_mouse_move(By.NAME, "name", full_name)
+        self.input_text_with_mouse_move(By.NAME, "password", password)
+        self.input_text_with_mouse_move(By.NAME, "confirm_password", password)
+        if def_action_before_submit:
+            def_action_before_submit()
+        self.click_with_mouse_move(
+            By.XPATH, "/html/body/div[1]/main/div/form/div[6]/button"
+        )
 
     def open_tab(self, url):
         # Open a new window
@@ -364,9 +603,157 @@ class SeleniumLib(object):
         except Exception:
             print("Chatbot cannot be found, stop searching it.")
 
+    # Website
+    def odoo_website_menu_click(self, from_text=""):
+        if not from_text:
+            raise Exception(
+                "Cannot click, empty parameter from method"
+                " odoo_website_menu_click"
+            )
+        button = self.click_with_mouse_move(
+            By.LINK_TEXT, from_text, timeout=30
+        )
+        return button
+
+    # Web
+    def odoo_fill_widget_char(self, field_name, text):
+        # Type input
+        text_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+        text_field.send_keys(text)
+        return text_field
+
+    def odoo_web_click_principal_menu(self):
+        # Click menu button
+        button = self.click_with_mouse_move(
+            By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
+        )
+        return button
+
+    def odoo_web_principal_menu_click_root_menu(self, from_text=""):
+        if not from_text:
+            raise Exception(
+                "Cannot click, empty parameter from method"
+                " odoo_web_principal_menu_click_root_menu"
+            )
+        button = self.click_with_mouse_move(
+            By.LINK_TEXT, from_text, timeout=30
+        )
+        # If not work, force it
+        # selenium_tool.driver.execute_script("arguments[0].click();", button)
+        return button
+
+    def odoo_web_action_button_new(self):
+        # From web view kanban, list
+        return self.click_with_mouse_move(
+            By.CLASS_NAME, "o-kanban-button-new", timeout=30
+        )
+
+    def odoo_web_kanban_click(self, button_text, btn_class="btn-primary"):
+        # From web view kanban, list
+        return self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, 'btn {btn_class} o_kanban_edit') and"
+            f" text()='{button_text}']",
+            timeout=30,
+        )
+
+    def odoo_web_form_notebook_tab_click(self, tab_text):
+        return self.click_with_mouse_move(
+            By.XPATH,
+            f"//a[text()='{tab_text}']",
+            timeout=30,
+        )
+
+    def odoo_fill_widget_selection(self, field_name, text):
+        return self.odoo_fill_widget_many2one(field_name, text)
+
+    def odoo_fill_widget_boolean(self, field_name, value):
+        self.driver.implicitly_wait(10)
+        checkbox_div = self.driver.find_element(
+            By.XPATH, f"//div[@name='{field_name}']"
+        )
+        checkbox = checkbox_div.find_element(
+            By.CSS_SELECTOR, 'input[type="checkbox"]'
+        )
+        is_selected = checkbox.get_attribute("selected")
+        # Check if already set
+        if is_selected == "true" and value:
+            return checkbox
+        elif is_selected is None and not value:
+            return checkbox
+        parent_element = checkbox.find_element(By.XPATH, "..")
+        parent_element.click()
+        return checkbox
+
+    def odoo_fill_widget_many2one(self, field_name, text):
+        # TODO read this file odoo/addons/web/static/src/js/fields/field_registry.js
+        div_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+
+        input_field = div_field.find_element(By.XPATH, ".//input")
+        input_field.send_keys(text)
+        # TODO improve speed by observation of comportement
+        time.sleep(0.5)
+        input_field.send_keys(Keys.ENTER)
+
+        return input_field
+
+    def odoo_fill_widget_date(self, field_name, date_to_select):
+        # Type date
+        self.driver.implicitly_wait(10)
+        checkbox_div = self.driver.find_element(
+            By.XPATH, f"//div[@name='{field_name}']"
+        )
+        checkbox_div.click()
+        # TODO improve speed by observation of comportement
+        time.sleep(0.5)
+        checkbox_date_div = self.driver.find_element(
+            By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
+        )
+        # time.sleep(0.5)
+        str_date_today = date_to_select.strftime("%Y-%m-%d")
+        new_value = checkbox_date_div.find_element(
+            By.XPATH, f"//td[@data-day='{str_date_today}']"
+        )
+        new_value.click()
+        return new_value
+
     def start_record(self):
         # Démarrer l'enregistrement
         if self.config.record_mode:
+            if self.config.record_wait_before_start_time:
+                time.sleep(int(self.config.record_wait_before_start_time))
+            # Sync before record
+            has_sync_error = False
+            if self.config.sync_file_record_read:
+                if not self.config.sync_file_record_write:
+                    print(
+                        "Error, cannot sync, missing 'sync_file_record_write'"
+                    )
+                    has_sync_error = True
+            if self.config.sync_file_record_write:
+                if not self.config.sync_file_record_read:
+                    print(
+                        "Error, cannot sync, missing 'sync_file_record_read'"
+                    )
+                    has_sync_error = True
+            if (
+                not has_sync_error
+                and self.config.sync_file_record_read
+                and self.config.sync_file_record_write
+            ):
+                # Do sync
+                file_name_1 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_write}"
+                file_name_2 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_read}"
+                with open(file_name_1, "w") as file:
+                    file.write(f"Recording {self.filename}\n")
+                while not os.path.exists(file_name_2):
+                    var_wait_time = 0.001
+                    print(f"File {self.filename} wait {var_wait_time} seconds")
+                    time.sleep(var_wait_time)
             self.video_recorder.start()
 
     def stop_record(self):
@@ -377,6 +764,7 @@ class SeleniumLib(object):
             time.sleep(self.config.selenium_video_time_waiting_end)
             self.video_recorder.stop()
             print("End of recording video")
+            print(self.filename)
 
             if self.config.selenium_video_auto_play_video:
                 print(f"Play video {self.filename}")
@@ -402,7 +790,7 @@ def fill_parser(parser):
         "--selenium_default_delay",
         default=0.4,
         type=float,
-        help="Pause at the end before close video.",
+        help="Pause at the end of an action.",
     )
 
     group_browser = parser.add_argument_group(title="Browser")
@@ -433,6 +821,31 @@ def fill_parser(parser):
         "--record_mode",
         action="store_true",
         help="Start recording (not finish to be implemented).",
+    )
+    group_record.add_argument(
+        "--record_wait_before_start_time",
+        help="Time to wait in second before start recording.",
+    )
+    parser.add_argument(
+        "--video_suffix",
+        default="",
+        help="Will modify video name.",
+    )
+    parser.add_argument(
+        "--sync_file_record_read",
+        default="",
+        help=(
+            "Will sync and check file from tmp before record, write before"
+            " read."
+        ),
+    )
+    parser.add_argument(
+        "--sync_file_record_write",
+        default="",
+        help=(
+            "Will sync and check file from tmp before record, write before"
+            " read."
+        ),
     )
     group_record.add_argument(
         "--selenium_video_time_waiting_end",
