@@ -9,20 +9,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Added
 
-- Support multiple Odoo version (12.0, 14.0, 16.0) in same workspace
-    -  This will help for auto-migration module
-- Selenium script to increase open software client interface and automated some actions.
+- Support multiple Odoo versions (12.0, 14.0, 16.0) in same workspace
+    -  This will help for the migration of modules
+- Selenium script for increasing open software client interface and automating some actions.
     - Video recording
-    - Support scrolling and generate word
+    - Support scrolling and word generating
 - FAQ about kill git-daemon
-- Support Arch Linux, Ubuntu 23.10 to 25.04
+- Supports Arch Linux, Ubuntu 23.10 to 25.04
 - ADD repo JayVora-SerpentCS_SerpentCS_Contributions
 - ADD repo CybroOdoo_CybroAddons
 
 ## Changed
 
 - Refactor image_db regeneration, use configuration JSON to build image
-- Guide to move dev to prod
+- Guide for moving dev to prod
 - Update Docker buster to bullseye
 - Improve format script to help code-generator
 - Improve PyCharm script
@@ -33,15 +33,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Script to search docker compose into the system
 - Script search class model can output into json format and support field information
 - Improve Docker minimal installation docs in README for Ubuntu, test with Debian (https://github.com/ERPLibre/ERPLibre/issues/73)
-- Statistic script to show evolution module into ERPLibre support Odoo 17 and Odoo 18
+- Statistic script showing evolution module into ERPLibre supporting Odoo 17 and Odoo 18
 - Latest version wkhtmltopdf 0.12.6.1-3
 
 ### Fixed
 
-- NPM installation locally and not globally
+- NPM instaled locally and not globally
 - Improve python code writer efficiency
 - Config generator supporting space into ERPLibre directory
-- Script to update Poetry support @ URL
+- Script to update Poetry to support @ URL
 - OSX and recent Ubuntu installation
 - Cloudflare script integration
 
@@ -49,7 +49,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **Migration notes**
 
-Because of new updates of Python and Poetry, recreate the virtual environment.
+Recreating the virtual environment
 
 ```bash
 rm -rf ~/.poetry
