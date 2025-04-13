@@ -4,6 +4,7 @@
 
 import datetime
 import os
+import random
 import re
 import sys
 import time
@@ -40,6 +41,12 @@ class SeleniumLib(object):
                 "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
             )
         self.driver = None
+
+    def do_screenshot(self):
+        if self.config.scenario_screenshot:
+            self.driver.save_screenshot(
+                f"./screenshots/{self.config.scenario}_{str(int(time.time() * 10000))}.png"
+            )
 
     def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
@@ -399,6 +406,8 @@ class SeleniumLib(object):
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
+        clear_before: bool = False,
+        click_before: bool = False,
     ):
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value)
@@ -412,6 +421,16 @@ class SeleniumLib(object):
             ActionChains(self.driver).move_to_element(ele).perform()
 
         # Write content
+        if click_before:
+            # Need this to update a datetimepicker
+            ele.click()
+            time.sleep(0.3)
+        if clear_before:
+            ele.clear()
+            if click_before:
+                # Need this to update a datetimepicker
+                ele.click()
+                time.sleep(0.3)
         ele.send_keys(text_value)
         if delay_after > 0:
             time.sleep(delay_after)
@@ -604,6 +623,67 @@ class SeleniumLib(object):
             print("Chatbot cannot be found, stop searching it.")
 
     # Website
+    def odoo_show_robot_message(self, msg="Ho no!"):
+        # Injecter l'animation SVG dans la page
+        script_text = ""
+        if msg:
+            script_text = f"""
+                // Ajouter le texte
+                const textElement = document.createElement('div');
+                textElement.innerText = '{msg}';
+                textElement.style.color = '#FFFFFF';
+                textElement.style.fontSize = '24px';
+                textElement.style.marginBottom = '20px';
+                textElement.style.fontWeight = 'bold';
+
+                overlay.appendChild(textElement);
+            """
+        script = (
+            """
+            (function() {
+                // Créer un div pour l'overlay
+                const overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.style.zIndex = '9999';
+
+                // Contenu SVG du robot
+                const svgContent = `
+                    <svg class="robot-animation" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width: 150px; cursor: pointer;">
+                        <circle cx="32" cy="32" r="30" fill="#FF5252"/>
+                        <path fill="#FFF" d="M20 27h24l-6-12h-12z"/>
+                        <circle cx="24" cy="44" r="4" fill="#FFF"/>
+                        <circle cx="40" cy="44" r="4" fill="#FFF"/>
+                    </svg>
+                `;
+                """
+            + script_text
+            + """
+                // Ajouter le contenu SVG au div
+                overlay.innerHTML += svgContent;
+
+                // Ajouter un gestionnaire de clic pour supprimer l'overlay
+                overlay.onclick = function() {
+                    overlay.style.display = 'none';
+                };
+
+                // Ajouter l'overlay au corps du document
+                document.body.appendChild(overlay);
+            })();
+        """
+        )
+
+        # Exécuter le script pour injecter l'animation
+        self.driver.execute_script(script)
+        print(f"Script inject robot svg with msg '{msg}'")
+
     def odoo_website_menu_click(self, from_text=""):
         if not from_text:
             raise Exception(
@@ -626,9 +706,16 @@ class SeleniumLib(object):
 
     def odoo_web_click_principal_menu(self):
         # Click menu button
-        button = self.click_with_mouse_move(
-            By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
-        )
+        if self.odoo_version == "16.0":
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                "//button[contains(@class, 'dropdown-toggle') and .//i[contains(@class, 'oi-apps')]]",
+                timeout=10,
+            )
+        elif self.odoo_version == "14.0":
+            button = self.click_with_mouse_move(
+                By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
+            )
         return button
 
     def odoo_web_principal_menu_click_root_menu(self, from_text=""):
@@ -643,6 +730,88 @@ class SeleniumLib(object):
         # If not work, force it
         # selenium_tool.driver.execute_script("arguments[0].click();", button)
         return button
+
+    def odoo_web_form_click_statusbar_button_status(
+        self, status_label, timeout=10
+    ):
+        try:
+            status_button = self.click_with_mouse_move(
+                By.XPATH,
+                f"//button[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+                timeout=timeout,
+            )
+        except Exception as e:
+            status_button = self.click_with_mouse_move(
+                By.XPATH,
+                f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+                timeout=timeout,
+            )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_statusbar_button_status_floating(
+        self, status_label, timeout=10
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//span[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+            timeout=timeout,
+        )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_statusbar_button_status_plus(
+        self, status_label, timeout=10
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+            timeout=timeout,
+        )
+        print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_button_statusbar(
+        self, btn_label, btn_class="btn-primary"
+    ):
+        status_button = self.click_with_mouse_move(
+            By.XPATH,
+            f"//button[contains(@class, '{btn_class}') and contains(span, '{btn_label}')]",
+            timeout=30,
+        )
+        print(f"Bouton du statusbar avec le label '{btn_label}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_button_action(self, btn_action):
+        status_button = self.click_with_mouse_move(
+            By.NAME,
+            btn_action,
+            timeout=30,
+        )
+        print(f"Bouton avec l'action '{btn_action}' cliqué.")
+        return status_button
+
+    def odoo_web_form_click_save_action(self):
+        status_button = self.click_with_mouse_move(
+            By.CLASS_NAME,
+            "o_form_button_save",
+            timeout=30,
+        )
+        print("Bouton avec l'action 'o_form_button_save' cliqué.")
+        return status_button
+
+    def odoo_web_kanban_card(self, card_label):
+        # From web view kanban, list
+        kanban_card = self.click_with_mouse_move(
+            By.XPATH,
+            f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]",
+            timeout=30,
+        )
+        # kanban_card = self.driver.find_element(By.XPATH,
+        #                                        f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]")
+        # kanban_card.click()
+        print(f"Carte Kanban avec le label '{card_label}' cliquée.")
+        return kanban_card
 
     def odoo_web_action_button_new(self):
         # From web view kanban, list
@@ -665,6 +834,21 @@ class SeleniumLib(object):
             f"//a[text()='{tab_text}']",
             timeout=30,
         )
+
+    # Web
+    def odoo_fill_widget_char(self, field_name, text, is_label=False):
+        # Type input
+        if self.odoo_version == "14.0":
+            text_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.NAME, field_name))
+            )
+        elif self.odoo_version == "16.0":
+            text_field = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.ID, field_name))
+            )
+
+        text_field.send_keys(text)
+        return text_field
 
     def odoo_fill_widget_selection(self, field_name, text):
         return self.odoo_fill_widget_many2one(field_name, text)
@@ -696,7 +880,7 @@ class SeleniumLib(object):
         input_field = div_field.find_element(By.XPATH, ".//input")
         input_field.send_keys(text)
         # TODO improve speed by observation of comportement
-        time.sleep(0.5)
+        time.sleep(1)
         input_field.send_keys(Keys.ENTER)
 
         return input_field
@@ -776,6 +960,58 @@ class SeleniumLib(object):
                 # time.sleep(15)
                 # By external process
                 os.popen(f"vlc {self.filename}")
+
+    def generer_code_postal_quebec(self):
+        # Zip code from quebec canada
+        premieres_lettres = ["G", "H", "J"]
+
+        premiere_lettre = random.choice(premieres_lettres)
+
+        deuxieme_lettre = chr(random.randint(65, 90))
+        chiffre = str(random.randint(0, 9))
+        troisieme_lettre = chr(random.randint(65, 90))
+
+        code_postal = f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
+
+        return code_postal
+
+    def generer_numero_telephone_quebec(self):
+        # Number from quebec canada
+        indicateurs_regionaux = [
+            "418",
+            "438",
+            "450",
+            "514",
+            "579",
+            "581",
+            "819",
+            "873",
+        ]
+
+        indicatif = random.choice(indicateurs_regionaux)
+
+        numero = "".join(random.choices("0123456789", k=7))
+
+        numero_telephone = f"({indicatif}) {numero[:3]}-{numero[3:]}"
+
+        return numero_telephone
+
+    def generer_date_naissance(self, age_minimum=16):
+        annee_actuelle = datetime.datetime.now().year
+        annee_maximale = annee_actuelle - age_minimum
+
+        annee_minimale = 1900
+
+        annee_naissance = random.randint(annee_minimale, annee_maximale)
+
+        mois_naissance = random.randint(1, 12)
+        jour_naissance = random.randint(1, 28)
+
+        date_naissance = datetime.datetime(
+            annee_naissance, mois_naissance, jour_naissance
+        )
+
+        return date_naissance.strftime("%Y-%m-%d")
 
 
 def fill_parser(parser):
