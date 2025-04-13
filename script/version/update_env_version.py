@@ -469,7 +469,7 @@ class Update:
                         ADDONS_PATH,
                         ADDONS_PATH
                         + "_"
-                        + time.strftime('%Yy%mm%dd-%Hh%Mm%Ss'),
+                        + time.strftime("%Yy%mm%dd-%Hh%Mm%Ss"),
                     )
             os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
@@ -701,7 +701,11 @@ def main():
 
     _logger.info("Validate environment")
     status = 0
-    if update.config.install_dev or update.config.partial_install or update.config.is_in_switch:
+    if (
+        update.config.install_dev
+        or update.config.partial_install
+        or update.config.is_in_switch
+    ):
         status = update.validate_environment()
     if update.config.install:
         status = update.install_system()
