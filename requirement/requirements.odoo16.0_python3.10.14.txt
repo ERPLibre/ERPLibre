@@ -19,6 +19,7 @@ uvloop
 python-randomword-fr
 isort
 pykeepass
+click
 
 # For OSX
 cython

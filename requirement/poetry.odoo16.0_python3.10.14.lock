@@ -989,12 +989,12 @@ files = [
 
 [[package]]
 name = "chromedriver-binary"
-version = "137.0.7118.2.0"
+version = "137.0.7123.0.0"
 description = "Installer for chromedriver."
 optional = false
 python-versions = "*"
 files = [
-    {file = "chromedriver_binary-137.0.7118.2.0.tar.gz", hash = "sha256:75b7d08b0291a2eb7b7ce4ed3e89e962514b7e024f6a1d2c3ad722b0ff0917b1"},
+    {file = "chromedriver_binary-137.0.7123.0.0.tar.gz", hash = "sha256:fe2992e81362074b881e77824da2e832027d4db7dcf6dbe092b8f11a21f90a0d"},
 ]
 
 [[package]]
@@ -1782,13 +1782,13 @@ test = ["pytest (>=6)"]
 
 [[package]]
 name = "extract-msg"
-version = "0.54.0"
+version = "0.54.1"
 description = "Extracts emails and attachments saved in Microsoft Outlook's .msg files"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "extract_msg-0.54.0-py3-none-any.whl", hash = "sha256:5ec1b9645e5c1a6ce05f3f07f221a083ee0bc27c5e8474d64a4032c016ba5495"},
-    {file = "extract_msg-0.54.0.tar.gz", hash = "sha256:b8ed8198e64ccb34ae66fc1c2c422e56f9234c64bbf80afcda7100593920ff2b"},
+    {file = "extract_msg-0.54.1-py3-none-any.whl", hash = "sha256:9064f54d519429becdc05c64bb2135c89f5886f706a4aebf38bfb6901deacdc4"},
+    {file = "extract_msg-0.54.1.tar.gz", hash = "sha256:fb39e9f0d3971c30ca6ffa5686bc971884f364b6e97c79ccc10013fb3cbd02de"},
 ]
 
 [package.dependencies]
@@ -3219,13 +3219,13 @@ lxml = "*"
 
 [[package]]
 name = "mako"
-version = "1.3.9"
+version = "1.3.10"
 description = "A super-fast templating language that borrows the best ideas from the existing templating languages."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "Mako-1.3.9-py3-none-any.whl", hash = "sha256:95920acccb578427a9aa38e37a186b1e43156c87260d7ba18ca63aa4c7cbd3a1"},
-    {file = "mako-1.3.9.tar.gz", hash = "sha256:b5d65ff3462870feec922dbccf38f6efb44e5714d7b593a656be86663d8600ac"},
+    {file = "mako-1.3.10-py3-none-any.whl", hash = "sha256:baef24a52fc4fc514a0887ac600f9f1cff3d82c61d4d700a1fa84d597b88db59"},
+    {file = "mako-1.3.10.tar.gz", hash = "sha256:99579a6f39583fa7e5630a28c3c1f440e4e97a414b80372649c0ce338da2ea28"},
 ]
 
 [package.dependencies]
@@ -4149,13 +4149,13 @@ full = ["XLMMacroDeobfuscator"]
 
 [[package]]
 name = "openai"
-version = "1.72.0"
+version = "1.73.0"
 description = "The official Python library for the openai API"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "openai-1.72.0-py3-none-any.whl", hash = "sha256:34f5496ba5c8cb06c592831d69e847e2d164526a2fb92afdc3b5cf2891c328c3"},
-    {file = "openai-1.72.0.tar.gz", hash = "sha256:f51de971448905cc90ed5175a5b19e92fd94e31f68cde4025762f9f5257150db"},
+    {file = "openai-1.73.0-py3-none-any.whl", hash = "sha256:f52d1f673fb4ce6069a40d544a80fcb062eba1b3f489004fac4f9923a074c425"},
+    {file = "openai-1.73.0.tar.gz", hash = "sha256:b58ea39ba589de07db85c9905557ac12d2fc77600dcd2b92a08b99c9a3dce9e0"},
 ]
 
 [package.dependencies]
@@ -4563,13 +4563,13 @@ pycryptodome = "*"
 
 [[package]]
 name = "phonenumbers"
-version = "9.0.2"
+version = "9.0.3"
 description = "Python version of Google's common library for parsing, formatting, storing and validating international phone numbers."
 optional = false
 python-versions = "*"
 files = [
-    {file = "phonenumbers-9.0.2-py2.py3-none-any.whl", hash = "sha256:dbcec6bdfdf3973f60b81dc0fcac3f7b1638f877ac42da4d7b46724ed413e2b9"},
-    {file = "phonenumbers-9.0.2.tar.gz", hash = "sha256:f590ee2b729bdd9873ca2d52989466add14c9953b48805c0aeb408348d4d6224"},
+    {file = "phonenumbers-9.0.3-py2.py3-none-any.whl", hash = "sha256:0509d9b70ef66c04a1538f0b31c3e0c0b023127dad0eb1199adef0bc1841ff34"},
+    {file = "phonenumbers-9.0.3.tar.gz", hash = "sha256:c5084e6c6a77e0e8d725086c7f69002ef8e39529155b8cd31cbf8c987f344a33"},
 ]
 
 [[package]]
@@ -8475,4 +8475,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10.14"
-content-hash = "48521d20662b584017bef7b170ca18b0ba8b836496ed1dd8b74b1e6895f4b5af"
+content-hash = "7797c773f0378b1d5af94d37204d5b292ee79e061aab0676b15e48f9d9dc1f3d"
