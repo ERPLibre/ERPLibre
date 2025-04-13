@@ -6,8 +6,8 @@ import argparse
 import logging
 import os
 import sys
-from colorama import Fore, Style
 
+from colorama import Fore, Style
 from git import Repo
 
 new_path = os.path.normpath(

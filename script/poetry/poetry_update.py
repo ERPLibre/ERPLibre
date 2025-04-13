@@ -8,10 +8,10 @@ import logging
 import os
 from collections import OrderedDict, defaultdict
 from pathlib import Path
-from colorama import Fore, Style
 
 import iscompatible
 import toml
+from colorama import Fore, Style
 
 _logger = logging.getLogger(__name__)
 

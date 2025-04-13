@@ -7,9 +7,9 @@ import logging
 import os
 import sys
 from xml.dom import Node, minidom
-from colorama import Fore, Style
 
 from code_writer import CodeWriter
+from colorama import Fore, Style
 
 from script.git.git_tool import GitTool
 

@@ -3,14 +3,14 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
-
-import astor
-import json
 import ast
+import json
 import logging
 import os
 import sys
 from pathlib import Path
+
+import astor
 
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)

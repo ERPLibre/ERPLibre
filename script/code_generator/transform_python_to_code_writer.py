@@ -3,9 +3,9 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
-import uuid
 import subprocess
 import sys
+import uuid
 
 from code_writer import CodeWriter
 

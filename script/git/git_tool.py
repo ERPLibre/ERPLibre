@@ -6,11 +6,11 @@ import os
 import webbrowser
 from collections import OrderedDict
 from typing import List
-from colorama import Fore, Style
 
 import git
 import xmltodict
 from agithub.GitHub import GitHub  # pip install agithub
+from colorama import Fore, Style
 from git import Repo
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying

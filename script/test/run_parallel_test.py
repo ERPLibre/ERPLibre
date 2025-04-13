@@ -6,15 +6,15 @@ import argparse
 import asyncio
 import configparser
 import datetime
+import json
 import logging
 import os
 import sys
 import tempfile
 import time
 import uuid
-import json
-from typing import Tuple
 from collections import defaultdict
+from typing import Tuple
 
 import aioshutil
 import git

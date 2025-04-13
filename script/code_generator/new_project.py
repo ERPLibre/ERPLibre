@@ -4,16 +4,15 @@
 
 import argparse
 import configparser
+import json
 import logging
 import os
 import sys
 import tempfile
 import uuid
-import json
 
 from git import Repo
 from git.exc import InvalidGitRepositoryError, NoSuchPathError
-
 
 CODE_GENERATOR_DIRECTORY = "./addons/TechnoLibre_odoo-code-generator-template/"
 CODE_GENERATOR_DEMO_NAME = "code_generator_demo"

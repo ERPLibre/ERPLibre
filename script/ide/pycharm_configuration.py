@@ -4,11 +4,11 @@
 
 import argparse
 import csv
+import glob
 import logging
 import os
 import subprocess
 import sys
-import glob
 
 import xmltodict
 

@@ -3,10 +3,10 @@ from __future__ import print_function
 import argparse
 import os.path
 import shutil
-from colorama import Fore, Style
 
 import yaml  # pip install PyYAML
 from agithub.GitHub import GitHub  # pip install agithub
+from colorama import Fore, Style
 from git import Repo  # pip install gitpython
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
