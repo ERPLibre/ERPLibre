@@ -441,7 +441,9 @@ Because addons repository has change, config file need to be updated.
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...HEAD
+
+[1.6.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.5.0...v1.6.0
 
 [1.5.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.4.0...v1.5.0
 
