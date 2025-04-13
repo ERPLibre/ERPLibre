@@ -19,13 +19,17 @@ This will erase everything in addons. Useful before creating docker, manifest an
 
 And update all from dev to merge into prod.
 
+Test all supported Odoo version :
+
 ```bash
-./script/install/install_locally_dev.sh
+make install_odoo_12
+make install_odoo_14
+make install_odoo_16
 ```
 
 ## Validate environment
 
-- Check if [manifest/default.dev.xml](../manifest/default.dev.xml) is ready for production.
+- Check if each manifest version like [manifest/default.dev.odoo16.0.xml](../manifest/default.dev.odoo16.0.xml) is ready for production.
 - Run test :
 
 ```bash
