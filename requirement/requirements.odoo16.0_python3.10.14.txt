@@ -20,6 +20,7 @@ python-randomword-fr
 isort
 pykeepass
 click
+aioshutil
 
 # For OSX
 cython
