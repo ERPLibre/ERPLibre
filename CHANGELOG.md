@@ -38,7 +38,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- NPM instaled locally and not globally
+- NPM installed locally and not globally
 - Improve python code writer efficiency
 - Config generator supporting space into ERPLibre directory
 - Script to update Poetry to support @ URL
