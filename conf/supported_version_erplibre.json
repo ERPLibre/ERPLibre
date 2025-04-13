@@ -2,9 +2,7 @@
     "odoo12.0_python3.7.17": {
         "odoo_version": "12.0",
         "python_version": "3.7.17",
-        "poetry_version": "1.5.0",
-        "default": true,
-        "note": "Official support ERPLibre 1.5.0"
+        "poetry_version": "1.5.0"
     },
     "odoo14.0_python3.8.20": {
         "odoo_version": "14.0",
@@ -14,6 +12,8 @@
     "odoo16.0_python3.10.14": {
         "odoo_version": "16.0",
         "python_version": "3.10.14",
-        "poetry_version": "1.8.3"
+        "poetry_version": "1.8.3",
+        "default": true,
+        "note": "Official support ERPLibre 1.6.0"
     }
 }
