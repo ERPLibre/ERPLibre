@@ -41,6 +41,11 @@ with open(".odoo-version", "r") as f:
 LOG_FILE = "./.venv/make_test.log"
 CONFIG_TESTCASE_JSON = f"./script/test/config_testcase.odoo{ODOO_VERSION}.json"
 
+with open(".odoo-version", "r") as f:
+    ODOO_VERSION = f.readline()
+
+LOG_FILE = "./.venv/make_test.log"
+CONFIG_TESTCASE_JSON = f"./script/test/config_testcase.odoo{ODOO_VERSION}.json"
 
 def get_config():
     parser = argparse.ArgumentParser(
