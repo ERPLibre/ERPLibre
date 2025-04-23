@@ -3,7 +3,7 @@
   hosts: leChoixDuSysadmin
   become: true
   vars_files:
-    - firewall_symba.yml
+    - firewall_config.yml
 
   tasks:
 
