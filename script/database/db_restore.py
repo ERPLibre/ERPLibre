@@ -41,8 +41,8 @@ SUGGESTION
         "--image",
         help=(
             "Image name to restore, from directory image_db, filename without"
-            " '.zip'. Example, use erplibre_base to use image"
-            " erplibre_base.zip. Default value is erplibre_base"
+            " '.zip'. Example, use odoo12.0_base to use image"
+            " odoo12.0_base.zip. Default value is odoo12.0_base"
         ),
     )
     parser.add_argument(

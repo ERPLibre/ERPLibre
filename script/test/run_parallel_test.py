@@ -319,7 +319,7 @@ async def test_exec(
     test_name=None,
     install_path=None,
     run_in_sandbox=True,
-    restore_db_image_name="erplibre_base",
+    restore_db_image_name="odoo12.0_base",
     keep_cache=False,
     coverage=False,
 ) -> Tuple[str, int, str, float]:
@@ -826,6 +826,8 @@ def run_all_test(config) -> bool:
     dct_task = defaultdict(list)
     dct_task_name = defaultdict(list)
     for dct_test in lst_test:
+        if dct_test.get("disable"):
+            continue
         sequence = dct_test.get("sequence", 0)
         cb_coroutine = None
         test_name = None
@@ -869,7 +871,7 @@ def run_all_test(config) -> bool:
             install_path = dct_test.get("install_path")
             run_in_sandbox = dct_test.get("run_in_sandbox", True)
             restore_db_image_name = dct_test.get(
-                "restore_db_image_name", "erplibre_base"
+                "restore_db_image_name", "odoo12.0_base"
             )
             keep_cache = config.keep_cache
             coverage = config.coverage

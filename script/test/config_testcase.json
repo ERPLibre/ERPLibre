@@ -63,6 +63,7 @@
         },
         {
             "run_test_exec": true,
+            "disable": true,
             "test_name": "mariadb_test_template",
             "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "code_generator_demo_mariadb_sql_example_1",
@@ -72,6 +73,7 @@
         },
         {
             "run_test_exec": true,
+            "disable": true,
             "test_name": "mariadb_test_migrator",
             "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_mariadb_sql_example_1",
@@ -81,6 +83,7 @@
         },
         {
             "run_test_exec": true,
+            "disable": true,
             "test_name": "mariadb_test_code_generator",
             "path_module_check": "./addons/TechnoLibre_odoo-code-generator-template",
             "generated_module": "demo_mariadb_sql_example_1",

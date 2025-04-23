@@ -34,7 +34,7 @@ DESCRIPTION
     Create image for database restoration to increase speed. Check file
 
 SUGGESTION
-    ./script/database/image_db.py --image erplibre_base --odoo_version 16.0
+    ./script/database/image_db.py --image odoo16.0_base --odoo_version 16.0
 """,
         epilog="""\
 """,
@@ -43,8 +43,8 @@ SUGGESTION
         "--image",
         help=(
             "Image name to restore, from directory image_db, filename without"
-            " '.zip'. Example, use erplibre_base to use image"
-            " erplibre_base.zip. Default value is erplibre_base"
+            " '.zip'. Example, use odoo12.0_base to use image"
+            " odoo12.0_base.zip. Default value is odoo12.0_base"
         ),
     )
     parser.add_argument(
