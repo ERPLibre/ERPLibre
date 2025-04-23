@@ -22,6 +22,14 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
+FILENAME_ODOO_VERSION = ".odoo-version"
+if not os.path.isfile(FILENAME_ODOO_VERSION):
+    _logger.error(f"Missing file {FILENAME_ODOO_VERSION}")
+    sys.exit(1)
+
+with open(".odoo-version", "r") as f:
+    ODOO_VERSION = f.readline()
+
 
 def get_config():
     """Parse command line arguments, extracting the config file name,
@@ -39,7 +47,7 @@ def get_config():
     )
     parser.add_argument(
         "--repo",
-        default="./addons/TechnoLibre_odoo-code-generator-template;./addons/OCA_server-tools",
+        default=f"./addons.odoo{ODOO_VERSION}/TechnoLibre_odoo-code-generator-template;./addons.odoo{ODOO_VERSION}/OCA_server-tools",
     )
     args = parser.parse_args()
     return args

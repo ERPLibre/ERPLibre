@@ -73,6 +73,8 @@ On_IPurple='\033[0;105m' # Purple
 On_ICyan='\033[0;106m'   # Cyan
 On_IWhite='\033[0;107m'  # White
 
+ODOO_VERSION=$(cat .odoo-version)
+
 check_git() {
   REP=$1
   cd "${REP}" || exit
@@ -110,5 +112,5 @@ if [ $# -gt 0 ]; then
   fi
 else
   # check_git "./addons/TechnoLibre_odoo-code-generator"
-  check_git "./addons/TechnoLibre_odoo-code-generator-template"
+  check_git "./addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator-template"
 fi

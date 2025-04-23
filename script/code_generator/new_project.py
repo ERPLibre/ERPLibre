@@ -14,9 +14,6 @@ import uuid
 from git import Repo
 from git.exc import InvalidGitRepositoryError, NoSuchPathError
 
-CODE_GENERATOR_DIRECTORY = "./addons/TechnoLibre_odoo-code-generator-template/"
-CODE_GENERATOR_DEMO_NAME = "code_generator_demo"
-KEY_REPLACE_CODE_GENERATOR_DEMO = 'MODULE_NAME = "%s"'
 
 logging.basicConfig(
     format=(
@@ -27,6 +24,19 @@ logging.basicConfig(
     level=logging.INFO,
 )
 _logger = logging.getLogger(__name__)
+
+filename_odoo_version = ".odoo-version"
+if not os.path.isfile(filename_odoo_version):
+    _logger.error(f"Missing file {filename_odoo_version}")
+    sys.exit(1)
+with open(".odoo-version", "r") as f:
+    odoo_version = f.readline()
+
+CODE_GENERATOR_DIRECTORY = (
+    f"./addons.odoo{odoo_version}/TechnoLibre_odoo-code-generator-template/"
+)
+CODE_GENERATOR_DEMO_NAME = "code_generator_demo"
+KEY_REPLACE_CODE_GENERATOR_DEMO = 'MODULE_NAME = "%s"'
 
 
 class Struct:
@@ -131,6 +141,11 @@ class ProjectManagement:
         self.msg_error = ""
         self.has_config_update = False
         self.odoo_config = odoo_config
+
+        # Replace addons/ by addons.odoo12.0/
+        module_directory = module_directory.replace(
+            "addons/", f"addons.odoo{odoo_version}/"
+        )
 
         self.module_directory = module_directory
         if not os.path.exists(self.module_directory):
