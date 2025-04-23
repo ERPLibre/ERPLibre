@@ -568,7 +568,7 @@ class ProjectManagement:
                 has_change = True
         if has_change:
             config.set("options", "addons_path", ",".join(lst_addons_path))
-        temp_file = tempfile.mktemp()
+        fd_i, temp_file = tempfile.mkstemp()
         with open(temp_file, "w") as configfile:
             config.write(configfile)
         _logger.info(f"Create temporary config file: {temp_file}")
