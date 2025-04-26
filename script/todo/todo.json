@@ -1,0 +1,23 @@
+{
+    "kdbx": {
+        "path": "",
+        "password": ""
+    },
+    "kdbx_config": {
+        "openai": {
+            "kdbx_key": "OpenAI api"
+        }
+    },
+    "instance": [
+        {
+            "prompt_description": "Test - Instance de base minimale",
+            "makefile_cmd": "db_restore_erplibre_base_db_test",
+            "database": "test"
+        }
+    ],
+    "function": [
+        {
+            "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16"
+        }
+    ]
+}

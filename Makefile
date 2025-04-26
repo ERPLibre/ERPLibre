@@ -725,6 +725,14 @@ open_test_coverage:
 
 # TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv/test.py
 
+########
+# TODO #
+########
+
+.PHONY: todo
+todo:
+	./script/todo/todo.py
+
 #########
 #  tag  #
 #########

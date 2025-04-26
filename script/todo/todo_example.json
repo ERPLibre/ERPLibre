@@ -1,0 +1,35 @@
+{
+    "kdbx": {
+        "path": "",
+        "password": ""
+    },
+    "kdbx_config": {
+        "openai": {
+            "kdbx_key": "OpenAI api"
+        }
+    },
+    "instance": [
+        {
+            "prompt_description": "Test - Instance de base minimale",
+            "makefile_cmd": "db_restore_erplibre_base_db_test",
+            "database": "test",
+            "kdbx_key": "default_user_odoo"
+        }
+    ],
+    "function": [
+        {
+            "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16"
+        },
+        {
+            "prompt_description": "Ouvrir ERPLibre avec tous les utilisateurs",
+            "kdbx_key": [
+                "user 01prod",
+                "user 02 prod"
+            ]
+        },
+        {
+            "prompt_description": "Rapport",
+            "command": "./script/selenium/selenium_test.py --test --scenario=rapport"
+        }
+    ]
+}
