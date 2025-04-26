@@ -15,6 +15,7 @@ fi
 INIT_DATETIME=$(date +%s)
 
 if [[ $# -eq 5 ]]; then
+  echo ./script/addons/install_addons_dev.sh "$1" "$2" "$5"
   ./script/addons/install_addons_dev.sh "$1" "$2" "$5"
   retVal=$?
   if [[ $retVal -ne 0 ]]; then
@@ -22,6 +23,7 @@ if [[ $# -eq 5 ]]; then
     exit 1
   fi
 else
+  echo ./script/addons/install_addons_dev.sh "$1" "$2"
   ./script/addons/install_addons_dev.sh "$1" "$2"
   retVal=$?
   if [[ $retVal -ne 0 ]]; then
@@ -31,6 +33,7 @@ else
 fi
 
 # Check if the code was updated
+echo ./script/code_generator/test_code_generator_update_module.py -m "$4" -d "$3" --datetime "${INIT_DATETIME}"
 ./script/code_generator/test_code_generator_update_module.py -m "$4" -d "$3" --datetime "${INIT_DATETIME}"
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
@@ -39,6 +42,7 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 # TODO check output when got warning
+echo ./script/git/repo_revert_git_diff_date_from_code_generator.py --repo "$3"
 ./script/git/repo_revert_git_diff_date_from_code_generator.py --repo "$3"
 # Remove pot and po diff
 cd "$3" || exit 1
@@ -63,6 +67,7 @@ for element in "${elements[@]}"; do
 done
 
 echo "TEST ${2}"
+echo ./script/code_generator/check_git_change_code_generator.sh "$3"
 ./script/code_generator/check_git_change_code_generator.sh "$3"
 retVal=$?
 if [[ $retVal -ne 0 ]]; then

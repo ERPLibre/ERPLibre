@@ -6,15 +6,15 @@ import argparse
 import asyncio
 import configparser
 import datetime
+import json
 import logging
 import os
 import sys
 import tempfile
 import time
 import uuid
-import json
-from typing import Tuple
 from collections import defaultdict
+from typing import Tuple
 
 import aioshutil
 import git
@@ -30,8 +30,16 @@ from script import lib_asyncio
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
 
+FILENAME_ODOO_VERSION = ".odoo-version"
+if not os.path.isfile(FILENAME_ODOO_VERSION):
+    _logger.error(f"Missing file {FILENAME_ODOO_VERSION}")
+    sys.exit(1)
+
+with open(".odoo-version", "r") as f:
+    ODOO_VERSION = f.readline()
+
 LOG_FILE = "./.venv/make_test.log"
-CONFIG_TESTCASE_JSON = "./script/test/config_testcase.json"
+CONFIG_TESTCASE_JSON = f"./script/test/config_testcase.odoo{ODOO_VERSION}.json"
 
 
 def get_config():
@@ -136,7 +144,12 @@ def extract_result(result, test_name, lst_error, lst_warning):
             if not is_ignore_warning:
                 lst_warning.append(log_line)
     if result[1]:
-        lst_error.append(f"Return status error for test {test_name}")
+        if len(result[0].split("\n")) == 1:
+            lst_error.append(
+                f"Return status error for test {test_name} : {result[0]}"
+            )
+        else:
+            lst_error.append(f"Return status error for test {test_name}")
 
 
 def check_result(task_list, tpl_result):
@@ -319,7 +332,7 @@ async def test_exec(
     test_name=None,
     install_path=None,
     run_in_sandbox=True,
-    restore_db_image_name="erplibre_base",
+    restore_db_image_name="odoo12.0_base",
     keep_cache=False,
     coverage=False,
 ) -> Tuple[str, int, str, float]:
@@ -422,7 +435,10 @@ async def test_exec(
                 # Update path to change new emplacement
                 s_lst_path_tested_module = (
                     await lib_asyncio.run_command_get_output(
-                        "find", "./addons/", "-name", module_name
+                        "find",
+                        f"./addons.odoo{ODOO_VERSION}/",
+                        "-name",
+                        module_name,
                     )
                 )
                 if not s_lst_path_tested_module:
@@ -437,6 +453,7 @@ async def test_exec(
                         s_lst_path_tested_module.strip().split("\n")
                     )
                     s_first_path = lst_path_tested_module[0]
+                    # parent_dir = os.path.dirname(s_first_path).replace("addons/", f"addons.odoo{ODOO_VERSION}/")
                     parent_dir = os.path.dirname(s_first_path)
                     # Copy it
                     if copy_path != parent_dir:
@@ -546,7 +563,7 @@ async def test_exec(
                         else:
                             new_hook_line = (
                                 hook_line[: first_index + len(f_key)]
-                                + f'"{s_first_path}"\n'
+                                + f'"{s_first_path}"'
                                 + hook_line[index_end_string:]
                             )
                         new_hook_line = new_hook_line.replace(
@@ -782,7 +799,7 @@ def check_git_change():
     task_list = [
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
-            "./addons/TechnoLibre_odoo-code-generator-template",
+            f"./addons.odoo{ODOO_VERSION}/TechnoLibre_odoo-code-generator-template",
             test_name=(
                 "Init check_git_change"
                 " TechnoLibre_odoo-code-generator-template"
@@ -790,7 +807,7 @@ def check_git_change():
         ),
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
-            "./addons/OCA_server-tools",
+            f"./addons.odoo{ODOO_VERSION}/OCA_server-tools",
             test_name="Init check_git_change OCA_server-tools",
         ),
     ]
@@ -826,6 +843,12 @@ def run_all_test(config) -> bool:
     dct_task = defaultdict(list)
     dct_task_name = defaultdict(list)
     for dct_test in lst_test:
+        if dct_test.get("disable"):
+            continue
+        # Force change addons path
+        # if "path_module_check" in dct_test.keys():
+        #     # dct_test["path_module_check"] = dct_test["path_module_check"].replace("addons/", f"addons.odoo{ODOO_VERSION}/")
+        #     dct_test["path_module_check"] = dct_test["path_module_check"]
         sequence = dct_test.get("sequence", 0)
         cb_coroutine = None
         test_name = None
@@ -869,7 +892,7 @@ def run_all_test(config) -> bool:
             install_path = dct_test.get("install_path")
             run_in_sandbox = dct_test.get("run_in_sandbox", True)
             restore_db_image_name = dct_test.get(
-                "restore_db_image_name", "erplibre_base"
+                "restore_db_image_name", "odoo12.0_base"
             )
             keep_cache = config.keep_cache
             coverage = config.coverage

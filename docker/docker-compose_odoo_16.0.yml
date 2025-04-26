@@ -1,7 +1,7 @@
 version: "3.3"
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0
+    image: technolibre/erplibre:1.5.0_odoo_16.0_91a7d1b
     ports:
       - 8069:8069
       - 8071:8071

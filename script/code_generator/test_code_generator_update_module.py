@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import sys
+
 from colorama import Fore, Style
 
 logging.basicConfig(level=logging.DEBUG)

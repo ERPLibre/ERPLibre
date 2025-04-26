@@ -22,14 +22,14 @@ This has been tested in Debian 12 and Ubuntu 24.04 LTS.
 1. Make sure Docker and nginx web server are installed:<BR>
 ```sudo apt install docker docker-compose nginx```
 1. Get the latest ERPLibre Docker compose file:<BR>
-```wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.5.0/docker-compose.yml```
+```wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.6.0/docker-compose.yml```
 1. Install and run ERPLibre with Docker running as a daemon (web server):<BR>
 ```sudo docker-compose up -d```
 1. Open the final installation step at this web page :<BR>
 ```http://[server IP]:8069```<BR>
 ![Capture du 2024-11-05 08-34-45](https://github.com/user-attachments/assets/7c6295b6-cc95-462d-822c-3ff72b772155)
 1. Finish the installation by providing a database name, email and password. then click on **Create Database**. Depending on your system resources **this may take more than 2 minutes without feedback !** Check your browser loading indicator.
-1. Next, the web page will reload itself and you should see the Applications list in ERPLibre:<BR>
+1. Next, the web page will reload itself, and you should see the Applications list in ERPLibre:<BR>
 ![2024-11-05_09-54](https://github.com/user-attachments/assets/1742c4a9-da96-466b-9c17-35eb5ca786ff)
 You can now personalize your ERPLibre installation.
 

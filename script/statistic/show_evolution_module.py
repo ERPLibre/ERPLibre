@@ -3,12 +3,12 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
+import csv
 import datetime
 import logging
 import os
 import shutil
 import sys
-import csv
 from collections import defaultdict
 
 from dateutil.relativedelta import relativedelta
