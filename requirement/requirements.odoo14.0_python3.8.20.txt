@@ -112,7 +112,7 @@ sphinx-intl==2.2.0
 selenium==4.25.0
 anyio>=3.5
 openai
-idna==2.8
+idna==3.7
 pylint==3.1.0
 xmlschema==3.4.5
 html2text==2024.2.26
