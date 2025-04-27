@@ -256,6 +256,63 @@ files = [
 test = ["coverage", "mypy", "pexpect", "ruff", "wheel"]
 
 [[package]]
+name = "argon2-cffi"
+version = "23.1.0"
+description = "Argon2 for Python"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "argon2_cffi-23.1.0-py3-none-any.whl", hash = "sha256:c670642b78ba29641818ab2e68bd4e6a78ba53b7eff7b4c3815ae16abf91c7ea"},
+    {file = "argon2_cffi-23.1.0.tar.gz", hash = "sha256:879c3e79a2729ce768ebb7d36d4609e3a78a4ca2ec3a9f12286ca057e3d0db08"},
+]
+
+[package.dependencies]
+argon2-cffi-bindings = "*"
+
+[package.extras]
+dev = ["argon2-cffi[tests,typing]", "tox (>4)"]
+docs = ["furo", "myst-parser", "sphinx", "sphinx-copybutton", "sphinx-notfound-page"]
+tests = ["hypothesis", "pytest"]
+typing = ["mypy"]
+
+[[package]]
+name = "argon2-cffi-bindings"
+version = "21.2.0"
+description = "Low-level CFFI bindings for Argon2"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "argon2-cffi-bindings-21.2.0.tar.gz", hash = "sha256:bb89ceffa6c791807d1305ceb77dbfacc5aa499891d2c55661c6459651fc39e3"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:ccb949252cb2ab3a08c02024acb77cfb179492d5701c7cbdbfd776124d4d2367"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9524464572e12979364b7d600abf96181d3541da11e23ddf565a32e70bd4dc0d"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b746dba803a79238e925d9046a63aa26bf86ab2a2fe74ce6b009a1c3f5c8f2ae"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:58ed19212051f49a523abb1dbe954337dc82d947fb6e5a0da60f7c8471a8476c"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-musllinux_1_1_aarch64.whl", hash = "sha256:bd46088725ef7f58b5a1ef7ca06647ebaf0eb4baff7d1d0d177c6cc8744abd86"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-musllinux_1_1_i686.whl", hash = "sha256:8cd69c07dd875537a824deec19f978e0f2078fdda07fd5c42ac29668dda5f40f"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-musllinux_1_1_x86_64.whl", hash = "sha256:f1152ac548bd5b8bcecfb0b0371f082037e47128653df2e8ba6e914d384f3c3e"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-win32.whl", hash = "sha256:603ca0aba86b1349b147cab91ae970c63118a0f30444d4bc80355937c950c082"},
+    {file = "argon2_cffi_bindings-21.2.0-cp36-abi3-win_amd64.whl", hash = "sha256:b2ef1c30440dbbcba7a5dc3e319408b59676e2e039e2ae11a8775ecf482b192f"},
+    {file = "argon2_cffi_bindings-21.2.0-cp38-abi3-macosx_10_9_universal2.whl", hash = "sha256:e415e3f62c8d124ee16018e491a009937f8cf7ebf5eb430ffc5de21b900dad93"},
+    {file = "argon2_cffi_bindings-21.2.0-pp37-pypy37_pp73-macosx_10_9_x86_64.whl", hash = "sha256:3e385d1c39c520c08b53d63300c3ecc28622f076f4c2b0e6d7e796e9f6502194"},
+    {file = "argon2_cffi_bindings-21.2.0-pp37-pypy37_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2c3e3cc67fdb7d82c4718f19b4e7a87123caf8a93fde7e23cf66ac0337d3cb3f"},
+    {file = "argon2_cffi_bindings-21.2.0-pp37-pypy37_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6a22ad9800121b71099d0fb0a65323810a15f2e292f2ba450810a7316e128ee5"},
+    {file = "argon2_cffi_bindings-21.2.0-pp37-pypy37_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:f9f8b450ed0547e3d473fdc8612083fd08dd2120d6ac8f73828df9b7d45bb351"},
+    {file = "argon2_cffi_bindings-21.2.0-pp37-pypy37_pp73-win_amd64.whl", hash = "sha256:93f9bf70084f97245ba10ee36575f0c3f1e7d7724d67d8e5b08e61787c320ed7"},
+    {file = "argon2_cffi_bindings-21.2.0-pp38-pypy38_pp73-macosx_10_9_x86_64.whl", hash = "sha256:3b9ef65804859d335dc6b31582cad2c5166f0c3e7975f324d9ffaa34ee7e6583"},
+    {file = "argon2_cffi_bindings-21.2.0-pp38-pypy38_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d4966ef5848d820776f5f562a7d45fdd70c2f330c961d0d745b784034bd9f48d"},
+    {file = "argon2_cffi_bindings-21.2.0-pp38-pypy38_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:20ef543a89dee4db46a1a6e206cd015360e5a75822f76df533845c3cbaf72670"},
+    {file = "argon2_cffi_bindings-21.2.0-pp38-pypy38_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:ed2937d286e2ad0cc79a7087d3c272832865f779430e0cc2b4f3718d3159b0cb"},
+    {file = "argon2_cffi_bindings-21.2.0-pp38-pypy38_pp73-win_amd64.whl", hash = "sha256:5e00316dabdaea0b2dd82d141cc66889ced0cdcbfa599e8b471cf22c620c329a"},
+]
+
+[package.dependencies]
+cffi = ">=1.0.1"
+
+[package.extras]
+dev = ["cogapp", "pre-commit", "pytest", "wheel"]
+tests = ["pytest"]
+
+[[package]]
 name = "asn1crypto"
 version = "1.5.1"
 description = "Fast ASN.1 parser and serializer with definitions for private keys, public keys, certificates, CRL, OCSP, CMS, PKCS#3, PKCS#7, PKCS#8, PKCS#12, PKCS#5, X.509 and TSP"
@@ -849,6 +906,20 @@ python-versions = "*"
 files = [
     {file = "compressed_rtf-1.0.6.tar.gz", hash = "sha256:c1c827f1d124d24608981a56e8b8691eb1f2a69a78ccad6440e7d92fde1781dd"},
 ]
+
+[[package]]
+name = "construct"
+version = "2.10.70"
+description = "A powerful declarative symmetric parser/builder for binary data"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "construct-2.10.70-py3-none-any.whl", hash = "sha256:c80be81ef595a1a821ec69dc16099550ed22197615f4320b57cc9ce2a672cb30"},
+    {file = "construct-2.10.70.tar.gz", hash = "sha256:4d2472f9684731e58cc9c56c463be63baa1447d674e0d66aeb5627b22f512c29"},
+]
+
+[package.extras]
+extras = ["arrow", "cloudpickle", "cryptography", "lz4", "numpy", "ruamel.yaml"]
 
 [[package]]
 name = "contextvars"
@@ -3397,12 +3468,12 @@ files = [
 
 [[package]]
 name = "ofxparse"
-version = "0.21"
+version = "0.19"
 description = "Tools for working with the OFX (Open Financial Exchange) file format"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ofxparse-0.21.tar.gz", hash = "sha256:057ab68d31270dece4d1a47662096aa76341968aaee145ffc711cb44cbd5c4a7"},
+    {file = "ofxparse-0.19.tar.gz", hash = "sha256:d8c81fd5089332106da1a2e8919c412c7c677f08af04d557ca767701a04e0918"},
 ]
 
 [package.dependencies]
@@ -4414,6 +4485,44 @@ files = [
 ]
 
 [[package]]
+name = "pycryptodomex"
+version = "3.22.0"
+description = "Cryptographic library for Python"
+optional = false
+python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
+files = [
+    {file = "pycryptodomex-3.22.0-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:41673e5cc39a8524557a0472077635d981172182c9fe39ce0b5f5c19381ffaff"},
+    {file = "pycryptodomex-3.22.0-cp27-cp27m-manylinux2010_i686.whl", hash = "sha256:276be1ed006e8fd01bba00d9bd9b60a0151e478033e86ea1cb37447bbc057edc"},
+    {file = "pycryptodomex-3.22.0-cp27-cp27m-manylinux2010_x86_64.whl", hash = "sha256:813e57da5ceb4b549bab96fa548781d9a63f49f1d68fdb148eeac846238056b7"},
+    {file = "pycryptodomex-3.22.0-cp27-cp27m-win32.whl", hash = "sha256:d7beeacb5394765aa8dabed135389a11ee322d3ee16160d178adc7f8ee3e1f65"},
+    {file = "pycryptodomex-3.22.0-cp27-cp27mu-manylinux2010_i686.whl", hash = "sha256:b3746dedf74787da43e4a2f85bd78f5ec14d2469eb299ddce22518b3891f16ea"},
+    {file = "pycryptodomex-3.22.0-cp27-cp27mu-manylinux2010_x86_64.whl", hash = "sha256:5ebc09b7d8964654aaf8a4f5ac325f2b0cc038af9bea12efff0cd4a5bb19aa42"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:aef4590263b9f2f6283469e998574d0bd45c14fb262241c27055b82727426157"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-macosx_10_9_x86_64.whl", hash = "sha256:5ac608a6dce9418d4f300fab7ba2f7d499a96b462f2b9b5c90d8d994cd36dcad"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7a24f681365ec9757ccd69b85868bbd7216ba451d0f86f6ea0eed75eeb6975db"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:259664c4803a1fa260d5afb322972813c5fe30ea8b43e54b03b7e3a27b30856b"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:7127d9de3c7ce20339e06bcd4f16f1a1a77f1471bcf04e3b704306dde101b719"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:ee75067b35c93cc18b38af47b7c0664998d8815174cfc66dd00ea1e244eb27e6"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-musllinux_1_2_i686.whl", hash = "sha256:1a8b0c5ba061ace4bcd03496d42702c3927003db805b8ec619ea6506080b381d"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:bfe4fe3233ef3e58028a3ad8f28473653b78c6d56e088ea04fe7550c63d4d16b"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-win32.whl", hash = "sha256:2cac9ed5c343bb3d0075db6e797e6112514764d08d667c74cb89b931aac9dddd"},
+    {file = "pycryptodomex-3.22.0-cp37-abi3-win_amd64.whl", hash = "sha256:ff46212fda7ee86ec2f4a64016c994e8ad80f11ef748131753adb67e9b722ebd"},
+    {file = "pycryptodomex-3.22.0-pp27-pypy_73-manylinux2010_x86_64.whl", hash = "sha256:5bf3ce9211d2a9877b00b8e524593e2209e370a287b3d5e61a8c45f5198487e2"},
+    {file = "pycryptodomex-3.22.0-pp27-pypy_73-win32.whl", hash = "sha256:684cb57812cd243217c3d1e01a720c5844b30f0b7b64bb1a49679f7e1e8a54ac"},
+    {file = "pycryptodomex-3.22.0-pp310-pypy310_pp73-macosx_10_15_x86_64.whl", hash = "sha256:c8cffb03f5dee1026e3f892f7cffd79926a538c67c34f8b07c90c0bd5c834e27"},
+    {file = "pycryptodomex-3.22.0-pp310-pypy310_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:140b27caa68a36d0501b05eb247bd33afa5f854c1ee04140e38af63c750d4e39"},
+    {file = "pycryptodomex-3.22.0-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:644834b1836bb8e1d304afaf794d5ae98a1d637bd6e140c9be7dd192b5374811"},
+    {file = "pycryptodomex-3.22.0-pp310-pypy310_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:72c506aba3318505dbeecf821ed7b9a9f86f422ed085e2d79c4fba0ae669920a"},
+    {file = "pycryptodomex-3.22.0-pp310-pypy310_pp73-win_amd64.whl", hash = "sha256:7cd39f7a110c1ab97ce9ee3459b8bc615920344dc00e56d1b709628965fba3f2"},
+    {file = "pycryptodomex-3.22.0-pp39-pypy39_pp73-macosx_10_15_x86_64.whl", hash = "sha256:e4eaaf6163ff13788c1f8f615ad60cdc69efac6d3bf7b310b21e8cfe5f46c801"},
+    {file = "pycryptodomex-3.22.0-pp39-pypy39_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:eac39e237d65981554c2d4c6668192dc7051ad61ab5fc383ed0ba049e4007ca2"},
+    {file = "pycryptodomex-3.22.0-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1ab0d89d1761959b608952c7b347b0e76a32d1a5bb278afbaa10a7f3eaef9a0a"},
+    {file = "pycryptodomex-3.22.0-pp39-pypy39_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5e64164f816f5e43fd69f8ed98eb28f98157faf68208cd19c44ed9d8e72d33e8"},
+    {file = "pycryptodomex-3.22.0-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:f005de31efad6f9acefc417296c641f13b720be7dbfec90edeaca601c0fab048"},
+    {file = "pycryptodomex-3.22.0.tar.gz", hash = "sha256:a1da61bacc22f93a91cbe690e3eb2022a03ab4123690ab16c46abb693a9df63d"},
+]
+
+[[package]]
 name = "pydantic"
 version = "2.10.6"
 description = "Data validation using Python type hints"
@@ -4709,6 +4818,27 @@ files = [
 ]
 
 [[package]]
+name = "pykeepass"
+version = "4.1.1.post1"
+description = "Python library to interact with keepass databases (supports KDBX3 and KDBX4)"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pykeepass-4.1.1.post1-py3-none-any.whl", hash = "sha256:4cfd54f376cb1f58dd8f11fbe7923282bc7dd97ffdf1bb622004a6e718bfe379"},
+    {file = "pykeepass-4.1.1.post1.tar.gz", hash = "sha256:28f4927454ebe507ef7294d3ec6b5a72ee3a5c97fcc21b1080b8ddc09f2097dd"},
+]
+
+[package.dependencies]
+argon2_cffi = ">=18.1.0"
+construct = ">=2.10.53"
+lxml = "*"
+pycryptodomex = ">=3.6.2"
+pyotp = ">=2.9.0"
+
+[package.extras]
+test = ["pdoc", "pyotp"]
+
+[[package]]
 name = "pylint"
 version = "3.1.0"
 description = "python code static checker"
@@ -4816,6 +4946,20 @@ six = ">=1.5.2"
 [package.extras]
 docs = ["sphinx", "sphinx-rtd-theme"]
 test = ["flaky", "pretend", "pytest (>=3.0.1)"]
+
+[[package]]
+name = "pyotp"
+version = "2.9.0"
+description = "Python One Time Password Library"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "pyotp-2.9.0-py3-none-any.whl", hash = "sha256:81c2e5865b8ac55e825b0358e496e1d9387c811e85bb40e71a3b29b288963612"},
+    {file = "pyotp-2.9.0.tar.gz", hash = "sha256:346b6642e0dbdde3b4ff5a930b664ca82abfa116356ed48cc42c7d6590d36f63"},
+]
+
+[package.extras]
+test = ["coverage", "mypy", "ruff", "wheel"]
 
 [[package]]
 name = "pyparsing"
@@ -6912,4 +7056,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8.20"
-content-hash = "fd2497d12d826c6c4f9a785a4c004bfb6f9a2a0461e8357e906c622ee47015d7"
+content-hash = "fca0851b9a85783325027a2d45fa06ba0f2c359d3a155f2928efe0834c57b280"

@@ -10,6 +10,7 @@ colorama
 wheel
 mmg==1.0.3
 selenium
+pykeepass
 
 # For OSX
 cython
