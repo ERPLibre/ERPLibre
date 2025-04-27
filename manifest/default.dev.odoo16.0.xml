@@ -61,6 +61,7 @@
   <project name="ddmrp.git" path="addons.odoo16.0/OCA_ddmrp" remote="OCA" groups="addons"/>
   <project name="delivery-carrier.git" path="addons.odoo16.0/OCA_delivery-carrier" remote="OCA" groups="addons"/>
   <project name="deltatech.git" path="addons.odoo16.0/dhongu_deltatech" remote="dhongu" groups="addons"/>
+  <project name="development.git" path="addons.odoo16.0/MathBenTech_development" remote="MathBenTech" groups="addons,base"/>
   <project name="donation.git" path="addons.odoo16.0/OCA_donation" remote="OCA" groups="addons"/>
   <project name="e-commerce.git" path="addons.odoo16.0/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons.odoo16.0/OCA_edi" remote="OCA" groups="addons"/>
