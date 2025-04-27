@@ -1,7 +1,7 @@
 # For script
 giturlparse
 agithub
-GitPython==3.1.30
+GitPython==3.1.32
 retrying
 xmltodict
 openupgradelib
@@ -114,6 +114,8 @@ anyio>=3.5
 openai
 idna==2.8
 pylint==3.1.0
+xmlschema==3.4.5
+html2text==2024.2.26
 
 # asyncio
 aioshutil<1.2
@@ -132,7 +134,7 @@ pyyaml==6.0
 lxml==4.9.1
 cryptography==39.0.1
 psutil==5.9.0
-Pillow==9.3.0
+Pillow==10.3.0
 Babel==2.9.1
 reportlab==3.6.5
 urllib3>=1.26.13
