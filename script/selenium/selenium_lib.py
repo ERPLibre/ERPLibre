@@ -41,12 +41,19 @@ class SeleniumLib(object):
                 "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
             )
         self.driver = None
+        with open(".odoo-version") as txt:
+            self.odoo_version = txt.read()
 
     def do_screenshot(self):
         if self.config.scenario_screenshot:
-            self.driver.save_screenshot(
-                f"./screenshots/{self.config.scenario}_{str(int(time.time() * 10000))}.png"
+            dir_path = os.path.join(".", "screenshots")
+            if not os.path.isdir(dir_path):
+                os.mkdir(dir_path)
+            file_path = os.path.join(
+                dir_path,
+                f"{self.config.scenario}_{str(int(time.time() * 10000))}.png",
             )
+            self.driver.save_screenshot(file_path)
 
     def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
@@ -709,7 +716,8 @@ class SeleniumLib(object):
         if self.odoo_version == "16.0":
             button = self.click_with_mouse_move(
                 By.XPATH,
-                "//button[contains(@class, 'dropdown-toggle') and .//i[contains(@class, 'oi-apps')]]",
+                "//button[contains(@class, 'dropdown-toggle') and"
+                " .//i[contains(@class, 'oi-apps')]]",
                 timeout=10,
             )
         elif self.odoo_version == "14.0":
@@ -737,13 +745,15 @@ class SeleniumLib(object):
         try:
             status_button = self.click_with_mouse_move(
                 By.XPATH,
-                f"//button[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+                "//button[contains(@class, 'o_arrow_button') and"
+                f" contains(text(), '{status_label}')]",
                 timeout=timeout,
             )
         except Exception as e:
             status_button = self.click_with_mouse_move(
                 By.XPATH,
-                f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+                "//button[contains(@class, 'o_arrow_button') and"
+                f" text()='{status_label}']",
                 timeout=timeout,
             )
         print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
@@ -754,7 +764,8 @@ class SeleniumLib(object):
     ):
         status_button = self.click_with_mouse_move(
             By.XPATH,
-            f"//span[contains(@class, 'o_arrow_button') and contains(text(), '{status_label}')]",
+            "//span[contains(@class, 'o_arrow_button') and contains(text(),"
+            f" '{status_label}')]",
             timeout=timeout,
         )
         print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
@@ -765,7 +776,8 @@ class SeleniumLib(object):
     ):
         status_button = self.click_with_mouse_move(
             By.XPATH,
-            f"//button[contains(@class, 'o_arrow_button') and text()='{status_label}']",
+            "//button[contains(@class, 'o_arrow_button') and"
+            f" text()='{status_label}']",
             timeout=timeout,
         )
         print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
@@ -776,7 +788,8 @@ class SeleniumLib(object):
     ):
         status_button = self.click_with_mouse_move(
             By.XPATH,
-            f"//button[contains(@class, '{btn_class}') and contains(span, '{btn_label}')]",
+            f"//button[contains(@class, '{btn_class}') and contains(span,"
+            f" '{btn_label}')]",
             timeout=30,
         )
         print(f"Bouton du statusbar avec le label '{btn_label}' cliqué.")
@@ -804,7 +817,8 @@ class SeleniumLib(object):
         # From web view kanban, list
         kanban_card = self.click_with_mouse_move(
             By.XPATH,
-            f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]",
+            "//div[contains(@class,"
+            f" 'o_kanban_record')]//span[contains(text(), '{card_label}')]",
             timeout=30,
         )
         # kanban_card = self.driver.find_element(By.XPATH,
