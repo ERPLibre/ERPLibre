@@ -620,6 +620,13 @@ class SeleniumLib(object):
         self.driver.switch_to.window(self.driver.window_handles[1])
         self.driver.get(url)
 
+    def switch_tab(self, index):
+        # Switch to the new window and open new URL
+        self.driver.switch_to.window(self.driver.window_handles[index])
+
+    def refresh(self):
+        self.driver.refresh()
+
     def check_bot_chat_and_close(self):
         try:
             xpath_button = "/html/body/div[3]/div[1]/span[2]/a[2]"
@@ -805,12 +812,18 @@ class SeleniumLib(object):
         return status_button
 
     def odoo_web_form_click_save_action(self):
+        return self.odoo_web_form_click_by_classname_action("o_form_button_save")
+
+    def odoo_web_form_click_web_publish_action(self):
+        return self.odoo_web_form_click_button_action("website_publish_button")
+
+    def odoo_web_form_click_by_classname_action(self, custom_class_name):
         status_button = self.click_with_mouse_move(
             By.CLASS_NAME,
-            "o_form_button_save",
+            custom_class_name,
             timeout=30,
         )
-        print("Bouton avec l'action 'o_form_button_save' cliqué.")
+        print(f"Bouton avec l'action '{custom_class_name}' cliqué.")
         return status_button
 
     def odoo_web_kanban_card(self, card_label):
