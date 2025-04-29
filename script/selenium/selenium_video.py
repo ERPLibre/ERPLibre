@@ -26,7 +26,7 @@ class VideoRecorder(object):
         self,
         driver,
         filename="video.webm",
-        framerate="33/1",
+        framerate="5/1",
         width=None,
         height=None,
     ):

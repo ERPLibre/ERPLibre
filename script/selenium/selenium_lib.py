@@ -31,15 +31,21 @@ class SeleniumLib(object):
         self.config = config
         self.video_recorder = None
         if self.config.video_suffix:
-            self.filename = (
+            self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
                 + time.strftime("%Y_%m_%d-%H_%M_%S")
                 + ".webm"
             )
         else:
-            self.filename = (
+            self.filename_recording = (
                 "video_" + time.strftime("%Y_%m_%d-%H_%M_%S") + ".webm"
             )
+        dir_path_screencast = os.path.join(".", "screencasts")
+        self.filename_recording = os.path.join(
+            dir_path_screencast, self.filename_recording
+        )
+        if not os.path.isdir(dir_path_screencast):
+            os.mkdir(dir_path_screencast)
         self.driver = None
         with open(".odoo-version") as txt:
             self.odoo_version = txt.read()
@@ -109,7 +115,7 @@ class SeleniumLib(object):
             from script.selenium.selenium_video import VideoRecorder
 
             self.video_recorder = VideoRecorder(
-                self.driver, filename=self.filename
+                self.driver, filename=self.filename_recording
             )
             # import vlc
 
@@ -637,14 +643,17 @@ class SeleniumLib(object):
             print("Chatbot cannot be found, stop searching it.")
 
     # Website
-    def odoo_show_robot_message(self, msg="Ho no!"):
+    def odoo_show_robot_message(
+        self, msg="Ho no!", hide_message_after_x_seconds=0
+    ):
         # Injecter l'animation SVG dans la page
         script_text = ""
         if msg:
+            msg_to_print = msg.replace("'", "\\'")
             script_text = f"""
                 // Ajouter le texte
                 const textElement = document.createElement('div');
-                textElement.innerText = '{msg}';
+                textElement.innerText = '{msg_to_print}';
                 textElement.style.color = '#FFFFFF';
                 textElement.style.fontSize = '24px';
                 textElement.style.marginBottom = '20px';
@@ -657,6 +666,7 @@ class SeleniumLib(object):
             (function() {
                 // Créer un div pour l'overlay
                 const overlay = document.createElement('div');
+                overlay.id = 'uniqueOverlay'; // Ajout de l'ID
                 overlay.style.position = 'fixed';
                 overlay.style.top = '0';
                 overlay.style.left = '0';
@@ -670,11 +680,27 @@ class SeleniumLib(object):
 
                 // Contenu SVG du robot
                 const svgContent = `
-                    <svg class="robot-animation" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="width: 150px; cursor: pointer;">
-                        <circle cx="32" cy="32" r="30" fill="#FF5252"/>
-                        <path fill="#FFF" d="M20 27h24l-6-12h-12z"/>
-                        <circle cx="24" cy="44" r="4" fill="#FFF"/>
-                        <circle cx="40" cy="44" r="4" fill="#FFF"/>
+                    <svg class="cute-robot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150" style="width: 150px; cursor: pointer;">
+                        <!-- Corps du robot -->
+                        <rect x="25" y="50" width="50" height="70" rx="10" ry="10" fill="#4CAF50"/>
+
+                        <!-- Tête du robot -->
+                        <circle cx="50" cy="30" r="20" fill="#4CAF50"/>
+
+                        <!-- Yeux du robot -->
+                        <circle cx="42" cy="25" r="3" fill="#FFFFFF"/>
+                        <circle cx="58" cy="25" r="3" fill="#FFFFFF"/>
+
+                        <!-- Bouche du robot -->
+                        <path d="M44 38 Q 50 42 56 38" stroke="#FFFFFF" stroke-width="2" fill="transparent"/>
+
+                        <!-- Bras du robot -->
+                        <rect x="15" y="60" width="15" height="50" rx="5" ry="5" fill="#388E3C"/>
+                        <rect x="70" y="60" width="15" height="50" rx="5" ry="5" fill="#388E3C"/>
+
+                        <!-- Jambes du robot -->
+                        <rect x="35" y="120" width="15" height="30" rx="5" ry="5" fill="#388E3C"/>
+                        <rect x="50" y="120" width="15" height="30" rx="5" ry="5" fill="#388E3C"/>
                     </svg>
                 `;
                 """
@@ -696,6 +722,18 @@ class SeleniumLib(object):
 
         # Exécuter le script pour injecter l'animation
         self.driver.execute_script(script)
+        if hide_message_after_x_seconds:
+            time.sleep(hide_message_after_x_seconds)
+            delete_script = """(function() {
+    // Sélectionner l'overlay par ses attributs de style uniques
+    const overlay = document.getElementById('uniqueOverlay');
+
+    // Vérifier si l'overlay existe et le supprimer
+    if (overlay) {
+        overlay.remove();
+    }
+})();"""
+            self.driver.execute_script(delete_script)
         print(f"Script inject robot svg with msg '{msg}'")
 
     def odoo_website_menu_click(self, from_text=""):
@@ -812,7 +850,9 @@ class SeleniumLib(object):
         return status_button
 
     def odoo_web_form_click_save_action(self):
-        return self.odoo_web_form_click_by_classname_action("o_form_button_save")
+        return self.odoo_web_form_click_by_classname_action(
+            "o_form_button_save"
+        )
 
     def odoo_web_form_click_web_publish_action(self):
         return self.odoo_web_form_click_button_action("website_publish_button")
@@ -960,10 +1000,13 @@ class SeleniumLib(object):
                 file_name_1 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_write}"
                 file_name_2 = f"/tmp/erplibre_sync_temp_file{self.config.sync_file_record_read}"
                 with open(file_name_1, "w") as file:
-                    file.write(f"Recording {self.filename}\n")
+                    file.write(f"Recording {self.filename_recording}\n")
                 while not os.path.exists(file_name_2):
                     var_wait_time = 0.001
-                    print(f"File {self.filename} wait {var_wait_time} seconds")
+                    print(
+                        f"File {self.filename_recording} wait"
+                        f" {var_wait_time} seconds"
+                    )
                     time.sleep(var_wait_time)
             self.video_recorder.start()
 
@@ -975,10 +1018,19 @@ class SeleniumLib(object):
             time.sleep(self.config.selenium_video_time_waiting_end)
             self.video_recorder.stop()
             print("End of recording video")
-            print(self.filename)
+            print(self.filename_recording)
+
+            filename_recording_mp4 = self.filename_recording.replace(
+                ".webm", ".mp4"
+            )
+            if self.config.selenium_video_auto_convert_mp4:
+                os.popen(
+                    "ffmpeg -i"
+                    f" {self.filename_recording} {filename_recording_mp4}"
+                )
 
             if self.config.selenium_video_auto_play_video:
-                print(f"Play video {self.filename}")
+                print(f"Play video {self.filename_recording}")
                 # By python-vlc
                 # media_player = vlc.MediaPlayer(filename)
                 # media = vlc.Media(filename)
@@ -986,7 +1038,10 @@ class SeleniumLib(object):
                 # media_player.play()
                 # time.sleep(15)
                 # By external process
-                os.popen(f"vlc {self.filename}")
+                if self.config.selenium_video_auto_convert_mp4:
+                    os.popen(f"vlc {filename_recording_mp4}")
+                else:
+                    os.popen(f"vlc {self.filename_recording}")
 
     def generer_code_postal_quebec(self):
         # Zip code from quebec canada
@@ -998,7 +1053,9 @@ class SeleniumLib(object):
         chiffre = str(random.randint(0, 9))
         troisieme_lettre = chr(random.randint(65, 90))
 
-        code_postal = f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
+        code_postal = (
+            f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
+        )
 
         return code_postal
 
@@ -1126,4 +1183,10 @@ def fill_parser(parser):
         "--selenium_video_auto_play_video",
         action="store_true",
         help="Autoplay the video when done.",
+    )
+    group_record.add_argument(
+        "--selenium_video_auto_convert_mp4",
+        action="store_true",
+        default=True,
+        help="Will convert .webm to .mp4 when done.",
     )

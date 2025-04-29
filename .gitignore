@@ -42,4 +42,5 @@ pyproject.toml
 requirements.txt
 requirement/ignore_requirements.txt
 screenshots
+screencasts
 script/todo/todo_override.json
