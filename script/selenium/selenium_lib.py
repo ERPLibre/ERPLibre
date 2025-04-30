@@ -139,9 +139,16 @@ class SeleniumLib(object):
             self.click(
                 "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
             )
-            self.click(
-                "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
-            )
+            # Enable Run in Private Windows
+            try:
+                self.click(
+                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                )
+            except Exception:
+                # For old version before Firefox 138
+                self.click(
+                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                )
 
             # Enable Odoo_debug into incognito
             # Back
@@ -154,9 +161,16 @@ class SeleniumLib(object):
             self.click(
                 "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
             )
-            self.click(
-                "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
-            )
+            # Enable Run in Private Windows
+            try:
+                self.click(
+                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                )
+            except Exception:
+                # For old version before Firefox 138
+                self.click(
+                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                )
 
         # Ouvrez la page web
         if not ignore_open_web:
