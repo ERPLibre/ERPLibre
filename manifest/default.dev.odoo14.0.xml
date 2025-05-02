@@ -10,6 +10,7 @@
   <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ajepe/"/>
   <remote name="camptocamp" fetch="https://github.com/camptocamp/"/>
+  <remote name="cetmix" fetch="https://github.com/cetmix/"/>
   <remote name="dhongu" fetch="https://github.com/dhongu/"/>
   <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/"/>
   <remote name="itpp-labs" fetch="https://github.com/itpp-labs/"/>
@@ -45,6 +46,7 @@
   <project name="bank-statement-import.git" path="addons.odoo14.0/OCA_bank-statement-import" remote="OCA" groups="addons"/>
   <project name="brand.git" path="addons.odoo14.0/OCA_brand" remote="OCA" groups="addons"/>
   <project name="business-requirement.git" path="addons.odoo14.0/OCA_business-requirement" remote="OCA" groups="addons"/>
+  <project name="cetmix-tower.git" path="addons.odoo14.0/cetmix_cetmix-tower" remote="cetmix" groups="addons"/>
   <project name="commission.git" path="addons.odoo14.0/OCA_commission" remote="OCA" groups="addons"/>
   <project name="community-data-files.git" path="addons.odoo14.0/OCA_community-data-files" remote="OCA" groups="addons"/>
   <project name="connector-ecommerce.git" path="addons.odoo14.0/OCA_connector-ecommerce" remote="OCA" groups="addons"/>
