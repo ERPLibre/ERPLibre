@@ -30,6 +30,8 @@ else
 	endif
 endif
 
+# Can integrate dedicated makefile of custom project
+-include Common.Makefile
 
 # Example for update
 .PHONY: custom_run_example

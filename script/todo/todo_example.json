@@ -14,6 +14,13 @@
             "makefile_cmd": "db_restore_erplibre_base_db_test",
             "database": "test",
             "kdbx_key": "default_user_odoo"
+        },
+        {
+            "prompt_description": "Test 2 - Instance de base minimale",
+            "makefile_cmd": "db_restore_erplibre_base_db_test",
+            "database": "test",
+            "user": "test",
+            "password": "test"
         }
     ],
     "function": [

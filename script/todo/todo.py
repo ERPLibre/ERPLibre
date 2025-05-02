@@ -47,7 +47,10 @@ class TODO:
             elif status == "2":
                 self.prompt_execute()
             elif status == "3":
-                cmd = f"gnome-terminal --tab -- bash -c 'source ./.venv/bin/activate;make todo'"
+                cmd = (
+                    f"gnome-terminal --tab -- bash -c 'source"
+                    f" ./.venv/bin/activate;make todo'"
+                )
                 self.executer_commande_live(cmd)
             # elif status == "3" or status == "install":
             #     print("install")
@@ -98,7 +101,8 @@ class TODO:
                     dct_data = dct_data[param]
                 except KeyError:
                     _logger.error(
-                        f"KeyError on file {config_file} with keys {lst_params}"
+                        f"KeyError on file {config_file} with keys"
+                        f" {lst_params}"
                     )
                     return
         return dct_data
@@ -152,15 +156,54 @@ class TODO:
             else:
                 print("Commande non trouvée 🤖!")
 
-    def prompt_execute_instance(self):
-        lst_instance = self.get_config(["instance"])
+    def execute_from_configuration(
+        self, dct_instance, exec_run_db=False, ignore_makefile=False
+    ):
+        # exec_run_db need argument database
+        kdbx_key = dct_instance.get("kdbx_key")
+        odoo_user = dct_instance.get("user")
+        odoo_password = dct_instance.get("password")
+
+        if kdbx_key:
+            extra_cmd_web_login = self.kdbx_get_extra_command_user(kdbx_key)
+        elif odoo_user and odoo_password:
+            extra_cmd_web_login = (
+                f" --default_email_auth {odoo_user} --default_password_auth"
+                f" '{odoo_password}'"
+            )
+        else:
+            extra_cmd_web_login = ""
+
+        makefile_cmd = dct_instance.get("makefile_cmd")
+        if makefile_cmd and not ignore_makefile:
+            self.executer_commande_live(f"make {makefile_cmd}")
+
+        if exec_run_db:
+            db_name = dct_instance.get("database")
+            self.prompt_execute_selenium_and_run_db(
+                db_name, extra_cmd_web_login=extra_cmd_web_login
+            )
+
+        command = dct_instance.get("command")
+        if command:
+            self.prompt_execute_selenium(
+                command=command, extra_cmd_web_login=extra_cmd_web_login
+            )
+
+    def fill_help_info(self, lst_instance):
         help_info = "Commande :\n"
         help_end = "[0] Retour\n"
         for i, dct_instance in enumerate(lst_instance):
+
             help_info += (
                 f"[{i + 1}] " + dct_instance["prompt_description"] + "\n"
             )
         help_info += help_end
+        return help_info
+
+    def prompt_execute_instance(self):
+        lst_instance = self.get_config(["instance"])
+        help_info = self.fill_help_info(lst_instance)
 
         while True:
             status = click.prompt(help_info)
@@ -176,15 +219,12 @@ class TODO:
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
                         )
-                        if status:
-                            dct_instance = lst_instance[int_cmd - 1]
-                            makefile_cmd = dct_instance.get("makefile_cmd")
-                            db_name = dct_instance.get("database")
-                            self.executer_commande_live(f"make {makefile_cmd}")
-                            kdbx_key = dct_instance.get("kdbx_key")
-                            self.prompt_execute_selenium_and_run_db(
-                                db_name, kdbx_key=kdbx_key
-                            )
+                        dct_instance = lst_instance[int_cmd - 1]
+                        self.execute_from_configuration(
+                            dct_instance,
+                            exec_run_db=True,
+                            ignore_makefile=not bool(status),
+                        )
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -192,13 +232,7 @@ class TODO:
 
     def prompt_execute_fonction(self):
         lst_instance = self.get_config(["function"])
-        help_info = "Commande :\n"
-        help_end = "[0] Retour\n"
-        for i, dct_instance in enumerate(lst_instance):
-            help_info += (
-                f"[{i + 1}] " + dct_instance["prompt_description"] + "\n"
-            )
-        help_info += help_end
+        help_info = self.fill_help_info(lst_instance)
 
         while True:
             status = click.prompt(help_info)
@@ -212,11 +246,7 @@ class TODO:
                     if 0 < int_cmd <= len(lst_instance):
                         cmd_no_found = False
                         dct_instance = lst_instance[int_cmd - 1]
-                        command = dct_instance.get("command")
-                        kdbx_key = dct_instance.get("kdbx_key")
-                        self.prompt_execute_selenium(
-                            command=command, kdbx_key=kdbx_key
-                        )
+                        self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -243,7 +273,8 @@ class TODO:
                 except AttributeError:
                     _logger.error(f"Cannot find password from keys {key}")
                 lst_value.append(
-                    f" --default_email_auth {odoo_user} --default_password_auth '{odoo_password}'"
+                    " --default_email_auth"
+                    f" {odoo_user} --default_password_auth '{odoo_password}'"
                 )
         if len(lst_value) == 0:
             return ""
@@ -251,21 +282,14 @@ class TODO:
             return lst_value[0]
         return lst_value
 
-    def prompt_execute_selenium_and_run_db(self, bd, kdbx_key=None):
-        if kdbx_key:
-            extra_cmd_web_login = self.kdbx_get_extra_command_user(kdbx_key)
-        else:
-            extra_cmd_web_login = ""
-
-        cmd = f'parallel ::: "./run.sh -d {bd}" "sleep 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
+    def prompt_execute_selenium_and_run_db(self, bd, extra_cmd_web_login=""):
+        cmd = (
+            f'parallel ::: "./run.sh -d {bd}" "sleep'
+            f' 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
+        )
         self.executer_commande_live(cmd)
 
-    def prompt_execute_selenium(self, command=None, kdbx_key=None):
-        if kdbx_key:
-            extra_cmd_web_login = self.kdbx_get_extra_command_user(kdbx_key)
-        else:
-            extra_cmd_web_login = ""
-
+    def prompt_execute_selenium(self, command=None, extra_cmd_web_login=""):
         lst_cmd = []
         if not command:
             cmd = "./script/selenium/web_login.py"
@@ -314,13 +338,15 @@ class TODO:
 
             if process.returncode != 0:
                 print(
-                    f"La commande a retourné un code d'erreur : {process.returncode}"
+                    "La commande a retourné un code d'erreur :"
+                    f" {process.returncode}"
                 )
 
         except FileNotFoundError:
             if "password" in commande:
                 print(
-                    f"Erreur : La commande '{commande.split(' ')[0]}'[...] n'a pas été trouvée."
+                    f"Erreur : La commande '{commande.split(' ')[0]}'[...] n'a"
+                    " pas été trouvée."
                 )
             else:
                 print(
