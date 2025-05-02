@@ -118,7 +118,7 @@
   <project name="product-variant.git" path="addons.odoo14.0/OCA_product-variant" remote="OCA" groups="addons"/>
   <project name="project-reporting.git" path="addons.odoo14.0/OCA_project-reporting" remote="OCA" groups="addons"/>
   <project name="project-agile.git" path="addons.odoo14.0/OCA_project-agile" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
-  <project name="project.git" path="addons.odoo14.0/OCA_project" remote="OCA" groups="addons"/>
+  <project name="project.git" path="addons.odoo14.0/OCA_project" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
   <project name="purchase-workflow.git" path="addons.odoo14.0/OCA_purchase-workflow" remote="OCA" groups="addons"/>
   <project name="queue.git" path="addons.odoo14.0/OCA_queue" remote="OCA" groups="addons"/>
   <project name="reporting-engine.git" path="addons.odoo14.0/OCA_reporting-engine" remote="OCA" groups="addons"/>
