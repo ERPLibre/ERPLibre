@@ -7,14 +7,12 @@ import logging
 import os
 import sys
 
-import yaml
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
 sys.path.append(new_path)
 
-from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
 
@@ -25,7 +23,6 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = GitTool.get_project_config()
 
     # TODO update description
     parser = argparse.ArgumentParser(
