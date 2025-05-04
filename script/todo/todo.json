@@ -20,5 +20,18 @@
             "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16",
             "command": "./.venv/bin/python ./script/selenium/web_login.py"
         }
+    ],
+    "update_from_makefile": [
+        {
+            "prompt_description": "Update all erplibre_base on database test",
+            "makefile_cmd": "db_erplibre_base_db_test_update_all",
+            "database": "test"
+        }
+    ],
+    "code_from_makefile": [
+        {
+            "prompt_description": "Show code status",
+            "makefile_cmd": "repo_show_status"
+        }
     ]
 }

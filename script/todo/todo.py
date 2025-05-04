@@ -16,14 +16,70 @@ try:
     import openai
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
+    # TODO auto-detect gnome-terminal, or choose another.
     if os.path.exists(".venv"):
+        print("You forgot to activate source \nsource ./.venv/bin/activate")
         time.sleep(0.5)
         subprocess.run(
             "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
             shell=True,
             executable="/bin/bash",
         )
-    print("You forgot to activate source \nsource ./.venv/bin/activate")
+    else:
+        first_installation_input = (
+            input(
+                "First installation? This will process system installation"
+                " before (Y/N): "
+            )
+            .strip()
+            .upper()
+        )
+        if first_installation_input == "Y":
+            subprocess.run(
+                "gnome-terminal -- bash -c"
+                " './script/version/update_env_version.py --install;bash'",
+                shell=True,
+                executable="/bin/bash",
+            )
+            print("Wait after OS installation before continue.")
+
+        # First detect pycharm, need to be open before installation and close to increase speed
+        result = subprocess.run(
+            ["which", "pycharm"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0 and not os.path.exists(".idea"):
+            pycharm_configuration_input = (
+                input("Open Pycharm? (Y/N): ").strip().upper()
+            )
+            if pycharm_configuration_input == "Y":
+                subprocess.run(
+                    "gnome-terminal -- bash -c 'pycharm .'",
+                    shell=True,
+                    executable="/bin/bash",
+                )
+                print(
+                    "Close Pycharm when processing is done before continue"
+                    " this guide."
+                )
+        # Propose Odoo installation
+        # TODO detect last version supported
+        odoo_installation_input = (
+            input("Install Odoo 16? (Y/N): ").strip().upper()
+        )
+        if odoo_installation_input == "Y":
+            subprocess.run(
+                "gnome-terminal -- bash -c 'make install_odoo_16;bash'",
+                shell=True,
+                executable="/bin/bash",
+            )
+            print("Wait after installation and open projects by terminal.")
+            print("make open_terminal")
+        else:
+            print("Nothing to do, you need a fresh installation to continue.")
+        sys.exit(0)
     sys.exit(1)
 
 # TODO implement urwid to improve text user interface
@@ -45,8 +101,8 @@ class TODO:
         print("Ouverture de TODO en cours ...")
         print("🤖 => Entre tes directives par son chiffre et fait Entrée!")
         help_info = """Commande :
-[1] Question
-[2] Execute
+[1] Execute
+[2] Question
 [3] Fork - Ouvre TODO 🤖 dans une nouvelle tabulation
 [0] Quitter
 """
@@ -57,9 +113,9 @@ class TODO:
             if status == "0":
                 break
             elif status == "1":
-                self.execute_prompt_ia()
-            elif status == "2":
                 self.prompt_execute()
+            elif status == "2":
+                self.execute_prompt_ia()
             elif status == "3":
                 cmd = (
                     f"gnome-terminal --tab -- bash -c 'source"
@@ -150,8 +206,10 @@ class TODO:
 
     def prompt_execute(self):
         help_info = """Commande :
-[1] Gérer une instance
-[2] Fonction - Démonstration des fonctions développées
+[1] RUN Exécuter et installer une instance
+[2] EXEC Automatisation - Démonstration des fonctions développées
+[3] UPD Mise à jour - Update all developed staging source code
+[4] Code - Outil pour développeur
 [0] Retour
 """
         while True:
@@ -165,6 +223,14 @@ class TODO:
                     return
             elif status == "2":
                 status = self.prompt_execute_fonction()
+                if status is not False:
+                    return
+            elif status == "3":
+                status = self.prompt_execute_update()
+                if status is not False:
+                    return
+            elif status == "4":
+                status = self.prompt_execute_code()
                 if status is not False:
                     return
             else:
@@ -216,6 +282,9 @@ class TODO:
         return help_info
 
     def prompt_execute_instance(self):
+        # TODO proposer le déploiement à distance
+        # TODO proposer l'exécution de docker
+        # TODO proposer la création de docker
         lst_instance = self.get_config(["instance"])
         help_info = self.fill_help_info(lst_instance)
 
@@ -265,6 +334,72 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print("Commande non trouvée 🤖!")
+
+    def prompt_execute_update(self):
+        # self.executer_commande_live(f"make {makefile_cmd}")
+        print("🤖 Mise à jour du développement")
+        # TODO détecter les modules en modification pour faire la mise à jour en cours
+        # TODO demander sur quel BD faire la mise à jour
+        # TODO proposer les modules manuelles selon la configuration à mettre à jour
+        # TODO proposer la mise à jour de l'IDE
+        # TODO proposer la mise à jour des git-repo
+
+        lst_instance = self.get_config(["update_from_makefile"])
+        help_info = self.fill_help_info(lst_instance)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(lst_instance):
+                        cmd_no_found = False
+                        dct_instance = lst_instance[int_cmd - 1]
+                        self.execute_from_configuration(dct_instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print("Commande non trouvée 🤖!")
+        return False
+
+    def prompt_execute_code(self):
+        print("🤖 Qu'avez-vous de besoin pour développer?")
+        #         help_info = """Commande :
+        #         [1] Status Git local et distant
+        #         [2] Démarrer le générateur de code
+        #         [3] Format - Formatage automatique selon changement [ou manuelle]
+        #         [4] Qualité - Qualité logiciel, détecter les fichiers qui manquent les licences AGPLv3
+        #         [0] Retour
+        # """
+        #         help_info = """Commande :
+        #         [1] Status Git local et distant
+        #         [0] Retour
+        # """
+        lst_instance = self.get_config(["code_from_makefile"])
+        help_info = self.fill_help_info(lst_instance)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(lst_instance):
+                        cmd_no_found = False
+                        dct_instance = lst_instance[int_cmd - 1]
+                        self.execute_from_configuration(dct_instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print("Commande non trouvée 🤖!")
+        return False
 
     def kdbx_get_extra_command_user(self, kdbx_key):
         lst_value = []
