@@ -12,6 +12,13 @@ import sys
 
 import xmltodict
 
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
+from script.git.git_tool import GitTool
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
@@ -20,15 +27,9 @@ PROJECT_NAME = os.path.basename(os.getcwd())
 IDEA_PATH = "./.idea"
 IDEA_MISC = os.path.join(IDEA_PATH, "misc.xml")
 IDEA_WORKSPACE = os.path.join(IDEA_PATH, "workspace.xml")
+VCS_WORKSPACE = os.path.join(IDEA_PATH, "vcs.xml")
 
 PATH_EXCLUDE_FOLDER = "./conf/pycharm_exclude_folder.txt"
-if os.path.isfile(PATH_EXCLUDE_FOLDER):
-    with open(PATH_EXCLUDE_FOLDER) as txt:
-        txt_read = txt.read()
-        LST_EXCLUDE_FOLDER = txt_read.strip().split("\n")
-else:
-    LST_EXCLUDE_FOLDER = []
-
 PATH_DEFAULT_CONFIGURATION = "./conf/pycharm_default_configuration.csv"
 
 
@@ -95,8 +96,6 @@ def main():
     config = get_config()
     _logger.info(f"Work on directory {os.getcwd()}")
 
-    # TODO modifier vcs.xml pour le mapping des répertoires git
-
     die(
         not os.path.isdir(IDEA_PATH),
         f"Missing {IDEA_PATH} path, are you sure you run this script at root"
@@ -135,6 +134,14 @@ def main():
             IDEA_WORKSPACE, add_configuration, "workspace", config
         )
 
+        die(
+            not os.path.isfile(VCS_WORKSPACE),
+            f"Missing {VCS_WORKSPACE} file, be sure Pycharm open a project to"
+            " your workspace.",
+        )
+        has_execute = True
+        read_xml_and_execute(VCS_WORKSPACE, add_version_control, "vcs", config)
+
     if not has_execute:
         _logger.info("Nothing to do")
 
@@ -159,6 +166,46 @@ def read_xml_and_execute(file_name, cb, name, config):
         )
     else:
         _logger.info(f"No change '{name}'.")
+
+
+def add_version_control(dct_xml, file_name, config):
+    # The file .idea/vcs.xml need to be generated before
+
+    git_tool = GitTool()
+    lst_repo = git_tool.get_repo_info_manifest_xml()
+    lst_mapping_directory = []
+    # Create a mapping of git directory from ERPLibre
+    for dct_repo in lst_repo:
+        relative_path = dct_repo.get("path")
+        if not relative_path:
+            continue
+        vcs_path = os.path.join("$PROJECT_DIR$", relative_path)
+        lst_mapping_directory.append(vcs_path)
+    dct_component = dct_xml.get("project", {}).get("component", {})
+    lst_mapping = dct_component.get("mapping", [])
+    if not lst_mapping:
+        print(
+            "By default, need 1 value, the actual ERPLibre project, or create"
+            " it manually ;-)"
+        )
+        return False
+    # Detect difference
+    if type(lst_mapping) is dict:
+        # Transform it into list for multiple mapping
+        lst_mapping = [lst_mapping]
+        dct_component["mapping"] = lst_mapping
+
+    for dct_mapping in lst_mapping:
+        directory = dct_mapping.get("@directory")
+        if directory in lst_mapping_directory:
+            lst_mapping_directory.remove(directory)
+    # Update difference
+    if lst_mapping_directory:
+        for mapping_directory in lst_mapping_directory:
+            dct_mapping = {"@directory": mapping_directory, "@vcs": "Git"}
+            lst_mapping.append(dct_mapping)
+        return True
+    return False
 
 
 def add_configuration(dct_xml, file_name, config):
@@ -382,6 +429,35 @@ def add_configuration(dct_xml, file_name, config):
     return has_change
 
 
+def get_lst_exclude_folder():
+    if os.path.isfile(PATH_EXCLUDE_FOLDER):
+        with open(PATH_EXCLUDE_FOLDER) as txt:
+            txt_read = txt.read()
+            lst_exclude_folder = txt_read.strip().split("\n")
+    else:
+        lst_exclude_folder = []
+
+    # lst_to_exclude = ["./.venv.*", "./addons.*"]
+    lst_to_exclude = ["./.venv.*", "./addons"]
+    for s_exclude in lst_to_exclude:
+        for dir_venv in glob.glob(s_exclude):
+            lst_exclude_folder.append(dir_venv[2:])
+
+    # Dynamic exclude
+    lst_exclude_from_repo = ["setup"]
+
+    git_tool = GitTool()
+    lst_repo = git_tool.get_repo_info_manifest_xml()
+    # Create a mapping of git directory from ERPLibre
+    for dct_repo in lst_repo:
+        relative_path = dct_repo.get("path")
+        for exclude_from_repo in lst_exclude_from_repo:
+            path_to_check = os.path.join(relative_path, exclude_from_repo)
+            if os.path.isdir(path_to_check):
+                lst_exclude_folder.append(path_to_check)
+    return lst_exclude_folder
+
+
 def add_exclude_folder(dct_xml, file_name, config):
     has_change = False
     dct_module = dct_xml.get("module")
@@ -415,12 +491,10 @@ def add_exclude_folder(dct_xml, file_name, config):
     )
     lst_exclude_folder = dct_content.get("excludeFolder")
 
-    # lst_to_exclude = ["./.venv.*", "./addons.*"]
-    lst_to_exclude = ["./.venv.*", "./addons"]
-    for s_exclude in lst_to_exclude:
-        for dir_venv in glob.glob(s_exclude):
-            LST_EXCLUDE_FOLDER.append(dir_venv[2:])
-    lst_exclude_item = [f"file://$MODULE_DIR$/{a}" for a in LST_EXCLUDE_FOLDER]
+    lst_exclude_item_raw = get_lst_exclude_folder()
+    lst_exclude_item = [
+        f"file://$MODULE_DIR$/{a}" for a in lst_exclude_item_raw
+    ]
 
     if lst_exclude_folder:
         if type(lst_exclude_folder) is list:

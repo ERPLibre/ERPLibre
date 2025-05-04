@@ -10,6 +10,7 @@
   <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ajepe/"/>
   <remote name="camptocamp" fetch="https://github.com/camptocamp/"/>
+  <remote name="cetmix" fetch="https://github.com/cetmix/"/>
   <remote name="dhongu" fetch="https://github.com/dhongu/"/>
   <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/"/>
   <remote name="itpp-labs" fetch="https://github.com/itpp-labs/"/>
@@ -45,6 +46,7 @@
   <project name="bank-statement-import.git" path="addons.odoo14.0/OCA_bank-statement-import" remote="OCA" groups="addons"/>
   <project name="brand.git" path="addons.odoo14.0/OCA_brand" remote="OCA" groups="addons"/>
   <project name="business-requirement.git" path="addons.odoo14.0/OCA_business-requirement" remote="OCA" groups="addons"/>
+  <project name="cetmix-tower.git" path="addons.odoo14.0/cetmix_cetmix-tower" remote="cetmix" groups="addons"/>
   <project name="commission.git" path="addons.odoo14.0/OCA_commission" remote="OCA" groups="addons"/>
   <project name="community-data-files.git" path="addons.odoo14.0/OCA_community-data-files" remote="OCA" groups="addons"/>
   <project name="connector-ecommerce.git" path="addons.odoo14.0/OCA_connector-ecommerce" remote="OCA" groups="addons"/>
@@ -118,7 +120,7 @@
   <project name="product-variant.git" path="addons.odoo14.0/OCA_product-variant" remote="OCA" groups="addons"/>
   <project name="project-reporting.git" path="addons.odoo14.0/OCA_project-reporting" remote="OCA" groups="addons"/>
   <project name="project-agile.git" path="addons.odoo14.0/OCA_project-agile" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
-  <project name="project.git" path="addons.odoo14.0/OCA_project" remote="OCA" groups="addons"/>
+  <project name="project.git" path="addons.odoo14.0/OCA_project" remote="ERPLibre" revision="14.0_dev" groups="addons"/>
   <project name="purchase-workflow.git" path="addons.odoo14.0/OCA_purchase-workflow" remote="OCA" groups="addons"/>
   <project name="queue.git" path="addons.odoo14.0/OCA_queue" remote="OCA" groups="addons"/>
   <project name="reporting-engine.git" path="addons.odoo14.0/OCA_reporting-engine" remote="OCA" groups="addons"/>

@@ -10,6 +10,7 @@
   <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/"/>
   <remote name="ajepe" fetch="https://github.com/ajepe/"/>
   <remote name="camptocamp" fetch="https://github.com/camptocamp/"/>
+  <remote name="cetmix" fetch="https://github.com/cetmix/"/>
   <remote name="dhongu" fetch="https://github.com/dhongu/"/>
   <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/"/>
   <remote name="itpp-labs" fetch="https://github.com/itpp-labs/"/>
@@ -46,6 +47,8 @@
   <project name="brand.git" path="addons.odoo16.0/OCA_brand" remote="OCA" groups="addons"/>
   <project name="business-requirement.git" path="addons.odoo16.0/OCA_business-requirement" remote="OCA" groups="addons"/>
   <project name="commission.git" path="addons.odoo16.0/OCA_commission" remote="OCA" groups="addons"/>
+  <project name="calendar.git" path="addons.odoo16.0/OCA_calendar" remote="OCA" groups="addons"/>
+  <project name="cetmix-tower.git" path="addons.odoo16.0/cetmix_cetmix-tower" remote="cetmix" groups="addons"/>
   <project name="community-data-files.git" path="addons.odoo16.0/OCA_community-data-files" remote="OCA" groups="addons"/>
   <project name="connector-ecommerce.git" path="addons.odoo16.0/OCA_connector-ecommerce" remote="OCA" groups="addons"/>
   <project name="connector-interfaces.git" path="addons.odoo16.0/OCA_connector-interfaces" remote="OCA" groups="addons"/>
@@ -60,6 +63,7 @@
   <project name="ddmrp.git" path="addons.odoo16.0/OCA_ddmrp" remote="OCA" groups="addons"/>
   <project name="delivery-carrier.git" path="addons.odoo16.0/OCA_delivery-carrier" remote="OCA" groups="addons"/>
   <project name="deltatech.git" path="addons.odoo16.0/dhongu_deltatech" remote="dhongu" groups="addons"/>
+  <project name="development.git" path="addons.odoo16.0/MathBenTech_development" remote="MathBenTech" groups="addons,base"/>
   <project name="donation.git" path="addons.odoo16.0/OCA_donation" remote="OCA" groups="addons"/>
   <project name="e-commerce.git" path="addons.odoo16.0/OCA_e-commerce" remote="OCA" groups="addons"/>
   <project name="edi.git" path="addons.odoo16.0/OCA_edi" remote="OCA" groups="addons"/>

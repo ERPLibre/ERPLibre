@@ -20,7 +20,8 @@ CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
-DEFAULT_BRANCH = "12.0"
+with open(".odoo-version", "r") as f:
+    DEFAULT_BRANCH = f.readline()
 
 
 class Struct(object):
