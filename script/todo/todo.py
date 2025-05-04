@@ -4,13 +4,27 @@ import getpass
 import json
 import logging
 import os
+import sys
+import time
 import subprocess
-import tkinter as tk
-from tkinter import filedialog
 
-import click
-import openai
-from pykeepass import PyKeePass
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+
+    import click
+    import openai
+    from pykeepass import PyKeePass
+except ModuleNotFoundError as e:
+    if os.path.exists(".venv"):
+        time.sleep(0.5)
+        subprocess.run(
+            "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
+            shell=True,
+            executable="/bin/bash",
+        )
+    print("You forgot to activate source \nsource ./.venv/bin/activate")
+    sys.exit(1)
 
 # TODO implement urwid to improve text user interface
 # import urwid

@@ -5,7 +5,7 @@ LOG_FILE := ./.venv/make_test.log
 #############
 # ALL
 .PHONY: all
-all: doc
+all: todo
 
 ###############
 #  Detect OS  #
