@@ -24,6 +24,7 @@ VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 VENV_FILE = os.path.join(".venv")
 ADDONS_PATH = os.path.join("addons")
+ODOO_PATH = os.path.join(".", "odoo")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -39,6 +40,7 @@ PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
 ADDONS_TEMPLATE_FILE = "addons.odoo%s"
+ODOO_TEMPLATE_FILE = "odoo%s"
 ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
 
@@ -145,6 +147,9 @@ class Update:
         self.new_version_odoo = None
         self.new_version_python = None
         self.new_version_poetry = None
+        self.expected_odoo_name = None
+        self.expected_odoo_path = None
+        self.expected_addons_name = None
         self.expected_venv_name = None
         self.expected_manifest_name = None
         self.expected_manifest_path = None
@@ -317,6 +322,8 @@ class Update:
         self.expected_addons_name = (
             ADDONS_TEMPLATE_FILE % self.new_version_odoo
         )
+        self.expected_odoo_name = ODOO_TEMPLATE_FILE % self.new_version_odoo
+        self.expected_odoo_path = os.path.join(".", self.expected_odoo_name, "odoo", ".")
         self.expected_pip_requirement_path = os.path.join(
             ".", "requirement", self.expected_pip_requirement_name
         )
@@ -344,6 +351,14 @@ class Update:
         venv_exist = os.path.exists(VENV_FILE)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
+        # Validate Odoo repo
+        status &= self.update_link_file(
+            "Odoo repository",
+            ODOO_PATH,
+            self.expected_odoo_path,
+            is_directory=True,
+            do_delete_source=True,
+        )
         # Validate Git repo
         status &= self.update_link_file(
             "Git repositories",
@@ -418,7 +433,9 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation or self.config.is_in_switch:
-            addons_path_with_version = f"addons.odoo{self.new_version_odoo}"
+            addons_path_with_version = (
+                ADDONS_TEMPLATE_FILE % self.new_version_odoo
+            )
             # To support multiple addons directory, change name before run git repo
             for addons_path in os.listdir("."):
                 if (
@@ -613,7 +630,9 @@ class Update:
                 do_delete_source = do_delete_source or os.path.exists(
                     target_file
                 )
-                if ref_symlink_source_from_root == target_file:
+                if os.path.normpath(
+                    ref_symlink_source_from_root
+                ) == os.path.normpath(target_file):
                     _logger.info(
                         f"{component_name}:The system configuration is good."
                     )

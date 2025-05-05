@@ -384,7 +384,7 @@ class ProjectManagement:
 
         if not self.keep_bd_alive:
             cmd = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
+                "./odoo_bin.sh db --drop --database"
                 f" {bd_name_demo}"
             )
             _logger.info(cmd)
@@ -468,7 +468,7 @@ class ProjectManagement:
 
         if not self.keep_bd_alive:
             cmd = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
+                "./odoo_bin.sh db --drop --database"
                 f" {bd_name_template}"
             )
             _logger.info(cmd)
@@ -539,7 +539,7 @@ class ProjectManagement:
 
         if not self.keep_bd_alive:
             cmd = (
-                "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
+                "./odoo_bin.sh db --drop --database"
                 f" {bd_name_generator}"
             )
             _logger.info(cmd)

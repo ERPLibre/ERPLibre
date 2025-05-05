@@ -91,12 +91,12 @@ pyenv_update:
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test
-	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
+	./odoo_bin.sh db --create --database test
 
 .PHONY: db_clone_test_to_test2
 db_clone_test_to_test2:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
-	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
+	./odoo_bin.sh db --drop --database test2
+	./odoo_bin.sh db --clone --database test2 --from_database test
 
 .PHONY: db_test_export
 db_test_export:
@@ -285,6 +285,11 @@ config_gen_image_db:
 	./script/git/git_repo_update_group.py --group base,image_db
 	./script/generate_config.sh
 
+.PHONY: config_gen_migration
+config_gen_migration:
+	./script/git/git_repo_update_group.py --group base,addons,migration
+	./script/generate_config.sh
+
 ##########
 #  I18n  #
 ##########
@@ -292,7 +297,7 @@ config_gen_image_db:
 # i18n generation demo_portal
 .PHONY: i18n_generate_demo_portal
 i18n_generate_demo_portal:
-	./.venv/bin/python3 ./odoo/odoo-bin i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
+	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
 
 ###########
 #  Clean  #

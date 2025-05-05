@@ -120,7 +120,7 @@
   <project name="odoo-test-docs.git" path="doc/itpp-labs_odoo-test-docs" remote="itpp-labs" revision="master" groups="odoo"/>
   <project name="odoo-timesheet-addons.git" path="addons.odoo12.0/Numigi_odoo-timesheet-addons" remote="Numigi" revision="12.0_dev" groups="addons"/>
   <project name="odoo-web-addons.git" path="addons.odoo12.0/Numigi_odoo-web-addons" remote="Numigi" groups="addons,base"/>
-  <project name="odoo.git" path="odoo" remote="odoo" revision="ERPLibre/12.0" clone-depth="10" groups="odoo,base"/>
+  <project name="odoo.git" path="odoo12.0/odoo" remote="odoo" revision="ERPLibre/12.0" clone-depth="10" groups="odoo,base"/>
   <project name="odoo_addons.git" path="addons.odoo12.0/Smile-SA_odoo_addons" remote="Smile-SA" revision="12.0_remote_autoinstall" groups="addons"/>
   <project name="odoo_dhtmlxgantt.git" path="addons.odoo12.0/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>
   <project name="odooapps.git" path="addons.odoo12.0/odoomates_odooapps" remote="odoomates" groups="addons"/>

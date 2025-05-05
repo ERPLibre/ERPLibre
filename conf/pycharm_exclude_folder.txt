@@ -10,3 +10,7 @@ artifacts
 cache
 htmlcov
 node_modules
+.venv
+odoo
+screencasts
+screenshots

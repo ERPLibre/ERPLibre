@@ -302,7 +302,7 @@ def main():
 
     # Step 0, drop and restore
     cmd_drop_db = (
-        f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {bd_temp_name}"
+        f"./odoo_bin.sh db --drop --database {bd_temp_name}"
     )
     all_temp_bd.append(bd_temp_name)
     run_cmd(cmd_drop_db)
@@ -310,7 +310,7 @@ def main():
         with_demo = dct_config_image.get("with_demo")
         # Create a new one
         cmd = (
-            f"{PYTHON_BIN} ./odoo/odoo-bin db --create --database"
+            f"./odoo_bin.sh db --create --database"
             f" {bd_temp_name}"
         )
         if with_demo:
@@ -343,7 +343,7 @@ def main():
             else f"{image_name_to_generate}_{pkg_name}"
         )
         cmd = (
-            f"{PYTHON_BIN} ./odoo/odoo-bin db --backup --database"
+            f"./odoo_bin.sh db --backup --database"
             f" {bd_temp_name} --restore_image {module_image_name}"
         )
         run_cmd(cmd)
@@ -353,7 +353,7 @@ def main():
     if not config.keep_database:
         for db_name in all_temp_bd:
             cmd_drop_db = (
-                f"{PYTHON_BIN} ./odoo/odoo-bin db --drop --database {db_name}"
+                f"./odoo_bin.sh db --drop --database {db_name}"
             )
             run_cmd(cmd_drop_db)
 
