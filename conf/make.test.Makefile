@@ -2,7 +2,7 @@
 # TEST #
 ########
 
-# TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv/test.py
+# TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv.erplibre/test.py
 
 .PHONY: open_test_coverage
 open_test_coverage:
@@ -48,14 +48,14 @@ test_full_fast_coverage:
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./script/test/run_parallel_test.py --coverage
 	# TODO This test is broken in parallel
 	#./script/make.sh test_coverage_code_generator_hello_world
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 
@@ -64,12 +64,12 @@ test_cg_demo:
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./script/addons/coverage_install_addons_dev.sh test code_generator_demo
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 
 .PHONY: test_base
 test_base:
@@ -102,20 +102,20 @@ test_installation_demo:
 ###############
 .PHONY: test_addons_sale
 test_addons_sale:
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./odoo_bin.sh db --drop --database test_addons_sale
 	./test.sh -d test_addons_sale --db-filter test_addons_sale -i sale
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m
-	./.venv/bin/coverage html
-	./.venv/bin/coverage json
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m
+	./.venv.erplibre/bin/coverage html
+	./.venv.erplibre/bin/coverage json
 
 .PHONY: test_addons_helpdesk
 test_addons_helpdesk:
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./odoo_bin.sh db --drop --database test_addons_helpdesk
 	./test.sh -d test_addons_helpdesk --db-filter test_addons_helpdesk -i helpdesk_mgmt
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m
-	./.venv/bin/coverage html
-	./.venv/bin/coverage json
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m
+	./.venv.erplibre/bin/coverage html
+	./.venv.erplibre/bin/coverage json

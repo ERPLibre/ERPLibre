@@ -8,21 +8,21 @@ licence [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0.html).
 ## Setup repo
 
 ```bash
-curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
+curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin/repo
 ```
 
 ## prod
 
 ```bash
-./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b master
-./.venv/repo sync
+.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b master
+.venv.erplibre/bin/repo sync -c -j $(nproc --all)
 ```
 
 ## dev
 
 ```bash
-./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
-./.venv/repo sync
+.venv.erplibre/bin/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
+.venv.erplibre/bin/repo sync -c -j $(nproc --all)
 ```
 
 ## local dev
@@ -32,8 +32,8 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
 ```bash
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
 
-./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
-./.venv/repo sync -m ./manifest/default.dev.xml
+.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
+.venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
 ```
 
 # Create Manifest
@@ -48,7 +48,7 @@ It freezes all repo, from dev to prod.
 This will add revision git hash in the manifest.
 
 ```bash
-./.venv/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/repo manifest -r -o ./default.xml
 ```
 
 Commit.
@@ -63,21 +63,21 @@ When dev contains specific revision with default revision, you need to replace d
 keep specific version:
 
 ```bash
-./script/git/git_merge_repo_manifest.py --input1 ./manifest/default.dev.xml --input2 ./default.xml --output ./manifest/default.staged.xml
+./script/git/git_merge_repo_manifest.py --input "./manifest/default.dev.xml;./default.xml" --output ./manifest/default.staged.xml
 git commit -am "Updated manifest/default.staged.xml"
 
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
 
-./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
-./.venv/repo sync -m ./manifest/default.staged.xml
+.venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
+.venv.erplibre/bin/repo sync -c -j $(nproc --all) -m ./manifest/default.staged.xml
 
-./.venv/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/repo manifest -r -o ./default.xml
 ```
 
 ## Create a dev version
 
 ```bash
-./.venv/repo manifest -o ./manifest/default.dev.xml
+.venv.erplibre/bin/repo manifest -o ./manifest/default.dev.xml
 ```
 
 Commit.
@@ -91,19 +91,19 @@ git commit -am "[#ticket] subject: short sentence"
 ### Search all repos with a specific branch name
 
 ```bash
-./.venv/repo forall -pc "git branch -a|grep BRANCH"
+.venv.erplibre/bin/repo forall -pc "git branch -a|grep BRANCH"
 ```
 
 ### Search missing branch in all repos
 
 ```bash
-./.venv/repo forall -pc 'git branch -a|(grep /BRANCH$||echo "no match")|grep "no match"'
+.venv.erplibre/bin/repo forall -pc 'git branch -a|(grep /BRANCH$||echo "no match")|grep "no match"'
 ```
 
 ### Search changed file in all repos
 
 ```bash
-./.venv/repo forall -pc "git status -s"
+.venv.erplibre/bin/repo forall -pc "git status -s"
 ```
 
 ### Clean all
@@ -111,7 +111,7 @@ git commit -am "[#ticket] subject: short sentence"
 Before cleaning, check changed file in all repos.
 
 ```bash
-./.venv/repo forall -pc "git status -s"
+.venv.erplibre/bin/repo forall -pc "git status -s"
 ```
 
 Check the changed branch, and push changed if needed.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-source ./.venv/bin/activate
+# This is required to change environment for the running Odoo
+source ./.venv.$(< .erplibre-version)/bin/activate
 
 ODOO_PATH="$(pwd)/odoo$(< .odoo-version)"
 #export PATH=$ODOO_PATH:$PATH

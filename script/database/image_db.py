@@ -16,7 +16,7 @@ logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
 
-PYTHON_BIN = ".venv/bin/python3"
+PYTHON_BIN = ".venv.erplibre/bin/python3"
 IMAGE_DB_BIN = f"{PYTHON_BIN} ./script/database/image_db.py"
 
 

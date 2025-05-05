@@ -10,6 +10,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Added
 
 - Script for hardening the installation
+- Support Odoo versions 12.0 to 18.0
+- Separate ERPLibre python installation from Odoo python with .venv.erplibre and .venv.odoo18
+- Implement auto-installation with TODO.py
 
 ## [1.6.0] - 2025-04-25
 

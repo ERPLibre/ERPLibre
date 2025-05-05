@@ -4,7 +4,7 @@
 
 EL_USER=${USER}
 EL_HOME=$PWD
-EL_HOME_ODOO="${EL_HOME}/odoo"
+EL_HOME_ODOO="${EL_HOME}/odoo${EL_ODOO_VERSION}/odoo"
 #EL_PORT="8069"
 #EL_LONGPOLLING_PORT="8072"
 #EL_SUPERADMIN="admin"
@@ -26,11 +26,7 @@ printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/CybroOdoo_CybroAddons," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/CybroOdoo_OpenHRMS," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/MathBenTech_development," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/MathBenTech_odoo-business-spending-management-quebec-canada," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_account-analytic," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_account-budgeting," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_account-closing," >> "${EL_CONFIG_FILE}"
@@ -44,6 +40,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_account-reconcile," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_apps-store," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_bank-payment," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_bank-payment-alternative," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_bank-statement-import," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_brand," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_business-requirement," >> "${EL_CONFIG_FILE}"
@@ -58,10 +55,12 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_contract," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_credit-control," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_crm," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_crowdfunding," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_currency," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_data-protection," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_ddmrp," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_delivery-carrier," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_dms," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_donation," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_e-commerce," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_edi," >> "${EL_CONFIG_FILE}"
@@ -75,6 +74,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_interface-github," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_knowledge," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_l10n-canada," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_mail," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_maintenance," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_management-system," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_manufacture," >> "${EL_CONFIG_FILE}"
@@ -101,14 +101,11 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_server-backend," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_server-brand," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_server-env," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_server-tools," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_server-ux," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_shift-planning," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_social," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_stock-logistics-putaway," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_stock-logistics-warehouse," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_storage," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_survey," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_timesheet," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_vertical-association," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_vertical-hotel," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_vertical-isp," >> "${EL_CONFIG_FILE}"
@@ -119,14 +116,10 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_wms," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OmniaGit_odooplm," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/camptocamp_odoo-cloud-platform," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/cetmix_cetmix-tower," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/dhongu_deltatech," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/it-projects-llc_saas-addons," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/muk-it_muk_web," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/novacode-nl_odoo-formio," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/odoomates_odooapps," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/openeducat_openeducat_erp," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/tegin_medical-fhir," >> "${EL_CONFIG_FILE}"
 fi
 printf "\n" >> "${EL_CONFIG_FILE}"
 
@@ -140,6 +133,6 @@ fi
 
 # Update and fix the config.conf
 # Fix only the configuration if installation is done
-if [ -f "./.venv/bin/activate" ] && [ -f "./odoo/odoo-bin" ]; then
+if [ -f "./.venv.$(< .erplibre-version)/bin/activate" ] && [ -f "./odoo$(< .odoo-version)/odoo/odoo-bin" ]; then
     make config_update
 fi

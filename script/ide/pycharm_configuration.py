@@ -376,7 +376,7 @@ def add_configuration(dct_xml, file_name, config):
                         {"@name": "PARENT_ENVS", "@value": "true"},
                         {
                             "@name": "SDK_HOME",
-                            "@value": "$PROJECT_DIR$/.venv/bin/python",
+                            "@value": "$PROJECT_DIR$/.venv.erplibre/bin/python",
                         },
                         {
                             "@name": "WORKING_DIRECTORY",

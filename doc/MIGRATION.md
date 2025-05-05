@@ -52,7 +52,7 @@ Execute migration with OpenUpgrade.
 
 ```bash
 make config_gen_migration
-./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --no-http --update all --stop-after-init -d BD
+./.venv.erplibre/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --no-http --update all --stop-after-init -d BD
 ```
 
 ## Migration Odoo 13 to Odoo 14

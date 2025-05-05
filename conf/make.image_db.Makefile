@@ -15,21 +15,21 @@ image_db_create_erplibre_code_generator:
 image_db_create_all_parallel:
 	./script/database/db_restore.py --clean_cache
 	echo "Search in-existing module"
-	./.venv/bin/python3 ./script/database/image_db.py --check_addons_exist
+	./.venv.erplibre/bin/python3 ./script/database/image_db.py --check_addons_exist
 	echo "Create Image DB"
-	./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel | bash
+	./.venv.erplibre/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel | bash
 	./script/database/db_restore.py --clean_cache
 	#./script/make.sh image_db_create_test_website_attachments
 
 .PHONY: image_db_list_data
 image_db_list_data:
-	./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel
-	#./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel --odoo_version 12.0
+	./.venv.erplibre/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel
+	#./.venv.erplibre/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel --odoo_version 12.0
 
 .PHONY: image_db_list
 image_db_list:
-	./.venv/bin/python3 ./script/database/image_db.py --show_list_only
-	#./.venv/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel --odoo_version 12.0
+	./.venv.erplibre/bin/python3 ./script/database/image_db.py --show_list_only
+	#./.venv.erplibre/bin/python3 ./script/database/image_db.py --generate_bash_cmd_parallel --odoo_version 12.0
 
 .PHONY: image_db_create_test_website_attachments
 image_db_create_test_website_attachments:
