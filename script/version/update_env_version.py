@@ -514,7 +514,7 @@ class Update:
         if not pycharm_is_installed or not self.execute_log:
             return
         os.system(
-            "./.venv/bin/python ./script/ide/pycharm_configuration.py --init"
+            "./.venv.erplibre/bin/python ./script/ide/pycharm_configuration.py --init"
         )
 
     def install_erplibre(self):

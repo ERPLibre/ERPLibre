@@ -11,6 +11,7 @@ cache
 htmlcov
 node_modules
 .venv
+.venv.erplibre
 odoo
 screencasts
 screenshots

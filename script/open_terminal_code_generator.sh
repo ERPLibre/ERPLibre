@@ -43,10 +43,10 @@ elif [[ "${OSTYPE}" == "darwin"* ]]; then
   # Boucle pour ajouter des commandes pour ouvrir de nouveaux onglets et exécuter les scripts batch
   for t in "${paths[@]}"; do
     if $first_iteration; then
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${t}; source ./.venv/bin/activate; git status\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${t}; source ./.venv.erplibre/bin/activate; git status\" in front window'"
       first_iteration=false
     elif $second_iteration; then
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${t}; source ./.venv/bin/activate; git status\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${t}; source ./.venv.erplibre/bin/activate; git status\" in front window'"
       second_iteration=false
     else
       osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${t}; git status\" in front window'"

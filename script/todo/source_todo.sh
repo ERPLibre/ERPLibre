@@ -1,5 +1,5 @@
 #!/bin/bash
 
-source .venv/bin/activate
+source ./.venv.erplibre/bin/activate
 
 ./script/todo/todo.py

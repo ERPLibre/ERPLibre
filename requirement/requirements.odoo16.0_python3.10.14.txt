@@ -1,27 +1,3 @@
-# ERPLibre Poetry requirement
-iscompatible
-toml
-
-# ERPLibre script
-giturlparse
-agithub
-GitPython==3.1.32
-retrying
-xmltodict
-openupgradelib
-unidiff
-colorama
-wheel
-cloudflare
-selenium
-# mmg # depend on weasyprint 59.0 and depend on old version pillow 9.0.1
-uvloop
-python-randomword-fr
-isort
-pykeepass
-click
-aioshutil
-
 # For OSX
 cython
 
@@ -99,6 +75,3 @@ python-dateutil>=2.8.2
 
 # Extra module
 meteostat
-
-# Force upgrade package to fix Ubuntu 25.04
-virtualenv==20.30.0
