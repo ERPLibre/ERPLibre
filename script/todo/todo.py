@@ -71,7 +71,7 @@ except ModuleNotFoundError as e:
         )
         if odoo_installation_input == "Y":
             subprocess.run(
-                "gnome-terminal -- bash -c './install/install_erplibre.sh;bash'",
+                "gnome-terminal -- bash -c './script/install/install_erplibre.sh;bash'",
                 shell=True,
                 executable="/bin/bash",
             )
