@@ -48,6 +48,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable ${EL_CONFIG}.service
 
 sudo su ${EL_USER} -c "sudo rm -f /tmp/${EL_USER}run.sh"
+# TODO this is outdated
 cat <<EOF > /tmp/${EL_USER}run.sh
 #!/usr/bin/env bash
 cd ${EL_HOME_ERPLIBRE}

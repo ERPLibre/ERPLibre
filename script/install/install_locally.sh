@@ -142,4 +142,5 @@ rm -rf artifacts
 
 # Link for dev
 echo -e "\n---- Add link dependency in site-packages of Python ----"
+# TODO this link can break, the symbolic link is maybe not created
 ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/.venv/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
