@@ -31,7 +31,7 @@ open_doc_all:
 # documentation dev
 .PHONY: doc_dev
 doc_dev:
-	source ./.venv/bin/activate && make -C doc/itpp-labs_odoo-development/docs html || exit 1
+	source ./.venv.erplibre/bin/activate && make -C doc/itpp-labs_odoo-development/docs html || exit 1
 
 .PHONY: open_doc_dev
 open_doc_dev:
@@ -44,7 +44,7 @@ doc_clean_dev:
 # documentation migration
 .PHONY: doc_migration
 doc_migration:
-	source ./.venv/bin/activate && make -C doc/itpp-labs_odoo-port-docs/docs html || exit 1
+	source ./.venv.erplibre/bin/activate && make -C doc/itpp-labs_odoo-port-docs/docs html || exit 1
 
 .PHONY: open_doc_migration
 open_doc_migration:
@@ -57,7 +57,7 @@ doc_clean_migration:
 # documentation test
 .PHONY: doc_test
 doc_test:
-	source ./.venv/bin/activate && make -C doc/itpp-labs_odoo-test-docs/doc-src html || exit 1
+	source ./.venv.erplibre/bin/activate && make -C doc/itpp-labs_odoo-test-docs/doc-src html || exit 1
 
 .PHONY: open_doc_test
 open_doc_test:
@@ -71,7 +71,7 @@ doc_clean_test:
 .PHONY: doc_user
 doc_user:
 	ln -sf ../../odoo/odoo ./doc/odoo_documentation-user/odoo
-	source ./.venv/bin/activate && make -C doc/odoo_documentation-user html || exit 1
+	source ./.venv.erplibre/bin/activate && make -C doc/odoo_documentation-user html || exit 1
 
 .PHONY: open_doc_user
 open_doc_user:
@@ -84,4 +84,4 @@ doc_clean_user:
 # documentation markdown
 .PHONY: doc_markdown
 doc_markdown:
-	./.venv/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md
+	./.venv.erplibre/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md

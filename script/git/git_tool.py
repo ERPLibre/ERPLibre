@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import pathlib
 import webbrowser
 from collections import OrderedDict
 from typing import List
@@ -20,8 +21,6 @@ CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
-with open(".odoo-version", "r") as f:
-    DEFAULT_BRANCH = f.readline()
 
 
 class Struct(object):
@@ -44,7 +43,17 @@ class GitTool:
 
     @property
     def default_branch(self):
-        return DEFAULT_BRANCH
+        return self.odoo_version
+
+    @property
+    def odoo_version(self):
+        with open(".odoo-version", "r") as f:
+            default_branch = f.readline()
+        return default_branch
+
+    @property
+    def odoo_version_long(self):
+        return f"odoo{self.odoo_version}"
 
     @staticmethod
     def get_url(url: str) -> object:
@@ -270,7 +279,12 @@ class GitTool:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
-        default_remote = dct_manifest.get("default").get("@remote")
+        if not dct_manifest:
+            return []
+        if dct_manifest.get("default"):
+            default_remote = dct_manifest.get("default").get("@remote")
+        else:
+            default_remote = None
         lst_remote = dct_manifest.get("remote")
         if type(lst_remote) is dict:
             lst_remote = [lst_remote]
@@ -306,7 +320,7 @@ class GitTool:
                 "path": path,
                 "relative_path": f"{repo_path}/{path}",
                 "name": name,
-                "group": group,
+                "group": groups,
             }
             lst_repo.append(data)
 
@@ -349,16 +363,28 @@ class GitTool:
         """
         if filename is None:
             manifest_file = self.get_manifest_file(repo_path=repo_path)
-            filename = f"{repo_path}/{manifest_file}"
+            filename = os.path.normpath(os.path.join(repo_path, manifest_file))
         with open(filename) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
+        if not dct_manifest:
+            return {}, {}, None
         default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
+        if type(lst_remote) is dict:
+            lst_remote = [lst_remote]
         lst_project = dct_manifest.get("project")
-        dct_remote = {a.get("@name"): a for a in lst_remote}
-        dct_project = {a.get("@name"): a for a in lst_project}
+        if type(lst_project) is dict:
+            lst_project = [lst_project]
+        if lst_remote:
+            dct_remote = {a.get("@name"): a for a in lst_remote}
+        else:
+            dct_remote = {}
+        if lst_project:
+            dct_project = {a.get("@name"): a for a in lst_project}
+        else:
+            dct_project = {}
         return dct_remote, dct_project, default_remote
 
     @staticmethod
@@ -395,6 +421,8 @@ class GitTool:
 
     def generate_generate_config(self, repo_path="./", filter_group=None):
         filename_locally = f"{repo_path}script/generate_config.sh"
+        if not filter_group:
+            filter_group = self.odoo_version_long
         lst_repo = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )
@@ -403,6 +431,7 @@ class GitTool:
             # Exception, ignore addons/OCA_web and root
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
+            # groups = repo.get("group")
             update_repo = repo.get("path")
             # Use variable instead of hardcoded path
             if update_repo.startswith("addons.odoo"):
@@ -460,7 +489,7 @@ class GitTool:
         dct_project={},
         default_remote=None,
         keep_original=False,
-        default_branch=DEFAULT_BRANCH,
+        default_branch=None,
     ):
         """
         Generate repo manifest
@@ -474,10 +503,6 @@ class GitTool:
         :param default_branch: default branch name
         :return:
         """
-        if not output:
-            raise Exception(
-                "Cannot generate manifest with missing output filename."
-            )
         lst_remote = []
         lst_remote_name = []
         lst_project = []
@@ -604,7 +629,7 @@ class GitTool:
             lst_default, key=lambda key: key.get("@remote")
         )
         lst_order_project = sorted(
-            lst_project, key=lambda key: key.get("@name")
+            lst_project, key=lambda key: key.get("@name") + key.get("@path")
         )
 
         dct_repo = OrderedDict(
@@ -647,8 +672,14 @@ class GitTool:
         str_xml_text = str_xml_text.replace("\t", "  ")
 
         # create file
-        with open(output, mode="w") as file:
-            file.writelines(str_xml_text + "\n")
+        output_dirname = os.path.dirname(output)
+        if not os.path.exists(output_dirname):
+            pathlib.Path(output_dirname).mkdir(parents=True, exist_ok=True)
+        if output:
+            with open(output, mode="w") as file:
+                file.writelines(str_xml_text + "\n")
+        else:
+            print(str_xml_text + "\n")
 
     def generate_git_modules(
         self, lst_repo: List[Struct], repo_path: str = "./"
@@ -742,6 +773,11 @@ class GitTool:
         :param repo_path: path to search .repo
         :return: manifest file used for Repo
         """
+        file = os.path.join(
+            repo_path, ".repo", "local_manifests", "erplibre_manifest.xml"
+        )
+        if os.path.exists(file):
+            return file
         file = f"{repo_path}/.repo/manifest.xml"
         if not os.path.exists(file):
             return ""

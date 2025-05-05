@@ -1,0 +1,5 @@
+"filepath"
+manifest/git_manifest_erplibre.xml
+manifest/git_manifest_erplibre_extra.xml
+manifest/git_manifest_erplibre_odoo.xml
+manifest/git_manifest_erplibre_odoo_dev.xml

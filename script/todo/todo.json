@@ -18,7 +18,7 @@
     "function": [
         {
             "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16",
-            "command": "./.venv/bin/python ./script/selenium/web_login.py"
+            "command": "./.venv.erplibre/bin/python ./script/selenium/web_login.py"
         }
     ],
     "update_from_makefile": [

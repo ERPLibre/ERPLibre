@@ -6,7 +6,7 @@ devops_erplibre need sshpass
 ## Simplify push tag
 For RELEASE.md, replace next value by a script to select all remote by manifest file.
 Actually, need to push manually all different remote.
-> ./.venv/repo forall -pc "git push ERPLibre --tags"
+> .venv.erplibre/bin/repo forall -pc "git push ERPLibre --tags"
 
 ## Funding
 - Add funding for MathBenTech and TechnoLibre
