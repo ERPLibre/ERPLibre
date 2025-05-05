@@ -74,7 +74,7 @@ def get_list_db_cache(arg_base):
 def main():
     config = get_config()
 
-    arg_base = "./.venv/bin/python3 ./odoo/odoo-bin db"
+    arg_base = "./odoo_bin.sh db"
 
     if not config.image:
         with open(".odoo-version", "r") as f:

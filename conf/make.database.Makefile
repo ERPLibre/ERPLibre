@@ -4,27 +4,27 @@
 
 .PHONY: db_list
 db_list:
-	./.venv/bin/python3 ./odoo/odoo-bin db --list
+	./odoo_bin.sh db --list
 
 .PHONY: db_list_incompatible_database
 db_list_incompatible_database:
-	./.venv/bin/python3 ./odoo/odoo-bin db --list_incompatible_db
+	./odoo_bin.sh db --list_incompatible_db
 
 .PHONY: db_version
 db_version:
-	./.venv/bin/python3 ./odoo/odoo-bin db --version
+	./odoo_bin.sh db --version
 
 .PHONY: db_drop_db_test
 db_drop_db_test:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test
+	./odoo_bin.sh db --drop --database test
 
 .PHONY: db_drop_db_test2
 db_drop_db_test2:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
+	./odoo_bin.sh db --drop --database test2
 
 .PHONY: db_drop_db_test3
 db_drop_db_test3:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test3
+	./odoo_bin.sh db --drop --database test3
 
 .PHONY: db_drop_all
 db_drop_all:

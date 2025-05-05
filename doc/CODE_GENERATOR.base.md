@@ -12,7 +12,7 @@
 <!-- [en] -->
 Never run this on production environment, this create circular dependencies and will cause frustration to clean damage.
 <!-- [fr] -->
-Ne jamais exécuter le générateur de code dans un environnement de production, il y a création de dépendances circulaires pouvant causer de la frustration à nettoyer tous les dommages. D'ailleurs, il est nécessaire d'exécuter en mode développement, avec l'argument `--dev cg`. 
+Ne jamais exécuter le générateur de code dans un environnement de production, il y a création de dépendances circulaires pouvant causer de la frustration à nettoyer tous les dommages. D'ailleurs, il est nécessaire d'exécuter en mode développement, avec l'argument `--dev cg`.
 
 L'objectif du générateur de code est de :
 - utiliser le générateur via l'interface web;
@@ -592,7 +592,7 @@ des informations dans la base de données.
 Supposons que le nom de votre BD est `test_website` :
 
 ```bash
-./.venv/bin/python3 ./odoo/odoo-bin db --backup --database test_website --restore_image test_website_backup
+./odoo_bin.sh db --backup --database test_website --restore_image test_website_backup
 ./script/database/db_restore.py --database test_website_2 --image test_website_backup.zip --clean_cache
 ```
 

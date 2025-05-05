@@ -37,7 +37,7 @@ def get_config():
 def main():
     config = get_config()
 
-    out_db = execute_shell("./.venv/bin/python3 ./odoo/odoo-bin db --list")
+    out_db = execute_shell("./odoo_bin.sh db --list")
     lst_db = out_db.split("\n")
     for db_name in lst_db:
         if config.test_only and not (
@@ -47,7 +47,7 @@ def main():
         ):
             continue
         execute_shell(
-            "./.venv/bin/python3 ./odoo/odoo-bin db --drop --database"
+            "./odoo_bin.sh db --drop --database"
             f" {db_name}"
         )
         print(f"{db_name} deleted")
