@@ -17,7 +17,7 @@ try:
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
     # TODO auto-detect gnome-terminal, or choose another.
-    if os.path.exists(".venv"):
+    if os.path.exists(".venv.erplibre"):
         print("You forgot to activate source \nsource ./.venv/bin/activate")
         time.sleep(0.5)
         subprocess.run(
@@ -67,11 +67,11 @@ except ModuleNotFoundError as e:
         # Propose Odoo installation
         # TODO detect last version supported
         odoo_installation_input = (
-            input("Install Odoo 16? (Y/N): ").strip().upper()
+            input("Install virtual environment? (Y/N): ").strip().upper()
         )
         if odoo_installation_input == "Y":
             subprocess.run(
-                "gnome-terminal -- bash -c 'make install_odoo_16;bash'",
+                "gnome-terminal -- bash -c 'python -m venv .venv.erplibre;source .venv.erplibre;pip install -r requirement/erplibre_require-ments.txt;bash'",
                 shell=True,
                 executable="/bin/bash",
             )
