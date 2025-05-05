@@ -756,8 +756,7 @@ async def test_exec(
 
     if is_db_create:
         res, status = await run_command(
-            "./.venv/bin/python3",
-            "./odoo/odoo-bin",
+            "./odoo_bin.sh",
             "db",
             "--drop",
             "--database",

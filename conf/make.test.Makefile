@@ -103,7 +103,7 @@ test_installation_demo:
 .PHONY: test_addons_sale
 test_addons_sale:
 	./.venv/bin/coverage erase
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_sale
+	./odoo_bin.sh db --drop --database test_addons_sale
 	./test.sh -d test_addons_sale --db-filter test_addons_sale -i sale
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m
@@ -113,7 +113,7 @@ test_addons_sale:
 .PHONY: test_addons_helpdesk
 test_addons_helpdesk:
 	./.venv/bin/coverage erase
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_helpdesk
+	./odoo_bin.sh db --drop --database test_addons_helpdesk
 	./test.sh -d test_addons_helpdesk --db-filter test_addons_helpdesk -i helpdesk_mgmt
 	./.venv/bin/coverage combine -a
 	./.venv/bin/coverage report -m

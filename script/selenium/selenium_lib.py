@@ -1151,9 +1151,7 @@ class SeleniumLib(object):
         chiffre = str(random.randint(0, 9))
         troisieme_lettre = chr(random.randint(65, 90))
 
-        code_postal = (
-            f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
-        )
+        code_postal = f"{premiere_lettre}{chiffre}{deuxieme_lettre} {chiffre}{troisieme_lettre}{chiffre}"
 
         return code_postal
 
