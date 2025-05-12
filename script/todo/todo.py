@@ -8,6 +8,26 @@ import sys
 import time
 import subprocess
 
+file_error_path = ".erplibre.error.txt"
+
+
+def restart_script(last_error):
+    print("Reboot TODO 🤖...")
+    # os.execv(sys.executable, ['python'] + sys.argv)
+    # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
+    if os.path.exists(".venv.erplibre") and not os.path.exists(file_error_path):
+        # TODO mettre check import suivant ne vont pas planter
+        try:
+            with open(file_error_path, "w") as file:
+                file.write(str(last_error))
+                pass  # The file is created and closed here, no content is written
+            os.execv("/bin/bash",
+                     ["/bin/bash", "-c", "source ./.venv.erplibre/bin/activate && exec python " + " ".join(sys.argv)])
+        except Exception as e:
+            print("Error detect at first execution.")
+            print(e)
+
+# TODO show message at start if os.path.exists(file_error_path)
 try:
     import tkinter as tk
     from tkinter import filedialog
@@ -16,8 +36,23 @@ try:
     import openai
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
-    # TODO auto-detect gnome-terminal, or choose another.
+    print("0")
+    if os.path.exists(file_error_path):
+        print("Got error at first execution.", file_error_path)
+        try:
+            file = open(file_error_path, "r")
+            content = file.read()
+            # TODO si vide, ajouter notre erreur
+            print(content)
+        except FileNotFoundError:
+            print("Error: File not found.")
+        finally:
+            if 'file' in locals() and file:
+                file.close()
+        sys.exit(1)
     if os.path.exists(".venv.erplibre"):
+        # TODO auto-detect gnome-terminal, or choose another.
+        restart_script(e)
         print("You forgot to activate source \nsource ./.venv/bin/activate")
         time.sleep(0.5)
         subprocess.run(
@@ -70,17 +105,24 @@ except ModuleNotFoundError as e:
             input("Install virtual environment? (Y/N): ").strip().upper()
         )
         if odoo_installation_input == "Y":
-            subprocess.run(
-                "gnome-terminal -- bash -c './script/install/install_erplibre.sh;bash'",
-                shell=True,
-                executable="/bin/bash",
-            )
+            cmd_extern = "gnome-terminal -- bash -c './script/install/install_erplibre.sh;bash'"
+            cmd_intern = "./script/install/install_erplibre.sh"
+            try:
+                subprocess.run(
+                    cmd_intern,
+                    shell=True,
+                    executable="/bin/bash",
+                    check=True
+                )
+            except subprocess.CalledProcessError as e:
+                print(f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}.")
             print("Wait after installation and open projects by terminal.")
             print("make open_terminal")
+            restart_script()
         else:
             print("Nothing to do, you need a fresh installation to continue.")
-        sys.exit(0)
-    sys.exit(1)
+    #     sys.exit(0)
+    # sys.exit(1)
 
 # TODO implement urwid to improve text user interface
 # import urwid
@@ -274,7 +316,6 @@ class TODO:
         help_info = "Commande :\n"
         help_end = "[0] Retour\n"
         for i, dct_instance in enumerate(lst_instance):
-
             help_info += (
                 f"[{i + 1}] " + dct_instance["prompt_description"] + "\n"
             )
