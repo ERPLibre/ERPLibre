@@ -8,7 +8,7 @@
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
     <remote name="Smile-SA" fetch="https://github.com/ERPLibre/" />
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
-<!--    <remote name="ajepe" fetch="https://github.com/ajepe/" />-->
+    <!--    <remote name="ajepe" fetch="https://github.com/ajepe/" />-->
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
     <remote name="dhongu" fetch="https://github.com/dhongu/" />
     <remote name="it-projects-llc" fetch="https://github.com/it-projects-llc/" />
@@ -102,7 +102,7 @@
     <project name="medical-fhir.git" path="addons/tegin_medical-fhir" remote="tegin" groups="addons" />
     <project name="mis-builder.git" path="addons/OCA_mis-builder" remote="OCA" groups="addons" />
     <project name="multi-company.git" path="addons/OCA_multi-company" remote="OCA" groups="addons" />
-<!--    <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons" />-->
+    <!--    <project name="odoo-addons.git" path="addons/ajepe_odoo-addons" remote="ajepe" groups="addons" />-->
     <!--  <project name="odoo-base-addons.git" path="addons/Numigi_odoo-base-addons" remote="Numigi" groups="addons"/>-->
     <project
         name="odoo-cloud-platform.git"
