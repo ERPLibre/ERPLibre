@@ -88,6 +88,12 @@
         remote="OCA"
         groups="addons"
     />
+    <project
+        name="bank-payment-alternative.git"
+        path="addons.odoo18.0/OCA_bank-payment-alternative"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="brand.git" path="addons.odoo18.0/OCA_brand" remote="OCA" groups="addons" />
     <project
         name="business-requirement.git"
@@ -126,6 +132,7 @@
     <project name="connector.git" path="addons.odoo18.0/OCA_connector" remote="OCA" groups="addons" />
     <project name="contract.git" path="addons.odoo18.0/OCA_contract" remote="OCA" groups="addons" />
     <project name="credit-control.git" path="addons.odoo18.0/OCA_credit-control" remote="OCA" groups="addons" />
+    <project name="crowdfunding.git" path="addons.odoo18.0/OCA_crowdfunding" remote="OCA" groups="addons" />
     <project name="crm.git" path="addons.odoo18.0/OCA_crm" remote="OCA" groups="addons" />
     <project name="currency.git" path="addons.odoo18.0/OCA_currency" remote="OCA" groups="addons" />
     <project name="data-protection.git" path="addons.odoo18.0/OCA_data-protection" remote="OCA" groups="addons" />
@@ -165,6 +172,7 @@
         groups="odoo"
     />
     <project name="maintenance.git" path="addons.odoo18.0/OCA_maintenance" remote="OCA" groups="addons" />
+    <project name="mail.git" path="addons.odoo18.0/OCA_mail" remote="OCA" groups="addons" />
     <project name="management-system.git" path="addons.odoo18.0/OCA_management-system" remote="OCA" groups="addons" />
     <project name="manufacture.git" path="addons.odoo18.0/OCA_manufacture" remote="OCA" groups="addons" />
     <project name="margin-analysis.git" path="addons.odoo18.0/OCA_margin-analysis" remote="OCA" groups="addons" />
