@@ -326,12 +326,6 @@
         groups="addons"
     />
     <project
-        name="stock-logistics-putaway.git"
-        path="addons.odoo16.0/OCA_stock-logistics-putaway"
-        remote="OCA"
-        groups="addons"
-    />
-    <project
         name="stock-logistics-reporting.git"
         path="addons.odoo16.0/OCA_stock-logistics-reporting"
         remote="OCA"
