@@ -80,7 +80,19 @@
     <project name="account-invoicing.git" path="addons.odoo16.0/OCA_account-invoicing" remote="OCA" groups="addons" />
     <project name="account-payment.git" path="addons.odoo16.0/OCA_account-payment" remote="OCA" groups="addons" />
     <project name="account-reconcile.git" path="addons.odoo16.0/OCA_account-reconcile" remote="OCA" groups="addons" />
+    <project
+        name="agreement.git"
+        path="addons.odoo16.0/OCA_agreement"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="apps-store.git" path="addons.odoo16.0/OCA_apps-store" remote="OCA" groups="addons" />
+    <project
+        name="automation.git"
+        path="addons.odoo16.0/OCA_automation"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="bank-payment.git" path="addons.odoo16.0/OCA_bank-payment" remote="OCA" groups="addons" />
     <project
         name="bank-statement-import.git"
@@ -127,6 +139,7 @@
     <project name="contract.git" path="addons.odoo16.0/OCA_contract" remote="OCA" groups="addons" />
     <project name="credit-control.git" path="addons.odoo16.0/OCA_credit-control" remote="OCA" groups="addons" />
     <project name="crm.git" path="addons.odoo16.0/OCA_crm" remote="OCA" groups="addons" />
+    <project name="cooperative.git" path="addons.odoo16.0/OCA_cooperative" remote="OCA" groups="addons" />
     <project name="currency.git" path="addons.odoo16.0/OCA_currency" remote="OCA" groups="addons" />
     <project name="data-protection.git" path="addons.odoo16.0/OCA_data-protection" remote="OCA" groups="addons" />
     <project name="ddmrp.git" path="addons.odoo16.0/OCA_ddmrp" remote="OCA" groups="addons" />
@@ -148,12 +161,16 @@
         groups="addons,base"
     />
     <project name="event.git" path="addons.odoo16.0/OCA_event" remote="OCA" groups="addons" />
+    <project name="edi-framework.git" path="addons.odoo16.0/OCA_edi-framework" remote="OCA" groups="addons" />
+    <project name="iot.git" path="addons.odoo16.0/OCA_iot" remote="OCA" groups="addons" />
+    <project name="intrastat-extrastat.git" path="addons.odoo16.0/OCA_intrastat-extrastat" remote="OCA" groups="addons" />
     <project name="field-service.git" path="addons.odoo16.0/OCA_field-service" remote="OCA" groups="addons" />
     <project name="fleet.git" path="addons.odoo16.0/OCA_fleet" remote="OCA" groups="addons" />
     <project name="geospatial.git" path="addons.odoo16.0/OCA_geospatial" remote="OCA" groups="addons" />
     <project name="helpdesk.git" path="addons.odoo16.0/OCA_helpdesk" remote="OCA" groups="addons" />
     <project name="hr.git" path="addons.odoo16.0/OCA_hr" remote="OCA" groups="addons" />
     <project name="hr-holidays.git" path="addons.odoo16.0/OCA_hr-holidays" remote="OCA" groups="addons" />
+    <project name="hr-expense.git" path="addons.odoo16.0/OCA_hr-expense" remote="OCA" groups="addons" />
     <project name="interface-github.git" path="addons.odoo16.0/OCA_interface-github" remote="OCA" groups="addons" />
     <project name="knowledge.git" path="addons.odoo16.0/OCA_knowledge" remote="OCA" groups="addons" />
     <project name="l10n-canada.git" path="addons.odoo16.0/OCA_l10n-canada" remote="OCA" groups="addons" />
@@ -170,6 +187,7 @@
     <project name="margin-analysis.git" path="addons.odoo16.0/OCA_margin-analysis" remote="OCA" groups="addons" />
     <project name="medical-fhir.git" path="addons.odoo16.0/tegin_medical-fhir" remote="tegin" groups="addons" />
     <project name="mis-builder.git" path="addons.odoo16.0/OCA_mis-builder" remote="OCA" groups="addons" />
+    <project name="mis-builder-contrib.git" path="addons.odoo16.0/OCA_mis-builder-contrib" remote="OCA" groups="addons" />
     <project name="multi-company.git" path="addons.odoo16.0/OCA_multi-company" remote="OCA" groups="addons" />
     <project name="muk_web.git" path="addons.odoo16.0/muk-it_muk_web" remote="muk-it" groups="addons" />
     <project
@@ -206,6 +224,12 @@
         groups="odoo"
     />
     <project name="odooapps.git" path="addons.odoo16.0/odoomates_odooapps" remote="odoomates" groups="addons" />
+    <project
+        name="odoo-pim.git"
+        path="addons.odoo16.0/OCA_odoo-pim"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="odooplm.git" path="addons.odoo16.0/OmniaGit_odooplm" remote="OmniaGit" groups="addons" />
     <project
         name="openeducat_erp.git"
@@ -217,6 +241,7 @@
     <project name="operating-unit.git" path="addons.odoo16.0/OCA_operating-unit" remote="OCA" groups="addons" />
     <project name="partner-contact.git" path="addons.odoo16.0/OCA_partner-contact" remote="OCA" groups="addons" />
     <project name="pos.git" path="addons.odoo16.0/OCA_pos" remote="OCA" groups="addons" />
+    <project name="pms.git" path="addons.odoo16.0/OCA_pms" remote="OCA" groups="addons" />
     <project name="product-attribute.git" path="addons.odoo16.0/OCA_product-attribute" remote="OCA" groups="addons" />
     <project
         name="product-configurator.git"
@@ -230,7 +255,9 @@
     <project name="project-agile.git" path="addons.odoo16.0/OCA_project-agile" remote="OCA" groups="addons" />
     <project name="project.git" path="addons.odoo16.0/OCA_project" remote="OCA" groups="addons" />
     <project name="purchase-workflow.git" path="addons.odoo16.0/OCA_purchase-workflow" remote="OCA" groups="addons" />
+    <project name="purchase-reporting.git" path="addons.odoo16.0/OCA_purchase-reporting" remote="OCA" groups="addons" />
     <project name="queue.git" path="addons.odoo16.0/OCA_queue" remote="OCA" groups="addons" />
+    <project name="repair.git" path="addons.odoo16.0/OCA_repair" remote="OCA" groups="addons" />
     <project name="reporting-engine.git" path="addons.odoo16.0/OCA_reporting-engine" remote="OCA" groups="addons" />
     <project name="rma.git" path="addons.odoo16.0/OCA_rma" remote="OCA" groups="addons" />
     <project
@@ -239,8 +266,13 @@
         remote="it-projects-llc"
         groups="addons"
     />
+    <project name="sale-blanket.git" path="addons.odoo16.0/OCA_sale-blanket" remote="OCA" groups="addons" />
+    <project name="sale-channel.git" path="addons.odoo16.0/OCA_sale-channel" remote="OCA" groups="addons" />
+    <project name="sale-prebook.git" path="addons.odoo16.0/OCA_sale-prebook" remote="OCA" groups="addons" />
+    <project name="sale-promotion.git" path="addons.odoo16.0/OCA_sale-promotion" remote="OCA" groups="addons" />
     <project name="sale-reporting.git" path="addons.odoo16.0/OCA_sale-reporting" remote="OCA" groups="addons" />
     <project name="sale-workflow.git" path="addons.odoo16.0/OCA_sale-workflow" remote="OCA" groups="addons" />
+    <project name="search-engine.git" path="addons.odoo16.0/OCA_search-engine" remote="OCA" groups="addons" />
     <project name="server-auth.git" path="addons.odoo16.0/OCA_server-auth" remote="OCA" groups="addons" />
     <project name="server-backend.git" path="addons.odoo16.0/OCA_server-backend" remote="OCA" groups="addons" />
     <project name="server-brand.git" path="addons.odoo16.0/OCA_server-brand" remote="OCA" groups="addons" />
@@ -254,6 +286,12 @@
     />
     <project name="server-ux.git" path="addons.odoo16.0/OCA_server-ux" remote="OCA" groups="addons" />
     <project
+        name="sign.git"
+        path="addons.odoo16.0/OCA_sign"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
         name="shift-planning.git"
         path="addons.odoo16.0/OCA_shift-planning"
         remote="ERPLibre"
@@ -261,6 +299,7 @@
         groups="addons"
     />
     <project name="social.git" path="addons.odoo16.0/OCA_social" remote="OCA" groups="addons" />
+    <project name="spreadsheet.git" path="addons.odoo16.0/OCA_spreadsheet" remote="OCA" groups="addons" />
     <project
         name="survey.git"
         path="addons.odoo16.0/OCA_survey"
@@ -269,12 +308,84 @@
         groups="addons"
     />
     <project
+        name="stock-logistics-availability.git"
+        path="addons.odoo16.0/OCA_stock-logistics-availability"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-barcode.git"
+        path="addons.odoo16.0/OCA_stock-logistics-barcode"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-orderpoint.git"
+        path="addons.odoo16.0/OCA_stock-logistics-orderpoint"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-putaway.git"
+        path="addons.odoo16.0/OCA_stock-logistics-putaway"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-reporting.git"
+        path="addons.odoo16.0/OCA_stock-logistics-reporting"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-request.git"
+        path="addons.odoo16.0/OCA_stock-logistics-request"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-tracking.git"
+        path="addons.odoo16.0/OCA_stock-logistics-tracking"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-logistics-transport.git"
+        path="addons.odoo16.0/OCA_stock-logistics-transport"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
         name="stock-logistics-warehouse.git"
         path="addons.odoo16.0/OCA_stock-logistics-warehouse"
         remote="OCA"
         groups="addons"
     />
+    <project
+        name="stock-logistics-workflow.git"
+        path="addons.odoo16.0/OCA_stock-logistics-workflow"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="stock-weighing.git"
+        path="addons.odoo16.0/OCA_stock-weighing"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="storage.git" path="addons.odoo16.0/OCA_storage" remote="OCA" groups="addons" />
+    <project
+        name="rest-framework.git"
+        path="addons.odoo16.0/OCA_rest-framework"
+        remote="OCA"
+        groups="addons"
+    />
+    <project
+        name="report-print-send.git"
+        path="addons.odoo16.0/OCA_report-print-send"
+        remote="OCA"
+        groups="addons"
+    />
     <project
         name="timesheet.git"
         path="addons.odoo16.0/OCA_timesheet"
@@ -288,10 +399,18 @@
         remote="OCA"
         groups="addons"
     />
+    <project
+        name="vertical-abbey.git"
+        path="addons.odoo16.0/OCA_vertical-abbey"
+        remote="OCA"
+        groups="addons"
+    />
     <project name="vertical-hotel.git" path="addons.odoo16.0/OCA_vertical-hotel" remote="OCA" groups="addons" />
     <project name="vertical-isp.git" path="addons.odoo16.0/OCA_vertical-isp" remote="OCA" groups="addons" />
     <project name="vertical-travel.git" path="addons.odoo16.0/OCA_vertical-travel" remote="OCA" groups="addons" />
+    <project name="vertical-rental.git" path="addons.odoo16.0/OCA_vertical-rental" remote="OCA" groups="addons" />
     <project name="web.git" path="addons.odoo16.0/OCA_web" remote="OCA" groups="addons" />
+    <project name="web-api.git" path="addons.odoo16.0/OCA_web-api" remote="OCA" groups="addons" />
     <project name="website-cms.git" path="addons.odoo16.0/OCA_website-cms" remote="OCA" groups="addons" />
     <project name="website.git" path="addons.odoo16.0/OCA_website" remote="OCA" groups="addons" />
     <project name="wms.git" path="addons.odoo16.0/OCA_wms" remote="OCA" groups="addons" />
