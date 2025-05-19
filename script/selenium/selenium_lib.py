@@ -8,7 +8,13 @@ import random
 import re
 import sys
 import time
+import json
+import tempfile
 from subprocess import getoutput
+import tkinter as tk
+from tkinter import filedialog
+import getpass
+from pykeepass import PyKeePass
 
 from randomwordfr import RandomWordFr
 from selenium import webdriver
@@ -25,11 +31,18 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+# TODO maybe use TODO lib
+CONFIG_FILE = "./script/todo/todo.json"
+CONFIG_OVERRIDE_FILE = "./script/todo/todo_override.json"
+LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
+
 
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
+        self.kdbx = None
         self.video_recorder = None
+        self.default_download_dir_path = tempfile.mkdtemp()
         if self.config.video_suffix:
             self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
@@ -75,6 +88,18 @@ class SeleniumLib(object):
         firefox_options.set_preference(
             "permissions.default.desktop-notification", 1
         )
+        firefox_options.set_preference("browser.download.folderList", 2)
+        firefox_options.set_preference(
+            "browser.download.manager.showWhenStarting", False
+        )
+        firefox_options.set_preference(
+            "browser.download.dir", self.default_download_dir_path
+        )
+        firefox_options.set_preference(
+            "browser.helperApps.neverAsk.saveToDisk",
+            "application/octet-stream,application/pdf,application/x-pdf",
+        )
+        firefox_options.set_preference("pdfjs.disabled", True)
         firefox_services = None
         if self.config.firefox_binary_path:
             firefox_services = Service(
@@ -181,6 +206,53 @@ class SeleniumLib(object):
             self.driver.switch_to.window(self.driver.window_handles[-1])
             self.driver.close()
             self.driver.switch_to.window(self.driver.window_handles[0])
+
+    def get_kdbx(self):
+        if self.kdbx:
+            return self.kdbx
+        # Open file
+        chemin_fichier_kdbx = self.get_config(["kdbx", "path"])
+        if not chemin_fichier_kdbx:
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            chemin_fichier_kdbx = filedialog.askopenfilename(
+                title="Select a File",
+                filetypes=(("KeepassX files", "*.kdbx"),),
+            )
+        if not chemin_fichier_kdbx:
+            # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
+            return
+
+        mot_de_passe_kdbx = self.get_config(["kdbx", "password"])
+        if not mot_de_passe_kdbx:
+            mot_de_passe_kdbx = getpass.getpass(
+                prompt="Entrez votre mot de passe : "
+            )
+
+        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
+
+        if kp:
+            self.kdbx = kp
+        return kp
+
+    def get_config(self, lst_params):
+        # Open file
+        config_file = CONFIG_FILE
+        if os.path.exists(CONFIG_OVERRIDE_FILE):
+            config_file = CONFIG_OVERRIDE_FILE
+
+        with open(config_file) as cfg:
+            dct_data = json.load(cfg)
+            for param in lst_params:
+                try:
+                    dct_data = dct_data[param]
+                except KeyError:
+                    # _logger.error(
+                    #     f"KeyError on file {config_file} with keys"
+                    #     f" {lst_params}"
+                    # )
+                    return
+        return dct_data
 
     @staticmethod
     def get_french_word_no_space_no_accent():
