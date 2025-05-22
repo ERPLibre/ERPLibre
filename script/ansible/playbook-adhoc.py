@@ -26,7 +26,6 @@ def get_config():
     )
     parser.add_argument(
         "--royaume",
-        required=True,
         help="Le nom du royaume ou de l'environnement cible.",
     )
     parser.add_argument(
@@ -64,7 +63,10 @@ def execute_playbook(config):
     print(f"✅ Fichier d'inventaire généré temporaire : {tmp_file_name}")
 
     # Construire le chemin de la clé privée en fonction du royaume
-    private_key = f"~/.ssh/id_ed25519_ansible_{config.royaume}"
+    if config.royaume:
+        private_key = f" --private-key ~/.ssh/id_ed25519_ansible_{config.royaume}"
+    else:
+        private_key = ""
 
     # Exécuter le playbook Ansible
     optional_command = ""
@@ -72,7 +74,7 @@ def execute_playbook(config):
         optional_command += f" -u {config.user}"
     command = (
         f"ansible-playbook {config.playbook}.yml -K{optional_command} -i"
-        f" {tmp_file_name} --private-key {private_key}"
+        f" {tmp_file_name}{private_key}"
     )
     print(f"🚀 Exécution de : {command}")
 
