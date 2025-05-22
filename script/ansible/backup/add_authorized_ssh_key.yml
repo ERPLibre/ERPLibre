@@ -1,0 +1,14 @@
+---
+- name: Ajouter une nouvelle clé SSH à authorized_keys
+  hosts: all
+  become: yes
+  vars:
+    ssh_public_key: "votre_nouvelle_clé_publique_ssh_ici"
+    target_user: "nom_utilisateur_existant"
+
+  tasks:
+    - name: Ajouter la nouvelle clé SSH au fichier authorized_keys de l'utilisateur
+      authorized_key:
+        user: "{{ target_user }}"
+        state: present
+        key: "{{ ssh_public_key }}"

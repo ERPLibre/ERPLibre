@@ -1,0 +1,37 @@
+---
+- name: Configurer les fichiers SSH, créer le répertoire backup_erplibre et ajouter un utilisateur sans mot de passe
+  hosts: all
+  become: yes
+  vars:
+    ssh_public_key: "votre_clé_publique_ssh_ici"
+    backup_directory: "/home/{{ new_user }}/backup_erplibre"
+    new_user: "nom_utilisateur"
+
+  tasks:
+    - name: Créer un nouvel utilisateur sans mot de passe
+      user:
+        name: "{{ new_user }}"
+        shell: /bin/bash
+        createhome: yes
+
+    - name: Créer le répertoire .ssh pour le nouvel utilisateur
+      file:
+        path: "/home/{{ new_user }}/.ssh"
+        state: directory
+        mode: '0700'
+        owner: "{{ new_user }}"
+        group: "{{ new_user }}"
+
+    - name: Ajouter la clé SSH au fichier authorized_keys du nouvel utilisateur
+      authorized_key:
+        user: "{{ new_user }}"
+        state: present
+        key: "{{ ssh_public_key }}"
+
+    - name: Créer le répertoire backup_erplibre pour le nouvel utilisateur
+      file:
+        path: "{{ backup_directory }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ new_user }}"
+        group: "{{ new_user }}"
