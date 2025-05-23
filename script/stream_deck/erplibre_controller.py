@@ -46,6 +46,7 @@ class StreamDeckController(object):
             print("Loading animations...")
             animations = [
                 self.create_animation_frames(deck, "Setting.gif"),
+                self.create_animation_frames(deck, "light-bulb-joypixels.gif"),
             ]
             print("Ready.")
 
@@ -74,6 +75,40 @@ class StreamDeckController(object):
                 t.join()
             except (TransportError, RuntimeError):
                 pass
+
+    def init_and_run(self):
+        self.init()
+
+        import pyudev
+
+        context = pyudev.Context()
+
+        monitor = pyudev.Monitor.from_netlink(context)
+        monitor.filter_by(subsystem='usb')
+
+        def device_event(action, device):
+            # TODO support by number and not by ID_MODEL
+            if action == 'add':
+                id_model = device.get('ID_MODEL')
+                print(f"USB device connected: {id_model}")
+                # 'Stream Deck +'
+                if id_model in ["Stream_Deck_XL", 'Stream_Deck_MK.2', 'Stream_Deck_Plus']:
+                    sdc = StreamDeckController()
+                    sdc.init()
+
+        # Observer pour les événements de manière non bloquante
+        observer = pyudev.MonitorObserver(monitor, device_event)
+        observer.start()
+
+        # Garder le programme en cours d'exécution
+        # try:
+        #     while True:
+        #         pass
+        # except KeyboardInterrupt:
+        #     observer.stop()
+        self.run()
+        # TODO move into except of try
+        observer.stop()
 
     def create_animation_frames(self, deck, image_filename):
         icon_frames = list()
@@ -260,5 +295,4 @@ class StreamDeckController(object):
 
 if __name__ == "__main__":
     sdc = StreamDeckController()
-    sdc.init()
-    sdc.run()
+    sdc.init_and_run()
