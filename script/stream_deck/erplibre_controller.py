@@ -5,6 +5,7 @@
 import os
 import threading
 import time
+import subprocess
 import itertools
 
 from fractions import Fraction
@@ -179,6 +180,12 @@ class StreamDeckController(object):
                 if self.streamdeck_brightness < 5:
                     self.streamdeck_brightness = 5
                 deck.set_brightness(self.streamdeck_brightness)
+            elif key == 0:
+                subprocess.run(
+                    "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
+                    shell=True,
+                    executable="/bin/bash",
+                )
 
             # When an exit button is pressed, close the application.
             if key_style["name"] == "exit":
