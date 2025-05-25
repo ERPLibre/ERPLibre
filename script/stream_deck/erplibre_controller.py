@@ -7,6 +7,7 @@ import threading
 import time
 import subprocess
 import itertools
+import keyboard
 
 from fractions import Fraction
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
@@ -205,16 +206,22 @@ class StreamDeckController(object):
         if state:
             key_style = self.get_key_style(deck, key, state)
 
-            if key == 24:
+            if key == 1:
                 self.streamdeck_brightness += 10
                 if self.streamdeck_brightness > 100:
                     self.streamdeck_brightness = 100
                 deck.set_brightness(self.streamdeck_brightness)
-            elif key == 25:
+            elif key == 2:
                 self.streamdeck_brightness -= 10
                 if self.streamdeck_brightness < 5:
                     self.streamdeck_brightness = 5
                 deck.set_brightness(self.streamdeck_brightness)
+            elif key == 3:
+                subprocess.run(
+                    "gnome-terminal -- bash -c 'sudo ./.venv/bin/python ./script/stream_deck/keyboard_talk.py;bash'",
+                    shell=True,
+                    executable="/bin/bash",
+                )
             elif key == 0:
                 subprocess.run(
                     "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
