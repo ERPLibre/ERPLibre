@@ -40,6 +40,7 @@ endif
 -include ./conf/make.installation.Makefile
 -include ./conf/make.test.Makefile
 -include ./conf/make.todo.Makefile
+-include ./conf/make.streamdeck.Makefile
 
 # Include private Makefile
 -include ./conf/make.private.Makefile
