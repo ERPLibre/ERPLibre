@@ -49,6 +49,7 @@ endif
 -include ./conf/make.test.Makefile
 -include ./conf/make.ssh.Makefile
 -include ./conf/make.todo.Makefile
+-include ./conf/make.streamdeck.Makefile
 
 # Include private Makefile
 -include ./private/make.private.Makefile
