@@ -1,2 +1,3 @@
 streamdeck
 pyudev
+Pillow>=9.0.0

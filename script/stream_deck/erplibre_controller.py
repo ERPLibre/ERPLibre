@@ -7,18 +7,17 @@ import threading
 import time
 import subprocess
 import itertools
-import keyboard
+# import keyboard
 
 from fractions import Fraction
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 from StreamDeck.DeviceManager import DeviceManager
-from StreamDeck.Devices.StreamDeck import StreamDeck
 from StreamDeck.ImageHelpers import PILHelper
 from StreamDeck.Transport.Transport import TransportError
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
-FRAMES_PER_SECOND = 30
+FRAMES_PER_SECOND = 15
 KEY_SPACING = (36, 36)
 
 
@@ -189,20 +188,11 @@ class StreamDeckController(object):
             # Update requested key with the generated image.
             deck.set_key_image(key, image)
 
-    # Prints key state change information, updates rhe key image and performs any
-    # associated actions when a key is pressed.
     def key_change_callback(self, deck, key, state):
-        # Print new key state
         print("Deck {} Key {} = {}".format(deck.id(), key, state), flush=True)
-
-        # Don't try to draw an image on a touch button
         if key >= deck.key_count():
             return
-
-        # Update the key image based on the new key state.
         self.update_key_image(deck, key, state)
-
-        # Check if the key is changing to the pressed state.
         if state:
             key_style = self.get_key_style(deck, key, state)
 
@@ -222,80 +212,45 @@ class StreamDeckController(object):
                     shell=True,
                     executable="/bin/bash",
                 )
+            elif key == 4:
+                deck.reset()
             elif key == 0:
                 subprocess.run(
                     "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
                     shell=True,
                     executable="/bin/bash",
                 )
-
-            # When an exit button is pressed, close the application.
             if key_style["name"] == "exit":
-                # Use a scoped-with on the deck to ensure we're the only thread
-                # using it right now.
                 with deck:
-                    # Reset deck, clearing all button images.
                     deck.reset()
-
-                    # Close deck handle, terminating internal worker threads.
                     deck.close()
 
-    # Helper function that will run a periodic loop which updates the
-    # images on each key.
     def animate(self, deck, key_images):
         def inter_animate(fps):
-            # Convert frames per second to frame time in seconds.
-            #
-            # Frame time often cannot be fully expressed by a float type,
-            # meaning that we have to use fractions.
             frame_time = Fraction(1, fps)
-
-            # Get a starting absolute time reference point.
-            #
-            # We need to use an absolute time clock, instead of relative sleeps
-            # with a constant value, to avoid drifting.
-            #
-            # Drifting comes from an overhead of scheduling the sleep itself -
-            # it takes some small amount of time for `time.sleep()` to execute.
             next_frame = Fraction(time.monotonic())
-
-            # Periodic loop that will render every frame at the set FPS until
-            # the StreamDeck device we're using is closed.
+            has_overrun = False
             while deck.is_open():
                 try:
-                    # Use a scoped-with on the deck to ensure we're the only
-                    # thread using it right now.
                     with deck:
-                        # Update the key images with the next animation frame.
                         for key, frames in key_images.items():
-                            if key == deck.key_count() - 2:
+                            if has_overrun:
+                                next(frames)
+                            elif key == deck.key_count() - 2 or True:
                                 deck.set_key_image(key, next(frames))
                             # else:
                             #     self.update_key_image(deck, key, False)
+                    has_overrun = False
                 except TransportError as err:
                     print("TransportError: {0}".format(err))
-                    # Something went wrong while communicating with the device
-                    # (closed?) - don't re-schedule the next animation frame.
                     break
-
-                # Set the next frame absolute time reference point.
-                #
-                # We are running at the fixed `fps`, so this is as simple as
-                # adding the frame time we calculated earlier.
                 next_frame += frame_time
-
-                # Knowing the start of the next frame, we can calculate how long
-                # we have to sleep until its start.
                 sleep_interval = float(next_frame) - time.monotonic()
-
-                # Schedule the next periodic frame update.
-                #
-                # `sleep_interval` can be a negative number when current FPS
-                # setting is too high for the combination of host and
-                # StreamDeck to handle. If this is the case, we skip sleeping
-                # immediately render the next frame to try to catch up.
                 if sleep_interval >= 0:
                     time.sleep(sleep_interval)
+                else:
+                    has_overrun = False
+                    print("Overrun")
 
         return inter_animate
 

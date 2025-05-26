@@ -48,6 +48,7 @@ endif
 -include ./conf/make.installation.poetry.Makefile
 -include ./conf/make.test.Makefile
 -include ./conf/make.todo.Makefile
+-include ./conf/make.streamdeck.Makefile
 
 # Include private Makefile
 -include ./private/make.private.Makefile
