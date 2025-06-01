@@ -439,7 +439,20 @@
                     "mail_debrand",
                     "remove_odoo_enterprise",
                     "web_responsive",
-                    "web_timeline"
+                    "web_timeline",
+                    "server_action_mass_edit",
+                    "base_name_search_improved",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_listview_range_select",
+                    "web_dialog_size",
+                    "password_security",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job",
+                    "web_advanced_search"
                 ]
             }
         ]
@@ -452,6 +465,17 @@
                 "module": [
                     "website",
                     "website_odoo_debranding"
+                ]
+            }
+        ]
+    },
+    "odoo16.0_invoice_qc_ca": {
+        "base": "odoo16.0_base",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "partner_manual_rank"
                 ]
             }
         ]
@@ -482,7 +506,8 @@
             {
                 "module": [
                     "l10n_ca",
-                    "website_sale"
+                    "website_sale",
+                    "partner_manual_rank"
                 ]
             }
         ]
@@ -500,7 +525,20 @@
                     "mail_debrand",
                     "remove_odoo_enterprise",
                     "web_responsive",
-                    "web_timeline"
+                    "web_timeline",
+                    "server_action_mass_edit",
+                    "base_name_search_improved",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_listview_range_select",
+                    "web_dialog_size",
+                    "password_security",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job",
+                    "web_advanced_search"
                 ]
             }
         ]
@@ -516,7 +554,8 @@
                     "mrp",
                     "purchase_mrp",
                     "hr_payroll_community",
-                    "sale_mrp"
+                    "sale_mrp",
+                    "partner_manual_rank"
                 ]
             }
         ]
@@ -554,6 +593,7 @@
                     "om_account_asset",
                     "om_account_budget",
                     "partner_statement",
+                    "partner_manual_rank",
                     "payment",
                     "plm",
                     "portal",

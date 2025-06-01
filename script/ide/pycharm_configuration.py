@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import sys
+import io
 
 import xmltodict
 
@@ -31,6 +32,9 @@ VCS_WORKSPACE = os.path.join(IDEA_PATH, "vcs.xml")
 
 PATH_EXCLUDE_FOLDER = "./conf/pycharm_exclude_folder.txt"
 PATH_DEFAULT_CONFIGURATION = "./conf/pycharm_default_configuration.csv"
+PATH_DEFAULT_CONFIGURATION_PRIVATE = (
+    "./conf/pycharm_default_configuration.private.csv"
+)
 
 
 def get_config():
@@ -315,111 +319,116 @@ def add_configuration(dct_xml, file_name, config):
         _logger.error(f"Cannot read file '{PATH_DEFAULT_CONFIGURATION}'")
         return has_change
     with open(PATH_DEFAULT_CONFIGURATION) as txt:
-        for default_conf in csv.DictReader(txt):
-            conf_name = default_conf.get("name")
-            conf_folder = default_conf.get("folder")
-            conf_script_path = default_conf.get("script_path")
-            conf_default = bool(default_conf.get("default"))
-            if conf_default:
-                last_default = f"Python.{conf_name}"
-            conf_script_path_replace = (
-                conf_script_path
-                if not conf_script_path.startswith("./")
-                else f"$PROJECT_DIR${conf_script_path[1:]}"
-            )
-            conf_parameter = default_conf.get("parameters")
-            s_unique_key = (
-                f"d {conf_folder} s {conf_script_path} p {conf_parameter}"
-            )
-            if (
-                config.overwrite
-                or s_unique_key not in lst_unique_configuration
-            ):
-                # add it!
-                if not config.overwrite and conf_name in lst_configuration:
-                    _logger.error(
-                        f"Cannot add configuration name '{conf_name}',"
-                        " already exist. Delete it manually."
-                    )
-                else:
-                    has_change = True
-                    lst_xml_configuration_name.append(
-                        {"@itemvalue": f"Python.{conf_name}"}
-                    )
-                    conf_full = {
-                        "@name": conf_name,
-                        "@type": "PythonConfigurationType",
-                        "@factoryName": "Python",
-                        "module": {"@name": PROJECT_NAME},
-                        "option": [
-                            {
-                                "@name": "INTERPRETER_OPTIONS",
-                                "@value": "",
-                            },
-                            {"@name": "PARENT_ENVS", "@value": "true"},
-                            {
-                                "@name": "SDK_HOME",
-                                "@value": "$PROJECT_DIR$/.venv/bin/python",
-                            },
-                            {
-                                "@name": "WORKING_DIRECTORY",
-                                "@value": "$PROJECT_DIR$",
-                            },
-                            {
-                                "@name": "IS_MODULE_SDK",
-                                "@value": "false",
-                            },
-                            {
-                                "@name": "ADD_CONTENT_ROOTS",
-                                "@value": "true",
-                            },
-                            {
-                                "@name": "ADD_SOURCE_ROOTS",
-                                "@value": "true",
-                            },
-                            {
-                                "@name": "SCRIPT_NAME",
-                                "@value": conf_script_path_replace,
-                            },
-                            {
-                                "@name": "PARAMETERS",
-                                "@value": conf_parameter,
-                            },
-                            {
-                                "@name": "SHOW_COMMAND_LINE",
-                                "@value": "false",
-                            },
-                            {
-                                "@name": "EMULATE_TERMINAL",
-                                "@value": "false",
-                            },
-                            {
-                                "@name": "MODULE_MODE",
-                                "@value": "false",
-                            },
-                            {
-                                "@name": "REDIRECT_INPUT",
-                                "@value": "false",
-                            },
-                            {"@name": "INPUT_FILE", "@value": ""},
-                        ],
-                        "envs": {
-                            "env": {
-                                "@name": "PYTHONUNBUFFERED",
-                                "@value": "1",
-                            }
-                        },
-                        "EXTENSION": {
-                            "@ID": "PythonCoverageRunConfigurationExtension",
-                            "@runner": "coverage.py",
-                        },
-                        "method": {"@v": "2"},
-                    }
-                    if conf_folder:
-                        conf_full["@folderName"] = conf_folder
-                    lst_configuration_full.insert(0, conf_full)
+        content1 = txt.read()
+    if os.path.isfile(PATH_DEFAULT_CONFIGURATION_PRIVATE):
+        with open(PATH_DEFAULT_CONFIGURATION_PRIVATE) as txt:
+            content2 = txt.read()
+            merged_content = content1 + content2
+    else:
+        merged_content = content1
+    txt_merged = io.StringIO(merged_content)
+    for default_conf in csv.DictReader(txt_merged):
+        conf_name = default_conf.get("name")
+        conf_folder = default_conf.get("folder")
+        conf_script_path = default_conf.get("script_path")
+        conf_default = bool(default_conf.get("default"))
+        if conf_default:
+            last_default = f"Python.{conf_name}"
+        conf_script_path_replace = (
+            conf_script_path
+            if not conf_script_path.startswith("./")
+            else f"$PROJECT_DIR${conf_script_path[1:]}"
+        )
+        conf_parameter = default_conf.get("parameters")
+        s_unique_key = (
+            f"d {conf_folder} s {conf_script_path} p {conf_parameter}"
+        )
+        if config.overwrite or s_unique_key not in lst_unique_configuration:
+            # add it!
+            if not config.overwrite and conf_name in lst_configuration:
+                _logger.error(
+                    f"Cannot add configuration name '{conf_name}',"
+                    " already exist. Delete it manually."
+                )
             else:
-                _logger.info(f"Configuration already exist: '{s_unique_key}'")
+                has_change = True
+                lst_xml_configuration_name.append(
+                    {"@itemvalue": f"Python.{conf_name}"}
+                )
+                conf_full = {
+                    "@name": conf_name,
+                    "@type": "PythonConfigurationType",
+                    "@factoryName": "Python",
+                    "module": {"@name": PROJECT_NAME},
+                    "option": [
+                        {
+                            "@name": "INTERPRETER_OPTIONS",
+                            "@value": "",
+                        },
+                        {"@name": "PARENT_ENVS", "@value": "true"},
+                        {
+                            "@name": "SDK_HOME",
+                            "@value": "$PROJECT_DIR$/.venv/bin/python",
+                        },
+                        {
+                            "@name": "WORKING_DIRECTORY",
+                            "@value": "$PROJECT_DIR$",
+                        },
+                        {
+                            "@name": "IS_MODULE_SDK",
+                            "@value": "false",
+                        },
+                        {
+                            "@name": "ADD_CONTENT_ROOTS",
+                            "@value": "true",
+                        },
+                        {
+                            "@name": "ADD_SOURCE_ROOTS",
+                            "@value": "true",
+                        },
+                        {
+                            "@name": "SCRIPT_NAME",
+                            "@value": conf_script_path_replace,
+                        },
+                        {
+                            "@name": "PARAMETERS",
+                            "@value": conf_parameter,
+                        },
+                        {
+                            "@name": "SHOW_COMMAND_LINE",
+                            "@value": "false",
+                        },
+                        {
+                            "@name": "EMULATE_TERMINAL",
+                            "@value": "false",
+                        },
+                        {
+                            "@name": "MODULE_MODE",
+                            "@value": "false",
+                        },
+                        {
+                            "@name": "REDIRECT_INPUT",
+                            "@value": "false",
+                        },
+                        {"@name": "INPUT_FILE", "@value": ""},
+                    ],
+                    "envs": {
+                        "env": {
+                            "@name": "PYTHONUNBUFFERED",
+                            "@value": "1",
+                        }
+                    },
+                    "EXTENSION": {
+                        "@ID": "PythonCoverageRunConfigurationExtension",
+                        "@runner": "coverage.py",
+                    },
+                    "method": {"@v": "2"},
+                }
+                if conf_folder:
+                    conf_full["@folderName"] = conf_folder
+                lst_configuration_full.insert(0, conf_full)
+        else:
+            _logger.info(f"Configuration already exist: '{s_unique_key}'")
 
     if last_default:
         dct_component["@selected"] = last_default
