@@ -28,3 +28,9 @@ sudo udevadm control --reload-rules
 To diagnostic or add new material, check with
 
 ```sudo udevadm monitor```
+
+```
+# For Ubuntu to manage windows
+
+sudo apt install -y wmctrl
+```
