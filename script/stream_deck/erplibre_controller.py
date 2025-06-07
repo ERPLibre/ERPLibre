@@ -5,8 +5,10 @@
 import os
 import threading
 import time
+import io
 import subprocess
 import itertools
+import random
 # import keyboard
 
 from fractions import Fraction
@@ -14,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence, ImageOps
 from StreamDeck.DeviceManager import DeviceManager
 from StreamDeck.ImageHelpers import PILHelper
 from StreamDeck.Transport.Transport import TransportError
+from StreamDeck.Devices.StreamDeck import DialEventType, TouchscreenEventType
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
@@ -42,6 +45,27 @@ class StreamDeckController(object):
 
             # Set initial screen brightness to 30%.
             deck.set_brightness(self.streamdeck_brightness)
+
+            # Setup image
+
+            # image for idle state
+            img = Image.new('RGB', (120, 120), color='black')
+            self.released_icon = Image.open(os.path.join(ASSETS_PATH, 'Released.png')).resize((80, 80))
+            img.paste(self.released_icon, (20, 20), self.released_icon)
+
+            # img_byte_arr = io.BytesIO()
+            # img.save(img_byte_arr, format='JPEG')
+            # img_released_bytes = img_byte_arr.getvalue()
+
+            # image for pressed state
+            img = Image.new('RGB', (120, 120), color='black')
+            self.pressed_icon = Image.open(os.path.join(ASSETS_PATH, 'Pressed.png')).resize((80, 80))
+            img.paste(self.pressed_icon, (20, 20), self.pressed_icon)
+
+            # Setup Stream Deck +
+            if deck.DECK_TYPE == 'Stream Deck +':
+                deck.set_dial_callback(self.dial_change_callback)
+                deck.set_touchscreen_callback(self.touchscreen_event_callback)
 
             print("Loading animations...")
             animations = [
@@ -113,6 +137,7 @@ class StreamDeckController(object):
                 # 'Stream Deck +'
                 if id_model in ["Stream_Deck_XL", 'Stream_Deck_MK.2', 'Stream_Deck_Plus']:
                     sdc = StreamDeckController()
+                    # TODO Le init est le bogue au redémarrage sur le hub
                     sdc.init()
 
         # Observer pour les événements de manière non bloquante
@@ -128,6 +153,43 @@ class StreamDeckController(object):
         self.run()
         # TODO move into except of try
         observer.stop()
+
+    def dial_change_callback(self, deck, dial, event, value):
+        if event == DialEventType.PUSH:
+            print(f"dial pushed: {dial} state: {value}")
+            if dial == 3 and value:
+                deck.reset()
+                deck.close()
+            else:
+                # build an image for the touch lcd
+                img = Image.new('RGB', (800, 100), 'black')
+                icon = Image.open(os.path.join(ASSETS_PATH, 'Exit.png')).resize((80, 80))
+                img.paste(icon, (690, 10), icon)
+
+                for k in range(0, deck.DIAL_COUNT - 1):
+                    img.paste(self.pressed_icon if (dial == k and value) else self.released_icon, (30 + (k * 220), 10),
+                              self.pressed_icon if (dial == k and value) else self.released_icon)
+
+                img_byte_arr = io.BytesIO()
+                img.save(img_byte_arr, format='JPEG')
+                img_byte_arr = img_byte_arr.getvalue()
+
+                deck.set_touchscreen_image(img_byte_arr, 0, 0, 800, 100)
+        elif event == DialEventType.TURN:
+            print(f"dial {dial} turned: {value}")
+
+    def touchscreen_event_callback(self, deck, evt_type, value):
+        if evt_type == TouchscreenEventType.SHORT:
+            print("Short touch @ " + str(value['x']) + "," + str(value['y']))
+
+        elif evt_type == TouchscreenEventType.LONG:
+
+            print("Long touch @ " + str(value['x']) + "," + str(value['y']))
+
+        elif evt_type == TouchscreenEventType.DRAG:
+
+            print("Drag started @ " + str(value['x']) + "," + str(value['y']) + " ended @ " + str(
+                value['x_out']) + "," + str(value['y_out']))
 
     # Generates an image that is correctly sized to fit across all keys of a given
     # StreamDeck.
@@ -297,9 +359,48 @@ class StreamDeckController(object):
                     executable="/bin/bash",
                 )
             if key_style["name"] == "exit":
-                with deck:
-                    deck.reset()
-                    deck.close()
+                # with deck:
+                #     deck.reset()
+                #     deck.close()
+                # Don't exit...
+                self.print_deck_info(deck)
+
+    def print_deck_info(self, deck):
+        key_image_format = deck.key_image_format()
+        touchscreen_image_format = deck.touchscreen_image_format()
+
+        flip_description = {
+            (False, False): "not mirrored",
+            (True, False): "mirrored horizontally",
+            (False, True): "mirrored vertically",
+            (True, True): "mirrored horizontally/vertically",
+        }
+
+        print("Deck {}.".format(deck.deck_type()))
+        print("\t - ID: {}".format(deck.id()))
+        print("\t - Serial: '{}'".format(deck.get_serial_number()))
+        print("\t - Firmware Version: '{}'".format(deck.get_firmware_version()))
+        print("\t - Key Count: {} (in a {}x{} grid)".format(
+            deck.key_count(),
+            deck.key_layout()[0],
+            deck.key_layout()[1]))
+        if deck.is_visual():
+            print("\t - Key Images: {}x{} pixels, {} format, rotated {} degrees, {}".format(
+                key_image_format['size'][0],
+                key_image_format['size'][1],
+                key_image_format['format'],
+                key_image_format['rotation'],
+                flip_description[key_image_format['flip']]))
+
+            if deck.is_touch():
+                print("\t - Touchscreen: {}x{} pixels, {} format, rotated {} degrees, {}".format(
+                    touchscreen_image_format['size'][0],
+                    touchscreen_image_format['size'][1],
+                    touchscreen_image_format['format'],
+                    touchscreen_image_format['rotation'],
+                    flip_description[touchscreen_image_format['flip']]))
+        else:
+            print("\t - No Visual Output")
 
     def animate(self, deck, key_images):
         def inter_animate(fps):
