@@ -28,6 +28,7 @@ class StreamDeckController(object):
     def init(self):
         self.streamdeck_brightness = DEFAULT_BRIGHTNESS
         streamdecks = DeviceManager().enumerate()
+        self.lst_smyles = [{"x":0, "y":100},{"x":220, "y":100},{"x":220*2, "y":100},{"x":220*3, "y":100}]
 
         print("Found {} Stream Deck(s).\n".format(len(streamdecks)))
 
@@ -60,6 +61,7 @@ class StreamDeckController(object):
             # image for pressed state
             img = Image.new('RGB', (120, 120), color='black')
             self.pressed_icon = Image.open(os.path.join(ASSETS_PATH, 'Pressed.png')).resize((80, 80))
+            self.pressed_moved_icon = Image.open(os.path.join(ASSETS_PATH, 'PressedMoved.png')).resize((80, 80))
             img.paste(self.pressed_icon, (20, 20), self.pressed_icon)
 
             # Setup Stream Deck +
@@ -154,42 +156,86 @@ class StreamDeckController(object):
         # TODO move into except of try
         observer.stop()
 
-    def dial_change_callback(self, deck, dial, event, value):
+    def dial_change_callback(self, deck, dial, event, value, move_dist_x=0, is_touch=True):
         if event == DialEventType.PUSH:
             print(f"dial pushed: {dial} state: {value}")
-            if dial == 3 and value:
-                deck.reset()
-                deck.close()
-            else:
-                # build an image for the touch lcd
-                img = Image.new('RGB', (800, 100), 'black')
-                icon = Image.open(os.path.join(ASSETS_PATH, 'Exit.png')).resize((80, 80))
-                img.paste(icon, (690, 10), icon)
 
+            # if dial == 3 and value:
+            #     deck.reset()
+            #     deck.close()
+            # else:
+            # build an image for the touch lcd
+            img = Image.new('RGB', (800, 100), 'black')
+            draw = ImageDraw.Draw(img)
+            # icon = Image.open(os.path.join(ASSETS_PATH, 'Exit.png')).resize((80, 80))
+            # img.paste(icon, (690, 10), icon)
+
+            try:
+                font = ImageFont.truetype("arial.ttf", 90)  # Remplacez "arial.ttf" par le chemin de votre police
+            except IOError:
+                print("Impossible de charger la police arial.ttf. Utilisation de la police par défaut.")
+                font = ImageFont.load_default(40)  # Utilise la police par défaut de Pillow
+
+            # Only 1
+            is_feature = "uniselection"
+            is_feature = "dynamic_smyles"
+            if is_feature == "uniselection":
                 for k in range(0, deck.DIAL_COUNT - 1):
-                    img.paste(self.pressed_icon if (dial == k and value) else self.released_icon, (30 + (k * 220), 10),
-                              self.pressed_icon if (dial == k and value) else self.released_icon)
+                    move_dist_index_x = 0
+                    if dial == k:
+                        move_dist_index_x = move_dist_x
+                        print(f"Dist {move_dist_index_x} moved index {dial}")
+                        if value:
+                            icon_reaction = self.pressed_icon
+                        else:
+                            icon_reaction = self.released_icon
+                    else:
+                        icon_reaction = self.released_icon
+                    img.paste(icon_reaction, (30 + (k * 220) + move_dist_index_x, 10), icon_reaction)
+            elif is_feature == "dynamic_smyles":
+                self.lst_smyles[dial]["x"] += move_dist_x * 5 if not is_touch else move_dist_x
+                lst_x_size = [(a.get("x")-110,a.get("x")+110) for a in self.lst_smyles]
+                if move_dist_x == 0:
+                    self.lst_smyles[dial]["x"] = dial * 220
+                for k, dct_smyles in enumerate(self.lst_smyles):
+                    icon_reaction = self.released_icon
+                    x = dct_smyles.get("x")
+                    for check_min_x, check_max_x in lst_x_size[0:dial] + lst_x_size[dial:]:
+                        if check_min_x < x < check_max_x and dial != k:
+                            icon_reaction = self.pressed_moved_icon
+                    # img.paste(icon_reaction, (30 + (k * 220) + move_dist_index_x, 10), icon_reaction)
+                    img.paste(icon_reaction, (30 + x, 10), icon_reaction)
 
-                img_byte_arr = io.BytesIO()
-                img.save(img_byte_arr, format='JPEG')
-                img_byte_arr = img_byte_arr.getvalue()
+                    number_to_draw = str(k)
+                    text_color = (255, 255, 255)
+                    text_x = 30 + x
+                    text_y = 40
+                    draw.text((text_x, text_y), number_to_draw, fill=text_color, font=font)
 
-                deck.set_touchscreen_image(img_byte_arr, 0, 0, 800, 100)
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='JPEG')
+            img_byte_arr = img_byte_arr.getvalue()
+
+            deck.set_touchscreen_image(img_byte_arr, 0, 0, 800, 100)
         elif event == DialEventType.TURN:
             print(f"dial {dial} turned: {value}")
+            self.dial_change_callback(deck, dial, DialEventType.PUSH, False, move_dist_x=value, is_touch=False)
 
     def touchscreen_event_callback(self, deck, evt_type, value):
+        dial_index = int(value['x'] / 200)
         if evt_type == TouchscreenEventType.SHORT:
             print("Short touch @ " + str(value['x']) + "," + str(value['y']))
+            self.dial_change_callback(deck, dial_index, DialEventType.PUSH, True)
 
         elif evt_type == TouchscreenEventType.LONG:
-
             print("Long touch @ " + str(value['x']) + "," + str(value['y']))
+            self.dial_change_callback(deck, dial_index, DialEventType.PUSH, False)
 
         elif evt_type == TouchscreenEventType.DRAG:
-
             print("Drag started @ " + str(value['x']) + "," + str(value['y']) + " ended @ " + str(
                 value['x_out']) + "," + str(value['y_out']))
+            move_x = value['x_out'] - value['x']
+            self.dial_change_callback(deck, dial_index, DialEventType.PUSH, False, move_dist_x=move_x)
 
     # Generates an image that is correctly sized to fit across all keys of a given
     # StreamDeck.
@@ -415,7 +461,6 @@ class StreamDeckController(object):
                                 next(frames)
                             elif key > deck.key_count():
                                 deck.set_key_image(key, next(frames))
-
 
                             # else:
                             #     self.update_key_image(deck, key, False)
