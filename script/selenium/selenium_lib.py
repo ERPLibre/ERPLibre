@@ -26,6 +26,7 @@ from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
@@ -79,6 +80,9 @@ class SeleniumLib(object):
         firefox_options = webdriver.FirefoxOptions()
         if not self.config.not_private_mode:
             firefox_options.add_argument("--private")
+
+        if self.config.headless:
+            firefox_options.add_argument("--headless")
 
         # firefox_options.set_preference("browser.link.open_newwindow", 3)
         # firefox_options.set_preference("browser.link.open_newwindow.restriction", 2)
@@ -319,6 +323,12 @@ class SeleniumLib(object):
         )
 
         return ele
+
+    def get_text_from_element(
+        self, by: str = By.ID, value: str = None, timeout=5
+    ):
+        ele = self.get_element(by, value, timeout=timeout)
+        return ele.text
 
     def get_all_element(self, by: str = By.ID, value: str = None, timeout=5):
         wait = WebDriverWait(self.driver, timeout)
@@ -1204,6 +1214,11 @@ def fill_parser(parser):
         "--not_private_mode",
         action="store_true",
         help="Default is private mode.",
+    )
+    group_browser.add_argument(
+        "--headless",
+        action="store_true",
+        help="For automation without GUI.",
     )
     group_browser.add_argument(
         "--no_dark_mode",
