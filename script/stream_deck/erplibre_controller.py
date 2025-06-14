@@ -24,6 +24,8 @@ ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
 FRAMES_PER_SECOND = 100
 KEY_SPACING = (36, 36)
+default_police = ""
+# default_police = "arial.ttf"
 
 
 class StreamDeckController(object):
@@ -68,10 +70,12 @@ class StreamDeckController(object):
             # Setup image
 
             # image for idle state
+            x_default_item_size = 80
+            y_default_item_size = 80
             img = Image.new("RGB", (120, 120), color="black")
             self.released_icon = Image.open(
                 os.path.join(ASSETS_PATH, "Released.png")
-            ).resize((80, 80))
+            ).resize((x_default_item_size, y_default_item_size))
             img.paste(self.released_icon, (20, 20), self.released_icon)
 
             # img_byte_arr = io.BytesIO()
@@ -207,22 +211,57 @@ class StreamDeckController(object):
             #     deck.close()
             # else:
             # build an image for the touch lcd
-            img = Image.new("RGB", (800, 100), "black")
+            # TODO move this information somewhere
+            x_default_item_size = 80
+            y_default_item_size = 80
+            w_screen = 800
+            middle_w_screen = w_screen / 2
+            h_screen = 100
+            h_max_draw = 110
+            w_max_draw = 220
+            h_padding_draw = 10
+            w_padding_draw = 30
+            speed_increase = 5
+            x_move_speed_increase = (
+                move_dist_x * speed_increase if not is_touch else move_dist_x
+            )
+            lst_collision_position = []
+            # self.lst_smyles[dial]["x"] += (
+            #     move_dist_x * speed_increase
+            #     if not is_touch
+            #     else move_dist_x
+            # )
+
+            img = Image.new("RGB", (w_screen, h_screen), "black")
             draw = ImageDraw.Draw(img)
             # icon = Image.open(os.path.join(ASSETS_PATH, 'Exit.png')).resize((80, 80))
             # img.paste(icon, (690, 10), icon)
 
-            try:
-                font = ImageFont.truetype(
-                    "arial.ttf", 90
-                )  # Remplacez "arial.ttf" par le chemin de votre police
-            except IOError:
-                print(
-                    "Impossible de charger la police arial.ttf. Utilisation de la police par défaut."
-                )
-                font = ImageFont.load_default(
-                    40
-                )  # Utilise la police par défaut de Pillow
+            default_size_font = 40
+            default_size_font_debug = 20
+            if default_police:
+                try:
+                    font = ImageFont.truetype(
+                        default_police, default_size_font
+                    )  # Remplacez "arial.ttf" par le chemin de votre police
+                    font_debug = ImageFont.truetype(
+                        default_police, default_size_font_debug
+                    )  # Remplacez "arial.ttf" par le chemin de votre police
+                except IOError:
+                    print(
+                        "Impossible de charger la police arial.ttf. Utilisation de la police par défaut."
+                    )
+                    default_size_font = 40
+                    default_size_font_debug = 20
+                    font = ImageFont.load_default(default_size_font)
+                    font_debug = ImageFont.load_default(
+                        default_size_font_debug
+                    )
+            else:
+                default_size_font = 40
+                default_size_font_debug = 20
+                font = ImageFont.load_default(default_size_font)
+                font_debug = ImageFont.load_default(default_size_font_debug)
 
             # Only 1
             is_feature = "uniselection"
@@ -241,19 +280,23 @@ class StreamDeckController(object):
                         icon_reaction = self.released_icon
                     img.paste(
                         icon_reaction,
-                        (30 + (k * 220) + move_dist_index_x, 10),
+                        (
+                            w_padding_draw
+                            + (k * w_max_draw)
+                            + move_dist_index_x,
+                            h_padding_draw,
+                        ),
                         icon_reaction,
                     )
             elif is_feature == "dynamic_smyles":
-                self.lst_smyles[dial]["x"] += (
-                    move_dist_x * 5 if not is_touch else move_dist_x
-                )
+                self.lst_smyles[dial]["x"] += x_move_speed_increase
                 lst_x_size = [
-                    (a.get("x") - 110, a.get("x") + 110)
+                    (a.get("x") - h_max_draw, a.get("x") + h_max_draw)
                     for a in self.lst_smyles
                 ]
                 if move_dist_x == 0:
-                    self.lst_smyles[dial]["x"] = dial * 220
+                    self.lst_smyles[dial]["x"] = dial * w_max_draw
+                lst_mapping = []
                 for k, dct_smyles in enumerate(self.lst_smyles):
                     if move_dist_x >= 0:
                         icon_reaction = self.pressed_moved_icon
@@ -269,7 +312,120 @@ class StreamDeckController(object):
                         if check_min_x < x < check_max_x and dial != k:
                             icon_reaction = self.released_icon
                     # img.paste(icon_reaction, (30 + (k * 220) + move_dist_index_x, 10), icon_reaction)
-                    img.paste(icon_reaction, (30 + x, 10), icon_reaction)
+                    new_x = w_padding_draw + x
+                    new_y = h_padding_draw
+                    feature_resize = "linear_from_start"
+                    if feature_resize == "linear_from_start":
+                        new_size_h = max(
+                            w_padding_draw,
+                            int(((new_x / 2) / middle_w_screen) * h_screen),
+                        )
+                        original_icon_copy = icon_reaction.copy()
+                        icon_reaction_resize = original_icon_copy.resize(
+                            (new_size_h, new_size_h)
+                        )
+                    else:
+                        icon_reaction_resize = icon_reaction
+                        new_size_h = y_default_item_size
+                    lst_mapping.append(
+                        {
+                            "x": new_x,
+                            "y": new_y,
+                            "icon": icon_reaction_resize,
+                            "position_item": k,
+                            "w": new_size_h,
+                            "h": new_size_h,
+                        }
+                    )
+
+                is_feature_push_collision = True
+
+                def update_collision(
+                    dct_mapping_other_item_inner,
+                    k_index,
+                    dial_inner,
+                    check_x_min,
+                    check_x_max,
+                ):
+                    # k_index static item
+                    # dial_inner moving item
+                    diff_x_inner = 0
+                    x_other_item = dct_mapping_other_item_inner["x"]
+                    w_other_item = dct_mapping_other_item_inner["w"]
+                    y_other_item = dct_mapping_other_item_inner["y"]
+                    # x_min_check = int(x_other_item)
+                    # x_max_check = int(x_other_item + w_max_draw / 2)
+                    x_min_check = x_other_item
+                    x_max_check = x_other_item + w_other_item
+                    check_x_max_2 = check_x_max - w_other_item
+                    # if check_x_max > x_min_check and check_x_min < x_max_check:
+                    #     print(f"detect collision {k_index} with {dial_inner}")
+                    #
+                    # elif x_min_check < check_x_min < x_max_check:
+                    if x_min_check < check_x_min < x_max_check:
+                        if check_x_min < x_max_check < check_x_max_2:
+                            west_switch = True
+                        else:
+                            west_switch = False
+                        print(f"detect collision {k_index} with {dial_inner}")
+                        if x_min_check < check_x_min:
+                            # diff_x_inner = x_other_item + check_x + w_max_draw
+                            diff_x_inner = x_other_item - (
+                                x_max_check - check_x_min
+                            )
+                            diff_x_inner = check_x_min - x_max_check
+                        else:
+                            diff_x_inner = x_other_item - (
+                                x_max_check - check_x_min
+                            )
+                            # diff_x_inner = x_other_item - check_x + w_max_draw
+                    return diff_x_inner
+
+                if is_feature_push_collision:
+                    for k, dct_smyles in enumerate(self.lst_smyles):
+                        dct_mapping = lst_mapping[k]
+                        # Collision
+                        check_x = dct_mapping.get("x")
+                        check_y = dct_mapping.get("y")
+
+                    for dct_mapping_other_item in lst_mapping:
+                        position_other_item = dct_mapping_other_item[
+                            "position_item"
+                        ]
+                        if position_other_item != dial:
+                            diff_x = update_collision(
+                                dct_mapping_other_item,
+                                dct_mapping_other_item.get("position_item"),
+                                dial,
+                                check_x,
+                                check_x + dct_mapping.get("w"),
+                            )
+                            if abs(diff_x) > 0:
+                                dct_mapping_other_item["x"] += diff_x
+                                # print(f"colision detected {position_other_item}")
+                                lst_collision_position.append(
+                                    position_other_item
+                                )
+                    # for dct_mapping_other_item in lst_mapping[:dial]:
+                    #     update_collision(dct_mapping_other_item, k, dial)
+                    # for dct_mapping_other_item in lst_mapping[dial + 1:]:
+                    #     update_collision(dct_mapping_other_item, k, dial)
+
+                    # print("Check collision")
+
+                for k, dct_smyles in enumerate(self.lst_smyles):
+                    dct_mapping = lst_mapping[k]
+                    icon = dct_mapping.get("icon")
+                    x = dct_mapping.get("x")
+                    y = dct_mapping.get("y")
+                    w = dct_mapping.get("w")
+                    h = dct_mapping.get("h")
+                    # Draw
+                    img.paste(
+                        icon,
+                        (x, y),
+                        icon,
+                    )
 
                     number_to_draw = str(k)
                     text_color = (255, 255, 255)
@@ -282,11 +438,67 @@ class StreamDeckController(object):
                         font=font,
                     )
 
+                    is_debug = True
+                    if is_debug:
+                        x_str = str(x)
+                        extra_x = 0
+                        if len(x_str) >= 3:
+                            extra_x = 10
+                        # TODO move this into method
+                        # new_size_h = max(
+                        #     w_padding_draw,
+                        #     int(((x / 2) / middle_w_screen) * h_screen),
+                        # )
+                        if x < 40:
+                            text_x = x + w + extra_x
+                        else:
+                            text_x = x - 40 - extra_x
+                        if k in lst_collision_position:
+                            text_color = (255, 0, 0)
+                        else:
+                            text_color = (0, 255, 0)
+
+                        number_to_draw = f"x{x}"
+                        text_y = h_padding_draw + default_size_font_debug * 0
+                        draw.text(
+                            (text_x, text_y),
+                            number_to_draw,
+                            fill=text_color,
+                            font=font_debug,
+                        )
+
+                        number_to_draw = f"y{y}"
+                        text_y = h_padding_draw + default_size_font_debug * 1
+                        draw.text(
+                            (text_x, text_y),
+                            number_to_draw,
+                            fill=text_color,
+                            font=font_debug,
+                        )
+
+                        number_to_draw = f"w{w}"
+                        text_y = h_padding_draw + default_size_font_debug * 2
+                        draw.text(
+                            (text_x, text_y),
+                            number_to_draw,
+                            fill=text_color,
+                            font=font_debug,
+                        )
+
+                        number_to_draw = f"h{h}"
+                        text_y = h_padding_draw + default_size_font_debug * 3
+                        draw.text(
+                            (text_x, text_y),
+                            number_to_draw,
+                            fill=text_color,
+                            font=font_debug,
+                        )
+
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format="JPEG")
             img_byte_arr = img_byte_arr.getvalue()
 
-            deck.set_touchscreen_image(img_byte_arr, 0, 0, 800, 100)
+            deck.set_touchscreen_image(img_byte_arr, 0, 0, w_screen, h_screen)
         elif event == DialEventType.TURN:
             print(f"dial {dial} turned: {value}")
             self.dial_change_callback(
