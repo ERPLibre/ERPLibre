@@ -34,7 +34,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 # TODO maybe use TODO lib
 CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./script/todo/todo_override.json"
+CONFIG_OVERRIDE_FILE = "./private/todo.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 

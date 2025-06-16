@@ -87,7 +87,7 @@ except ModuleNotFoundError as e:
 _logger = logging.getLogger(__name__)
 
 CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./script/todo/todo_override.json"
+CONFIG_OVERRIDE_FILE = "./private/todo.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 
