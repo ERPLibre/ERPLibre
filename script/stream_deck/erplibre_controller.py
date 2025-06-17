@@ -25,6 +25,8 @@ DEFAULT_BRIGHTNESS = 30
 FRAMES_PER_SECOND = 100
 KEY_SPACING = (36, 36)
 default_police = ""
+is_all_animation_test = False
+is_big_image = True
 # default_police = "arial.ttf"
 
 
@@ -68,6 +70,7 @@ class StreamDeckController(object):
             deck.set_brightness(self.streamdeck_brightness)
 
             # Setup image
+            # TODO move this information into scenario
 
             # image for idle state
             x_default_item_size = 80
@@ -104,7 +107,6 @@ class StreamDeckController(object):
             ]
             print("Ready.")
 
-            is_big_image = True
             if not is_big_image:
                 # Set initial key images.
                 key_images = dict()
@@ -146,7 +148,10 @@ class StreamDeckController(object):
             # Kick off the key image animating thread.
 
             threading.Thread(
-                target=self.animate(deck, key_images), args=[FRAMES_PER_SECOND]
+                target=self.animate(
+                    deck, key_images, is_big_image=is_big_image
+                ),
+                args=[FRAMES_PER_SECOND],
             ).start()
 
             # Register callback function for when a key state changes.
@@ -791,7 +796,7 @@ class StreamDeckController(object):
         else:
             print("\t - No Visual Output")
 
-    def animate(self, deck, key_images):
+    def animate(self, deck, key_images, is_big_image=False):
         def inter_animate(fps):
             frame_time = Fraction(1, fps)
             next_frame = Fraction(time.monotonic())
@@ -802,7 +807,11 @@ class StreamDeckController(object):
                         for key, frames in key_images.items():
                             if has_overrun:
                                 next(frames)
-                            elif key > deck.key_count():
+                            elif not is_big_image and (
+                                key == deck.key_count() - 2
+                                or is_all_animation_test
+                            ):
+                                # TODO more configuration for animation case
                                 deck.set_key_image(key, next(frames))
 
                             # else:
