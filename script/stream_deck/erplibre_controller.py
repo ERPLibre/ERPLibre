@@ -201,7 +201,14 @@ class StreamDeckController(object):
         observer.stop()
 
     def dial_change_callback(
-        self, deck, dial, event, value, move_dist_x=0, is_touch=True
+        self,
+        deck,
+        dial,
+        event,
+        value,
+        move_dist_x=0,
+        is_touch=True,
+        is_direction_left=False,
     ):
         if event == DialEventType.PUSH:
             print(f"dial pushed: {dial} state: {value}")
@@ -346,6 +353,7 @@ class StreamDeckController(object):
                     dial_inner,
                     check_x_min,
                     check_x_max,
+                    is_direction_left,
                 ):
                     # k_index static item
                     # dial_inner moving item
@@ -362,11 +370,16 @@ class StreamDeckController(object):
                     #     print(f"detect collision {k_index} with {dial_inner}")
                     #
                     # elif x_min_check < check_x_min < x_max_check:
-                    if x_min_check < check_x_min < x_max_check:
-                        if check_x_min < x_max_check < check_x_max_2:
-                            west_switch = True
-                        else:
-                            west_switch = False
+                    if (
+                        x_min_check < check_x_min < x_max_check
+                        and is_direction_left
+                        or x_min_check < check_x_min < x_max_check
+                        and not is_direction_left
+                    ):
+                        # if check_x_min < x_max_check < check_x_max_2:
+                        #     west_switch = True
+                        # else:
+                        #     west_switch = False
                         print(f"detect collision {k_index} with {dial_inner}")
                         if x_min_check < check_x_min:
                             # diff_x_inner = x_other_item + check_x + w_max_draw
@@ -399,6 +412,7 @@ class StreamDeckController(object):
                                 dial,
                                 check_x,
                                 check_x + dct_mapping.get("w"),
+                                is_direction_left,
                             )
                             if abs(diff_x) > 0:
                                 dct_mapping_other_item["x"] += diff_x
@@ -508,6 +522,7 @@ class StreamDeckController(object):
                 False,
                 move_dist_x=value,
                 is_touch=False,
+                is_direction_left=value < 0,
             )
 
     def touchscreen_event_callback(self, deck, evt_type, value):
