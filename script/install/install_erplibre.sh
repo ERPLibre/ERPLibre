@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-python -m venv .venv.erplibre
+python3 -m venv .venv.erplibre
 source .venv.erplibre/bin/activate
-pip install -r requirement/erplibre_require-ments.txt
+pip3 install -r requirement/erplibre_require-ments.txt
