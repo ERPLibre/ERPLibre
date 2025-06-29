@@ -18,8 +18,8 @@ def restart_script(last_error):
     if os.path.exists(".venv.erplibre") and not os.path.exists(file_error_path):
         # TODO mettre check import suivant ne vont pas planter
         try:
-            with open(file_error_path, "w") as file:
-                file.write(str(last_error))
+            with open(file_error_path, "w") as f_file:
+                f_file.write(str(last_error))
                 pass  # The file is created and closed here, no content is written
             os.execv("/bin/bash",
                      ["/bin/bash", "-c", "source ./.venv.erplibre/bin/activate && exec python " + " ".join(sys.argv)])
@@ -116,9 +116,9 @@ except ModuleNotFoundError as e:
                 )
             except subprocess.CalledProcessError as e:
                 print(f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}.")
-            print("Wait after installation and open projects by terminal.")
-            print("make open_terminal")
-            restart_script()
+                print("Wait after installation and open projects by terminal.")
+                print("make open_terminal")
+                restart_script(str(e))
         else:
             print("Nothing to do, you need a fresh installation to continue.")
     #     sys.exit(0)
