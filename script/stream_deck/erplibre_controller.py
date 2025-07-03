@@ -276,17 +276,23 @@ class StreamDeckController(object):
         # TODO move this information somewhere
         x_default_item_size = 80
         y_default_item_size = 80
-        w_screen = 800
+
+        # w_screen = 800
+        w_screen = deck.SCREEN_PIXEL_WIDTH or deck.TOUCHSCREEN_PIXEL_WIDTH
         middle_w_screen = w_screen / 2
-        h_screen = 100
-        h_max_draw = 110
-        w_max_draw = 220
+        # h_screen = 100
+        # h_max_draw = 110
+        # w_max_draw = 220
+        h_screen = deck.SCREEN_PIXEL_HEIGHT or deck.TOUCHSCREEN_PIXEL_HEIGHT
+        h_max_draw = h_screen + 10
+        w_max_draw = int(w_screen / 4 + w_screen / 40)
         h_padding_draw = 10
         w_padding_draw = 30
         speed_increase = 5
         x_move_speed_increase = (
-            move_dist_x * speed_increase if not is_touch else move_dist_x
-        )
+                                    move_dist_x * speed_increase if not is_touch else move_dist_x
+                                ) or 0
+        dial = dial or 0
         lst_collision_position = []
         # self.lst_smyles[dial]["x"] += (
         #     move_dist_x * speed_increase
@@ -553,6 +559,8 @@ class StreamDeckController(object):
                         font=font_debug,
                     )
 
+        if deck.KEY_FLIP == (True, True):
+            img = img.transpose(Image.Transpose.ROTATE_180)
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format="JPEG")
         img_byte_arr = img_byte_arr.getvalue()
@@ -562,7 +570,10 @@ class StreamDeckController(object):
         self.last_is_move_dist_x = move_dist_x
         self.last_is_touch = is_touch
         self.last_is_direction_left = is_direction_left
-        deck.set_touchscreen_image(img_byte_arr, 0, 0, w_screen, h_screen)
+        if deck.DECK_TOUCH:
+            deck.set_touchscreen_image(img_byte_arr, 0, 0, w_screen, h_screen)
+        else:
+            deck.set_screen_image(img_byte_arr)
 
     def touchscreen_event_callback(self, deck, evt_type, value):
         dial_index = int(value["x"] / 200)
