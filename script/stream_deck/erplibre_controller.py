@@ -82,31 +82,37 @@ class StreamDeckController(object):
             # TODO move this information into scenario
 
             # image for idle state
-            x_default_item_size = 80
-            y_default_item_size = 80
-            img = Image.new("RGB", (120, 120), color="black")
+            x_default_item_size = int(deck.KEY_PIXEL_WIDTH * .6666)
+            y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * .6666)
+            x_default_item_smaller_size = int(deck.KEY_PIXEL_WIDTH * .16666)
+            y_default_item_smaller_size = int(deck.KEY_PIXEL_HEIGHT * .16666)
+            img = Image.new("RGB", (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT), color="black")
             self.released_icon = Image.open(
                 os.path.join(ASSETS_PATH, "Released.png")
             ).resize((x_default_item_size, y_default_item_size))
-            img.paste(self.released_icon, (20, 20), self.released_icon)
+            img.paste(self.released_icon, (x_default_item_smaller_size, y_default_item_smaller_size),
+                      self.released_icon)
 
             # img_byte_arr = io.BytesIO()
             # img.save(img_byte_arr, format='JPEG')
             # img_released_bytes = img_byte_arr.getvalue()
 
             # image for pressed state
-            img = Image.new("RGB", (120, 120), color="black")
+            img = Image.new("RGB", (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT), color="black")
             self.pressed_icon = Image.open(
                 os.path.join(ASSETS_PATH, "Pressed.png")
-            ).resize((80, 80))
+            ).resize((x_default_item_size, y_default_item_size))
             self.pressed_moved_icon = Image.open(
                 os.path.join(ASSETS_PATH, "PressedMoved.png")
-            ).resize((80, 80))
-            img.paste(self.pressed_icon, (20, 20), self.pressed_icon)
+            ).resize((x_default_item_size, y_default_item_size))
+            img.paste(self.pressed_icon, (x_default_item_smaller_size, y_default_item_smaller_size), self.pressed_icon)
 
-            # Setup Stream Deck +
-            if deck.DECK_TYPE == "Stream Deck +":
+            # Setup dial controller like Stream Deck +
+            if deck.DIAL_COUNT > 0:
                 deck.set_dial_callback(self.dial_change_callback)
+
+            # Setup dial controller like Stream Deck +
+            if deck.DECK_TOUCH:
                 deck.set_touchscreen_callback(self.touchscreen_event_callback)
 
             print("Loading animations...")
@@ -274,8 +280,10 @@ class StreamDeckController(object):
         # else:
         # build an image for the touch lcd
         # TODO move this information somewhere
-        x_default_item_size = 80
-        y_default_item_size = 80
+        x_default_item_size = int(deck.KEY_PIXEL_WIDTH * .6666)
+        y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * .6666)
+        x_font_size = int(x_default_item_size / 2)
+        x_font_debug_size = int(x_default_item_size / 4)
 
         # w_screen = 800
         w_screen = deck.SCREEN_PIXEL_WIDTH or deck.TOUCHSCREEN_PIXEL_WIDTH
@@ -285,7 +293,7 @@ class StreamDeckController(object):
         # w_max_draw = 220
         h_screen = deck.SCREEN_PIXEL_HEIGHT or deck.TOUCHSCREEN_PIXEL_HEIGHT
         h_max_draw = h_screen + 10
-        w_max_draw = int(w_screen / 4 + w_screen / 40)
+        w_max_draw = int(w_screen / 4 + w_screen / x_font_size)
         h_padding_draw = 10
         w_padding_draw = 30
         speed_increase = 5
@@ -305,29 +313,23 @@ class StreamDeckController(object):
         # icon = Image.open(os.path.join(ASSETS_PATH, 'Exit.png')).resize((80, 80))
         # img.paste(icon, (690, 10), icon)
 
-        default_size_font = 40
-        default_size_font_debug = 20
         if default_police:
             try:
                 font = ImageFont.truetype(
-                    default_police, default_size_font
+                    default_police, x_font_size
                 )  # Remplacez "arial.ttf" par le chemin de votre police
                 font_debug = ImageFont.truetype(
-                    default_police, default_size_font_debug
+                    default_police, x_font_debug_size
                 )  # Remplacez "arial.ttf" par le chemin de votre police
             except IOError:
                 print(
                     "Impossible de charger la police arial.ttf. Utilisation de la police par défaut."
                 )
-                default_size_font = 40
-                default_size_font_debug = 20
-                font = ImageFont.load_default(default_size_font)
-                font_debug = ImageFont.load_default(default_size_font_debug)
+                font = ImageFont.load_default(x_font_size)
+                font_debug = ImageFont.load_default(x_font_debug_size)
         else:
-            default_size_font = 40
-            default_size_font_debug = 20
-            font = ImageFont.load_default(default_size_font)
-            font_debug = ImageFont.load_default(default_size_font_debug)
+            font = ImageFont.load_default(x_font_size)
+            font_debug = ImageFont.load_default(x_font_debug_size)
         # Only 1
         if is_feature == "uniselection":
             for k in range(0, deck.DIAL_COUNT - 1):
@@ -496,7 +498,7 @@ class StreamDeckController(object):
                 number_to_draw = str(k)
                 text_color = (255, 255, 255)
                 text_x = x
-                text_y = 40
+                text_y = x_font_size
                 draw.text(
                     (text_x, text_y),
                     number_to_draw,
@@ -514,17 +516,17 @@ class StreamDeckController(object):
                     #     w_padding_draw,
                     #     int(((x / 2) / middle_w_screen) * h_screen),
                     # )
-                    if x < 40:
+                    if x < x_font_size:
                         text_x = x + w + extra_x
                     else:
-                        text_x = x - 40 - extra_x
+                        text_x = x - x_font_size - extra_x
                     if k in lst_collision_position:
                         text_color = (255, 0, 0)
                     else:
                         text_color = (0, 255, 0)
 
                     number_to_draw = f"x{x}"
-                    text_y = h_padding_draw + default_size_font_debug * 0
+                    text_y = h_padding_draw + x_font_debug_size * 0
                     draw.text(
                         (text_x, text_y),
                         number_to_draw,
@@ -533,7 +535,7 @@ class StreamDeckController(object):
                     )
 
                     number_to_draw = f"y{y}"
-                    text_y = h_padding_draw + default_size_font_debug * 1
+                    text_y = h_padding_draw + x_font_debug_size * 1
                     draw.text(
                         (text_x, text_y),
                         number_to_draw,
@@ -542,7 +544,7 @@ class StreamDeckController(object):
                     )
 
                     number_to_draw = f"w{w}"
-                    text_y = h_padding_draw + default_size_font_debug * 2
+                    text_y = h_padding_draw + x_font_debug_size * 2
                     draw.text(
                         (text_x, text_y),
                         number_to_draw,
@@ -551,7 +553,7 @@ class StreamDeckController(object):
                     )
 
                     number_to_draw = f"h{h}"
-                    text_y = h_padding_draw + default_size_font_debug * 3
+                    text_y = h_padding_draw + x_font_debug_size * 3
                     draw.text(
                         (text_x, text_y),
                         number_to_draw,
