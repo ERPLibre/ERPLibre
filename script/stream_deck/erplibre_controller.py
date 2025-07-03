@@ -29,6 +29,8 @@ is_all_animation_test = False
 is_big_image = True
 # is_feature = "uniselection"
 is_feature = "dynamic_smyles"
+
+
 # default_police = "arial.ttf"
 
 
@@ -37,10 +39,10 @@ class StreamDeckController(object):
         self.streamdeck_brightness = DEFAULT_BRIGHTNESS
         streamdecks = DeviceManager().enumerate()
         self.lst_smyles = [
-            {"x": 0, "y": 100},
-            {"x": 220, "y": 100},
-            {"x": 220 * 2, "y": 100},
-            {"x": 220 * 3, "y": 100},
+            {"x": 0, "y": 10},
+            {"x": 220, "y": 10},
+            {"x": 220 * 2, "y": 10},
+            {"x": 220 * 3, "y": 10},
         ]
         self.is_debug = False
         self.last_generated_img_byte_arr = None
@@ -381,7 +383,7 @@ class StreamDeckController(object):
                 if feature_resize == "linear_from_start":
                     new_size_h = max(
                         w_padding_draw,
-                        int(((new_x / 2) / middle_w_screen) * h_screen),
+                        int(((new_x / 2) / middle_w_screen) * h_screen) - h_padding_draw,
                     )
                     original_icon_copy = icon_reaction.copy()
                     icon_reaction_resize = original_icon_copy.resize(
