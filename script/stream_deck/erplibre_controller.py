@@ -29,6 +29,7 @@ is_all_animation_test = False
 is_big_image = True
 # is_feature = "uniselection"
 is_feature = "dynamic_smyles"
+feature_resize = "linear_from_start"
 
 
 # default_police = "arial.ttf"
@@ -379,7 +380,7 @@ class StreamDeckController(object):
                 # img.paste(icon_reaction, (30 + (k * 220) + move_dist_index_x, 10), icon_reaction)
                 new_x = w_padding_draw + x
                 new_y = h_padding_draw
-                feature_resize = "linear_from_start"
+
                 if feature_resize == "linear_from_start":
                     new_size_h = max(
                         w_padding_draw,
