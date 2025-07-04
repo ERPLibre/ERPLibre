@@ -11,6 +11,8 @@ import threading
 import time
 from fractions import Fraction
 
+import cv2
+import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
 from StreamDeck.DeviceManager import DeviceManager
 from StreamDeck.Devices.StreamDeck import DialEventType, TouchscreenEventType
@@ -23,10 +25,16 @@ from StreamDeck.Transport.Transport import TransportError
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
 FRAMES_PER_SECOND = 100
-KEY_SPACING = (36, 36)
+KEY_SPACING_PADDING_PLUS = (int(36 * 2.7), int(36 * 1))
+KEY_SPACING_PADDING = (int(36), int(36))
 default_police = ""
 is_all_animation_test = False
-is_big_image = True
+BIG_IMAGE_TYPE = "Animation"
+# BIG_IMAGE_TYPE = "Big image"
+# BIG_IMAGE_TYPE = "Webcam"
+WEBCAM_TYPE = "local"
+# WEBCAM_TYPE = "by_ip"
+WEBCAM_IP_URL = "http://192.168.1.1:8080/shot.jpg"
 # is_feature = "uniselection"
 is_feature = "dynamic_smyles"
 feature_resize = "linear_from_start"
@@ -67,7 +75,7 @@ class StreamDeckController(object):
                 try:
                     deck.open()
                 except TransportError:
-                    print("ok")
+                    print("Error Transport on deck opening")
             deck.reset()
 
             print(
@@ -81,34 +89,54 @@ class StreamDeckController(object):
             # Set initial screen brightness to 30%.
             deck.set_brightness(self.streamdeck_brightness)
 
+            if deck.DECK_TYPE == "Stream Deck +":
+                key_spacing = KEY_SPACING_PADDING_PLUS
+            else:
+                key_spacing = KEY_SPACING_PADDING
+
             # Setup image
             # TODO move this information into scenario
 
             # image for idle state
-            x_default_item_size = int(deck.KEY_PIXEL_WIDTH * .6666)
-            y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * .6666)
-            x_default_item_smaller_size = int(deck.KEY_PIXEL_WIDTH * .16666)
-            y_default_item_smaller_size = int(deck.KEY_PIXEL_HEIGHT * .16666)
-            img = Image.new("RGB", (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT), color="black")
+            x_default_item_size = int(deck.KEY_PIXEL_WIDTH * 0.6666)
+            y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * 0.6666)
+            x_default_item_smaller_size = int(deck.KEY_PIXEL_WIDTH * 0.16666)
+            y_default_item_smaller_size = int(deck.KEY_PIXEL_HEIGHT * 0.16666)
+            img = Image.new(
+                "RGB",
+                (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT),
+                color="black",
+            )
             self.released_icon = Image.open(
                 os.path.join(ASSETS_PATH, "Released.png")
             ).resize((x_default_item_size, y_default_item_size))
-            img.paste(self.released_icon, (x_default_item_smaller_size, y_default_item_smaller_size),
-                      self.released_icon)
+            img.paste(
+                self.released_icon,
+                (x_default_item_smaller_size, y_default_item_smaller_size),
+                self.released_icon,
+            )
 
             # img_byte_arr = io.BytesIO()
             # img.save(img_byte_arr, format='JPEG')
             # img_released_bytes = img_byte_arr.getvalue()
 
             # image for pressed state
-            img = Image.new("RGB", (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT), color="black")
+            img = Image.new(
+                "RGB",
+                (deck.KEY_PIXEL_WIDTH, deck.KEY_PIXEL_HEIGHT),
+                color="black",
+            )
             self.pressed_icon = Image.open(
                 os.path.join(ASSETS_PATH, "Pressed.png")
             ).resize((x_default_item_size, y_default_item_size))
             self.pressed_moved_icon = Image.open(
                 os.path.join(ASSETS_PATH, "PressedMoved.png")
             ).resize((x_default_item_size, y_default_item_size))
-            img.paste(self.pressed_icon, (x_default_item_smaller_size, y_default_item_smaller_size), self.pressed_icon)
+            img.paste(
+                self.pressed_icon,
+                (x_default_item_smaller_size, y_default_item_smaller_size),
+                self.pressed_icon,
+            )
 
             # Setup dial controller like Stream Deck +
             if deck.DIAL_COUNT > 0:
@@ -125,7 +153,7 @@ class StreamDeckController(object):
             ]
             print("Ready.")
 
-            if not is_big_image:
+            if BIG_IMAGE_TYPE == "Animation":
                 # Set initial key images.
                 key_images = dict()
                 for key in range(deck.key_count()):
@@ -137,11 +165,11 @@ class StreamDeckController(object):
                     # else:
                     #     self.update_key_image(deck, key, False)
                     self.update_key_image(deck, key, False)
-            else:
+            elif BIG_IMAGE_TYPE == "Big image":
                 # Load and resize a source image so that it will fill the given
                 # StreamDeck.
                 image = self.create_full_deck_sized_image(
-                    deck, KEY_SPACING, "Harold.jpg"
+                    deck, key_spacing, image_filename="Harold.jpg"
                 )
 
                 print(
@@ -154,20 +182,71 @@ class StreamDeckController(object):
                 key_images = dict()
                 for k in range(deck.key_count()):
                     key_images[k] = self.crop_key_image_from_deck_sized_image(
-                        deck, image, KEY_SPACING, k
+                        deck, image, key_spacing, k
                     )
                 # Draw the individual key images to each of the keys.
                 for k in range(deck.key_count()):
                     key_image = key_images[k]
 
                     # Show the section of the main image onto the key.
-                    deck.set_key_image(k, key_image)
+                    with deck:
+                        deck.set_key_image(k, key_image)
+            elif BIG_IMAGE_TYPE == "Webcam":
+                if WEBCAM_TYPE == "local":
+                    # Open the default camera
+                    cam = cv2.VideoCapture(0)
+
+                    # Get the default frame width and height
+                    frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                else:
+                    pass
+                while True:
+                    if WEBCAM_TYPE == "local":
+                        ret, frame = cam.read()
+                        # Convert the OpenCV BGR image to RGB
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                        # Convert the NumPy array (RGB image) to a PIL Image
+                        pil_image = Image.fromarray(rgb_frame)
+                    elif WEBCAM_TYPE == "by_ip":
+                        img_resp = requests.get(WEBCAM_IP_URL)
+                        # img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
+                        pil_image = Image.open(io.BytesIO(img_resp.content))
+                    else:
+                        break
+
+                    image = self.create_full_deck_sized_image(
+                        deck, key_spacing, image_pil=pil_image
+                    )
+
+                    print(
+                        "Created full deck image size of {}x{} pixels.".format(
+                            image.width, image.height
+                        )
+                    )
+
+                    # Extract out the section of the image that is occupied by each key.
+                    key_images = dict()
+                    for k in range(deck.key_count()):
+                        key_images[k] = (
+                            self.crop_key_image_from_deck_sized_image(
+                                deck, image, key_spacing, k
+                            )
+                        )
+                    # Draw the individual key images to each of the keys.
+                    for k in range(deck.key_count()):
+                        key_image = key_images[k]
+
+                        # Show the section of the main image onto the key.
+                        with deck:
+                            deck.set_key_image(k, key_image)
 
             # Kick off the key image animating thread.
 
             threading.Thread(
                 target=self.animate(
-                    deck, key_images, is_big_image=is_big_image
+                    deck, key_images, BIG_IMAGE_TYPE=BIG_IMAGE_TYPE
                 ),
                 args=[FRAMES_PER_SECOND],
             ).start()
@@ -283,8 +362,8 @@ class StreamDeckController(object):
         # else:
         # build an image for the touch lcd
         # TODO move this information somewhere
-        x_default_item_size = int(deck.KEY_PIXEL_WIDTH * .6666)
-        y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * .6666)
+        x_default_item_size = int(deck.KEY_PIXEL_WIDTH * 0.6666)
+        y_default_item_size = int(deck.KEY_PIXEL_HEIGHT * 0.6666)
         x_font_size = int(x_default_item_size / 2)
         x_font_debug_size = int(x_default_item_size / 4)
 
@@ -301,8 +380,8 @@ class StreamDeckController(object):
         w_padding_draw = 30
         speed_increase = 5
         x_move_speed_increase = (
-                                    move_dist_x * speed_increase if not is_touch else move_dist_x
-                                ) or 0
+            move_dist_x * speed_increase if not is_touch else move_dist_x
+        ) or 0
         dial = dial or 0
         lst_collision_position = []
         # self.lst_smyles[dial]["x"] += (
@@ -384,7 +463,8 @@ class StreamDeckController(object):
                 if feature_resize == "linear_from_start":
                     new_size_h = max(
                         w_padding_draw,
-                        int(((new_x / 2) / middle_w_screen) * h_screen) - h_padding_draw,
+                        int(((new_x / 2) / middle_w_screen) * h_screen)
+                        - h_padding_draw,
                     )
                     original_icon_copy = icon_reaction.copy()
                     icon_reaction_resize = original_icon_copy.resize(
@@ -575,10 +655,13 @@ class StreamDeckController(object):
         self.last_is_move_dist_x = move_dist_x
         self.last_is_touch = is_touch
         self.last_is_direction_left = is_direction_left
-        if deck.DECK_TOUCH:
-            deck.set_touchscreen_image(img_byte_arr, 0, 0, w_screen, h_screen)
-        else:
-            deck.set_screen_image(img_byte_arr)
+        with deck:
+            if deck.DECK_TOUCH:
+                deck.set_touchscreen_image(
+                    img_byte_arr, 0, 0, w_screen, h_screen
+                )
+            else:
+                deck.set_screen_image(img_byte_arr)
 
     def touchscreen_event_callback(self, deck, evt_type, value):
         dial_index = int(value["x"] / 200)
@@ -612,7 +695,9 @@ class StreamDeckController(object):
 
     # Generates an image that is correctly sized to fit across all keys of a given
     # StreamDeck.
-    def create_full_deck_sized_image(self, deck, key_spacing, image_filename):
+    def create_full_deck_sized_image(
+        self, deck, key_spacing, image_filename=None, image_pil=None
+    ):
         key_rows, key_cols = deck.key_layout()
         key_width, key_height = deck.key_image_format()["size"]
         spacing_x, spacing_y = key_spacing
@@ -635,9 +720,14 @@ class StreamDeckController(object):
         # Resize the image to suit the StreamDeck's full image size. We use the
         # helper function in Pillow's ImageOps module so that the image's aspect
         # ratio is preserved.
-        image = Image.open(os.path.join(ASSETS_PATH, image_filename)).convert(
-            "RGBA"
-        )
+        if image_filename:
+            image = Image.open(
+                os.path.join(ASSETS_PATH, image_filename)
+            ).convert("RGBA")
+        elif image_pil:
+            image = image_pil
+        else:
+            return
         image = ImageOps.fit(image, full_deck_image_size, Image.LANCZOS)
         return image
 
@@ -768,17 +858,18 @@ class StreamDeckController(object):
         self.update_key_image(deck, key, state)
         if state:
             key_style = self.get_key_style(deck, key, state)
-
             if key == 1:
                 self.streamdeck_brightness += 10
                 if self.streamdeck_brightness > 100:
                     self.streamdeck_brightness = 100
-                deck.set_brightness(self.streamdeck_brightness)
+                with deck:
+                    deck.set_brightness(self.streamdeck_brightness)
             elif key == 2:
                 self.streamdeck_brightness -= 10
                 if self.streamdeck_brightness < 5:
                     self.streamdeck_brightness = 5
-                deck.set_brightness(self.streamdeck_brightness)
+                with deck:
+                    deck.set_brightness(self.streamdeck_brightness)
             elif key == 3:
                 subprocess.run(
                     "gnome-terminal -- bash -c 'sudo ./.venv/bin/python ./script/stream_deck/keyboard_talk.py;bash'",
@@ -786,7 +877,8 @@ class StreamDeckController(object):
                     executable="/bin/bash",
                 )
             elif key == 4:
-                deck.reset()
+                with deck:
+                    deck.reset()
             elif key == 5:
                 # Debug enable
                 self.is_debug = not self.is_debug
@@ -851,11 +943,12 @@ class StreamDeckController(object):
         else:
             print("\t - No Visual Output")
 
-    def animate(self, deck, key_images, is_big_image=False):
+    def animate(self, deck, key_images, BIG_IMAGE_TYPE=None):
         def inter_animate(fps):
             frame_time = Fraction(1, fps)
             next_frame = Fraction(time.monotonic())
             has_overrun = False
+            is_big_image = BIG_IMAGE_TYPE in ["Webcam", "Big image"]
             while deck.is_open():
                 try:
                     with deck:
@@ -881,7 +974,7 @@ class StreamDeckController(object):
                     time.sleep(sleep_interval)
                 else:
                     has_overrun = False
-                    print("Overrun")
+                    print(f"Overrun {sleep_interval}")
 
         return inter_animate
 
