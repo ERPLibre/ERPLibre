@@ -12,7 +12,7 @@ then
     echo "my repo"  $(git rev-parse --abbrev-ref HEAD)
     repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m default.dev.xml
 
-    repo sync
+    repo sync -j $(nproc --all)
 
     # After sync, terminate the git checkout. We don't need graceful kill as we don't do commit on the git repo during the operation.
     kill -9 $GIT_PID
