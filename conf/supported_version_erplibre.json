@@ -23,16 +23,16 @@
         "poetry_version": "1.8.3",
         "note": "Deprecated"
     },
-    "odoo16.0_python3.10.17": {
+    "odoo16.0_python3.10.18": {
         "odoo_version": "16.0",
-        "python_version": "3.10.17",
+        "python_version": "3.10.18",
         "poetry_version": "1.8.3",
         "default": true,
         "note": "Official support ERPLibre 1.6.0"
     },
-    "odoo17.0_python3.10.17": {
+    "odoo17.0_python3.10.18": {
         "odoo_version": "17.0",
-        "python_version": "3.10.17",
+        "python_version": "3.10.18",
         "poetry_version": "1.8.3",
         "note": "New GUI"
     },

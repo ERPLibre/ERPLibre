@@ -60,6 +60,8 @@ if [[ ! -n "${DOCKER_BUILD}" ]]; then
 
   if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
       echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
+      # Update all python version list
+      cd "${PYENV_PATH}" && git pull && cd -
       yes n|pyenv install ${PYTHON_VERSION}
       if [[ $retVal -ne 0 ]]; then
           echo -e "${Red}Error${Color_Off} when installing pyenv"

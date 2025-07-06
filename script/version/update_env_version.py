@@ -554,7 +554,7 @@ class Update:
         source_file_is_symlink = os.path.islink(source_file)
         target_file_exist = os.path.exists(target_file)
         if not target_file_exist:
-            _logger.warning(f"'{target_file}' not exist.")
+            _logger.error(f"'{target_file}' not exist.")
         do_symlink = False
         # Case 4
         if source_file_is_symlink and not source_file_exist:
