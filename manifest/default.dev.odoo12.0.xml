@@ -25,7 +25,7 @@
     <remote name="pledra" fetch="https://github.com/ERPLibre/" />
     <remote name="tegin" fetch="https://github.com/ERPLibre/" />
 
-    <default remote="ERPLibre" revision="12.0" sync-j="4" sync-c="true" />
+    <default remote="ERPLibre" revision="12.0" sync-c="true" />
 
     <project
         name="ERPLibre_image_db.git"

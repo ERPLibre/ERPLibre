@@ -4,7 +4,7 @@ build-backend = "poetry.masonry.api"
 
 [tool.isort]
 profile = "black"
-py_version = 37
+py_version = 38
 
 [tool.black]
 line-length = 79
