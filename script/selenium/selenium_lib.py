@@ -3,13 +3,21 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import datetime
+import getpass
+import json
 import os
 import random
 import re
+import subprocess
+import shutil
 import sys
-import time
+import tempfile
 from subprocess import getoutput
+import time
+import tkinter as tk
+from tkinter import filedialog
 
+from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
 from selenium import webdriver
 from selenium.common.exceptions import (
@@ -84,25 +92,122 @@ class SeleniumLib(object):
 
         # Créez une instance du navigateur Firefox avec les options de navigation privée
         try:
-            self.driver = webdriver.Firefox(
-                options=firefox_options, service=firefox_services
+            user = os.environ.get("USER", "Non défini")
+            uid = os.getuid()
+            gid = os.getgid()
+            print(
+                f"INFO: Execute by user: {user}, UID: {uid}, GID: {gid}"
             )
-        except Exception:
+
+            # Exécuter la commande 'whoami' pour confirmation
+            whoami_result = subprocess.run(
+                ["whoami"], capture_output=True, text=True
+            )
+            print(
+                f"INFO: Result 'whoami': {whoami_result.stdout.strip()}"
+            )
+
+        except Exception as e:
+            print(f"ERROR when check user: {e}")
+
+        try:
+            if self.config.use_chrome_driver:
+                from selenium.webdriver.chrome.service import Service
+                from selenium.webdriver.chrome.options import Options as ChromeOptions
+                chrome_options = ChromeOptions()
+                if self.config.window_size:
+                    # chrome_options.add_argument("--window-size=1920,1080")
+                    chrome_options.add_argument(f"--window-size={self.config.window_size}")
+
+                if self.config.use_network:
+                    chrome_options.set_capability('se:name', 'ERPLibre selenium')
+                    self.driver = webdriver.Remote(options=chrome_options, command_executor=self.config.use_network)
+                else:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    service = Service(ChromeDriverManager().install(), log_path='/tmp/chromedriver.log')
+                    self.driver = webdriver.Chrome(
+                        options=chrome_options,
+                        # options=firefox_options,
+                        service=service,
+                        keep_alive=True,
+                    )
+            elif self.config.use_firefox_driver:
+                from selenium.webdriver.firefox.options import Options
+                from selenium.webdriver.firefox.service import Service
+
+                firefox_services = None
+                # shutil.which("geckodriver")
+                if self.config.gecko_binary_path:
+                    firefox_services = Service(
+                        executable_path=self.config.gecko_binary_path,
+                        log_output=self.config.debug)
+                firefox_options = webdriver.FirefoxOptions()
+                if not self.config.not_private_mode:
+                    firefox_options.add_argument("--private")
+
+                if self.config.firefox_binary_path:
+                    firefox_options.binary_location = self.config.firefox_binary_path
+
+                firefox_profile = webdriver.FirefoxProfile()
+                firefox_profile.set_preference("browser.cache.disk.enable", False)
+                firefox_profile.set_preference("browser.cache.memory.enable", False)
+                firefox_profile.set_preference("browser.cache.offline.enable", False)
+                firefox_profile.set_preference("network.http.use-cache", False)
+                firefox_options.set_preference(
+                    "permissions.default.desktop-notification", 1
+                )
+                firefox_options.set_preference("browser.download.folderList", 2)
+                firefox_options.set_preference(
+                    "browser.download.manager.showWhenStarting", False
+                )
+                firefox_options.set_preference(
+                    "browser.download.dir", self.default_download_dir_path
+                )
+                firefox_options.set_preference(
+                    "browser.helperApps.neverAsk.saveToDisk",
+                    "application/octet-stream,application/pdf,application/x-pdf",
+                )
+                firefox_options.set_preference("pdfjs.disabled", True)
+                if self.config.window_size:
+                    # chrome_options.add_argument("--window-size=1920,1080")
+                    firefox_options.add_argument(f"--window-size={self.config.window_size}")
+
+                if self.config.headless:
+                    firefox_options.add_argument("--headless")
+                    # firefox_options.add_argument("--disable-gpu")
+                firefox_options.add_argument("--no-sandbox")
+                firefox_options.add_argument("--disable-dev-shm-usage")
+                firefox_options.add_argument("--disable-dbus")
+
+                if self.config.use_network:
+                    firefox_options.set_capability('se:name', 'ERPLibre selenium')
+                    self.driver = webdriver.Remote(options=firefox_options, command_executor=self.config.use_network)
+                else:
+                    self.driver = webdriver.Firefox(
+                        options=firefox_options,
+                        service=firefox_services,
+                        keep_alive=True,
+                    )
+
+        except Exception as e:
             print(
                 "Cannot open Firefox profile, so will force firefox snap for"
                 " Ubuntu users."
             )
-            firefox_services = Service(
-                executable_path=getoutput(
-                    "find /snap/firefox -name geckodriver"
-                ).split("\n")[-1]
-            )
-            firefox_options.binary_location = getoutput(
-                "find /snap/firefox -name firefox"
-            ).split("\n")[-1]
-            self.driver = webdriver.Firefox(
-                options=firefox_options, service=firefox_services
-            )
+            # TODO au lieu, faire une recherche de geckodriver avant de démarrer
+            # firefox_services = Service(
+            #     executable_path=getoutput(
+            #         "find /snap/firefox -name geckodriver"
+            #     ).split("\n")[-1], log_path='/tmp/geckodriver.log'
+            # )
+            # firefox_options.binary_location = getoutput(
+            #     "find /snap/firefox -name firefox"
+            # ).split("\n")[-1]
+            # self.driver = webdriver.Firefox(
+            #     options=firefox_options, service=firefox_services
+            # )
+            raise e
+        print("The driver is launched!")
 
         # Ajout de l'enregistrement
         if self.config.record_mode:
@@ -123,66 +228,116 @@ class SeleniumLib(object):
 
         # Install DarkReader to help my eyes
         # TODO do a script to check if it's the last version
-        if not self.config.no_dark_mode:
-            self.driver.install_addon(
-                "./script/selenium/darkreader-firefox.xpi", temporary=True
-            )
-            self.driver.install_addon(
-                "./script/selenium/odoo_debug-4.0.xpi", temporary=True
-            )
-
-        if not self.config.not_private_mode and not self.config.no_dark_mode:
-            self.driver.get("about:addons")
-            # Enable Dark Reader into incognito
-            self.click("/html/body/div/div[1]/categories-box/button[2]")
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
-            )
-            # Enable Run in Private Windows
-            try:
-                self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+        if self.config.use_firefox_driver and not self.config.use_network:
+            if not self.config.no_dark_mode:
+                self.driver.install_addon(
+                    "./script/selenium/darkreader-firefox.xpi", temporary=True
                 )
-            except Exception:
-                # For old version before Firefox 138
-                self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                self.driver.install_addon(
+                    "./script/selenium/odoo_debug-4.0.xpi", temporary=True
                 )
 
-            # Enable Odoo_debug into incognito
-            # Back
-            self.click(
-                "/html/body/div/div[2]/addon-page-header/div/div[2]/button"
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/div/div/div/button",
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
-            )
-            # Enable Run in Private Windows
-            try:
+            if not self.config.not_private_mode and not self.config.no_dark_mode:
+                self.driver.get("about:addons")
+                # Enable Dark Reader into incognito
+                self.click("/html/body/div/div[1]/categories-box/button[2]")
                 self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
                 )
-            except Exception:
-                # For old version before Firefox 138
                 self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
                 )
+                # Enable Run in Private Windows
+                try:
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    )
+                except Exception:
+                    # For old version before Firefox 138
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    )
+
+                # Enable Odoo_debug into incognito
+                # Back
+                self.click(
+                    "/html/body/div/div[2]/addon-page-header/div/div[2]/button"
+                )
+                self.click(
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/div/div/div/button",
+                )
+                self.click(
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
+                )
+                # Enable Run in Private Windows
+                try:
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    )
+                except Exception:
+                    # For old version before Firefox 138
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    )
 
         # Ouvrez la page web
         if not ignore_open_web:
             self.driver.get(f"{self.config.url}/web")
 
         # Close tab opening by DarkReader
-        if self.config.not_private_mode and not self.config.no_dark_mode:
-            self.driver.switch_to.window(self.driver.window_handles[-1])
-            self.driver.close()
-            self.driver.switch_to.window(self.driver.window_handles[0])
+        if self.config.use_firefox_driver and not self.config.use_network:
+            if self.config.not_privatewindo_mode and not self.config.no_dark_mode:
+                self.driver.switch_to.window(self.driver.window_handles[-1])
+                self.driver.close()
+                self.driver.switch_to.window(self.driver.window_handles[0])
+
+    def get_kdbx(self):
+        if self.kdbx:
+            return self.kdbx
+        print("Open KDBX")
+        # Open file
+        chemin_fichier_kdbx = self.get_config(["kdbx", "path"])
+        if not chemin_fichier_kdbx:
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            chemin_fichier_kdbx = filedialog.askopenfilename(
+                title="Select a File",
+                filetypes=(("KeepassX files", "*.kdbx"),),
+            )
+        if not chemin_fichier_kdbx:
+            # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
+            return
+
+        mot_de_passe_kdbx = self.get_config(["kdbx", "password"])
+        if not mot_de_passe_kdbx:
+            mot_de_passe_kdbx = getpass.getpass(
+                prompt="Entrez votre mot de passe : "
+            )
+
+        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
+
+        if kp:
+            self.kdbx = kp
+        return kp
+
+    def get_config(self, lst_params):
+        # Open file
+        config_file = CONFIG_FILE
+        if os.path.exists(CONFIG_OVERRIDE_FILE):
+            config_file = CONFIG_OVERRIDE_FILE
+
+        with open(config_file) as cfg:
+            dct_data = json.load(cfg)
+            for param in lst_params:
+                try:
+                    dct_data = dct_data[param]
+                except KeyError:
+                    # _logger.error(
+                    #     f"KeyError on file {config_file} with keys"
+                    #     f" {lst_params}"
+                    # )
+                    return
+        return dct_data
 
     @staticmethod
     def get_french_word_no_space_no_accent():
@@ -1026,6 +1181,9 @@ class SeleniumLib(object):
                     time.sleep(var_wait_time)
             self.video_recorder.start()
 
+    def quit(self):
+        self.driver.quit()
+
     def stop_record(self):
         time.sleep(self.config.selenium_default_delay_presentation)
 
@@ -1112,6 +1270,13 @@ class SeleniumLib(object):
         return date_naissance.strftime("%Y-%m-%d")
 
 
+def get_args(parser):
+    args = parser.parse_args()
+    if args.use_chrome_driver:
+        args.use_firefox_driver = False
+    return args
+
+
 def fill_parser(parser):
     parser.add_argument(
         "--url",
@@ -1132,6 +1297,30 @@ def fill_parser(parser):
         "--not_private_mode",
         action="store_true",
         help="Default is private mode.",
+    )
+    group_browser.add_argument(
+        "--use_chrome_driver",
+        action="store_true",
+        help="Switch to chrome instead of great Firefox.",
+    )
+    group_browser.add_argument(
+        "--use_firefox_driver",
+        action="store_true",
+        default=True,
+        help="The default is firefox.",
+    )
+    group_browser.add_argument(
+        "--use_network",
+        help="Specify the adress, example: http://localhost:4444",
+    )
+    group_browser.add_argument(
+        "--window_size",
+        help="Example 1920,1080",
+    )
+    group_browser.add_argument(
+        "--headless",
+        action="store_true",
+        help="For automation without GUI.",
     )
     group_browser.add_argument(
         "--no_dark_mode",
