@@ -36,14 +36,14 @@
         groups="base"
     />
     <project name="OpenHRMS.git" path="addons.odoo18.0/CybroOdoo_OpenHRMS" remote="CybroOdoo" groups="addons" />
-    <project
-        name="CybroAddons.git"
-        path="addons.odoo18.0/CybroOdoo_CybroAddons"
-        remote="ERPLibre"
-        clone-depth="1"
-        revision="18.0_dev"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="CybroAddons.git"-->
+<!--        path="addons.odoo18.0/CybroOdoo_CybroAddons"-->
+<!--        remote="ERPLibre"-->
+<!--        clone-depth="1"-->
+<!--        revision="18.0_dev"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="account-analytic.git" path="addons.odoo18.0/OCA_account-analytic" remote="OCA" groups="addons" />
     <project name="account-budgeting.git" path="addons.odoo18.0/OCA_account-budgeting" remote="OCA" groups="addons" />
     <project name="account-closing.git" path="addons.odoo18.0/OCA_account-closing" remote="OCA" groups="addons" />
@@ -139,21 +139,21 @@
     <project name="ddmrp.git" path="addons.odoo18.0/OCA_ddmrp" remote="OCA" groups="addons" />
     <project name="delivery-carrier.git" path="addons.odoo18.0/OCA_delivery-carrier" remote="OCA" groups="addons" />
     <project name="deltatech.git" path="addons.odoo18.0/dhongu_deltatech" remote="dhongu" groups="addons" />
-    <project
-        name="development.git"
-        path="addons.odoo18.0/MathBenTech_development"
-        remote="MathBenTech"
-        groups="addons,base"
-    />
+<!--    <project-->
+<!--        name="development.git"-->
+<!--        path="addons.odoo18.0/MathBenTech_development"-->
+<!--        remote="MathBenTech"-->
+<!--        groups="addons,base"-->
+<!--    />-->
     <project name="donation.git" path="addons.odoo18.0/OCA_donation" remote="OCA" groups="addons" />
     <project name="e-commerce.git" path="addons.odoo18.0/OCA_e-commerce" remote="OCA" groups="addons" />
     <project name="edi.git" path="addons.odoo18.0/OCA_edi" remote="OCA" groups="addons" />
-    <project
-        name="erplibre_addons.git"
-        path="addons.odoo18.0/ERPLibre_erplibre_addons"
-        remote="ERPLibre"
-        groups="addons,base"
-    />
+<!--    <project-->
+<!--        name="erplibre_addons.git"-->
+<!--        path="addons.odoo18.0/ERPLibre_erplibre_addons"-->
+<!--        remote="ERPLibre"-->
+<!--        groups="addons,base"-->
+<!--    />-->
     <project name="event.git" path="addons.odoo18.0/OCA_event" remote="OCA" groups="addons" />
     <project name="field-service.git" path="addons.odoo18.0/OCA_field-service" remote="OCA" groups="addons" />
     <project name="fleet.git" path="addons.odoo18.0/OCA_fleet" remote="OCA" groups="addons" />
@@ -180,12 +180,12 @@
     <project name="mis-builder.git" path="addons.odoo18.0/OCA_mis-builder" remote="OCA" groups="addons" />
     <project name="multi-company.git" path="addons.odoo18.0/OCA_multi-company" remote="OCA" groups="addons" />
     <project name="muk_web.git" path="addons.odoo18.0/muk-it_muk_web" remote="muk-it" groups="addons" />
-    <project
-        name="odoo-business-spending-management-quebec-canada.git"
-        path="addons.odoo18.0/MathBenTech_odoo-business-spending-management-quebec-canada"
-        remote="MathBenTech"
-        groups="addons,base"
-    />
+<!--    <project-->
+<!--        name="odoo-business-spending-management-quebec-canada.git"-->
+<!--        path="addons.odoo18.0/MathBenTech_odoo-business-spending-management-quebec-canada"-->
+<!--        remote="MathBenTech"-->
+<!--        groups="addons,base"-->
+<!--    />-->
     <project
         name="odoo-cloud-platform.git"
         path="addons.odoo18.0/camptocamp_odoo-cloud-platform"
@@ -261,13 +261,13 @@
         groups="addons"
     />
     <project name="server-ux.git" path="addons.odoo18.0/OCA_server-ux" remote="OCA" groups="addons" />
-    <project
-        name="shift-planning.git"
-        path="addons.odoo18.0/OCA_shift-planning"
-        remote="ERPLibre"
-        revision="18.0_dev"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="shift-planning.git"-->
+<!--        path="addons.odoo18.0/OCA_shift-planning"-->
+<!--        remote="ERPLibre"-->
+<!--        revision="18.0_dev"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="social.git" path="addons.odoo18.0/OCA_social" remote="OCA" groups="addons" />
     <project
         name="survey.git"

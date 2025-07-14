@@ -15,14 +15,14 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
 
 ```bash
 ./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b master
-./.venv/repo sync -j $(nproc --all)
+./.venv/repo sync -c -j $(nproc --all)
 ```
 
 ## dev
 
 ```bash
 ./.venv/repo init -u https://github.com/ERPLibre/ERPLibre -b 12.0_repo -m ./manifest/default.dev.xml
-./.venv/repo sync -j $(nproc --all)
+./.venv/repo sync -c -j $(nproc --all)
 ```
 
 ## local dev
@@ -33,7 +33,7 @@ curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
 
 ./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.dev.xml
-./.venv/repo sync -j $(nproc --all) -m ./manifest/default.dev.xml
+./.venv/repo sync -c -j $(nproc --all) -m ./manifest/default.dev.xml
 ```
 
 # Create Manifest
@@ -69,7 +69,7 @@ git commit -am "Updated manifest/default.staged.xml"
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
 
 ./.venv/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m ./manifest/default.staged.xml
-./.venv/repo sync -j $(nproc --all) -m ./manifest/default.staged.xml
+./.venv/repo sync -c -j $(nproc --all) -m ./manifest/default.staged.xml
 
 ./.venv/repo manifest -r -o ./default.xml
 ```
