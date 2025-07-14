@@ -32,7 +32,7 @@ PYPROJECT_FILE = os.path.join("pyproject.toml")
 PYPROJECT_TEMPLATE_FILE = "pyproject.%s.toml"
 POETRY_LOCK_FILE = os.path.join("poetry.lock")
 POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
-PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
+# PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
 PIP_REQUIREMENT_TEMPLATE_FILE = "requirements.%s.txt"
 PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
@@ -364,12 +364,12 @@ class Update:
             self.expected_poetry_lock_path,
             do_delete_source=True,
         )
-        status &= self.update_link_file(
-            "Pip requirement.txt",
-            PIP_REQUIREMENT_FILE,
-            self.expected_pip_requirement_path,
-            do_delete_source=True,
-        )
+        # status &= self.update_link_file(
+        #     "Pip requirement.txt",
+        #     PIP_REQUIREMENT_FILE,
+        #     self.expected_pip_requirement_path,
+        #     do_delete_source=True,
+        # )
         status &= self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,

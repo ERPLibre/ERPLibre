@@ -6,14 +6,19 @@ import argparse
 import ast
 import logging
 import os
+import re
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
 import iscompatible
 import toml
 from colorama import Fore, Style
+from packaging.markers import default_environment
+from packaging.requirements import Requirement
+from packaging.version import Version
 
 _logger = logging.getLogger(__name__)
+_logger.setLevel(logging.INFO)
 
 
 def get_config():
@@ -56,33 +61,82 @@ def get_config():
         action="store_true",
         help="Don't apply change, only show warning.",
     )
+    parser.add_argument(
+        "--set_version_poetry",
+        help="Force to change poetry version, default is from file './.poetry-version'.",
+    )
+    parser.add_argument(
+        "--set_version_odoo",
+        help="Force to change odoo version, default is from file './.odoo-version'.",
+    )
+    parser.add_argument(
+        "--set_version_python",
+        help="Force to change python version, default is from file './.python-version'.",
+    )
+    parser.add_argument(
+        "--set_version_erplibre",
+        help="Force to change erplibre version, default is from file './.erplibre-version'.",
+    )
     args = parser.parse_args()
+    if not args.set_version_poetry:
+        with open("./.poetry-version", "r", encoding="utf-8") as fichier:
+            args.set_version_poetry = fichier.read().strip()
+    if not args.set_version_odoo:
+        with open("./.odoo-version", "r", encoding="utf-8") as fichier:
+            args.set_version_odoo = fichier.read().strip()
+    if not args.set_version_python:
+        with open("./.python-version", "r", encoding="utf-8") as fichier:
+            args.set_version_python = fichier.read().strip()
+    if not args.set_version_erplibre:
+        with open("./.erplibre-version", "r", encoding="utf-8") as fichier:
+            args.set_version_erplibre = fichier.read().strip()
     return args
 
 
-def get_lst_requirements_txt():
-    return get_file_from_glob("requirements.[tT][xX][tT]")
+def get_lst_requirements_txt(
+    config, ignore_dir_startswith: list = None, force_add_item: list = None
+):
+    return get_file_from_glob(
+        config,
+        "requirements.[tT][xX][tT]",
+        ignore_dir_startswith=ignore_dir_startswith,
+        force_add_item=force_add_item,
+    )
 
 
-def get_lst_manifest_py():
-    return get_file_from_glob("__manifest__.py")
+def get_lst_manifest_py(config, ignore_dir_startswith: list = None):
+    return get_file_from_glob(
+        config, "__manifest__.py", ignore_dir_startswith=ignore_dir_startswith
+    )
 
 
-def get_file_from_glob(glob_txt):
-    with open(".odoo-version") as txt:
-        odoo_version = txt.read()
-    # with open(".erplibre-version") as txt:
-    #     erplibre_version = txt.read()
+def get_file_from_glob(
+    config,
+    glob_txt,
+    ignore_dir_startswith: list = None,
+    force_add_item: list = None,
+):
     lst_v = []
     for a in Path(".").rglob(glob_txt):
         a_dirname = os.path.dirname(a)
         if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
             continue
+        if ignore_dir_startswith:
+            ignore_it = False
+            for item_ignore_dir in ignore_dir_startswith:
+                if a_dirname.startswith(item_ignore_dir):
+                    ignore_it = True
+                    break
+            if ignore_it:
+                continue
         if a_dirname.startswith("addons") and not a_dirname.startswith(
-            f"addons.odoo{odoo_version}"
+            f"addons.odoo{config.set_version_odoo}"
         ):
             continue
         lst_v.append(a)
+    if force_add_item:
+        for item in force_add_item:
+            lst_v.append(Path(item))
     return lst_v
 
 
@@ -94,20 +148,30 @@ def combine_requirements(config):
     :param config:
     :return:
     """
-    priority_filename_requirement = "requirements.txt"
-    second_priority_filename_requirement = "odoo/requirements.txt"
+    priority_filename_requirement = (
+        f"requirement/requirements.{config.set_version_erplibre}.txt"
+    )
+    second_priority_filename_requirement = (
+        f"odoo{config.set_version_odoo}/odoo/requirements.txt"
+    )
     except_sign = ";"
     lst_sign = ("==", "!=", ">=", "<=", "<", ">", except_sign, "~=")
     lst_requirements = []
-    lst_replace_special_sign = {}  # the lib iscompatible doesn't support ~=
+    lst_replace_special_sign = {}
     ignore_requirements = ["sys_platform == 'win32'", "python_version < '3.7'"]
     dct_requirements = defaultdict(set)
-    lst_requirements_file = get_lst_requirements_txt()
+    lst_requirements_file = get_lst_requirements_txt(
+        config,
+        ignore_dir_startswith=["script/"],
+        force_add_item=[priority_filename_requirement],
+    )
     # lst_requirements_with_condition = set()
     # dct_special_condition = defaultdict(list)
 
     if not os.path.isfile(priority_filename_requirement):
         _logger.error(f"File {priority_filename_requirement} not found.")
+
+    print(f"Find {len(lst_requirements_file)} requirements.txt files.")
 
     dct_requirements_module_filename = defaultdict(list)
     for requirements_filename in lst_requirements_file:
@@ -124,11 +188,29 @@ def combine_requirements(config):
                     b = b[: b.index("#")].strip()
                 comment_depend = ""
                 if except_sign in b:
-                    # TODO support python_version into comment_depend, check odoo/requirements.txt
-                    b, comment_depend = b.split(except_sign)
-                    b = b.strip()
-                    comment_depend = comment_depend.strip()
+                    # current_python_version = platform.python_version()
+                    # current_platform = sys.platform
+                    current_platform_2 = default_environment()
+                    current_platform_2["python_version"] = ".".join(
+                        config.set_version_python.split(".")[:2]
+                    )
+                    current_platform_2["python_full_version"] = (
+                        config.set_version_python
+                    )
+                    current_platform_2["implementation_version"] = (
+                        config.set_version_python
+                    )
+                    req = Requirement(b)
+                    is_compatible = req.marker.evaluate(current_platform_2)
+                    if not is_compatible:
+                        continue
+                    # this support python_version into comment_depend, check odoo/requirements.txt
+                    # b, comment_depend = b.split(except_sign)
+                    # b = b.strip()
+                    # comment_depend = comment_depend.strip()
                     # print(comment_depend)
+                    # Rewrite dependancy : module==version
+                    b = req.name + str(req.specifier)
 
                 # Regroup requirement
                 for sign in lst_sign:
@@ -169,7 +251,7 @@ def combine_requirements(config):
                 lst_requirements.append(b)
 
     dct_requirements = get_manifest_external_dependencies(
-        dct_requirements, lst_sign
+        config, dct_requirements, lst_sign
     )
 
     # Merge all requirement by insensitive
@@ -214,49 +296,47 @@ def combine_requirements(config):
                     old_requirement = requirement
                     requirement = requirement.replace("~=", "==")
                     lst_replace_special_sign[requirement] = old_requirement
-                result_number = iscompatible.parse_requirements(requirement)
-                if not result_number:
+
+                match = re.search(r"[=<>~!]{1,2}(.*)", requirement)
+                if not match:
                     # Ignore empty version
                     continue
-                # Exception of missing feature in iscompatible
-                # TODO support me in iscompatible lib
-                no_version = result_number[0][1]
-                if "b" in no_version:
-                    result_number[0] = (
-                        result_number[0][0],
-                        no_version[: no_version.find("b")],
-                    )
-                elif not no_version[no_version.rfind(".") + 1 :].isnumeric():
-                    result_number[0] = (
-                        result_number[0][0],
-                        no_version[: no_version.rfind(".")],
-                    )
-                result_number = iscompatible.string_to_tuple(
-                    result_number[0][1]
-                )
+                match_version = match.group(1).strip()
+                match_sign = match.group(0).strip()[: -len(match_version)]
+                match_app_name = requirement[
+                    : -(len(match_sign) + len(match_version))
+                ]
+                result_number = [(match_sign, Version(match_version))]
+                # result_number = iscompatible.parse_requirements(requirement)
+                if not result_number:
+                    continue
                 lst_version_requirement.append((requirement, result_number))
             # Check compatibility with all possibility
             is_compatible = True
             if len(lst_version_requirement) > 1:
                 highest_value = sorted(
-                    lst_version_requirement, key=lambda tup: tup[1]
+                    lst_version_requirement, key=lambda tup: tup[1][0][1]
                 )[-1]
                 for version_requirement in lst_version_requirement:
                     # TODO support me in iscompatible lib
                     # check after ., because b can appear in number
-                    v_r_split = version_requirement[0].split(".", 1)
-                    if len(v_r_split) > 1 and "b" in v_r_split[1]:
-                        version_requirement_upd = version_requirement[0][
-                            : version_requirement[0].rindex("b")
-                        ]
-                    else:
-                        version_requirement_upd = version_requirement[0]
+                    # v_r_split = version_requirement[0].split(".", 1)
+                    # if len(v_r_split) > 1 and "b" in v_r_split[1]:
+                    #     version_requirement_upd = version_requirement[0][
+                    #         : version_requirement[0].rindex("b")
+                    #     ]
+                    # else:
+                    #     version_requirement_upd = version_requirement[0]
+                    version_requirement_upd = version_requirement[0]
                     try:
                         is_compatible &= iscompatible.iscompatible(
-                            version_requirement_upd, highest_value[1]
+                            version_requirement_upd, highest_value[1][0][1]
                         )
                     except Exception as e:
-                        print(e)
+                        _logger.error(e)
+                        is_compatible &= iscompatible.iscompatible(
+                            version_requirement_upd, highest_value[1][0][1]
+                        )
                 if is_compatible:
                     result = highest_value[0]
                 else:
@@ -324,7 +404,8 @@ def combine_requirements(config):
     for key in lst_ignored_key:
         del dct_requirements[key]
 
-    with open("./.venv/build_dependency.txt", "w") as f:
+    venv_dir = f".venv.{config.set_version_erplibre}"
+    with open(f"./{venv_dir}/build_dependency.txt", "w") as f:
         # TODO remove all comment
         f.writelines([f"{list(a)[0]}\n" for a in dct_requirements.values()])
 
@@ -375,8 +456,11 @@ def delete_dependency_poetry(pyproject_filename):
         toml.dump(dct_pyproject, f)
 
 
-def get_manifest_external_dependencies(dct_requirements, lst_sign):
-    lst_manifest_file = get_lst_manifest_py()
+def get_manifest_external_dependencies(config, dct_requirements, lst_sign):
+    lst_manifest_file = get_lst_manifest_py(
+        config, ignore_dir_startswith=["script/"]
+    )
+    print(f"Find {len(lst_manifest_file)} manifest.py files.")
     lst_dct_ext_depend = []
     for manifest_file in lst_manifest_file:
         with open(manifest_file, "r") as f:
@@ -426,6 +510,10 @@ def main():
     # repo = Repo(root_path)
     # lst_repo = get_all_repo()
     config = get_config()
+
+    print(
+        f"Version: Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python '{config.set_version_python}' : ERPLibre '{config.set_version_erplibre}'"
+    )
 
     if not config.dry:
         pyproject_toml_filename = f"{config.dir}pyproject.toml"

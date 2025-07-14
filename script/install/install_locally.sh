@@ -38,6 +38,7 @@ VENV_REPO_PATH=${VENV_PATH}/repo
 VENV_MULTILINGUAL_MARKDOWN_PATH=${VENV_PATH}/multilang_md.py
 #POETRY_PATH=~/.local/bin/poetry
 POETRY_PATH=${VENV_PATH}/bin/poetry
+export WITH_POETRY_INSTALLATION=1
 
 if [[ ! -n "${DOCKER_BUILD}" ]]; then
   echo "Python path version home"
@@ -129,7 +130,9 @@ if [[ ! -f "${POETRY_PATH}" ]]; then
     #    ${VENV_PATH}/bin/poetry lock --no-update
     # To fix keyring problem when installation is blocked, use
     export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
-    ${VENV_PATH}/bin/poetry install --no-root -vvv
+    if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
+      ${VENV_PATH}/bin/poetry install --no-root -vvv
+    fi
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
         echo "Poetry installation error with status ${retVal}"
