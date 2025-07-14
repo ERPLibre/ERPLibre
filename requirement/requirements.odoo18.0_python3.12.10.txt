@@ -46,16 +46,6 @@ pydevd-odoo
 # Fix update dateutil from odoo
 #python-dateutil>=2.8.2
 
-# Fix build python 3.12
-pillow==11.3.0
-srsly==2.5.1
-greenlet==3.2.3
-gevent==25.5.1
-lxml==6.0.0
-
-# Fix limitation urllib3 >= 1.26.0
-requests==2.32.4
-
 # Extra module
 meteostat==1.6.8
 
