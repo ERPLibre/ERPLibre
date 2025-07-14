@@ -38,6 +38,7 @@ endif
 -include ./conf/make.documentation.Makefile
 -include ./conf/make.image_db.Makefile
 -include ./conf/make.installation.Makefile
+-include ./conf/make.installation.poetry.Makefile
 -include ./conf/make.test.Makefile
 -include ./conf/make.todo.Makefile
 
@@ -176,13 +177,6 @@ format_script_isort_only:
 .PHONY: log_show_test
 log_show_test:
 	vim ${LOG_FILE}
-
-##########
-# poetry #
-##########
-.PHONY: poetry_update
-poetry_update:
-	./script/poetry/poetry_update.py
 
 ###########
 #  clean  #

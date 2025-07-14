@@ -1,0 +1,4 @@
+# ERPLibre Poetry requirement
+packaging
+toml
+colorama

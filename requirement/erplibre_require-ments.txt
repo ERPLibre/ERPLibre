@@ -24,3 +24,7 @@ openai
 
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0
+
+# For logical test and quality
+git+https://github.com/psf/black.git@24.8.0
+pre-commit
