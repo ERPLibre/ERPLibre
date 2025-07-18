@@ -9,20 +9,21 @@ import time
 import subprocess
 
 file_error_path = ".erplibre.error.txt"
+cst_venv_erplibre = ".venv.erplibre"
 
 
 def restart_script(last_error):
     print("Reboot TODO 🤖...")
     # os.execv(sys.executable, ['python'] + sys.argv)
     # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
-    if os.path.exists(".venv.erplibre") and not os.path.exists(file_error_path):
+    if os.path.exists(cst_venv_erplibre) and not os.path.exists(file_error_path):
         # TODO mettre check import suivant ne vont pas planter
         try:
             with open(file_error_path, "w") as f_file:
                 f_file.write(str(last_error))
                 pass  # The file is created and closed here, no content is written
             os.execv("/bin/bash",
-                     ["/bin/bash", "-c", "source ./.venv.erplibre/bin/activate && exec python " + " ".join(sys.argv)])
+                     ["/bin/bash", "-c", f"source ./{cst_venv_erplibre}/bin/activate && exec python " + " ".join(sys.argv)])
         except Exception as e:
             print("Error detect at first execution.")
             print(e)
@@ -36,7 +37,8 @@ try:
     import openai
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
-    print("0")
+    print("Got error : ")
+    print(e)
     if os.path.exists(file_error_path):
         print("Got error at first execution.", file_error_path)
         try:
@@ -49,11 +51,19 @@ except ModuleNotFoundError as e:
         finally:
             if 'file' in locals() and file:
                 file.close()
+        # Force auto installation
+        print("Auto installation")
+        time.sleep(0.5)
+        subprocess.run(
+            "gnome-terminal -- bash -c './script/todo/source_todo_install.sh'",
+            shell=True,
+            executable="/bin/bash",
+        )
         sys.exit(1)
-    if os.path.exists(".venv.erplibre"):
+    if os.path.exists(cst_venv_erplibre):
         # TODO auto-detect gnome-terminal, or choose another.
         restart_script(e)
-        print("You forgot to activate source \nsource ./.venv/bin/activate")
+        print(f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate")
         time.sleep(0.5)
         subprocess.run(
             "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
@@ -161,7 +171,7 @@ class TODO:
             elif status == "3":
                 cmd = (
                     f"gnome-terminal --tab -- bash -c 'source"
-                    f" ./.venv/bin/activate;make todo'"
+                    f" ./{cst_venv_erplibre}/bin/activate;make todo'"
                 )
                 self.executer_commande_live(cmd)
             # elif status == "3" or status == "install":
