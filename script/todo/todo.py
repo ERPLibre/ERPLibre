@@ -37,9 +37,9 @@ try:
     import openai
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
-    print("Got error : ")
-    print(e)
     if os.path.exists(file_error_path):
+        print("Got error : ")
+        print(e)
         print("Got error at first execution.", file_error_path)
         try:
             file = open(file_error_path, "r")
@@ -61,6 +61,8 @@ except ModuleNotFoundError as e:
         )
         sys.exit(1)
     if os.path.exists(cst_venv_erplibre):
+        print("Got error : ")
+        print(e)
         # TODO auto-detect gnome-terminal, or choose another.
         restart_script(e)
         print(f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate")
