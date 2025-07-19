@@ -22,8 +22,6 @@ VERSION_PYTHON_FILE = os.path.join(".python-odoo-version")
 VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
-# TODO remove this VENV_FILE and use self.expected_venv_name, remove feature to rename .venv
-VENV_FILE = os.path.join(".venv")
 ADDONS_PATH = os.path.join("addons")
 ODOO_PATH = os.path.join(".", "odoo")
 VENV_TEMPLATE_FILE = ".venv.%s"
@@ -111,7 +109,7 @@ def get_config():
     parser.add_argument(
         "--force_install",
         action="store_true",
-        help="Will erase .venv and create symbolic link after installation.",
+        help="Will erase .venv.odooVersion and create symbolic link after installation.",
     )
     parser.add_argument(
         "--force_repo",
@@ -158,7 +156,6 @@ class Update:
         self.expected_pyproject_path = None
         self.expected_poetry_lock_name = None
         self.expected_poetry_lock_path = None
-        self.do_backup_venv = False
 
     def check_version_data(self):
         die(
@@ -340,16 +337,6 @@ class Update:
 
     def validate_environment(self):
         status = True
-        # Validate .venv
-        # No need .venv, will create directly .venv.odooVERSION
-        # status &= self.update_link_file(
-        #     "Virtual environnement",
-        #     VENV_FILE,
-        #     self.expected_venv_name,
-        #     is_directory=True,
-        #     do_delete_source=self.config.install_dev
-        #     or self.config.force_install,
-        # )
         venv_exist = os.path.exists(self.expected_venv_name)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
@@ -407,22 +394,12 @@ class Update:
 
     def update_environment(self):
         status = True
-        do_action = bool(any([self.config.install_dev, self.config.install]))
-        if self.do_backup_venv and do_action:
-            venv_backup_name = (
-                f".venv_backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
-            )
-            shutil.move(VENV_FILE, venv_backup_name)
-            self.execute_log.append(f"Move .venv to backup {venv_backup_name}")
         if self.config.force_repo:
             # TODO add script to check difference before erase all
             os.system("./script/git/clean_repo_manifest.sh")
             self.execute_log.append(
                 f"Clear all repo from manifest, everything is deleted"
             )
-        if self.config.force_install:
-            os.system(f"rm -rf ./{VENV_FILE}")
-            self.execute_log.append(f"Remove ./{VENV_FILE}")
 
         # Always overwrite version
         with open(VERSION_PYTHON_FILE, "w") as txt:
@@ -450,13 +427,6 @@ class Update:
             if self.config.install_dev:
                 _logger.info("Installation.")
                 status = self.install_erplibre()
-
-                # Re-update if launch installation
-                if self.config.install_dev:
-                    self._update_directory_to_link(
-                        VENV_FILE, self.expected_venv_name
-                    )
-                    # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
             elif self.config.is_in_switch:
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
@@ -492,16 +462,6 @@ class Update:
                     )
             os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
-
-    def _update_directory_to_link(self, dir_to_check, link_name):
-        actuel_venv_is_symlink = os.path.islink(dir_to_check)
-        if not actuel_venv_is_symlink:
-            # Move it and create a symlink
-            shutil.move(dir_to_check, link_name)
-            os.symlink(link_name, dir_to_check)
-            msg = f"Create symbolic link {link_name} to {dir_to_check}"
-            _logger.info(msg)
-            self.execute_log.append(msg)
 
     def print_log(self):
         if not self.execute_log:
@@ -744,7 +704,7 @@ def main():
         update.pycharm_update()
 
         # Update OCB configuration
-        os.system("./.venv/bin/python ./script/git/git_repo_update_group.py")
+        os.system("./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py")
         os.system("./script/generate_config.sh")
         # TODO ignore this if installation fail
 
