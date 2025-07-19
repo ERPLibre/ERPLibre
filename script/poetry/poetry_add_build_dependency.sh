@@ -2,7 +2,7 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
-./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry add -vv $(grep -v ";" ./.venv/build_dependency.txt | grep -v "*" )
+./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry add -vv $(grep -v ";" ./.venv.$(cat ".erplibre-version" | xargs)/build_dependency.txt | grep -v "*" )
 # poetry add -vv $(grep -v ";" ./.venv/build_dependency.txt | grep -v "*" | sed 's/==/@^/' )
 # poetry export -f ./.venv/build_dependency.txt --dev | poetry run -- pip install -r /dev/stdin
 retVal=$?
