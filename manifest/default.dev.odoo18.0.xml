@@ -103,7 +103,7 @@
     />
     <project name="commission.git" path="addons.odoo18.0/OCA_commission" remote="OCA" groups="addons" />
     <project name="calendar.git" path="addons.odoo18.0/OCA_calendar" remote="OCA" groups="addons" />
-    <project name="cetmix-tower.git" path="addons.odoo18.0/cetmix_cetmix-tower" remote="cetmix" groups="addons" />
+<!--    <project name="cetmix-tower.git" path="addons.odoo18.0/cetmix_cetmix-tower" remote="cetmix" groups="addons" />-->
     <project
         name="community-data-files.git"
         path="addons.odoo18.0/OCA_community-data-files"
@@ -176,10 +176,10 @@
     <project name="management-system.git" path="addons.odoo18.0/OCA_management-system" remote="OCA" groups="addons" />
     <project name="manufacture.git" path="addons.odoo18.0/OCA_manufacture" remote="OCA" groups="addons" />
     <project name="margin-analysis.git" path="addons.odoo18.0/OCA_margin-analysis" remote="OCA" groups="addons" />
-    <project name="medical-fhir.git" path="addons.odoo18.0/tegin_medical-fhir" remote="tegin" groups="addons" />
+<!--    <project name="medical-fhir.git" path="addons.odoo18.0/tegin_medical-fhir" remote="tegin" groups="addons" />-->
     <project name="mis-builder.git" path="addons.odoo18.0/OCA_mis-builder" remote="OCA" groups="addons" />
     <project name="multi-company.git" path="addons.odoo18.0/OCA_multi-company" remote="OCA" groups="addons" />
-    <project name="muk_web.git" path="addons.odoo18.0/muk-it_muk_web" remote="muk-it" groups="addons" />
+<!--    <project name="muk_web.git" path="addons.odoo18.0/muk-it_muk_web" remote="muk-it" groups="addons" />-->
 <!--    <project-->
 <!--        name="odoo-business-spending-management-quebec-canada.git"-->
 <!--        path="addons.odoo18.0/MathBenTech_odoo-business-spending-management-quebec-canada"-->
@@ -241,25 +241,25 @@
     <project name="queue.git" path="addons.odoo18.0/OCA_queue" remote="OCA" groups="addons" />
     <project name="reporting-engine.git" path="addons.odoo18.0/OCA_reporting-engine" remote="OCA" groups="addons" />
     <project name="rma.git" path="addons.odoo18.0/OCA_rma" remote="OCA" groups="addons" />
-    <project
-        name="saas-addons.git"
-        path="addons.odoo18.0/it-projects-llc_saas-addons"
-        remote="it-projects-llc"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="saas-addons.git"-->
+<!--        path="addons.odoo18.0/it-projects-llc_saas-addons"-->
+<!--        remote="it-projects-llc"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="sale-reporting.git" path="addons.odoo18.0/OCA_sale-reporting" remote="OCA" groups="addons" />
     <project name="sale-workflow.git" path="addons.odoo18.0/OCA_sale-workflow" remote="OCA" groups="addons" />
     <project name="server-auth.git" path="addons.odoo18.0/OCA_server-auth" remote="OCA" groups="addons" />
     <project name="server-backend.git" path="addons.odoo18.0/OCA_server-backend" remote="OCA" groups="addons" />
     <project name="server-brand.git" path="addons.odoo18.0/OCA_server-brand" remote="OCA" groups="addons" />
     <project name="server-env.git" path="addons.odoo18.0/OCA_server-env" remote="OCA" groups="addons" />
-    <project
-        name="server-tools.git"
-        path="addons.odoo18.0/OCA_server-tools"
-        remote="ERPLibre"
-        revision="ERPLibre/18.0"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="server-tools.git"-->
+<!--        path="addons.odoo18.0/OCA_server-tools"-->
+<!--        remote="ERPLibre"-->
+<!--        revision="ERPLibre/18.0"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="server-ux.git" path="addons.odoo18.0/OCA_server-ux" remote="OCA" groups="addons" />
 <!--    <project-->
 <!--        name="shift-planning.git"-->
@@ -269,13 +269,13 @@
 <!--        groups="addons"-->
 <!--    />-->
     <project name="social.git" path="addons.odoo18.0/OCA_social" remote="OCA" groups="addons" />
-    <project
-        name="survey.git"
-        path="addons.odoo18.0/OCA_survey"
-        remote="ERPLibre"
-        revision="18.0_dev"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="survey.git"-->
+<!--        path="addons.odoo18.0/OCA_survey"-->
+<!--        remote="ERPLibre"-->
+<!--        revision="18.0_dev"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="stock-logistics-putaway.git"
         path="addons.odoo18.0/OCA_stock-logistics-putaway"
@@ -289,13 +289,13 @@
         groups="addons"
     />
     <project name="storage.git" path="addons.odoo18.0/OCA_storage" remote="OCA" groups="addons" />
-    <project
-        name="timesheet.git"
-        path="addons.odoo18.0/OCA_timesheet"
-        remote="ERPLibre"
-        revision="18.0_dev"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="timesheet.git"-->
+<!--        path="addons.odoo18.0/OCA_timesheet"-->
+<!--        remote="ERPLibre"-->
+<!--        revision="18.0_dev"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="vertical-association.git"
         path="addons.odoo18.0/OCA_vertical-association"
