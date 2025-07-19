@@ -37,7 +37,7 @@ try:
     import openai
     from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
-    if os.path.exists(file_error_path):
+    if os.path.exists(file_error_path) and not os.path.exists(cst_venv_erplibre):
         print("Got error : ")
         print(e)
         print("Got error at first execution.", file_error_path)

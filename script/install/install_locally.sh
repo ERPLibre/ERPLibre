@@ -83,7 +83,7 @@ ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_V
 
 source ./${VENV_ERPLIBRE_PATH}/bin/activate
 
-VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/repo
+VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/bin/repo
 # Install git-repo if missing
 if [[ ! -f ${VENV_REPO_PATH} ]]; then
     echo "\n---- Install git-repo from Google APIS ----"
