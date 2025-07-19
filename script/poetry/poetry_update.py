@@ -7,6 +7,7 @@ import ast
 import logging
 import os
 import re
+import shutil
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
@@ -518,16 +519,25 @@ def main():
         f"Version: Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python '{config.set_version_python}' : ERPLibre '{config.set_version_erplibre}'"
     )
 
+    poetry_default_lock_path = "./poetry.lock"
+    pyproject_toml_filename = ""
+    poetry_target_lock_path = f"./requirement/poetry.{config.set_version_erplibre}.lock"
+
     if not config.dry:
         pyproject_toml_filename = f"{config.dir}pyproject.toml"
         delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
     if not config.dry:
-        if config.force and os.path.isfile("./poetry.lock"):
-            os.remove("./poetry.lock")
+        if config.force and os.path.isfile(poetry_default_lock_path):
+            os.remove(poetry_default_lock_path)
         status = call_poetry_add_build_dependency()
-        if status:
+        if status and pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
+        if config.force:
+            # If "./poetry.lock" is not symbolic link, force replace original
+            if not os.path.islink(poetry_default_lock_path):
+                shutil.move(poetry_default_lock_path, poetry_target_lock_path)
+                os.symlink(poetry_target_lock_path, poetry_default_lock_path)
 
 
 if __name__ == "__main__":
