@@ -2,6 +2,7 @@
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
+# Search by default local configuration
 CONFIG_PATH="./config.conf"
 ORIGIN_CONFIG_PATH=CONFIG_PATH
 if [ ! -f "${CONFIG_PATH}" ]; then

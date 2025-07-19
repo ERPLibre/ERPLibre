@@ -510,13 +510,15 @@ class TODO:
                 new_cmd += f' "sleep {1 * i};{cmd}"'
             self.executer_commande_live(new_cmd)
 
-    def executer_commande_live(self, commande):
+    def executer_commande_live(self, commande, source_erplibre=True):
         """
         Exécute une commande et affiche la sortie en direct.
 
         Args:
             commande (str): La commande à exécuter (sous forme de chaîne de caractères).
         """
+        # if source_erplibre:
+        #     commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
         try:
             process = subprocess.Popen(
                 commande,
