@@ -267,6 +267,8 @@ def add_configuration(dct_xml, file_name, config):
     lst_configuration_full = dct_component.get("configuration")
     # Create a unique list of configuration to know if we need to add a new configuration
     lst_unique_configuration = []
+    if type(lst_configuration_full) is dict:
+        lst_configuration_full = [lst_configuration_full]
     for conf in lst_configuration_full:
         if conf.get("@factoryName") == "Python":
             folder_name = conf.get("@folderName")
@@ -302,15 +304,21 @@ def add_configuration(dct_xml, file_name, config):
             )
     if config.list_configuration:
         print("Configuration list:")
-    lst_xml_configuration_name = dct_component.get("list").get("item")
-    lst_configuration = [
-        a.get("@itemvalue")[7:]
-        for a in lst_xml_configuration_name
-        if a.get("@itemvalue").startswith("Python.")
-    ]
-    if config.list_configuration:
-        for conf in lst_configuration:
-            print(f"\t{conf}")
+    lst_configuration = []
+    lst_xml_configuration_name = []
+    dct_component_list = dct_component.get("list")
+    if dct_component_list:
+        lst_xml_configuration_name = dct_component_list.get("item")
+        lst_configuration = [
+            a.get("@itemvalue")[7:]
+            for a in lst_xml_configuration_name
+            if a.get("@itemvalue").startswith("Python.")
+        ]
+        if config.list_configuration:
+            for conf in lst_configuration:
+                print(f"\t{conf}")
+    elif config.list_configuration:
+        print(f"\tNo configuration found.")
 
     last_default = None
     if not config.init:
