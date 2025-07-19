@@ -6,7 +6,7 @@ input=".python-version"
 while IFS= read -r line
 do
   echo -e "Actual version $line"
-  sed -i -e "s/$line/$1/g" ./.python-version
+  sed -i -e "s/$line/$1/g" ./.python-odoo-version
   sed -i -e "s/$line/$1/g" ./docker/Dockerfile.base
   sed -i -e "s/$line/$1/g" ./script/install/install_OSX_dependency.sh
   sed -i -e "s/$line/$1/g" ./pyproject.toml

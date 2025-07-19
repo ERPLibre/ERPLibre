@@ -6,7 +6,7 @@ Color_Off='\033[0m'      # Text Reset
 ERPLIBRE_IMAGE_NAME=$(cat .erplibre-semver-version|xargs)
 ERPLIBRE_VERSION_MAIN=$(cat .erplibre-version|xargs)
 ODOO_VERSION=$(cat .odoo-version|xargs)
-PYTHON_VERSION=$(cat .python-version|xargs)
+PYTHON_VERSION=$(cat .python-odoo-version|xargs)
 POETRY_VERSION=$(cat .poetry-version|xargs)
 
 IS_DEBIAN_BOOKWORM=true

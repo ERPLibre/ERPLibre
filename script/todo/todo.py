@@ -55,7 +55,7 @@ except ModuleNotFoundError as e:
         print("Auto installation")
         time.sleep(0.5)
         subprocess.run(
-            "gnome-terminal -- bash -c './script/todo/source_todo_install.sh'",
+            "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
             shell=True,
             executable="/bin/bash",
         )

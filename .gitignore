@@ -39,6 +39,7 @@ pyproject.toml
 .odoo-version
 .poetry-version
 .python-version
+.python-odoo-version
 requirements.txt
 requirement/ignore_requirements.txt
 screenshots

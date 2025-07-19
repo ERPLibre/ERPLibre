@@ -210,7 +210,7 @@ repo_configure_group_code_generator:
 # Show git status for all repo
 .PHONY: repo_show_status
 repo_show_status:
-	./.venv/repo forall -pc "git status -s"
+	.venv.erplibre/bin/repo forall -pc "git status -s"
 
 # Show divergence between actual repository and production manifest
 .PHONY: repo_diff_manifest_production

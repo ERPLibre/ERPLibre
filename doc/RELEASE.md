@@ -7,7 +7,7 @@ A guide on how to generate a release.
 Before the cleaning, check if existing file isn't committed, not pushed or in stash.
 
 ```bash
-./.venv/repo forall -pc "git stash list"
+.venv.erplibre/bin/repo forall -pc "git stash list"
 ./script/git/git_show_code_diff_repo_manifest.py
 ```
 
@@ -102,7 +102,7 @@ To test it, you need to clean caches and install it:
 Generate production manifest and freeze all repos versions.
 
 ```bash
-./.venv/repo manifest -r -o ./default.xml
+.venv.erplibre/bin/repo manifest -r -o ./default.xml
 ```
 
 Update ERPLIBRE_VERSION variable in [env_var.sh](../env_var.sh), [Dockerfile.prod](../docker/Dockerfile.prod.pkg)
@@ -129,7 +129,7 @@ Understand differences from last release:
 git diff v#.#.#..HEAD
 
 # All repo
-./.venv/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
+.venv.erplibre/bin/repo forall -pc "git diff ERPLibre/v#.#.#..HEAD"
 ```
 
 Simplification tools:
@@ -169,7 +169,7 @@ git tag v#.#.#
 # Push your tags
 git push --tags
 # Add tags for all repo
-./.venv/repo forall -pc "git tag ERPLibre/v#.#.#"
+.venv.erplibre/bin/repo forall -pc "git tag ERPLibre/v#.#.#"
 make tag_push_all
 ```
 

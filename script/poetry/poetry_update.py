@@ -71,7 +71,7 @@ def get_config():
     )
     parser.add_argument(
         "--set_version_python",
-        help="Force to change python version, default is from file './.python-version'.",
+        help="Force to change python version, default is from file './.python-odoo-version'.",
     )
     parser.add_argument(
         "--set_version_erplibre",
@@ -85,7 +85,7 @@ def get_config():
         with open("./.odoo-version", "r", encoding="utf-8") as fichier:
             args.set_version_odoo = fichier.read().strip()
     if not args.set_version_python:
-        with open("./.python-version", "r", encoding="utf-8") as fichier:
+        with open("./.python-odoo-version", "r", encoding="utf-8") as fichier:
             args.set_version_python = fichier.read().strip()
     if not args.set_version_erplibre:
         with open("./.erplibre-version", "r", encoding="utf-8") as fichier:
@@ -511,6 +511,9 @@ def main():
     # lst_repo = get_all_repo()
     config = get_config()
 
+    # print(
+    #     f"Version: ERPLibre '{config.set_version_erplibre}' : Python ERPLibre '{config.set_version_python_erplibre}' : Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python Odoo '{config.set_version_python_odoo}'"
+    # )
     print(
         f"Version: Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python '{config.set_version_python}' : ERPLibre '{config.set_version_erplibre}'"
     )
