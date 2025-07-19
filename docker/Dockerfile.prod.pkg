@@ -35,7 +35,7 @@ RUN cd ; mkdir -p .bin/ && \
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    python -m venv .venv.$ODOO_VERSION
+    python -m venv .venv.$ERPLIBRE_VERSION
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \

@@ -27,8 +27,7 @@ fi
 # example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
 PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_ODOO_VERSION" | sed 's/\.[^\.]*$//')
 VENV_ERPLIBRE_PATH=.venv.erplibre
-#VENV_ODOO_PATH=".venv.$(< .odoo-version)"
-VENV_ODOO_PATH=".venv.${EL_ODOO_VERSION}"
+VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
 POETRY_ODOO_PATH=${VENV_ERPLIBRE_PATH}/bin/poetry
 export WITH_POETRY_INSTALLATION=1
 
