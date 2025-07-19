@@ -47,6 +47,17 @@ echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
 pip install --upgrade pip
 pip install -r requirement/erplibre_require-ments.txt
 
+VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/bin/repo
+# Install git-repo if missing
+if [[ ! -f ${VENV_REPO_PATH} ]]; then
+    echo "\n---- Install git-repo from Google APIS ----"
+    curl https://storage.googleapis.com/git-repo-downloads/repo > ${VENV_REPO_PATH}
+    chmod +x ${VENV_REPO_PATH}
+    sed -i 1d ${VENV_REPO_PATH}
+    PYTHON_HASHBANG="#!./${VENV_ERPLIBRE_PATH}/bin/python"
+    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
+fi
+
 source ${VENV_ODOO_PATH}/bin/activate
 echo -e "Upgrade pip to ${VENV_ODOO_PATH}"
 pip install --upgrade pip
@@ -79,16 +90,3 @@ rm -rf artifacts
 echo -e "\n---- Add link dependency in site-packages of Python ----"
 # TODO this link can break, the symbolic link is maybe not created
 ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
-
-source ./${VENV_ERPLIBRE_PATH}/bin/activate
-
-VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/bin/repo
-# Install git-repo if missing
-if [[ ! -f ${VENV_REPO_PATH} ]]; then
-    echo "\n---- Install git-repo from Google APIS ----"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ${VENV_REPO_PATH}
-    chmod +x ${VENV_REPO_PATH}
-    sed -i 1d ${VENV_REPO_PATH}
-    PYTHON_HASHBANG="#!./${VENV_ERPLIBRE_PATH}/bin/python"
-    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
-fi
