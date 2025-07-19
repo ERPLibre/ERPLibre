@@ -228,7 +228,7 @@ When you need to change python 3.7.17 to 3.8.10, do :
 ```bash
 rm -r .venv
 make install_dev
-./.venv/bin/poetry lock --no-update
+./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
 ```
 
 # Pull request

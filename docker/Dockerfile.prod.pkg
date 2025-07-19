@@ -63,10 +63,10 @@ RUN apt update && \
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
-    ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
-    ./.venv/bin/pip install "poetry==${POETRY_VERSION}" && \
-    ./.venv/bin/poetry --version && \
-    ./.venv/bin/poetry install
+    ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install --upgrade pip && git branch && ls . -lha && \
+    ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install "poetry==${POETRY_VERSION}" && \
+    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry --version && \
+    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry install
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \
