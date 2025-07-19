@@ -16,7 +16,7 @@ first_iteration=true
 second_iteration=true
 if [[ "${OSTYPE}" == "linux-gnu" ]]; then
   cmd_before="cd "
-  cmd_after_first=";gnome-terminal --tab -- bash -c 'source ./.venv/bin/activate;git status;bash';"
+  cmd_after_first=";gnome-terminal --tab -- bash -c 'source ./.venv.erplibre/bin/activate;git status;bash';"
   cmd_after=";gnome-terminal --tab -- bash -c 'git status;bash';"
   LONGCMD=""
   for t in "${paths[@]}"; do

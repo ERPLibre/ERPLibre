@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-LOG_FILE := ./.venv/make_test.log
+LOG_FILE := ./.venv.$(cat ".erplibre-version" | xargs)make_test.log
 #############
 #  General  #
 #############
@@ -123,7 +123,7 @@ open_terminal:
 ##############
 .PHONY: open_selenium
 open_selenium:
-	./.venv/bin/python ./script/selenium/web_login.py
+	./.venv.erplibre/bin/python ./script/selenium/web_login.py
 
 ############
 #  format  #

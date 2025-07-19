@@ -52,8 +52,8 @@ sudo su ${EL_USER} -c "sudo rm -f /tmp/${EL_USER}run.sh"
 cat <<EOF > /tmp/${EL_USER}run.sh
 #!/usr/bin/env bash
 cd ${EL_HOME_ERPLIBRE}
-source ./.venv/bin/activate
-python3 ${EL_HOME_ERPLIBRE}/odoo/odoo-bin -c ${EL_HOME_ERPLIBRE}/config.conf --limit-time-real 99999 --limit-time-cpu 99999 $@
+source ./.venv.erplibre/bin/activate
+python3 ${EL_HOME_ERPLIBRE}/odoo18.0/odoo/odoo-bin -c ${EL_HOME_ERPLIBRE}/config.conf --limit-time-real 99999 --limit-time-cpu 99999 $@
 EOF
 
 echo -e "* Security Run File"

@@ -198,7 +198,7 @@ rm -r ~/.local/share/Odoo/filestore/database_name
 ## Create module scaffold
 
 ```bash
-source ./.venv/bin/activate
+source ./.venv.erplibre/bin/activate
 python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```
 
