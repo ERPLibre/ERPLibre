@@ -73,9 +73,10 @@ except ModuleNotFoundError as e:
             executable="/bin/bash",
         )
     else:
+        print("Detect first installation from code source.")
         first_installation_input = (
             input(
-                "First installation? This will process system installation"
+                "First system installation? This will process system installation"
                 " before (Y/N): "
             )
             .strip()
