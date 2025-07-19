@@ -131,8 +131,26 @@ except ModuleNotFoundError as e:
             input("Install virtual environment? (Y/N): ").strip().upper()
         )
         if odoo_installation_input == "Y":
-            cmd_extern = "gnome-terminal -- bash -c './script/install/install_erplibre.sh;bash'"
-            cmd_intern = "./script/install/install_erplibre.sh"
+            # cmd_intern = "./script/install/install_erplibre.sh"
+            # TODO maybe update 0
+            dct_cmd_intern = {
+                ("0", "0: ERPLibre only", "./script/install/install_locally.sh"),
+            }
+            odoo_version_input = ""
+            while odoo_version_input not in ["0", "1", "2", "3", "4", "5", "6", "7"]:
+                odoo_version_input = (
+                    input("""Choose a version:
+    0: ERPLibre only
+    1: Odoo 18 - Default
+    2: Odoo 17
+    3: Odoo 16
+    4: Odoo 15
+    5: Odoo 14
+    6: Odoo 13
+    7: Odoo 12""").strip().upper()
+                )
+
+            cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
             try:
                 subprocess.run(
                     cmd_intern,
