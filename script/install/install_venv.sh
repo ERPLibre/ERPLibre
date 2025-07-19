@@ -19,6 +19,7 @@ echo "Python Version: $PYTHON_VERSION"
 
 PYENV_PATH=~/.pyenv
 PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
+PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
 echo "Python path version home"
 echo ${PYENV_VERSION_PATH}
 #echo "Python path version local"
@@ -48,7 +49,8 @@ if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
     fi
 fi
 
-pyenv local ${PYTHON_VERSION}
+# This will write .python-version
+# pyenv local ${PYTHON_VERSION}
 
 if [[ ! -d ${VENV_PATH} ]]; then
     echo -e "\n---- Create Virtual environment Python ----"
@@ -60,7 +62,7 @@ if [[ ! -d ${VENV_PATH} ]]; then
               exit 1
           fi
     else
-        echo "Missing pyenv, please refer installation guide."
+        echo "Missing pyenv, please refer installation guide. Check variable '${PYTHON_EXEC}'."
         exit 1
     fi
 fi

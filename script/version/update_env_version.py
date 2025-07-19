@@ -18,10 +18,11 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
-VERSION_PYTHON_FILE = os.path.join(".python-version")
+VERSION_PYTHON_FILE = os.path.join(".python-odoo-version")
 VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
+# TODO remove this VENV_FILE and use self.expected_venv_name, remove feature to rename .venv
 VENV_FILE = os.path.join(".venv")
 ADDONS_PATH = os.path.join("addons")
 ODOO_PATH = os.path.join(".", "odoo")
@@ -340,15 +341,16 @@ class Update:
     def validate_environment(self):
         status = True
         # Validate .venv
-        status &= self.update_link_file(
-            "Virtual environnement",
-            VENV_FILE,
-            self.expected_venv_name,
-            is_directory=True,
-            do_delete_source=self.config.install_dev
-            or self.config.force_install,
-        )
-        venv_exist = os.path.exists(VENV_FILE)
+        # No need .venv, will create directly .venv.odooVERSION
+        # status &= self.update_link_file(
+        #     "Virtual environnement",
+        #     VENV_FILE,
+        #     self.expected_venv_name,
+        #     is_directory=True,
+        #     do_delete_source=self.config.install_dev
+        #     or self.config.force_install,
+        # )
+        venv_exist = os.path.exists(self.expected_venv_name)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
         # Validate Odoo repo

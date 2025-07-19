@@ -131,25 +131,57 @@ except ModuleNotFoundError as e:
             input("Install virtual environment? (Y/N): ").strip().upper()
         )
         if odoo_installation_input == "Y":
+            VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
             # cmd_intern = "./script/install/install_erplibre.sh"
-            # TODO maybe update 0
-            dct_cmd_intern = {
-                ("0", "0: ERPLibre only", "./script/install/install_locally.sh"),
+            # TODO maybe update q to only install erplibre from install_locally
+            key_i = 0
+            dct_cmd_intern_begin = {
+                "q": ("q", "q: ERPLibre only", "./script/install/install_locally.sh"),
+                "w": ("w", "w: Install all Odoo version with ERPLibre", "make install_odoo_all_version")
             }
+            dct_final_cmd_intern = {}
+            with open(VERSION_DATA_FILE) as txt:
+                data_version = json.load(txt)
+
+            if not data_version:
+                raise Exception(f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'")
+
+            lst_version_transform = []
+            for key, value in data_version.items():
+                lst_version_transform.append(value)
+                value["erplibre_version"] = key
+
+            # Add odoo version installation on command
+            lst_version = sorted(lst_version_transform, key=lambda k: k.get("erplibre_version"))
+            for dct_version in lst_version[::-1]:
+                key_i += 1
+                key_s = str(key_i)
+                label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
+                if dct_version.get("default"):
+                    label += " - Default"
+                if dct_version.get("is_deprecated"):
+                    label += " - Deprecated"
+                erplibre_version = dct_version.get("erplibre_version")
+                dct_cmd_intern_begin[key_s] = (key_s, label, f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev")
+
+            # Add final command
+            dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
+
+            # Show command
             odoo_version_input = ""
-            while odoo_version_input not in ["0", "1", "2", "3", "4", "5", "6", "7"]:
+            while odoo_version_input not in dct_cmd_intern.keys():
+                if odoo_version_input:
+                    print(f"Error, cannot understand value '{odoo_version_input}'")
+                str_input_dyn_odoo_version = "Choose a version:\n\t" + "\n\t".join([a[1] for a in dct_cmd_intern.values()]) + "\nSelect : "
                 odoo_version_input = (
-                    input("""Choose a version:
-    0: ERPLibre only
-    1: Odoo 18 - Default
-    2: Odoo 17
-    3: Odoo 16
-    4: Odoo 15
-    5: Odoo 14
-    6: Odoo 13
-    7: Odoo 12""").strip().upper()
+                    input(str_input_dyn_odoo_version).strip().upper()
                 )
 
+            cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
+            print(f"Will execute :\n{cmd_intern}")
+
+            # TODO use external script to detect terminal to use on system
+            # TODO check script open_terminal_code_generator.sh
             cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
             try:
                 subprocess.run(

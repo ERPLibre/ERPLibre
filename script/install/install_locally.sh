@@ -35,10 +35,10 @@ export WITH_POETRY_INSTALLATION=1
 if [[ ! -n "${DOCKER_BUILD}" ]]; then
   # Install ERPLibre venv
   echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
-  ./install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
+  ./script/install/install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
   # Install Odoo venv
   echo -e "Install ${VENV_ODOO_PATH} with ${EL_PYTHON_ODOO_VERSION}"
-  ./install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
+  ./script/install/install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
 else
   mkdir .venv
 fi

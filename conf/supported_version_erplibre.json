@@ -3,24 +3,28 @@
         "odoo_version": "12.0",
         "python_version": "3.7.17",
         "poetry_version": "1.5.0",
+        "is_deprecated": true,
         "note": "Deprecated"
     },
     "odoo13.0_python3.7.17": {
         "odoo_version": "13.0",
         "python_version": "3.7.17",
         "poetry_version": "1.5.0",
+        "is_deprecated": true,
         "note": "Deprecated"
     },
     "odoo14.0_python3.8.20": {
         "odoo_version": "14.0",
         "python_version": "3.8.20",
         "poetry_version": "1.5.0",
+        "is_deprecated": true,
         "note": "Deprecated"
     },
     "odoo15.0_python3.8.20": {
         "odoo_version": "15.0",
         "python_version": "3.8.20",
         "poetry_version": "1.8.3",
+        "is_deprecated": true,
         "note": "Deprecated"
     },
     "odoo16.0_python3.10.18": {
