@@ -7,6 +7,7 @@ import ast
 import logging
 import os
 import re
+import shutil
 from collections import OrderedDict, defaultdict
 from pathlib import Path
 
@@ -71,7 +72,7 @@ def get_config():
     )
     parser.add_argument(
         "--set_version_python",
-        help="Force to change python version, default is from file './.python-version'.",
+        help="Force to change python version, default is from file './.python-odoo-version'.",
     )
     parser.add_argument(
         "--set_version_erplibre",
@@ -85,7 +86,7 @@ def get_config():
         with open("./.odoo-version", "r", encoding="utf-8") as fichier:
             args.set_version_odoo = fichier.read().strip()
     if not args.set_version_python:
-        with open("./.python-version", "r", encoding="utf-8") as fichier:
+        with open("./.python-odoo-version", "r", encoding="utf-8") as fichier:
             args.set_version_python = fichier.read().strip()
     if not args.set_version_erplibre:
         with open("./.erplibre-version", "r", encoding="utf-8") as fichier:
@@ -117,23 +118,30 @@ def get_file_from_glob(
     force_add_item: list = None,
 ):
     lst_v = []
-    for a in Path(".").rglob(glob_txt):
-        a_dirname = os.path.dirname(a)
-        if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
-            continue
-        if ignore_dir_startswith:
-            ignore_it = False
-            for item_ignore_dir in ignore_dir_startswith:
-                if a_dirname.startswith(item_ignore_dir):
-                    ignore_it = True
-                    break
-            if ignore_it:
+    # TODO take all groups odoo##.# from manifest, will create a dependency
+    # Hardcode logic from manifest
+    lst_path = [
+        Path(f"./addons.odoo{config.set_version_odoo}").rglob(glob_txt),
+        Path(f"./odoo{config.set_version_odoo}/odoo").rglob(glob_txt),
+    ]
+    for gen_path in lst_path:
+        for a in gen_path:
+            a_dirname = os.path.dirname(a)
+            if a_dirname.startswith(".repo/") or a_dirname.startswith(".venv"):
                 continue
-        if a_dirname.startswith("addons") and not a_dirname.startswith(
-            f"addons.odoo{config.set_version_odoo}"
-        ):
-            continue
-        lst_v.append(a)
+            if ignore_dir_startswith:
+                ignore_it = False
+                for item_ignore_dir in ignore_dir_startswith:
+                    if a_dirname.startswith(item_ignore_dir):
+                        ignore_it = True
+                        break
+                if ignore_it:
+                    continue
+            if a_dirname.startswith("addons") and not a_dirname.startswith(
+                f"addons.odoo{config.set_version_odoo}"
+            ):
+                continue
+            lst_v.append(a)
     if force_add_item:
         for item in force_add_item:
             lst_v.append(Path(item))
@@ -290,23 +298,29 @@ def combine_requirements(config):
 
             lst_version_requirement = []
             for requirement in lst_requirement:
-                if ".*" in requirement:
-                    requirement = requirement.replace(".*", "")
+                # if ".*" in requirement:
+                #     requirement = requirement.replace(".*", "")
                 if "~=" in requirement:
                     old_requirement = requirement
                     requirement = requirement.replace("~=", "==")
                     lst_replace_special_sign[requirement] = old_requirement
 
-                match = re.search(r"[=<>~!]{1,2}(.*)", requirement)
+                requirement_begin = requirement.split(except_sign)[0]
+                match = re.search(r"[=<>~!]{1,2}(.*)", requirement_begin)
                 if not match:
                     # Ignore empty version
                     continue
                 match_version = match.group(1).strip()
+                if ".*" in match_version:
+                    match_version = match_version.replace(".*", "")
                 match_sign = match.group(0).strip()[: -len(match_version)]
                 match_app_name = requirement[
                     : -(len(match_sign) + len(match_version))
                 ]
-                result_number = [(match_sign, Version(match_version))]
+                match_version_format = match_version.replace("'", "").replace(
+                    '"', ""
+                )
+                result_number = [(match_sign, Version(match_version_format))]
                 # result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
                     continue
@@ -328,6 +342,10 @@ def combine_requirements(config):
                     # else:
                     #     version_requirement_upd = version_requirement[0]
                     version_requirement_upd = version_requirement[0]
+                    if ".*" in version_requirement_upd:
+                        version_requirement_upd = (
+                            version_requirement_upd.replace(".*", "")
+                        )
                     try:
                         is_compatible &= iscompatible.iscompatible(
                             version_requirement_upd, highest_value[1][0][1]
@@ -353,12 +371,18 @@ def combine_requirements(config):
                         filename_1 = dct_requirements_module_filename.get(
                             key_require
                         )
-                        if priority_filename_requirement in filename_1:
-                            erplibre_value = version_requirement[0]
-                        elif (
-                            second_priority_filename_requirement in filename_1
-                        ):
-                            odoo_value = version_requirement[0]
+                        if not filename_1:
+                            _logger.error(
+                                f"Cannot find key '{key_require}' into list of requirements."
+                            )
+                        else:
+                            if priority_filename_requirement in filename_1:
+                                erplibre_value = version_requirement[0]
+                            elif (
+                                second_priority_filename_requirement
+                                in filename_1
+                            ):
+                                odoo_value = version_requirement[0]
 
                     if erplibre_value:
                         str_result_choose = (
@@ -511,8 +535,17 @@ def main():
     # lst_repo = get_all_repo()
     config = get_config()
 
+    # print(
+    #     f"Version: ERPLibre '{config.set_version_erplibre}' : Python ERPLibre '{config.set_version_python_erplibre}' : Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python Odoo '{config.set_version_python_odoo}'"
+    # )
     print(
         f"Version: Poetry '{config.set_version_poetry}' : Odoo '{config.set_version_odoo}' : Python '{config.set_version_python}' : ERPLibre '{config.set_version_erplibre}'"
+    )
+
+    poetry_default_lock_path = "./poetry.lock"
+    pyproject_toml_filename = ""
+    poetry_target_lock_path = (
+        f"./requirement/poetry.{config.set_version_erplibre}.lock"
     )
 
     if not config.dry:
@@ -520,11 +553,21 @@ def main():
         delete_dependency_poetry(pyproject_toml_filename)
     combine_requirements(config)
     if not config.dry:
-        if config.force and os.path.isfile("./poetry.lock"):
-            os.remove("./poetry.lock")
+        if config.force and os.path.isfile(poetry_default_lock_path):
+            os.remove(poetry_default_lock_path)
         status = call_poetry_add_build_dependency()
-        if status:
+        if status and pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
+        if (
+            config.force
+            and not os.path.islink(poetry_default_lock_path)
+            and os.path.isfile(poetry_default_lock_path)
+            and os.path.isfile(poetry_target_lock_path)
+        ):
+            # If "./poetry.lock" is not symbolic link, force replace original
+            os.remove(poetry_target_lock_path)
+            shutil.move(poetry_default_lock_path, poetry_target_lock_path)
+            os.symlink(poetry_target_lock_path, poetry_default_lock_path)
 
 
 if __name__ == "__main__":
