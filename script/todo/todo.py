@@ -92,19 +92,32 @@ except ModuleNotFoundError as e:
             print("Wait after OS installation before continue.")
 
         # First detect pycharm, need to be open before installation and close to increase speed
+        has_pycharm = False
+        has_pycharm_community = False
         result = subprocess.run(
             ["which", "pycharm"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        if result.returncode == 0 and not os.path.exists(".idea"):
+        if result.returncode == 0:
+            has_pycharm = True
+        else:
+            result = subprocess.run(
+                ["which", "pycharm-community"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            has_pycharm_community = result.returncode == 0
+        if (has_pycharm or has_pycharm_community) and not os.path.exists(".idea"):
             pycharm_configuration_input = (
                 input("Open Pycharm? (Y/N): ").strip().upper()
             )
             if pycharm_configuration_input == "Y":
+                pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
                 subprocess.run(
-                    "gnome-terminal -- bash -c 'pycharm .'",
+                    f"gnome-terminal -- bash -c '{pycharm_bin} .'",
                     shell=True,
                     executable="/bin/bash",
                 )
