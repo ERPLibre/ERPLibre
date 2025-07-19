@@ -34,34 +34,37 @@ export WITH_POETRY_INSTALLATION=1
 
 if [[ ! -n "${DOCKER_BUILD}" ]]; then
   # Install ERPLibre venv
+  echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
   ./install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
   # Install Odoo venv
+  echo -e "Install ${VENV_ODOO_PATH} with ${EL_PYTHON_ODOO_VERSION}"
   ./install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
 else
   mkdir .venv
 fi
 
-source ./.venv.erplibre/bin/activate
+source ./${VENV_ERPLIBRE_PATH}/bin/activate
+echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
 pip install --upgrade pip
 pip install -r requirement/erplibre_require-ments.txt
 
 source ${VENV_ODOO_PATH}/bin/activate
+echo -e "Upgrade pip to ${VENV_ODOO_PATH}"
 pip install --upgrade pip
 
 echo -e "\n---- Installing poetry dependency ----"
 
 # Delete artifacts created by pip, cause error in next "poetry install"
 if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
-    ${VENV_ERPLIBRE_PATH}/bin/pip install poetry==${EL_POETRY_VERSION}
-    ${VENV_ERPLIBRE_PATH}/bin/poetry --version
+    echo -e "Install Poetry ${POETRY_ODOO_PATH}"
+    pip install poetry==${EL_POETRY_VERSION}
+    poetry --version
     # Fix broken poetry by installing ignored dependence
-    #    ${VENV_ERPLIBRE_PATH}/bin/pip install vatnumber
-    #    ${VENV_ERPLIBRE_PATH}/bin/pip install suds-jurko
-    #    ${VENV_ERPLIBRE_PATH}/bin/poetry lock --no-update
+    #    poetry lock --no-update
     # To fix keyring problem when installation is blocked, use
     export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
-      ${VENV_ERPLIBRE_PATH}/bin/poetry install --no-root -vvv
+      poetry install --no-root -vvv
     fi
     retVal=$?
     if [[ $retVal -ne 0 ]]; then
@@ -78,7 +81,7 @@ echo -e "\n---- Add link dependency in site-packages of Python ----"
 # TODO this link can break, the symbolic link is maybe not created
 ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
 
-source ./.venv.erplibre/bin/activate
+source ./${VENV_ERPLIBRE_PATH}/bin/activate
 
 VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/repo
 # Install git-repo if missing
