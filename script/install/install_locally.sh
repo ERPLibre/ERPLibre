@@ -26,7 +26,7 @@ fi
 
 # example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
 PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_ODOO_VERSION" | sed 's/\.[^\.]*$//')
-VENV_ERPLIBRE_PATH=.venv.erplibre
+VENV_ERPLIBRE_PATH=$(cat "conf/python-erplibre-venv" | xargs)
 VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
 POETRY_ODOO_PATH=${VENV_ERPLIBRE_PATH}/bin/poetry
 export WITH_POETRY_INSTALLATION=1
@@ -47,16 +47,7 @@ echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
 pip install --upgrade pip
 pip install -r requirement/erplibre_require-ments.txt
 
-VENV_REPO_PATH=${VENV_ERPLIBRE_PATH}/bin/repo
-# Install git-repo if missing
-if [[ ! -f ${VENV_REPO_PATH} ]]; then
-    echo "\n---- Install git-repo from Google APIS ----"
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ${VENV_REPO_PATH}
-    chmod +x ${VENV_REPO_PATH}
-    sed -i 1d ${VENV_REPO_PATH}
-    PYTHON_HASHBANG="#!./${VENV_ERPLIBRE_PATH}/bin/python"
-    sed -i "1 i ${PYTHON_HASHBANG}" ${VENV_REPO_PATH}
-fi
+./script/install/install_git_repo.sh
 
 source ${VENV_ODOO_PATH}/bin/activate
 echo -e "Upgrade pip to ${VENV_ODOO_PATH}"
