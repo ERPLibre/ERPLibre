@@ -258,6 +258,8 @@ class GitTool:
         """
         lst_filter_group = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
+        if not manifest_file:
+            return []
         if os.path.isabs(manifest_file):
             # This is a absolute path
             filename = manifest_file
@@ -741,6 +743,8 @@ class GitTool:
         :return: manifest file used for Repo
         """
         file = f"{repo_path}/.repo/manifest.xml"
+        if not os.path.exists(file):
+            return ""
         with open(file) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
