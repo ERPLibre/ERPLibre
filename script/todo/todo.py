@@ -174,7 +174,7 @@ except ModuleNotFoundError as e:
                     print(f"Error, cannot understand value '{odoo_version_input}'")
                 str_input_dyn_odoo_version = "Choose a version:\n\t" + "\n\t".join([a[1] for a in dct_cmd_intern.values()]) + "\nSelect : "
                 odoo_version_input = (
-                    input(str_input_dyn_odoo_version).strip().upper()
+                    input(str_input_dyn_odoo_version).strip().lower()
                 )
 
             cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
