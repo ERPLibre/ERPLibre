@@ -134,9 +134,10 @@ except ModuleNotFoundError as e:
             VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
             # cmd_intern = "./script/install/install_erplibre.sh"
             # TODO maybe update q to only install erplibre from install_locally
+            # TODO problem installing with q, the script depend on odoo
             key_i = 0
             dct_cmd_intern_begin = {
-                "q": ("q", "q: ERPLibre only", "./script/install/install_locally.sh"),
+                "q": ("q", "q: ERPLibre only with system python without Odoo", "./script/install/install_erplibre.sh"),
                 "w": ("w", "w: Install all Odoo version with ERPLibre", "make install_odoo_all_version")
             }
             dct_final_cmd_intern = {}
