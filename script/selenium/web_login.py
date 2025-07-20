@@ -32,14 +32,11 @@ def fill_parser(parser):
 
 def run(config, selenium_tool):
     # Trouvez les éléments du formulaire
-    courriel_input = selenium_tool.driver.find_element(By.NAME, "login")
-    mot_de_passe_input = selenium_tool.driver.find_element(By.NAME, "password")
-    div_connexion_button = selenium_tool.driver.find_element(
-        By.CLASS_NAME, "oe_login_buttons"
-    )
-    connexion_button = div_connexion_button.find_element(
-        By.CLASS_NAME, "btn-primary"
-    )
+    courriel_input = selenium_tool.get_element(by=By.NAME, value="login")
+    mot_de_passe_input = selenium_tool.get_element(by=By.NAME, value="password")
+    # div_connexion_button = selenium_tool.get_element(by=By.CLASS_NAME, value="oe_login_buttons")
+    connexion_button = selenium_tool.get_element(by=By.CLASS_NAME, value="btn-primary")
+
     # try:
     #     connexion_button = selenium_tool.driver.find_element(
     #         By.XPATH,
