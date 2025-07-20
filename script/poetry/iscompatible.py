@@ -85,7 +85,9 @@ def iscompatible(requirements, version):
         requirements
     ):
         operator = operators[operator_string]
-        required = string_to_tuple(requirement_string)
+        requirement_version = Version(requirement_string)
+        # base_version keep only 3 and less value from semversion
+        required = string_to_tuple(requirement_version.base_version)
         result = operator(version.release, required)
 
         results.append(result)
