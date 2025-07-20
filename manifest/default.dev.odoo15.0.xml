@@ -93,7 +93,7 @@
         remote="OCA"
         groups="addons"
     />
-    <project name="cetmix-tower.git" path="addons.odoo15.0/cetmix_cetmix-tower" remote="cetmix" groups="addons" />
+<!--    <project name="cetmix-tower.git" path="addons.odoo15.0/cetmix_cetmix-tower" remote="cetmix" groups="addons" />-->
     <project name="commission.git" path="addons.odoo15.0/OCA_commission" remote="OCA" groups="addons" />
     <project
         name="community-data-files.git"
@@ -153,17 +153,17 @@
     <project name="management-system.git" path="addons.odoo15.0/OCA_management-system" remote="OCA" groups="addons" />
     <project name="manufacture.git" path="addons.odoo15.0/OCA_manufacture" remote="OCA" groups="addons" />
     <project name="margin-analysis.git" path="addons.odoo15.0/OCA_margin-analysis" remote="OCA" groups="addons" />
-    <project name="medical-fhir.git" path="addons.odoo15.0/tegin_medical-fhir" remote="tegin" groups="addons" />
+<!--    <project name="medical-fhir.git" path="addons.odoo15.0/tegin_medical-fhir" remote="tegin" groups="addons" />-->
     <project name="mis-builder.git" path="addons.odoo15.0/OCA_mis-builder" remote="OCA" groups="addons" />
     <project name="multi-company.git" path="addons.odoo15.0/OCA_multi-company" remote="OCA" groups="addons" />
     <project name="muk_web.git" path="addons.odoo15.0/muk-it_muk_web" remote="muk-it" groups="addons" />
     <project name="odoo-addons.git" path="addons.odoo15.0/ajepe_odoo-addons" remote="ajepe" groups="addons" />
-    <project
-        name="odoo-base-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-base-addons"
-        remote="Numigi"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="odoo-base-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-base-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="odoo-cloud-platform.git"
         path="addons.odoo15.0/camptocamp_odoo-cloud-platform"
@@ -177,20 +177,20 @@
         revision="master"
         groups="odoo"
     />
-    <project
-        name="odoo-entertainment-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-entertainment-addons"
-        remote="Numigi"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="odoo-entertainment-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-entertainment-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="odoo-formio.git"
         path="addons.odoo15.0/novacode-nl_odoo-formio"
         remote="novacode-nl"
         groups="addons"
     />
-    <project name="odoo-git-addons.git" path="addons.odoo15.0/Numigi_odoo-git-addons" remote="Numigi" groups="addons" />
-    <project name="odoo-hr-addons.git" path="addons.odoo15.0/Numigi_odoo-hr-addons" remote="Numigi" groups="addons" />
+<!--    <project name="odoo-git-addons.git" path="addons.odoo15.0/Numigi_odoo-git-addons" remote="Numigi" groups="addons" />-->
+<!--    <project name="odoo-hr-addons.git" path="addons.odoo15.0/Numigi_odoo-hr-addons" remote="Numigi" groups="addons" />-->
     <project
         name="odoo-module-migrator.git"
         path="script/OCA_odoo-module-migrator"
@@ -198,12 +198,12 @@
         revision="master"
         groups="odoo"
     />
-    <project
-        name="odoo-partner-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-partner-addons"
-        remote="Numigi"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="odoo-partner-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-partner-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="odoo-port-docs.git"
         path="doc/itpp-labs_odoo-port-docs"
@@ -211,37 +211,37 @@
         revision="master"
         groups="odoo"
     />
-    <project
-        name="odoo-product-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-product-addons"
-        remote="Numigi"
-        groups="addons"
-    />
-    <project
-        name="odoo-project-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-project-addons"
-        remote="Numigi"
-        groups="addons"
-    />
-    <project
-        name="odoo-purchase-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-purchase-addons"
-        remote="Numigi"
-        groups="addons"
-    />
-    <project
-        name="odoo-stock-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-stock-addons"
-        remote="Numigi"
-        revision="15.0"
-        groups="addons"
-    />
-    <project
-        name="odoo-survey-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-survey-addons"
-        remote="Numigi"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="odoo-product-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-product-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project-->
+<!--        name="odoo-project-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-project-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project-->
+<!--        name="odoo-purchase-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-purchase-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project-->
+<!--        name="odoo-stock-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-stock-addons"-->
+<!--        remote="Numigi"-->
+<!--        revision="15.0"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project-->
+<!--        name="odoo-survey-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-survey-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project
         name="odoo-test-docs.git"
         path="doc/itpp-labs_odoo-test-docs"
@@ -249,13 +249,13 @@
         revision="master"
         groups="odoo"
     />
-    <project
-        name="odoo-timesheet-addons.git"
-        path="addons.odoo15.0/Numigi_odoo-timesheet-addons"
-        remote="Numigi"
-        groups="addons"
-    />
-    <project name="odoo-web-addons.git" path="addons.odoo15.0/Numigi_odoo-web-addons" remote="Numigi" groups="addons" />
+<!--    <project-->
+<!--        name="odoo-timesheet-addons.git"-->
+<!--        path="addons.odoo15.0/Numigi_odoo-timesheet-addons"-->
+<!--        remote="Numigi"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project name="odoo-web-addons.git" path="addons.odoo15.0/Numigi_odoo-web-addons" remote="Numigi" groups="addons" />-->
     <project
         name="odoo.git"
         path="odoo15.0/odoo"
@@ -264,19 +264,19 @@
         revision="ERPLibre/15.0"
         groups="odoo"
     />
-    <project
-        name="odoo_addons.git"
-        path="addons.odoo15.0/Smile-SA_odoo_addons"
-        remote="Smile-SA"
-        revision="15.0"
-        groups="addons"
-    />
-    <project
-        name="odoo_dhtmlxgantt.git"
-        path="addons.odoo15.0/obayit_odoo_dhtmlxgantt"
-        remote="obayit"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="odoo_addons.git"-->
+<!--        path="addons.odoo15.0/Smile-SA_odoo_addons"-->
+<!--        remote="Smile-SA"-->
+<!--        revision="15.0"-->
+<!--        groups="addons"-->
+<!--    />-->
+<!--    <project-->
+<!--        name="odoo_dhtmlxgantt.git"-->
+<!--        path="addons.odoo15.0/obayit_odoo_dhtmlxgantt"-->
+<!--        remote="obayit"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="odooapps.git" path="addons.odoo15.0/odoomates_odooapps" remote="odoomates" groups="addons" />
     <project name="odooplm.git" path="addons.odoo15.0/OmniaGit_odooplm" remote="OmniaGit" groups="addons" />
     <project
@@ -352,12 +352,12 @@
     <project name="vertical-isp.git" path="addons.odoo15.0/OCA_vertical-isp" remote="OCA" groups="addons" />
     <project name="vertical-travel.git" path="addons.odoo15.0/OCA_vertical-travel" remote="OCA" groups="addons" />
     <project name="web.git" path="addons.odoo15.0/OCA_web" remote="OCA" groups="addons" />
-    <project
-        name="website-addons.git"
-        path="addons.odoo15.0/itpp-labs_website-addons"
-        remote="itpp-labs"
-        groups="addons"
-    />
+<!--    <project-->
+<!--        name="website-addons.git"-->
+<!--        path="addons.odoo15.0/itpp-labs_website-addons"-->
+<!--        remote="itpp-labs"-->
+<!--        groups="addons"-->
+<!--    />-->
     <project name="website-cms.git" path="addons.odoo15.0/OCA_website-cms" remote="OCA" groups="addons" />
     <project name="website.git" path="addons.odoo15.0/OCA_website" remote="OCA" groups="addons" />
     <project name="wms.git" path="addons.odoo15.0/OCA_wms" remote="OCA" groups="addons" />
