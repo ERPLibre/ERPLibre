@@ -150,7 +150,7 @@
     />
     <!--  <project name="odoo-timesheet-addons.git" path="addons/Numigi_odoo-timesheet-addons" remote="Numigi" groups="addons"/>-->
     <!--  <project name="odoo-web-addons.git" path="addons/Numigi_odoo-web-addons" remote="Numigi" groups="addons"/>-->
-    <project name="odoo.git" path="odoo" remote="odoo" clone-depth="10" revision="ERPLibre/13.0" groups="odoo" />
+    <project name="odoo.git" path="odoo13.0/odoo" remote="odoo" clone-depth="10" revision="ERPLibre/13.0" groups="odoo" />
     <!--  <project name="odoo_addons.git" path="addons/Smile-SA_odoo_addons" remote="Smile-SA" groups="addons"/>-->
     <!--  <project name="odoo_dhtmlxgantt.git" path="addons/obayit_odoo_dhtmlxgantt" remote="obayit" groups="addons"/>-->
     <project name="odooapps.git" path="addons/odoomates_odooapps" remote="odoomates" groups="addons" />
