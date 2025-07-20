@@ -90,3 +90,6 @@ rm -rf artifacts
 echo -e "\n---- Add link dependency in site-packages of Python ----"
 # TODO this link can break, the symbolic link is maybe not created
 ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
+
+# Force to return to erplibre source
+source ./${VENV_ERPLIBRE_PATH}/bin/activate
