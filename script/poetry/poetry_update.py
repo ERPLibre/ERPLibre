@@ -533,11 +533,10 @@ def main():
         status = call_poetry_add_build_dependency()
         if status and pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
-        if config.force:
+        if config.force and not os.path.islink(poetry_default_lock_path) and os.path.isfile(poetry_target_lock_path):
             # If "./poetry.lock" is not symbolic link, force replace original
-            if not os.path.islink(poetry_default_lock_path):
-                shutil.move(poetry_default_lock_path, poetry_target_lock_path)
-                os.symlink(poetry_target_lock_path, poetry_default_lock_path)
+            shutil.move(poetry_default_lock_path, poetry_target_lock_path)
+            os.symlink(poetry_target_lock_path, poetry_default_lock_path)
 
 
 if __name__ == "__main__":
