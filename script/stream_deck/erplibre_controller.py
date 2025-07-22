@@ -60,6 +60,9 @@ class StreamDeckController(object):
         self.last_is_move_dist_x = None
         self.last_is_touch = None
         self.last_is_direction_left = None
+        self.lst_deck = []
+        self.thread_webcam = None
+        self.lst_deck_thread_webcam = set()
 
         print("Found {} Stream Deck(s).\n".format(len(streamdecks)))
 
@@ -146,6 +149,13 @@ class StreamDeckController(object):
             if deck.DECK_TOUCH:
                 deck.set_touchscreen_callback(self.touchscreen_event_callback)
 
+            if self.thread_webcam is None and BIG_IMAGE_TYPE == "Webcam":
+                self.thread_webcam = threading.Thread(
+                    target=self.webcam_thread(),
+                    args=[FRAMES_PER_SECOND],
+                )
+                self.thread_webcam.start()
+
             print("Loading animations...")
             animations = [
                 self.create_animation_frames(deck, "Setting.gif"),
@@ -165,6 +175,7 @@ class StreamDeckController(object):
                     # else:
                     #     self.update_key_image(deck, key, False)
                     self.update_key_image(deck, key, False)
+
             elif BIG_IMAGE_TYPE == "Big image":
                 # Load and resize a source image so that it will fill the given
                 # StreamDeck.
@@ -191,65 +202,19 @@ class StreamDeckController(object):
                     # Show the section of the main image onto the key.
                     with deck:
                         deck.set_key_image(k, key_image)
+
             elif BIG_IMAGE_TYPE == "Webcam":
-                if WEBCAM_TYPE == "local":
-                    # Open the default camera
-                    cam = cv2.VideoCapture(0)
+                # Kick off the key image webcam thread.
+                self.lst_deck_thread_webcam.add(deck)
 
-                    # Get the default frame width and height
-                    frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                else:
-                    pass
-                while True:
-                    if WEBCAM_TYPE == "local":
-                        ret, frame = cam.read()
-                        # Convert the OpenCV BGR image to RGB
-                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                        # Convert the NumPy array (RGB image) to a PIL Image
-                        pil_image = Image.fromarray(rgb_frame)
-                    elif WEBCAM_TYPE == "by_ip":
-                        img_resp = requests.get(WEBCAM_IP_URL)
-                        # img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
-                        pil_image = Image.open(io.BytesIO(img_resp.content))
-                    else:
-                        break
-
-                    image = self.create_full_deck_sized_image(
-                        deck, key_spacing, image_pil=pil_image
-                    )
-
-                    print(
-                        "Created full deck image size of {}x{} pixels.".format(
-                            image.width, image.height
-                        )
-                    )
-
-                    # Extract out the section of the image that is occupied by each key.
-                    key_images = dict()
-                    for k in range(deck.key_count()):
-                        key_images[k] = (
-                            self.crop_key_image_from_deck_sized_image(
-                                deck, image, key_spacing, k
-                            )
-                        )
-                    # Draw the individual key images to each of the keys.
-                    for k in range(deck.key_count()):
-                        key_image = key_images[k]
-
-                        # Show the section of the main image onto the key.
-                        with deck:
-                            deck.set_key_image(k, key_image)
-
-            # Kick off the key image animating thread.
-
-            threading.Thread(
-                target=self.animate(
-                    deck, key_images, BIG_IMAGE_TYPE=BIG_IMAGE_TYPE
-                ),
-                args=[FRAMES_PER_SECOND],
-            ).start()
+            if BIG_IMAGE_TYPE in ["Animation"]:
+                # Kick off the key image animating thread.
+                threading.Thread(
+                    target=self.animate_thread(
+                        deck, key_images, big_image_type=BIG_IMAGE_TYPE
+                    ),
+                    args=[FRAMES_PER_SECOND],
+                ).start()
 
             # Register callback function for when a key state changes.
             deck.set_key_callback(self.key_change_callback)
@@ -280,10 +245,15 @@ class StreamDeckController(object):
                 print(f"USB device connected: {id_model}")
                 # 'Stream Deck +'
                 if id_model in [
+                    "Stream_Deck_Original",
+                    "Stream_Deck_Original_v2",
                     "Stream_Deck_XL",
                     "Stream_Deck_MK.2",
                     "Stream_Deck_Plus",
+                    "Stream_Deck_Neo",
+                    "Stream_Deck_Mini",
                 ]:
+                    # TODO this is a bug, need to update the list from device manager
                     sdc = StreamDeckController()
                     # TODO Le init est le bogue au redémarrage sur le hub
                     sdc.init()
@@ -943,12 +913,12 @@ class StreamDeckController(object):
         else:
             print("\t - No Visual Output")
 
-    def animate(self, deck, key_images, BIG_IMAGE_TYPE=None):
+    def animate_thread(self, deck, key_images, big_image_type=None):
         def inter_animate(fps):
             frame_time = Fraction(1, fps)
             next_frame = Fraction(time.monotonic())
             has_overrun = False
-            is_big_image = BIG_IMAGE_TYPE in ["Webcam", "Big image"]
+            is_big_image = big_image_type in ["Webcam", "Big image"]
             while deck.is_open():
                 try:
                     with deck:
@@ -977,6 +947,116 @@ class StreamDeckController(object):
                     print(f"Overrun {sleep_interval}")
 
         return inter_animate
+
+    def webcam_thread(self):
+        def inter_webcam_thread(fps):
+            debug = False
+            frame_time = Fraction(1, fps)
+            next_frame = Fraction(time.monotonic())
+            has_overrun = False
+
+            waiting_time_start_thread = 5
+            if waiting_time_start_thread > 0:
+                print(
+                    f"Start webcam thread in {waiting_time_start_thread} second{'s' if waiting_time_start_thread > 1 else ''}..."
+                )
+                time.sleep(waiting_time_start_thread)
+
+            if WEBCAM_TYPE == "local":
+                # Open the default camera
+                self.cam = cv2.VideoCapture(1)
+
+                # Get the default frame width and height
+                self.frame_width = int(self.cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+                self.frame_height = int(
+                    self.cam.get(cv2.CAP_PROP_FRAME_HEIGHT)
+                )
+            i = 0
+            # while self.lst_deck_thread_webcam:
+            while True:
+                i += 1
+                has_image = False
+                if WEBCAM_TYPE == "local":
+                    ret, frame = self.cam.read()
+                    if not ret:
+                        self.cam = cv2.VideoCapture(0)
+                        if debug:
+                            print(f"The webcam return nothing.")
+                        sleep_interval = float(next_frame) - time.monotonic()
+                        if sleep_interval >= 0:
+                            time.sleep(sleep_interval)
+                        continue
+                    if debug:
+                        print(f"Read cam frame id: {i}")
+                    # Convert the OpenCV BGR image to RGB
+                    try:
+                        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    except cv2.error as err:
+                        print(f"CV error: {err}")
+                        sleep_interval = float(next_frame) - time.monotonic()
+                        if sleep_interval >= 0:
+                            time.sleep(sleep_interval)
+                        continue
+
+                    # Convert the NumPy array (RGB image) to a PIL Image
+                    pil_image = Image.fromarray(rgb_frame)
+                    has_image = True
+                elif WEBCAM_TYPE == "by_ip":
+                    img_resp = requests.get(WEBCAM_IP_URL)
+                    # img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
+                    pil_image = Image.open(io.BytesIO(img_resp.content))
+                    has_image = True
+
+                # Loop on each deck
+                lst_copy_deck_thread_webcam = list(
+                    self.lst_deck_thread_webcam
+                )[:]
+                for deck in lst_copy_deck_thread_webcam:
+                    if deck.DECK_TYPE == "Stream Deck +":
+                        key_spacing = KEY_SPACING_PADDING_PLUS
+                    else:
+                        key_spacing = KEY_SPACING_PADDING
+                    try:
+                        image = self.create_full_deck_sized_image(
+                            deck, key_spacing, image_pil=pil_image
+                        )
+
+                        if debug:
+                            print(
+                                "Created full deck image size of {}x{} pixels.".format(
+                                    image.width, image.height
+                                )
+                            )
+
+                        # Extract out the section of the image that is occupied by each key.
+                        key_images = dict()
+                        for k in range(deck.key_count()):
+                            key_images[k] = (
+                                self.crop_key_image_from_deck_sized_image(
+                                    deck, image, key_spacing, k
+                                )
+                            )
+                        # Draw the individual key images to each of the keys.
+                        for k in range(deck.key_count()):
+                            key_image = key_images[k]
+
+                            # Show the section of the main image onto the key.
+                            with deck:
+                                deck.set_key_image(k, key_image)
+                    # has_overrun = False
+                    except TransportError as err:
+                        print("TransportError: {0}".format(err))
+                        break
+                next_frame += frame_time
+                sleep_interval = float(next_frame) - time.monotonic()
+                if sleep_interval >= 0:
+                    time.sleep(sleep_interval)
+                else:
+                    has_overrun = False
+                    if debug:
+                        print(f"Overrun {sleep_interval}")
+
+        return inter_webcam_thread
 
 
 if __name__ == "__main__":
