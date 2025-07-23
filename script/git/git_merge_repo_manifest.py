@@ -4,6 +4,7 @@
 
 import argparse
 import copy
+import csv
 import logging
 import os
 import sys
@@ -16,6 +17,13 @@ sys.path.append(new_path)
 from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
+
+
+DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
+DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
+DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
+    "private", "default_git_manifest.csv"
+)
 
 
 def get_config():
@@ -32,16 +40,18 @@ def get_config():
 """,
     )
     parser.add_argument(
-        "--input1", required=True, help="First manifest to merge into input2."
+        "--input",
+        help="First manifest to merge into input2. Second manifest, overwrite by input1.",
+    )
+    parser.add_argument("--output", help="Output of new manifest")
+    parser.add_argument(
+        "--att_revision_only",
+        action="store_true",
+        help="Output of new manifest",
     )
     parser.add_argument(
-        "--input2", required=True, help="Second manifest, overwrite by input1."
+        "--with_OCA", action="store_true", help="Add OCA manifest"
     )
-    parser.add_argument(
-        "--output", required=True, help="Output of new manifest"
-    )
-    # parser.add_argument('--clear', action="store_true",
-    #                     help="Create a new manifest and clear old configuration.")
     args = parser.parse_args()
     return args
 
@@ -50,35 +60,89 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    (
-        dct_remote_1,
-        dct_project_1,
-        default_remote_1,
-    ) = git_tool.get_manifest_xml_info(filename=config.input1, add_root=True)
-    (
-        dct_remote_2,
-        dct_project_2,
-        default_remote_2,
-    ) = git_tool.get_manifest_xml_info(filename=config.input2, add_root=True)
-
-    dct_remote_3 = copy.deepcopy(dct_remote_2)
-    dct_project_3 = copy.deepcopy(dct_project_2)
-
-    for key, value in dct_project_1.items():
-        revision = value.get("@revision")
-        if revision:
-            dct_project_3[key]["@revision"] = revision
+    lst_input = config.input
+    if not lst_input:
+        lst_input = []
+        if config.with_OCA:
+            append_file_path_manifest(
+                lst_input, DEFAULT_PATH_MANIFEST_ODOO_CONF
+            )
+            if os.path.exists(".odoo-version"):
+                with open(".odoo-version", "r") as f:
+                    odoo_version = f.readline()
+                if odoo_version:
+                    path_manifest_odoo_version = os.path.join(
+                        "manifest", f"git_manifest_odoo{odoo_version}.xml"
+                    )
+                    if os.path.exists(path_manifest_odoo_version):
+                        lst_input.append(path_manifest_odoo_version)
+                    else:
+                        print(
+                            f"ERROR: {path_manifest_odoo_version} does not exist"
+                        )
+                    path_manifest_odoo_version = os.path.join(
+                        "manifest", f"git_manifest_odoo{odoo_version}_dev.xml"
+                    )
+                    if os.path.exists(path_manifest_odoo_version):
+                        lst_input.append(path_manifest_odoo_version)
         else:
-            dct_project_3[key]["@upstream"] = "12.0"
-            dct_project_3[key]["@dest-branch"] = "12.0"
+            append_file_path_manifest(lst_input, DEFAULT_PATH_MANIFEST_CONF)
+        append_file_path_manifest(
+            lst_input, DEFAULT_PATH_MANIFEST_PRIVATE_CONF
+        )
 
-    # Update origin to new repo
+    dct_remote_total = {}
+    dct_project_total = {}
+    default_remote_total = None
+
+    for index, input_path in enumerate(lst_input):
+        (
+            dct_remote,
+            dct_project,
+            default_remote,
+        ) = git_tool.get_manifest_xml_info(filename=input_path, add_root=True)
+        if len(lst_input) == 1:
+            # Only 1 input, same output
+            dct_remote_total = dct_remote
+            dct_project_total = dct_project
+            break
+        elif not index:
+            # Preparation to accumulate data
+            dct_remote_total = copy.deepcopy(dct_remote)
+            dct_project_total = copy.deepcopy(dct_project)
+            continue
+        for key, value in dct_project.items():
+            if key in dct_project_total.keys():
+                if config.att_revision_only:
+                    revision = value.get("@revision")
+                    if revision:
+                        dct_project_total[key]["@revision"] = revision
+                else:
+                    dct_project_total[key].update(value)
+            else:
+                dct_project_total[key] = copy.deepcopy(value)
+
+        for key, value in dct_remote.items():
+            if key in dct_remote_total.keys():
+                dct_remote_total[key].update(value)
+            else:
+                dct_remote_total[key] = copy.deepcopy(value)
+
     git_tool.generate_repo_manifest(
-        dct_remote=dct_remote_3,
-        dct_project=dct_project_3,
+        dct_remote=dct_remote_total,
+        dct_project=dct_project_total,
         output=config.output,
-        default_remote=default_remote_2,
+        default_remote=default_remote_total,
     )
+
+
+def append_file_path_manifest(lst_input, path_manifest):
+    if os.path.exists(path_manifest):
+        with open(path_manifest, "r") as f:
+            csv_file = csv.DictReader(f)
+            for row in csv_file:
+                filepath = row.get("filepath")
+                lst_input.append(filepath)
 
 
 if __name__ == "__main__":

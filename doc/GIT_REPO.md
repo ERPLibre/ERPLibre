@@ -63,7 +63,7 @@ When dev contains specific revision with default revision, you need to replace d
 keep specific version:
 
 ```bash
-./script/git/git_merge_repo_manifest.py --input1 ./manifest/default.dev.xml --input2 ./default.xml --output ./manifest/default.staged.xml
+./script/git/git_merge_repo_manifest.py --input "./manifest/default.dev.xml;./default.xml" --output ./manifest/default.staged.xml
 git commit -am "Updated manifest/default.staged.xml"
 
 git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &

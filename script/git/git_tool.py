@@ -20,8 +20,6 @@ CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
-with open(".odoo-version", "r") as f:
-    DEFAULT_BRANCH = f.readline()
 
 
 class Struct(object):
@@ -44,7 +42,9 @@ class GitTool:
 
     @property
     def default_branch(self):
-        return DEFAULT_BRANCH
+        with open(".odoo-version", "r") as f:
+            default_branch = f.readline()
+        return default_branch
 
     @staticmethod
     def get_url(url: str) -> object:
@@ -270,6 +270,8 @@ class GitTool:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
+        if not dct_manifest:
+            return []
         default_remote = dct_manifest.get("default").get("@remote")
         lst_remote = dct_manifest.get("remote")
         if type(lst_remote) is dict:
@@ -356,9 +358,19 @@ class GitTool:
             dct_manifest = xml_dict.get("manifest")
         default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
+        if type(lst_remote) is dict:
+            lst_remote = [lst_remote]
         lst_project = dct_manifest.get("project")
-        dct_remote = {a.get("@name"): a for a in lst_remote}
-        dct_project = {a.get("@name"): a for a in lst_project}
+        if type(lst_project) is dict:
+            lst_project = [lst_project]
+        if lst_remote:
+            dct_remote = {a.get("@name"): a for a in lst_remote}
+        else:
+            dct_remote = {}
+        if lst_project:
+            dct_project = {a.get("@name"): a for a in lst_project}
+        else:
+            dct_project = {}
         return dct_remote, dct_project, default_remote
 
     @staticmethod
@@ -460,7 +472,7 @@ class GitTool:
         dct_project={},
         default_remote=None,
         keep_original=False,
-        default_branch=DEFAULT_BRANCH,
+        default_branch=None,
     ):
         """
         Generate repo manifest
@@ -474,10 +486,6 @@ class GitTool:
         :param default_branch: default branch name
         :return:
         """
-        if not output:
-            raise Exception(
-                "Cannot generate manifest with missing output filename."
-            )
         lst_remote = []
         lst_remote_name = []
         lst_project = []
@@ -647,8 +655,11 @@ class GitTool:
         str_xml_text = str_xml_text.replace("\t", "  ")
 
         # create file
-        with open(output, mode="w") as file:
-            file.writelines(str_xml_text + "\n")
+        if output:
+            with open(output, mode="w") as file:
+                file.writelines(str_xml_text + "\n")
+        else:
+            print(str_xml_text + "\n")
 
     def generate_git_modules(
         self, lst_repo: List[Struct], repo_path: str = "./"

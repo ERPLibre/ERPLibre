@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
+
+    <project
+        name="maintainer-tools.git"
+        path="script/OCA_maintainer-tools"
+        remote="OCA"
+        revision="master"
+        groups="odoo"
+    />
+    <project
+        name="odoo-module-migrator.git"
+        path="script/OCA_odoo-module-migrator"
+        remote="OCA"
+        revision="master"
+        groups="odoo"
+    />
+</manifest>
