@@ -87,6 +87,7 @@ ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_V
 source ./${VENV_ERPLIBRE_PATH}/bin/activate
 
 # Add trace of installation
+LINE_TO_ADD="odoo${EL_ODOO_VERSION}"
 mkdir -p "$(dirname "$FILE_INSTALLATION_VERSION")"
 touch "$FILE_INSTALLATION_VERSION"
 if ! grep -qxF "$LINE_TO_ADD" "$FILE_INSTALLATION_VERSION"; then

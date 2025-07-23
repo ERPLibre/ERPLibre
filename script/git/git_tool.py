@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
+import pathlib
 import webbrowser
 from collections import OrderedDict
 from typing import List
@@ -12,7 +13,6 @@ import xmltodict
 from agithub.GitHub import GitHub  # pip install agithub
 from colorama import Fore, Style
 from git import Repo
-import pathlib
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
@@ -273,7 +273,10 @@ class GitTool:
             dct_manifest = xml_dict.get("manifest")
         if not dct_manifest:
             return []
-        default_remote = dct_manifest.get("default").get("@remote")
+        if dct_manifest.get("default"):
+            default_remote = dct_manifest.get("default").get("@remote")
+        else:
+            default_remote = None
         lst_remote = dct_manifest.get("remote")
         if type(lst_remote) is dict:
             lst_remote = [lst_remote]
@@ -352,7 +355,7 @@ class GitTool:
         """
         if filename is None:
             manifest_file = self.get_manifest_file(repo_path=repo_path)
-            filename = f"{repo_path}/{manifest_file}"
+            filename = os.path.normpath(os.path.join(repo_path, manifest_file))
         with open(filename) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
@@ -759,6 +762,11 @@ class GitTool:
         :param repo_path: path to search .repo
         :return: manifest file used for Repo
         """
+        file = os.path.join(
+            repo_path, ".repo", "local_manifests", "erplibre_manifest.xml"
+        )
+        if os.path.exists(file):
+            return file
         file = f"{repo_path}/.repo/manifest.xml"
         if not os.path.exists(file):
             return ""
