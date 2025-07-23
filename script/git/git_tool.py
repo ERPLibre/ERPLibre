@@ -12,6 +12,7 @@ import xmltodict
 from agithub.GitHub import GitHub  # pip install agithub
 from colorama import Fore, Style
 from git import Repo
+import pathlib
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
@@ -356,6 +357,8 @@ class GitTool:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
             dct_manifest = xml_dict.get("manifest")
+        if not dct_manifest:
+            return {}, {}, None
         default_remote = dct_manifest.get("default")
         lst_remote = dct_manifest.get("remote")
         if type(lst_remote) is dict:
@@ -655,6 +658,9 @@ class GitTool:
         str_xml_text = str_xml_text.replace("\t", "  ")
 
         # create file
+        output_dirname = os.path.dirname(output)
+        if not os.path.exists(output_dirname):
+            pathlib.Path(output_dirname).mkdir(parents=True, exist_ok=True)
         if output:
             with open(output, mode="w") as file:
                 file.writelines(str_xml_text + "\n")

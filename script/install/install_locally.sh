@@ -12,6 +12,7 @@ EL_HOME_ODOO="${EL_HOME}/odoo${EL_ODOO_VERSION}/odoo"
 #EL_CONFIG="${EL_USER}"
 #EL_MINIMAL_ADDONS="False"
 #EL_INSTALL_NGINX="True"
+FILE_INSTALLATION_VERSION=".repo/installed_odoo_version.txt"
 
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
@@ -84,3 +85,10 @@ ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_V
 
 # Force to return to erplibre source
 source ./${VENV_ERPLIBRE_PATH}/bin/activate
+
+# Add trace of installation
+mkdir -p "$(dirname "$FILE_INSTALLATION_VERSION")"
+touch "$FILE_INSTALLATION_VERSION"
+if ! grep -qxF "$LINE_TO_ADD" "$FILE_INSTALLATION_VERSION"; then
+    echo "$LINE_TO_ADD" >> "$FILE_INSTALLATION_VERSION"
+fi

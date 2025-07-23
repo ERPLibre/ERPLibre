@@ -24,6 +24,7 @@ DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
 )
+DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(".repo", "installed_odoo_version.txt")
 
 
 def get_config():
@@ -85,6 +86,27 @@ def main():
                     )
                     if os.path.exists(path_manifest_odoo_version):
                         lst_input.append(path_manifest_odoo_version)
+
+            if os.path.exists(DEFAULT_PATH_INSTALLED_ODOO_VERSION):
+                with open(DEFAULT_PATH_INSTALLED_ODOO_VERSION, "r") as f:
+                    lst_installed_odoo_version = [a.strip() for a in f.readlines()]
+                if lst_installed_odoo_version:
+                    for installed_odoo_version in lst_installed_odoo_version:
+                        path_manifest_odoo_version = os.path.join(
+                            "manifest", f"git_manifest_{installed_odoo_version}.xml"
+                        )
+                        if os.path.exists(path_manifest_odoo_version):
+                            lst_input.append(path_manifest_odoo_version)
+                        else:
+                            print(
+                                f"ERROR: {path_manifest_odoo_version} does not exist"
+                            )
+                        path_manifest_odoo_version = os.path.join(
+                            "manifest", f"git_manifest_{installed_odoo_version}_dev.xml"
+                        )
+                        if os.path.exists(path_manifest_odoo_version):
+                            lst_input.append(path_manifest_odoo_version)
+
         else:
             append_file_path_manifest(lst_input, DEFAULT_PATH_MANIFEST_CONF)
         append_file_path_manifest(
@@ -94,6 +116,9 @@ def main():
     dct_remote_total = {}
     dct_project_total = {}
     default_remote_total = None
+
+    # Be sure all input is unique
+    lst_input = list(set(lst_input))
 
     for index, input_path in enumerate(lst_input):
         (
