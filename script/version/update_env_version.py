@@ -19,6 +19,7 @@ _logger = logging.getLogger(__name__)
 PROJECT_NAME = os.path.basename(os.getcwd())
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 VERSION_PYTHON_FILE = os.path.join(".python-odoo-version")
+INSTALLED_ODOO_VERSION_FILE = ".repo/installed_odoo_version.txt"
 VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
@@ -210,6 +211,11 @@ class Update:
             )
             return False
 
+        if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
+            with open(INSTALLED_ODOO_VERSION_FILE) as txt:
+                lst_version_installed = sorted(txt.read().splitlines())
+                str_installed_version = "Installed version: " + ', '.join(lst_version_installed)
+                _logger.info(str_installed_version)
         return True
 
     def validate_version(self):
