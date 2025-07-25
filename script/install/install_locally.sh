@@ -120,6 +120,12 @@ ${VENV_PATH}/bin/pip install --upgrade pip
 #${LOCAL_PYTHON_EXEC} ~/.poetry/bin/poetry install
 #${POETRY_PATH} install
 
+if [[ -z "${EL_POETRY_VERSION}" ]]; then
+    echo -e "${Red}Error${Color_Off} missing poetry version, please check file .poetry-version"
+    cat .poetry-version
+    exit 1
+fi
+
 # Delete artifacts created by pip, cause error in next "poetry install"
 if [[ ! -f "${POETRY_PATH}" ]]; then
     ${VENV_PATH}/bin/pip install poetry==${EL_POETRY_VERSION}
