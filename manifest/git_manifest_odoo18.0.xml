@@ -127,6 +127,7 @@
     <project name="currency.git" revision="18.0" path="addons.odoo18.0/OCA_currency" remote="OCA" groups="addons" />
     <project name="data-protection.git" revision="18.0" path="addons.odoo18.0/OCA_data-protection" remote="OCA" groups="addons" />
     <project name="ddmrp.git" revision="18.0" path="addons.odoo18.0/OCA_ddmrp" remote="OCA" groups="addons" />
+    <project name="dms.git" revision="18.0" path="addons.odoo18.0/OCA_dms" remote="OCA" groups="addons" />
     <project name="delivery-carrier.git" revision="18.0" path="addons.odoo18.0/OCA_delivery-carrier" remote="OCA" groups="addons" />
     <project name="deltatech.git" revision="18.0" path="addons.odoo18.0/dhongu_deltatech" remote="dhongu" groups="addons" />
 <!--    <project-->
