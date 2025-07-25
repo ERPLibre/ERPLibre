@@ -56,6 +56,12 @@ pip install --upgrade pip
 
 echo -e "\n---- Installing poetry dependency ----"
 
+if [[ -z "${EL_POETRY_VERSION}" ]]; then
+    echo -e "${Red}Error${Color_Off} missing poetry version, please check file .poetry-version"
+    cat .poetry-version
+    exit 1
+fi
+
 # Delete artifacts created by pip, cause error in next "poetry install"
 if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
     echo -e "Install Poetry ${POETRY_ODOO_PATH}"
