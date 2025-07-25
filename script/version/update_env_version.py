@@ -431,7 +431,7 @@ class Update:
         with open(VERSION_POETRY_FILE, "w") as txt:
             txt.write(self.new_version_poetry)
 
-        # if self.config.is_in_installation or self.config.is_in_switch:
+        if self.config.is_in_installation or self.config.is_in_switch:
         #     addons_path_with_version = (
         #         ADDONS_TEMPLATE_FILE % self.new_version_odoo
         #     )
