@@ -21,6 +21,7 @@ pykeepass
 click
 aioshutil
 openai
+humanize
 
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0

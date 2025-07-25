@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import sys
+import datetime
 import time
 
 file_error_path = ".erplibre.error.txt"
@@ -18,6 +19,7 @@ ODOO_VERSION_FILE = os.path.join(".odoo-version")
 ENABLE_CRASH = False
 CRASH_E = None
 try:
+    import humanize
     import tkinter as tk
     from tkinter import filedialog
 
@@ -30,6 +32,7 @@ try:
     # TODO implement rich for beautiful print and table
     # import rich
 except ModuleNotFoundError as e:
+    humanize = None
     ENABLE_CRASH = True
     CRASH_E = e
 
@@ -703,4 +706,9 @@ if __name__ == "__main__":
     finally:
         end_time = time.time()
         duration_sec = end_time - start_time
-        print(f"\nTODO execution time {duration_sec:.2f} sec.\n")
+        if humanize:
+            duration_delta = datetime.timedelta(seconds=duration_sec)
+            humain_time = humanize.precisedelta(duration_delta)
+            print(f"\nTODO execution time {humain_time}\n")
+        else:
+            print(f"\nTODO execution time {duration_sec:.2f} sec.\n")
