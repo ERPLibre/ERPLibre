@@ -4,16 +4,17 @@ import getpass
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
-import subprocess
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
-
-
-
-
+VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
+INSTALLED_ODOO_VERSION_FILE = os.path.join(
+    ".repo", "installed_odoo_version.txt"
+)
+ODOO_VERSION_FILE = os.path.join(".odoo-version")
 ENABLE_CRASH = False
 CRASH_E = None
 try:
@@ -23,6 +24,7 @@ try:
     import click
     import openai
     from pykeepass import PyKeePass
+
     # TODO implement urwid to improve text user interface
     # import urwid
     # TODO implement rich for beautiful print and table
@@ -49,11 +51,11 @@ class TODO:
         print("🤖 => Entre tes directives par son chiffre et fait Entrée!")
         help_info = """Commande :
 [1] Execute
-[2] Question
-[3] Fork - Ouvre TODO 🤖 dans une nouvelle tabulation
+[2] Install
+[3] Question
+[4] Fork - Ouvre TODO 🤖 dans une nouvelle tabulation
 [0] Quitter
 """
-        # [3] install
         while True:
             status = click.prompt(help_info)
             print()
@@ -62,8 +64,10 @@ class TODO:
             elif status == "1":
                 self.prompt_execute()
             elif status == "2":
-                self.execute_prompt_ia()
+                self.prompt_install()
             elif status == "3":
+                self.execute_prompt_ia()
+            elif status == "4":
                 cmd = (
                     f"gnome-terminal --tab -- bash -c 'source"
                     f" ./{cst_venv_erplibre}/bin/activate;make todo'"
@@ -182,6 +186,171 @@ class TODO:
                     return
             else:
                 print("Commande non trouvée 🤖!")
+
+    def prompt_install(self):
+        print("Detect first installation from code source.")
+        first_installation_input = (
+            input(
+                "First system installation? This will process system installation"
+                " before (Y/N): "
+            )
+            .strip()
+            .upper()
+        )
+        if first_installation_input == "Y":
+            subprocess.run(
+                "gnome-terminal -- bash -c"
+                " './script/version/update_env_version.py --install;bash'",
+                shell=True,
+                executable="/bin/bash",
+            )
+            print("Wait after OS installation before continue.")
+
+        # First detect pycharm, need to be open before installation and close to increase speed
+        has_pycharm = False
+        has_pycharm_community = False
+        result = subprocess.run(
+            ["which", "pycharm"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            has_pycharm = True
+        else:
+            result = subprocess.run(
+                ["which", "pycharm-community"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            has_pycharm_community = result.returncode == 0
+        if (has_pycharm or has_pycharm_community) and not os.path.exists(
+            ".idea"
+        ):
+            pycharm_configuration_input = (
+                input("Open Pycharm? (Y/N): ").strip().upper()
+            )
+            if pycharm_configuration_input == "Y":
+                pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
+                subprocess.run(
+                    f"gnome-terminal -- bash -c '{pycharm_bin} .'",
+                    shell=True,
+                    executable="/bin/bash",
+                )
+                print(
+                    "Close Pycharm when processing is done before continue"
+                    " this guide."
+                )
+        # Propose Odoo installation
+        # TODO detect last version supported
+        odoo_installation_input = (
+            input("Install virtual environment? (Y/N): ").strip().upper()
+        )
+        if odoo_installation_input == "Y":
+            # cmd_intern = "./script/install/install_erplibre.sh"
+            # TODO maybe update q to only install erplibre from install_locally
+            # TODO problem installing with q, the script depend on odoo
+            key_i = 0
+            dct_cmd_intern_begin = {
+                "q": (
+                    "q",
+                    "q: ERPLibre only with system python without Odoo",
+                    "./script/install/install_erplibre.sh",
+                ),
+                "w": (
+                    "w",
+                    "w: Install all Odoo version with ERPLibre",
+                    "make install_odoo_all_version",
+                ),
+            }
+            dct_final_cmd_intern = {}
+            with open(VERSION_DATA_FILE) as txt:
+                data_version = json.load(txt)
+
+            if not data_version:
+                raise Exception(
+                    f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'"
+                )
+
+            lst_version_transform = []
+            for key, value in data_version.items():
+                lst_version_transform.append(value)
+                value["erplibre_version"] = key
+
+            lst_version_installed = []
+            if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
+                with open(INSTALLED_ODOO_VERSION_FILE) as txt:
+                    lst_version_installed = sorted(txt.read().splitlines())
+
+            odoo_installed_version = None
+            if os.path.exists(ODOO_VERSION_FILE):
+                with open(ODOO_VERSION_FILE) as txt:
+                    odoo_installed_version = f"odoo{txt.read().strip()}"
+
+            # Add odoo version installation on command
+            lst_version = sorted(
+                lst_version_transform, key=lambda k: k.get("erplibre_version")
+            )
+            for dct_version in lst_version[::-1]:
+                key_i += 1
+                key_s = str(key_i)
+                label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
+
+                odoo_version = f"odoo{dct_version.get('odoo_version')}"
+                if odoo_version in lst_version_installed:
+                    label += " - Installed"
+                if odoo_version == odoo_installed_version:
+                    label += " - Actual"
+                if dct_version.get("default"):
+                    label += " - Default"
+                if dct_version.get("is_deprecated"):
+                    label += " - Deprecated"
+                erplibre_version = dct_version.get("erplibre_version")
+                dct_cmd_intern_begin[key_s] = (
+                    key_s,
+                    label,
+                    f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
+                )
+
+            # Add final command
+            dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
+
+            # Show command
+            odoo_version_input = ""
+            while odoo_version_input not in dct_cmd_intern.keys():
+                if odoo_version_input:
+                    print(
+                        f"Error, cannot understand value '{odoo_version_input}'"
+                    )
+                str_input_dyn_odoo_version = (
+                    "Choose a version:\n\t"
+                    + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
+                    + "\nSelect : "
+                )
+                odoo_version_input = (
+                    input(str_input_dyn_odoo_version).strip().lower()
+                )
+
+            cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
+            print(f"Will execute :\n{cmd_intern}")
+
+            # TODO use external script to detect terminal to use on system
+            # TODO check script open_terminal_code_generator.sh
+            cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
+            try:
+                subprocess.run(
+                    cmd_intern, shell=True, executable="/bin/bash", check=True
+                )
+            except subprocess.CalledProcessError as e:
+                print(
+                    f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}."
+                )
+                print("Wait after installation and open projects by terminal.")
+                print("make open_terminal")
+                self.restart_script(str(e))
+        else:
+            print("Nothing to do, you need a fresh installation to continue.")
 
     def execute_from_configuration(
         self, dct_instance, exec_run_db=False, ignore_makefile=False
@@ -454,7 +623,9 @@ class TODO:
 
     def crash_diagnostic(self, e):
         # TODO show message at start if os.path.exists(file_error_path)
-        if os.path.exists(file_error_path) and not os.path.exists(cst_venv_erplibre):
+        if os.path.exists(file_error_path) and not os.path.exists(
+            cst_venv_erplibre
+        ):
             print("Got error : ")
             print(e)
             print("Got error at first execution.", file_error_path)
@@ -466,7 +637,7 @@ class TODO:
             except FileNotFoundError:
                 print("Error: File not found.")
             finally:
-                if 'file' in locals() and file:
+                if "file" in locals() and file:
                     file.close()
             # Force auto installation
             print("Auto installation")
@@ -482,7 +653,9 @@ class TODO:
             print(e)
             # TODO auto-detect gnome-terminal, or choose another.
             self.restart_script(e)
-            print(f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate")
+            print(
+                f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate"
+            )
             time.sleep(0.5)
             subprocess.run(
                 "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
@@ -490,154 +663,33 @@ class TODO:
                 executable="/bin/bash",
             )
         else:
-            print("Detect first installation from code source.")
-            first_installation_input = (
-                input(
-                    "First system installation? This will process system installation"
-                    " before (Y/N): "
-                )
-                .strip()
-                .upper()
-            )
-            if first_installation_input == "Y":
-                subprocess.run(
-                    "gnome-terminal -- bash -c"
-                    " './script/version/update_env_version.py --install;bash'",
-                    shell=True,
-                    executable="/bin/bash",
-                )
-                print("Wait after OS installation before continue.")
-
-            # First detect pycharm, need to be open before installation and close to increase speed
-            has_pycharm = False
-            has_pycharm_community = False
-            result = subprocess.run(
-                ["which", "pycharm"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            if result.returncode == 0:
-                has_pycharm = True
-            else:
-                result = subprocess.run(
-                    ["which", "pycharm-community"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                has_pycharm_community = result.returncode == 0
-            if (has_pycharm or has_pycharm_community) and not os.path.exists(".idea"):
-                pycharm_configuration_input = (
-                    input("Open Pycharm? (Y/N): ").strip().upper()
-                )
-                if pycharm_configuration_input == "Y":
-                    pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
-                    subprocess.run(
-                        f"gnome-terminal -- bash -c '{pycharm_bin} .'",
-                        shell=True,
-                        executable="/bin/bash",
-                    )
-                    print(
-                        "Close Pycharm when processing is done before continue"
-                        " this guide."
-                    )
-            # Propose Odoo installation
-            # TODO detect last version supported
-            odoo_installation_input = (
-                input("Install virtual environment? (Y/N): ").strip().upper()
-            )
-            if odoo_installation_input == "Y":
-                VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
-                # cmd_intern = "./script/install/install_erplibre.sh"
-                # TODO maybe update q to only install erplibre from install_locally
-                # TODO problem installing with q, the script depend on odoo
-                key_i = 0
-                dct_cmd_intern_begin = {
-                    "q": ("q", "q: ERPLibre only with system python without Odoo",
-                          "./script/install/install_erplibre.sh"),
-                    "w": ("w", "w: Install all Odoo version with ERPLibre", "make install_odoo_all_version")
-                }
-                dct_final_cmd_intern = {}
-                with open(VERSION_DATA_FILE) as txt:
-                    data_version = json.load(txt)
-
-                if not data_version:
-                    raise Exception(
-                        f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'")
-
-                lst_version_transform = []
-                for key, value in data_version.items():
-                    lst_version_transform.append(value)
-                    value["erplibre_version"] = key
-
-                # Add odoo version installation on command
-                lst_version = sorted(lst_version_transform, key=lambda k: k.get("erplibre_version"))
-                for dct_version in lst_version[::-1]:
-                    key_i += 1
-                    key_s = str(key_i)
-                    label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
-                    if dct_version.get("default"):
-                        label += " - Default"
-                    if dct_version.get("is_deprecated"):
-                        label += " - Deprecated"
-                    erplibre_version = dct_version.get("erplibre_version")
-                    dct_cmd_intern_begin[key_s] = (key_s, label,
-                                                   f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev")
-
-                # Add final command
-                dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
-
-                # Show command
-                odoo_version_input = ""
-                while odoo_version_input not in dct_cmd_intern.keys():
-                    if odoo_version_input:
-                        print(f"Error, cannot understand value '{odoo_version_input}'")
-                    str_input_dyn_odoo_version = "Choose a version:\n\t" + "\n\t".join(
-                        [a[1] for a in dct_cmd_intern.values()]) + "\nSelect : "
-                    odoo_version_input = (
-                        input(str_input_dyn_odoo_version).strip().lower()
-                    )
-
-                cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
-                print(f"Will execute :\n{cmd_intern}")
-
-                # TODO use external script to detect terminal to use on system
-                # TODO check script open_terminal_code_generator.sh
-                cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
-                try:
-                    subprocess.run(
-                        cmd_intern,
-                        shell=True,
-                        executable="/bin/bash",
-                        check=True
-                    )
-                except subprocess.CalledProcessError as e:
-                    print(f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}.")
-                    print("Wait after installation and open projects by terminal.")
-                    print("make open_terminal")
-                    self.restart_script(str(e))
-            else:
-                print("Nothing to do, you need a fresh installation to continue.")
-        #     sys.exit(0)
-        # sys.exit(1)
+            self.prompt_install()
 
     def restart_script(self, last_error):
         print("Reboot TODO 🤖...")
         # os.execv(sys.executable, ['python'] + sys.argv)
         # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
-        if os.path.exists(cst_venv_erplibre) and not os.path.exists(file_error_path):
+        if os.path.exists(cst_venv_erplibre) and not os.path.exists(
+            file_error_path
+        ):
             # TODO mettre check import suivant ne vont pas planter
             try:
                 with open(file_error_path, "w") as f_file:
                     f_file.write(str(last_error))
                     pass  # The file is created and closed here, no content is written
-                os.execv("/bin/bash",
-                         ["/bin/bash", "-c",
-                          f"source ./{cst_venv_erplibre}/bin/activate && exec python " + " ".join(sys.argv)])
+                os.execv(
+                    "/bin/bash",
+                    [
+                        "/bin/bash",
+                        "-c",
+                        f"source ./{cst_venv_erplibre}/bin/activate && exec python "
+                        + " ".join(sys.argv),
+                    ],
+                )
             except Exception as e:
                 print("Error detect at first execution.")
                 print(e)
+
 
 if __name__ == "__main__":
     start_time = time.time()
