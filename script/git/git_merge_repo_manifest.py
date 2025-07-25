@@ -44,7 +44,7 @@ def get_config():
         "--input",
         help="First manifest to merge into input2. Second manifest, overwrite by input1.",
     )
-    parser.add_argument("--output", help="Output of new manifest")
+    parser.add_argument("--output", default=".repo/local_manifests/erplibre_manifest.xml", help="Output of new manifest")
     parser.add_argument(
         "--att_revision_only",
         action="store_true",
@@ -126,6 +126,14 @@ def main():
             dct_project,
             default_remote,
         ) = git_tool.get_manifest_xml_info(filename=input_path, add_root=True)
+
+        # Hack to support multiple version odoo
+        dct_project_copy = dct_project
+        dct_project = {}
+        for key, value in dct_project_copy.items():
+            new_key = f"{key}+{value.get('@path')}"
+            dct_project[new_key] = value
+
         if len(lst_input) == 1:
             # Only 1 input, same output
             dct_remote_total = dct_remote
