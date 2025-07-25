@@ -626,5 +626,13 @@ class TODO:
 
 
 if __name__ == "__main__":
-    todo = TODO()
-    todo.run()
+    start_time = time.time()
+    try:
+        todo = TODO()
+        todo.run()
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+    finally:
+        end_time = time.time()
+        duration_sec = end_time - start_time
+        print(f"\nTODO execution time {duration_sec:.2f} sec.\n")
