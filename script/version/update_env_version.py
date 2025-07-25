@@ -183,10 +183,13 @@ class Update:
             self.python_version = txt.read().strip()
         with open(VERSION_ODOO_FILE) as txt:
             self.odoo_version = txt.read().strip()
+        with open(VERSION_POETRY_FILE) as txt:
+            poetry_version = txt.read().strip()
 
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
+        _logger.info(f"Poetry version: {poetry_version}")
         erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (
             self.odoo_version,
             self.python_version,
@@ -214,7 +217,9 @@ class Update:
         if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
             with open(INSTALLED_ODOO_VERSION_FILE) as txt:
                 lst_version_installed = sorted(txt.read().splitlines())
-                str_installed_version = "Installed version: " + ', '.join(lst_version_installed)
+                str_installed_version = "Installed version: " + ", ".join(
+                    lst_version_installed
+                )
                 _logger.info(str_installed_version)
         return True
 
@@ -327,7 +332,9 @@ class Update:
             ADDONS_TEMPLATE_FILE % self.new_version_odoo
         )
         self.expected_odoo_name = ODOO_TEMPLATE_FILE % self.new_version_odoo
-        self.expected_odoo_path = os.path.join(".", self.expected_odoo_name, "odoo", ".")
+        self.expected_odoo_path = os.path.join(
+            ".", self.expected_odoo_name, "odoo", "."
+        )
         self.expected_pip_requirement_path = os.path.join(
             ".", "requirement", self.expected_pip_requirement_name
         )
@@ -408,6 +415,13 @@ class Update:
             )
 
         # Always overwrite version
+        _logger.info(
+            f"Update local file, "
+            f"python version '{self.new_version_python}', "
+            f"erplibre version '{self.new_version_erplibre}', "
+            f"odoo version '{self.new_version_odoo}', "
+            f"poetry version '{self.new_version_poetry}'"
+        )
         with open(VERSION_PYTHON_FILE, "w") as txt:
             txt.write(self.new_version_python)
         with open(VERSION_ERPLIBRE_FILE, "w") as txt:
@@ -549,8 +563,8 @@ class Update:
                         )
                         os.system(f"ls -lha {source_file}")
                         sys.exit(1)
-                    else:
-                        do_switch_origin_sim = True
+                    # else:
+                    #     do_switch_origin_sim = True
                 else:
                     source_file_is_file = os.path.isfile(source_file)
                     if not source_file_is_file:
@@ -710,7 +724,9 @@ def main():
         update.pycharm_update()
 
         # Update OCB configuration
-        os.system("./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py")
+        os.system(
+            "./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py"
+        )
         os.system("./script/generate_config.sh")
         # TODO ignore this if installation fail
 
