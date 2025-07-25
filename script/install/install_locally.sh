@@ -59,6 +59,7 @@ echo -e "\n---- Installing poetry dependency ----"
 if [[ -z "${EL_POETRY_VERSION}" ]]; then
     echo -e "${Red}Error${Color_Off} missing poetry version, please check file .poetry-version"
     cat .poetry-version
+    ls -la
     exit 1
 fi
 
