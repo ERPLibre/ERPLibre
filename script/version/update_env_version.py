@@ -417,17 +417,17 @@ class Update:
         with open(VERSION_POETRY_FILE, "w") as txt:
             txt.write(self.new_version_poetry)
 
-        if self.config.is_in_installation or self.config.is_in_switch:
-            addons_path_with_version = (
-                ADDONS_TEMPLATE_FILE % self.new_version_odoo
-            )
-            # To support multiple addons directory, change name before run git repo
-            for addons_path in os.listdir("."):
-                if (
-                    addons_path.startswith("addons")
-                    and addons_path != addons_path_with_version
-                ):
-                    os.rename(addons_path, addons_path + "TEMP")
+        # if self.config.is_in_installation or self.config.is_in_switch:
+        #     addons_path_with_version = (
+        #         ADDONS_TEMPLATE_FILE % self.new_version_odoo
+        #     )
+        #     # To support multiple addons directory, change name before run git repo
+        #     for addons_path in os.listdir("."):
+        #         if (
+        #             addons_path.startswith("addons")
+        #             and addons_path != addons_path_with_version
+        #         ):
+        #             os.rename(addons_path, addons_path + "TEMP")
 
             # TODO need to be force if installation path is all good, return True
             if self.config.install_dev:
@@ -441,13 +441,13 @@ class Update:
                 )
 
             # To support multiple addons directory, remove TEMP
-            for addons_path in os.listdir("."):
-                if (
-                    addons_path.startswith("addons")
-                    and addons_path != addons_path_with_version
-                    and addons_path.endswith("TEMP")
-                ):
-                    os.rename(addons_path, addons_path[:-4])
+            # for addons_path in os.listdir("."):
+            #     if (
+            #         addons_path.startswith("addons")
+            #         and addons_path != addons_path_with_version
+            #         and addons_path.endswith("TEMP")
+            #     ):
+            #         os.rename(addons_path, addons_path[:-4])
             for addons_path in os.listdir("."):
                 if addons_path.startswith("addons"):
                     # In same time, force to create addons if not existing
@@ -456,17 +456,17 @@ class Update:
                         os.makedirs(addons_dir_path)
 
             # Force create addons link
-            if os.path.isdir(ADDONS_PATH):
-                if os.path.islink(ADDONS_PATH):
-                    os.remove(ADDONS_PATH)
-                else:
-                    os.rename(
-                        ADDONS_PATH,
-                        ADDONS_PATH
-                        + "_"
-                        + time.strftime("%Yy%mm%dd-%Hh%Mm%Ss"),
-                    )
-            os.symlink(addons_path_with_version, ADDONS_PATH)
+            # if os.path.isdir(ADDONS_PATH):
+            #     if os.path.islink(ADDONS_PATH):
+            #         os.remove(ADDONS_PATH)
+            #     else:
+            #         os.rename(
+            #             ADDONS_PATH,
+            #             ADDONS_PATH
+            #             + "_"
+            #             + time.strftime("%Yy%mm%dd-%Hh%Mm%Ss"),
+            #         )
+            # os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
 
     def print_log(self):
@@ -560,18 +560,18 @@ class Update:
                         )
                         os.system(f"ls -lha {source_file}")
                         sys.exit(1)
-                    else:
-                        do_switch_origin_sim = True
-                if do_switch_origin_sim:
-                    # Check if not erase an existing
-                    if target_file_exist:
-                        # Create a backup
-                        new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
-                    else:
-                        new_target_file = target_file
+                #     else:
+                #         do_switch_origin_sim = True
+                # if do_switch_origin_sim:
+                #     # Check if not erase an existing
+                #     if target_file_exist:
+                #         # Create a backup
+                #         new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
+                #     else:
+                #         new_target_file = target_file
                     # Move it and create a symlink
-                    shutil.move(source_file, new_target_file)
-                    do_symlink = True
+                    # shutil.move(source_file, new_target_file)
+                    # do_symlink = True
             else:
                 # Case 3
                 # Is symlink
