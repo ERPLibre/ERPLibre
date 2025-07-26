@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <project name="OpenUpgrade.git" revision="13.0" path="odoo13.0/OCA_OpenUpgrade" remote="OCA" clone-depth="10" groups="migration,odoo13.0" />
+</manifest>

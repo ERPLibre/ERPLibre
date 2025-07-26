@@ -1,15 +1,3 @@
-# For script
-giturlparse
-agithub
-GitPython==3.1.30
-retrying
-xmltodict
-openupgradelib
-unidiff
-colorama
-wheel
-mmg
-
 # For OSX
 cython
 
@@ -143,6 +131,7 @@ azure-storage-blob==12.19.0
 azure.storage.blob==12.19.0
 sqlparse==0.4.4
 zeep==4.2.1
+python-jose==3.3.0
 
 # Force version for security update
 pyyaml==6.0

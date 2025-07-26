@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
-    <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
-
     <project
         name="maintainer-tools.git"
         path="script/OCA_maintainer-tools"
@@ -13,6 +11,27 @@
         name="odoo-module-migrator.git"
         path="script/OCA_odoo-module-migrator"
         remote="OCA"
+        revision="master"
+        groups="odoo"
+    />
+    <project
+        name="odoo-development.git"
+        path="doc/itpp-labs_odoo-development"
+        remote="itpp-labs"
+        revision="master"
+        groups="odoo"
+    />
+    <project
+        name="odoo-port-docs.git"
+        path="doc/itpp-labs_odoo-port-docs"
+        remote="itpp-labs"
+        revision="master"
+        groups="odoo"
+    />
+    <project
+        name="odoo-test-docs.git"
+        path="doc/itpp-labs_odoo-test-docs"
+        remote="itpp-labs"
         revision="master"
         groups="odoo"
     />

@@ -22,6 +22,7 @@ doc/itpp*
 doc/odoo*
 script/OCA*
 odoo
+odoo*/OCA_OpenUpgrade
 image_db
 get-poetry.py
 artifacts

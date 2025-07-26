@@ -23,3 +23,6 @@ dns
 dataclasses
 extract_msg
 pypiwin32
+# sqlalchemy is not installable with greenlet 0.4.17
+sqlalchemy
+sqlalchemy-hana
