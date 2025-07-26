@@ -60,6 +60,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_data-protection," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_ddmrp," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_delivery-carrier," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_dms," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_donation," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_e-commerce," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/OCA_edi," >> "${EL_CONFIG_FILE}"
