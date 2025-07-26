@@ -60,7 +60,7 @@ python-keystoneclient==3.22.0
 cloudflare==2.20.0
 
 # For multilang_md.py
-click
+click==8.1.8
 emoji
 
 # Fix bug geoengine

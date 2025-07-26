@@ -67,7 +67,7 @@ pymssql==2.3.0
 cython==3.0.10
 
 # For multilang_md.py
-click
+click==8.1.8
 emoji
 
 # Fix bug geoengine
