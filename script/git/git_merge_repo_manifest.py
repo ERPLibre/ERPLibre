@@ -127,7 +127,7 @@ def main():
             default_remote,
         ) = git_tool.get_manifest_xml_info(filename=input_path, add_root=True)
 
-        # Hack to support multiple version odoo
+        # Support multiple version odoo
         dct_project_copy = dct_project
         dct_project = {}
         for key, value in dct_project_copy.items():

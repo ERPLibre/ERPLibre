@@ -43,9 +43,17 @@ class GitTool:
 
     @property
     def default_branch(self):
+        return self.odoo_version
+
+    @property
+    def odoo_version(self):
         with open(".odoo-version", "r") as f:
             default_branch = f.readline()
         return default_branch
+
+    @property
+    def odoo_version_long(self):
+        return f"odoo{self.odoo_version}"
 
     @staticmethod
     def get_url(url: str) -> object:
@@ -312,7 +320,7 @@ class GitTool:
                 "path": path,
                 "relative_path": f"{repo_path}/{path}",
                 "name": name,
-                "group": group,
+                "group": groups,
             }
             lst_repo.append(data)
 
@@ -413,6 +421,8 @@ class GitTool:
 
     def generate_generate_config(self, repo_path="./", filter_group=None):
         filename_locally = f"{repo_path}script/generate_config.sh"
+        if not filter_group:
+            filter_group = self.odoo_version_long
         lst_repo = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )
@@ -421,6 +431,7 @@ class GitTool:
             # Exception, ignore addons/OCA_web and root
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
+            # groups = repo.get("group")
             update_repo = repo.get("path")
             # Use variable instead of hardcoded path
             if update_repo.startswith("addons.odoo"):
