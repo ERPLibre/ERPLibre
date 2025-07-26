@@ -25,7 +25,13 @@
     <remote name="pledra" fetch="https://github.com/pledra/" />
     <remote name="tegin" fetch="https://github.com/tegin/" />
 
-    <project name="OpenHRMS.git" path="addons.odoo15.0/CybroOdoo_OpenHRMS" remote="CybroOdoo" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="OpenHRMS.git"
+        path="addons.odoo15.0/CybroOdoo_OpenHRMS"
+        remote="CybroOdoo"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="access-addons.git"
         path="addons.odoo15.0/itpp-labs_access-addons"
@@ -33,9 +39,27 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="account-analytic.git" path="addons.odoo15.0/OCA_account-analytic" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="account-budgeting.git" path="addons.odoo15.0/OCA_account-budgeting" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="account-closing.git" path="addons.odoo15.0/OCA_account-closing" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="account-analytic.git"
+        path="addons.odoo15.0/OCA_account-analytic"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="account-budgeting.git"
+        path="addons.odoo15.0/OCA_account-budgeting"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="account-closing.git"
+        path="addons.odoo15.0/OCA_account-closing"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="account-consolidation.git"
         path="addons.odoo15.0/OCA_account-consolidation"
@@ -71,11 +95,41 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="account-invoicing.git" path="addons.odoo15.0/OCA_account-invoicing" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="account-payment.git" path="addons.odoo15.0/OCA_account-payment" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="account-reconcile.git" path="addons.odoo15.0/OCA_account-reconcile" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="apps-store.git" path="addons.odoo15.0/OCA_apps-store" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="bank-payment.git" path="addons.odoo15.0/OCA_bank-payment" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="account-invoicing.git"
+        path="addons.odoo15.0/OCA_account-invoicing"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="account-payment.git"
+        path="addons.odoo15.0/OCA_account-payment"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="account-reconcile.git"
+        path="addons.odoo15.0/OCA_account-reconcile"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="apps-store.git"
+        path="addons.odoo15.0/OCA_apps-store"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="bank-payment.git"
+        path="addons.odoo15.0/OCA_bank-payment"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="bank-statement-import.git"
         path="addons.odoo15.0/OCA_bank-statement-import"
@@ -91,8 +145,14 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-<!--    <project name="cetmix-tower.git" path="addons.odoo15.0/cetmix_cetmix-tower" remote="cetmix" revision="15.0" groups="addons,odoo15.0" />-->
-    <project name="commission.git" path="addons.odoo15.0/OCA_commission" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <!--    <project name="cetmix-tower.git" path="addons.odoo15.0/cetmix_cetmix-tower" remote="cetmix" revision="15.0" groups="addons,odoo15.0" />-->
+    <project
+        name="commission.git"
+        path="addons.odoo15.0/OCA_commission"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="community-data-files.git"
         path="addons.odoo15.0/OCA_community-data-files"
@@ -114,7 +174,13 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="connector-jira.git" path="addons.odoo15.0/OCA_connector-jira" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="connector-jira.git"
+        path="addons.odoo15.0/OCA_connector-jira"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="connector-telephony.git"
         path="addons.odoo15.0/OCA_connector-telephony"
@@ -122,44 +188,188 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="connector.git" path="addons.odoo15.0/OCA_connector" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="contract.git" path="addons.odoo15.0/OCA_contract" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="credit-control.git" path="addons.odoo15.0/OCA_credit-control" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="connector.git"
+        path="addons.odoo15.0/OCA_connector"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="contract.git"
+        path="addons.odoo15.0/OCA_contract"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="credit-control.git"
+        path="addons.odoo15.0/OCA_credit-control"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="crm.git" path="addons.odoo15.0/OCA_crm" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="currency.git" path="addons.odoo15.0/OCA_currency" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="data-protection.git" path="addons.odoo15.0/OCA_data-protection" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="currency.git"
+        path="addons.odoo15.0/OCA_currency"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="data-protection.git"
+        path="addons.odoo15.0/OCA_data-protection"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="ddmrp.git" path="addons.odoo15.0/OCA_ddmrp" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="delivery-carrier.git" path="addons.odoo15.0/OCA_delivery-carrier" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="deltatech.git" path="addons.odoo15.0/dhongu_deltatech" remote="dhongu" revision="15.0" groups="addons,odoo15.0" />
-    <project name="design-themes.git" path="addons.odoo15.0/odoo_design-themes" remote="odoo" revision="15.0" groups="addons,odoo15.0" />
-    <project name="donation.git" path="addons.odoo15.0/OCA_donation" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="e-commerce.git" path="addons.odoo15.0/OCA_e-commerce" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="delivery-carrier.git"
+        path="addons.odoo15.0/OCA_delivery-carrier"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="deltatech.git"
+        path="addons.odoo15.0/dhongu_deltatech"
+        remote="dhongu"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="design-themes.git"
+        path="addons.odoo15.0/odoo_design-themes"
+        remote="odoo"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="donation.git"
+        path="addons.odoo15.0/OCA_donation"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="e-commerce.git"
+        path="addons.odoo15.0/OCA_e-commerce"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="edi.git" path="addons.odoo15.0/OCA_edi" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
     <project name="event.git" path="addons.odoo15.0/OCA_event" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="field-service.git" path="addons.odoo15.0/OCA_field-service" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="field-service.git"
+        path="addons.odoo15.0/OCA_field-service"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="fleet.git" path="addons.odoo15.0/OCA_fleet" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="geospatial.git" path="addons.odoo15.0/OCA_geospatial" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="helpdesk.git" path="addons.odoo15.0/OCA_helpdesk" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="geospatial.git"
+        path="addons.odoo15.0/OCA_geospatial"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="helpdesk.git"
+        path="addons.odoo15.0/OCA_helpdesk"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="hr.git" path="addons.odoo15.0/OCA_hr" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="interface-github.git" path="addons.odoo15.0/OCA_interface-github" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="knowledge.git" path="addons.odoo15.0/OCA_knowledge" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="l10n-canada.git" path="addons.odoo15.0/OCA_l10n-canada" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="maintenance.git" path="addons.odoo15.0/OCA_maintenance" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="management-system.git" path="addons.odoo15.0/OCA_management-system" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="manufacture.git" path="addons.odoo15.0/OCA_manufacture" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="margin-analysis.git" path="addons.odoo15.0/OCA_margin-analysis" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-<!--    <project name="medical-fhir.git" path="addons.odoo15.0/tegin_medical-fhir" remote="tegin" revision="15.0" groups="addons,odoo15.0" />-->
-    <project name="mis-builder.git" path="addons.odoo15.0/OCA_mis-builder" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="multi-company.git" path="addons.odoo15.0/OCA_multi-company" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="muk_web.git" path="addons.odoo15.0/muk-it_muk_web" remote="muk-it" revision="15.0" groups="addons,odoo15.0" />
-    <project name="odoo-addons.git" path="addons.odoo15.0/ajepe_odoo-addons" remote="ajepe" revision="15.0" groups="addons,odoo15.0" />
-<!--    <project-->
-<!--        name="odoo-base-addons.git"-->
-<!--        path="addons.odoo15.0/Numigi_odoo-base-addons"-->
-<!--        remote="Numigi"-->
-<!--    revision="15.0"-->
-<!--        groups="addons,odoo15.0"-->
-<!--    />-->
+    <project
+        name="interface-github.git"
+        path="addons.odoo15.0/OCA_interface-github"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="knowledge.git"
+        path="addons.odoo15.0/OCA_knowledge"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="l10n-canada.git"
+        path="addons.odoo15.0/OCA_l10n-canada"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="maintenance.git"
+        path="addons.odoo15.0/OCA_maintenance"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="management-system.git"
+        path="addons.odoo15.0/OCA_management-system"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="manufacture.git"
+        path="addons.odoo15.0/OCA_manufacture"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="margin-analysis.git"
+        path="addons.odoo15.0/OCA_margin-analysis"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <!--    <project name="medical-fhir.git" path="addons.odoo15.0/tegin_medical-fhir" remote="tegin" revision="15.0" groups="addons,odoo15.0" />-->
+    <project
+        name="mis-builder.git"
+        path="addons.odoo15.0/OCA_mis-builder"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="multi-company.git"
+        path="addons.odoo15.0/OCA_multi-company"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="muk_web.git"
+        path="addons.odoo15.0/muk-it_muk_web"
+        remote="muk-it"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="odoo-addons.git"
+        path="addons.odoo15.0/ajepe_odoo-addons"
+        remote="ajepe"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <!--    <project-->
+    <!--        name="odoo-base-addons.git"-->
+    <!--        path="addons.odoo15.0/Numigi_odoo-base-addons"-->
+    <!--        remote="Numigi"-->
+    <!--    revision="15.0"-->
+    <!--        groups="addons,odoo15.0"-->
+    <!--    />-->
     <project
         name="odoo-cloud-platform.git"
         path="addons.odoo15.0/camptocamp_odoo-cloud-platform"
@@ -167,13 +377,13 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-<!--    <project-->
-<!--        name="odoo-entertainment-addons.git"-->
-<!--        path="addons.odoo15.0/Numigi_odoo-entertainment-addons"-->
-<!--        remote="Numigi"-->
-<!--    revision="15.0"-->
-<!--        groups="addons,odoo15.0"-->
-<!--    />-->
+    <!--    <project-->
+    <!--        name="odoo-entertainment-addons.git"-->
+    <!--        path="addons.odoo15.0/Numigi_odoo-entertainment-addons"-->
+    <!--        remote="Numigi"-->
+    <!--    revision="15.0"-->
+    <!--        groups="addons,odoo15.0"-->
+    <!--    />-->
     <project
         name="odoo-formio.git"
         path="addons.odoo15.0/novacode-nl_odoo-formio"
@@ -181,8 +391,8 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-<!--    <project name="odoo-git-addons.git" path="addons.odoo15.0/Numigi_odoo-git-addons" remote="Numigi" revision="15.0" groups="addons,odoo15.0" />-->
-<!--    <project name="odoo-hr-addons.git" path="addons.odoo15.0/Numigi_odoo-hr-addons" remote="Numigi" revision="15.0" groups="addons,odoo15.0" />-->
+    <!--    <project name="odoo-git-addons.git" path="addons.odoo15.0/Numigi_odoo-git-addons" remote="Numigi" revision="15.0" groups="addons,odoo15.0" />-->
+    <!--    <project name="odoo-hr-addons.git" path="addons.odoo15.0/Numigi_odoo-hr-addons" remote="Numigi" revision="15.0" groups="addons,odoo15.0" />-->
     <project
         name="odoo.git"
         path="odoo15.0/odoo"
@@ -191,22 +401,34 @@
         revision="ERPLibre/15.0"
         groups="odoo,odoo15.0"
     />
-<!--    <project-->
-<!--        name="odoo_addons.git"-->
-<!--        path="addons.odoo15.0/Smile-SA_odoo_addons"-->
-<!--        remote="Smile-SA"-->
-<!--        revision="15.0"-->
-<!--        groups="addons,odoo15.0"-->
-<!--    />-->
-<!--    <project-->
-<!--        name="odoo_dhtmlxgantt.git"-->
-<!--        path="addons.odoo15.0/obayit_odoo_dhtmlxgantt"-->
-<!--        remote="obayit"-->
-<!--    revision="15.0"-->
-<!--        groups="addons,odoo15.0"-->
-<!--    />-->
-    <project name="odooapps.git" path="addons.odoo15.0/odoomates_odooapps" remote="odoomates" revision="15.0" groups="addons,odoo15.0" />
-    <project name="odooplm.git" path="addons.odoo15.0/OmniaGit_odooplm" remote="OmniaGit" revision="15.0" groups="addons,odoo15.0" />
+    <!--    <project-->
+    <!--        name="odoo_addons.git"-->
+    <!--        path="addons.odoo15.0/Smile-SA_odoo_addons"-->
+    <!--        remote="Smile-SA"-->
+    <!--        revision="15.0"-->
+    <!--        groups="addons,odoo15.0"-->
+    <!--    />-->
+    <!--    <project-->
+    <!--        name="odoo_dhtmlxgantt.git"-->
+    <!--        path="addons.odoo15.0/obayit_odoo_dhtmlxgantt"-->
+    <!--        remote="obayit"-->
+    <!--    revision="15.0"-->
+    <!--        groups="addons,odoo15.0"-->
+    <!--    />-->
+    <project
+        name="odooapps.git"
+        path="addons.odoo15.0/odoomates_odooapps"
+        remote="odoomates"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="odooplm.git"
+        path="addons.odoo15.0/OmniaGit_odooplm"
+        remote="OmniaGit"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="openeducat_erp.git"
         path="addons.odoo15.0/openeducat_openeducat_erp"
@@ -214,11 +436,35 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="operating-unit.git" path="addons.odoo15.0/OCA_operating-unit" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="partner-contact.git" path="addons.odoo15.0/OCA_partner-contact" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="pos-addons.git" path="addons.odoo15.0/itpp-labs_pos-addons" remote="itpp-labs" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="operating-unit.git"
+        path="addons.odoo15.0/OCA_operating-unit"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="partner-contact.git"
+        path="addons.odoo15.0/OCA_partner-contact"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="pos-addons.git"
+        path="addons.odoo15.0/itpp-labs_pos-addons"
+        remote="itpp-labs"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="pos.git" path="addons.odoo15.0/OCA_pos" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="product-attribute.git" path="addons.odoo15.0/OCA_product-attribute" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="product-attribute.git"
+        path="addons.odoo15.0/OCA_product-attribute"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="product-configurator.git"
         path="addons.odoo15.0/OCA_product-configurator"
@@ -226,9 +472,27 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="product-pack.git" path="addons.odoo15.0/OCA_product-pack" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="product-variant.git" path="addons.odoo15.0/OCA_product-variant" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="project-reporting.git" path="addons.odoo15.0/OCA_project-reporting" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="product-pack.git"
+        path="addons.odoo15.0/OCA_product-pack"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="product-variant.git"
+        path="addons.odoo15.0/OCA_product-variant"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="project-reporting.git"
+        path="addons.odoo15.0/OCA_project-reporting"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="project-agile.git"
         path="addons.odoo15.0/OCA_project-agile"
@@ -236,10 +500,28 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="project.git" path="addons.odoo15.0/OCA_project" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="purchase-workflow.git" path="addons.odoo15.0/OCA_purchase-workflow" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="project.git"
+        path="addons.odoo15.0/OCA_project"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="purchase-workflow.git"
+        path="addons.odoo15.0/OCA_purchase-workflow"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="queue.git" path="addons.odoo15.0/OCA_queue" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="reporting-engine.git" path="addons.odoo15.0/OCA_reporting-engine" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="reporting-engine.git"
+        path="addons.odoo15.0/OCA_reporting-engine"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="rma.git" path="addons.odoo15.0/OCA_rma" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
     <project
         name="saas-addons.git"
@@ -248,12 +530,48 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="sale-reporting.git" path="addons.odoo15.0/OCA_sale-reporting" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="sale-workflow.git" path="addons.odoo15.0/OCA_sale-workflow" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="server-auth.git" path="addons.odoo15.0/OCA_server-auth" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="server-backend.git" path="addons.odoo15.0/OCA_server-backend" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="server-brand.git" path="addons.odoo15.0/OCA_server-brand" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="server-env.git" path="addons.odoo15.0/OCA_server-env" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="sale-reporting.git"
+        path="addons.odoo15.0/OCA_sale-reporting"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="sale-workflow.git"
+        path="addons.odoo15.0/OCA_sale-workflow"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="server-auth.git"
+        path="addons.odoo15.0/OCA_server-auth"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="server-backend.git"
+        path="addons.odoo15.0/OCA_server-backend"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="server-brand.git"
+        path="addons.odoo15.0/OCA_server-brand"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="server-env.git"
+        path="addons.odoo15.0/OCA_server-env"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="server-tools.git"
         path="addons.odoo15.0/OCA_server-tools"
@@ -261,9 +579,27 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="server-ux.git" path="addons.odoo15.0/OCA_server-ux" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="social.git" path="addons.odoo15.0/OCA_social" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="survey.git" path="addons.odoo15.0/OCA_survey" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="server-ux.git"
+        path="addons.odoo15.0/OCA_server-ux"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="social.git"
+        path="addons.odoo15.0/OCA_social"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="survey.git"
+        path="addons.odoo15.0/OCA_survey"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="stock-logistics-warehouse.git"
         path="addons.odoo15.0/OCA_stock-logistics-warehouse"
@@ -271,8 +607,20 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="storage.git" path="addons.odoo15.0/OCA_storage" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="timesheet.git" path="addons.odoo15.0/OCA_timesheet" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="storage.git"
+        path="addons.odoo15.0/OCA_storage"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="timesheet.git"
+        path="addons.odoo15.0/OCA_timesheet"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project
         name="vertical-association.git"
         path="addons.odoo15.0/OCA_vertical-association"
@@ -280,18 +628,48 @@
         revision="15.0"
         groups="addons,odoo15.0"
     />
-    <project name="vertical-hotel.git" path="addons.odoo15.0/OCA_vertical-hotel" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="vertical-isp.git" path="addons.odoo15.0/OCA_vertical-isp" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="vertical-travel.git" path="addons.odoo15.0/OCA_vertical-travel" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project
+        name="vertical-hotel.git"
+        path="addons.odoo15.0/OCA_vertical-hotel"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="vertical-isp.git"
+        path="addons.odoo15.0/OCA_vertical-isp"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="vertical-travel.git"
+        path="addons.odoo15.0/OCA_vertical-travel"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="web.git" path="addons.odoo15.0/OCA_web" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-<!--    <project-->
-<!--        name="website-addons.git"-->
-<!--        path="addons.odoo15.0/itpp-labs_website-addons"-->
-<!--        remote="itpp-labs"-->
-<!--    revision="15.0"-->
-<!--        groups="addons,odoo15.0"-->
-<!--    />-->
-    <project name="website-cms.git" path="addons.odoo15.0/OCA_website-cms" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
-    <project name="website.git" path="addons.odoo15.0/OCA_website" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <!--    <project-->
+    <!--        name="website-addons.git"-->
+    <!--        path="addons.odoo15.0/itpp-labs_website-addons"-->
+    <!--        remote="itpp-labs"-->
+    <!--    revision="15.0"-->
+    <!--        groups="addons,odoo15.0"-->
+    <!--    />-->
+    <project
+        name="website-cms.git"
+        path="addons.odoo15.0/OCA_website-cms"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
+    <project
+        name="website.git"
+        path="addons.odoo15.0/OCA_website"
+        remote="OCA"
+        revision="15.0"
+        groups="addons,odoo15.0"
+    />
     <project name="wms.git" path="addons.odoo15.0/OCA_wms" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
 </manifest>

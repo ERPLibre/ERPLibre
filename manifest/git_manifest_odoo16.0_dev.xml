@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
-    <project name="OpenUpgrade.git" revision="16.0" path="odoo16.0/OCA_OpenUpgrade" remote="OCA" clone-depth="10" groups="migration,odoo16.0" />
-    <project name="documentation-user.git" path="odoo16.0/odoo_documentation-user" revision="16.0" remote="odoo" groups="odoo,odoo16.0" />
+    <project
+        name="OpenUpgrade.git"
+        revision="16.0"
+        path="odoo16.0/OCA_OpenUpgrade"
+        remote="OCA"
+        clone-depth="10"
+        groups="migration,odoo16.0"
+    />
+    <project
+        name="documentation-user.git"
+        path="odoo16.0/odoo_documentation-user"
+        revision="16.0"
+        remote="odoo"
+        groups="odoo,odoo16.0"
+    />
 </manifest>
