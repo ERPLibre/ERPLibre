@@ -291,8 +291,8 @@ def combine_requirements(config):
 
             lst_version_requirement = []
             for requirement in lst_requirement:
-                if ".*" in requirement:
-                    requirement = requirement.replace(".*", "")
+                # if ".*" in requirement:
+                #     requirement = requirement.replace(".*", "")
                 if "~=" in requirement:
                     old_requirement = requirement
                     requirement = requirement.replace("~=", "==")
@@ -303,6 +303,8 @@ def combine_requirements(config):
                     # Ignore empty version
                     continue
                 match_version = match.group(1).strip()
+                if ".*" in match_version:
+                    match_version = match_version.replace(".*", "")
                 match_sign = match.group(0).strip()[: -len(match_version)]
                 match_app_name = requirement[
                     : -(len(match_sign) + len(match_version))
@@ -329,6 +331,8 @@ def combine_requirements(config):
                     # else:
                     #     version_requirement_upd = version_requirement[0]
                     version_requirement_upd = version_requirement[0]
+                    if ".*" in version_requirement_upd:
+                        version_requirement_upd = version_requirement_upd.replace(".*", "")
                     try:
                         is_compatible &= iscompatible.iscompatible(
                             version_requirement_upd, highest_value[1][0][1]
@@ -354,12 +358,15 @@ def combine_requirements(config):
                         filename_1 = dct_requirements_module_filename.get(
                             key_require
                         )
-                        if priority_filename_requirement in filename_1:
-                            erplibre_value = version_requirement[0]
-                        elif (
-                            second_priority_filename_requirement in filename_1
-                        ):
-                            odoo_value = version_requirement[0]
+                        if not filename_1:
+                            _logger.error(f"Cannot find key '{key_require}' into list of requirements.")
+                        else:
+                            if priority_filename_requirement in filename_1:
+                                erplibre_value = version_requirement[0]
+                            elif (
+                                second_priority_filename_requirement in filename_1
+                            ):
+                                odoo_value = version_requirement[0]
 
                     if erplibre_value:
                         str_result_choose = (
