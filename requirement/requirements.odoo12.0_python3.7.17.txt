@@ -112,8 +112,10 @@ altair==5.0.1
 pycountry==22.3.5
 email-validator==2.0.0
 email_validator==2.0.0
+sphinx==3.0
 sphinx-rtd-theme==1.2.2
 sphinx_rtd_theme==1.2.2
+sphinx-intl==2.2.0
 uvloop==0.17.0
 coverage==7.2.7
 websocket-client==1.6.1

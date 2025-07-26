@@ -5,7 +5,7 @@
         path="script/OCA_maintainer-tools"
         remote="OCA"
         revision="master"
-        groups="odoo"
+        groups="odoo,code_generator"
     />
     <project
         name="odoo-module-migrator.git"
