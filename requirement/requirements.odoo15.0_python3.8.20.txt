@@ -126,7 +126,7 @@ extract-msg==0.36.1
 # Force version for security update
 pyyaml==6.0
 lxml==4.9.1
-cryptography==3.4.8
+cryptography==2.6.1
 psutil==5.9.0
 Pillow==10.3.0
 Babel==2.9.1
