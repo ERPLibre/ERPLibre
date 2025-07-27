@@ -4,6 +4,7 @@
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
+    <remote name="ERPLibre_OCA" fetch="https://github.com/ERPLibre/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
     <remote name="Smile-SA" fetch="https://github.com/ERPLibre/" />
@@ -575,8 +576,8 @@
     <project
         name="server-tools.git"
         path="addons.odoo15.0/OCA_server-tools"
-        remote="OCA"
-        revision="15.0"
+        remote="ERPLibre_OCA"
+        revision="15.0_dev"
         groups="addons,odoo15.0"
     />
     <project
