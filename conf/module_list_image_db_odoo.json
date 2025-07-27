@@ -239,6 +239,26 @@
             }
         ]
     },
+    "odoo13.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "fetchmail_notify_error_to_sender",
+                    "mail_debrand",
+                    "partner_no_vat",
+                    "remove_odoo_enterprise",
+                    "smile_many2many_tags_clickable",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
     "odoo14.0_base": {
         "base": "",
         "disable": false,
@@ -423,6 +443,34 @@
                     "website_payment",
                     "website_slides",
                     "website_snippet_country_dropdown"
+                ]
+            }
+        ]
+    },
+    "odoo15.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_listview_range_select",
+                    "web_dialog_size",
+                    "password_security",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job",
+                    "web_advanced_search"
                 ]
             }
         ]
@@ -636,6 +684,36 @@
                     "website_payment",
                     "website_slides",
                     "website_snippet_country_dropdown"
+                ]
+            }
+        ]
+    },
+    "odoo17.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline",
+                    "server_action_mass_edit",
+                    "base_name_search_improved",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_listview_range_select",
+                    "web_dialog_size",
+                    "password_security",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job",
+                    "web_advanced_search"
                 ]
             }
         ]
