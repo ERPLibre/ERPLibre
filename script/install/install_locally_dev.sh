@@ -32,7 +32,7 @@ npm install
 #cd script/OCA_maintainer-tools || exit
 ## virtualenv is not installed by default
 ##virtualenv env
-#../../.venv/bin/python -m venv env
+#../../.venv.erplibre/bin/python -m venv env
 #. env/bin/activate
 #pip install setuptools-rust
 ## Delete all tag before installing, or break installation, will generate a new one after

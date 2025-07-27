@@ -134,42 +134,42 @@ format:
 
 .PHONY: format_code_generator
 format_code_generator:
-	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
 
 .PHONY: format_erplibre_addons
 format_erplibre_addons:
-	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
-	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
 	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
 
 .PHONY: format_supported_addons
 format_supported_addons:
-	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
 	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
-	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
 	./script/maintenance/black.sh ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
-	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: format_script
 format_script:
-	#.venv/bin/isort --profile black -l 79 ./script/ --gitignore
+	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
 	./script/maintenance/black.sh ./script/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
-	.venv/bin/isort --profile black -l 79 ./script/ --gitignore
+	.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
 
 #########
 #  log  #

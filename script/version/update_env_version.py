@@ -730,14 +730,14 @@ def main():
         os.system("./script/generate_config.sh")
         # TODO ignore this if installation fail
 
-        # TODO this cause an error at first execution, need to source ./.venv/bin/activate and rerun
-        # subprocess.run(['source', './.venv/bin/activate'], shell=True)
+        # TODO this cause an error at first execution, need to source ./.venv.erplibre/bin/activate and rerun
+        # subprocess.run(['source', './.venv.erplibre/bin/activate'], shell=True)
         # subprocess.run(['make', 'config_gen_all'])
         # status = os.system(f"make config_gen_all")
         #
         # if not status:
         #     print("Please run:")
-        #     print("source ./.venv/bin/activate")
+        #     print("source ./.venv.erplibre/bin/activate")
         #     print("make config_gen_all")
 
 
