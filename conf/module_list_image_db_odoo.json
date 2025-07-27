@@ -250,9 +250,7 @@
                     "disable_odoo_online",
                     "fetchmail_notify_error_to_sender",
                     "mail_debrand",
-                    "partner_no_vat",
                     "remove_odoo_enterprise",
-                    "smile_many2many_tags_clickable",
                     "web_responsive",
                     "web_timeline"
                 ]

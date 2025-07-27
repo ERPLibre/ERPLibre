@@ -84,8 +84,20 @@ geojson<3.0.0
 
 # Fix poetry
 olefile==0.47
+xmlschema==2.5.1
+pathspec==0.11.2
+oauthlib==3.2.2
+pysaml2==7.3.1
+matplotlib==3.3.4
+#pyparsing==2.1.10
+sqlalchemy==2.0.36
+html2text==2016.9.19
+python-stdnum==1.20
+pygount==1.2.1
+josepy==1.14.0
 
 # asyncio
+aiohttp==3.8.6
 aioshutil<1.2
 tqdm
 uvloop
@@ -153,3 +165,6 @@ pygments==2.7.4
 setuptools==65.5.1
 Werkzeug==0.16.1
 future==0.18.3
+
+# For fix auto_backup
+pysftp
