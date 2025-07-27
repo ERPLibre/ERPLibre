@@ -76,13 +76,13 @@ switch_odoo_12:
 
 .PHONY: install_odoo_all_version
 install_odoo_all_version:
-	./script/make.sh install_odoo_12
-	./script/make.sh install_odoo_13
-	./script/make.sh install_odoo_14
-	./script/make.sh install_odoo_15
-	./script/make.sh install_odoo_16
-	./script/make.sh install_odoo_17
 	./script/make.sh install_odoo_18
+	./script/make.sh install_odoo_17
+	./script/make.sh install_odoo_16
+	./script/make.sh install_odoo_15
+	./script/make.sh install_odoo_14
+	./script/make.sh install_odoo_13
+	./script/make.sh install_odoo_12
 
 .PHONY: install_odoo_all_version_dev
 install_odoo_all_version_dev:
