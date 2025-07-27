@@ -332,7 +332,9 @@ def combine_requirements(config):
                     #     version_requirement_upd = version_requirement[0]
                     version_requirement_upd = version_requirement[0]
                     if ".*" in version_requirement_upd:
-                        version_requirement_upd = version_requirement_upd.replace(".*", "")
+                        version_requirement_upd = (
+                            version_requirement_upd.replace(".*", "")
+                        )
                     try:
                         is_compatible &= iscompatible.iscompatible(
                             version_requirement_upd, highest_value[1][0][1]
@@ -359,12 +361,15 @@ def combine_requirements(config):
                             key_require
                         )
                         if not filename_1:
-                            _logger.error(f"Cannot find key '{key_require}' into list of requirements.")
+                            _logger.error(
+                                f"Cannot find key '{key_require}' into list of requirements."
+                            )
                         else:
                             if priority_filename_requirement in filename_1:
                                 erplibre_value = version_requirement[0]
                             elif (
-                                second_priority_filename_requirement in filename_1
+                                second_priority_filename_requirement
+                                in filename_1
                             ):
                                 odoo_value = version_requirement[0]
 
@@ -528,7 +533,9 @@ def main():
 
     poetry_default_lock_path = "./poetry.lock"
     pyproject_toml_filename = ""
-    poetry_target_lock_path = f"./requirement/poetry.{config.set_version_erplibre}.lock"
+    poetry_target_lock_path = (
+        f"./requirement/poetry.{config.set_version_erplibre}.lock"
+    )
 
     if not config.dry:
         pyproject_toml_filename = f"{config.dir}pyproject.toml"
@@ -540,8 +547,14 @@ def main():
         status = call_poetry_add_build_dependency()
         if status and pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
-        if config.force and not os.path.islink(poetry_default_lock_path) and os.path.isfile(poetry_target_lock_path):
+        if (
+            config.force
+            and not os.path.islink(poetry_default_lock_path)
+            and os.path.isfile(poetry_default_lock_path)
+            and os.path.isfile(poetry_target_lock_path)
+        ):
             # If "./poetry.lock" is not symbolic link, force replace original
+            os.remove(poetry_target_lock_path)
             shutil.move(poetry_default_lock_path, poetry_target_lock_path)
             os.symlink(poetry_target_lock_path, poetry_default_lock_path)
 
