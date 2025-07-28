@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
+    <remote name="odoo" fetch="https://github.com/odoo/" />
+    <remote name="OCA" fetch="https://github.com/OCA/" />
     <project
         name="OpenUpgrade.git"
         revision="18.0"

@@ -4,10 +4,10 @@
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
-    <remote name="ERPLibre_OCA" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_OCA" fetch="https://github.com/ERPLibre/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
-    <remote name="Smile-SA" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_Smile-SA" fetch="https://github.com/ERPLibre/" />
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
     <remote name="ajepe" fetch="https://github.com/ajepe/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
@@ -19,7 +19,7 @@
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
-    <remote name="odoo" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
     <remote name="odoomates" fetch="https://github.com/odoomates/" />
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
@@ -243,7 +243,7 @@
     <project
         name="design-themes.git"
         path="addons.odoo15.0/odoo_design-themes"
-        remote="odoo"
+        remote="ERPLibre_origin_odoo"
         revision="15.0"
         groups="addons,odoo15.0"
     />
@@ -397,7 +397,7 @@
     <project
         name="odoo.git"
         path="odoo15.0/odoo"
-        remote="odoo"
+        remote="ERPLibre_origin_odoo"
         clone-depth="10"
         revision="ERPLibre/15.0"
         groups="odoo,odoo15.0"
@@ -405,7 +405,7 @@
     <!--    <project-->
     <!--        name="odoo_addons.git"-->
     <!--        path="addons.odoo15.0/Smile-SA_odoo_addons"-->
-    <!--        remote="Smile-SA"-->
+    <!--        remote="ERPLibre_origin_Smile-SA"-->
     <!--        revision="15.0"-->
     <!--        groups="addons,odoo15.0"-->
     <!--    />-->
@@ -576,7 +576,7 @@
     <project
         name="server-tools.git"
         path="addons.odoo15.0/OCA_server-tools"
-        remote="ERPLibre_OCA"
+        remote="ERPLibre_origin_OCA"
         revision="15.0_dev"
         groups="addons,odoo15.0"
     />

@@ -2,11 +2,10 @@
 <manifest>
     <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
-    <remote name="MathBenTech" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_MathBenTech" fetch="https://github.com/ERPLibre/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
-    <remote name="Smile-SA" fetch="https://github.com/ERPLibre/" />
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
     <remote name="ajepe" fetch="https://github.com/ajepe/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
@@ -18,7 +17,7 @@
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
-    <remote name="odoo" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
     <remote name="odoomates" fetch="https://github.com/odoomates/" />
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
@@ -265,7 +264,7 @@
     <!--    <project-->
     <!--        name="development.git"-->
     <!--        revision="18.0" path="addons.odoo18.0/MathBenTech_development"-->
-    <!--        remote="MathBenTech"-->
+    <!--        remote="ERPLibre_origin_MathBenTech"-->
     <!--        groups="addons,base,odoo18.0"-->
     <!--    />-->
     <project
@@ -390,7 +389,7 @@
     <!--    <project-->
     <!--        name="odoo-business-spending-management-quebec-canada.git"-->
     <!--        revision="18.0" path="addons.odoo18.0/MathBenTech_odoo-business-spending-management-quebec-canada"-->
-    <!--        remote="MathBenTech"-->
+    <!--        remote="ERPLibre_origin_MathBenTech"-->
     <!--        groups="addons,base,odoo18.0"-->
     <!--    />-->
     <project
@@ -410,7 +409,7 @@
     <project
         name="odoo.git"
         path="odoo18.0/odoo"
-        remote="odoo"
+        remote="ERPLibre_origin_odoo"
         clone-depth="10"
         revision="ERPLibre/18.0"
         groups="odoo,odoo18.0"
