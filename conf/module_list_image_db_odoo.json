@@ -700,18 +700,15 @@
                     "web_responsive",
                     "web_timeline",
                     "server_action_mass_edit",
-                    "base_name_search_improved",
                     "partner_firstname",
                     "web_search_with_and",
-                    "web_listview_range_select",
                     "web_dialog_size",
                     "password_security",
                     "web_refresher",
                     "date_range",
                     "partner_contact_access_link",
                     "auditlog",
-                    "queue_job",
-                    "web_advanced_search"
+                    "queue_job"
                 ]
             }
         ]
