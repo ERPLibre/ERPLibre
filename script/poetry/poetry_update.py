@@ -305,7 +305,8 @@ def combine_requirements(config):
                     requirement = requirement.replace("~=", "==")
                     lst_replace_special_sign[requirement] = old_requirement
 
-                match = re.search(r"[=<>~!]{1,2}(.*)", requirement)
+                requirement_begin = requirement.split(except_sign)[0]
+                match = re.search(r"[=<>~!]{1,2}(.*)", requirement_begin)
                 if not match:
                     # Ignore empty version
                     continue
@@ -316,7 +317,10 @@ def combine_requirements(config):
                 match_app_name = requirement[
                     : -(len(match_sign) + len(match_version))
                 ]
-                result_number = [(match_sign, Version(match_version))]
+                match_version_format = match_version.replace("'", "").replace(
+                    '"', ""
+                )
+                result_number = [(match_sign, Version(match_version_format))]
                 # result_number = iscompatible.parse_requirements(requirement)
                 if not result_number:
                     continue
