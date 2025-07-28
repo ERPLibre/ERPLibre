@@ -13,6 +13,7 @@
     <remote name="ERPLibre_origin_dhongu" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_it-projects-llc" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_itpp-labs" fetch="https://github.com/ERPLibre/" />
+    <remote name="itpp-labs" fetch="https://github.com/itpp-labs/" />
     <remote name="ERPLibre_origin_JayVora-SerpentCS" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_kinjal-sorathiya" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_muk-it" fetch="https://github.com/ERPLibre/" />
@@ -858,7 +859,7 @@
     <project
         name="website-addons.git"
         path="addons.odoo12.0/itpp-labs_website-addons"
-        remote="itpp-labs"
+        remote="ERPLibre_origin_itpp-labs"
         revision="12.0_dev"
         groups="addons,odoo12.0"
     />
