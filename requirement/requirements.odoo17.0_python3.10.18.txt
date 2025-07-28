@@ -50,6 +50,7 @@ reportlab==3.6.5
 urllib3==1.26.5
 Werkzeug==2.0.2
 xlrd==1.2.0
+cachetools==5.5.2
 
 # Force python 3.10 over odoo/requirements.txt to remove warning
 num2words==0.5.13
