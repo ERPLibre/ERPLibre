@@ -629,7 +629,7 @@ class GitTool:
             lst_default, key=lambda key: key.get("@remote")
         )
         lst_order_project = sorted(
-            lst_project, key=lambda key: key.get("@name")
+            lst_project, key=lambda key: key.get("@name") + key.get("@path")
         )
 
         dct_repo = OrderedDict(
