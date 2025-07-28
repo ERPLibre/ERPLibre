@@ -49,6 +49,7 @@ requests==2.30.0
 reportlab==3.6.5
 urllib3==2.5.0
 cachetools==5.5.2
+setuptools==65.5.1
 boto3==1.38.42
 Werkzeug==2.0.2
 xlrd==1.2.0
