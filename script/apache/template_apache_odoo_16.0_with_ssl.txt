@@ -1,0 +1,45 @@
+<VirtualHost *:80>
+    ServerAdmin USER@EMAIL.ca
+    ServerName DOMAIN.ca
+
+    RewriteEngine On
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^ https://DOMAIN.ca/%{REQUEST_URI} [L,R=301]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerAdmin USER@EMAIL.ca
+    ServerName DOMAIN.ca
+
+    SSLEngine on
+
+    SSLCertificateFile /etc/letsencrypt/live/DOMAIN.ca/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/DOMAIN.ca/privkey.pem
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+
+    <Proxy *>
+        Order deny,allow
+        Allow from all
+    </Proxy>
+
+	# Specification for Odoo 16 and more
+    <Location /websocket>
+        ProxyPass ws://127.0.0.1:8072/websocket/
+        ProxyPassReverse ws://127.0.0.1:8072/websocket/
+    </Location>
+
+    <Location />
+        ProxyPass http://127.0.0.1:8069/
+        ProxyPassReverse http://127.0.0.1:8069/
+    </Location>
+
+    RewriteEngine on
+    RewriteCond %{HTTP:Upgrade} =websocket [NC]
+    RewriteRule /(.*) ws://127.0.0.1:8072/$1 [P,L]
+    RewriteCond %{HTTP:Upgrade} !=websocket [NC]
+    RewriteRule /(.*) http://127.0.0.1:8069/$1 [P,L]
+
+    RequestHeader set "X-Forwarded-Proto" "https"
+</VirtualHost>
