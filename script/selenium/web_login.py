@@ -35,7 +35,7 @@ def run(config, selenium_tool):
     courriel_input = selenium_tool.get_element(by=By.NAME, value="login")
     mot_de_passe_input = selenium_tool.get_element(by=By.NAME, value="password")
     # div_connexion_button = selenium_tool.get_element(by=By.CLASS_NAME, value="oe_login_buttons")
-    connexion_button = selenium_tool.get_element(by=By.CLASS_NAME, value="btn-primary")
+    connexion_button = selenium_tool.get_element(by=By.CSS_SELECTOR, value="[type='submit']")
 
     # try:
     #     connexion_button = selenium_tool.driver.find_element(
