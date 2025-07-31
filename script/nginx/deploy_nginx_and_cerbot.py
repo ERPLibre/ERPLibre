@@ -4,6 +4,7 @@
 import argparse
 import logging
 import os
+import time
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -101,6 +102,8 @@ def main():
             os.system(cmd_syslink)
 
     if config.run_certbot:
+        if config.generate_nginx:
+            time.sleep(10)
         cmd_lst_domain = " -d " + " -d ".join(lst_domain)
         cmd_cerbot = "sudo certbot --nginx%s" % cmd_lst_domain
         print(cmd_cerbot)
