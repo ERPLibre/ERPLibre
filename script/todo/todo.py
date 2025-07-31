@@ -90,6 +90,10 @@ class TODO:
         while True:
             try:
                 status = click.prompt(help_info)
+            except NameError:
+                print("Do")
+                print("source .venv.erplibre/bin/activate && make")
+                sys.exit(1)
             except ImportError:
                 print("Do")
                 print("source .venv.erplibre/bin/activate && make")
