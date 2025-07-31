@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
+import datetime
 import getpass
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
-import datetime
 import time
-import shutil
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -19,12 +19,13 @@ INSTALLED_ODOO_VERSION_FILE = os.path.join(
 ODOO_VERSION_FILE = os.path.join(".odoo-version")
 ENABLE_CRASH = False
 CRASH_E = None
+
 try:
-    import humanize
     import tkinter as tk
     from tkinter import filedialog
 
     import click
+    import humanize
     import openai
     from pykeepass import PyKeePass
 
@@ -36,6 +37,9 @@ except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
     CRASH_E = e
+
+if not ENABLE_CRASH:
+    print("Importation success!")
 
 _logger = logging.getLogger(__name__)
 
@@ -55,17 +59,21 @@ class TODO:
         exec_path_gnome_terminal = shutil.which("gnome-terminal")
         if exec_path_gnome_terminal:
             self.cmd_source_erplibre = (
-                f"gnome-terminal --tab -- bash -c 'source"
+                f"gnome-terminal -- bash -c 'source"
                 f" ./{cst_venv_erplibre}/bin/activate;%s'"
             )
         else:
             exec_path_tell = shutil.which("osascript")
             if exec_path_tell:
                 self.cmd_source_erplibre = (
-                    f"osascript -e 'tell application \"Terminal\"' -e 'tell application \"System Events\" to keystroke \"PATH\" using " + "{command down}" + f"' -e 'delay 0.1' -e 'do script \"./{cst_venv_erplibre}/bin/activate;%s\" in front window'"
+                    f'osascript -e \'tell application "Terminal"\' -e \'tell application "System Events" to keystroke "PATH" using '
+                    + "{command down}"
+                    + f"' -e 'delay 0.1' -e 'do script \"./{cst_venv_erplibre}/bin/activate;%s\" in front window'"
                 )
             else:
-                self.cmd_source_erplibre = "%s"
+                self.cmd_source_erplibre = (
+                    f"source ./{cst_venv_erplibre}/bin/activate;%s"
+                )
 
     def run(self):
         with open(LOGO_ASCII_FILE) as my_file:
@@ -80,7 +88,12 @@ class TODO:
 [0] Quitter
 """
         while True:
-            status = click.prompt(help_info)
+            try:
+                status = click.prompt(help_info)
+            except ImportError:
+                print("Do")
+                print("source .venv.erplibre/bin/activate && make")
+                sys.exit(1)
             print()
             if status == "0":
                 break
@@ -213,6 +226,7 @@ class TODO:
 
     def prompt_install(self):
         print("Detect first installation from code source.")
+
         first_installation_input = (
             input(
                 "First system installation? This will process system installation"
@@ -222,12 +236,8 @@ class TODO:
             .upper()
         )
         if first_installation_input == "Y":
-            subprocess.run(
-                "gnome-terminal -- bash -c"
-                " './script/version/update_env_version.py --install;bash'",
-                shell=True,
-                executable="/bin/bash",
-            )
+            cmd = "./script/version/update_env_version.py --install"
+            self.executer_commande_live(cmd, source_erplibre=True)
             print("Wait after OS installation before continue.")
 
         # First detect pycharm, need to be open before installation and close to increase speed
@@ -257,11 +267,7 @@ class TODO:
             )
             if pycharm_configuration_input == "Y":
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
-                subprocess.run(
-                    f"gnome-terminal -- bash -c '{pycharm_bin} .'",
-                    shell=True,
-                    executable="/bin/bash",
-                )
+                self.executer_commande_live(pycharm_bin, source_erplibre=True)
                 print(
                     "Close Pycharm when processing is done before continue"
                     " this guide."
@@ -361,7 +367,7 @@ class TODO:
 
             # TODO use external script to detect terminal to use on system
             # TODO check script open_terminal_code_generator.sh
-            cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
+            # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
             try:
                 subprocess.run(
                     cmd_intern, shell=True, executable="/bin/bash", check=True
@@ -613,10 +619,12 @@ class TODO:
             #     f" ./{cst_venv_erplibre}/bin/activate;{commande}'"
             # )
             commande = self.cmd_source_erplibre % commande
+            print(f"Execute : {commande}")
         try:
             process = subprocess.Popen(
                 commande,
                 shell=True,
+                executable="/bin/bash",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -672,26 +680,42 @@ class TODO:
             # Force auto installation
             print("Auto installation")
             time.sleep(0.5)
-            subprocess.run(
-                "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
-                shell=True,
-                executable="/bin/bash",
-            )
+            cmd = "./script/todo/source_todo.sh"
+            # self.restart_script(e)
+            self.executer_commande_live(cmd, source_erplibre=True)
             sys.exit(1)
         if os.path.exists(cst_venv_erplibre):
-            print("Got error : ")
+            print("Import error : ")
             print(e)
-            # TODO auto-detect gnome-terminal, or choose another.
+            # TODO auto-detect gnome-terminal, or choose another. Is it done already?
             self.restart_script(e)
-            print(
-                f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate"
-            )
-            time.sleep(0.5)
-            subprocess.run(
-                "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
-                shell=True,
-                executable="/bin/bash",
-            )
+            # self.prompt_install()
+
+            # print(
+            #     f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate"
+            # )
+            # time.sleep(0.5)
+            # cmd = "./script/todo/source_todo.sh"
+            print("Re-execute TODO 🤖 or execute :")
+            print()
+            print(f"source {cst_venv_erplibre}/bin/activate;make")
+            print()
+            cmd = "./script/todo/todo.py"
+            # # self.restart_script(e)
+            try:
+                # TODO duplicate
+                import tkinter as tk
+                from tkinter import filedialog
+
+                import click
+                import humanize
+                import openai
+                from pykeepass import PyKeePass
+            except ImportError:
+                print("Rerun and exit")
+                self.executer_commande_live(cmd, source_erplibre=True)
+                sys.exit(1)
+            print("No error")
         else:
             self.prompt_install()
 
@@ -707,6 +731,10 @@ class TODO:
                 with open(file_error_path, "w") as f_file:
                     f_file.write(str(last_error))
                     pass  # The file is created and closed here, no content is written
+                print(
+                    f"Try to reopen process with before : source ./{cst_venv_erplibre}/bin/activate && exec python "
+                    + " ".join(sys.argv)
+                )
                 os.execv(
                     "/bin/bash",
                     [
