@@ -736,7 +736,7 @@ class TODO:
                     f_file.write(str(last_error))
                     pass  # The file is created and closed here, no content is written
                 print(
-                    f"Try to reopen process with before : source ./{cst_venv_erplibre}/bin/activate && exec python "
+                    f"Try to reopen process with before :\nsource ./{cst_venv_erplibre}/bin/activate && exec python "
                     + " ".join(sys.argv)
                 )
                 os.execv(
