@@ -8,6 +8,7 @@ import subprocess
 import sys
 import datetime
 import time
+import shutil
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -46,6 +47,25 @@ LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 class TODO:
     def __init__(self):
         self.kdbx = None
+        self.init()
+
+    def init(self):
+        # Get command
+        self.cmd_source_erplibre = ""
+        exec_path_gnome_terminal = shutil.which("gnome-terminal")
+        if exec_path_gnome_terminal:
+            self.cmd_source_erplibre = (
+                f"gnome-terminal --tab -- bash -c 'source"
+                f" ./{cst_venv_erplibre}/bin/activate;%s'"
+            )
+        else:
+            exec_path_tell = shutil.which("osascript")
+            if exec_path_tell:
+                self.cmd_source_erplibre = (
+                    f"osascript -e 'tell application \"Terminal\"' -e 'tell application \"System Events\" to keystroke \"PATH\" using " + "{command down}" + f"' -e 'delay 0.1' -e 'do script \"./{cst_venv_erplibre}/bin/activate;%s\" in front window'"
+                )
+            else:
+                self.cmd_source_erplibre = "%s"
 
     def run(self):
         with open(LOGO_ASCII_FILE) as my_file:
@@ -71,11 +91,12 @@ class TODO:
             elif status == "3":
                 self.execute_prompt_ia()
             elif status == "4":
-                cmd = (
-                    f"gnome-terminal --tab -- bash -c 'source"
-                    f" ./{cst_venv_erplibre}/bin/activate;make todo'"
-                )
-                self.executer_commande_live(cmd)
+                # cmd = (
+                #     f"gnome-terminal --tab -- bash -c 'source"
+                #     f" ./{cst_venv_erplibre}/bin/activate;make todo'"
+                # )
+                cmd = "make todo"
+                self.executer_commande_live(cmd, source_erplibre=True)
             # elif status == "3" or status == "install":
             #     print("install")
             else:
@@ -584,8 +605,14 @@ class TODO:
         Args:
             commande (str): La commande à exécuter (sous forme de chaîne de caractères).
         """
-        # if source_erplibre:
-        #     commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
+
+        if source_erplibre:
+            # commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
+            # cmd = (
+            #     f"gnome-terminal --tab -- bash -c 'source"
+            #     f" ./{cst_venv_erplibre}/bin/activate;{commande}'"
+            # )
+            commande = self.cmd_source_erplibre % commande
         try:
             process = subprocess.Popen(
                 commande,
