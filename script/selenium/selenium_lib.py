@@ -58,8 +58,7 @@ class SeleniumLib(object):
         self.filename_recording = os.path.join(
             dir_path_screencast, self.filename_recording
         )
-        if not os.path.isdir(dir_path_screencast):
-            os.mkdir(dir_path_screencast)
+        self.dirname_recording = dir_path_screencast
         self.driver = None
         with open(".odoo-version") as txt:
             self.odoo_version = txt.read()
@@ -142,6 +141,9 @@ class SeleniumLib(object):
             )
             sys.path.append(new_path)
             from script.selenium.selenium_video import VideoRecorder
+
+            if not os.path.isdir(self.dirname_recording):
+                os.mkdir(self.dirname_recording)
 
             self.video_recorder = VideoRecorder(
                 self.driver, filename=self.filename_recording
