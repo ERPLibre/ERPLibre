@@ -625,7 +625,7 @@ class TODO:
             # )
             commande = self.cmd_source_erplibre % commande
             print(f"Execute : {commande}")
-            os.system(f"./script/terminal/open_terminal.sh {commande}")
+            # os.system(f"./script/terminal/open_terminal.sh {commande}")
         try:
             process = subprocess.Popen(
                 commande,

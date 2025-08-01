@@ -16,14 +16,15 @@ GNOME_TERMINAL_CMD=$(which gnome-terminal)
 
 HAS_GNOME_TERMINAL=false
 HAS_TELL_TERMINAL=false
-#if command -v gnome-terminal &>/dev/null; then
-#  HAS_GNOME_TERMINAL=true
-#  echo "Detect gnome-terminal"
+if command -v gnome-terminal &>/dev/null; then
+  HAS_GNOME_TERMINAL=true
+  echo "Detect gnome-terminal"
+
 ##elif command -v tell &>/dev/null; then
 #elif [[ "${OSTYPE}" == "darwin"* ]] && command -v osascript &>/dev/null; then
 #if [[ "${OSTYPE}" == "darwin"* ]] && command -v osascript &>/dev/null; then
 # TODO validate osascript is implemented
-if [[ "${OSTYPE}" == "darwin"* ]] then
+elif [[ "${OSTYPE}" == "darwin"* ]] then
   echo "Detect osascript Darwin"
   HAS_TELL_TERMINAL=true
 else
