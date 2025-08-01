@@ -55,6 +55,8 @@ if [ "$HAS_GNOME_TERMINAL" = true ]; then
 #  $GNOME_TERMINAL_CMD --window -- /bin/bash -c "ls"
   $GNOME_TERMINAL_CMD --window -- /bin/bash -c "${LONGCMD}"
 elif [ "$HAS_TELL_TERMINAL" = true ]; then
+  paths=("${paths[@]:1}")
+
   # Initialisation de la commande osascript
   osascript_command="osascript -e 'tell application \"Terminal\"'"
 
