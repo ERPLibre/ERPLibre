@@ -21,7 +21,9 @@ HAS_TELL_TERMINAL=false
 #  echo "Detect gnome-terminal"
 ##elif command -v tell &>/dev/null; then
 #elif [[ "${OSTYPE}" == "darwin"* ]] && command -v osascript &>/dev/null; then
-if [[ "${OSTYPE}" == "darwin"* ]] && command -v osascript &>/dev/null; then
+#if [[ "${OSTYPE}" == "darwin"* ]] && command -v osascript &>/dev/null; then
+# TODO validate osascript is implemented
+if [[ "${OSTYPE}" == "darwin"* ]] then
   echo "Detect osascript Darwin"
   HAS_TELL_TERMINAL=true
 else
@@ -90,6 +92,6 @@ else
 #    echo "${CMD_TO_EXEC}"
 #    eval ${CMD_TO_EXEC}
 #  done
-  print("Cannot find gnome-terminal (GNOME) or osasscript (OSX)")
+  echo "Cannot find gnome-terminal (GNOME) or osasscript (OSX)"
   exit 1
 fi
