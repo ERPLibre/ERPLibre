@@ -66,10 +66,11 @@ class TODO:
             exec_path_tell = shutil.which("osascript")
             if exec_path_tell:
                 self.cmd_source_erplibre = (
-                    f'osascript -e \'tell application "Terminal"\' -e \'tell application "System Events" to keystroke "PATH" using '
-                    + "{command down}"
-                    + f"' -e 'delay 0.1' -e 'do script \"./{cst_venv_erplibre}/bin/activate;%s\" in front window'"
+                    "osascript -e 'tell application \"Terminal\"'"
                 )
+                self.cmd_source_erplibre += " -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \""
+                self.cmd_source_erplibre += f"./{cst_venv_erplibre}/bin/activate; %s\" in front window'"
+                self.cmd_source_erplibre += " -e 'end tell'"
             else:
                 self.cmd_source_erplibre = (
                     f"source ./{cst_venv_erplibre}/bin/activate;%s"
@@ -624,6 +625,7 @@ class TODO:
             # )
             commande = self.cmd_source_erplibre % commande
             print(f"Execute : {commande}")
+            os.system(f"./script/terminal/open_terminal.sh {commande}")
         try:
             process = subprocess.Popen(
                 commande,
