@@ -9,6 +9,7 @@ IFS=$'\n' read -r -d '' -a paths <<< "$PATHS_RAW"
 echo "$path"
 SOURCE_CMD="source ./.venv.erplibre/bin/activate"
 FIRST_ITERATION=true
+SECOND_ITERATION=true
 
 which gnome-terminal
 GNOME_TERMINAL_CMD=$(which gnome-terminal)
@@ -65,8 +66,11 @@ elif [ "$HAS_TELL_TERMINAL" = true ]; then
     if $FIRST_ITERATION; then
       osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
       FIRST_ITERATION=false
+    elif $SECOND_ITERATION; then
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
+      SECOND_ITERATION=false
     else
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${CMD_TO_EXEC}\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
     fi
   done
   osascript_command+=" -e 'end tell'"
