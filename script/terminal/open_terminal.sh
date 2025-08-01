@@ -76,6 +76,7 @@ elif [ "$HAS_TELL_TERMINAL" = true ]; then
   osascript_command+=" -e 'end tell'"
 
   # Exécution de la commande osascript
+  echo "${osascript_command}"
   eval "$osascript_command"
 else
 #  echo "CLI"
