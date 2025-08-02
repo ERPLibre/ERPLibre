@@ -22,6 +22,7 @@ click
 aioshutil
 openai
 humanize
+requests
 
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0
