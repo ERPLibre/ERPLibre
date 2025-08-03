@@ -1,6 +1,5 @@
 # TODO replace SERVER_NAME by your server_name, example test_mysite_com
 # TODO replace DOMAIN by your hostname, example test.mysite.com
-# TODO RUN Certbot to update this file
 upstream erplibre_SERVER_NAME {
   server 127.0.0.1:8069;
 }
@@ -9,7 +8,6 @@ upstream erplibre_SERVER_NAME_chat {
 }
 
 server {
-    listen 80;
 
     server_name DOMAIN;
 
@@ -53,35 +51,13 @@ server {
     client_max_body_size 1024M;
 
     location / {
-        proxy_pass http://erplibre_SERVER_NAME;
-        # by default, do not forward anything
-        proxy_redirect off;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 720s;
-        proxy_connect_timeout 720s;
-        proxy_send_timeout 720s;
-        # Add Headers for odoo proxy mode
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
-	}
+       proxy_pass http://erplibre_SERVER_NAME;
+       # by default, do not forward anything
+       proxy_redirect off;
+    }
 
-    location /websocket {
-        proxy_pass http://erplibre_SERVER_NAME_chat;
-        proxy_read_timeout 720s;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_connect_timeout 720s;
-        proxy_send_timeout 720s;
-        # Add Headers for odoo proxy mode
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Real-IP $remote_addr;
+    location /longpolling {
+       proxy_pass http://erplibre_SERVER_NAME_chat;
     }
 
     # cache some static data in memory for 60mins.
@@ -92,5 +68,24 @@ server {
         expires 864000;
         proxy_pass http://erplibre_SERVER_NAME;
     }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/DOMAIN/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+}
+
+server {
+    if ($host = DOMAIN) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+
+    server_name DOMAIN;
+    return 404; # managed by Certbot
 
 }

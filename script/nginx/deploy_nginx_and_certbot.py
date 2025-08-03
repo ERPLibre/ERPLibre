@@ -38,6 +38,15 @@ def get_config():
         help="Will run certbot with domain on nginx.",
     )
     parser.add_argument(
+        "--ssl_exist",
+        action="store_true",
+        help="The certificate is already created, not supported with --run_certbot.",
+    )
+    parser.add_argument(
+        "--force_ssl_dir",
+        help="Change the dir of certificate for this dir. Will contain fullchain.pem and privkey.pem.",
+    )
+    parser.add_argument(
         "--domain",
         required=True,
         help="Separate by ; for multiple domains. Main domain is first on the list.",
@@ -74,9 +83,14 @@ def main():
 
     # TODO support git, create a commit if exist .git
 
-    template_name = (
-        f"./script/nginx/template_nginx_odoo_{config.odoo_version}.txt"
-    )
+    if config.ssl_exist:
+        template_name = (
+            f"./script/nginx/template_nginx_ssl_odoo_{config.odoo_version}.txt"
+        )
+    else:
+        template_name = (
+            f"./script/nginx/template_nginx_odoo_{config.odoo_version}.txt"
+        )
     if not os.path.exists(template_name):
         raise ValueError(f"Cannot find template path '{template_name}'")
 
@@ -89,9 +103,14 @@ def main():
         with open(template_name, "r") as template:
             content = template.read()
         cmd_lst_domain = " ".join(lst_domain)
+        if config.force_ssl_dir:
+            content = content.replace(
+                "/etc/letsencrypt/live/DOMAIN",
+                os.path.normpath(config.force_ssl_dir),
+            )
         content = (
-            content.replace("CHANGEME.ca", cmd_lst_domain)
-            .replace("CHANGEME", main_domain_name)
+            content.replace("DOMAIN", cmd_lst_domain)
+            .replace("SERVER_NAME", main_domain_name)
             .replace("8069", str(config.default_port_http))
             .replace("8072", str(config.default_port_websocket))
         )
@@ -101,13 +120,20 @@ def main():
             cmd_syslink = f"ln -s {site_available_path} {site_enabled_path}"
             os.system(cmd_syslink)
 
-    if config.run_certbot:
+    # TODO support both ssl_exist and run_certbot
+    if config.ssl_exist and config.run_certbot:
+        _logger.error(
+            "Cannot run certbot with domain on nginx with feature ssl_exist. Please implement it."
+        )
+    if config.ssl_exist:
+        pass
+    elif config.run_certbot:
         if config.generate_nginx:
             time.sleep(10)
         cmd_lst_domain = " -d " + " -d ".join(lst_domain)
-        cmd_cerbot = "sudo certbot --nginx%s" % cmd_lst_domain
-        print(cmd_cerbot)
-        os.system(cmd_cerbot)
+        cmd_certbot = "sudo certbot --nginx%s" % cmd_lst_domain
+        print(cmd_certbot)
+        os.system(cmd_certbot)
 
 
 if __name__ == "__main__":
