@@ -12,16 +12,17 @@ config.conf
 coverage*
 
 .repo
-addons
 !addons/
 addons/*
 addons*/*
 !script/addons
 addons.*
+odoo*/addons/addons
+odoo*/addons
+odoo*/odoo
 doc/itpp*
 doc/odoo*
 script/OCA*
-odoo
 odoo*/OCA_OpenUpgrade
 odoo*/odoo_documentation-user
 image_db
@@ -46,5 +47,5 @@ requirements.txt
 requirement/ignore_requirements.txt
 screenshots
 screencasts
-script/todo/todo_override.json
+private/todo/todo_override_private.json
 .erplibre.error.txt

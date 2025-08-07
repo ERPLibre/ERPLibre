@@ -27,7 +27,7 @@ if not os.path.isfile(FILENAME_ODOO_VERSION):
     _logger.error(f"Missing file {FILENAME_ODOO_VERSION}")
     sys.exit(1)
 
-with open(".odoo-version", "r") as f:
+with open(FILENAME_ODOO_VERSION, "r") as f:
     ODOO_VERSION = f.readline()
 
 
@@ -47,7 +47,7 @@ def get_config():
     )
     parser.add_argument(
         "--repo",
-        default=f"./addons.odoo{ODOO_VERSION}/TechnoLibre_odoo-code-generator-template;./addons.odoo{ODOO_VERSION}/OCA_server-tools",
+        default=f"./odoo{ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template;./odoo{ODOO_VERSION}/addons/OCA_server-tools",
     )
     args = parser.parse_args()
     return args

@@ -121,7 +121,7 @@ def get_file_from_glob(
     # TODO take all groups odoo##.# from manifest, will create a dependency
     # Hardcode logic from manifest
     lst_path = [
-        Path(f"./addons.odoo{config.set_version_odoo}").rglob(glob_txt),
+        Path(f"./odoo{config.set_version_odoo}/addons").rglob(glob_txt),
         Path(f"./odoo{config.set_version_odoo}/odoo").rglob(glob_txt),
     ]
     for gen_path in lst_path:
@@ -137,10 +137,6 @@ def get_file_from_glob(
                         break
                 if ignore_it:
                     continue
-            if a_dirname.startswith("addons") and not a_dirname.startswith(
-                f"addons.odoo{config.set_version_odoo}"
-            ):
-                continue
             lst_v.append(a)
     if force_add_item:
         for item in force_add_item:

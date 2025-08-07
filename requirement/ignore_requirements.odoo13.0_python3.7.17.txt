@@ -21,3 +21,4 @@ suds-jurko
 vatnumber
 dns
 pypiwin32
+rfc6266_parser

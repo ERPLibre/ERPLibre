@@ -1,7 +1,6 @@
-version: "3.3"
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_14.0_2a8af84
+    image: technolibre/erplibre:1.6.0_odoo_18.0_4f4f563
     ports:
       - 8069:8069
       - 8071:8071
@@ -22,23 +21,25 @@ services:
     #command: odoo --workers 2 --proxy-mode
     # For production ready
     #command: odoo --workers 2 --proxy-mode --no-database-list
+    # Increase max memory
+    #command: odoo --limit-memory-hard=0 --limit-memory-soft=0
     command: odoo
     volumes:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
-      - ./addons/addons:/ERPLibre/odoo14.0/addons/addons
+      - ./addons/addons:/ERPLibre/odoo18.0/addons/addons
       - erplibre_conf:/etc/odoo
     restart: always
 
   db:
-    image: postgis/postgis:12-3.1-alpine
+    image: postgis/postgis:18-3.6-alpine
     environment:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_USER: odoo
       POSTGRES_DB: postgres
-      PGDATA: /var/lib/postgresql/data/pgdata
+      PGDATA: /var/lib/postgresql/pgdata
     volumes:
-      - erplibre-db-data:/var/lib/postgresql/data/pgdata
+      - erplibre-db-data:/var/lib/postgresql/pgdata
     restart: always
 
 # We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :

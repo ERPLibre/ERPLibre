@@ -110,6 +110,8 @@ cadquery==2.4.0
 numpy-stl==3.1.2
 matplotlib==3.7.5
 ezdxf==1.1.4
+jira==3.8.0
+paramiko==3.5.1
 
 # asyncio
 aioshutil<1.2

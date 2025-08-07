@@ -5,11 +5,11 @@
 import argparse
 import csv
 import glob
+import io
 import logging
 import os
 import subprocess
 import sys
-import io
 
 import xmltodict
 
@@ -33,7 +33,7 @@ VCS_WORKSPACE = os.path.join(IDEA_PATH, "vcs.xml")
 PATH_EXCLUDE_FOLDER = "./conf/pycharm_exclude_folder.txt"
 PATH_DEFAULT_CONFIGURATION = "./conf/pycharm_default_configuration.csv"
 PATH_DEFAULT_CONFIGURATION_PRIVATE = (
-    "./conf/pycharm_default_configuration.private.csv"
+    "./private/pycharm_default_configuration.private.csv"
 )
 
 

@@ -42,6 +42,16 @@ def get_config():
         default="",
         help="Prod by default, use 'dev' for manifest/default.dev.xml",
     )
+    parser.add_argument(
+        "--extra-addons-path",
+        default="",
+        help="Separate by , to add extra path for config addons_path",
+    )
+    parser.add_argument(
+        "--ignore-odoo-path",
+        action="store_true",
+        help="Will remove odoo path, need this feature for OpenUpgrade when Odoo <= 13",
+    )
     args = parser.parse_args()
     return args
 
@@ -52,7 +62,11 @@ def main():
 
     filter_group = config.group if config.group else None
 
-    git_tool.generate_generate_config(filter_group=filter_group)
+    git_tool.generate_generate_config(
+        filter_group=filter_group,
+        extra_path=config.extra_addons_path,
+        ignore_odoo_path=config.ignore_odoo_path,
+    )
 
 
 if __name__ == "__main__":
