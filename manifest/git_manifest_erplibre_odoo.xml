@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
+
+    <project
+        name="ERPLibre_image_db.git"
+        path="image_db"
+        remote="ERPLibre"
+        clone-depth="1"
+        revision="main"
+        groups="base"
+    />
+</manifest>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="odoo" fetch="https://github.com/odoo/" />
+    <remote name="OCA" fetch="https://github.com/OCA/" />
+    <project
+        name="OpenUpgrade.git"
+        revision="12.0"
+        path="odoo12.0/OCA_OpenUpgrade"
+        remote="OCA"
+        clone-depth="10"
+        groups="migration,odoo12.0"
+    />
+    <project
+        name="documentation-user.git"
+        path="odoo12.0/odoo_documentation-user"
+        revision="12.0"
+        remote="odoo"
+        groups="odoo,odoo12.0"
+    />
+</manifest>
