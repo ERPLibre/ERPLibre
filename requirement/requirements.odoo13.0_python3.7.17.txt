@@ -10,8 +10,9 @@ pytz>=2022.7
 # For OCA
 factur-x
 
-# For smile
-xmlrunner
+# For ERPLibre project
+RandomWords
+selenium==4.11.2
 
 # For testing
 websocket-client
@@ -22,11 +23,13 @@ python-git
 voicent-python
 python-swiftclient
 python-keystoneclient
+coverage
 
 # For logical test
-docutils==0.16.0
+docutils==0.17.1
 flake8<6.0.0
-git+https://github.com/oca/pylint-odoo.git@v9.1.3
+git+https://github.com/oca/pylint-odoo.git@v8.0.19
+pylint-odoo==8.0.19
 # oca-maintainers-tools
 # git+https://github.com/OCA/maintainer-tools.git#egg=oca-maintainers-tools
 xmlformatter
@@ -41,9 +44,15 @@ iscompatible
 pandas==1.3.5
 Jinja2==2.11.3
 python-keystoneclient==3.22.0
+webcolors==1.13
+openpyxl==3.1.3
 
 # For deployment
-cloudflare==2.20.0
+cloudflare==3.0.1
+
+# Fix build
+pymssql==2.3.0
+cython==3.0.10
 
 # For multilang_md.py
 click==8.1.8
@@ -55,20 +64,11 @@ shapely==1.8.5
 
 # Code generator
 mysqlclient==2.1.1
+python-pptx==0.6.23
+humanize==4.6.0
 
 # pyproj >=3.3.0 is not compatible with python 3.7
 pyproj==3.2.1
-
-# to fix build
-validators==0.24.0
-sphinx==4.3.2
-
-# Fix error
-greenlet==0.4.17
-gevent==20.9.0
-
-# For some module
-img2pdf
 
 # fix zipp depend on importlib-metadata
 zipp>=3.6.0
@@ -81,34 +81,23 @@ psycopg2==2.9.5
 numpy==1.21.1
 feedparser==6.0.10
 geojson<3.0.0
-regex==2022.3.2
-pygount==1.5.1
-pysaml2==7.2.1
-freezegun==0.3.15
-pyopenssl==21.0.0
-ovh==1.1.2
-sphinx-rtd-theme==1.3.0
-sphinx_rtd_theme==1.3.0
-dnspython==2.6.1
-coverage==7.6.1
-webcolors==24.8.0
-aiohttp==3.10.10
+
+# Fix poetry
+olefile==0.47
+xmlschema==2.5.1
+pathspec==0.11.2
+oauthlib==3.2.2
+pysaml2==7.3.1
+matplotlib==3.3.4
+#pyparsing==2.1.10
+sqlalchemy==2.0.36
+html2text==2016.9.19
+python-stdnum==1.20
+pygount==1.2.1
 josepy==1.14.0
-acme==2.11.0
-sphinx-intl==2.2.0
-selenium==4.25.0
-anyio>=3.5
-openai
-idna==2.8
-pylint==3.1.0
-xmlschema==3.4.5
-html2text==2024.2.26
-cachetools==5.5.2
-python-jose==3.4.0
-tldextract==5.1.2
-dateparser==1.2.1
 
 # asyncio
+aiohttp==3.8.6
 aioshutil<1.2
 tqdm
 uvloop
@@ -119,18 +108,56 @@ win_unicode_console
 # Security issue, depend on extract-msg 0.36.1
 chardet==5.0.0
 extract-msg==0.36.1
+extract_msg==0.36.1
+
+# Limitation because python3.7
+furo==2021.2.21b25
+ovh==1.1.2
+#requests-oauthlib==1.3.1
+greenlet==0.4.14
+gevent==1.5.0
+argcomplete==3.1.1
+responses==0.23.1
+dnspython==2.3.0
+acme==2.6.0
+altair==5.0.1
+pycountry==22.3.5
+email-validator==2.0.0
+email_validator==2.0.0
+sphinx==3.0
+sphinx-rtd-theme==1.2.2
+sphinx_rtd_theme==1.2.2
+sphinx-intl==2.2.0
+uvloop==0.17.0
+coverage==7.2.7
+websocket-client==1.6.1
+websocket_client==1.6.1
+mmg==1.0.3
+giturlparse==0.10.0
+jira==2.0.0
+code-writer==1.1.1
+code_writer==1.1.1
+wheel==0.42.0
+validators==0.20.0
+azure-identity==1.15.0
+azure.identity==1.15.0
+azure-storage-blob==12.19.0
+azure.storage.blob==12.19.0
+sqlparse==0.4.4
+zeep==4.2.1
+python-jose==3.3.0
 
 # Force version for security update
 pyyaml==6.0
 lxml==4.9.1
 cryptography==39.0.1
 psutil==5.9.0
-Pillow==10.3.0
+Pillow==9.3.0
 Babel==2.9.1
 reportlab==3.6.5
 urllib3>=1.26.13
 requests==2.28.1
-boto3>=1.20.41
+boto3==1.33.13
 PyPDF2==1.27.9
 mako==1.2.2
 pyjwt==2.5.0
@@ -138,3 +165,6 @@ pygments==2.7.4
 setuptools==65.5.1
 Werkzeug==0.16.1
 future==0.18.3
+
+# For fix auto_backup
+pysftp
