@@ -57,7 +57,7 @@ cd ERPLibre
 Follow the instruction on the following script, it will try to detect your environment.
 
 ```bash
-./script/todo/todo.py
+./install.sh
 ```
 
 ### Manually

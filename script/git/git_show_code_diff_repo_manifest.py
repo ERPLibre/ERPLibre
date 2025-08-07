@@ -38,7 +38,7 @@ def get_config():
     parser.add_argument(
         "-m",
         "--manifest",
-        default="./default.xml",
+        default=".repo/local_manifests/erplibre_manifest.xml",
         help="The manifest to compare with actual code.",
     )
     args = parser.parse_args()
@@ -52,9 +52,6 @@ def main():
     dct_remote, dct_project, default_remote = git_tool.get_manifest_xml_info(
         filename=config.manifest, add_root=True
     )
-    default_branch_name = default_remote.get(
-        "@revision", git_tool.default_branch
-    )
     dct_result = defaultdict(int)
     i = 0
     total = len(dct_project)
@@ -62,7 +59,7 @@ def main():
         i += 1
         path = project.get("@path")
         print(f"{i}/{total} - {path}")
-        branch_name = project.get("@revision", default_branch_name)
+        branch_name = project.get("@revision")
         organization = project.get("@remote", git_tool.default_project_name)
 
         try:

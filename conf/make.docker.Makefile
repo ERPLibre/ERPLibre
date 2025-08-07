@@ -49,6 +49,14 @@ docker_exec_erplibre_repo_show_status:
 	./script/docker/docker_repo_show_status.sh
 
 # build docker
+.PHONY: docker_build_odoo_18
+docker_build_odoo_18:
+	./script/docker/docker_build.sh --odoo_18
+
+.PHONY: docker_build_odoo_17
+docker_build_odoo_17:
+	./script/docker/docker_build.sh --odoo_17
+
 .PHONY: docker_build_odoo_16
 docker_build_odoo_16:
 	./script/docker/docker_build.sh --odoo_16
@@ -57,6 +65,10 @@ docker_build_odoo_16:
 docker_build_odoo_16_clean:
 	./script/docker/docker_build.sh --odoo_16 --no-cache
 
+.PHONY: docker_build_odoo_15
+docker_build_odoo_15:
+	./script/docker/docker_build.sh --odoo_15
+
 .PHONY: docker_build_odoo_14
 docker_build_odoo_14:
 	./script/docker/docker_build.sh --odoo_14
@@ -64,6 +76,10 @@ docker_build_odoo_14:
 .PHONY: docker_build_odoo_14_clean
 docker_build_odoo_14_clean:
 	./script/docker/docker_build.sh --odoo_14 --no-cache
+
+.PHONY: docker_build_odoo_13
+docker_build_odoo_13:
+	./script/docker/docker_build.sh --odoo_13
 
 .PHONY: docker_build_odoo_12
 docker_build_odoo_12:

@@ -24,7 +24,6 @@ VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 ADDONS_PATH = os.path.join("addons")
-ODOO_PATH = os.path.join(".", "odoo")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -39,7 +38,7 @@ PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
-ADDONS_TEMPLATE_FILE = "addons.odoo%s"
+ADDONS_TEMPLATE_FILE = "odoo%s/addons"
 ODOO_TEMPLATE_FILE = "odoo%s"
 ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
@@ -98,6 +97,11 @@ def get_config():
         help="Will only update the system by switch environnement.",
     )
     parser.add_argument(
+        "--switch_update",
+        action="store_true",
+        help="Work with --switch, will do repo update",
+    )
+    parser.add_argument(
         "--install_dev",
         action="store_true",
         help="Install developer environment.",
@@ -129,6 +133,7 @@ def get_config():
         args.force_repo = True
     args.is_in_installation = args.install or args.install_dev
     args.is_in_switch = args.switch
+    args.is_in_switch_force_update = args.switch and args.switch_update
     if not (args.install or args.install_dev) and args.force_install:
         args.force_install = False
 
@@ -354,20 +359,7 @@ class Update:
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
         # Validate Odoo repo
-        status &= self.update_link_file(
-            "Odoo repository",
-            ODOO_PATH,
-            self.expected_odoo_path,
-            is_directory=True,
-            do_delete_source=True,
-        )
-        # Validate Git repo
-        status &= self.update_link_file(
-            "Git repositories",
-            MANIFEST_FILE_PATH,
-            self.expected_manifest_path,
-            do_delete_source=True,
-        )
+        # TODO need to remove this from architecture
         # Validate Poetry and pip
         status &= self.update_link_file(
             "Poetry project toml",
@@ -381,12 +373,6 @@ class Update:
             self.expected_poetry_lock_path,
             do_delete_source=True,
         )
-        # status &= self.update_link_file(
-        #     "Pip requirement.txt",
-        #     PIP_REQUIREMENT_FILE,
-        #     self.expected_pip_requirement_path,
-        #     do_delete_source=True,
-        # )
         status &= self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,
@@ -395,14 +381,6 @@ class Update:
         )
         if not os.path.isdir(self.expected_addons_name):
             status = False
-        # status &= self.update_link_file(
-        #     "Directory 'addons'",
-        #     ADDONS_PATH,
-        #     self.expected_addons_name,
-        #     is_directory=True,
-        #     do_delete_source=self.config.install_dev
-        #     or self.config.force_install,
-        # )
         return status
 
     def update_environment(self):
@@ -432,22 +410,14 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation or self.config.is_in_switch:
-        #     addons_path_with_version = (
-        #         ADDONS_TEMPLATE_FILE % self.new_version_odoo
-        #     )
-        #     # To support multiple addons directory, change name before run git repo
-        #     for addons_path in os.listdir("."):
-        #         if (
-        #             addons_path.startswith("addons")
-        #             and addons_path != addons_path_with_version
-        #         ):
-        #             os.rename(addons_path, addons_path + "TEMP")
-
             # TODO need to be force if installation path is all good, return True
             if self.config.install_dev:
                 _logger.info("Installation.")
                 status = self.install_erplibre()
-            elif self.config.is_in_switch:
+            elif (
+                self.config.is_in_switch
+                and self.config.is_in_switch_force_update
+            ):
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
                 status = os.system(
@@ -574,18 +544,6 @@ class Update:
                         )
                         os.system(f"ls -lha {source_file}")
                         sys.exit(1)
-                #     else:
-                #         do_switch_origin_sim = True
-                # if do_switch_origin_sim:
-                #     # Check if not erase an existing
-                #     if target_file_exist:
-                #         # Create a backup
-                #         new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
-                #     else:
-                #         new_target_file = target_file
-                    # Move it and create a symlink
-                    # shutil.move(source_file, new_target_file)
-                    # do_symlink = True
             else:
                 # Case 3
                 # Is symlink

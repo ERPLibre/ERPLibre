@@ -112,5 +112,5 @@ if [ $# -gt 0 ]; then
   fi
 else
   # check_git "./addons/TechnoLibre_odoo-code-generator"
-  check_git "./addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator-template"
+  check_git "./odoo${ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template"
 fi

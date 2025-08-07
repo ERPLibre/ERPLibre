@@ -34,6 +34,8 @@ server {
     proxy_set_header X-Real-IP \$remote_addr;
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-XSS-Protection "1; mode=block";
+    proxy_set_header X-Client-IP \$remote_addr;
+    proxy_set_header HTTP_X_FORWARDED_HOST \$remote_addr;
 
     # erplibre request log files
     access_log /var/log/nginx/${EL_USER}-access.log;
@@ -43,9 +45,9 @@ server {
     proxy_buffers 16 64k;
     proxy_buffer_size 128k;
 
-    proxy_read_timeout 720s;
-    proxy_connect_timeout 720s;
-    proxy_send_timeout 720s;
+    proxy_read_timeout 900s;
+    proxy_connect_timeout 900s;
+    proxy_send_timeout 900s;
 
     # Force timeouts if the backend dies
     proxy_next_upstream error timeout invalid_header http_500 http_502
@@ -64,7 +66,7 @@ server {
     gzip_vary on;
     client_header_buffer_size 4k;
     large_client_header_buffers 4 64k;
-    client_max_body_size 1024M;
+    client_max_body_size 0;
 
     location / {
        proxy_pass http://erplibre${EL_USER};
@@ -74,6 +76,12 @@ server {
 
     location /longpolling {
        proxy_pass http://erplibre${EL_USER}chat;
+    }
+
+    location ~* .(js|css|png|jpg|jpeg|gif|ico)$ {
+      expires 2d;
+      proxy_pass http://erplibre${EL_USER};
+      add_header Cache-Control "public, no-transform";
     }
 
     # cache some static data in memory for 60mins.

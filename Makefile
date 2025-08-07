@@ -43,7 +43,7 @@ endif
 -include ./conf/make.todo.Makefile
 
 # Include private Makefile
--include ./conf/make.private.Makefile
+-include ./private/make.private.Makefile
 
 # Example for update
 .PHONY: custom_run_example

@@ -419,7 +419,13 @@ class GitTool:
         if url:
             webbrowser.open_new_tab(url)
 
-    def generate_generate_config(self, repo_path="./", filter_group=None):
+    def generate_generate_config(
+        self,
+        repo_path="./",
+        filter_group=None,
+        extra_path=None,
+        ignore_odoo_path=None,
+    ):
         filename_locally = f"{repo_path}script/generate_config.sh"
         if not filter_group:
             filter_group = self.odoo_version_long
@@ -427,22 +433,37 @@ class GitTool:
             repo_path=repo_path, filter_group=filter_group
         )
         lst_result = []
+        if not lst_repo:
+            print(
+                f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: List of repo is empty when write generate_config."
+            )
         for repo in lst_repo:
+            update_repo = repo.get("path")
             # Exception, ignore addons/OCA_web and root
-            if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
+            if update_repo in ["addons/OCA_web", "odoo", "image_db"]:
                 continue
             # groups = repo.get("group")
-            update_repo = repo.get("path")
             # Use variable instead of hardcoded path
-            if update_repo.startswith("addons.odoo"):
+            if update_repo.startswith(f"{filter_group}/addons"):
                 lst_path = update_repo.split("/", 1)
-                update_repo = f"addons.odoo${{EL_ODOO_VERSION}}/" + lst_path[1]
-            str_repo = (
-                f'    printf "${{EL_HOME}}/{update_repo}," >> '
-                '"${EL_CONFIG_FILE}"\n'
-            )
-            # Ignore repo if not starting by addons
-            if update_repo.startswith("addons"):
+                update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + lst_path[1]
+                # str_repo = (
+                #     f'    printf "${{EL_HOME}}/{update_repo}," >> '
+                #     '"${EL_CONFIG_FILE}"\n'
+                # )
+                str_repo = (
+                    f'    printf "{update_repo}," >> ' '"${EL_CONFIG_FILE}"\n'
+                )
+                # Ignore repo if not starting by addons
+                # if update_repo.startswith("addons"):
+                #     lst_result.append(str_repo)
+                lst_result.append(str_repo)
+        if extra_path:
+            for each_extra_path in extra_path.strip().split(","):
+                str_repo = (
+                    f'    printf "{each_extra_path}," >> '
+                    '"${EL_CONFIG_FILE}"\n'
+                )
                 lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()
@@ -451,6 +472,15 @@ class GitTool:
         find_index = False
         index_find = 0
         for line in all_lines:
+            if line.startswith('printf "addons_path = '):
+                if ignore_odoo_path:
+                    new_line = (
+                        'printf "addons_path = " >> "${EL_CONFIG_FILE}"\n'
+                    )
+                else:
+                    new_line = 'printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"\n'
+
+                all_lines[index] = new_line
             if (
                 not find_index
                 and 'if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then\n' == line
@@ -458,6 +488,9 @@ class GitTool:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
+                    index_find += 1
+                if not lst_result:
+                    all_lines.insert(index_find, '\tprintf ""\n')
                     index_find += 1
                 find_index = True
                 # Delete all next line until meet fi
