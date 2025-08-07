@@ -1,15 +1,3 @@
-# For script
-giturlparse
-agithub
-GitPython==3.1.30
-retrying
-xmltodict
-openupgradelib
-unidiff
-colorama
-wheel
-mmg
-
 # For OSX
 cython
 
@@ -67,7 +55,7 @@ pymssql==2.3.0
 cython==3.0.10
 
 # For multilang_md.py
-click
+click==8.1.8
 emoji
 
 # Fix bug geoengine
@@ -124,8 +112,10 @@ altair==5.0.1
 pycountry==22.3.5
 email-validator==2.0.0
 email_validator==2.0.0
+sphinx==3.0
 sphinx-rtd-theme==1.2.2
 sphinx_rtd_theme==1.2.2
+sphinx-intl==2.2.0
 uvloop==0.17.0
 coverage==7.2.7
 websocket-client==1.6.1
@@ -143,6 +133,7 @@ azure-storage-blob==12.19.0
 azure.storage.blob==12.19.0
 sqlparse==0.4.4
 zeep==4.2.1
+python-jose==3.3.0
 
 # Force version for security update
 pyyaml==6.0

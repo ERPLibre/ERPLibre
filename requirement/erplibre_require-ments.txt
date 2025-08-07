@@ -1,0 +1,32 @@
+# ERPLibre Poetry requirement
+packaging
+toml
+
+# ERPLibre script
+giturlparse
+agithub
+GitPython
+retrying
+xmltodict
+openupgradelib
+unidiff
+colorama
+wheel
+cloudflare
+selenium
+uvloop
+python-randomword-fr
+isort
+pykeepass
+click
+aioshutil
+openai
+humanize
+requests
+
+# Force upgrade package to fix Ubuntu 25.04
+virtualenv==20.30.0
+
+# For logical test and quality
+git+https://github.com/psf/black.git@24.8.0
+pre-commit
