@@ -221,3 +221,9 @@ cat /proc/sys/fs/inotify/max_user_watches
 
 Tips, when doing `sudo sysctl -p --system`, validate the order of the process, another process can overwrite your new
 value.
+
+## How killing all process from selenium
+
+```bash
+pkill -f "firefox.*--marionette"
+```

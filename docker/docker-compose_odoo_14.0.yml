@@ -1,7 +1,7 @@
 version: "3.3"
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_14.0_2a8af84
+    image: technolibre/erplibre:1.6.0_odoo_14.0_1890768
     ports:
       - 8069:8069
       - 8071:8071
@@ -27,6 +27,7 @@ services:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
       - ./addons/addons:/ERPLibre/addons/addons
+      - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
     restart: always
 

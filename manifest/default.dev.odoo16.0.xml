@@ -97,7 +97,7 @@
   <project name="openeducat_erp.git" path="addons.odoo16.0/openeducat_openeducat_erp" remote="openeducat" groups="addons"/>
   <project name="OpenUpgrade.git" path="script/OCA_OpenUpgrade" remote="OCA" clone-depth="10" groups="migration"/>
   <project name="operating-unit.git" path="addons.odoo16.0/OCA_operating-unit" remote="OCA" groups="addons"/>
-  <project name="partner-contact.git" path="addons.odoo16.0/OCA_partner-contact" remote="OCA" groups="addons"/>
+  <project name="partner-contact.git" path="addons.odoo16.0/OCA_partner-contact" remote="OCA" groups="addons,base"/>
   <project name="pos.git" path="addons.odoo16.0/OCA_pos" remote="OCA" groups="addons"/>
   <project name="product-attribute.git" path="addons.odoo16.0/OCA_product-attribute" remote="OCA" groups="addons"/>
   <project name="product-configurator.git" path="addons.odoo16.0/OCA_product-configurator" remote="OCA" groups="addons"/>
@@ -107,20 +107,20 @@
   <project name="project-agile.git" path="addons.odoo16.0/OCA_project-agile" remote="OCA" groups="addons"/>
   <project name="project.git" path="addons.odoo16.0/OCA_project" remote="OCA" groups="addons"/>
   <project name="purchase-workflow.git" path="addons.odoo16.0/OCA_purchase-workflow" remote="OCA" groups="addons"/>
-  <project name="queue.git" path="addons.odoo16.0/OCA_queue" remote="OCA" groups="addons"/>
+  <project name="queue.git" path="addons.odoo16.0/OCA_queue" remote="OCA" groups="addons,base"/>
   <project name="reporting-engine.git" path="addons.odoo16.0/OCA_reporting-engine" remote="OCA" groups="addons"/>
   <project name="rma.git" path="addons.odoo16.0/OCA_rma" remote="OCA" groups="addons"/>
   <project name="saas-addons.git" path="addons.odoo16.0/it-projects-llc_saas-addons" remote="it-projects-llc" groups="addons"/>
   <project name="sale-reporting.git" path="addons.odoo16.0/OCA_sale-reporting" remote="OCA" groups="addons"/>
   <project name="sale-workflow.git" path="addons.odoo16.0/OCA_sale-workflow" remote="OCA" groups="addons"/>
-  <project name="server-auth.git" path="addons.odoo16.0/OCA_server-auth" remote="OCA" groups="addons"/>
+  <project name="server-auth.git" path="addons.odoo16.0/OCA_server-auth" remote="OCA" groups="addons,base"/>
   <project name="server-backend.git" path="addons.odoo16.0/OCA_server-backend" remote="OCA" groups="addons"/>
-  <project name="server-brand.git" path="addons.odoo16.0/OCA_server-brand" remote="OCA" groups="addons"/>
+  <project name="server-brand.git" path="addons.odoo16.0/OCA_server-brand" remote="OCA" groups="addons,base"/>
   <project name="server-env.git" path="addons.odoo16.0/OCA_server-env" remote="OCA" groups="addons"/>
-  <project name="server-tools.git" path="addons.odoo16.0/OCA_server-tools" remote="ERPLibre" revision="ERPLibre/16.0" groups="addons"/>
-  <project name="server-ux.git" path="addons.odoo16.0/OCA_server-ux" remote="OCA" groups="addons"/>
+  <project name="server-tools.git" path="addons.odoo16.0/OCA_server-tools" remote="ERPLibre" revision="ERPLibre/16.0" groups="addons,base"/>
+  <project name="server-ux.git" path="addons.odoo16.0/OCA_server-ux" remote="OCA" groups="addons,base"/>
   <project name="shift-planning.git" path="addons.odoo16.0/OCA_shift-planning" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
-  <project name="social.git" path="addons.odoo16.0/OCA_social" remote="OCA" groups="addons"/>
+  <project name="social.git" path="addons.odoo16.0/OCA_social" remote="OCA" groups="addons,base"/>
   <project name="survey.git" path="addons.odoo16.0/OCA_survey" remote="ERPLibre" revision="16.0_dev" groups="addons"/>
   <project name="stock-logistics-warehouse.git" path="addons.odoo16.0/OCA_stock-logistics-warehouse" remote="OCA" groups="addons"/>
   <project name="storage.git" path="addons.odoo16.0/OCA_storage" remote="OCA" groups="addons"/>
@@ -129,7 +129,7 @@
   <project name="vertical-hotel.git" path="addons.odoo16.0/OCA_vertical-hotel" remote="OCA" groups="addons"/>
   <project name="vertical-isp.git" path="addons.odoo16.0/OCA_vertical-isp" remote="OCA" groups="addons"/>
   <project name="vertical-travel.git" path="addons.odoo16.0/OCA_vertical-travel" remote="OCA" groups="addons"/>
-  <project name="web.git" path="addons.odoo16.0/OCA_web" remote="OCA" groups="addons"/>
+  <project name="web.git" path="addons.odoo16.0/OCA_web" remote="OCA" groups="addons,base"/>
   <project name="website-cms.git" path="addons.odoo16.0/OCA_website-cms" remote="OCA" groups="addons"/>
   <project name="website.git" path="addons.odoo16.0/OCA_website" remote="OCA" groups="addons"/>
   <project name="wms.git" path="addons.odoo16.0/OCA_wms" remote="OCA" groups="addons"/>

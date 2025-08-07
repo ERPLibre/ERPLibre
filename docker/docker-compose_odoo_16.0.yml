@@ -27,6 +27,7 @@ services:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
       - ./addons/addons:/ERPLibre/addons/addons
+      - ./private:/ERPLibre/private
       - erplibre_conf:/etc/odoo
     restart: always
 
