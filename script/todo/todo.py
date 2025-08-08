@@ -300,33 +300,8 @@ class TODO:
                 ),
             }
             dct_final_cmd_intern = {}
-            with open(VERSION_DATA_FILE) as txt:
-                data_version = json.load(txt)
+            lst_version, lst_version_installed, odoo_installed_version = self.get_odoo_version()
 
-            if not data_version:
-                raise Exception(
-                    f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'"
-                )
-
-            lst_version_transform = []
-            for key, value in data_version.items():
-                lst_version_transform.append(value)
-                value["erplibre_version"] = key
-
-            lst_version_installed = []
-            if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
-                with open(INSTALLED_ODOO_VERSION_FILE) as txt:
-                    lst_version_installed = sorted(txt.read().splitlines())
-
-            odoo_installed_version = None
-            if os.path.exists(ODOO_VERSION_FILE):
-                with open(ODOO_VERSION_FILE) as txt:
-                    odoo_installed_version = f"odoo{txt.read().strip()}"
-
-            # Add odoo version installation on command
-            lst_version = sorted(
-                lst_version_transform, key=lambda k: k.get("erplibre_version")
-            )
             for dct_version in lst_version[::-1]:
                 key_i += 1
                 key_s = str(key_i)
@@ -493,8 +468,14 @@ class TODO:
         # TODO proposer les modules manuelles selon la configuration à mettre à jour
         # TODO proposer la mise à jour de l'IDE
         # TODO proposer la mise à jour des git-repo
+        # TODO faire la mise à jour de ERPLibre
+        # TODO faire l'upgrade d'un odoo vers un autre
 
         lst_instance = self.get_config(["update_from_makefile"])
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Upgrade Odoo",
+        }
+        lst_instance.append(dct_upgrade_odoo_database)
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -502,10 +483,12 @@ class TODO:
             print()
             if status == "0":
                 return False
+            elif status == str(len(lst_instance)):
+                self.execute_odoo_upgrade()
             else:
                 cmd_no_found = True
                 try:
-                    int_cmd = int(status)
+                    int_cmd = int(status) - 1
                     if 0 < int_cmd <= len(lst_instance):
                         cmd_no_found = False
                         dct_instance = lst_instance[int_cmd - 1]
@@ -515,6 +498,133 @@ class TODO:
                 if cmd_no_found:
                     print("Commande non trouvée 🤖!")
         return False
+
+    def execute_odoo_upgrade(self):
+        # TODO update dev environment for git project
+        # TODO Redeploy new production after upgrade
+        # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
+        print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
+        print("")
+        print("What is your actual Odoo version?")
+        lst_version, lst_version_installed, odoo_installed_version = self.get_odoo_version()
+        lst_odoo_version = [{"prompt_description": "I don't know"}] + [{"prompt_description": a.get("odoo_version")} for a in lst_version]
+        help_info = self.fill_help_info(lst_odoo_version)
+        odoo_actual_version = None
+        cmd_no_found = True
+        while cmd_no_found:
+            status = click.prompt(help_info)
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(lst_odoo_version):
+                    cmd_no_found = False
+                    if int_cmd > 1:
+                        odoo_actual_version = lst_odoo_version[int_cmd - 1].get("prompt_description")
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print("Commande non trouvée 🤖!")
+
+        print("Which version do you want to upgrade to?")
+        odoo_reach_version = None
+        cmd_no_found = True
+        while cmd_no_found:
+            status = click.prompt(help_info)
+            try:
+                int_cmd = int(status)
+                if 0 < int_cmd <= len(lst_odoo_version):
+                    cmd_no_found = False
+                    if int_cmd > 1:
+                        odoo_reach_version = lst_odoo_version[int_cmd - 1].get("prompt_description")
+            except ValueError:
+                pass
+            if cmd_no_found:
+                print("Commande non trouvée 🤖!")
+
+        # Search nb diff to use range
+        start_version = int(float(odoo_actual_version))
+        end_version = int(float(odoo_reach_version))
+        range_version = range(start_version, end_version)
+        # TODO need support minor version, example 18.2, the .2
+
+        print("Show documentation version :")
+        # TODO Generate it locally and show it if asked
+
+        for i in range_version:
+            print(f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{i*10}-{(i+1)*10}.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules120-130.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules130-140.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules140-150.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules150-160.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules160-170.html")
+        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules170-180.html")
+        print("Ask the database in zip file")
+
+        print("0- Inspect zip")
+        print("  -> Find good environment, read the .zip file")
+        print("  -> Search odoo version")
+        print("  -> Install environment if missing")
+        print("  -> Search missing module")
+        print("  -> Install missing module, do a research or ask to uninstall it (can break data)")
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
+
+        print("1- Import database from zip")
+        print("  -> Neutralize data, maybe with")
+        print("./script/addons/update_prod_to_dev.sh BD")
+        print("  -> Fix running execution")
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
+
+        print("2- Succeed update all addons")
+        print("./script/addons/update_addons_all.sh BD")
+        print("  -> Fix importation error")
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
+
+        print("3- Clean up database before data migration")
+        print("./script/addons/addons_install.sh database_cleanup")
+        print("  -> Run it manually")
+        print("Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes")
+        print("Uninstall no need module to next version.")
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
+
+        print("4- Upgrade version with OpenUpgrade")
+        # Script odoo 13 and before
+        # ./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d BD
+        # Script odoo 14 and after
+        # ./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d BD
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
+
+        print("5- Cleaning up database after upgrade")
+        print("Re-update i18n, purger data, tables (except mail_test and mail_test_full)")
+        waiting_input = (
+            input(
+                "Press any keyboard key to continue..."
+            )
+        )
+        print("")
 
     def prompt_execute_code(self):
         print("🤖 Qu'avez-vous de besoin pour développer?")
@@ -550,6 +660,36 @@ class TODO:
                 if cmd_no_found:
                     print("Commande non trouvée 🤖!")
         return False
+
+    def get_odoo_version(self):
+        with open(VERSION_DATA_FILE) as txt:
+            data_version = json.load(txt)
+
+        if not data_version:
+            raise Exception(
+                f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'"
+            )
+        lst_version_transform = []
+        for key, value in data_version.items():
+            lst_version_transform.append(value)
+            value["erplibre_version"] = key
+
+        lst_version_installed = []
+        if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
+            with open(INSTALLED_ODOO_VERSION_FILE) as txt:
+                lst_version_installed = sorted(txt.read().splitlines())
+
+        odoo_installed_version = None
+        if os.path.exists(ODOO_VERSION_FILE):
+            with open(ODOO_VERSION_FILE) as txt:
+                odoo_installed_version = f"odoo{txt.read().strip()}"
+
+        # Add odoo version installation on command
+        lst_version = sorted(
+            lst_version_transform, key=lambda k: k.get("erplibre_version")
+        )
+
+        return lst_version, lst_version_installed, odoo_installed_version
 
     def kdbx_get_extra_command_user(self, kdbx_key):
         lst_value = []
