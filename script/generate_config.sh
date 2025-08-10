@@ -23,7 +23,7 @@ printf "db_password = False\n" >> "${EL_CONFIG_FILE}"
 printf "xmlrpc_port = ${EL_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 
-printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/addons," >> "${EL_CONFIG_FILE}"
+printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME}/addons.odoo${EL_ODOO_VERSION}/CybroOdoo_OpenHRMS," >> "${EL_CONFIG_FILE}"

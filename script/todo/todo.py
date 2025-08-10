@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import datetime
 import getpass
@@ -9,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import todo_upgrade
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -29,7 +32,6 @@ try:
     import openai
     from pykeepass import PyKeePass
 
-    # TODO implement urwid to improve text user interface
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
@@ -52,6 +54,7 @@ class TODO:
     def __init__(self):
         self.kdbx = None
         self.init()
+        self.file_path = None
 
     def init(self):
         # Get command
@@ -99,6 +102,8 @@ class TODO:
                 print("Do")
                 print("source .venv.erplibre/bin/activate && make")
                 sys.exit(1)
+            except click.exceptions.Abort:
+                sys.exit(0)
             print()
             if status == "0":
                 break
@@ -167,7 +172,7 @@ class TODO:
                         f"KeyError on file {config_file} with keys"
                         f" {lst_params}"
                     )
-                    return
+                    return {}
         return dct_data
 
     def execute_prompt_ia(self):
@@ -300,7 +305,9 @@ class TODO:
                 ),
             }
             dct_final_cmd_intern = {}
-            lst_version, lst_version_installed, odoo_installed_version = self.get_odoo_version()
+            lst_version, lst_version_installed, odoo_installed_version = (
+                self.get_odoo_version()
+            )
 
             for dct_version in lst_version[::-1]:
                 key_i += 1
@@ -484,7 +491,8 @@ class TODO:
             if status == "0":
                 return False
             elif status == str(len(lst_instance)):
-                self.execute_odoo_upgrade()
+                upgrade = todo_upgrade.TodoUpgrade(self)
+                upgrade.execute_odoo_upgrade()
             else:
                 cmd_no_found = True
                 try:
@@ -497,134 +505,6 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print("Commande non trouvée 🤖!")
-        return False
-
-    def execute_odoo_upgrade(self):
-        # TODO update dev environment for git project
-        # TODO Redeploy new production after upgrade
-        # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
-        print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
-        print("")
-        print("What is your actual Odoo version?")
-        lst_version, lst_version_installed, odoo_installed_version = self.get_odoo_version()
-        lst_odoo_version = [{"prompt_description": "I don't know"}] + [{"prompt_description": a.get("odoo_version")} for a in lst_version]
-        help_info = self.fill_help_info(lst_odoo_version)
-        odoo_actual_version = None
-        cmd_no_found = True
-        while cmd_no_found:
-            status = click.prompt(help_info)
-            try:
-                int_cmd = int(status)
-                if 0 < int_cmd <= len(lst_odoo_version):
-                    cmd_no_found = False
-                    if int_cmd > 1:
-                        odoo_actual_version = lst_odoo_version[int_cmd - 1].get("prompt_description")
-            except ValueError:
-                pass
-            if cmd_no_found:
-                print("Commande non trouvée 🤖!")
-
-        print("Which version do you want to upgrade to?")
-        odoo_reach_version = None
-        cmd_no_found = True
-        while cmd_no_found:
-            status = click.prompt(help_info)
-            try:
-                int_cmd = int(status)
-                if 0 < int_cmd <= len(lst_odoo_version):
-                    cmd_no_found = False
-                    if int_cmd > 1:
-                        odoo_reach_version = lst_odoo_version[int_cmd - 1].get("prompt_description")
-            except ValueError:
-                pass
-            if cmd_no_found:
-                print("Commande non trouvée 🤖!")
-
-        # Search nb diff to use range
-        start_version = int(float(odoo_actual_version))
-        end_version = int(float(odoo_reach_version))
-        range_version = range(start_version, end_version)
-        # TODO need support minor version, example 18.2, the .2
-
-        print("Show documentation version :")
-        # TODO Generate it locally and show it if asked
-
-        for i in range_version:
-            print(f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{i*10}-{(i+1)*10}.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules120-130.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules130-140.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules140-150.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules150-160.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules160-170.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules170-180.html")
-        print("Ask the database in zip file")
-
-        print("0- Inspect zip")
-        print("  -> Find good environment, read the .zip file")
-        print("  -> Search odoo version")
-        print("  -> Install environment if missing")
-        print("  -> Search missing module")
-        print("  -> Install missing module, do a research or ask to uninstall it (can break data)")
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
-
-        print("1- Import database from zip")
-        print("  -> Neutralize data, maybe with")
-        print("./script/addons/update_prod_to_dev.sh BD")
-        print("  -> Fix running execution")
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
-
-        print("2- Succeed update all addons")
-        print("./script/addons/update_addons_all.sh BD")
-        print("  -> Fix importation error")
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
-
-        print("3- Clean up database before data migration")
-        print("./script/addons/addons_install.sh database_cleanup")
-        print("  -> Run it manually")
-        print("Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes")
-        print("Uninstall no need module to next version.")
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
-
-        print("4- Upgrade version with OpenUpgrade")
-        # Script odoo 13 and before
-        # ./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d BD
-        # Script odoo 14 and after
-        # ./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d BD
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
-
-        print("5- Cleaning up database after upgrade")
-        print("Re-update i18n, purger data, tables (except mail_test and mail_test_full)")
-        waiting_input = (
-            input(
-                "Press any keyboard key to continue..."
-            )
-        )
-        print("")
 
     def prompt_execute_code(self):
         print("🤖 Qu'avez-vous de besoin pour développer?")
@@ -749,7 +629,9 @@ class TODO:
                 new_cmd += f' "sleep {1 * i};{cmd}"'
             self.executer_commande_live(new_cmd)
 
-    def executer_commande_live(self, commande, source_erplibre=True):
+    def executer_commande_live(
+        self, commande, source_erplibre=True, quiet=False
+    ):
         """
         Exécute une commande et affiche la sortie en direct.
 
@@ -757,6 +639,7 @@ class TODO:
             commande (str): La commande à exécuter (sous forme de chaîne de caractères).
         """
 
+        return_status = None
         if source_erplibre:
             # commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
             # cmd = (
@@ -785,8 +668,8 @@ class TODO:
                 print(ligne, end="")
 
             process.wait()  # Attendre la fin du process
-
-            if process.returncode != 0:
+            return_status = process.returncode
+            if process.returncode != 0 and not quiet:
                 print(
                     "La commande a retourné un code d'erreur :"
                     f" {process.returncode}"
@@ -804,6 +687,7 @@ class TODO:
                 )
         except Exception as e:
             print(f"Une erreur s'est produite : {e}")
+        return return_status
 
     def crash_diagnostic(self, e):
         # TODO show message at start if os.path.exists(file_error_path)
