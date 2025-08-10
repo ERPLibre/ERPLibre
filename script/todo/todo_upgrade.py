@@ -6,19 +6,25 @@ import json
 import logging
 import os
 import zipfile
-import todo_file_browser
-import click
 
+import click
+import todo_file_browser
 
 _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv.erplibre/bin/python3"
+UPGRADE_CONFIG_LOG = ".venv.erplibre/odoo_migration_log.json"
 
 
 class TodoUpgrade:
     def __init__(self, todo):
         self.file_path = None
         self.todo = todo
+        self.dct_progression = {}
+
+    def write_config(self):
+        with open(UPGRADE_CONFIG_LOG, "w") as f:
+            json.dump(self.dct_progression, f)
 
     def on_file_selected(self, file_path):
         self.file_path = file_path
@@ -30,25 +36,39 @@ class TodoUpgrade:
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
 
-        
-        self.file_path = input(
-            "Give the path of file, or empty to use a File Browser : "
-        )
-
-        print("")
-        print("Select the zip file of you database backup.")
-
-        self.file_path = input(
-            "Give the path of file, or empty to use a File Browser : "
-        )
-        if not self.file_path.strip():
-            self.file_path = None
-        if not self.file_path:
-            initial_dir = os.getcwd()
-            file_browser = todo_file_browser.FileBrowser(
-                initial_dir, self.on_file_selected
+        if os.path.exists(UPGRADE_CONFIG_LOG):
+            erase_progression_input = input(
+                "Detected migration, would you like to erase progression for a new migration (y/Y) or continue it (anything) : "
             )
-            file_browser.run_main_frame()
+            if erase_progression_input.lower() not in ["y", "yes"]:
+                with open(UPGRADE_CONFIG_LOG, "r") as f:
+                    try:
+                        self.dct_progression = json.load(f)
+                    except json.decoder.JSONDecodeError:
+                        print(
+                            f"The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
+                        )
+
+        if "migration_file" in self.dct_progression:
+            self.file_path = self.dct_progression["migration_file"]
+        else:
+            print("")
+            print("Select the zip file of you database backup.")
+
+            self.file_path = input(
+                "Give the path of file, or empty to use a File Browser : "
+            )
+            if not self.file_path.strip():
+                self.file_path = None
+            if not self.file_path:
+                initial_dir = os.getcwd()
+                file_browser = todo_file_browser.FileBrowser(
+                    initial_dir, self.on_file_selected
+                )
+                file_browser.run_main_frame()
+
+            self.dct_progression["migration_file"] = self.file_path
+            self.write_config()
 
         print(f"Open file {self.file_path}")
         with zipfile.ZipFile(self.file_path, "r") as zip_ref:
@@ -89,26 +109,32 @@ class TodoUpgrade:
         #     if cmd_no_found:
         #         print("Commande non trouvée 🤖!")
 
-        print("Which version do you want to upgrade to?")
-        odoo_reach_version = None
-        cmd_no_found = True
-        while cmd_no_found:
-            status = click.prompt(help_info)
-            try:
-                int_cmd = int(status)
-                if 0 < int_cmd <= len(lst_odoo_version):
-                    cmd_no_found = False
-                    odoo_reach_version = lst_odoo_version[int_cmd - 1].get(
-                        "prompt_description"
-                    )
-            except ValueError:
-                pass
-            if cmd_no_found:
-                print("Commande non trouvée 🤖!")
+        if "target_odoo_version" in self.dct_progression:
+            odoo_target_version = self.dct_progression["target_odoo_version"]
+        else:
+            print("Which version do you want to upgrade to?")
+            odoo_target_version = None
+            cmd_no_found = True
+            while cmd_no_found:
+                status = click.prompt(help_info)
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(lst_odoo_version):
+                        cmd_no_found = False
+                        odoo_target_version = lst_odoo_version[
+                            int_cmd - 1
+                        ].get("prompt_description")
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print("Commande non trouvée 🤖!")
+
+            self.dct_progression["target_odoo_version"] = odoo_target_version
+            self.write_config()
 
         # Search nb diff to use range
         start_version = int(float(odoo_actual_version))
-        end_version = int(float(odoo_reach_version))
+        end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
         # TODO need support minor version, example 18.2, the .2
 
@@ -188,4 +214,3 @@ class TodoUpgrade:
         )
         waiting_input = input("Press any keyboard key to continue...")
         print("")
-
