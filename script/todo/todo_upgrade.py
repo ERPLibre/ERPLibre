@@ -179,10 +179,7 @@ class TodoUpgrade:
                     source_erplibre=False,
                 )
             else:
-                input(f"💬 Would you like to install '{odoo_version_str}'?")
-                want_continue = input(
-                    f"💬 Detect installed '{odoo_version}', would you like to install '{odoo_actual_version}' (y/Y) : "
-                )
+                want_continue = input(f"💬 Would you like to install '{odoo_version_str}' (y/Y) : ")
                 if want_continue.strip().lower() != "y":
                     return
                 status = self.todo.executer_commande_live(
