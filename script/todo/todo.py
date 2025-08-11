@@ -279,8 +279,9 @@ class TODO:
             )
             if pycharm_configuration_input == "y":
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
+                cmd = f"{pycharm_bin} ./"
                 self.executer_commande_live(
-                    pycharm_bin,
+                    cmd,
                     source_erplibre=False,
                     single_source_erplibre=False,
                     new_window=True,
