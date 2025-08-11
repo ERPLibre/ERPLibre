@@ -169,11 +169,23 @@ class TodoUpgrade:
             # Check if already installed, if yes, switch to it or install it
             odoo_version_str = f"odoo{odoo_actual_version}"
             if odoo_version_str in lst_version_installed:
-                # TODO
-                input("💬 Would you like to switch ")
+                want_continue = input(f"💬 Detect installed '{odoo_version}', would you like to switch to '{odoo_actual_version}' (y/Y) : ")
+                if want_continue.strip().lower() != "y":
+                    return
+                status = self.todo.executer_commande_live(
+                    f"make switch_odoo_{start_version}",
+                    source_erplibre=False,
+                )
             else:
-                # TODO
                 input(f"💬 Would you like to install '{odoo_version_str}'?")
+                want_continue = input(
+                    f"💬 Detect installed '{odoo_version}', would you like to install '{odoo_actual_version}' (y/Y) : ")
+                if want_continue.strip().lower() != "y":
+                    return
+                status = self.todo.executer_commande_live(
+                    f"make install_odoo_{start_version}",
+                    source_erplibre=False,
+                )
 
         print("✅ -> Search odoo version")
         print("❌ -> Install environment if missing")
