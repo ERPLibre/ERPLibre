@@ -59,12 +59,14 @@ class TODO:
     def init(self):
         # Get command
         self.cmd_source_erplibre = ""
+        self.cmd_source_default = ""
         exec_path_gnome_terminal = shutil.which("gnome-terminal")
         if exec_path_gnome_terminal:
             self.cmd_source_erplibre = (
                 f"gnome-terminal -- bash -c 'source"
                 f" ./{cst_venv_erplibre}/bin/activate;%s'"
             )
+            self.cmd_source_default = "gnome-terminal -- bash -c '" f"%s'"
         else:
             exec_path_tell = shutil.which("osascript")
             if exec_path_tell:
@@ -277,7 +279,12 @@ class TODO:
             )
             if pycharm_configuration_input == "y":
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
-                self.executer_commande_live(pycharm_bin, source_erplibre=True)
+                self.executer_commande_live(
+                    pycharm_bin,
+                    source_erplibre=False,
+                    single_source_erplibre=False,
+                    new_window=True,
+                )
                 print(
                     "Close Pycharm when processing is done before continue"
                     " this guide."
@@ -636,7 +643,12 @@ class TODO:
             self.executer_commande_live(new_cmd)
 
     def executer_commande_live(
-        self, commande, source_erplibre=True, quiet=False, single_source_erplibre=False
+        self,
+        commande,
+        source_erplibre=True,
+        quiet=False,
+        single_source_erplibre=False,
+        new_window=False,
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -656,8 +668,14 @@ class TODO:
             print(f"Execute : {commande}")
             # os.system(f"./script/terminal/open_terminal.sh {commande}")
         elif single_source_erplibre:
-            commande = f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
+            commande = (
+                f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
+            )
             print(f"Execute : {commande}")
+        elif new_window:
+            commande = self.cmd_source_default % commande
+            print(f"Execute : {commande}")
+
         try:
             process = subprocess.Popen(
                 commande,
@@ -749,6 +767,7 @@ class TODO:
                 import click
                 import humanize
                 import openai
+                import urwid
                 from pykeepass import PyKeePass
             except ImportError:
                 print("Rerun and exit")

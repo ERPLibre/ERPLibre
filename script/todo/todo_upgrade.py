@@ -169,7 +169,9 @@ class TodoUpgrade:
             # Check if already installed, if yes, switch to it or install it
             odoo_version_str = f"odoo{odoo_actual_version}"
             if odoo_version_str in lst_version_installed:
-                want_continue = input(f"💬 Detect installed '{odoo_version}', would you like to switch to '{odoo_actual_version}' (y/Y) : ")
+                want_continue = input(
+                    f"💬 Detect installed '{odoo_version}', would you like to switch to '{odoo_actual_version}' (y/Y) : "
+                )
                 if want_continue.strip().lower() != "y":
                     return
                 status = self.todo.executer_commande_live(
@@ -179,7 +181,8 @@ class TodoUpgrade:
             else:
                 input(f"💬 Would you like to install '{odoo_version_str}'?")
                 want_continue = input(
-                    f"💬 Detect installed '{odoo_version}', would you like to install '{odoo_actual_version}' (y/Y) : ")
+                    f"💬 Detect installed '{odoo_version}', would you like to install '{odoo_actual_version}' (y/Y) : "
+                )
                 if want_continue.strip().lower() != "y":
                     return
                 status = self.todo.executer_commande_live(
