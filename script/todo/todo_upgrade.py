@@ -155,40 +155,49 @@ class TodoUpgrade:
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         print("🔷0- Inspect zip")
+        print("✅ -> Search odoo version")
         print("✅ -> Find good environment, read the .zip file")
         need_install_zip_version = False
         filename_odoo_version = ".odoo-version"
-        if not os.path.isfile(filename_odoo_version):
-            need_install_zip_version = True
-        else:
-            with open(filename_odoo_version, "r") as f:
-                odoo_version = f.readline()
-            if odoo_version != odoo_actual_version:
-                need_install_zip_version = True
-        if need_install_zip_version:
-            # Check if already installed, if yes, switch to it or install it
-            odoo_version_str = f"odoo{odoo_actual_version}"
-            if odoo_version_str in lst_version_installed:
-                want_continue = input(
-                    f"💬 Detect installed '{odoo_version}', would you like to switch to '{odoo_actual_version}' (y/Y) : "
-                )
-                if want_continue.strip().lower() != "y":
-                    return
-                status = self.todo.executer_commande_live(
-                    f"make switch_odoo_{start_version}",
-                    source_erplibre=False,
-                )
-            else:
-                want_continue = input(f"💬 Would you like to install '{odoo_version_str}' (y/Y) : ")
-                if want_continue.strip().lower() != "y":
-                    return
-                status = self.todo.executer_commande_live(
-                    f"make install_odoo_{start_version}",
-                    source_erplibre=False,
-                )
 
-        print("✅ -> Search odoo version")
-        print("❌ -> Install environment if missing")
+        for iter_range_version in range_version:
+            str_odoo_version_iter = str(iter_range_version) + ".0"
+            if not os.path.isfile(filename_odoo_version):
+                need_install_zip_version = True
+            else:
+                with open(filename_odoo_version, "r") as f:
+                    odoo_version = f.readline()
+                # TODO reupdate this logical
+                if odoo_version != str_odoo_version_iter:
+                    need_install_zip_version = True
+                need_install_zip_version = True
+            # if not need_install_zip_version:
+            #     print("ok")
+            # only for first, or
+            if need_install_zip_version:
+                # Check if already installed, if yes, switch to it or install it
+                odoo_version_str = f"odoo{str_odoo_version_iter}"
+                if odoo_version_str in lst_version_installed:
+                    want_continue = input(
+                        f"💬 Detect installed '{odoo_version}', would you like to switch to '{str_odoo_version_iter}' (y/Y) : "
+                    )
+                    if want_continue.strip().lower() != "y":
+                        return
+                    status = self.todo.executer_commande_live(
+                        f"make switch_odoo_{iter_range_version}",
+                        source_erplibre=False,
+                    )
+                else:
+                    want_continue = input(f"💬 Would you like to install '{odoo_version_str}' (y/Y) : ")
+                    if want_continue.strip().lower() != "y":
+                        return
+                    status = self.todo.executer_commande_live(
+                        f"make install_odoo_{iter_range_version}",
+                        source_erplibre=False,
+                    )
+
+        print("✅ -> Install environment if missing")
+        # TODO + afficher information du reach
         print("✅ -> Search missing module")
         dct_bd_modules = json_manifest_file_1.get("modules")
         lst_module_missing = []
@@ -202,13 +211,13 @@ class TodoUpgrade:
             if status:
                 lst_module_missing.append(bd_module)
 
+        self.dct_progression["len_lst_module_missing"] = len(
+            lst_module_missing
+        )
+        self.dct_progression["lst_module_missing"] = lst_module_missing
+        self.write_config()
         if lst_module_missing:
             print(lst_module_missing)
-            self.dct_progression["len_lst_module_missing"] = len(
-                lst_module_missing
-            )
-            self.dct_progression["lst_module_missing"] = lst_module_missing
-            self.write_config()
             want_continue = input(
                 "💬 Detect error, do you want to continue? (Y/N): "
             )
@@ -216,7 +225,7 @@ class TodoUpgrade:
                 return
 
         print(
-            "  -> ❌ Install missing module, do a research or ask to uninstall it (can break data)"
+            "❌ -> Install missing module, do a research or ask to uninstall it (can break data)"
         )
         # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
