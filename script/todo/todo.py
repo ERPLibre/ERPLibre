@@ -484,6 +484,10 @@ class TODO:
             "prompt_description": "Upgrade Odoo",
         }
         lst_instance.append(dct_upgrade_odoo_database)
+        dct_upgrade_poetry = {
+            "prompt_description": "Upgrade Poetry",
+        }
+        lst_instance.append(dct_upgrade_poetry)
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -491,9 +495,11 @@ class TODO:
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_instance)):
+            elif status == str(len(lst_instance) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
                 upgrade.execute_odoo_upgrade()
+            elif status == str(len(lst_instance)):
+                self.upgrade_poetry()
             else:
                 cmd_no_found = True
                 try:
@@ -631,7 +637,7 @@ class TODO:
             self.executer_commande_live(new_cmd)
 
     def executer_commande_live(
-        self, commande, source_erplibre=True, quiet=False
+        self, commande, source_erplibre=True, quiet=False, single_source_erplibre=False
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -650,6 +656,9 @@ class TODO:
             commande = self.cmd_source_erplibre % commande
             print(f"Execute : {commande}")
             # os.system(f"./script/terminal/open_terminal.sh {commande}")
+        elif single_source_erplibre:
+            commande = f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
+            print(f"Execute : {commande}")
         try:
             process = subprocess.Popen(
                 commande,
@@ -749,6 +758,47 @@ class TODO:
             print("No error")
         else:
             self.prompt_install()
+
+    def upgrade_poetry(self):
+        # Only show the version to the user
+        status = self.executer_commande_live(
+            f"make version",
+            source_erplibre=False,
+        )
+        # TODO maybe autodetect to update it
+        git_repo_update_input = input(
+            "💬 Would you like to upgrade your repositories, you need it (y/Y) : "
+        )
+        if git_repo_update_input.strip().lower() == "y":
+            status = self.executer_commande_live(
+                f"./script/manifest/update_manifest_local_dev.sh",
+                source_erplibre=False,
+            )
+
+        poetry_lock = "./poetry.lock"
+        try:
+            os.remove(poetry_lock)
+        except Exception as e:
+            pass
+        odoo_long_version = ""
+        if os.path.exists("./.erplibre-version"):
+            with open("./.erplibre-version") as f:
+                odoo_long_version = f.read()
+        path_file_odoo_lock = f"./requirement/poetry.{odoo_long_version}.lock"
+        if odoo_long_version:
+            try:
+                os.remove(path_file_odoo_lock)
+            except Exception as e:
+                pass
+
+        status = self.executer_commande_live(
+            f"./script/poetry/poetry_update.py -f",
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        if os.path.exists(poetry_lock):
+            shutil.copy2(poetry_lock, path_file_odoo_lock)
 
     def restart_script(self, last_error):
         print("Reboot TODO 🤖...")
