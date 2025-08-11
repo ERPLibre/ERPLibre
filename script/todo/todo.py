@@ -12,8 +12,6 @@ import subprocess
 import sys
 import time
 
-import todo_upgrade
-
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
@@ -31,11 +29,12 @@ try:
     import click
     import humanize
     import openai
-    from pykeepass import PyKeePass
 
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
+    import todo_upgrade
+    from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
@@ -240,13 +239,13 @@ class TODO:
 
         first_installation_input = (
             input(
-                "First system installation? This will process system installation"
+                "💬 First system installation? This will process system installation"
                 " before (Y/N): "
             )
             .strip()
-            .upper()
+            .lower()
         )
-        if first_installation_input == "Y":
+        if first_installation_input == "y":
             cmd = "./script/version/update_env_version.py --install"
             self.executer_commande_live(cmd, source_erplibre=True)
             print("Wait after OS installation before continue.")
@@ -274,9 +273,9 @@ class TODO:
             ".idea"
         ):
             pycharm_configuration_input = (
-                input("Open Pycharm? (Y/N): ").strip().upper()
+                input("💬 Open Pycharm? (Y/N): ").strip().lower()
             )
-            if pycharm_configuration_input == "Y":
+            if pycharm_configuration_input == "y":
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
                 self.executer_commande_live(pycharm_bin, source_erplibre=True)
                 print(
@@ -286,9 +285,9 @@ class TODO:
         # Propose Odoo installation
         # TODO detect last version supported
         odoo_installation_input = (
-            input("Install virtual environment? (Y/N): ").strip().upper()
+            input("💬 Install virtual environment? (Y/N): ").strip().lower()
         )
-        if odoo_installation_input == "Y":
+        if odoo_installation_input == "y":
             # cmd_intern = "./script/install/install_erplibre.sh"
             # TODO maybe update q to only install erplibre from install_locally
             # TODO problem installing with q, the script depend on odoo
@@ -342,7 +341,7 @@ class TODO:
                         f"Error, cannot understand value '{odoo_version_input}'"
                     )
                 str_input_dyn_odoo_version = (
-                    "Choose a version:\n\t"
+                    "💬 Choose a version:\n\t"
                     + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
                     + "\nSelect : "
                 )

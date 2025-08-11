@@ -35,7 +35,7 @@ if not os.path.isfile(FILENAME_ODOO_VERSION):
     _logger.error(f"Missing file {FILENAME_ODOO_VERSION}")
     sys.exit(1)
 
-with open(".odoo-version", "r") as f:
+with open(FILENAME_ODOO_VERSION, "r") as f:
     ODOO_VERSION = f.readline()
 
 LOG_FILE = "./.venv.erplibre/make_test.log"

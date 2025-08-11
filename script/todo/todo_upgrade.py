@@ -38,15 +38,15 @@ class TodoUpgrade:
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
             erase_progression_input = input(
-                "Detected migration, would you like to erase progression for a new migration (y/Y) or continue it (anything) : "
+                "💬 Detected migration, would you like to erase progression for a new migration (y/Y) or continue it (anything) : "
             )
-            if erase_progression_input.lower() not in ["y", "yes"]:
+            if erase_progression_input.strip().lower() not in ["y", "yes"]:
                 with open(UPGRADE_CONFIG_LOG, "r") as f:
                     try:
                         self.dct_progression = json.load(f)
                     except json.decoder.JSONDecodeError:
                         print(
-                            f"The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
+                            f"⚠️ The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
                         )
 
         if "migration_file" in self.dct_progression:
@@ -56,7 +56,7 @@ class TodoUpgrade:
             print("Select the zip file of you database backup.")
 
             self.file_path = input(
-                "Give the path of file, or empty to use a File Browser : "
+                "💬 Give the path of file, or empty to use a File Browser : "
             )
             if not self.file_path.strip():
                 self.file_path = None
@@ -70,12 +70,12 @@ class TodoUpgrade:
             self.dct_progression["migration_file"] = self.file_path
             self.write_config()
 
-        print(f"Open file {self.file_path}")
+        print(f"✅ Open file {self.file_path}")
         with zipfile.ZipFile(self.file_path, "r") as zip_ref:
             manifest_file_1 = zip_ref.open("manifest.json")
         json_manifest_file_1 = json.load(manifest_file_1)
         odoo_actual_version = json_manifest_file_1.get("version")
-        print(f"Detect version Odoo CE '{odoo_actual_version}'.")
+        print(f"✅ Detect version Odoo CE '{odoo_actual_version}'.")
 
         # print("What is your actual Odoo version?")
         lst_version, lst_version_installed, odoo_installed_version = (
@@ -112,7 +112,7 @@ class TodoUpgrade:
         if "target_odoo_version" in self.dct_progression:
             odoo_target_version = self.dct_progression["target_odoo_version"]
         else:
-            print("Which version do you want to upgrade to?")
+            print("💬 Which version do you want to upgrade to?")
             odoo_target_version = None
             cmd_no_found = True
             while cmd_no_found:
@@ -136,9 +136,9 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
-        # TODO need support minor version, example 18.2, the .2
+        # TODO need support minor version, example 18.2, the .2 (no need for OCE OCB)
 
-        print("Show documentation version :")
+        print("✨ Show documentation version :")
         # TODO Generate it locally and show it if asked
 
         for i in range_version:
@@ -151,66 +151,99 @@ class TodoUpgrade:
         # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules150-160.html")
         # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules160-170.html")
         # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules170-180.html")
-        print("Ask the database in zip file")
+        # print("Ask the database in zip file")
 
-        print("0- Inspect zip")
-        print("  -> Find good environment, read the .zip file")
-        print("  -> Search odoo version")
-        print("  -> Install environment if missing")
-        print("  -> Search missing module")
+        # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
+        print("🔷0- Inspect zip")
+        print("✅ -> Find good environment, read the .zip file")
+        need_install_zip_version = False
+        filename_odoo_version = ".odoo-version"
+        if not os.path.isfile(filename_odoo_version):
+            need_install_zip_version = True
+        else:
+            with open(filename_odoo_version, "r") as f:
+                odoo_version = f.readline()
+            if odoo_version != odoo_actual_version:
+                need_install_zip_version = True
+        if need_install_zip_version:
+            # Check if already installed, if yes, switch to it or install it
+            odoo_version_str = f"odoo{odoo_actual_version}"
+            if odoo_version_str in lst_version_installed:
+                # TODO
+                input("💬 Would you like to switch ")
+            else:
+                # TODO
+                input(f"💬 Would you like to install '{odoo_version_str}'?")
+
+        print("✅ -> Search odoo version")
+        print("❌ -> Install environment if missing")
+        print("✅ -> Search missing module")
         dct_bd_modules = json_manifest_file_1.get("modules")
         lst_module_missing = []
-        # TODO can be run in async
+        # TODO support async and not parallel
         for bd_module in dct_bd_modules.keys():
             status = self.todo.executer_commande_live(
                 f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
                 source_erplibre=False,
                 quiet=True,
             )
-            lst_module_missing.append(bd_module)
+            if status:
+                lst_module_missing.append(bd_module)
+
         if lst_module_missing:
             print(lst_module_missing)
-            # TODO save
+            self.dct_progression["len_lst_module_missing"] = len(
+                lst_module_missing
+            )
+            self.dct_progression["lst_module_missing"] = lst_module_missing
+            self.write_config()
+            want_continue = input(
+                "💬 Detect error, do you want to continue? (Y/N): "
+            )
+            if want_continue.strip().lower() != "y":
+                return
+
         print(
-            "  -> Install missing module, do a research or ask to uninstall it (can break data)"
+            "  -> ❌ Install missing module, do a research or ask to uninstall it (can break data)"
         )
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("1- Import database from zip")
+        print("🔷1- Import database from zip")
+        # input()
         print("  -> Neutralize data, maybe with")
         print("./script/addons/update_prod_to_dev.sh BD")
         print("  -> Fix running execution")
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("2- Succeed update all addons")
+        print("🔷2- Succeed update all addons")
         print("./script/addons/update_addons_all.sh BD")
         print("  -> Fix importation error")
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("3- Clean up database before data migration")
+        print("🔷3- Clean up database before data migration")
         print("./script/addons/addons_install.sh database_cleanup")
         print("  -> Run it manually")
         print(
             "Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
         )
         print("Uninstall no need module to next version.")
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("4- Upgrade version with OpenUpgrade")
+        print("🔷4- Upgrade version with OpenUpgrade")
         # Script odoo 13 and before
         # ./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d BD
         # Script odoo 14 and after
         # ./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d BD
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("5- Cleaning up database after upgrade")
+        print("🔷5- Cleaning up database after upgrade")
         print(
             "Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
         )
-        waiting_input = input("Press any keyboard key to continue...")
+        # waiting_input = input("💬print Press any keyboard key to continue...")
         print("")

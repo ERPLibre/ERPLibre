@@ -29,7 +29,7 @@ filename_odoo_version = ".odoo-version"
 if not os.path.isfile(filename_odoo_version):
     _logger.error(f"Missing file {filename_odoo_version}")
     sys.exit(1)
-with open(".odoo-version", "r") as f:
+with open(filename_odoo_version, "r") as f:
     odoo_version = f.readline()
 
 CODE_GENERATOR_DIRECTORY = (
