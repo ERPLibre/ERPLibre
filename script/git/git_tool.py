@@ -427,6 +427,10 @@ class GitTool:
             repo_path=repo_path, filter_group=filter_group
         )
         lst_result = []
+        if not lst_repo:
+            print(
+                f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: List of repo is empty when write generate_config."
+            )
         for repo in lst_repo:
             # Exception, ignore addons/OCA_web and root
             if repo.get("path") in ["addons/OCA_web", "odoo", "image_db"]:
@@ -458,6 +462,9 @@ class GitTool:
                 index_find = index + 1
                 for insert_line in lst_result:
                     all_lines.insert(index_find, insert_line)
+                    index_find += 1
+                if not lst_result:
+                    all_lines.insert(index_find, '\tprintf ""\n')
                     index_find += 1
                 find_index = True
                 # Delete all next line until meet fi
