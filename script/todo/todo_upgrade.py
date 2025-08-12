@@ -255,7 +255,7 @@ class TodoUpgrade:
                     shutil.copy(self.file_path, image_db_file_path)
 
             status = self.todo.executer_commande_live(
-                f"./script/database/db_restore.py --database {database_name} --image {file_name}",
+                f"./script/database/db_restore.py --database {database_name} --image {file_name} --ignore_cache",
                 source_erplibre=False,
                 single_source_odoo=True,
             )

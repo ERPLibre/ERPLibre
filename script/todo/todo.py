@@ -398,7 +398,11 @@ class TODO:
 
         makefile_cmd = dct_instance.get("makefile_cmd")
         if makefile_cmd and not ignore_makefile:
-            self.executer_commande_live(f"make {makefile_cmd}")
+            self.executer_commande_live(
+                f"make {makefile_cmd}",
+                source_erplibre=False,
+                single_source_erplibre=True,
+            )
 
         if exec_run_db:
             db_name = dct_instance.get("database")
