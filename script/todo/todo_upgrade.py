@@ -214,7 +214,7 @@ class TodoUpgrade:
                 )
                 if want_continue.strip().lower() != "y":
                     return
-        else:
+
             self.dct_progression["state_0_search_missing_module"] = True
             self.write_config()
 
@@ -295,20 +295,30 @@ class TodoUpgrade:
             else:
                 return
 
-        print("./script/addons/update_addons_all.sh BD")
-        print("  -> Fix importation error")
-        # waiting_input = input("💬 Press any keyboard key to continue...")
-        print("")
-
         print("🔷3- Clean up database before data migration")
-        print("./script/addons/addons_install.sh database_cleanup")
-        print("  -> Run it manually")
-        print(
-            "Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
-        )
-        print("Uninstall no need module to next version.")
-        # waiting_input = input("💬 Press any keyboard key to continue...")
-        print("")
+
+        if not self.dct_progression.get("state_3_install_clean_database"):
+            status = self.todo.executer_commande_live(
+                f"./script/addons/install_addons.sh {database_name} database_cleanup",
+                source_erplibre=False,
+                single_source_odoo=True,
+            )
+            if not status:
+                self.dct_progression["state_3_install_clean_database"] = True
+                self.write_config()
+            else:
+                return
+
+        if not self.dct_progression.get("state_3_clean_database"):
+            print(
+                "Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
+            )
+            status = input("💬 Did you finish to clean database (y/Y) : ").strip()
+            if status.lower() != "y":
+                return
+
+            self.dct_progression["state_3_clean_database"] = True
+            self.write_config()
 
         print("🔷4- Upgrade version with OpenUpgrade")
         # Script odoo 13 and before
