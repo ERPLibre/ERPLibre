@@ -679,8 +679,11 @@ class TODO:
             print(f"Execute :")
             print(commande)
         elif single_source_odoo:
+            if not source_odoo and os.path.exists("./.erplibre-version"):
+                with open("./.erplibre-version") as f:
+                    source_odoo = f.read()
             commande = (
-                f"source ./.venv.{source_odoo}/bin/activate && %s" % commande
+                f"source ./.venv.{source_odoo}/bin/activate && {commande}"
             )
             print(f"Execute :")
             print(commande)

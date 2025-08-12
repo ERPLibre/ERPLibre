@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+import shutil
 import zipfile
 
 import click
@@ -89,26 +90,6 @@ class TodoUpgrade:
         ]
         help_info = self.todo.fill_help_info(lst_odoo_version)
 
-        # lst_odoo_version = [{"prompt_description": "I don't know"}] + [
-        #     {"prompt_description": a.get("odoo_version")} for a in lst_version
-        # ]
-        # help_info = self.fill_help_info(lst_odoo_version)
-        # odoo_actual_version = None
-
-        # cmd_no_found = True
-        # while cmd_no_found:
-        #     status = click.prompt(help_info)
-        #     try:
-        #         int_cmd = int(status)
-        #         if 0 < int_cmd <= len(lst_odoo_version):
-        #             cmd_no_found = False
-        #             if int_cmd > 1:
-        #                 odoo_actual_version = lst_odoo_version[int_cmd - 1].get("prompt_description")
-        #     except ValueError:
-        #         pass
-        #     if cmd_no_found:
-        #         print("Commande non trouvée 🤖!")
-
         if "target_odoo_version" in self.dct_progression:
             odoo_target_version = self.dct_progression["target_odoo_version"]
         else:
@@ -145,13 +126,6 @@ class TodoUpgrade:
             print(
                 f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{i*10}-{(i+1)*10}.html"
             )
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules120-130.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules130-140.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules140-150.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules150-160.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules160-170.html")
-        # print("https://oca.github.io/OpenUpgrade/coverage_analysis/modules170-180.html")
-        # print("Ask the database in zip file")
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         print("🔷0- Inspect zip")
@@ -159,123 +133,168 @@ class TodoUpgrade:
         print("✅ -> Find good environment, read the .zip file")
         filename_odoo_version = ".odoo-version"
 
-        lst_diff_version = sorted(
-            list(
-                set([f"odoo{a}.0" for a in range_version]).difference(
-                    set(lst_version_installed)
-                )
-            )
-        )
-        for odoo_version_to_install in lst_diff_version:
-            iter_range_version = odoo_version_to_install.replace(
-                "odoo", ""
-            ).replace(".0", "")
-            want_continue = input(
-                f"💬 Would you like to install '{odoo_version_to_install}' (y/Y) : "
-            )
-            if want_continue.strip().lower() != "y":
-                return
+        if not self.dct_progression.get("state_0_install_odoo"):
+            print(f"⧖ -> Switch to odoo.'{odoo_actual_version}'")
             status = self.todo.executer_commande_live(
-                f"make install_odoo_{iter_range_version}",
+                f"make switch_odoo_{start_version}",
                 source_erplibre=False,
             )
-            if not status:
+
+            lst_diff_version = sorted(
+                list(
+                    set([f"odoo{a}.0" for a in range_version]).difference(
+                        set(lst_version_installed)
+                    )
+                )
+            )
+            for odoo_version_to_install in lst_diff_version:
+                iter_range_version = odoo_version_to_install.replace(
+                    "odoo", ""
+                ).replace(".0", "")
                 want_continue = input(
-                    f"💬 Error at installing '{odoo_version_to_install}', would you like to continue (y/Y) : "
+                    f"💬 Would you like to install '{odoo_version_to_install}' (y/Y) : "
                 )
                 if want_continue.strip().lower() != "y":
                     return
-
-            if not os.path.isfile(filename_odoo_version):
-                print(
-                    "⚠️ You need an installed system before continue, check your Odoo installation."
+                status = self.todo.executer_commande_live(
+                    f"make install_odoo_{iter_range_version}",
+                    source_erplibre=False,
                 )
-                return
-            with open(filename_odoo_version, "r") as f:
-                odoo_version = f.readline()
-            want_continue = input(
-                f"💬 Detect installed '{odoo_version}', would you like to switch to '{str_odoo_version_iter}' (y/Y) : "
-            )
-            # for iter_range_version in range_version:
-            #     # odoo_version_str in lst_version_installed:
-            #     str_odoo_version_iter = str(iter_range_version) + ".0"
-            if not os.path.isfile(filename_odoo_version):
-                need_install_zip_version = True
-                #     else:
-                with open(filename_odoo_version, "r") as f:
-                    odoo_version = f.readline()
-                    #         # TODO reupdate this logical
-                    #         if odoo_version != str_odoo_version_iter:
-                    #             need_install_zip_version = True
-                    #         need_install_zip_version = True
-                    #     # if not need_install_zip_version:
-                    #     #     print("ok")
-                    #     # only for first, or
-                    #     if need_install_zip_version:
-                    #         # Check if already installed, if yes, switch to it or install it
-                    #         odoo_version_str = f"odoo{str_odoo_version_iter}"
-                    #         if odoo_version_str in lst_version_installed:
+                if not status:
+                    # TODO print why not working
                     want_continue = input(
-                        f"💬 Detect installed '{odoo_version}', would you like to switch to '{str_odoo_version_iter}' (y/Y) : "
+                        f"💬 Error at installing '{odoo_version_to_install}', would you like to continue (y/Y) : "
                     )
                     if want_continue.strip().lower() != "y":
                         return
-        #             status = self.todo.executer_commande_live(
-        #                 f"make switch_odoo_{iter_range_version}",
-        #                 source_erplibre=False,
-        #             )
-        #         else:
-        #             want_continue = input(f"💬 Would you like to install '{odoo_version_str}' (y/Y) : ")
-        #             if want_continue.strip().lower() != "y":
-        #                 return
-        #             status = self.todo.executer_commande_live(
-        #                 f"make install_odoo_{iter_range_version}",
-        #                 source_erplibre=False,
-        #             )
+
+                if not os.path.isfile(filename_odoo_version):
+                    print(
+                        "⚠️ You need an installed system before continue, check your Odoo installation."
+                    )
+                    return
+
+        self.dct_progression["state_0_install_odoo"] = True
+        self.write_config()
+
+        if not self.dct_progression.get("state_0_switch_odoo"):
+            print(f"⧖ -> Switch to odoo.'{odoo_actual_version}'")
+            status = self.todo.executer_commande_live(
+                f"make switch_odoo_{start_version}",
+                source_erplibre=False,
+            )
+            self.dct_progression["state_0_switch_odoo"] = True
+            self.write_config()
 
         print("✅ -> Install environment if missing")
         # TODO + afficher information du reach
-        print("✅ -> Search missing module")
-        dct_bd_modules = json_manifest_file_1.get("modules")
-        lst_module_missing = []
-        # TODO support async and not parallel
-        for bd_module in dct_bd_modules.keys():
-            status = self.todo.executer_commande_live(
-                f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
-                source_erplibre=False,
-                quiet=True,
-            )
-            if status:
-                lst_module_missing.append(bd_module)
 
-        self.dct_progression["len_lst_module_missing"] = len(
-            lst_module_missing
-        )
-        self.dct_progression["lst_module_missing"] = lst_module_missing
-        self.write_config()
-        if lst_module_missing:
-            print(lst_module_missing)
-            want_continue = input(
-                "💬 Detect error, do you want to continue? (Y/N): "
+        if not self.dct_progression.get("state_0_search_missing_module"):
+            dct_bd_modules = json_manifest_file_1.get("modules")
+            lst_module_missing = []
+            # TODO support async and not parallel
+            for bd_module in dct_bd_modules.keys():
+                status = self.todo.executer_commande_live(
+                    f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
+                    source_erplibre=False,
+                    quiet=True,
+                )
+                if status:
+                    lst_module_missing.append(bd_module)
+
+            self.dct_progression["len_lst_module_missing"] = len(
+                lst_module_missing
             )
-            if want_continue.strip().lower() != "y":
-                return
+            self.dct_progression["lst_module_missing"] = lst_module_missing
+            self.write_config()
+            if lst_module_missing:
+                print(lst_module_missing)
+                want_continue = input(
+                    "💬 Detect error, do you want to continue? (Y/N): "
+                )
+                if want_continue.strip().lower() != "y":
+                    return
+        else:
+            self.dct_progression["state_0_search_missing_module"] = True
+            self.write_config()
+
+        print("✅ -> Search missing module")
 
         print(
             "❌ -> Install missing module, do a research or ask to uninstall it (can break data)"
         )
-        # waiting_input = input("💬 Press any keyboard key to continue...")
-        print("")
 
         print("🔷1- Import database from zip")
-        # input()
-        print("  -> Neutralize data, maybe with")
-        print("./script/addons/update_prod_to_dev.sh BD")
-        print("  -> Fix running execution")
-        # waiting_input = input("💬 Press any keyboard key to continue...")
-        print("")
+
+        database_name = self.dct_progression.get("database_name")
+        if not database_name:
+            database_name = (
+                input(
+                    "💬 With database name do you want to work with? Default (test) : "
+                ).strip()
+                or "test"
+            )
+            self.dct_progression["database_name"] = database_name
+            self.write_config()
+
+        print(f"★ Work with database '{database_name}'")
+
+        if not self.dct_progression.get("state_1_restore_database"):
+            # TODO move self.file_path to image_db if not already here and get only the filename
+            file_name = os.path.basename(self.file_path)
+            image_db_file_path = os.path.join("image_db", file_name)
+            if os.path.exists(image_db_file_path):
+                if not shutil._samefile(self.file_path, image_db_file_path):
+                    status_overwrite_image_db = input(
+                        f"🤖 will copy '{self.file_path}' to '{image_db_file_path}', "
+                        f"a file already exist, do you want to continue (y/Y) : "
+                    ).strip()
+                    if status_overwrite_image_db.lower() != "y":
+                        return
+                    os.remove(image_db_file_path)
+                    shutil.copy(self.file_path, image_db_file_path)
+
+            status = self.todo.executer_commande_live(
+                f"./script/database/db_restore.py --database {database_name} --image {file_name}",
+                source_erplibre=False,
+                single_source_odoo=True,
+            )
+            if not status:
+                self.dct_progression["state_1_restore_database"] = True
+                self.write_config()
+            else:
+                return
+
+        print("✅ -> Restore database")
+
+        if not self.dct_progression.get("state_1_neutralize_database"):
+            status = self.todo.executer_commande_live(
+                f"./script/addons/update_prod_to_dev.sh {database_name}",
+                source_erplibre=False,
+                single_source_odoo=True,
+            )
+            if not status:
+                self.dct_progression["state_1_neutralize_database"] = True
+                self.write_config()
+            else:
+                return
+
+        print("✅ -> Neutralize database")
 
         print("🔷2- Succeed update all addons")
+
+        if not self.dct_progression.get("state_2_update_all"):
+            status = self.todo.executer_commande_live(
+                f"./script/addons/update_addons_all.sh {database_name}",
+                source_erplibre=False,
+                single_source_odoo=True,
+            )
+            if not status:
+                self.dct_progression["state_2_update_all"] = True
+                self.write_config()
+            else:
+                return
+
         print("./script/addons/update_addons_all.sh BD")
         print("  -> Fix importation error")
         # waiting_input = input("💬 Press any keyboard key to continue...")
