@@ -98,11 +98,11 @@ class TODO:
                 status = click.prompt(help_info)
             except NameError:
                 print("Do")
-                print("source .venv.erplibre/bin/activate && make")
+                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
                 sys.exit(1)
             except ImportError:
                 print("Do")
-                print("source .venv.erplibre/bin/activate && make")
+                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
                 sys.exit(1)
             except click.exceptions.Abort:
                 sys.exit(0)
@@ -279,7 +279,8 @@ class TODO:
             )
             if pycharm_configuration_input == "y":
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
-                cmd = f"{pycharm_bin} ./"
+
+                cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
                 self.executer_commande_live(
                     cmd,
                     source_erplibre=False,
@@ -650,6 +651,8 @@ class TODO:
         quiet=False,
         single_source_erplibre=False,
         new_window=False,
+        single_source_odoo=False,
+        source_odoo="",
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -666,16 +669,25 @@ class TODO:
             #     f" ./{cst_venv_erplibre}/bin/activate;{commande}'"
             # )
             commande = self.cmd_source_erplibre % commande
-            print(f"Execute : {commande}")
+            print(f"Execute :")
+            print(commande)
             # os.system(f"./script/terminal/open_terminal.sh {commande}")
         elif single_source_erplibre:
             commande = (
                 f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
             )
-            print(f"Execute : {commande}")
+            print(f"Execute :")
+            print(commande)
+        elif single_source_odoo:
+            commande = (
+                f"source ./.venv.{source_odoo}/bin/activate && %s" % commande
+            )
+            print(f"Execute :")
+            print(commande)
         elif new_window:
             commande = self.cmd_source_default % commande
-            print(f"Execute : {commande}")
+            print(f"Execute :")
+            print(commande)
 
         try:
             process = subprocess.Popen(
@@ -786,7 +798,7 @@ class TODO:
         )
         # TODO maybe autodetect to update it
         git_repo_update_input = input(
-            "💬 Would you like to upgrade your repositories, you need it (y/Y) : "
+            "💬 Would you like to fetch all your git repositories, you need it (y/Y) : "
         )
         if git_repo_update_input.strip().lower() == "y":
             status = self.executer_commande_live(
@@ -811,9 +823,12 @@ class TODO:
                 pass
 
         status = self.executer_commande_live(
+            f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
             f"./script/poetry/poetry_update.py -f",
             source_erplibre=False,
-            single_source_erplibre=True,
+            single_source_erplibre=False,
+            single_source_odoo=True,
+            source_odoo=odoo_long_version,
         )
 
         if os.path.exists(poetry_lock):

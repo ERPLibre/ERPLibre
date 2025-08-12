@@ -159,9 +159,17 @@ class TodoUpgrade:
         print("✅ -> Find good environment, read the .zip file")
         filename_odoo_version = ".odoo-version"
 
-        lst_diff_version = sorted(list(set([f"odoo{a}.0" for a in range_version]).difference(set(lst_version_installed))))
+        lst_diff_version = sorted(
+            list(
+                set([f"odoo{a}.0" for a in range_version]).difference(
+                    set(lst_version_installed)
+                )
+            )
+        )
         for odoo_version_to_install in lst_diff_version:
-            iter_range_version = odoo_version_to_install.replace("odoo", "").replace(".0","")
+            iter_range_version = odoo_version_to_install.replace(
+                "odoo", ""
+            ).replace(".0", "")
             want_continue = input(
                 f"💬 Would you like to install '{odoo_version_to_install}' (y/Y) : "
             )
@@ -179,32 +187,34 @@ class TodoUpgrade:
                     return
 
             if not os.path.isfile(filename_odoo_version):
-                print("⚠️ You need an installed system before continue, check your Odoo installation.")
+                print(
+                    "⚠️ You need an installed system before continue, check your Odoo installation."
+                )
                 return
             with open(filename_odoo_version, "r") as f:
                 odoo_version = f.readline()
             want_continue = input(
                 f"💬 Detect installed '{odoo_version}', would you like to switch to '{str_odoo_version_iter}' (y/Y) : "
             )
-        # for iter_range_version in range_version:
-        #     # odoo_version_str in lst_version_installed:
-        #     str_odoo_version_iter = str(iter_range_version) + ".0"
+            # for iter_range_version in range_version:
+            #     # odoo_version_str in lst_version_installed:
+            #     str_odoo_version_iter = str(iter_range_version) + ".0"
             if not os.path.isfile(filename_odoo_version):
                 need_install_zip_version = True
-        #     else:
+                #     else:
                 with open(filename_odoo_version, "r") as f:
                     odoo_version = f.readline()
-        #         # TODO reupdate this logical
-        #         if odoo_version != str_odoo_version_iter:
-        #             need_install_zip_version = True
-        #         need_install_zip_version = True
-        #     # if not need_install_zip_version:
-        #     #     print("ok")
-        #     # only for first, or
-        #     if need_install_zip_version:
-        #         # Check if already installed, if yes, switch to it or install it
-        #         odoo_version_str = f"odoo{str_odoo_version_iter}"
-        #         if odoo_version_str in lst_version_installed:
+                    #         # TODO reupdate this logical
+                    #         if odoo_version != str_odoo_version_iter:
+                    #             need_install_zip_version = True
+                    #         need_install_zip_version = True
+                    #     # if not need_install_zip_version:
+                    #     #     print("ok")
+                    #     # only for first, or
+                    #     if need_install_zip_version:
+                    #         # Check if already installed, if yes, switch to it or install it
+                    #         odoo_version_str = f"odoo{str_odoo_version_iter}"
+                    #         if odoo_version_str in lst_version_installed:
                     want_continue = input(
                         f"💬 Detect installed '{odoo_version}', would you like to switch to '{str_odoo_version_iter}' (y/Y) : "
                     )
