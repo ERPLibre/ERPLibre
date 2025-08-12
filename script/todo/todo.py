@@ -665,6 +665,7 @@ class TODO:
             commande (str): La commande à exécuter (sous forme de chaîne de caractères).
         """
 
+        process_start_time = time.time()
         return_status = None
         if source_erplibre:
             # commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
@@ -673,15 +674,11 @@ class TODO:
             #     f" ./{cst_venv_erplibre}/bin/activate;{commande}'"
             # )
             commande = self.cmd_source_erplibre % commande
-            print(f"Execute :")
-            print(commande)
             # os.system(f"./script/terminal/open_terminal.sh {commande}")
         elif single_source_erplibre:
             commande = (
                 f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
             )
-            print(f"Execute :")
-            print(commande)
         elif single_source_odoo:
             if not source_odoo and os.path.exists("./.erplibre-version"):
                 with open("./.erplibre-version") as f:
@@ -689,12 +686,8 @@ class TODO:
             commande = (
                 f"source ./.venv.{source_odoo}/bin/activate && {commande}"
             )
-            print(f"Execute :")
-            print(commande)
         elif new_window:
             commande = self.cmd_source_default % commande
-            print(f"Execute :")
-            print(commande)
 
         try:
             process = subprocess.Popen(
@@ -734,6 +727,15 @@ class TODO:
                 )
         except Exception as e:
             print(f"Une erreur s'est produite : {e}")
+        process_end_time = time.time()
+        duration_sec = process_end_time - process_start_time
+        if humanize:
+            duration_delta = datetime.timedelta(seconds=duration_sec)
+            humain_time = humanize.precisedelta(duration_delta)
+            print(f"Execute ({humain_time}) : \n")
+        else:
+            print(f"Execute ({duration_sec:.2f} sec.) : \n")
+        print(commande)
         return return_status
 
     def crash_diagnostic(self, e):

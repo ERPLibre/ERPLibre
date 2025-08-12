@@ -122,9 +122,9 @@ class TodoUpgrade:
         print("✨ Show documentation version :")
         # TODO Generate it locally and show it if asked
 
-        for i in range_version:
+        for next_version in range_version:
             print(
-                f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{i*10}-{(i+1)*10}.html"
+                f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{next_version*10}-{(next_version+1)*10}.html"
             )
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
@@ -133,13 +133,23 @@ class TodoUpgrade:
         print("✅ -> Find good environment, read the .zip file")
         filename_odoo_version = ".odoo-version"
 
+        if os.path.exists(filename_odoo_version):
+            with open(filename_odoo_version, "r") as f:
+                actual_odoo_version = f.readline().strip()
+            if actual_odoo_version != odoo_actual_version:
+                print(
+                    f"⧖ -> Was odoo'{actual_odoo_version}', Switch to odoo.'{odoo_actual_version}'"
+                )
+                major_odoo_actual_version = int(float(odoo_actual_version))
+                status = self.todo.executer_commande_live(
+                    f"make switch_odoo_{major_odoo_actual_version}",
+                    source_erplibre=False,
+                )
+                status = self.todo.executer_commande_live(
+                    f"make config_gen_all",
+                    source_erplibre=False,
+                )
         if not self.dct_progression.get("state_0_install_odoo"):
-            print(f"⧖ -> Switch to odoo.'{odoo_actual_version}'")
-            status = self.todo.executer_commande_live(
-                f"make switch_odoo_{start_version}",
-                source_erplibre=False,
-            )
-
             lst_diff_version = sorted(
                 list(
                     set([f"odoo{a}.0" for a in range_version]).difference(
@@ -311,9 +321,11 @@ class TodoUpgrade:
 
         if not self.dct_progression.get("state_3_clean_database"):
             print(
-                "Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
+                "✨ Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
             )
-            status = input("💬 Did you finish to clean database (y/Y) : ").strip()
+            status = input(
+                "💬 Did you finish to clean database (y/Y) : "
+            ).strip()
             if status.lower() != "y":
                 return
 
@@ -321,16 +333,81 @@ class TodoUpgrade:
             self.write_config()
 
         print("🔷4- Upgrade version with OpenUpgrade")
-        # Script odoo 13 and before
-        # ./.venv/bin/python ./script/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d BD
-        # Script odoo 14 and after
-        # ./run.sh --upgrade-path=./script/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d BD
+        lst_next_version = [
+            a for a in range(start_version + 1, end_version + 1)
+        ]
+        # Setup lst_switch_odoo
+        lst_switch_odoo = self.dct_progression.get(
+            "state_4_switch_odoo_lst", [False] * len(lst_next_version)
+        )
+        nb_missing_value_switch_odoo = abs(
+            len(lst_switch_odoo) - len(lst_next_version)
+        )
+        if nb_missing_value_switch_odoo:
+            lst_switch_odoo += [False] * nb_missing_value_switch_odoo
+
+        # Setup lst_upgrade_odoo
+        lst_upgrade_odoo = self.dct_progression.get(
+            "state_4_upgrade_odoo_lst", [[]] * len(lst_next_version)
+        )
+        nb_missing_value_upgrade_odoo = abs(
+            len(lst_upgrade_odoo) - len(lst_next_version)
+        )
+        if nb_missing_value_upgrade_odoo:
+            lst_upgrade_odoo += [[]] * nb_missing_value_upgrade_odoo
+
+        for index, next_version in enumerate(lst_next_version):
+            if not lst_switch_odoo[index]:
+                print(f"⧖ -> Switch to odoo.'{next_version}'")
+                status = self.todo.executer_commande_live(
+                    f"make switch_odoo_{next_version}",
+                    source_erplibre=False,
+                )
+                lst_switch_odoo[index] = True
+                self.dct_progression["state_4_switch_odoo_lst"] = (
+                    lst_switch_odoo
+                )
+                self.write_config()
+                print(f"✅ -> Switch Odoo{next_version} done with update")
+            else:
+                print(f"✅ -> Switch Odoo{next_version} - nothing")
+            if not lst_upgrade_odoo[index]:
+                # The technique change at version 14
+                # TODO generate ./config.conf for migration context
+                # TODO add path odoo.addons.openupgrade_framework
+                # []/odoo15.0/OCA_OpenUpgrade
+                path_addons_openupgrade = os.path.join(
+                    os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
+                )
+                status = input(
+                    f"💬 A migration bug, please add addons_path into config.conf : '{path_addons_openupgrade}' press to continue : "
+                ).strip()
+                if next_version <= 13:
+                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name}"
+                else:
+                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d {database_name}"
+                lst_upgrade_odoo[index] = cmd_upgrade
+
+                status = self.todo.executer_commande_live(
+                    cmd_upgrade,
+                    source_erplibre=False,
+                )
+
+                self.dct_progression["state_4_upgrade_odoo_lst"] = (
+                    lst_upgrade_odoo
+                )
+                self.write_config()
+                print(f"✅ -> Upgrade Odoo{next_version} done")
+            else:
+                print(f"✅ -> Upgrade Odoo{next_version} - nothing")
+
+        #
         # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
         print("🔷5- Cleaning up database after upgrade")
         print(
-            "Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
+            "✨ Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
         print("")
