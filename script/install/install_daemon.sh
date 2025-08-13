@@ -48,35 +48,21 @@ echo -e "* Start ERPLibre on Startup"
 sudo systemctl daemon-reload
 sudo systemctl enable ${EL_CONFIG}.service
 
-sudo su ${EL_USER} -c "sudo rm -f /tmp/${EL_USER}run.sh"
-# TODO this is outdated
-cat <<EOF > /tmp/${EL_USER}run.sh
-#!/usr/bin/env bash
-cd ${EL_HOME_ERPLIBRE}
-source ./.venv.erplibre/bin/activate
-python3 ${EL_HOME_ERPLIBRE}/odoo18.0/odoo/odoo-bin -c ${EL_HOME_ERPLIBRE}/config.conf --limit-time-real 99999 --limit-time-cpu 99999 $@
-EOF
-
-echo -e "* Security Run File"
-sudo cp /tmp/${EL_USER}run.sh ${EL_HOME_ERPLIBRE}/.venv/run.sh
-sudo chmod 755 ${EL_HOME_ERPLIBRE}/.venv/run.sh
-sudo chown ${EL_USER}: ${EL_HOME_ERPLIBRE}/.venv/run.sh
-
-echo "-----------------------------------------------------------"
-echo "Done! The ERPLibre server is up and running. Specifications:"
-echo "Port: ${EL_PORT}"
-echo "Port Long Polling: ${EL_LONGPOLLING_PORT}"
-echo "User service: ${EL_USER}"
-echo "User PostgreSQL: ${EL_USER}"
-echo "Code location: ${EL_USER}"
-echo "Addons folder: ${EL_USER}/${EL_CONFIG}/addons/"
-echo "SystemD file ERPLibre: /etc/systemd/system/${EL_CONFIG}.service"
-echo "Start ERPLibre service: sudo systemctl start ${EL_CONFIG}"
-echo "Stop ERPLibre service: sudo systemctl stop ${EL_CONFIG}"
-echo "Restart ERPLibre service: sudo systemctl restart ${EL_CONFIG}"
-echo "Status ERPLibre service: sudo systemctl status ${EL_CONFIG}"
-echo "Logs ERPLibre service: sudo journalctl -feu ${EL_CONFIG}"
-echo "-----------------------------------------------------------"
+#echo "-----------------------------------------------------------"
+#echo "Done! The ERPLibre server is up and running. Specifications:"
+#echo "Port: ${EL_PORT}"
+#echo "Port Long Polling: ${EL_LONGPOLLING_PORT}"
+#echo "User service: ${EL_USER}"
+#echo "User PostgreSQL: ${EL_USER}"
+#echo "Code location: ${EL_USER}"
+#echo "Addons folder: ${EL_USER}/${EL_CONFIG}/addons/"
+#echo "SystemD file ERPLibre: /etc/systemd/system/${EL_CONFIG}.service"
+#echo "Start ERPLibre service: sudo systemctl start ${EL_CONFIG}"
+#echo "Stop ERPLibre service: sudo systemctl stop ${EL_CONFIG}"
+#echo "Restart ERPLibre service: sudo systemctl restart ${EL_CONFIG}"
+#echo "Status ERPLibre service: sudo systemctl status ${EL_CONFIG}"
+#echo "Logs ERPLibre service: sudo journalctl -feu ${EL_CONFIG}"
+#echo "-----------------------------------------------------------"
 
 echo -e "* Starting ERPLibre Service"
 sudo systemctl restart ${EL_CONFIG}.service

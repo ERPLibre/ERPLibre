@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 
-ERPLIBRE_VERSION="1.6.0"
+ERPLIBRE_VERSION=$(cat ".erplibre-semver-version" | xargs)
 
-EL_USER="erplibre"
-EL_HOME="/${EL_USER}"
-EL_HOME_ERPLIBRE="${EL_HOME}/erplibre"
-EL_HOME_ODOO="${EL_HOME_ERPLIBRE}/odoo$(cat ".odoo-version" | xargs)/odoo"
+#EL_USER="erplibre"
+EL_USER="${USER}"
+#EL_HOME="/${EL_USER}"
+EL_HOME="${HOME}"
+#EL_HOME_ERPLIBRE="${EL_HOME}/erplibre"
+EL_HOME_ERPLIBRE="${PWD}"
+EL_HOME_ODOO="${EL_HOME_ERPLIBRE}"/odoo$(cat ".odoo-version" | xargs)/odoo
 EL_ODOO_VERSION=$(cat ".odoo-version" | xargs)
 EL_POETRY_VERSION=$(cat ".poetry-version" | xargs)
 EL_PYTHON_ODOO_VERSION=$(cat ".python-odoo-version" | xargs)
@@ -19,7 +22,8 @@ EL_PORT="8069"
 EL_LONGPOLLING_PORT="8072"
 # set the superadmin password
 EL_SUPERADMIN="admin"
-EL_CONFIG="${EL_USER}"
+# The configuration systemctl service will be erplibre_dirname
+EL_CONFIG="erplibre_${PWD##*/}"
 EL_MINIMAL_ADDONS="False"
 # Set this to True if you want to install Nginx!
 EL_INSTALL_NGINX="False"
