@@ -206,10 +206,11 @@ class TODO:
 
     def prompt_execute(self):
         help_info = """Commande :
-[1] RUN Exécuter et installer une instance
-[2] EXEC Automatisation - Démonstration des fonctions développées
-[3] UPD Mise à jour - Update all developed staging source code
+[1] Run - Exécuter et installer une instance
+[2] Exec - Automatisation - Démonstration des fonctions développées
+[3] Mise à jour - Update all developed staging source code
 [4] Code - Outil pour développeur
+[5] Doc - Recherche de documentation
 [0] Retour
 """
         while True:
@@ -231,6 +232,10 @@ class TODO:
                     return
             elif status == "4":
                 status = self.prompt_execute_code()
+                if status is not False:
+                    return
+            elif status == "5":
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             else:
@@ -558,7 +563,37 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print("Commande non trouvée 🤖!")
-        return False
+
+    def prompt_execute_doc(self):
+        print("🤖 Vous cherchez de la documentation?")
+        lst_instance = []
+        dct_description_fix = {
+            "prompt_description": "Migration module coverage"
+        }
+        lst_instance.append(dct_description_fix)
+        help_info = self.fill_help_info(lst_instance)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(lst_instance):
+                        cmd_no_found = False
+                        str_version = input("Select version to upgrade Odoo CE (5-17) : ")
+                        try:
+                            int_version = int(str_version)
+                            print(f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{int_version * 10}-{(int_version + 1) * 10}.html")
+                        except ValueError:
+                            print("https://oca.github.io/OpenUpgrade/030_coverage_analysis.html")
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print("Commande non trouvée 🤖!")
 
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
