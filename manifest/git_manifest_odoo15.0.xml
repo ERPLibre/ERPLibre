@@ -497,8 +497,8 @@
     <project
         name="project-agile.git"
         path="addons.odoo15.0/OCA_project-agile"
-        remote="OCA"
-        revision="15.0"
+        remote="ERPLibre_origin_OCA"
+        revision="15.0_dev"
         groups="addons,odoo15.0"
     />
     <project

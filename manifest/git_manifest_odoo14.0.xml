@@ -4,6 +4,7 @@
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
+    <remote name="ERPLibre_origin_OCA" fetch="https://github.com/ERPLibre/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
     <remote name="ERPLibre_origin_Smile-SA" fetch="https://github.com/ERPLibre/" />
@@ -576,7 +577,7 @@
     <project
         name="project-agile.git"
         path="addons.odoo14.0/OCA_project-agile"
-        remote="ERPLibre"
+        remote="ERPLibre_origin_OCA"
         revision="14.0_dev"
         groups="addons,odoo14.0"
     />
