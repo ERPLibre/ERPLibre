@@ -689,6 +689,9 @@ class TODO:
         elif new_window:
             commande = self.cmd_source_default % commande
 
+        print("Execute command :")
+        print(commande)
+
         try:
             process = subprocess.Popen(
                 commande,
@@ -732,9 +735,9 @@ class TODO:
         if humanize:
             duration_delta = datetime.timedelta(seconds=duration_sec)
             humain_time = humanize.precisedelta(duration_delta)
-            print(f"Execute ({humain_time}) : \n")
+            print(f"Executed ({humain_time}) :")
         else:
-            print(f"Execute ({duration_sec:.2f} sec.) : \n")
+            print(f"Executed ({duration_sec:.2f} sec.) :")
         print(commande)
         return return_status
 
