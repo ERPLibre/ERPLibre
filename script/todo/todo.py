@@ -692,6 +692,7 @@ class TODO:
         new_window=False,
         single_source_odoo=False,
         source_odoo="",
+        new_env=None,
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -699,6 +700,10 @@ class TODO:
         Args:
             commande (str): La commande à exécuter (sous forme de chaîne de caractères).
         """
+
+        my_env = os.environ.copy()
+        if new_env:
+            my_env.update(new_env)
 
         process_start_time = time.time()
         return_status = None
@@ -737,6 +742,7 @@ class TODO:
                 text=True,
                 bufsize=1,  # Désactive la mise en tampon pour la sortie en direct
                 universal_newlines=True,  # Pour traiter les sauts de lignes correctement
+                env=my_env,
             )
 
             while True:

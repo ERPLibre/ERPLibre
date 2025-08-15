@@ -133,9 +133,15 @@ class TodoUpgrade:
         print("✅ -> Find good environment, read the .zip file")
         filename_odoo_version = ".odoo-version"
 
-        if os.path.exists(filename_odoo_version):
+        is_state_4_reach_open_upgrade = self.dct_progression.get(
+            "state_4_reach_open_upgrade"
+        )
+        if not is_state_4_reach_open_upgrade and os.path.exists(
+            filename_odoo_version
+        ):
             with open(filename_odoo_version, "r") as f:
                 actual_odoo_version = f.readline().strip()
+            # TODO and don't switch if ready to upgrade (after first duplicate BD)
             if actual_odoo_version != odoo_actual_version:
                 print(
                     f"⧖ -> Was odoo'{actual_odoo_version}', Switch to odoo.'{odoo_actual_version}'"
@@ -333,10 +339,18 @@ class TodoUpgrade:
             self.write_config()
 
         print("🔷4- Upgrade version with OpenUpgrade")
+        self.dct_progression["state_4_reach_open_upgrade"] = True
+        self.write_config()
         lst_next_version = [
             a for a in range(start_version + 1, end_version + 1)
         ]
+        lst_database_name_upgrade = [
+            f"{database_name}_upgrade_{str(15)}" for a in lst_next_version
+        ]
         # Setup lst_switch_odoo
+        lst_clone_odoo = self.dct_progression.get(
+            "state_4_clone_odoo_lst", [False] * len(lst_next_version)
+        )
         lst_switch_odoo = self.dct_progression.get(
             "state_4_switch_odoo_lst", [False] * len(lst_next_version)
         )
@@ -356,7 +370,13 @@ class TodoUpgrade:
         if nb_missing_value_upgrade_odoo:
             lst_upgrade_odoo += [[]] * nb_missing_value_upgrade_odoo
 
+        database_name_upgrade = None
         for index, next_version in enumerate(lst_next_version):
+            if not database_name_upgrade:
+                last_database_name = database_name
+            else:
+                last_database_name = database_name_upgrade
+            database_name_upgrade = lst_database_name_upgrade[index]
             if not lst_switch_odoo[index]:
                 print(f"⧖ -> Switch to odoo.'{next_version}'")
                 status = self.todo.executer_commande_live(
@@ -371,6 +391,24 @@ class TodoUpgrade:
                 print(f"✅ -> Switch Odoo{next_version} done with update")
             else:
                 print(f"✅ -> Switch Odoo{next_version} - nothing")
+
+            if not lst_clone_odoo[index]:
+                print(
+                    f"⧖ -> Clone to odoo.'{next_version}', from '{database_name}' to '{database_name_upgrade}'."
+                )
+                # Duplicate database
+                cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
+                status = self.todo.executer_commande_live(
+                    cmd_clone_database,
+                    source_erplibre=False,
+                )
+                lst_clone_odoo[index] = True
+                self.dct_progression["state_4_clone_odoo_lst"] = lst_clone_odoo
+                self.write_config()
+                print(f"✅ -> Clone Odoo{next_version} done")
+            else:
+                print(f"✅ -> Clone Odoo{next_version} - nothing")
+
             if not lst_upgrade_odoo[index]:
                 # The technique change at version 14
                 # TODO generate ./config.conf for migration context
@@ -383,14 +421,15 @@ class TodoUpgrade:
                     f"💬 A migration bug, please add addons_path into config.conf : '{path_addons_openupgrade}' press to continue : "
                 ).strip()
                 if next_version <= 13:
-                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name}"
+                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d {database_name}"
+                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
                 status = self.todo.executer_commande_live(
                     cmd_upgrade,
                     source_erplibre=False,
+                    env={"OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"},
                 )
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
