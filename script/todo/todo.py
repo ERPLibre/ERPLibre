@@ -350,9 +350,7 @@ class TODO:
         odoo_version_input = ""
         while odoo_version_input not in dct_cmd_intern.keys():
             if odoo_version_input:
-                print(
-                    f"Error, cannot understand value '{odoo_version_input}'"
-                )
+                print(f"Error, cannot understand value '{odoo_version_input}'")
             str_input_dyn_odoo_version = (
                 "💬 Choose a version:\n\t"
                 + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
@@ -671,11 +669,17 @@ class TODO:
         return lst_value
 
     def prompt_execute_selenium_and_run_db(self, bd, extra_cmd_web_login=""):
-        cmd = (
-            f'parallel ::: "./run.sh -d {bd}" "sleep'
-            f' 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
+        # cmd = (
+        #     f'parallel ::: "./run.sh -d {bd}" "sleep'
+        #     f' 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
+        # )
+        # self.executer_commande_live(cmd)
+        cmd_server = f"./run.sh -d {bd};bash"
+        self.executer_commande_live(cmd_server)
+        cmd_client = (
+            f"sleep 3;./script/selenium/web_login.py{extra_cmd_web_login};bash"
         )
-        self.executer_commande_live(cmd)
+        self.executer_commande_live(cmd_client)
 
     def prompt_execute_selenium(self, command=None, extra_cmd_web_login=""):
         lst_cmd = []
