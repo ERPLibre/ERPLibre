@@ -24,7 +24,7 @@ VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 ADDONS_PATH = os.path.join("addons")
-ODOO_PATH = os.path.join(".", "odoo")
+# ODOO_PATH = os.path.join(".", "odoo%s")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -354,20 +354,27 @@ class Update:
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
         # Validate Odoo repo
-        status &= self.update_link_file(
-            "Odoo repository",
-            ODOO_PATH,
-            self.expected_odoo_path,
-            is_directory=True,
-            do_delete_source=True,
-        )
+        # status &= self.update_link_file(
+        #     "Odoo repository",
+        #     ODOO_PATH,
+        #     self.expected_odoo_path,
+        #     is_directory=True,
+        #     do_delete_source=True,
+        # )
         # Validate Git repo
-        status &= self.update_link_file(
-            "Git repositories",
-            MANIFEST_FILE_PATH,
-            self.expected_manifest_path,
-            do_delete_source=True,
-        )
+        # status &= self.update_link_file(
+        #     "Git repositories",
+        #     MANIFEST_FILE_PATH,
+        #     self.expected_manifest_path,
+        #     do_delete_source=True,
+        # )
+        # status &= self.update_link_file(
+        #     "Pip requirement.txt",
+        #     PIP_REQUIREMENT_FILE,
+        #     self.expected_pip_requirement_path,
+        #     do_delete_source=True,
+        # )
+        # TODO need to remove this from architecture
         # Validate Poetry and pip
         status &= self.update_link_file(
             "Poetry project toml",
@@ -381,12 +388,6 @@ class Update:
             self.expected_poetry_lock_path,
             do_delete_source=True,
         )
-        # status &= self.update_link_file(
-        #     "Pip requirement.txt",
-        #     PIP_REQUIREMENT_FILE,
-        #     self.expected_pip_requirement_path,
-        #     do_delete_source=True,
-        # )
         status &= self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,

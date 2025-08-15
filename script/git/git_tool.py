@@ -438,15 +438,20 @@ class GitTool:
             # groups = repo.get("group")
             update_repo = repo.get("path")
             # Use variable instead of hardcoded path
-            if update_repo.startswith("addons.odoo"):
+            if update_repo.startswith(f"{filter_group}/addons"):
                 lst_path = update_repo.split("/", 1)
-                update_repo = f"addons.odoo${{EL_ODOO_VERSION}}/" + lst_path[1]
-            str_repo = (
-                f'    printf "${{EL_HOME}}/{update_repo}," >> '
-                '"${EL_CONFIG_FILE}"\n'
-            )
-            # Ignore repo if not starting by addons
-            if update_repo.startswith("addons"):
+                update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + lst_path[1]
+                # str_repo = (
+                #     f'    printf "${{EL_HOME}}/{update_repo}," >> '
+                #     '"${EL_CONFIG_FILE}"\n'
+                # )
+                str_repo = (
+                    f'    printf "{update_repo}," >> '
+                    '"${EL_CONFIG_FILE}"\n'
+                )
+                # Ignore repo if not starting by addons
+                # if update_repo.startswith("addons"):
+                #     lst_result.append(str_repo)
                 lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()

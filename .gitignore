@@ -18,6 +18,7 @@ addons/*
 addons*/*
 !script/addons
 addons.*
+odoo*/addons
 doc/itpp*
 doc/odoo*
 script/OCA*
