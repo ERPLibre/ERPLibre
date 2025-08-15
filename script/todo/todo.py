@@ -296,92 +296,92 @@ class TODO:
                     "Close Pycharm when processing is done before continue"
                     " this guide."
                 )
-        # Propose Odoo installation
         # TODO detect last version supported
-        odoo_installation_input = (
-            input("💬 Install virtual environment? (Y/N): ").strip().lower()
+        # cmd_intern = "./script/install/install_erplibre.sh"
+        # TODO maybe update q to only install erplibre from install_locally
+        # TODO problem installing with q, the script depend on odoo
+        key_i = 0
+        dct_cmd_intern_begin = {
+            "q": (
+                "q",
+                "q: ERPLibre only with system python without Odoo",
+                "./script/install/install_erplibre.sh",
+            ),
+            "w": (
+                "w",
+                "w: Install all Odoo version with ERPLibre",
+                "make install_odoo_all_version",
+            ),
+            "0": (
+                "0",
+                "0: Quitter",
+            ),
+        }
+        dct_final_cmd_intern = {}
+        lst_version, lst_version_installed, odoo_installed_version = (
+            self.get_odoo_version()
         )
-        if odoo_installation_input == "y":
-            # cmd_intern = "./script/install/install_erplibre.sh"
-            # TODO maybe update q to only install erplibre from install_locally
-            # TODO problem installing with q, the script depend on odoo
-            key_i = 0
-            dct_cmd_intern_begin = {
-                "q": (
-                    "q",
-                    "q: ERPLibre only with system python without Odoo",
-                    "./script/install/install_erplibre.sh",
-                ),
-                "w": (
-                    "w",
-                    "w: Install all Odoo version with ERPLibre",
-                    "make install_odoo_all_version",
-                ),
-            }
-            dct_final_cmd_intern = {}
-            lst_version, lst_version_installed, odoo_installed_version = (
-                self.get_odoo_version()
+
+        for dct_version in lst_version[::-1]:
+            key_i += 1
+            key_s = str(key_i)
+            label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
+
+            odoo_version = f"odoo{dct_version.get('odoo_version')}"
+            if odoo_version in lst_version_installed:
+                label += " - Installed"
+            if odoo_version == odoo_installed_version:
+                label += " - Actual"
+            if dct_version.get("default"):
+                label += " - Default"
+            if dct_version.get("is_deprecated"):
+                label += " - Deprecated"
+            erplibre_version = dct_version.get("erplibre_version")
+            dct_cmd_intern_begin[key_s] = (
+                key_s,
+                label,
+                f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
             )
 
-            for dct_version in lst_version[::-1]:
-                key_i += 1
-                key_s = str(key_i)
-                label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
+        # Add final command
+        dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
 
-                odoo_version = f"odoo{dct_version.get('odoo_version')}"
-                if odoo_version in lst_version_installed:
-                    label += " - Installed"
-                if odoo_version == odoo_installed_version:
-                    label += " - Actual"
-                if dct_version.get("default"):
-                    label += " - Default"
-                if dct_version.get("is_deprecated"):
-                    label += " - Deprecated"
-                erplibre_version = dct_version.get("erplibre_version")
-                dct_cmd_intern_begin[key_s] = (
-                    key_s,
-                    label,
-                    f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
-                )
-
-            # Add final command
-            dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
-
-            # Show command
-            odoo_version_input = ""
-            while odoo_version_input not in dct_cmd_intern.keys():
-                if odoo_version_input:
-                    print(
-                        f"Error, cannot understand value '{odoo_version_input}'"
-                    )
-                str_input_dyn_odoo_version = (
-                    "💬 Choose a version:\n\t"
-                    + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
-                    + "\nSelect : "
-                )
-                odoo_version_input = (
-                    input(str_input_dyn_odoo_version).strip().lower()
-                )
-
-            cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
-            print(f"Will execute :\n{cmd_intern}")
-
-            # TODO use external script to detect terminal to use on system
-            # TODO check script open_terminal_code_generator.sh
-            # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
-            try:
-                subprocess.run(
-                    cmd_intern, shell=True, executable="/bin/bash", check=True
-                )
-            except subprocess.CalledProcessError as e:
+        # Show command
+        odoo_version_input = ""
+        while odoo_version_input not in dct_cmd_intern.keys():
+            if odoo_version_input:
                 print(
-                    f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}."
+                    f"Error, cannot understand value '{odoo_version_input}'"
                 )
-                print("Wait after installation and open projects by terminal.")
-                print("make open_terminal")
-                self.restart_script(str(e))
-        else:
-            print("Nothing to do, you need a fresh installation to continue.")
+            str_input_dyn_odoo_version = (
+                "💬 Choose a version:\n\t"
+                + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
+                + "\nSelect : "
+            )
+            odoo_version_input = (
+                input(str_input_dyn_odoo_version).strip().lower()
+            )
+
+        if odoo_version_input == "0":
+            return
+
+        cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
+        print(f"Will execute :\n{cmd_intern}")
+
+        # TODO use external script to detect terminal to use on system
+        # TODO check script open_terminal_code_generator.sh
+        # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
+        try:
+            subprocess.run(
+                cmd_intern, shell=True, executable="/bin/bash", check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(
+                f"Le script Bash «{cmd_intern}» a échoué avec le code de retour {e.returncode}."
+            )
+            print("Wait after installation and open projects by terminal.")
+            print("make open_terminal")
+            self.restart_script(str(e))
 
     def execute_from_configuration(
         self, dct_instance, exec_run_db=False, ignore_makefile=False
