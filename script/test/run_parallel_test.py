@@ -436,7 +436,7 @@ async def test_exec(
                 s_lst_path_tested_module = (
                     await lib_asyncio.run_command_get_output(
                         "find",
-                        f"./addons.odoo{ODOO_VERSION}/",
+                        f"./odoo{ODOO_VERSION}/addons/",
                         "-name",
                         module_name,
                     )
@@ -453,7 +453,7 @@ async def test_exec(
                         s_lst_path_tested_module.strip().split("\n")
                     )
                     s_first_path = lst_path_tested_module[0]
-                    # parent_dir = os.path.dirname(s_first_path).replace("addons/", f"addons.odoo{ODOO_VERSION}/")
+                    # parent_dir = os.path.dirname(s_first_path).replace("addons/", f"odoo{ODOO_VERSION}/addons/")
                     parent_dir = os.path.dirname(s_first_path)
                     # Copy it
                     if copy_path != parent_dir:
@@ -798,7 +798,7 @@ def check_git_change():
     task_list = [
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
-            f"./addons.odoo{ODOO_VERSION}/TechnoLibre_odoo-code-generator-template",
+            f"./odoo{ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template",
             test_name=(
                 "Init check_git_change"
                 " TechnoLibre_odoo-code-generator-template"
@@ -806,7 +806,7 @@ def check_git_change():
         ),
         run_command(
             "./script/code_generator/check_git_change_code_generator.sh",
-            f"./addons.odoo{ODOO_VERSION}/OCA_server-tools",
+            f"./odoo{ODOO_VERSION}/addons/OCA_server-tools",
             test_name="Init check_git_change OCA_server-tools",
         ),
     ]
@@ -846,7 +846,7 @@ def run_all_test(config) -> bool:
             continue
         # Force change addons path
         # if "path_module_check" in dct_test.keys():
-        #     # dct_test["path_module_check"] = dct_test["path_module_check"].replace("addons/", f"addons.odoo{ODOO_VERSION}/")
+        #     # dct_test["path_module_check"] = dct_test["path_module_check"].replace("addons/", f"odoo{ODOO_VERSION}/addons/")
         #     dct_test["path_module_check"] = dct_test["path_module_check"]
         sequence = dct_test.get("sequence", 0)
         cb_coroutine = None

@@ -6,11 +6,11 @@ working_path=$(readlink -f .)
 # TODO fix open_terminal.sh
 #paths="${working_path}/
 #${working_path}/
-#${working_path}/addons.odoo${ODOO_VERSION}/ERPLibre_erplibre_addons
-#${working_path}/addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator
-#${working_path}/addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator-template"
+#${working_path}/odoo${ODOO_VERSION}/addons/ERPLibre_erplibre_addons
+#${working_path}/odoo${ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator
+#${working_path}/odoo${ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template"
 #
-##  "${working_path}/addons.odoo${ODOO_VERSION}/OCA_server-tools"
+##  "${working_path}/odoo${ODOO_VERSION}/addons/OCA_server-tools"
 #
 #cmd="git status"
 ##echo "${paths}"
@@ -19,10 +19,10 @@ working_path=$(readlink -f .)
 paths=(
   "${working_path}/"
   "${working_path}/"
-  "${working_path}/addons.odoo${ODOO_VERSION}/ERPLibre_erplibre_addons"
-  "${working_path}/addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator"
-  "${working_path}/addons.odoo${ODOO_VERSION}/TechnoLibre_odoo-code-generator-template"
-#  "${working_path}/addons.odoo${ODOO_VERSION}/OCA_server-tools"
+  "${working_path}/odoo${ODOO_VERSION}/addons/ERPLibre_erplibre_addons"
+  "${working_path}/odoo${ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator"
+  "${working_path}/odoo${ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template"
+#  "${working_path}/odoo${ODOO_VERSION}/addons/OCA_server-tools"
 
 )
 

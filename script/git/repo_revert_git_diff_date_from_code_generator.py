@@ -47,7 +47,7 @@ def get_config():
     )
     parser.add_argument(
         "--repo",
-        default=f"./addons.odoo{ODOO_VERSION}/TechnoLibre_odoo-code-generator-template;./addons.odoo{ODOO_VERSION}/OCA_server-tools",
+        default=f"./odoo{ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template;./odoo{ODOO_VERSION}/addons/OCA_server-tools",
     )
     args = parser.parse_args()
     return args

@@ -76,7 +76,7 @@ RUN cd $ODOO_PREFIX && \
 # Create link to addons
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    ln -s "addons.odoo${ODOO_VERSION}" addons
+    ln -s "odoo${ODOO_VERSION}/addons" addons
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \

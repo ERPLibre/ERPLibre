@@ -39,7 +39,7 @@ PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
-ADDONS_TEMPLATE_FILE = "addons.odoo%s"
+ADDONS_TEMPLATE_FILE = "odoo%s/addons"
 ODOO_TEMPLATE_FILE = "odoo%s"
 ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
