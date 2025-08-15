@@ -566,11 +566,11 @@ class TODO:
 
     def prompt_execute_doc(self):
         print("🤖 Vous cherchez de la documentation?")
-        lst_instance = []
-        dct_description_fix = {
-            "prompt_description": "Migration module coverage"
-        }
-        lst_instance.append(dct_description_fix)
+        lst_instance = [
+            {"prompt_description": "Migration module coverage"},
+            {"prompt_description": "What change between version"},
+            {"prompt_description": "OCA guidelines"},
+        ]
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -578,22 +578,37 @@ class TODO:
             print()
             if status == "0":
                 return False
-            else:
-                cmd_no_found = True
+            elif status == "1":
+                str_version = input(
+                    "Select version to upgrade Odoo CE (5-17) : "
+                )
                 try:
-                    int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
-                        cmd_no_found = False
-                        str_version = input("Select version to upgrade Odoo CE (5-17) : ")
-                        try:
-                            int_version = int(str_version)
-                            print(f"https://oca.github.io/OpenUpgrade/coverage_analysis/modules{int_version * 10}-{(int_version + 1) * 10}.html")
-                        except ValueError:
-                            print("https://oca.github.io/OpenUpgrade/030_coverage_analysis.html")
+                    int_version = int(str_version)
+                    print(
+                        "https://oca.github.io/OpenUpgrade/coverage_analysis/modules"
+                        f"{int_version * 10}-{(int_version + 1) * 10}.html"
+                    )
                 except ValueError:
-                    pass
-                if cmd_no_found:
-                    print("Commande non trouvée 🤖!")
+                    print(
+                        "https://oca.github.io/OpenUpgrade/030_coverage_analysis.html"
+                    )
+            elif status == "2":
+                str_version = input(
+                    "Select version to show what change for Odoo CE version 8-18) : "
+                )
+                try:
+                    int_version = int(str_version)
+                    print(
+                        f"https://github.com/OCA/maintainer-tools/wiki/Migration-to-version-{int_version}.0"
+                    )
+                except ValueError:
+                    print("https://github.com/OCA/maintainer-tools/wiki")
+            elif status == "3":
+                print(
+                    "https://github.com/OCA/odoo-community.org/blob/master/website/Contribution/CONTRIBUTING.rst"
+                )
+            else:
+                print("Commande non trouvée 🤖!")
 
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
