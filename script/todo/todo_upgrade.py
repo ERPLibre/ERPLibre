@@ -409,6 +409,71 @@ class TodoUpgrade:
             else:
                 print(f"✅ -> Clone Odoo{next_version} - nothing")
 
+            # TODO Searching module
+            #  search addons/addons
+            #  search read manifest and detect branch difference, manifest into private?
+            #  Extract module name and run migration to another list
+            #  Maybe check if already exist and show list or continue with overwrite
+            #  Expliquer pourquoi on ne fait pas le oca-port, c'est
+
+            dct_module_result = self.search_module_to_move(
+                next_version - 1, next_version
+            )
+
+            # TODO code migration
+            #  git stash
+            #  call odoo-module-migrate, without commit
+
+            source_module_path = dct_module_result.get("source_module_path")
+            if not source_module_path:
+                _logger.error("Missing source module path ??")
+            else:
+                os.system(f"cd '{source_module_path}' && git stash && cd -")
+
+            target_module_path = dct_module_result.get("target_module_path")
+            if not target_module_path:
+                _logger.error("Missing target module path ??")
+            else:
+                os.system(f"cd '{target_module_path}' && git stash && cd -")
+
+            has_cmd = False
+            cmd_parallel = "parallel :::"
+            for dct_module in dct_module_result.get("lst_module"):
+                source_addons_path = dct_module.get("source_addons_path")
+                module_name = dct_module.get("module_name")
+                source_version_odoo = (
+                    f'{dct_module.get("source_version_odoo")}.0'
+                )
+                target_version_odoo = (
+                    f'{dct_module.get("target_version_odoo")}.0'
+                )
+                source_module_path_to_copy = dct_module.get(
+                    "source_module_path"
+                )
+                target_module_path_to_copy = dct_module.get(
+                    "target_addons_path"
+                )
+                cmd_migration = (f"odoo-module-migrate --directory ./{source_addons_path} --modules {module_name} --init-version-name {source_version_odoo} --target-version-name {target_version_odoo} --no-commit && "
+                                 f"cp -r {source_module_path_to_copy} {target_module_path_to_copy}")
+                cmd_parallel += f' "{cmd_migration}"'
+                has_cmd = True
+
+            if has_cmd:
+                status = self.todo.executer_commande_live(
+                    cmd_parallel,
+                    source_erplibre=False,
+                )
+
+            source_module_path = dct_module_result.get("source_module_path")
+            if not source_module_path:
+                _logger.error("Missing source module path ??")
+            else:
+                os.system(f"cd '{source_module_path}' && git stash && cd -")
+            #
+            # TODO copie to next odoo version
+            #  do commit and continue
+            #  continue migration to loop
+
             if not lst_upgrade_odoo[index]:
                 # The technique change at version 14
                 # TODO generate ./config.conf for migration context
@@ -429,7 +494,7 @@ class TodoUpgrade:
                 status = self.todo.executer_commande_live(
                     cmd_upgrade,
                     source_erplibre=False,
-                    env={"OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"},
+                    new_env={"OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"},
                 )
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
@@ -450,3 +515,72 @@ class TodoUpgrade:
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
         print("")
+
+    def search_module_to_move(self, source_version_odoo, target_version_odoo):
+        lst_module = []
+        # lst_path_to_check = [
+        #     os.path.join(f"odoo{actual_version_odoo}", "addons"),
+        #     os.path.join(f"odoo{target_version_odoo}", "addons"),
+        #     os.path.join(f"private", "addons"),
+        # ]
+        source_path_to_check = os.path.join(
+            f"odoo{source_version_odoo}.0", "addons", "addons"
+        )
+        target_path_to_check = os.path.join(
+            f"odoo{target_version_odoo}.0", "addons", "addons"
+        )
+
+        # Search
+        is_moving_git = False
+        if os.path.exists(source_path_to_check):
+            if os.path.exists(os.path.join(source_path_to_check, ".git")):
+                is_moving_git = True
+            if not os.path.exists(target_path_to_check):
+                shutil.copytree(source_path_to_check, target_path_to_check)
+                # if not is_moving_git:
+                #     os.mkdir(path_to_check_target)
+                # else:
+                #     # TODO clone
+                #     pass
+
+            if not is_moving_git:
+                # TODO do something
+                # Time to compare
+                os.listdir(source_path_to_check)
+
+        if os.path.exists(target_path_to_check):
+            for dir_name in os.listdir(target_path_to_check):
+                source_module_path = os.path.join(
+                    source_path_to_check, dir_name
+                )
+                source_manifest_path = os.path.join(
+                    source_module_path, "__manifest__.py"
+                )
+
+                target_module_path = os.path.join(
+                    target_path_to_check, dir_name
+                )
+                target_manifest_path = os.path.join(
+                    target_module_path, "__manifest__.py"
+                )
+                if os.path.exists(target_manifest_path):
+                    # TODO remove from list when module already exist in version 15
+                    dct_module = {
+                        "source_module_path": source_module_path,
+                        "source_manifest_path": source_manifest_path,
+                        "source_addons_path": source_path_to_check,
+                        "target_module_path": target_module_path,
+                        "target_manifest_path": target_manifest_path,
+                        "target_addons_path": target_path_to_check,
+                        "module_name": dir_name,
+                        "source_version_odoo": source_version_odoo,
+                        "target_version_odoo": target_version_odoo,
+                    }
+                    lst_module.append(dct_module)
+
+        dct_module = {
+            "lst_module": lst_module,
+            "source_module_path": source_path_to_check,
+            "target_module_path": target_path_to_check,
+        }
+        return dct_module
