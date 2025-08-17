@@ -327,10 +327,14 @@ class TodoUpgrade:
 
         print("✅ -> Neutralize database")
 
-        if self.dct_progression.get("config_state_1_uninstall_module"):
-            uninstall_module = ",".join(
-                self.dct_progression.get("config_state_1_uninstall_module")
-            )
+        config_state_1_uninstall_module = self.dct_progression.get(
+            "config_state_1_uninstall_module"
+        )
+        if (
+            config_state_1_uninstall_module
+            and not is_state_4_reach_open_upgrade
+        ):
+            uninstall_module = ",".join(config_state_1_uninstall_module)
             status, cmd_executed = self.todo.executer_commande_live(
                 f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
                 source_erplibre=False,
@@ -340,7 +344,12 @@ class TodoUpgrade:
             lst_command_executed.append(cmd_executed)
             self.dct_progression["command_executed"] = lst_command_executed
             self.dct_progression["state_1_uninstall_module"] = True
-            self.write_config()
+            # self.write_config()
+
+        self.dct_progression["config_state_1_uninstall_module"] = (
+            config_state_1_uninstall_module
+        )
+        self.write_config()
 
         print("🔷2- Succeed update all addons")
 
@@ -422,6 +431,9 @@ class TodoUpgrade:
         lst_upgrade_odoo = self.dct_progression.get(
             "state_4_upgrade_odoo_lst", [[]] * len(lst_next_version)
         )
+        lst_fix_migration_odoo = self.dct_progression.get(
+            "state_4_fix_migration_odoo_lst", [[]] * len(lst_next_version)
+        )
         nb_missing_value_upgrade_odoo = abs(
             len(lst_upgrade_odoo) - len(lst_next_version)
         )
@@ -459,6 +471,15 @@ class TodoUpgrade:
                 print(
                     f"⧖ -> Clone to odoo.'{next_version}', from '{database_name}' to '{database_name_upgrade}'."
                 )
+                # Delete if exist database
+                status, cmd_executed = self.todo.executer_commande_live(
+                    f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
+                    source_erplibre=False,
+                    return_status_and_command=True,
+                )
+                lst_command_executed.append(cmd_executed)
+                self.dct_progression["command_executed"] = lst_command_executed
+
                 # Duplicate database
                 cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
                 status, cmd_executed = self.todo.executer_commande_live(
@@ -590,6 +611,7 @@ class TodoUpgrade:
                 if not target_module_path:
                     _logger.error("Missing target module path ??")
                 else:
+                    # TODO check if has file to commit
                     status, cmd_executed = self.todo.executer_commande_live(
                         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate)} modules: Migration to {next_version}' && cd -",
                         source_erplibre=False,
@@ -614,6 +636,38 @@ class TodoUpgrade:
             else:
                 print(f"✅ -> Module upgrade Odoo{next_version} - nothing")
 
+            if not lst_fix_migration_odoo[index]:
+                print("")
+                file_path_fix_migration = os.path.join(
+                    "script",
+                    "odoo",
+                    "migration",
+                    f"fix_migration_odoo{(next_version-1)*10}.0_to_odoo{next_version*10}.0.py",
+                )
+                if os.path.exists(file_path_fix_migration):
+                    status, cmd_executed = self.todo.executer_commande_live(
+                        f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
+                        source_erplibre=False,
+                        single_source_odoo=True,
+                        return_status_and_command=True,
+                    )
+                    lst_command_executed.append(cmd_executed)
+                    self.dct_progression["command_executed"] = (
+                        lst_command_executed
+                    )
+                    lst_fix_migration_odoo[index] = file_path_fix_migration
+                    self.dct_progression["state_4_fix_migration_odoo_lst"] = (
+                        lst_fix_migration_odoo
+                    )
+                    self.write_config()
+                    print(f"✅ -> Fix migration Odoo{next_version} done")
+                else:
+                    print(
+                        f"✅ -> Fix migration Odoo{next_version} - no fix to execute"
+                    )
+            else:
+                print(f"✅ -> Fix migration Odoo{next_version} - nothing")
+
             if not lst_upgrade_odoo[index]:
                 # The technique change at version 14
                 # TODO generate ./config.conf for migration context
@@ -622,13 +676,14 @@ class TodoUpgrade:
                 path_addons_openupgrade = os.path.join(
                     os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
                 )
+                print("🚸 Please, validate commits after code migration.")
                 status = input(
                     f"💬 A migration bug, please add addons_path into config.conf : '{path_addons_openupgrade}' press to continue : "
                 ).strip()
                 if next_version <= 13:
                     cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all --stop-after-init --load=base,web,openupgrade_framework -d {database_name_upgrade}"
+                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
                 status, cmd_executed = self.todo.executer_commande_live(
