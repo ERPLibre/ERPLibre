@@ -712,6 +712,7 @@ class TODO:
         single_source_odoo=False,
         source_odoo="",
         new_env=None,
+        return_status_and_command=False,
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -799,6 +800,9 @@ class TODO:
         else:
             print(f"Executed ({duration_sec:.2f} sec.) :")
         print(commande)
+        if return_status_and_command:
+            return return_status, commande
+
         return return_status
 
     def crash_diagnostic(self, e):
