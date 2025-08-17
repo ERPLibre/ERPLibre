@@ -55,6 +55,11 @@ SUGGESTION
         action="store_true",
         help="Ignore creating _cache_ when restoring.",
     )
+    parser.add_argument(
+        "--only_drop",
+        action="store_true",
+        help="Will only drop database if exist.",
+    )
     args = parser.parse_args()
     return args
 
@@ -127,6 +132,8 @@ def main():
             arg = f"{arg_base} --drop --database {config.database}"
             out = check_output(arg.split(" ")).decode()
             print(out)
+        if config.only_drop:
+            return
         # Check cache exist
         if cache_database not in lst_db_cache and not config.ignore_cache:
             _logger.info(
