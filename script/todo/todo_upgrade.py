@@ -410,6 +410,10 @@ class TodoUpgrade:
         lst_module_migrate_odoo = self.dct_progression.get(
             "state_4_module_migrate_odoo_lst", [False] * len(lst_next_version)
         )
+        lst_module_uninstall_module = self.dct_progression.get(
+            "state_4_uninstall_module", [False] * len(lst_next_version)
+        )
+
         nb_missing_value_switch_odoo = abs(
             len(lst_switch_odoo) - len(lst_next_version)
         )
@@ -438,6 +442,22 @@ class TodoUpgrade:
             database_name_upgrade = lst_database_name_upgrade[index]
 
             if not lst_clone_odoo[index]:
+                # Validate version of
+                _, _, odoo_installed_version_now = self.todo.get_odoo_version()
+                last_version = next_version - 1
+                if f"odoo{last_version}.0" != odoo_installed_version_now:
+                    print(f"⧖ -> Switch to odoo.'{last_version}'")
+                    status, cmd_executed = self.todo.executer_commande_live(
+                        f"make switch_odoo_{last_version}",
+                        source_erplibre=False,
+                        return_status_and_command=True,
+                    )
+                    lst_command_executed.append(cmd_executed)
+                    self.dct_progression["command_executed"] = (
+                        lst_command_executed
+                    )
+                    self.write_config()
+
                 print(
                     f"⧖ -> Clone to odoo.'{next_version}', from '{database_name}' to '{database_name_upgrade}'."
                 )
@@ -459,6 +479,43 @@ class TodoUpgrade:
                 print(f"✅ -> Clone Odoo{next_version} done")
             else:
                 print(f"✅ -> Clone Odoo{next_version} - nothing")
+
+            config_state_4_uninstall_module = self.dct_progression.get(
+                "config_state_4_uninstall_module",
+                [False] * len(lst_next_version),
+            )
+
+            if not lst_module_uninstall_module[index]:
+                lst_module_to_uninstall = config_state_4_uninstall_module[
+                    index
+                ]
+
+                if lst_module_to_uninstall:
+                    uninstall_module = ",".join(lst_module_to_uninstall)
+                    status, cmd_executed = self.todo.executer_commande_live(
+                        f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
+                        source_erplibre=False,
+                        single_source_odoo=True,
+                        return_status_and_command=True,
+                    )
+                    lst_command_executed.append(cmd_executed)
+                    self.dct_progression["command_executed"] = (
+                        lst_command_executed
+                    )
+                    lst_module_uninstall_module[index] = True
+                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
+                        lst_module_uninstall_module
+                    )
+                    lst_module_uninstall_module[index] = True
+                    # self.write_config()
+
+            self.dct_progression["config_state_4_uninstall_module"] = (
+                config_state_4_uninstall_module
+            )
+            self.dct_progression["state_4_uninstall_module"] = (
+                lst_module_uninstall_module
+            )
+            self.write_config()
 
             if not lst_switch_odoo[index]:
                 print(f"⧖ -> Switch to odoo.'{next_version}'")
@@ -622,17 +679,23 @@ class TodoUpgrade:
                 print(f"✅ -> Fix migration Odoo{next_version} - nothing")
 
             if not lst_upgrade_odoo[index]:
-                # The technique change at version 14
-                # TODO generate ./config.conf for migration context
-                # TODO add path odoo.addons.openupgrade_framework
                 # []/odoo15.0/OCA_OpenUpgrade
                 path_addons_openupgrade = os.path.join(
                     os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
                 )
+
+                # Update config with OCA_OpenUpgrade
+                cmd_update_config = f"./script/git/git_repo_update_group.py --extra-addons-path {path_addons_openupgrade} && ./script/generate_config.sh"
+                self.todo_upgrade_execute(
+                    cmd_update_config,
+                    lst_command_executed,
+                )
+
                 print("🚸 Please, validate commits after code migration.")
                 status = input(
-                    f"💬 A migration bug, please add addons_path into config.conf : '{path_addons_openupgrade}' press to continue : "
+                    f"💬 Please validate this path into config.conf : '{path_addons_openupgrade}' press to continue : "
                 ).strip()
+                # The technique change at version 14
                 if next_version <= 13:
                     cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name_upgrade}"
                 else:
@@ -652,6 +715,13 @@ class TodoUpgrade:
                 )
                 self.write_config()
                 print(f"✅ -> Database upgrade Odoo{next_version} done")
+
+                # Update config without OCA_OpenUpgrade
+                cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
+                self.todo_upgrade_execute(
+                    cmd_update_config,
+                    lst_command_executed,
+                )
             else:
                 print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
 
