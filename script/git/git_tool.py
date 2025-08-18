@@ -419,7 +419,9 @@ class GitTool:
         if url:
             webbrowser.open_new_tab(url)
 
-    def generate_generate_config(self, repo_path="./", filter_group=None):
+    def generate_generate_config(
+        self, repo_path="./", filter_group=None, extra_path=None
+    ):
         filename_locally = f"{repo_path}script/generate_config.sh"
         if not filter_group:
             filter_group = self.odoo_version_long
@@ -446,12 +448,18 @@ class GitTool:
                 #     '"${EL_CONFIG_FILE}"\n'
                 # )
                 str_repo = (
-                    f'    printf "{update_repo}," >> '
-                    '"${EL_CONFIG_FILE}"\n'
+                    f'    printf "{update_repo}," >> ' '"${EL_CONFIG_FILE}"\n'
                 )
                 # Ignore repo if not starting by addons
                 # if update_repo.startswith("addons"):
                 #     lst_result.append(str_repo)
+                lst_result.append(str_repo)
+        if extra_path:
+            for each_extra_path in extra_path.strip().split(","):
+                str_repo = (
+                    f'    printf "{each_extra_path}," >> '
+                    '"${EL_CONFIG_FILE}"\n'
+                )
                 lst_result.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()

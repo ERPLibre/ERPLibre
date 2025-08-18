@@ -42,6 +42,11 @@ def get_config():
         default="",
         help="Prod by default, use 'dev' for manifest/default.dev.xml",
     )
+    parser.add_argument(
+        "--extra-addons-path",
+        default="",
+        help="Separate by , to add extra path for config addons_path",
+    )
     args = parser.parse_args()
     return args
 
@@ -52,7 +57,9 @@ def main():
 
     filter_group = config.group if config.group else None
 
-    git_tool.generate_generate_config(filter_group=filter_group)
+    git_tool.generate_generate_config(
+        filter_group=filter_group, extra_path=config.extra_addons_path
+    )
 
 
 if __name__ == "__main__":
