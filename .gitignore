@@ -13,17 +13,17 @@ coverage*
 
 private
 .repo
-addons
 !addons/
 addons/*
 addons*/*
 !script/addons
 addons.*
+odoo*/addons/addons
 odoo*/addons
+odoo*/odoo
 doc/itpp*
 doc/odoo*
 script/OCA*
-odoo
 odoo*/OCA_OpenUpgrade
 odoo*/odoo_documentation-user
 image_db

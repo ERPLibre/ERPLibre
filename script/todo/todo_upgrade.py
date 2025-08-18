@@ -330,26 +330,45 @@ class TodoUpgrade:
         config_state_1_uninstall_module = self.dct_progression.get(
             "config_state_1_uninstall_module"
         )
-        if (
-            config_state_1_uninstall_module
-            and not is_state_4_reach_open_upgrade
-        ):
-            uninstall_module = ",".join(config_state_1_uninstall_module)
-            status, cmd_executed = self.todo.executer_commande_live(
-                f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
-                source_erplibre=False,
-                single_source_odoo=True,
-                return_status_and_command=True,
+
+        if not is_state_4_reach_open_upgrade:
+            lst_module_to_uninstall = []
+            uninstall_module_list_file = os.path.join(
+                "script",
+                "odoo",
+                "migration",
+                f"uninstall_module_list_odoo{start_version * 10}_to_odoo{(start_version + 1) * 10}.txt",
             )
-            lst_command_executed.append(cmd_executed)
-            self.dct_progression["command_executed"] = lst_command_executed
-            self.dct_progression["state_1_uninstall_module"] = True
-            # self.write_config()
+            if os.path.exists(uninstall_module_list_file):
+                with open(uninstall_module_list_file, "r") as f:
+                    lst_module_to_uninstall = [
+                        a.strip() for a in f.readline().split()
+                    ]
+
+            if config_state_1_uninstall_module:
+                lst_module_to_uninstall = (
+                    lst_module_to_uninstall + config_state_1_uninstall_module
+                )
+
+            if lst_module_to_uninstall:
+                uninstall_module = ",".join(lst_module_to_uninstall)
+                status, cmd_executed = self.todo.executer_commande_live(
+                    f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
+                    source_erplibre=False,
+                    single_source_odoo=True,
+                    return_status_and_command=True,
+                )
+                lst_command_executed.append(cmd_executed)
+                self.dct_progression["command_executed"] = lst_command_executed
+                self.dct_progression["state_1_uninstall_module"] = True
+                # self.write_config()
 
         self.dct_progression["config_state_1_uninstall_module"] = (
             config_state_1_uninstall_module
         )
         self.write_config()
+
+        print("✅ -> Uninstall module")
 
         print("🔷2- Succeed update all addons")
 
@@ -409,7 +428,7 @@ class TodoUpgrade:
             a for a in range(start_version + 1, end_version + 1)
         ]
         lst_database_name_upgrade = [
-            f"{database_name}_upgrade_{str(15)}" for a in lst_next_version
+            f"{database_name}_upgrade_{str(start_version + 1)}" for a in lst_next_version
         ]
         # Setup lst_switch_odoo
         lst_clone_odoo = self.dct_progression.get(
@@ -642,7 +661,7 @@ class TodoUpgrade:
                     "script",
                     "odoo",
                     "migration",
-                    f"fix_migration_odoo{(next_version-1)*10}.0_to_odoo{next_version*10}.0.py",
+                    f"fix_migration_odoo{(next_version-1)*10}_to_odoo{next_version*10}.py",
                 )
                 if os.path.exists(file_path_fix_migration):
                     status, cmd_executed = self.todo.executer_commande_live(
