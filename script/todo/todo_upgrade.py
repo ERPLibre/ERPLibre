@@ -428,7 +428,7 @@ class TodoUpgrade:
             a for a in range(start_version + 1, end_version + 1)
         ]
         lst_database_name_upgrade = [
-            f"{database_name}_upgrade_{str(start_version + 1)}" for a in lst_next_version
+            f"{database_name}_upgrade_{str(a)}" for a in lst_next_version
         ]
         # Setup lst_switch_odoo
         lst_clone_odoo = self.dct_progression.get(
@@ -466,25 +466,6 @@ class TodoUpgrade:
             else:
                 last_database_name = database_name_upgrade
             database_name_upgrade = lst_database_name_upgrade[index]
-            if not lst_switch_odoo[index]:
-                print(f"⧖ -> Switch to odoo.'{next_version}'")
-                status, cmd_executed = self.todo.executer_commande_live(
-                    f"make switch_odoo_{next_version}",
-                    source_erplibre=False,
-                    return_status_and_command=True,
-                )
-                lst_command_executed.append(cmd_executed)
-                self.dct_progression["command_executed"] = lst_command_executed
-                self.write_config()
-
-                lst_switch_odoo[index] = True
-                self.dct_progression["state_4_switch_odoo_lst"] = (
-                    lst_switch_odoo
-                )
-                self.write_config()
-                print(f"✅ -> Switch Odoo{next_version} done with update")
-            else:
-                print(f"✅ -> Switch Odoo{next_version} - nothing")
 
             if not lst_clone_odoo[index]:
                 print(
@@ -515,6 +496,26 @@ class TodoUpgrade:
                 print(f"✅ -> Clone Odoo{next_version} done")
             else:
                 print(f"✅ -> Clone Odoo{next_version} - nothing")
+
+            if not lst_switch_odoo[index]:
+                print(f"⧖ -> Switch to odoo.'{next_version}'")
+                status, cmd_executed = self.todo.executer_commande_live(
+                    f"make switch_odoo_{next_version}",
+                    source_erplibre=False,
+                    return_status_and_command=True,
+                )
+                lst_command_executed.append(cmd_executed)
+                self.dct_progression["command_executed"] = lst_command_executed
+                self.write_config()
+
+                lst_switch_odoo[index] = True
+                self.dct_progression["state_4_switch_odoo_lst"] = (
+                    lst_switch_odoo
+                )
+                self.write_config()
+                print(f"✅ -> Switch Odoo{next_version} done with update")
+            else:
+                print(f"✅ -> Switch Odoo{next_version} - nothing")
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -553,7 +554,7 @@ class TodoUpgrade:
                     "target_module_path"
                 )
                 if not target_module_path:
-                    _logger.error("Missing target module path ??")
+                    _logger.error(f"Missing target module path '{target_module_path}'")
                 else:
                     status, cmd_executed = self.todo.executer_commande_live(
                         f"cd '{target_module_path}' && git stash && cd -",
@@ -611,7 +612,7 @@ class TodoUpgrade:
                     "source_module_path"
                 )
                 if not source_module_path:
-                    _logger.error("Missing source module path ??")
+                    _logger.error(f"Missing source module path '{source_module_path}'")
                 else:
                     status, cmd_executed = self.todo.executer_commande_live(
                         f"cd '{source_module_path}' && git stash && cd -",
@@ -628,7 +629,7 @@ class TodoUpgrade:
                     "target_module_path"
                 )
                 if not target_module_path:
-                    _logger.error("Missing target module path ??")
+                    _logger.error(f"Missing target module path '{target_module_path}'")
                 else:
                     # TODO check if has file to commit
                     status, cmd_executed = self.todo.executer_commande_live(
