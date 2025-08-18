@@ -25,6 +25,7 @@ googletrans-py==4.0.0
 # Module extra unknown name
 filetype
 PyPDF2
+img2pdf
 
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
