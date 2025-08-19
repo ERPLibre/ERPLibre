@@ -211,6 +211,7 @@ class TODO:
 [3] Mise à jour - Update all developed staging source code
 [4] Code - Outil pour développeur
 [5] Doc - Recherche de documentation
+[6] Database - Outils sur les bases de données
 [0] Retour
 """
         while True:
@@ -236,6 +237,10 @@ class TODO:
                     return
             elif status == "5":
                 status = self.prompt_execute_doc()
+                if status is not False:
+                    return
+            elif status == "6":
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             else:
@@ -608,6 +613,23 @@ class TODO:
             else:
                 print("Commande non trouvée 🤖!")
 
+    def prompt_execute_database(self):
+        print("🤖 Faites des modifications sur les bases de données!")
+        lst_instance = [
+            {"prompt_description": "Download database"},
+        ]
+        help_info = self.fill_help_info(lst_instance)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.download_database_backup_cli()
+            else:
+                print("Commande non trouvée 🤖!")
+
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
             data_version = json.load(txt)
@@ -800,6 +822,7 @@ class TODO:
         else:
             print(f"🏠⬆ Executed ({duration_sec:.2f} sec.) :")
         print(commande)
+        print()
         if return_status_and_command:
             return return_status, commande
 
@@ -909,6 +932,28 @@ class TODO:
 
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
+
+    def download_database_backup_cli(self):
+        database_domain = input("Domain Odoo (ex. https://mondomain.com) :\n")
+        database_name = input("Database name :\n")
+        master_password = getpass.getpass(prompt="Master password : ")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+        default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
+        output_path = input(
+            f"Output path (default: {default_output_path}) :\n"
+        ).strip()
+        if not output_path:
+            output_path = default_output_path
+        cmd = "script/database/download_remote.sh"
+        my_env = os.environ.copy()
+        my_env["MASTER_PWD"] = master_password
+        my_env["DATABASE_NAME"] = database_name
+        my_env["OUTPUT_FILE_PATH"] = output_path
+        my_env["ODOO_URL"] = database_domain
+        status, cmd_executed = self.executer_commande_live(
+            cmd, source_erplibre=False, new_env=my_env
+        )
+        return status, output_path
 
     def restart_script(self, last_error):
         print("Reboot TODO 🤖...")
