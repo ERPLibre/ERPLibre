@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import zipfile
+from uuid import uuid4
 
 import click
 import todo_file_browser
@@ -595,7 +596,7 @@ class TodoUpgrade:
                         "target_addons_path"
                     )
                     cmd_migration = (
-                        f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
+                        f"echo 'odoo_module_migrate {module_name}' && cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
                         f"python -m odoo_module_migrate --directory {len(LST_PATH_OCA_ODOO_MODULE_MIGRATOR) * '../'}{source_addons_path} --modules {module_name} "
                         f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
                         f"--no-commit && cd - && "
@@ -638,7 +639,6 @@ class TodoUpgrade:
                         lst_command_executed,
                     )
 
-                #
                 # TODO copie to next odoo version
                 #  do commit and continue
                 #  continue migration to loop
@@ -647,6 +647,37 @@ class TodoUpgrade:
                     lst_module_migrate_odoo
                 )
                 self.write_config()
+
+                if next_version == 17:
+                    status = input(
+                        f"💬 Please validate repo is ready to run upgrade views_migration_17, press to continue : "
+                    ).strip()
+                    # Apply modification with views_migration_17
+                    has_cmd = False
+                    cmd_serial = ""
+                    cmd_parallel = "parallel :::"
+                    lst_module_to_migrate = dct_module_result.get("lst_module")
+                    for dct_module in lst_module_to_migrate:
+                        database_migration_17_name = (
+                            f"migration_odoo_{next_version}_{str(uuid4())[:6]}"
+                        )
+                        module_name = dct_module.get("module_name")
+                        cmd_migration = (
+                            f"echo 'views_migration_17 {module_name}' && "
+                            f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init"
+                        )
+                        cmd_parallel += f' "{cmd_migration}"'
+                        cmd_serial += f"{cmd_migration};"
+                        has_cmd = True
+
+                    if has_cmd:
+                        # self.todo_upgrade_execute(
+                        #     cmd_serial, lst_command_executed
+                        # )
+                        self.todo_upgrade_execute(
+                            cmd_parallel, lst_command_executed
+                        )
+
                 print(f"✅ -> Module upgrade Odoo{next_version} done")
             else:
                 print(f"✅ -> Module upgrade Odoo{next_version} - nothing")
@@ -697,9 +728,9 @@ class TodoUpgrade:
                 ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
-                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --stop-after-init -d {database_name_upgrade}"
+                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
-                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --load=base,web,openupgrade_framework -d {database_name_upgrade}"
+                    cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
                 self.todo_upgrade_execute(
