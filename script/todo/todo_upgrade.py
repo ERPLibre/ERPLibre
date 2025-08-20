@@ -49,6 +49,7 @@ class TodoUpgrade:
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
         lst_command_executed = []
+        default_database_name = "test"
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
             erase_progression_input = input(
@@ -70,7 +71,7 @@ class TodoUpgrade:
             print("Select the zip file of you database backup.")
 
             self.file_path = input(
-                "💬 Give the path of file, or empty to use a File Browser : "
+                "💬 Give the path of file, or empty to use a File Browser, or type 'remote' to download from production : "
             )
             if not self.file_path.strip():
                 self.file_path = None
@@ -80,6 +81,13 @@ class TodoUpgrade:
                     initial_dir, self.on_file_selected
                 )
                 file_browser.run_main_frame()
+            elif self.file_path == "remote":
+                status, self.file_path, default_database_name = self.todo.download_database_backup_cli()
+                if status:
+                    _logger.error(
+                        "Cannot retrieve database from remote, please retry migration."
+                    )
+                    return
 
             self.dct_progression["migration_file"] = self.file_path
             self.write_config()
@@ -257,9 +265,9 @@ class TodoUpgrade:
         if not database_name:
             database_name = (
                 input(
-                    "💬 With database name do you want to work with? Default (test) : "
+                    f"💬 With database name do you want to work with? Default ({default_database_name}) : "
                 ).strip()
-                or "test"
+                or default_database_name
             )
             self.dct_progression["database_name"] = database_name
             self.write_config()

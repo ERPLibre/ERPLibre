@@ -936,7 +936,7 @@ class TODO:
     def download_database_backup_cli(self):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) :\n")
         database_name = input("Database name :\n")
-        master_password = getpass.getpass(prompt="Master password : ")
+
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
         output_path = input(
@@ -944,6 +944,9 @@ class TODO:
         ).strip()
         if not output_path:
             output_path = default_output_path
+
+        master_password = getpass.getpass(prompt="Master password : ")
+
         cmd = "script/database/download_remote.sh"
         my_env = os.environ.copy()
         my_env["MASTER_PWD"] = master_password
@@ -951,9 +954,12 @@ class TODO:
         my_env["OUTPUT_FILE_PATH"] = output_path
         my_env["ODOO_URL"] = database_domain
         status, cmd_executed = self.executer_commande_live(
-            cmd, source_erplibre=False, new_env=my_env
+            cmd,
+            source_erplibre=False,
+            return_status_and_command=True,
+            new_env=my_env,
         )
-        return status, output_path
+        return status, output_path, database_name
 
     def restart_script(self, last_error):
         print("Reboot TODO 🤖...")
