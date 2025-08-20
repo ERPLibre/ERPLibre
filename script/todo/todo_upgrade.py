@@ -82,7 +82,9 @@ class TodoUpgrade:
                 )
                 file_browser.run_main_frame()
             elif self.file_path == "remote":
-                status, self.file_path, default_database_name = self.todo.download_database_backup_cli()
+                status, self.file_path, default_database_name = (
+                    self.todo.download_database_backup_cli()
+                )
                 if status:
                     _logger.error(
                         "Cannot retrieve database from remote, please retry migration."
@@ -456,10 +458,8 @@ class TodoUpgrade:
                 last_version = next_version - 1
                 if f"odoo{last_version}.0" != odoo_installed_version_now:
                     print(f"⧖ -> Switch to odoo.'{last_version}'")
-                    status, cmd_executed = self.todo.executer_commande_live(
-                        f"make switch_odoo_{last_version}",
-                        source_erplibre=False,
-                        return_status_and_command=True,
+                    status, cmd_executed = self.todo_upgrade_execute(
+                        f"make switch_odoo_{last_version}"
                     )
                     lst_command_executed.append(cmd_executed)
                     self.dct_progression["command_executed"] = (
@@ -501,11 +501,10 @@ class TodoUpgrade:
 
                 if lst_module_to_uninstall:
                     uninstall_module = ",".join(lst_module_to_uninstall)
-                    status, cmd_executed = self.todo.executer_commande_live(
+                    status, cmd_executed = self.todo_upgrade_execute(
                         f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
-                        source_erplibre=False,
+                        lst_command_executed,
                         single_source_odoo=True,
-                        return_status_and_command=True,
                     )
                     lst_command_executed.append(cmd_executed)
                     self.dct_progression["command_executed"] = (

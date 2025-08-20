@@ -735,6 +735,7 @@ class TODO:
         source_odoo="",
         new_env=None,
         return_status_and_command=False,
+        return_status_and_output=False,
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -773,6 +774,7 @@ class TODO:
 
         print("🏠⬇ Execute command :")
         print(commande)
+        lst_output = []
 
         try:
             process = subprocess.Popen(
@@ -792,6 +794,8 @@ class TODO:
                 if not ligne:
                     break
                 print(ligne, end="")
+                if return_status_and_output:
+                    lst_output.append(ligne)
 
             process.wait()  # Attendre la fin du process
             return_status = process.returncode
@@ -825,7 +829,8 @@ class TODO:
         print()
         if return_status_and_command:
             return return_status, commande
-
+        if return_status_and_output:
+            return return_status, lst_output
         return return_status
 
     def crash_diagnostic(self, e):
@@ -933,9 +938,27 @@ class TODO:
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
-    def download_database_backup_cli(self):
+    def download_database_backup_cli(self, show_remote_list=True):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) :\n")
-        database_name = input("Database name :\n")
+        if show_remote_list:
+            status, lst_output = self.executer_commande_live(
+                f"python3 ./script/database/list_remote.py --raw --odoo-url {database_domain}",
+                return_status_and_output=True,
+                single_source_erplibre=True,
+                source_erplibre=False,
+            )
+            if len(lst_output) > 1:
+                for index, output in enumerate(lst_output):
+                    print(f"{index + 1} - {output}")
+                database_name = input("Select id of database :").strip()
+            elif len(lst_output) == 1:
+                database_name = lst_output[0].strip()
+            else:
+                database_name = input(
+                    "Cannot read remote database, Database name :\n"
+                )
+        else:
+            database_name = input("Database name :\n")
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
