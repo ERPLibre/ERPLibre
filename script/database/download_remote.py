@@ -20,6 +20,9 @@ OUTPUT_FILE_NAME = f'{DATABASE_NAME}_backup.{BACKUP_FORMAT}'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# TODO not working with remote, only localhost
+logger.error("This script is not working with remote instance, only http://127.0.0.1:8069")
+
 # --- Function to download the database ---
 def download_odoo_db():
     logger.info(f"Attempting to download database '{DATABASE_NAME}' from URL '{ODOO_URL}'...")
