@@ -33,11 +33,17 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+# TODO maybe use TODO lib
+CONFIG_FILE = "./script/todo/todo.json"
+CONFIG_OVERRIDE_FILE = "./private/todo.json"
+LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
+
 
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
         self.video_recorder = None
+        self.default_download_dir_path = tempfile.mkdtemp()
         if self.config.video_suffix:
             self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
@@ -286,7 +292,7 @@ class SeleniumLib(object):
 
         # Close tab opening by DarkReader
         if self.config.use_firefox_driver and not self.config.use_network:
-            if self.config.not_privatewindo_mode and not self.config.no_dark_mode:
+            if self.config.not_private_mode and not self.config.no_dark_mode:
                 self.driver.switch_to.window(self.driver.window_handles[-1])
                 self.driver.close()
                 self.driver.switch_to.window(self.driver.window_handles[0])
