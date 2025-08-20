@@ -16,7 +16,7 @@ selenium==4.11.2
 
 # For testing
 websocket-client
-python-stdnum
+python-stdnum==1.20
 python-u2flib_server
 python-chess
 python-git
@@ -146,6 +146,11 @@ azure.storage.blob==12.19.0
 sqlparse==0.4.4
 zeep==4.2.1
 python-jose==3.3.0
+pypdf==4.3.1
+factur-x==3.6
+sqlalchemy==2.0.36
+josepy==1.14.0
+paramiko==3.5.1
 
 # Force version for security update
 pyyaml==6.0
