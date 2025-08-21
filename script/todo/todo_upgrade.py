@@ -34,6 +34,7 @@ class TodoUpgrade:
         self.file_path = None
         self.todo = todo
         self.dct_progression = {}
+        self.lst_command_executed = []
 
     def write_config(self):
         with open(UPGRADE_CONFIG_LOG, "w") as f:
@@ -48,8 +49,9 @@ class TodoUpgrade:
         # TODO Redeploy new production after upgrade
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
-        lst_command_executed = []
+        self.lst_command_executed = []
         default_database_name = "test"
+        dct_module_per_version = {}
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
             erase_progression_input = input(
@@ -140,6 +142,10 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
+        dct_module_per_version[start_version] = list(
+            set(json_manifest_file_1.get("modules").keys())
+        )
+        self.dct_progression["dct_module_per_version"] = dct_module_per_version
         # TODO need support minor version, example 18.2, the .2 (no need for OCE OCB)
 
         print("✨ Show documentation version :")
@@ -164,19 +170,15 @@ class TodoUpgrade:
         ):
             with open(filename_odoo_version, "r") as f:
                 actual_odoo_version = f.readline().strip()
-            # TODO and don't switch if ready to upgrade (after first duplicate BD)
-            if actual_odoo_version != odoo_actual_version:
+            if actual_odoo_version != f"{odoo_actual_version}.0":
                 print(
                     f"⧖ -> Was odoo'{actual_odoo_version}', Switch to odoo.'{odoo_actual_version}'"
                 )
                 major_odoo_actual_version = int(float(odoo_actual_version))
                 self.todo_upgrade_execute(
                     f"make switch_odoo_{major_odoo_actual_version}",
-                    lst_command_executed,
                 )
-                self.todo_upgrade_execute(
-                    f"make config_gen_all", lst_command_executed
-                )
+                self.todo_upgrade_execute(f"make config_gen_all")
         if not self.dct_progression.get("state_0_install_odoo"):
             lst_diff_version = sorted(
                 list(
@@ -194,9 +196,8 @@ class TodoUpgrade:
                 )
                 if want_continue.strip().lower() != "y":
                     return
-                self.todo_upgrade_execute(
-                    f"make install_odoo_{iter_range_version}",
-                    lst_command_executed,
+                status, cmd_executed = self.todo_upgrade_execute(
+                    f"make install_odoo_{iter_range_version}"
                 )
                 if not status:
                     # TODO print why not working
@@ -215,13 +216,18 @@ class TodoUpgrade:
         self.dct_progression["state_0_install_odoo"] = True
         self.write_config()
 
-        if not self.dct_progression.get("state_0_switch_odoo"):
+        with open(filename_odoo_version, "r") as f:
+            actual_odoo_version = f.readline().strip()
+        if (
+            actual_odoo_version != odoo_actual_version
+            and not self.dct_progression.get("state_0_switch_odoo")
+        ):
             print(f"⧖ -> Switch to odoo.'{odoo_actual_version}'")
-            self.todo_upgrade_execute(
-                f"make switch_odoo_{start_version}", lst_command_executed
-            )
+            self.todo_upgrade_execute(f"make switch_odoo_{start_version}")
             self.dct_progression["state_0_switch_odoo"] = True
-            self.write_config()
+        else:
+            self.dct_progression["state_0_switch_odoo"] = False
+        self.write_config()
 
         print("✅ -> Install environment if missing")
         # TODO + afficher information du reach
@@ -232,8 +238,7 @@ class TodoUpgrade:
             # TODO support async and not parallel
             for bd_module in dct_bd_modules.keys():
                 status, cmd_executed = self.todo_upgrade_execute(
-                    f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
-                    lst_command_executed,
+                    f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}"
                 )
 
                 if status:
@@ -247,7 +252,7 @@ class TodoUpgrade:
             if lst_module_missing:
                 print(lst_module_missing)
                 want_continue = input(
-                    "💬 Detect error, do you want to continue? (Y/N): "
+                    "💬 Detect error missing module init, do you want to continue? (Y/N): "
                 )
                 if want_continue.strip().lower() != "y":
                     return
@@ -291,9 +296,8 @@ class TodoUpgrade:
                     os.remove(image_db_file_path)
                     shutil.copy(self.file_path, image_db_file_path)
 
-            self.todo_upgrade_execute(
+            status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/database/db_restore.py --database {database_name} --image {file_name} --ignore_cache",
-                lst_command_executed,
                 single_source_odoo=True,
             )
 
@@ -306,9 +310,8 @@ class TodoUpgrade:
         print("✅ -> Restore database")
 
         if not self.dct_progression.get("state_1_neutralize_database"):
-            self.todo_upgrade_execute(
+            status, cmd_exectued = self.todo_upgrade_execute(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
-                lst_command_executed,
                 single_source_odoo=True,
             )
 
@@ -347,7 +350,6 @@ class TodoUpgrade:
                 uninstall_module = ",".join(lst_module_to_uninstall)
                 self.todo_upgrade_execute(
                     f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
-                    lst_command_executed,
                     single_source_odoo=True,
                 )
                 self.dct_progression["state_1_uninstall_module"] = True
@@ -362,9 +364,8 @@ class TodoUpgrade:
         print("🔷2- Succeed update all addons")
 
         if not self.dct_progression.get("state_2_update_all"):
-            self.todo_upgrade_execute(
+            status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_addons_all.sh {database_name}",
-                lst_command_executed,
                 single_source_odoo=True,
             )
 
@@ -377,9 +378,8 @@ class TodoUpgrade:
         print("🔷3- Clean up database before data migration")
 
         if not self.dct_progression.get("state_3_install_clean_database"):
-            self.todo_upgrade_execute(
+            status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/install_addons.sh {database_name} database_cleanup",
-                lst_command_executed,
                 single_source_odoo=True,
             )
 
@@ -394,10 +394,8 @@ class TodoUpgrade:
                 "✨ Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
             )
             status = input(
-                "💬 Did you finish to clean database (y/Y) : "
+                "💬 Did you finish to clean database? Press to continue : "
             ).strip()
-            if status.lower() != "y":
-                return
 
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
@@ -423,6 +421,9 @@ class TodoUpgrade:
         )
         lst_module_uninstall_module = self.dct_progression.get(
             "state_4_uninstall_module", [False] * len(lst_next_version)
+        )
+        lst_module_search_missing_module = self.dct_progression.get(
+            "state_4_search_missing_module", [False] * len(lst_next_version)
         )
 
         nb_missing_value_switch_odoo = abs(
@@ -451,6 +452,15 @@ class TodoUpgrade:
             else:
                 last_database_name = database_name_upgrade
             database_name_upgrade = lst_database_name_upgrade[index]
+            lst_module_to_uninstall = []
+            lst_module_to_analyse = self.get_rename_module(
+                dct_module_per_version[next_version - 1],
+                next_version,
+            )
+            dct_module_per_version[next_version] = lst_module_to_analyse
+            self.dct_progression["dct_module_per_version"] = (
+                dct_module_per_version
+            )
 
             if not lst_clone_odoo[index]:
                 # Validate version of
@@ -461,9 +471,9 @@ class TodoUpgrade:
                     status, cmd_executed = self.todo_upgrade_execute(
                         f"make switch_odoo_{last_version}"
                     )
-                    lst_command_executed.append(cmd_executed)
+                    self.lst_command_executed.append(cmd_executed)
                     self.dct_progression["command_executed"] = (
-                        lst_command_executed
+                        self.lst_command_executed
                     )
                     self.write_config()
 
@@ -473,14 +483,11 @@ class TodoUpgrade:
                 # Delete if exist database
                 self.todo_upgrade_execute(
                     f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
-                    lst_command_executed,
                 )
 
                 # Duplicate database
                 cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
-                self.todo_upgrade_execute(
-                    cmd_clone_database, lst_command_executed
-                )
+                self.todo_upgrade_execute(cmd_clone_database)
 
                 lst_clone_odoo[index] = True
                 self.dct_progression["state_4_clone_odoo_lst"] = lst_clone_odoo
@@ -501,14 +508,9 @@ class TodoUpgrade:
 
                 if lst_module_to_uninstall:
                     uninstall_module = ",".join(lst_module_to_uninstall)
-                    status, cmd_executed = self.todo_upgrade_execute(
+                    self.todo_upgrade_execute(
                         f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
-                        lst_command_executed,
                         single_source_odoo=True,
-                    )
-                    lst_command_executed.append(cmd_executed)
-                    self.dct_progression["command_executed"] = (
-                        lst_command_executed
                     )
                     lst_module_uninstall_module[index] = True
                     self.dct_progression["state_4_module_migrate_odoo_lst"] = (
@@ -525,11 +527,14 @@ class TodoUpgrade:
             )
             self.write_config()
 
-            if not lst_switch_odoo[index]:
+            with open(filename_odoo_version, "r") as f:
+                actual_odoo_version = f.readline().strip()
+            if (
+                actual_odoo_version != next_version
+                or not lst_switch_odoo[index]
+            ):
                 print(f"⧖ -> Switch to odoo.'{next_version}'")
-                self.todo_upgrade_execute(
-                    f"make switch_odoo_{next_version}", lst_command_executed
-                )
+                self.todo_upgrade_execute(f"make switch_odoo_{next_version}")
 
                 lst_switch_odoo[index] = True
                 self.dct_progression["state_4_switch_odoo_lst"] = (
@@ -539,6 +544,44 @@ class TodoUpgrade:
                 print(f"✅ -> Switch Odoo{next_version} done with update")
             else:
                 print(f"✅ -> Switch Odoo{next_version} - nothing")
+
+            if not lst_module_search_missing_module[index]:
+                lst_module_missing = []
+                # TODO support async and not parallel
+                for bd_module in lst_module_to_analyse:
+                    if (
+                        lst_module_to_uninstall
+                        and bd_module in lst_module_to_uninstall
+                    ):
+                        # Ignore check if uninstall before
+                        continue
+                    status, cmd_executed = self.todo_upgrade_execute(
+                        f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
+                    )
+
+                    if status:
+                        lst_module_missing.append(bd_module)
+
+                self.dct_progression["state_4_len_lst_module_missing"] = len(
+                    lst_module_missing
+                )
+                self.dct_progression["state_4_lst_module_missing"] = (
+                    lst_module_missing
+                )
+                self.write_config()
+                if lst_module_missing:
+                    print(lst_module_missing)
+                    want_continue = input(
+                        f"💬 Detect error missing module iteration {next_version}, do you want to continue? (Y/N): "
+                    )
+                    if want_continue.strip().lower() != "y":
+                        return
+
+                lst_module_search_missing_module[index] = True
+                self.dct_progression["state_4_search_missing_module"] = (
+                    lst_module_search_missing_module
+                )
+                self.write_config()
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -565,8 +608,7 @@ class TodoUpgrade:
                     )
                 else:
                     self.todo_upgrade_execute(
-                        f"cd '{source_module_path}' && git stash && cd -",
-                        lst_command_executed,
+                        f"cd '{source_module_path}' && git stash && cd -"
                     )
 
                 target_module_path = dct_module_result.get(
@@ -578,11 +620,10 @@ class TodoUpgrade:
                     )
                 else:
                     self.todo_upgrade_execute(
-                        f"cd '{target_module_path}' && git stash && cd -",
-                        lst_command_executed,
+                        f"cd '{target_module_path}' && git stash && cd -"
                     )
 
-                self.install_OCA_odoo_module_migrator(lst_command_executed)
+                self.install_OCA_odoo_module_migrator()
 
                 has_cmd = False
                 cmd_parallel = "parallel :::"
@@ -614,37 +655,34 @@ class TodoUpgrade:
                     cmd_parallel += f' "{cmd_migration}"'
                     has_cmd = True
 
-                if has_cmd:
-                    self.todo_upgrade_execute(
-                        cmd_parallel, lst_command_executed
-                    )
+                if lst_module_to_migrate:
+                    if has_cmd:
+                        self.todo_upgrade_execute(cmd_parallel)
 
-                source_module_path = dct_module_result.get(
-                    "source_module_path"
-                )
-                if not source_module_path:
-                    _logger.error(
-                        f"Missing source module path '{source_module_path}'"
+                    source_module_path = dct_module_result.get(
+                        "source_module_path"
                     )
-                else:
-                    self.todo_upgrade_execute(
-                        f"cd '{source_module_path}' && git stash && cd -",
-                        lst_command_executed,
-                    )
+                    if not source_module_path:
+                        _logger.error(
+                            f"Missing source module path '{source_module_path}'"
+                        )
+                    else:
+                        self.todo_upgrade_execute(
+                            f"cd '{source_module_path}' && git stash && cd -",
+                        )
 
-                target_module_path = dct_module_result.get(
-                    "target_module_path"
-                )
-                if not target_module_path:
-                    _logger.error(
-                        f"Missing target module path '{target_module_path}'"
+                    target_module_path = dct_module_result.get(
+                        "target_module_path"
                     )
-                else:
-                    # TODO check if has file to commit
-                    self.todo_upgrade_execute(
-                        f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate)} modules: Migration to {next_version}' && cd -",
-                        lst_command_executed,
-                    )
+                    if not target_module_path:
+                        _logger.error(
+                            f"Missing target module path '{target_module_path}'"
+                        )
+                    else:
+                        # TODO check if has file to commit
+                        self.todo_upgrade_execute(
+                            f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate)} modules: Migration to {next_version}' && cd -",
+                        )
 
                 # TODO copie to next odoo version
                 #  do commit and continue
@@ -679,11 +717,9 @@ class TodoUpgrade:
 
                     if has_cmd:
                         # self.todo_upgrade_execute(
-                        #     cmd_serial, lst_command_executed
+                        #     cmd_serial
                         # )
-                        self.todo_upgrade_execute(
-                            cmd_parallel, lst_command_executed
-                        )
+                        self.todo_upgrade_execute(cmd_parallel)
 
                 print(f"✅ -> Module upgrade Odoo{next_version} done")
             else:
@@ -700,7 +736,6 @@ class TodoUpgrade:
                 if os.path.exists(file_path_fix_migration):
                     self.todo_upgrade_execute(
                         f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
-                        lst_command_executed,
                         single_source_odoo=True,
                     )
                     lst_fix_migration_odoo[index] = file_path_fix_migration
@@ -726,7 +761,6 @@ class TodoUpgrade:
                 cmd_update_config = f"./script/git/git_repo_update_group.py --extra-addons-path {path_addons_openupgrade} && ./script/generate_config.sh"
                 self.todo_upgrade_execute(
                     cmd_update_config,
-                    lst_command_executed,
                 )
 
                 print("🚸 Please, validate commits after code migration.")
@@ -735,14 +769,14 @@ class TodoUpgrade:
                 ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
-                    cmd_upgrade = f"./.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
+                    self.install_OCA_openupgrade(next_version)
+                    cmd_upgrade = f"./odoo{next_version}.0/OCA_OpenUpgrade/.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
                 self.todo_upgrade_execute(
                     cmd_upgrade,
-                    lst_command_executed,
                     new_env={
                         "OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"
                     },
@@ -756,10 +790,7 @@ class TodoUpgrade:
 
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
-                self.todo_upgrade_execute(
-                    cmd_update_config,
-                    lst_command_executed,
-                )
+                self.todo_upgrade_execute(cmd_update_config)
             else:
                 print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
 
@@ -773,6 +804,36 @@ class TodoUpgrade:
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
         print("")
+
+    def get_rename_module(self, lst_module, next_version):
+        path_search = f"odoo{next_version}.0/OCA_OpenUpgrade/"
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            f"find {path_search} -name apriori.py",
+            get_output=True,
+        )
+        if not lst_output:
+            _logger.error(
+                f"Cannot find renamed module script apriori.py into path '{path_search}'"
+            )
+            return lst_module
+        apriory_py = lst_output[0].strip()
+
+        with open(apriory_py, "r") as f:
+            file_content = f.read()
+
+        data_vars = {}
+        exec(file_content, data_vars)
+        renamed_modules = data_vars.get("renamed_modules")
+        merged_modules = data_vars.get("merged_modules")
+
+        for index, module in enumerate(lst_module):
+            renamed_module = renamed_modules.get(module)
+            merged_module = merged_modules.get(module)
+            if renamed_module:
+                lst_module[index] = renamed_module
+            if merged_module:
+                lst_module[index] = merged_module
+        return list(set(lst_module))
 
     def search_module_to_move(self, source_version_odoo, target_version_odoo):
         lst_module = []
@@ -843,30 +904,62 @@ class TodoUpgrade:
         }
         return dct_module
 
-    def install_OCA_odoo_module_migrator(self, lst_command_executed):
+    def install_OCA_odoo_module_migrator(self):
         if not os.path.exists(PATH_VENV_MODULE_MIGRATOR):
             self.todo_upgrade_execute(
-                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt",
-                lst_command_executed,
+                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && python -m venv {VENV_NAME_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && pip3 install -r requirements.txt"
             )
+
+    def install_OCA_openupgrade(self, next_version):
+        openupgrade_path = f"odoo{next_version}.0/OCA_OpenUpgrade"
+        venv_oca_path = f"{openupgrade_path}/.venv"
+        if os.path.exists(venv_oca_path):
+            return
+        lst_version, lst_version_installed, odoo_installed_version = (
+            self.todo.get_odoo_version()
+        )
+        extract_version = f"{next_version}.0"
+        dct_erplibre_info = [
+            a for a in lst_version if a.get("odoo_version") == extract_version
+        ]
+        if not dct_erplibre_info:
+            raise Exception(f"Cannot extract {extract_version}")
+        dct_erplibre_info = dct_erplibre_info[0]
+        erplibre_version = dct_erplibre_info.get("erplibre_version")
+        self.todo_upgrade_execute(
+            f".venv.{erplibre_version}/bin/python -m venv {venv_oca_path} && {venv_oca_path}/bin/pip3 install -r {openupgrade_path}/requirements.txt"
+        )
 
     def todo_upgrade_execute(
         self,
         cmd,
-        lst_command_executed,
         single_source_odoo=False,
         new_env=None,
         quiet=False,
+        get_output=False,
     ):
-        status, cmd_executed = self.todo.executer_commande_live(
-            cmd,
-            source_erplibre=False,
-            single_source_odoo=single_source_odoo,
-            new_env=new_env,
-            return_status_and_command=True,
-            quiet=quiet,
-        )
-        lst_command_executed.append(cmd_executed)
-        self.dct_progression["command_executed"] = lst_command_executed
+        output = None
+        if get_output:
+            status, cmd_executed, output = self.todo.executer_commande_live(
+                cmd,
+                source_erplibre=False,
+                single_source_odoo=single_source_odoo,
+                new_env=new_env,
+                return_status_and_output_and_command=True,
+                quiet=quiet,
+            )
+        else:
+            status, cmd_executed = self.todo.executer_commande_live(
+                cmd,
+                source_erplibre=False,
+                single_source_odoo=single_source_odoo,
+                new_env=new_env,
+                return_status_and_command=True,
+                quiet=quiet,
+            )
+        self.lst_command_executed.append(cmd_executed)
+        self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
+        if get_output:
+            return status, cmd_executed, output
         return status, cmd_executed

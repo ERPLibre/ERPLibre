@@ -736,6 +736,7 @@ class TODO:
         new_env=None,
         return_status_and_command=False,
         return_status_and_output=False,
+        return_status_and_output_and_command=False,
     ):
         """
         Exécute une commande et affiche la sortie en direct.
@@ -794,7 +795,10 @@ class TODO:
                 if not ligne:
                     break
                 print(ligne, end="")
-                if return_status_and_output:
+                if (
+                    return_status_and_output
+                    or return_status_and_output_and_command
+                ):
                     lst_output.append(ligne)
 
             process.wait()  # Attendre la fin du process
@@ -827,6 +831,8 @@ class TODO:
             print(f"🏠⬆ Executed ({duration_sec:.2f} sec.) :")
         print(commande)
         print()
+        if return_status_and_output_and_command:
+            return return_status, commande, lst_output
         if return_status_and_command:
             return return_status, commande
         if return_status_and_output:
