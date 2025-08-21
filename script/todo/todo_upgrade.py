@@ -769,8 +769,8 @@ class TodoUpgrade:
                 ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
-                    self.install_OCA_openupgrade(next_version)
-                    cmd_upgrade = f"./odoo{next_version}.0/OCA_OpenUpgrade/.venv/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
+                    erplibre_version = self.install_OCA_openupgrade(next_version)
+                    cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
@@ -911,10 +911,12 @@ class TodoUpgrade:
             )
 
     def install_OCA_openupgrade(self, next_version):
-        openupgrade_path = f"odoo{next_version}.0/OCA_OpenUpgrade"
-        venv_oca_path = f"{openupgrade_path}/.venv"
-        if os.path.exists(venv_oca_path):
-            return
+        # TODO install odoorpc==0.7.0
+        # openupgradelib
+        # openupgrade_path = f"odoo{next_version}.0/OCA_OpenUpgrade"
+        # venv_oca_path = f"{openupgrade_path}/.venv"
+        # if os.path.exists(venv_oca_path):
+        #     return
         lst_version, lst_version_installed, odoo_installed_version = (
             self.todo.get_odoo_version()
         )
@@ -926,9 +928,17 @@ class TodoUpgrade:
             raise Exception(f"Cannot extract {extract_version}")
         dct_erplibre_info = dct_erplibre_info[0]
         erplibre_version = dct_erplibre_info.get("erplibre_version")
+        # self.todo_upgrade_execute(
+        #     f".venv.{erplibre_version}/bin/python -m venv {venv_oca_path} && {venv_oca_path}/bin/pip3 install -r {openupgrade_path}/requirements.txt"
+        # )
         self.todo_upgrade_execute(
-            f".venv.{erplibre_version}/bin/python -m venv {venv_oca_path} && {venv_oca_path}/bin/pip3 install -r {openupgrade_path}/requirements.txt"
+            f".venv.{erplibre_version}/bin/pip install odoorpc==0.7.0"
         )
+        self.todo_upgrade_execute(
+            f".venv.{erplibre_version}/bin/pip install openupgradelib"
+        )
+        return erplibre_version
+
 
     def todo_upgrade_execute(
         self,
