@@ -226,6 +226,7 @@
         groups="addons,odoo15.0"
     />
     <project name="ddmrp.git" path="odoo15.0/addons/OCA_ddmrp" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
+    <project name="dms.git" path="odoo15.0/addons/OCA_dms" remote="OCA" revision="15.0" groups="addons,odoo15.0" />
     <project
         name="delivery-carrier.git"
         path="odoo15.0/addons/OCA_delivery-carrier"

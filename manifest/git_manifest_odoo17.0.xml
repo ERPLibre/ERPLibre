@@ -238,6 +238,7 @@
         groups="addons,odoo17.0"
     />
     <project name="ddmrp.git" path="odoo17.0/addons/OCA_ddmrp" remote="OCA" revision="17.0" groups="addons,odoo17.0" />
+    <project name="dms.git" path="odoo17.0/addons/OCA_dms" remote="OCA" revision="17.0" groups="addons,odoo17.0" />
     <project
         name="delivery-carrier.git"
         path="odoo17.0/addons/OCA_delivery-carrier"
@@ -438,14 +439,6 @@
         remote="openeducat"
         revision="17.0"
         groups="addons,odoo17.0"
-    />
-    <project
-        name="OpenUpgrade.git"
-        path="script/OCA_OpenUpgrade"
-        remote="OCA"
-        clone-depth="10"
-        revision="17.0"
-        groups="migration"
     />
     <project
         name="operating-unit.git"
