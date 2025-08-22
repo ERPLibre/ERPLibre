@@ -78,7 +78,7 @@ class TodoUpgrade:
             if not self.file_path.strip():
                 self.file_path = None
             if not self.file_path:
-                initial_dir = os.getcwd()
+                initial_dir = os.path.join(os.getcwd(), "image_db")
                 file_browser = todo_file_browser.FileBrowser(
                     initial_dir, self.on_file_selected
                 )
