@@ -823,9 +823,11 @@ class TodoUpgrade:
 
         data_vars = {}
         exec(file_content, data_vars)
-        renamed_modules = data_vars.get("renamed_modules")
-        merged_modules = data_vars.get("merged_modules")
+        renamed_modules = data_vars.get("renamed_modules", {})
+        merged_modules = data_vars.get("merged_modules", {})
+        deleted_modules = data_vars.get("deleted_modules", [])
 
+        lst_index_to_delete = []
         for index, module in enumerate(lst_module):
             renamed_module = renamed_modules.get(module)
             merged_module = merged_modules.get(module)
@@ -833,6 +835,10 @@ class TodoUpgrade:
                 lst_module[index] = renamed_module
             if merged_module:
                 lst_module[index] = merged_module
+            if module in deleted_modules:
+                lst_index_to_delete.append(index)
+        for index_to_delete in lst_index_to_delete[::-1]:
+            lst_module.pop(index_to_delete)
         return list(set(lst_module))
 
     def search_module_to_move(self, source_version_odoo, target_version_odoo):
