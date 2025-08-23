@@ -4,6 +4,7 @@
 
 import argparse
 import configparser
+import json
 import logging
 import os
 import sys
@@ -52,6 +53,16 @@ def get_config():
         action="store_true",
         help="Print path if module exist",
     )
+    parser.add_argument(
+        "--output_json",
+        action="store_true",
+        help="output json for automation",
+    )
+    parser.add_argument(
+        "--format_json",
+        action="store_true",
+        help="output formated json",
+    )
     args = parser.parse_args()
     return args
 
@@ -60,6 +71,8 @@ def main():
     config = get_config()
     if config.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+    if not config.output_path and config.output_json:
+        config.output_path = True
 
     config_parser = configparser.ConfigParser()
     config_parser.read(config.config)
@@ -67,13 +80,18 @@ def main():
         if "addons_path" in config_parser["options"]:
             addons_path = config_parser["options"]["addons_path"]
         else:
-            _logger.error(
-                "Missing item 'addons_path' in section 'options' in"
-                f" '{config.config}'"
-            )
+            msg = f"Missing item 'addons_path' in section 'options' in '{config.config}'"
+            if not config.output_json:
+                _logger.error(msg)
+            else:
+                print("{'error':%s}" % msg)
             return -1
     else:
-        _logger.error(f"Missing section 'options' in '{config.config}'")
+        msg = f"Missing section 'options' in '{config.config}'"
+        if not config.output_json:
+            _logger.error(msg)
+        else:
+            print("{'error':%s}" % msg)
         return -1
 
     lst_addons_path = addons_path.strip(",").split(",")
@@ -82,6 +100,10 @@ def main():
     dct_module_exist = defaultdict(list)
     dct_module_exist_empty = defaultdict(list)
     lst_module_not_exist = []
+    lst_error = []
+    lst_exist = []
+    lst_missing = []
+    lst_duplicate = []
 
     for module in lst_module:
         for path in lst_addons_path:
@@ -102,10 +124,11 @@ def main():
         is_good = False
         error_missing_module = True
         module_list = "'" + "', '".join(lst_module_not_exist) + "'"
-        _logger.error(
-            "Missing"
-            f" module{'s' if len(lst_module_not_exist) > 1 else ''} {module_list}"
-        )
+        msg = f"Missing module{'s' if len(lst_module_not_exist) > 1 else ''} {module_list}"
+        if not config.output_json:
+            _logger.error(msg)
+        else:
+            lst_missing.extend(lst_module_not_exist)
     if dct_module_exist:
         for key, lst_value in dct_module_exist.items():
             is_print_value = False
@@ -113,20 +136,41 @@ def main():
                 is_print_value = True
                 is_good = False
                 module_list = "'" + "', '".join(lst_value) + "'"
-                _logger.error(f"Conflict modules: {module_list}")
+                msg = f"Conflict modules: {module_list}"
+                if not config.output_json:
+                    _logger.error(msg)
+                else:
+                    lst_duplicate.append((key, lst_value))
             elif lst_value and config.output_path:
                 is_print_value = True
             if is_print_value:
                 for value in lst_value:
-                    print(value)
+                    if len(lst_value) == 1:
+                        lst_exist.append((key, value))
+                    if not config.output_json:
+                        print(value)
 
     if dct_module_exist_empty and not config.output_path:
         for key, lst_value in dct_module_exist_empty.items():
             module_list = "'" + "', '".join(lst_value) + "'"
-            _logger.warning(
-                "Found this directory, but missing __manifest__.py:"
-                f" {module_list}"
-            )
+            msg = f"Found this directory, but missing __manifest__.py: {module_list}"
+            if not config.output_json:
+                _logger.warning(msg)
+            else:
+                lst_error.append(msg)
+
+    if config.output_json:
+        dct_json_data = {
+            "exist": lst_exist,
+            "error": lst_error,
+            "duplicate": lst_duplicate,
+            "missing": lst_missing,
+        }
+        if config.format_json:
+            json_data = json.dumps(dct_json_data, indent=4, sort_keys=True)
+        else:
+            json_data = json.dumps(dct_json_data)
+        print(json_data)
 
     if not is_good:
         if error_missing_module:
