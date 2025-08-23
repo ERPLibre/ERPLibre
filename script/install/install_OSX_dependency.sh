@@ -35,6 +35,7 @@ brew link git
 brew link wget
 
 echo  "\n--- Installing extra --"
+brew install shfmt
 brew install parallel
 brew install swig
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"

@@ -68,7 +68,7 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev -y
+sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev shfmt -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."

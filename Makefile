@@ -130,6 +130,10 @@ open_selenium:
 ############
 .PHONY: format
 format:
+	./script/maintenance/format_file_to_commit.py
+
+.PHONY: format_all
+format_all:
 	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
 .PHONY: format_code_generator
