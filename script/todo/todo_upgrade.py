@@ -27,6 +27,7 @@ PATH_VENV_MODULE_MIGRATOR = os.path.join(
 PATH_SOURCE_VENV_MODULE_MIGRATOR = os.path.join(
     PATH_VENV_MODULE_MIGRATOR, "bin", "activate"
 )
+FILENAME_ODOO_VERSION = ".odoo-version"
 
 
 class TodoUpgrade:
@@ -35,6 +36,7 @@ class TodoUpgrade:
         self.todo = todo
         self.dct_progression = {}
         self.lst_command_executed = []
+        self.dct_module_per_version = {}
 
     def write_config(self):
         with open(UPGRADE_CONFIG_LOG, "w") as f:
@@ -50,8 +52,8 @@ class TodoUpgrade:
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
         self.lst_command_executed = []
+        self.dct_module_per_version = {}
         default_database_name = "test"
-        dct_module_per_version = {}
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
             erase_progression_input = input(
@@ -142,10 +144,12 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
-        dct_module_per_version[start_version] = list(
+        self.dct_module_per_version[start_version] = list(
             set(json_manifest_file_1.get("modules").keys())
         )
-        self.dct_progression["dct_module_per_version"] = dct_module_per_version
+        self.dct_progression["dct_module_per_version"] = (
+            self.dct_module_per_version
+        )
         # TODO need support minor version, example 18.2, the .2 (no need for OCE OCB)
 
         print("✨ Show documentation version :")
@@ -160,7 +164,6 @@ class TodoUpgrade:
         print("🔷0- Inspect zip")
         print("✅ -> Search odoo version")
         print("✅ -> Find good environment, read the .zip file")
-        filename_odoo_version = ".odoo-version"
 
         is_state_4_reach_open_upgrade = self.dct_progression.get(
             "state_4_reach_open_upgrade"
@@ -196,7 +199,7 @@ class TodoUpgrade:
                     if want_continue.strip().lower() != "y":
                         return
 
-                if not os.path.isfile(filename_odoo_version):
+                if not os.path.isfile(FILENAME_ODOO_VERSION):
                     print(
                         "⚠️ You need an installed system before continue, check your Odoo installation."
                     )
@@ -328,12 +331,11 @@ class TodoUpgrade:
                 )
 
             if lst_module_to_uninstall:
-                uninstall_module = ",".join(lst_module_to_uninstall)
-                self.todo_upgrade_execute(
-                    f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
-                    single_source_odoo=True,
+                self.uninstall_from_database(
+                    lst_module_to_uninstall, database_name, start_version
                 )
                 self.dct_progression["state_1_uninstall_module"] = True
+                self.write_config()
 
         self.dct_progression["config_state_1_uninstall_module"] = (
             config_state_1_uninstall_module
@@ -435,12 +437,12 @@ class TodoUpgrade:
             database_name_upgrade = lst_database_name_upgrade[index]
             lst_module_to_uninstall = []
             lst_module_to_analyse = self.get_rename_module(
-                dct_module_per_version[next_version - 1],
+                self.dct_module_per_version[next_version - 1],
                 next_version,
             )
-            dct_module_per_version[next_version] = lst_module_to_analyse
+            self.dct_module_per_version[next_version] = lst_module_to_analyse
             self.dct_progression["dct_module_per_version"] = (
-                dct_module_per_version
+                self.dct_module_per_version
             )
 
             if not lst_clone_odoo[index]:
@@ -476,17 +478,16 @@ class TodoUpgrade:
                 ]
 
                 if lst_module_to_uninstall:
-                    uninstall_module = ",".join(lst_module_to_uninstall)
-                    self.todo_upgrade_execute(
-                        f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
-                        single_source_odoo=True,
+                    self.uninstall_from_database(
+                        lst_module_to_uninstall,
+                        database_name_upgrade,
+                        next_version - 1,
                     )
                     lst_module_uninstall_module[index] = True
                     self.dct_progression["state_4_module_migrate_odoo_lst"] = (
                         lst_module_uninstall_module
                     )
-                    lst_module_uninstall_module[index] = True
-                    # self.write_config()
+                    self.write_config()
 
             self.dct_progression["config_state_4_uninstall_module"] = (
                 config_state_4_uninstall_module
@@ -548,18 +549,17 @@ class TodoUpgrade:
                         return
                     elif want_continue.strip().lower() == "1":
                         self.switch_odoo(next_version - 1)
-                        uninstall_module = ",".join(lst_module_missing)
                         # Delete if exist database
                         self.todo_upgrade_execute(
                             f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
                         )
-
                         # Duplicate database
                         cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
-                        self.todo_upgrade_execute(
-                            f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
-                            single_source_odoo=True,
+                        self.uninstall_from_database(
+                            lst_module_missing,
+                            database_name_upgrade,
+                            next_version,
                         )
                         self.switch_odoo(next_version)
                     else:
@@ -596,9 +596,12 @@ class TodoUpgrade:
                         f"Missing source module path '{source_module_path}'"
                     )
                 else:
-                    self.todo_upgrade_execute(
-                        f"cd '{source_module_path}' && git stash && cd -"
-                    )
+                    if os.path.exists(
+                        os.path.join(source_module_path, ".git")
+                    ):
+                        self.todo_upgrade_execute(
+                            f"cd '{source_module_path}' && git stash && cd -"
+                        )
 
                 target_module_path = dct_module_result.get(
                     "target_module_path"
@@ -608,9 +611,12 @@ class TodoUpgrade:
                         f"Missing target module path '{target_module_path}'"
                     )
                 else:
-                    self.todo_upgrade_execute(
-                        f"cd '{target_module_path}' && git stash && cd -"
-                    )
+                    if os.path.exists(
+                        os.path.join(target_module_path, ".git")
+                    ):
+                        self.todo_upgrade_execute(
+                            f"cd '{target_module_path}' && git stash && cd -"
+                        )
 
                 self.install_OCA_odoo_module_migrator()
 
@@ -656,9 +662,12 @@ class TodoUpgrade:
                             f"Missing source module path '{source_module_path}'"
                         )
                     else:
-                        self.todo_upgrade_execute(
-                            f"cd '{source_module_path}' && git stash && cd -",
-                        )
+                        if os.path.exists(
+                            os.path.join(source_module_path, ".git")
+                        ):
+                            self.todo_upgrade_execute(
+                                f"cd '{source_module_path}' && git stash && cd -",
+                            )
 
                     target_module_path = dct_module_result.get(
                         "target_module_path"
@@ -894,6 +903,27 @@ class TodoUpgrade:
             "target_module_path": target_path_to_check,
         }
         return dct_module
+
+    def uninstall_from_database(
+        self, lst_module_to_uninstall, database_name, actual_version
+    ):
+        uninstall_module = ",".join(lst_module_to_uninstall)
+        self.todo_upgrade_execute(
+            f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
+            single_source_odoo=True,
+        )
+
+        # Update list installed module
+        self.dct_module_per_version[actual_version] = sorted(
+            list(
+                set(self.dct_module_per_version[actual_version])
+                - set(lst_module_to_uninstall)
+            )
+        )
+        self.dct_progression["dct_module_per_version"] = (
+            self.dct_module_per_version
+        )
+        self.write_config()
 
     def switch_odoo(self, odoo_version):
         int_odoo_version = int(float(odoo_version))
