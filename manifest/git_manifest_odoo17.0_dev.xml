@@ -2,11 +2,12 @@
 <manifest>
     <remote name="odoo" fetch="https://github.com/odoo/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
+    <remote name="ERPLibre_origin_OCA" fetch="https://github.com/ERPLibre/" />
     <project
         name="OpenUpgrade.git"
-        revision="17.0"
+        revision="17.0_dev"
         path="odoo17.0/OCA_OpenUpgrade"
-        remote="OCA"
+        remote="ERPLibre_origin_OCA"
         clone-depth="10"
         groups="migration,odoo17.0"
     />
