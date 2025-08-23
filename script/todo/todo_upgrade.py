@@ -165,21 +165,10 @@ class TodoUpgrade:
         is_state_4_reach_open_upgrade = self.dct_progression.get(
             "state_4_reach_open_upgrade"
         )
-        if not is_state_4_reach_open_upgrade and os.path.exists(
-            filename_odoo_version
+
+        if not is_state_4_reach_open_upgrade and not self.dct_progression.get(
+            "state_0_install_odoo"
         ):
-            with open(filename_odoo_version, "r") as f:
-                actual_odoo_version = f.readline().strip()
-            if actual_odoo_version != f"{odoo_actual_version}.0":
-                print(
-                    f"⧖ -> Was odoo'{actual_odoo_version}', Switch to odoo.'{odoo_actual_version}'"
-                )
-                major_odoo_actual_version = int(float(odoo_actual_version))
-                self.todo_upgrade_execute(
-                    f"make switch_odoo_{major_odoo_actual_version}",
-                )
-                self.todo_upgrade_execute(f"make config_gen_all")
-        if not self.dct_progression.get("state_0_install_odoo"):
             lst_diff_version = sorted(
                 list(
                     set([f"odoo{a}.0" for a in range_version]).difference(
@@ -215,19 +204,11 @@ class TodoUpgrade:
 
         self.dct_progression["state_0_install_odoo"] = True
         self.write_config()
-
-        with open(filename_odoo_version, "r") as f:
-            actual_odoo_version = f.readline().strip()
-        if (
-            actual_odoo_version != odoo_actual_version
-            and not self.dct_progression.get("state_0_switch_odoo")
-        ):
-            print(f"⧖ -> Switch to odoo.'{odoo_actual_version}'")
-            self.todo_upgrade_execute(f"make switch_odoo_{start_version}")
-            self.dct_progression["state_0_switch_odoo"] = True
-        else:
-            self.dct_progression["state_0_switch_odoo"] = False
-        self.write_config()
+        # not self.dct_progression.get("state_0_switch_odoo")
+        if not is_state_4_reach_open_upgrade:
+            self.switch_odoo(odoo_actual_version)
+        # self.dct_progression["state_0_switch_odoo"] = True
+        # self.write_config()
 
         print("✅ -> Install environment if missing")
         # TODO + afficher information du reach
@@ -463,19 +444,7 @@ class TodoUpgrade:
             )
 
             if not lst_clone_odoo[index]:
-                # Validate version of
-                _, _, odoo_installed_version_now = self.todo.get_odoo_version()
-                last_version = next_version - 1
-                if f"odoo{last_version}.0" != odoo_installed_version_now:
-                    print(f"⧖ -> Switch to odoo.'{last_version}'")
-                    status, cmd_executed = self.todo_upgrade_execute(
-                        f"make switch_odoo_{last_version}"
-                    )
-                    self.lst_command_executed.append(cmd_executed)
-                    self.dct_progression["command_executed"] = (
-                        self.lst_command_executed
-                    )
-                    self.write_config()
+                self.switch_odoo(next_version - 1)
 
                 print(
                     f"⧖ -> Clone to odoo.'{next_version}', from '{database_name}' to '{database_name_upgrade}'."
@@ -527,15 +496,8 @@ class TodoUpgrade:
             )
             self.write_config()
 
-            with open(filename_odoo_version, "r") as f:
-                actual_odoo_version = f.readline().strip()
-            if (
-                actual_odoo_version != next_version
-                or not lst_switch_odoo[index]
-            ):
-                print(f"⧖ -> Switch to odoo.'{next_version}'")
-                self.todo_upgrade_execute(f"make switch_odoo_{next_version}")
-
+            if not lst_switch_odoo[index]:
+                self.switch_odoo(next_version)
                 lst_switch_odoo[index] = True
                 self.dct_progression["state_4_switch_odoo_lst"] = (
                     lst_switch_odoo
@@ -568,20 +530,47 @@ class TodoUpgrade:
                 self.dct_progression["state_4_lst_module_missing"] = (
                     lst_module_missing
                 )
-                self.write_config()
-                if lst_module_missing:
-                    print(lst_module_missing)
-                    want_continue = input(
-                        f"💬 Detect error missing module iteration {next_version}, do you want to continue? (Y/N): "
-                    )
-                    if want_continue.strip().lower() != "y":
-                        return
-
                 lst_module_search_missing_module[index] = True
                 self.dct_progression["state_4_search_missing_module"] = (
                     lst_module_search_missing_module
                 )
                 self.write_config()
+                if lst_module_missing:
+                    print(lst_module_missing)
+                    print(
+                        f"💬 Detect error missing module iteration {next_version}, do you want : "
+                    )
+                    print(" 0 : Auto-fix (ignore) and continue")
+                    print(" 1 : Delete all 🤖 Best option to continue !")
+                    print(" 2 : Stop execution")
+                    want_continue = input("=> ")
+                    if want_continue.strip().lower() == "2":
+                        return
+                    elif want_continue.strip().lower() == "1":
+                        self.switch_odoo(next_version - 1)
+                        uninstall_module = ",".join(lst_module_missing)
+                        # Delete if exist database
+                        self.todo_upgrade_execute(
+                            f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
+                        )
+
+                        # Duplicate database
+                        cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
+                        self.todo_upgrade_execute(cmd_clone_database)
+                        self.todo_upgrade_execute(
+                            f"./script/addons/uninstall_addons.sh {database_name_upgrade} {uninstall_module}",
+                            single_source_odoo=True,
+                        )
+                        self.switch_odoo(next_version)
+                    else:
+                        # TODO auto-fix
+                        # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
+                        # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
+                        # TODO when check module, reminder provenance
+                        # TODO implement asyncio instead of parallel
+                        # TODO detect when duplicate path module ou module manquant, prendre décision qui ont efface si dupliqué
+                        # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
+                        pass
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -769,7 +758,9 @@ class TodoUpgrade:
                 ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
-                    erplibre_version = self.install_OCA_openupgrade(next_version)
+                    erplibre_version = self.install_OCA_openupgrade(
+                        next_version
+                    )
                     cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
@@ -904,6 +895,22 @@ class TodoUpgrade:
         }
         return dct_module
 
+    def switch_odoo(self, odoo_version):
+        int_odoo_version = int(float(odoo_version))
+
+        # Expect odoo_version like 12.0
+        lst_version, lst_version_installed, odoo_installed_version = (
+            self.todo.get_odoo_version()
+        )
+        if odoo_installed_version != f"odoo{int_odoo_version}.0":
+            print(
+                f"⧖ -> Was '{odoo_installed_version}', Switch to odoo{int_odoo_version}.0"
+            )
+            self.todo_upgrade_execute(
+                f"make switch_odoo_{int_odoo_version}",
+            )
+            self.todo_upgrade_execute(f"make config_gen_all")
+
     def install_OCA_odoo_module_migrator(self):
         if not os.path.exists(PATH_VENV_MODULE_MIGRATOR):
             self.todo_upgrade_execute(
@@ -938,7 +945,6 @@ class TodoUpgrade:
             f".venv.{erplibre_version}/bin/pip install openupgradelib"
         )
         return erplibre_version
-
 
     def todo_upgrade_execute(
         self,
