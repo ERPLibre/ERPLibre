@@ -218,25 +218,29 @@ class TodoUpgrade:
 
         if not self.dct_progression.get("state_0_search_missing_module"):
             dct_bd_modules = json_manifest_file_1.get("modules")
-            lst_module_missing = []
-            # TODO support async and not parallel
-            for bd_module in dct_bd_modules.keys():
-                status, cmd_executed = self.todo_upgrade_execute(
-                    f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}"
-                )
-
-                if status:
-                    lst_module_missing.append(bd_module)
+            lst_module_to_check = [a for a in dct_bd_modules.keys()]
+            lst_module_missing, lst_module_duplicate = self.check_addons_exist(
+                lst_module_to_check
+            )
 
             self.dct_progression["len_lst_module_missing"] = len(
                 lst_module_missing
             )
+            self.dct_progression["len_lst_module_duplicate"] = len(
+                lst_module_duplicate
+            )
             self.dct_progression["lst_module_missing"] = lst_module_missing
+            self.dct_progression["lst_module_duplicate"] = lst_module_duplicate
             self.write_config()
-            if lst_module_missing:
-                print(lst_module_missing)
+            if lst_module_missing or lst_module_duplicate:
+                if lst_module_missing:
+                    print("Missing module :")
+                    print(lst_module_missing)
+                if lst_module_duplicate:
+                    print("Duplicate module :")
+                    print(lst_module_duplicate)
                 want_continue = input(
-                    "💬 Detect error missing module init, do you want to continue? (Y/N): "
+                    "💬 Detect error missing/duplicate module init, do you want to continue? (Y/N): "
                 )
                 if want_continue.strip().lower() != "y":
                     return
@@ -509,8 +513,7 @@ class TodoUpgrade:
                 print(f"✅ -> Switch Odoo{next_version} - nothing")
 
             if not lst_module_search_missing_module[index]:
-                lst_module_missing = []
-                # TODO support async and not parallel
+                lst_module_to_analyse_updated = []
                 for bd_module in lst_module_to_analyse:
                     if (
                         lst_module_to_uninstall
@@ -518,12 +521,14 @@ class TodoUpgrade:
                     ):
                         # Ignore check if uninstall before
                         continue
-                    status, cmd_executed = self.todo_upgrade_execute(
-                        f"{PYTHON_BIN} ./script/addons/check_addons_exist.py -m {bd_module}",
-                    )
+                    lst_module_to_analyse_updated.append(bd_module)
 
-                    if status:
-                        lst_module_missing.append(bd_module)
+                lst_module_to_check = [
+                    a for a in lst_module_to_analyse_updated
+                ]
+                lst_module_missing, lst_module_duplicate = (
+                    self.check_addons_exist(lst_module_to_check)
+                )
 
                 self.dct_progression["state_4_len_lst_module_missing"] = len(
                     lst_module_missing
@@ -531,15 +536,26 @@ class TodoUpgrade:
                 self.dct_progression["state_4_lst_module_missing"] = (
                     lst_module_missing
                 )
+                self.dct_progression["state_4_len_lst_module_duplicate"] = len(
+                    lst_module_duplicate
+                )
+                self.dct_progression["state_4_lst_module_duplicate"] = (
+                    lst_module_duplicate
+                )
                 lst_module_search_missing_module[index] = True
                 self.dct_progression["state_4_search_missing_module"] = (
                     lst_module_search_missing_module
                 )
                 self.write_config()
-                if lst_module_missing:
-                    print(lst_module_missing)
+                if lst_module_missing or lst_module_duplicate:
+                    if lst_module_missing:
+                        print("Missing module :")
+                        print(lst_module_missing)
+                    if lst_module_duplicate:
+                        print("Duplicate module :")
+                        print(lst_module_duplicate)
                     print(
-                        f"💬 Detect error missing module iteration {next_version}, do you want : "
+                        f"💬 Detect error missing/duplicate module iteration {next_version}, do you want : "
                     )
                     print(" 0 : Auto-fix (ignore) and continue")
                     print(" 1 : Delete all 🤖 Best option to continue !")
@@ -931,6 +947,17 @@ class TodoUpgrade:
         )
         self.write_config()
 
+    def check_addons_exist(self, lst_module_to_check):
+        str_module_to_check = ",".join(lst_module_to_check)
+        status, cmd_executed, dct_output = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --output_json -m {str_module_to_check}",
+            get_output=True,
+            output_is_json=True,
+        )
+        lst_module_missing = dct_output.get("missing")
+        lst_module_duplicate = dct_output.get("duplicate")
+        return lst_module_missing, lst_module_duplicate
+
     def switch_odoo(self, odoo_version):
         int_odoo_version = int(float(odoo_version))
 
@@ -989,7 +1016,10 @@ class TodoUpgrade:
         new_env=None,
         quiet=False,
         get_output=False,
+        output_is_json=False,
     ):
+        if output_is_json and not get_output:
+            get_output = True
         output = None
         if get_output:
             status, cmd_executed, output = self.todo.executer_commande_live(
@@ -1013,5 +1043,8 @@ class TodoUpgrade:
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         if get_output:
+            if output_is_json:
+                str_output = json.loads("".join(output))
+                return status, cmd_executed, str_output
             return status, cmd_executed, output
         return status, cmd_executed
