@@ -32,6 +32,14 @@
         {
             "prompt_description": "Show code status",
             "makefile_cmd": "repo_show_status"
+        },
+        {
+            "prompt_description": "Stash all code",
+            "makefile_cmd": "repo_do_stash"
+        },
+        {
+            "prompt_description": "Format modified code",
+            "makefile_cmd": "format"
         }
     ]
 }

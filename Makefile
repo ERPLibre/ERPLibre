@@ -216,6 +216,11 @@ repo_configure_group_code_generator:
 repo_show_status:
 	.venv.erplibre/bin/repo forall -pc "git status -s"
 
+# Show git stash for all repo
+.PHONY: repo_do_stash
+repo_do_stash:
+	.venv.erplibre/bin/repo forall -pc "git stash"
+
 # Show divergence between actual repository and production manifest
 .PHONY: repo_diff_manifest_production
 repo_diff_manifest_production:

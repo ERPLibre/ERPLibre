@@ -16,7 +16,7 @@ _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv.erplibre/bin/python3"
 UPGRADE_CONFIG_LOG = ".venv.erplibre/odoo_migration_log.json"
-VENV_NAME_MODULE_MIGRATOR = ".venv.odoo_module_migrator"
+VENV_NAME_MODULE_MIGRATOR = ".venv"
 LST_PATH_OCA_ODOO_MODULE_MIGRATOR = ["script", "OCA_odoo-module-migrator"]
 PATH_OCA_ODOO_MODULE_MIGRATOR = "./" + "/".join(
     LST_PATH_OCA_ODOO_MODULE_MIGRATOR
