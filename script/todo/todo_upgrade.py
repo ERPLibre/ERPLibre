@@ -2,6 +2,7 @@
 # © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import datetime
 import json
 import logging
 import os
@@ -39,6 +40,9 @@ class TodoUpgrade:
         self.dct_module_per_version = {}
 
     def write_config(self):
+        if "date_create" not in self.dct_progression.keys():
+            self.dct_progression["date_create"] = str(datetime.datetime.now())
+        self.dct_progression["date_update"] = str(datetime.datetime.now())
         with open(UPGRADE_CONFIG_LOG, "w") as f:
             json.dump(self.dct_progression, f, indent=4)
 
@@ -188,16 +192,9 @@ class TodoUpgrade:
                 )
                 if want_continue.strip().lower() != "y":
                     return
-                status, cmd_executed = self.todo_upgrade_execute(
+                self.todo_upgrade_execute(
                     f"make install_odoo_{iter_range_version}"
                 )
-                if not status:
-                    # TODO print why not working
-                    want_continue = input(
-                        f"💬 Error at installing '{odoo_version_to_install}', would you like to continue (y/Y) : "
-                    )
-                    if want_continue.strip().lower() != "y":
-                        return
 
                 if not os.path.isfile(FILENAME_ODOO_VERSION):
                     print(
@@ -288,26 +285,20 @@ class TodoUpgrade:
                 f"./script/database/db_restore.py --database {database_name} --image {file_name} --ignore_cache",
                 single_source_odoo=True,
             )
-
             if not status:
                 self.dct_progression["state_1_restore_database"] = True
                 self.write_config()
-            else:
-                return
 
         print("✅ -> Restore database")
 
         if not self.dct_progression.get("state_1_neutralize_database"):
-            status, cmd_exectued = self.todo_upgrade_execute(
+            status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 single_source_odoo=True,
             )
-
             if not status:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
-            else:
-                return
 
         print("✅ -> Neutralize database")
 
@@ -355,12 +346,9 @@ class TodoUpgrade:
                 f"./script/addons/update_addons_all.sh {database_name}",
                 single_source_odoo=True,
             )
-
             if not status:
                 self.dct_progression["state_2_update_all"] = True
                 self.write_config()
-            else:
-                return
 
         print("🔷3- Clean up database before data migration")
 
@@ -369,20 +357,21 @@ class TodoUpgrade:
                 f"./script/addons/install_addons.sh {database_name} database_cleanup",
                 single_source_odoo=True,
             )
-
             if not status:
                 self.dct_progression["state_3_install_clean_database"] = True
                 self.write_config()
-            else:
-                return
 
         if not self.dct_progression.get("state_3_clean_database"):
             print(
                 "✨ Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
             )
             status = input(
-                "💬 Did you finish to clean database? Press to continue : "
+                "💬 Did you finish to clean database? Press y/Y to open server with selenium, else ignore it : "
             ).strip()
+
+            if status.lower().strip() == "y":
+                self.todo.prompt_execute_selenium_and_run_db(database_name)
+                status = input("💬 Press to continue : ").strip()
 
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
@@ -752,6 +741,7 @@ class TodoUpgrade:
                         f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
                         single_source_odoo=True,
                     )
+
                     lst_fix_migration_odoo[index] = file_path_fix_migration
                     self.dct_progression["state_4_fix_migration_odoo_lst"] = (
                         lst_fix_migration_odoo
@@ -773,9 +763,7 @@ class TodoUpgrade:
 
                 # Update config with OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py --extra-addons-path {path_addons_openupgrade} && ./script/generate_config.sh"
-                self.todo_upgrade_execute(
-                    cmd_update_config,
-                )
+                self.todo_upgrade_execute(cmd_update_config)
 
                 print("🚸 Please, validate commits after code migration.")
                 status = input(
@@ -797,6 +785,7 @@ class TodoUpgrade:
                         "OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"
                     },
                 )
+                # TODO detect error
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
@@ -807,6 +796,13 @@ class TodoUpgrade:
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
+                status = input(
+                    "💬 Do you want to test it? Press y/Y to open server with selenium, else ignore it : "
+                ).strip()
+
+                if status.lower().strip() == "y":
+                    self.todo.prompt_execute_selenium_and_run_db(database_name)
+                    status = input("💬 Press to continue : ").strip()
             else:
                 print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
 
@@ -821,12 +817,17 @@ class TodoUpgrade:
         # waiting_input = input("💬print Press any keyboard key to continue...")
         print("")
 
+        status = input("💬 Test the migration, press y/Y : ")
+        if status.lower().strip() == "y":
+            self.todo.prompt_execute_selenium_and_run_db(database_name_upgrade)
+
     def get_rename_module(self, lst_module, next_version):
         path_search = f"odoo{next_version}.0/OCA_OpenUpgrade/"
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             f"find {path_search} -name apriori.py",
             get_output=True,
         )
+
         if not lst_output:
             _logger.error(
                 f"Cannot find renamed module script apriori.py into path '{path_search}'"
@@ -954,6 +955,7 @@ class TodoUpgrade:
             get_output=True,
             output_is_json=True,
         )
+
         lst_module_missing = dct_output.get("missing")
         lst_module_duplicate = dct_output.get("duplicate")
         return lst_module_missing, lst_module_duplicate
@@ -969,10 +971,8 @@ class TodoUpgrade:
             print(
                 f"⧖ -> Was '{odoo_installed_version}', Switch to odoo{int_odoo_version}.0"
             )
-            self.todo_upgrade_execute(
-                f"make switch_odoo_{int_odoo_version}",
-            )
-            self.todo_upgrade_execute(f"make config_gen_all")
+            self.todo_upgrade_execute(f"make switch_odoo_{int_odoo_version}")
+            self.todo_upgrade_execute("make config_gen_all")
 
     def install_OCA_odoo_module_migrator(self):
         if not os.path.exists(PATH_VENV_MODULE_MIGRATOR):
@@ -1017,6 +1017,7 @@ class TodoUpgrade:
         quiet=False,
         get_output=False,
         output_is_json=False,
+        wait_at_error=True,
     ):
         if output_is_json and not get_output:
             get_output = True
@@ -1042,6 +1043,11 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
+        if status and wait_at_error:
+            input(
+                "💬 Error detected, press to continue or ctrl+c to stop : "
+            ).strip()
+
         if get_output:
             if output_is_json:
                 str_output = json.loads("".join(output))

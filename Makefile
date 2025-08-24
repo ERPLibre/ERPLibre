@@ -308,7 +308,7 @@ i18n_generate_demo_portal:
 
 .PHONY: clean
 clean:
-	find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
+	find . \( -name '__pycache__' -type d -prune -o -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf {} +
 
 ###############
 #  Statistic  #
