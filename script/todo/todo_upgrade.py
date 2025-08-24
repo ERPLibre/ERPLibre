@@ -148,8 +148,8 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
-        self.dct_module_per_version[start_version] = list(
-            set(json_manifest_file_1.get("modules").keys())
+        self.dct_module_per_version[start_version] = sorted(
+            list(set(json_manifest_file_1.get("modules").keys()))
         )
         self.dct_progression["dct_module_per_version"] = (
             self.dct_module_per_version
@@ -165,7 +165,9 @@ class TodoUpgrade:
             )
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
-        print("🔷0- Inspect zip")
+        msg = "0- Inspect zip"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
         print("✅ -> Search odoo version")
         print("✅ -> Find good environment, read the .zip file")
 
@@ -211,7 +213,6 @@ class TodoUpgrade:
         # self.write_config()
 
         print("✅ -> Install environment if missing")
-        # TODO + afficher information du reach
 
         if not self.dct_progression.get("state_0_search_missing_module"):
             dct_bd_modules = json_manifest_file_1.get("modules")
@@ -251,7 +252,9 @@ class TodoUpgrade:
             "❌ -> Install missing module, do a research or ask to uninstall it (can break data)"
         )
 
-        print("🔷1- Import database from zip")
+        msg = "1- Import database from zip"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
 
         database_name = self.dct_progression.get("database_name")
         if not database_name:
@@ -267,7 +270,6 @@ class TodoUpgrade:
         print(f"★ Work with database '{database_name}'")
 
         if not self.dct_progression.get("state_1_restore_database"):
-            # TODO move self.file_path to image_db if not already here and get only the filename
             file_name = os.path.basename(self.file_path)
             image_db_file_path = os.path.join("image_db", file_name)
             if os.path.exists(image_db_file_path):
@@ -339,7 +341,9 @@ class TodoUpgrade:
 
         print("✅ -> Uninstall module")
 
-        print("🔷2- Succeed update all addons")
+        msg = "2- Succeed update all addons"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
 
         if not self.dct_progression.get("state_2_update_all"):
             status, cmd_executed = self.todo_upgrade_execute(
@@ -350,7 +354,9 @@ class TodoUpgrade:
                 self.dct_progression["state_2_update_all"] = True
                 self.write_config()
 
-        print("🔷3- Clean up database before data migration")
+        msg = "3- Clean up database before data migration"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
 
         if not self.dct_progression.get("state_3_install_clean_database"):
             status, cmd_executed = self.todo_upgrade_execute(
@@ -376,7 +382,10 @@ class TodoUpgrade:
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
 
-        print("🔷4- Upgrade version with OpenUpgrade")
+        msg = "4- Upgrade version with OpenUpgrade"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
+
         self.dct_progression["state_4_reach_open_upgrade"] = True
         self.write_config()
         lst_next_version = [
@@ -423,6 +432,9 @@ class TodoUpgrade:
 
         database_name_upgrade = None
         for index, next_version in enumerate(lst_next_version):
+            msg = f"Ready to work with version {next_version}"
+            self.add_comment_progression(msg)
+
             if not database_name_upgrade:
                 last_database_name = database_name
             else:
@@ -433,7 +445,9 @@ class TodoUpgrade:
                 self.dct_module_per_version[next_version - 1],
                 next_version,
             )
-            self.dct_module_per_version[next_version] = lst_module_to_analyse
+            self.dct_module_per_version[next_version] = sorted(
+                list(set(lst_module_to_analyse))
+            )
             self.dct_progression["dct_module_per_version"] = (
                 self.dct_module_per_version
             )
@@ -546,12 +560,20 @@ class TodoUpgrade:
                     print(
                         f"💬 Detect error missing/duplicate module iteration {next_version}, do you want : "
                     )
-                    print(" 0 : Auto-fix (ignore) and continue")
-                    print(" 1 : Delete all 🤖 Best option to continue !")
-                    print(" 2 : Stop execution")
-                    want_continue = input("=> ")
-                    if want_continue.strip().lower() == "2":
-                        return
+                    print(" 0 : Auto-fix 🤖")
+                    print(" 1 : Delete all 🤖")
+                    want_continue = input(
+                        "ctrl+c to stop or press to continue : "
+                    )
+                    if want_continue.strip().lower() == "0":
+                        # TODO auto-fix
+                        # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
+                        # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
+                        # TODO when check module, reminder provenance
+                        # TODO implement asyncio instead of parallel
+                        # TODO detect when duplicate path module ou module manquant, prendre décision qui ont efface si dupliqué
+                        # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
+                        pass
                     elif want_continue.strip().lower() == "1":
                         self.switch_odoo(next_version - 1)
                         # Delete if exist database
@@ -567,15 +589,6 @@ class TodoUpgrade:
                             next_version,
                         )
                         self.switch_odoo(next_version)
-                    else:
-                        # TODO auto-fix
-                        # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
-                        # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
-                        # TODO when check module, reminder provenance
-                        # TODO implement asyncio instead of parallel
-                        # TODO detect when duplicate path module ou module manquant, prendre décision qui ont efface si dupliqué
-                        # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
-                        pass
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -810,7 +823,10 @@ class TodoUpgrade:
         # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        print("🔷5- Cleaning up database after upgrade")
+        msg = "5- Cleaning up database after upgrade"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
+
         print(
             "✨ Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
         )
@@ -948,12 +964,13 @@ class TodoUpgrade:
         )
         self.write_config()
 
-    def check_addons_exist(self, lst_module_to_check):
+    def check_addons_exist(self, lst_module_to_check, ignore_error=True):
         str_module_to_check = ",".join(lst_module_to_check)
         status, cmd_executed, dct_output = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --output_json -m {str_module_to_check}",
             get_output=True,
             output_is_json=True,
+            wait_at_error=not ignore_error,
         )
 
         lst_module_missing = dct_output.get("missing")
@@ -1054,3 +1071,9 @@ class TodoUpgrade:
                 return status, cmd_executed, str_output
             return status, cmd_executed, output
         return status, cmd_executed
+
+    def add_comment_progression(self, comment):
+        comment_to_add = f"# {comment}"
+        self.lst_command_executed.append(comment_to_add)
+        self.dct_progression["command_executed"] = self.lst_command_executed
+        self.write_config()
