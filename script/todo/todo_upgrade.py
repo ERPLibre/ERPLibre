@@ -186,7 +186,7 @@ class TodoUpgrade:
             )
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
-        msg = "0- Inspect zip"
+        msg = "0 - Inspect zip"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
         print("✅ -> Search odoo version")
@@ -273,7 +273,7 @@ class TodoUpgrade:
             "❌ -> Install missing module, do a research or ask to uninstall it (can break data)"
         )
 
-        msg = "1- Import database from zip"
+        msg = "1 - Import database from zip"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -384,7 +384,7 @@ class TodoUpgrade:
         )
         self.write_config()
 
-        msg = "2- Succeed update all addons"
+        msg = "2 - Succeed update all addons"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -397,7 +397,7 @@ class TodoUpgrade:
                 self.dct_progression["state_2_update_all"] = True
                 self.write_config()
 
-        msg = "3- Clean up database before data migration"
+        msg = "3 - Clean up database before data migration"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -425,7 +425,7 @@ class TodoUpgrade:
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
 
-        msg = "4- Upgrade version with OpenUpgrade"
+        msg = "4 - Upgrade version with OpenUpgrade"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -449,6 +449,9 @@ class TodoUpgrade:
         )
         lst_module_uninstall_module = self.dct_progression.get(
             "state_4_uninstall_module", [False] * len(lst_next_version)
+        )
+        lst_module_install_module = self.dct_progression.get(
+            "state_4_install_module", [False] * len(lst_next_version)
         )
         lst_module_search_missing_module = self.dct_progression.get(
             "state_4_search_missing_module", [False] * len(lst_next_version)
@@ -475,7 +478,11 @@ class TodoUpgrade:
 
         database_name_upgrade = None
         for index, next_version in enumerate(lst_next_version):
-            msg = f"4.{index}- Ready to work with version {next_version}"
+            msg = f"4.{index} - Ready to work with version {next_version}"
+            self.add_comment_progression(msg)
+
+            option_comment = 0
+            msg = f"4.{index}.{chr(option_comment + 65)} - Search updated module list to next version"
             self.add_comment_progression(msg)
 
             if not database_name_upgrade:
@@ -484,6 +491,7 @@ class TodoUpgrade:
                 last_database_name = database_name_upgrade
             database_name_upgrade = lst_database_name_upgrade[index]
             lst_module_to_uninstall = []
+            lst_module_to_install = []
             lst_module_to_analyse = self.get_rename_module(
                 self.dct_module_per_version[next_version - 1],
                 next_version,
@@ -494,6 +502,10 @@ class TodoUpgrade:
             self.dct_progression["dct_module_per_version"] = (
                 self.dct_module_per_version
             )
+
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Clone Odoo"
+            self.add_comment_progression(msg)
 
             if not lst_clone_odoo[index]:
                 self.switch_odoo(next_version - 1)
@@ -516,6 +528,10 @@ class TodoUpgrade:
                 print(f"✅ -> Clone Odoo{next_version} done")
             else:
                 print(f"✅ -> Clone Odoo{next_version} - nothing")
+
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Uninstall module"
+            self.add_comment_progression(msg)
 
             config_state_4_uninstall_module = self.dct_progression.get(
                 "config_state_4_uninstall_module",
@@ -547,6 +563,52 @@ class TodoUpgrade:
             )
             self.write_config()
 
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Install module"
+            self.add_comment_progression(msg)
+
+            config_state_4_install_module = self.dct_progression.get(
+                "config_state_4_install_module",
+                [False] * len(lst_next_version),
+            )
+
+            # Special case to install module to fix migration
+            if next_version == 13 and "dms" in lst_module_to_analyse:
+                # Force install dms into odoo 12
+                if not config_state_4_install_module[index]:
+                    config_state_4_install_module[index] = ["dms"]
+                elif "dms" not in config_state_4_install_module[index]:
+                    config_state_4_install_module[index].append("dms")
+
+            if not lst_module_install_module[index]:
+                lst_module_to_install = config_state_4_install_module[index]
+                if not lst_module_to_install:
+                    lst_module_to_install = []
+
+                if lst_module_to_install:
+                    self.install_from_database(
+                        lst_module_to_install,
+                        database_name_upgrade,
+                        next_version - 1,
+                    )
+                    lst_module_install_module[index] = True
+                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
+                        lst_module_install_module
+                    )
+                    self.write_config()
+
+            self.dct_progression["config_state_4_install_module"] = (
+                config_state_4_install_module
+            )
+            self.dct_progression["state_4_install_module"] = (
+                lst_module_install_module
+            )
+            self.write_config()
+
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Switch Odoo"
+            self.add_comment_progression(msg)
+
             if not lst_switch_odoo[index]:
                 self.switch_odoo(next_version)
                 lst_switch_odoo[index] = True
@@ -557,6 +619,12 @@ class TodoUpgrade:
                 print(f"✅ -> Switch Odoo{next_version} done with update")
             else:
                 print(f"✅ -> Switch Odoo{next_version} - nothing")
+
+            option_comment += 1
+            msg = (
+                f"4.{index}.{chr(option_comment + 65)} - Search missing module"
+            )
+            self.add_comment_progression(msg)
 
             if not lst_module_search_missing_module[index]:
                 lst_module_to_analyse_updated = []
@@ -609,6 +677,8 @@ class TodoUpgrade:
                         "ctrl+c to stop or press to continue : "
                     )
                     if want_continue.strip().lower() == "0":
+                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose auto-fix (not implemented yet)"
+                        self.add_comment_progression(msg)
                         # TODO auto-fix
                         # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
                         # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
@@ -618,6 +688,9 @@ class TodoUpgrade:
                         # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
                         pass
                     elif want_continue.strip().lower() == "1":
+                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose delete all missing module"
+                        self.add_comment_progression(msg)
+
                         self.switch_odoo(next_version - 1)
                         # Delete if exist database
                         self.todo_upgrade_execute(
@@ -631,7 +704,17 @@ class TodoUpgrade:
                             database_name_upgrade,
                             next_version,
                         )
+                        self.install_from_database(
+                            lst_module_to_install,
+                            database_name_upgrade,
+                            next_version - 1,
+                        )
+
                         self.switch_odoo(next_version)
+
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Migrate module"
+            self.add_comment_progression(msg)
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -784,6 +867,10 @@ class TodoUpgrade:
             else:
                 print(f"✅ -> Module upgrade Odoo{next_version} - nothing")
 
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Fix migrate code"
+            self.add_comment_progression(msg)
+
             if not lst_fix_migration_odoo[index]:
                 print("")
                 file_path_fix_migration = os.path.join(
@@ -810,6 +897,10 @@ class TodoUpgrade:
                     )
             else:
                 print(f"✅ -> Fix migration Odoo{next_version} - nothing")
+
+            option_comment += 1
+            msg = f"4.{index}.{chr(option_comment + 65)} - Migrate database"
+            self.add_comment_progression(msg)
 
             if not lst_upgrade_odoo[index]:
                 # []/odoo15.0/OCA_OpenUpgrade
@@ -868,7 +959,7 @@ class TodoUpgrade:
         # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
-        msg = "5- Cleaning up database after upgrade"
+        msg = "5 - Cleaning up database after upgrade"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -876,7 +967,7 @@ class TodoUpgrade:
             "✨ Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
-        msg = "6-Migration finished"
+        msg = "6 - Migration finished"
         print(f"🔷{msg}")
         self.add_comment_progression(msg)
 
@@ -1004,6 +1095,8 @@ class TodoUpgrade:
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
     ):
+        if not lst_module_to_uninstall:
+            return
         uninstall_module = ",".join(lst_module_to_uninstall)
         self.todo_upgrade_execute(
             f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
@@ -1025,6 +1118,8 @@ class TodoUpgrade:
     def install_from_database(
         self, lst_module_to_install, database_name, actual_version
     ):
+        if not lst_module_to_install:
+            return
         install_module = ",".join(lst_module_to_install)
         self.todo_upgrade_execute(
             f"./script/addons/install_addons.sh {database_name} {install_module}",
