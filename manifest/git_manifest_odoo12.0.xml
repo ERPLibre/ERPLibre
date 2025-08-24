@@ -152,7 +152,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="brand.git" path="odoo12.0/addons/OCA_brand" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="brand.git"
+        path="odoo12.0/addons/OCA_brand"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="business-requirement.git"
         path="odoo12.0/addons/OCA_business-requirement"
@@ -223,7 +229,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="crm.git" path="odoo12.0/addons/OCA_crm" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="crm.git"
+        path="odoo12.0/addons/OCA_crm"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="currency.git"
         path="odoo12.0/addons/OCA_currency"
@@ -238,7 +250,14 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="ddmrp.git" path="odoo12.0/addons/OCA_ddmrp" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="ddmrp.git"
+        path="odoo12.0/addons/OCA_ddmrp"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
+    <project name="dms.git" path="odoo12.0/addons/OCA_dms" remote="OCA" revision="12.0" groups="addons,odoo12.0" />
     <project
         name="delivery-carrier.git"
         path="odoo12.0/addons/OCA_delivery-carrier"
@@ -281,7 +300,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="edi.git" path="odoo12.0/addons/OCA_edi" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="edi.git"
+        path="odoo12.0/addons/OCA_edi"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="erplibre-3D-printing-addons.git"
         path="odoo12.0/addons/ERPLibre_erplibre-3D-printing-addons"
@@ -310,7 +335,13 @@
         revision="12.0"
         groups="addons,odoo12.0,code_generator,image_db"
     />
-    <project name="event.git" path="odoo12.0/addons/OCA_event" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="event.git"
+        path="odoo12.0/addons/OCA_event"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="field-service.git"
         path="odoo12.0/addons/OCA_field-service"
@@ -318,7 +349,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="fleet.git" path="odoo12.0/addons/OCA_fleet" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="fleet.git"
+        path="odoo12.0/addons/OCA_fleet"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="geospatial.git"
         path="odoo12.0/addons/OCA_geospatial"
@@ -333,7 +370,13 @@
         revision="12.0_dev"
         groups="addons,odoo12.0,code_generator,image_db"
     />
-    <project name="hr.git" path="odoo12.0/addons/OCA_hr" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="hr.git"
+        path="odoo12.0/addons/OCA_hr"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="interface-github.git"
         path="odoo12.0/addons/OCA_interface-github"
@@ -657,7 +700,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="pos.git" path="odoo12.0/addons/OCA_pos" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="pos.git"
+        path="odoo12.0/addons/OCA_pos"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="product-attribute.git"
         path="odoo12.0/addons/OCA_product-attribute"
@@ -707,7 +756,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="queue.git" path="odoo12.0/addons/OCA_queue" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="queue.git"
+        path="odoo12.0/addons/OCA_queue"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="reporting-engine.git"
         path="odoo12.0/addons/OCA_reporting-engine"
@@ -715,7 +770,13 @@
         revision="12.0"
         groups="addons,odoo12.0"
     />
-    <project name="rma.git" path="odoo12.0/addons/OCA_rma" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="rma.git"
+        path="odoo12.0/addons/OCA_rma"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
     <project
         name="saas-addons.git"
         path="odoo12.0/addons/it-projects-llc_saas-addons"
@@ -877,5 +938,11 @@
         revision="12.0_dev"
         groups="addons,odoo12.0,code_generator,image_db"
     />
-    <project name="wms.git" path="odoo12.0/addons/OCA_wms" remote="ERPLibre_origin_OCA" revision="12.0" groups="addons,odoo12.0" />
+    <project
+        name="wms.git"
+        path="odoo12.0/addons/OCA_wms"
+        remote="ERPLibre_origin_OCA"
+        revision="12.0"
+        groups="addons,odoo12.0"
+    />
 </manifest>
