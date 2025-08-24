@@ -61,9 +61,28 @@ class TodoUpgrade:
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
             erase_progression_input = input(
-                "💬 Detected migration, would you like to erase progression for a new migration (y/Y) or continue it (anything) : "
+                "💬 Detected migration, would you like to erase progression for a new migration (y/Y), reuse database with new process (r/R) or continue it (anything) : "
             )
-            if erase_progression_input.strip().lower() not in ["y", "yes"]:
+            if erase_progression_input.strip().lower() in ["r", "reuse"]:
+                with open(UPGRADE_CONFIG_LOG, "r") as f:
+                    try:
+                        old_dct_progression = json.load(f)
+                        self.dct_progression = {
+                            "migration_file": old_dct_progression.get(
+                                "migration_file"
+                            ),
+                            "date_create": old_dct_progression.get(
+                                "date_create"
+                            ),
+                        }
+                        for key, value in old_dct_progression.items():
+                            if key.startswith("config_"):
+                                self.dct_progression[key] = value
+                    except json.decoder.JSONDecodeError:
+                        print(
+                            f"⚠️ The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
+                        )
+            elif erase_progression_input.strip().lower() not in ["y", "yes"]:
                 with open(UPGRADE_CONFIG_LOG, "r") as f:
                     try:
                         self.dct_progression = json.load(f)
@@ -148,12 +167,14 @@ class TodoUpgrade:
         start_version = int(float(odoo_actual_version))
         end_version = int(float(odoo_target_version))
         range_version = range(start_version, end_version)
-        self.dct_module_per_version[start_version] = sorted(
+        lst_module = sorted(
             list(set(json_manifest_file_1.get("modules").keys()))
         )
+        self.dct_module_per_version[start_version] = lst_module
         self.dct_progression["dct_module_per_version"] = (
             self.dct_module_per_version
         )
+        self.dct_progression["lst_module_per_version_origin"] = lst_module
         # TODO need support minor version, example 18.2, the .2 (no need for OCE OCB)
 
         print("✨ Show documentation version :")
@@ -307,6 +328,9 @@ class TodoUpgrade:
         config_state_1_uninstall_module = self.dct_progression.get(
             "config_state_1_uninstall_module"
         )
+        config_state_1_install_module = self.dct_progression.get(
+            "config_state_1_install_module"
+        )
 
         if not is_state_4_reach_open_upgrade:
             lst_module_to_uninstall = []
@@ -337,9 +361,28 @@ class TodoUpgrade:
         self.dct_progression["config_state_1_uninstall_module"] = (
             config_state_1_uninstall_module
         )
+
         self.write_config()
 
         print("✅ -> Uninstall module")
+
+        print("✅ -> install module")
+        if not is_state_4_reach_open_upgrade:
+            lst_module_to_install = []
+            if config_state_1_install_module:
+                lst_module_to_install = (
+                    lst_module_to_install + config_state_1_install_module
+                )
+            if lst_module_to_install:
+                self.install_from_database(
+                    lst_module_to_install, database_name, start_version
+                )
+                self.dct_progression["state_1_install_module"] = True
+                self.write_config()
+        self.dct_progression["config_state_1_install_module"] = (
+            config_state_1_install_module
+        )
+        self.write_config()
 
         msg = "2- Succeed update all addons"
         print(f"🔷{msg}")
@@ -432,7 +475,7 @@ class TodoUpgrade:
 
         database_name_upgrade = None
         for index, next_version in enumerate(lst_next_version):
-            msg = f"Ready to work with version {next_version}"
+            msg = f"4.{index}- Ready to work with version {next_version}"
             self.add_comment_progression(msg)
 
             if not database_name_upgrade:
@@ -810,11 +853,13 @@ class TodoUpgrade:
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
                 status = input(
-                    "💬 Do you want to test it? Press y/Y to open server with selenium, else ignore it : "
+                    "💬 Do you want to test this upgrade? Press y/Y to open server with selenium, else ignore it : "
                 ).strip()
 
                 if status.lower().strip() == "y":
-                    self.todo.prompt_execute_selenium_and_run_db(database_name)
+                    self.todo.prompt_execute_selenium_and_run_db(
+                        database_name_upgrade
+                    )
                     status = input("💬 Press to continue : ").strip()
             else:
                 print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
@@ -831,7 +876,20 @@ class TodoUpgrade:
             "✨ Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
-        print("")
+        msg = "6-Migration finished"
+        print(f"🔷{msg}")
+        self.add_comment_progression(msg)
+
+        cmd_backup_template = f"./odoo_bin.sh db --backup --database {database_name_upgrade} --restore_image"
+        cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        print(f"✨ Can execute backup creation :\n{cmd_backup}")
+        status = input(
+            "💬 Press y/Y or write filename.zip to export or enter to continue : "
+        ).strip()
+        if status.lower():
+            if status.lower() != "y":
+                cmd_backup = f"{cmd_backup_template} {status}"
+            self.todo_upgrade_execute(cmd_backup)
 
         status = input("💬 Test the migration, press y/Y : ")
         if status.lower().strip() == "y":
@@ -964,10 +1022,33 @@ class TodoUpgrade:
         )
         self.write_config()
 
+    def install_from_database(
+        self, lst_module_to_install, database_name, actual_version
+    ):
+        install_module = ",".join(lst_module_to_install)
+        self.todo_upgrade_execute(
+            f"./script/addons/install_addons.sh {database_name} {install_module}",
+            single_source_odoo=True,
+        )
+
+        # Update list installed module
+        self.dct_module_per_version[actual_version] = sorted(
+            list(
+                set(
+                    self.dct_module_per_version[actual_version]
+                    + lst_module_to_install
+                )
+            )
+        )
+        self.dct_progression["dct_module_per_version"] = (
+            self.dct_module_per_version
+        )
+        self.write_config()
+
     def check_addons_exist(self, lst_module_to_check, ignore_error=True):
         str_module_to_check = ",".join(lst_module_to_check)
         status, cmd_executed, dct_output = self.todo_upgrade_execute(
-            f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --output_json -m {str_module_to_check}",
+            f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --format_json --output_json -m {str_module_to_check}",
             get_output=True,
             output_is_json=True,
             wait_at_error=not ignore_error,
