@@ -187,7 +187,7 @@ class TodoUpgrade:
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
         print("✅ -> Search odoo version")
         print("✅ -> Find good environment, read the .zip file")
@@ -241,15 +241,23 @@ class TodoUpgrade:
             lst_module_missing, lst_module_duplicate = self.check_addons_exist(
                 lst_module_to_check
             )
+            if not lst_module_missing:
+                lst_module_missing = []
+            if not lst_module_duplicate:
+                lst_module_duplicate = []
 
             self.dct_progression["len_lst_module_missing"] = len(
                 lst_module_missing
             )
+            self.dct_progression["lst_module_missing"] = sorted(
+                list(set(lst_module_missing))
+            )
             self.dct_progression["len_lst_module_duplicate"] = len(
                 lst_module_duplicate
             )
-            self.dct_progression["lst_module_missing"] = lst_module_missing
-            self.dct_progression["lst_module_duplicate"] = lst_module_duplicate
+            self.dct_progression["lst_module_duplicate"] = sorted(
+                list(set(lst_module_duplicate))
+            )
             self.write_config()
             if lst_module_missing or lst_module_duplicate:
                 if lst_module_missing:
@@ -274,7 +282,7 @@ class TodoUpgrade:
         )
 
         msg = "1 - Import database from zip"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         database_name = self.dct_progression.get("database_name")
@@ -385,7 +393,7 @@ class TodoUpgrade:
         self.write_config()
 
         msg = "2 - Succeed update all addons"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         if not self.dct_progression.get("state_2_update_all"):
@@ -398,7 +406,7 @@ class TodoUpgrade:
                 self.write_config()
 
         msg = "3 - Clean up database before data migration"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         if not self.dct_progression.get("state_3_install_clean_database"):
@@ -426,7 +434,7 @@ class TodoUpgrade:
             self.write_config()
 
         msg = "4 - Upgrade version with OpenUpgrade"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         self.dct_progression["state_4_reach_open_upgrade"] = True
@@ -648,7 +656,7 @@ class TodoUpgrade:
                     lst_module_missing
                 )
                 self.dct_progression["state_4_lst_module_missing"] = (
-                    lst_module_missing
+                    sorted(list(set(lst_module_missing)))
                 )
                 self.dct_progression["state_4_len_lst_module_duplicate"] = len(
                     lst_module_duplicate
@@ -903,13 +911,19 @@ class TodoUpgrade:
             self.add_comment_progression(msg)
 
             if not lst_upgrade_odoo[index]:
-                # []/odoo15.0/OCA_OpenUpgrade
                 path_addons_openupgrade = os.path.join(
                     os.getcwd(), f"odoo{next_version}.0", "OCA_OpenUpgrade"
                 )
 
                 # Update config with OCA_OpenUpgrade
-                cmd_update_config = f"./script/git/git_repo_update_group.py --extra-addons-path {path_addons_openupgrade} && ./script/generate_config.sh"
+                ignore_path = (
+                    "--ignore-odoo-path " if next_version <= 13 else ""
+                )
+                cmd_update_config = (
+                    f"./script/git/git_repo_update_group.py {ignore_path}"
+                    f"--extra-addons-path {path_addons_openupgrade},{path_addons_openupgrade}/addons,{path_addons_openupgrade}/odoo/addons "
+                    f"&& ./script/generate_config.sh"
+                )
                 self.todo_upgrade_execute(cmd_update_config)
 
                 print("🚸 Please, validate commits after code migration.")
@@ -960,7 +974,7 @@ class TodoUpgrade:
         print("")
 
         msg = "5 - Cleaning up database after upgrade"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         print(
@@ -968,7 +982,7 @@ class TodoUpgrade:
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
         msg = "6 - Migration finished"
-        print(f"🔷{msg}")
+        print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
         cmd_backup_template = f"./odoo_bin.sh db --backup --database {database_name_upgrade} --restore_image"

@@ -501,11 +501,11 @@ class TODO:
 
         lst_instance = self.get_config(["update_from_makefile"])
         dct_upgrade_odoo_database = {
-            "prompt_description": "Upgrade Odoo",
+            "prompt_description": "Upgrade Odoo - Migration Database",
         }
         lst_instance.append(dct_upgrade_odoo_database)
         dct_upgrade_poetry = {
-            "prompt_description": "Upgrade Poetry",
+            "prompt_description": "Upgrade Poetry - Dependency of Odoo",
         }
         lst_instance.append(dct_upgrade_poetry)
         help_info = self.fill_help_info(lst_instance)
@@ -773,7 +773,7 @@ class TODO:
         elif new_window:
             commande = self.cmd_source_default % commande
 
-        print("🏠⬇ Execute command :")
+        print("🏠 ⬇ Execute command :")
         print(commande)
         lst_output = []
 
@@ -826,9 +826,9 @@ class TODO:
         if humanize:
             duration_delta = datetime.timedelta(seconds=duration_sec)
             humain_time = humanize.precisedelta(duration_delta)
-            print(f"🏠⬆ Executed ({humain_time}) :")
+            print(f"🏠 ⬆ Executed ({humain_time}) :")
         else:
-            print(f"🏠⬆ Executed ({duration_sec:.2f} sec.) :")
+            print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :")
         print(commande)
         print()
         if return_status_and_output_and_command:
