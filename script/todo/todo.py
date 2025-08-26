@@ -298,7 +298,7 @@ class TODO:
                     new_window=True,
                 )
                 print(
-                    "Close Pycharm when processing is done before continue"
+                    "👹 WAIT and Close Pycharm when processing is done before continue"
                     " this guide."
                 )
         # TODO detect last version supported
