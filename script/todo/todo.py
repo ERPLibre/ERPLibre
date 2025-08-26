@@ -73,8 +73,8 @@ class TODO:
                 self.cmd_source_erplibre = (
                     "osascript -e 'tell application \"Terminal\"'"
                 )
-                self.cmd_source_erplibre += " -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \""
-                self.cmd_source_erplibre += f"./{cst_venv_erplibre}/bin/activate; %s\" in front window'"
+                self.cmd_source_erplibre += " -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \""
+                self.cmd_source_erplibre += f"cd {os.getcwd()}; source ./{cst_venv_erplibre}/bin/activate; %s\" in front window'"
                 self.cmd_source_erplibre += " -e 'end tell'"
             else:
                 self.cmd_source_erplibre = (

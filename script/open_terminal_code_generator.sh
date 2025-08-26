@@ -67,7 +67,7 @@ elif [[ "${OSTYPE}" == "darwin"* ]]; then
     fi
   done
   osascript_command+=" -e 'end tell'"
-
+  echo "$osascript_command"
   # Exécution de la commande osascript
   eval "$osascript_command"
 fi

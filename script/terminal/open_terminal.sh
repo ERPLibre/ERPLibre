@@ -69,13 +69,13 @@ elif [ "$HAS_TELL_TERMINAL" = true ]; then
       continue
     fi
     if $FIRST_ITERATION; then
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
       FIRST_ITERATION=false
     elif $SECOND_ITERATION; then
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
       SECOND_ITERATION=false
     else
-      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"PATH\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
+      osascript_command+=" -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \"cd ${PATH}; ${SOURCE_CMD}; ${CMD_TO_EXEC}\" in front window'"
     fi
   done
   osascript_command+=" -e 'end tell'"
