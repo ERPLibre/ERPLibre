@@ -28,7 +28,11 @@ def get_modified_files():
             if not line:
                 continue
 
-            status, file_path = line.strip().split(" ")
+            try:
+                status, file_path = line.strip().replace("  ", " ").split(" ")
+            except Exception as e:
+                print(f"'{line}'")
+                raise e
 
             if (
                 status == "M"

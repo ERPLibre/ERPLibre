@@ -8,13 +8,13 @@ import json
 import os
 import random
 import re
-import subprocess
 import shutil
+import subprocess
 import sys
 import tempfile
-from subprocess import getoutput
 import time
 import tkinter as tk
+from subprocess import getoutput
 from tkinter import filedialog
 
 from pykeepass import PyKeePass
@@ -101,36 +101,46 @@ class SeleniumLib(object):
             user = os.environ.get("USER", "Non défini")
             uid = os.getuid()
             gid = os.getgid()
-            print(
-                f"INFO: Execute by user: {user}, UID: {uid}, GID: {gid}"
-            )
+            print(f"INFO: Execute by user: {user}, UID: {uid}, GID: {gid}")
 
             # Exécuter la commande 'whoami' pour confirmation
             whoami_result = subprocess.run(
                 ["whoami"], capture_output=True, text=True
             )
-            print(
-                f"INFO: Result 'whoami': {whoami_result.stdout.strip()}"
-            )
+            print(f"INFO: Result 'whoami': {whoami_result.stdout.strip()}")
 
         except Exception as e:
             print(f"ERROR when check user: {e}")
 
         try:
             if self.config.use_chrome_driver:
+                from selenium.webdriver.chrome.options import (
+                    Options as ChromeOptions,
+                )
                 from selenium.webdriver.chrome.service import Service
-                from selenium.webdriver.chrome.options import Options as ChromeOptions
+
                 chrome_options = ChromeOptions()
                 if self.config.window_size:
                     # chrome_options.add_argument("--window-size=1920,1080")
-                    chrome_options.add_argument(f"--window-size={self.config.window_size}")
+                    chrome_options.add_argument(
+                        f"--window-size={self.config.window_size}"
+                    )
 
                 if self.config.use_network:
-                    chrome_options.set_capability('se:name', 'ERPLibre selenium')
-                    self.driver = webdriver.Remote(options=chrome_options, command_executor=self.config.use_network)
+                    chrome_options.set_capability(
+                        "se:name", "ERPLibre selenium"
+                    )
+                    self.driver = webdriver.Remote(
+                        options=chrome_options,
+                        command_executor=self.config.use_network,
+                    )
                 else:
                     from webdriver_manager.chrome import ChromeDriverManager
-                    service = Service(ChromeDriverManager().install(), log_path='/tmp/chromedriver.log')
+
+                    service = Service(
+                        ChromeDriverManager().install(),
+                        log_path="/tmp/chromedriver.log",
+                    )
                     self.driver = webdriver.Chrome(
                         options=chrome_options,
                         # options=firefox_options,
@@ -146,23 +156,39 @@ class SeleniumLib(object):
                 if self.config.gecko_binary_path:
                     firefox_services = Service(
                         executable_path=self.config.gecko_binary_path,
-                        log_output=self.config.debug)
+                        log_output=self.config.debug,
+                    )
                 firefox_options = webdriver.FirefoxOptions()
                 if not self.config.not_private_mode:
                     firefox_options.add_argument("--private")
 
                 if self.config.firefox_binary_path:
-                    firefox_options.binary_location = self.config.firefox_binary_path
+                    firefox_options.binary_location = (
+                        self.config.firefox_binary_path
+                    )
+                elif not self.config.use_network:
+                    status_location = subprocess.check_output(
+                        ["which", "firefox"], text=True
+                    ).strip()
+                    firefox_options.binary_location = status_location
 
                 firefox_profile = webdriver.FirefoxProfile()
-                firefox_profile.set_preference("browser.cache.disk.enable", False)
-                firefox_profile.set_preference("browser.cache.memory.enable", False)
-                firefox_profile.set_preference("browser.cache.offline.enable", False)
+                firefox_profile.set_preference(
+                    "browser.cache.disk.enable", False
+                )
+                firefox_profile.set_preference(
+                    "browser.cache.memory.enable", False
+                )
+                firefox_profile.set_preference(
+                    "browser.cache.offline.enable", False
+                )
                 firefox_profile.set_preference("network.http.use-cache", False)
                 firefox_options.set_preference(
                     "permissions.default.desktop-notification", 1
                 )
-                firefox_options.set_preference("browser.download.folderList", 2)
+                firefox_options.set_preference(
+                    "browser.download.folderList", 2
+                )
                 firefox_options.set_preference(
                     "browser.download.manager.showWhenStarting", False
                 )
@@ -176,7 +202,9 @@ class SeleniumLib(object):
                 firefox_options.set_preference("pdfjs.disabled", True)
                 if self.config.window_size:
                     # chrome_options.add_argument("--window-size=1920,1080")
-                    firefox_options.add_argument(f"--window-size={self.config.window_size}")
+                    firefox_options.add_argument(
+                        f"--window-size={self.config.window_size}"
+                    )
 
                 if self.config.headless:
                     firefox_options.add_argument("--headless")
@@ -186,8 +214,13 @@ class SeleniumLib(object):
                 firefox_options.add_argument("--disable-dbus")
 
                 if self.config.use_network:
-                    firefox_options.set_capability('se:name', 'ERPLibre selenium')
-                    self.driver = webdriver.Remote(options=firefox_options, command_executor=self.config.use_network)
+                    firefox_options.set_capability(
+                        "se:name", "ERPLibre selenium"
+                    )
+                    self.driver = webdriver.Remote(
+                        options=firefox_options,
+                        command_executor=self.config.use_network,
+                    )
                 else:
                     self.driver = webdriver.Firefox(
                         options=firefox_options,
@@ -243,7 +276,10 @@ class SeleniumLib(object):
                     "./script/selenium/odoo_debug-4.0.xpi", temporary=True
                 )
 
-            if not self.config.not_private_mode and not self.config.no_dark_mode:
+            if (
+                not self.config.not_private_mode
+                and not self.config.no_dark_mode
+            ):
                 self.driver.get("about:addons")
                 # Enable Dark Reader into incognito
                 self.click("/html/body/div/div[1]/categories-box/button[2]")
