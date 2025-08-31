@@ -945,7 +945,7 @@ class TODO:
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
     def download_database_backup_cli(self, show_remote_list=True):
-        database_domain = input("Domain Odoo (ex. https://mondomain.com) :\n")
+        database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
         if show_remote_list:
             status, lst_output = self.executer_commande_live(
                 f"python3 ./script/database/list_remote.py --raw --odoo-url {database_domain}",
@@ -969,14 +969,14 @@ class TODO:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
         default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
         output_path = input(
-            f"Output path (default: {default_output_path}) :\n"
+            f"Output path (default: {default_output_path}) : "
         ).strip()
         if not output_path:
             output_path = default_output_path
 
         master_password = getpass.getpass(prompt="Master password : ")
 
-        cmd = "script/database/download_remote.sh"
+        cmd = "script/database/download_remote.sh --quiet"
         my_env = os.environ.copy()
         my_env["MASTER_PWD"] = master_password
         my_env["DATABASE_NAME"] = database_name
