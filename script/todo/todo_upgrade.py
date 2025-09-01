@@ -57,6 +57,7 @@ class TodoUpgrade:
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
         self.lst_command_executed = []
         self.dct_module_per_version = {}
+        lst_module_to_migrate = []
         default_database_name = "test"
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
@@ -238,11 +239,22 @@ class TodoUpgrade:
         if not self.dct_progression.get("state_0_search_missing_module"):
             dct_bd_modules = json_manifest_file_1.get("modules")
             lst_module_to_check = [a for a in dct_bd_modules.keys()]
-            lst_module_missing, lst_module_duplicate = self.check_addons_exist(
-                lst_module_to_check
-            )
+            (
+                lst_module_missing,
+                lst_module_duplicate,
+                lst_module_exist,
+                lst_module_error,
+            ) = self.check_addons_exist(lst_module_to_check, get_all_info=True)
             if not lst_module_missing:
                 lst_module_missing = []
+            dct_module_exist = {}
+            if not lst_module_exist:
+                lst_module_exist = []
+            else:
+                for item_lst_module_exist in lst_module_exist:
+                    dct_module_exist[item_lst_module_exist[0]] = (
+                        item_lst_module_exist[1].replace(os.getcwd(), ".")
+                    )
             if not lst_module_duplicate:
                 lst_module_duplicate = []
 
@@ -252,6 +264,10 @@ class TodoUpgrade:
             self.dct_progression["lst_module_missing"] = sorted(
                 list(set(lst_module_missing))
             )
+            self.dct_progression["len_dct_module_exist"] = len(
+                lst_module_exist
+            )
+            self.dct_progression["dct_module_exist"] = dct_module_exist
             self.dct_progression["len_lst_module_duplicate"] = len(
                 lst_module_duplicate
             )
@@ -260,6 +276,7 @@ class TodoUpgrade:
             )
             self.write_config()
             if lst_module_missing or lst_module_duplicate:
+                print("Cannot setup environment to begin.")
                 if lst_module_missing:
                     print("Missing module :")
                     print(lst_module_missing)
@@ -285,7 +302,7 @@ class TodoUpgrade:
         print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
-        database_name = self.dct_progression.get("database_name")
+        database_name = self.dct_progression.get("config_database_name")
         if not database_name:
             database_name = (
                 input(
@@ -293,7 +310,7 @@ class TodoUpgrade:
                 ).strip()
                 or default_database_name
             )
-            self.dct_progression["database_name"] = database_name
+            self.dct_progression["config_database_name"] = database_name
             self.write_config()
 
         print(f"★ Work with database '{database_name}'")
@@ -655,8 +672,8 @@ class TodoUpgrade:
                 self.dct_progression["state_4_len_lst_module_missing"] = len(
                     lst_module_missing
                 )
-                self.dct_progression["state_4_lst_module_missing"] = (
-                    sorted(list(set(lst_module_missing)))
+                self.dct_progression["state_4_lst_module_missing"] = sorted(
+                    list(set(lst_module_missing))
                 )
                 self.dct_progression["state_4_len_lst_module_duplicate"] = len(
                     lst_module_duplicate
@@ -664,42 +681,59 @@ class TodoUpgrade:
                 self.dct_progression["state_4_lst_module_duplicate"] = (
                     lst_module_duplicate
                 )
-                lst_module_search_missing_module[index] = True
-                self.dct_progression["state_4_search_missing_module"] = (
-                    lst_module_search_missing_module
-                )
-                self.write_config()
-                if lst_module_missing or lst_module_duplicate:
-                    if lst_module_missing:
-                        print("Missing module :")
-                        print(lst_module_missing)
-                    if lst_module_duplicate:
-                        print("Duplicate module :")
-                        print(lst_module_duplicate)
-                    print(
-                        f"💬 Detect error missing/duplicate module iteration {next_version}, do you want : "
+
+                if lst_module_duplicate:
+                    print(f"Duplicate module into odoo{next_version} : ")
+                    print(lst_module_duplicate)
+                    input(
+                        f"💬 Detect error duplicate module, manage this problem manually and press to continue."
                     )
-                    print(" 0 : Auto-fix 🤖")
-                    print(" 1 : Delete all 🤖")
-                    want_continue = input(
-                        "ctrl+c to stop or press to continue : "
+                if lst_module_missing:
+                    print(f"Missing module into odoo{next_version} :")
+                    for index_missing_module, module_missing in enumerate(
+                        lst_module_missing
+                    ):
+                        old_path = self.dct_progression.get(
+                            "dct_module_exist", {}
+                        ).get(module_missing)
+                        print(
+                            f"{index_missing_module}: {module_missing} - {old_path}"
+                        )
+
+                    want_continue = (
+                        input(
+                            f"💬 Detect error missing module, enumerate missing module separate by coma to delete it 🤖"
+                            f" or write 'all' to delete all. The other will be migrate : "
+                        )
+                        .strip()
+                        .lower()
                     )
-                    if want_continue.strip().lower() == "0":
-                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose auto-fix (not implemented yet)"
-                        self.add_comment_progression(msg)
-                        # TODO auto-fix
-                        # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
-                        # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
-                        # TODO when check module, reminder provenance
-                        # TODO implement asyncio instead of parallel
-                        # TODO detect when duplicate path module ou module manquant, prendre décision qui ont efface si dupliqué
-                        # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
-                        pass
-                    elif want_continue.strip().lower() == "1":
-                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose delete all missing module"
+
+                    is_delete_all = False
+                    lst_module_to_delete = []
+                    if want_continue:
+                        if want_continue == "all":
+                            is_delete_all = True
+                            lst_module_to_delete = [
+                                lst_module_missing[a]
+                                for a in range(len(lst_module_missing))
+                            ]
+                        else:
+                            lst_module_to_delete = [
+                                lst_module_missing[int(a.strip())]
+                                for a in want_continue.split(",")
+                            ]
+                            if len(lst_module_to_delete) == len(
+                                lst_module_missing
+                            ):
+                                is_delete_all = True
+                    if lst_module_to_delete:
+                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose delete missing module"
                         self.add_comment_progression(msg)
 
-                        self.switch_odoo(next_version - 1)
+                    self.switch_odoo(next_version - 1)
+
+                    if lst_module_to_delete:
                         # Delete if exist database
                         self.todo_upgrade_execute(
                             f"./script/database/db_restore.py -d {database_name_upgrade} --only_drop",
@@ -708,7 +742,7 @@ class TodoUpgrade:
                         cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
                         self.uninstall_from_database(
-                            lst_module_missing,
+                            lst_module_to_delete,
                             database_name_upgrade,
                             next_version,
                         )
@@ -718,8 +752,89 @@ class TodoUpgrade:
                             next_version - 1,
                         )
 
-                        self.switch_odoo(next_version)
+                    if not is_delete_all:
+                        msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose auto-fix (not implemented yet)"
+                        self.add_comment_progression(msg)
 
+                        lst_module_to_migrate_code = set(
+                            lst_module_missing
+                        ) - set(lst_module_to_delete)
+                        (
+                            lst_module_missing_last,
+                            lst_module_duplicate_last,
+                            lst_module_exist_last,
+                            lst_module_error_last,
+                        ) = self.check_addons_exist(
+                            lst_module_to_migrate_code, get_all_info=True
+                        )
+
+                        if lst_module_missing_last:
+                            print(
+                                f"Error missing module : {lst_module_missing_last}"
+                            )
+                        if lst_module_duplicate_last:
+                            print(
+                                f"Error duplicate module : {lst_module_duplicate_last}"
+                            )
+                        if lst_module_error_last:
+                            print(
+                                f"Error error module : {lst_module_error_last}"
+                            )
+
+                        if lst_module_exist_last:
+                            odoo_name_last_version = (
+                                f"odoo{next_version - 1}.0"
+                            )
+                            odoo_name_actual_version = f"odoo{next_version}.0"
+                            for (
+                                module_name,
+                                module_path,
+                            ) in lst_module_exist_last:
+                                module_dir_path = os.path.dirname(module_path)
+                                module_dir_path_new_version = (
+                                    module_dir_path.replace(
+                                        odoo_name_last_version,
+                                        odoo_name_actual_version,
+                                    )
+                                )
+                                module_dir_path_manifest = os.path.join(
+                                    module_path, "__manifest__.py"
+                                )
+                                module_dir_new_version = os.path.join(
+                                    module_dir_path_new_version, module_name
+                                )
+                                module_dir_new_version_manifest = os.path.join(
+                                    module_dir_new_version, "__manifest__.py"
+                                )
+                                dct_module_to_migrate_module = {
+                                    "source_module_path": module_path,
+                                    "source_manifest_path": module_dir_path_manifest,
+                                    "source_addons_path": module_dir_path,
+                                    "target_module_path": module_dir_new_version,
+                                    "target_manifest_path": module_dir_new_version_manifest,
+                                    "target_addons_path": module_dir_path_new_version,
+                                    "module_name": module_name,
+                                    "source_version_odoo": next_version - 1,
+                                    "target_version_odoo": next_version,
+                                }
+                                lst_module_to_migrate.append(
+                                    dct_module_to_migrate_module
+                                )
+
+                    self.switch_odoo(next_version)
+                    # TODO auto-fix
+                    # TODO try to migrate module, find in previous version, application la migration vers une nouvelle version
+                    # TODO ajouté menu todo qui permet de faire une migration d'un module et migrer le générateur de code.
+                    # TODO when check module, reminder provenance
+                    # TODO implement asyncio instead of parallel
+                    # TODO detect when duplicate path module ou module manquant, prendre décision qui ont efface si dupliqué
+                    # TODO pourquoi web_ir_actions_act_multi est doublé dans odoo 13
+
+                lst_module_search_missing_module[index] = True
+                self.dct_progression["state_4_search_missing_module"] = (
+                    lst_module_search_missing_module
+                )
+                self.write_config()
             option_comment += 1
             msg = f"4.{index}.{chr(option_comment + 65)} - Migrate module"
             self.add_comment_progression(msg)
@@ -732,51 +847,67 @@ class TodoUpgrade:
                 #  Maybe check if already exist and show list or continue with overwrite
                 #  Expliquer pourquoi on ne fait pas le oca-port, c'est
 
-                dct_module_result = self.search_module_to_move(
-                    next_version - 1, next_version
+                config_migrate_repo = self.dct_progression.get(
+                    "config_migrate_repo", False
+                )
+                self.dct_progression["config_migrate_repo"] = (
+                    config_migrate_repo
                 )
 
-                # TODO code migration
-                #  git stash
-                #  call odoo-module-migrate, without commit
+                if config_migrate_repo:
+                    dct_module_result = self.search_module_to_move(
+                        next_version - 1, next_version
+                    )
 
-                source_module_path = dct_module_result.get(
-                    "source_module_path"
-                )
-                if not source_module_path:
-                    _logger.error(
-                        f"Missing source module path '{source_module_path}'"
+                    # TODO code migration
+                    #  git stash
+                    #  call odoo-module-migrate, without commit
+
+                    source_module_path = dct_module_result.get(
+                        "source_module_path"
+                    )
+                    if not source_module_path:
+                        _logger.error(
+                            f"Missing source module path '{source_module_path}'"
+                        )
+                    else:
+                        if os.path.exists(
+                            os.path.join(source_module_path, ".git")
+                        ):
+                            self.todo_upgrade_execute(
+                                f"cd '{source_module_path}' && git stash && cd -"
+                            )
+
+                    target_module_path = dct_module_result.get(
+                        "target_module_path"
+                    )
+                    if not target_module_path:
+                        _logger.error(
+                            f"Missing target module path '{target_module_path}'"
+                        )
+                    else:
+                        if os.path.exists(
+                            os.path.join(target_module_path, ".git")
+                        ):
+                            self.todo_upgrade_execute(
+                                f"cd '{target_module_path}' && git stash && cd -"
+                            )
+
+                    lst_module_to_migrate_all = dct_module_result.get(
+                        "lst_module", []
                     )
                 else:
-                    if os.path.exists(
-                        os.path.join(source_module_path, ".git")
-                    ):
-                        self.todo_upgrade_execute(
-                            f"cd '{source_module_path}' && git stash && cd -"
-                        )
-
-                target_module_path = dct_module_result.get(
-                    "target_module_path"
-                )
-                if not target_module_path:
-                    _logger.error(
-                        f"Missing target module path '{target_module_path}'"
-                    )
-                else:
-                    if os.path.exists(
-                        os.path.join(target_module_path, ".git")
-                    ):
-                        self.todo_upgrade_execute(
-                            f"cd '{target_module_path}' && git stash && cd -"
-                        )
+                    lst_module_to_migrate_all = []
 
                 self.install_OCA_odoo_module_migrator()
 
+                # TODO remove duplicate au lieu d'extend
+                lst_module_to_migrate_all.extend(lst_module_to_migrate)
+
                 has_cmd = False
                 cmd_parallel = "parallel :::"
-                lst_module_to_migrate = dct_module_result.get("lst_module")
-                for dct_module in lst_module_to_migrate:
-                    source_addons_path = dct_module.get("source_addons_path")
+                for dct_module in lst_module_to_migrate_all:
+                    target_addons_path = dct_module.get("target_addons_path")
                     module_name = dct_module.get("module_name")
                     source_version_odoo = (
                         f'{dct_module.get("source_version_odoo")}.0'
@@ -791,48 +922,49 @@ class TodoUpgrade:
                         "target_addons_path"
                     )
                     cmd_migration = (
-                        f"echo 'odoo_module_migrate {module_name}' && cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
-                        f"python -m odoo_module_migrate --directory {len(LST_PATH_OCA_ODOO_MODULE_MIGRATOR) * '../'}{source_addons_path} --modules {module_name} "
+                        f"echo 'odoo_module_migrate {module_name}' && "
+                        f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
+                        f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
+                        f"python -m odoo_module_migrate --directory {target_addons_path} --modules {module_name} "
                         f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
-                        f"--no-commit && cd - && "
-                        f"cp -r {source_module_path_to_copy} {target_module_path_to_copy}"
+                        f"--no-commit && cd - "
                         # f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
                         # f"cd {target_module_path_to_copy} && git commit -am '[MIG] {module_name}: Migration to {target_version_odoo}' && cd -"
                     )
                     cmd_parallel += f' "{cmd_migration}"'
                     has_cmd = True
 
-                if lst_module_to_migrate:
+                if lst_module_to_migrate_all:
                     if has_cmd:
                         self.todo_upgrade_execute(cmd_parallel)
 
-                    source_module_path = dct_module_result.get(
-                        "source_module_path"
-                    )
-                    if not source_module_path:
-                        _logger.error(
-                            f"Missing source module path '{source_module_path}'"
-                        )
-                    else:
-                        if os.path.exists(
-                            os.path.join(source_module_path, ".git")
-                        ):
-                            self.todo_upgrade_execute(
-                                f"cd '{source_module_path}' && git stash && cd -",
-                            )
-
-                    target_module_path = dct_module_result.get(
-                        "target_module_path"
-                    )
-                    if not target_module_path:
-                        _logger.error(
-                            f"Missing target module path '{target_module_path}'"
-                        )
-                    else:
-                        # TODO check if has file to commit
-                        self.todo_upgrade_execute(
-                            f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate)} modules: Migration to {next_version}' && cd -",
-                        )
+                    # source_module_path = dct_module_result.get(
+                    #     "source_module_path"
+                    # )
+                    # if not source_module_path:
+                    #     _logger.error(
+                    #         f"Missing source module path '{source_module_path}'"
+                    #     )
+                    # else:
+                    #     if os.path.exists(
+                    #         os.path.join(source_module_path, ".git")
+                    #     ):
+                    #         self.todo_upgrade_execute(
+                    #             f"cd '{source_module_path}' && git stash && cd -",
+                    #         )
+                    #
+                    # target_module_path = dct_module_result.get(
+                    #     "target_module_path"
+                    # )
+                    # if not target_module_path:
+                    #     _logger.error(
+                    #         f"Missing target module path '{target_module_path}'"
+                    #     )
+                    # else:
+                    #     # TODO check if has file to commit
+                    #     self.todo_upgrade_execute(
+                    #         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate_all)} modules: Migration to {next_version}' && cd -",
+                    #     )
 
                 # TODO copie to next odoo version
                 #  do commit and continue
@@ -851,8 +983,7 @@ class TodoUpgrade:
                     has_cmd = False
                     cmd_serial = ""
                     cmd_parallel = "parallel :::"
-                    lst_module_to_migrate = dct_module_result.get("lst_module")
-                    for dct_module in lst_module_to_migrate:
+                    for dct_module in lst_module_to_migrate_all:
                         database_migration_17_name = (
                             f"migration_odoo_{next_version}_{str(uuid4())[:6]}"
                         )
@@ -1154,7 +1285,9 @@ class TodoUpgrade:
         )
         self.write_config()
 
-    def check_addons_exist(self, lst_module_to_check, ignore_error=True):
+    def check_addons_exist(
+        self, lst_module_to_check, ignore_error=True, get_all_info=False
+    ):
         str_module_to_check = ",".join(lst_module_to_check)
         status, cmd_executed, dct_output = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --format_json --output_json -m {str_module_to_check}",
@@ -1165,6 +1298,16 @@ class TodoUpgrade:
 
         lst_module_missing = dct_output.get("missing")
         lst_module_duplicate = dct_output.get("duplicate")
+        if get_all_info:
+            lst_module_error = dct_output.get("error")
+            lst_module_exist = dct_output.get("exist")
+            return (
+                lst_module_missing,
+                lst_module_duplicate,
+                lst_module_exist,
+                lst_module_error,
+            )
+
         return lst_module_missing, lst_module_duplicate
 
     def switch_odoo(self, odoo_version):
