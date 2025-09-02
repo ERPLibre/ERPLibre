@@ -38,6 +38,7 @@ class TodoUpgrade:
         self.dct_progression = {}
         self.lst_command_executed = []
         self.dct_module_per_version = {}
+        self.dct_module_per_dct_version_path = {}
 
     def write_config(self):
         if "date_create" not in self.dct_progression.keys():
@@ -57,13 +58,22 @@ class TodoUpgrade:
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
         self.lst_command_executed = []
         self.dct_module_per_version = {}
+        self.dct_module_per_dct_version_path = {}
         default_database_name = "test"
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
-            erase_progression_input = input(
-                "💬 Detected migration, would you like to erase progression for a new migration (y/Y), reuse database with new process (r/R) or continue it (anything) : "
+            print("✨ Detected migration, please select an option.")
+            print("[y] Erase progression for a new migration")
+            print("[r] Reuse database with new process")
+            print(
+                "[d] Reuse database without state_4, before looping on next version"
             )
-            if erase_progression_input.strip().lower() in ["r", "reuse"]:
+            erase_progression_input = (
+                input("💬 Select an option or press to continue : ")
+                .strip()
+                .lower()
+            )
+            if erase_progression_input in ["r", "reuse", "d"]:
                 with open(UPGRADE_CONFIG_LOG, "r") as f:
                     try:
                         old_dct_progression = json.load(f)
@@ -71,18 +81,43 @@ class TodoUpgrade:
                             "migration_file": old_dct_progression.get(
                                 "migration_file"
                             ),
+                            # More useful to ask this question each time
+                            # "target_odoo_version": old_dct_progression.get(
+                            #     "target_odoo_version"
+                            # ),
                             "date_create": old_dct_progression.get(
                                 "date_create"
                             ),
                         }
                         for key, value in old_dct_progression.items():
+                            if erase_progression_input == "d":
+                                if (
+                                    key.startswith("state_0")
+                                    or key.startswith("state_1")
+                                    or key.startswith("state_2")
+                                    or key.startswith("state_3")
+                                ):
+                                    self.dct_progression[key] = value
+                                if key.startswith(f"config_state") and not (
+                                    key.startswith(f"config_state_0")
+                                    or key.startswith(f"config_state_1")
+                                    or key.startswith(f"config_state_2")
+                                    or key.startswith(f"config_state_3")
+                                ):
+                                    continue
                             if key.startswith("config_"):
                                 self.dct_progression[key] = value
+                        # Force to search missing module to fill dict
+                        self.dct_progression[
+                            "state_0_search_missing_module"
+                        ] = False
                     except json.decoder.JSONDecodeError:
                         print(
                             f"⚠️ The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
                         )
-            elif erase_progression_input.strip().lower() not in ["y", "yes"]:
+
+                self.write_config()
+            elif erase_progression_input not in ["y", "yes"]:
                 with open(UPGRADE_CONFIG_LOG, "r") as f:
                     try:
                         self.dct_progression = json.load(f)
@@ -236,6 +271,7 @@ class TodoUpgrade:
         print("✅ -> Install environment if missing")
 
         if not self.dct_progression.get("state_0_search_missing_module"):
+            self.switch_odoo(odoo_actual_version)
             dct_bd_modules = json_manifest_file_1.get("modules")
             lst_module_to_check = [a for a in dct_bd_modules.keys()]
             (
@@ -257,22 +293,21 @@ class TodoUpgrade:
             if not lst_module_duplicate:
                 lst_module_duplicate = []
 
+            lst_module_missing = sorted(list(set(lst_module_missing)))
             self.dct_progression["len_lst_module_missing"] = len(
                 lst_module_missing
             )
-            self.dct_progression["lst_module_missing"] = sorted(
-                list(set(lst_module_missing))
-            )
+            self.dct_progression["lst_module_missing"] = lst_module_missing
             self.dct_progression["len_dct_module_exist"] = len(
                 lst_module_exist
             )
             self.dct_progression["dct_module_exist"] = dct_module_exist
+            lst_module_duplicate = sorted(list(set(lst_module_duplicate)))
             self.dct_progression["len_lst_module_duplicate"] = len(
                 lst_module_duplicate
             )
-            self.dct_progression["lst_module_duplicate"] = sorted(
-                list(set(lst_module_duplicate))
-            )
+
+            self.dct_progression["lst_module_duplicate"] = lst_module_duplicate
             self.write_config()
             if lst_module_missing or lst_module_duplicate:
                 print("Cannot setup environment to begin.")
@@ -290,6 +325,9 @@ class TodoUpgrade:
 
             self.dct_progression["state_0_search_missing_module"] = True
             self.write_config()
+        else:
+            # TODO fill from config
+            lst_module_missing = []
 
         print("✅ -> Search missing module")
 
@@ -501,7 +539,17 @@ class TodoUpgrade:
             lst_upgrade_odoo += [[]] * nb_missing_value_upgrade_odoo
 
         database_name_upgrade = None
+        lst_module_missing_next_version = []
+        lst_module_to_delete = []
+        lst_module_to_delete_last_version = []
         for index, next_version in enumerate(lst_next_version):
+            # Reinit the list
+            lst_module_missing_last_version = lst_module_missing_next_version[
+                :
+            ]
+            lst_module_to_delete_last_version.extend(lst_module_to_delete)
+            lst_module_to_delete = []
+
             msg = f"4.{index} - Ready to work with version {next_version}"
             self.add_comment_progression(msg)
 
@@ -674,19 +722,32 @@ class TodoUpgrade:
                         continue
                     lst_module_to_analyse_updated.append(bd_module)
 
+                # TODO remove from list past module deleted
                 lst_module_to_check = [
-                    a for a in lst_module_to_analyse_updated
+                    a
+                    for a in lst_module_to_analyse_updated
+                    if a not in lst_module_to_delete_last_version
                 ]
-                lst_module_missing, lst_module_duplicate = (
-                    self.check_addons_exist(lst_module_to_check)
+                (
+                    lst_module_missing_next_version,
+                    lst_module_duplicate_next_version,
+                ) = self.check_addons_exist(lst_module_to_check)
+
+                lst_module_missing_next_version = sorted(
+                    list(set(lst_module_missing_next_version))
                 )
 
                 self.dct_progression["state_4_len_lst_module_missing"] = len(
-                    lst_module_missing
+                    lst_module_missing_next_version
                 )
-                self.dct_progression["state_4_lst_module_missing"] = sorted(
-                    list(set(lst_module_missing))
+                self.dct_progression["state_4_lst_module_missing"] = (
+                    lst_module_missing_next_version
                 )
+
+                lst_module_duplicate = sorted(
+                    list(set(lst_module_duplicate_next_version))
+                )
+
                 self.dct_progression["state_4_len_lst_module_duplicate"] = len(
                     lst_module_duplicate
                 )
@@ -700,50 +761,55 @@ class TodoUpgrade:
                     input(
                         f"💬 Detect error duplicate module, manage this problem manually and press to continue."
                     )
-                # if lst_module_missing and not lst_module_to_migrate:
-                if lst_module_missing:
+                # if lst_module_missing_next_version and not lst_module_to_migrate:
+                if lst_module_missing_next_version:
                     # TODO support when lst_module_to_migrate is fill
                     lst_module_to_migrate = []
-                    print(f"Missing module into odoo{next_version} :")
+                    print(
+                        f"👹 Detect error missing module, missing module into odoo{next_version} :"
+                    )
                     for index_missing_module, module_missing in enumerate(
-                        lst_module_missing
+                        lst_module_missing_next_version
                     ):
                         old_path = self.dct_progression.get(
                             "dct_module_exist", {}
                         ).get(module_missing)
                         print(
-                            f"{index_missing_module}: {module_missing} - {old_path}"
+                            f"[{index_missing_module}] {module_missing} - {old_path}"
                         )
+                    print("[a] All list above")
 
                     want_continue = (
                         input(
-                            f"💬 Detect error missing module, enumerate missing module separate by coma to delete it 🤖"
-                            f" or write 'all' to delete all. The other will be migrate : "
+                            f"💬 Enumerate missing module separate by coma to delete it"
+                            f". The other will be migrate : "
                         )
                         .strip()
                         .lower()
                     )
 
                     is_delete_all = False
-                    lst_module_to_delete = []
+
                     if want_continue:
-                        if want_continue == "all":
+                        if want_continue == "a":
                             is_delete_all = True
                             lst_module_to_delete = [
-                                lst_module_missing[a]
-                                for a in range(len(lst_module_missing))
+                                lst_module_missing_next_version[a]
+                                for a in range(
+                                    len(lst_module_missing_next_version)
+                                )
                             ]
                         else:
                             # TODO show error if the index is wrong
                             lst_module_to_delete = [
-                                lst_module_missing[int(a.strip())]
+                                lst_module_missing_next_version[int(a.strip())]
                                 for a in want_continue.split(",")
                                 if 0
                                 <= int(a.strip())
-                                < len(lst_module_missing)
+                                < len(lst_module_missing_next_version)
                             ]
                             if len(lst_module_to_delete) == len(
-                                lst_module_missing
+                                lst_module_missing_next_version
                             ):
                                 is_delete_all = True
                     if lst_module_to_delete:
@@ -776,7 +842,7 @@ class TodoUpgrade:
                         self.add_comment_progression(msg)
 
                         lst_module_to_migrate_code = set(
-                            lst_module_missing
+                            lst_module_missing_next_version
                         ) - set(lst_module_to_delete)
                         (
                             lst_module_missing_last,
@@ -1106,9 +1172,10 @@ class TodoUpgrade:
                 self.todo_upgrade_execute(cmd_update_config)
 
                 print("🚸 Please, validate commits after code migration.")
-                status = input(
-                    f"💬 Please validate this path into config.conf : '{path_addons_openupgrade}' press to continue : "
-                ).strip()
+                print(
+                    f"🚸 Please, validate this path into config.conf : '{path_addons_openupgrade}'."
+                )
+                status = input(f"💬 Press to continue {msg} : ").strip()
                 # The technique change at version 14
                 if next_version <= 13:
                     erplibre_version = self.install_OCA_openupgrade(
@@ -1156,14 +1223,15 @@ class TodoUpgrade:
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
+                print("[y] Open server with Selenium")
                 status = (
                     input(
-                        "💬 Do you want to test this upgrade? Press y/Y to open server with selenium, else ignore it : "
+                        "💬 Do you want to test this upgrade? Choose or press to ignore it : "
                     )
                     .strip()
                     .lower()
                 )
-
+                "make repo_show_status"
                 if status == "y":
                     self.todo.prompt_execute_selenium_and_run_db(
                         database_name_upgrade
