@@ -57,7 +57,6 @@ class TodoUpgrade:
         print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
         self.lst_command_executed = []
         self.dct_module_per_version = {}
-        lst_module_to_migrate = []
         default_database_name = "test"
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
@@ -445,7 +444,7 @@ class TodoUpgrade:
 
             if status.lower().strip() == "y":
                 self.todo.prompt_execute_selenium_and_run_db(database_name)
-                status = input("💬 Press to continue : ").strip()
+                status = input("💬 Press to continue state.3 : ").strip()
 
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
@@ -645,6 +644,19 @@ class TodoUpgrade:
             else:
                 print(f"✅ -> Switch Odoo{next_version} - nothing")
 
+            lst_state_4_module_migrate_code = self.dct_progression.get(
+                "config_state_4_module_to_migrate_code",
+                [[]] * len(lst_next_version),
+            )
+            if (
+                "config_state_4_module_to_migrate_code"
+                not in self.dct_progression.keys()
+            ):
+                self.dct_progression[
+                    "config_state_4_module_to_migrate_code"
+                ] = lst_state_4_module_migrate_code
+            lst_module_to_migrate = lst_state_4_module_migrate_code[index]
+
             option_comment += 1
             msg = (
                 f"4.{index}.{chr(option_comment + 65)} - Search missing module"
@@ -688,7 +700,10 @@ class TodoUpgrade:
                     input(
                         f"💬 Detect error duplicate module, manage this problem manually and press to continue."
                     )
+                # if lst_module_missing and not lst_module_to_migrate:
                 if lst_module_missing:
+                    # TODO support when lst_module_to_migrate is fill
+                    lst_module_to_migrate = []
                     print(f"Missing module into odoo{next_version} :")
                     for index_missing_module, module_missing in enumerate(
                         lst_module_missing
@@ -719,9 +734,13 @@ class TodoUpgrade:
                                 for a in range(len(lst_module_missing))
                             ]
                         else:
+                            # TODO show error if the index is wrong
                             lst_module_to_delete = [
                                 lst_module_missing[int(a.strip())]
                                 for a in want_continue.split(",")
+                                if 0
+                                <= int(a.strip())
+                                < len(lst_module_missing)
                             ]
                             if len(lst_module_to_delete) == len(
                                 lst_module_missing
@@ -817,9 +836,15 @@ class TodoUpgrade:
                                     "source_version_odoo": next_version - 1,
                                     "target_version_odoo": next_version,
                                 }
+                                # TODO move this into config
                                 lst_module_to_migrate.append(
                                     dct_module_to_migrate_module
                                 )
+
+                    self.dct_progression[
+                        "config_state_4_module_to_migrate_code"
+                    ][index] = lst_module_to_migrate
+                    self.write_config()
 
                     self.switch_odoo(next_version)
                     # TODO auto-fix
@@ -904,10 +929,13 @@ class TodoUpgrade:
                 # TODO remove duplicate au lieu d'extend
                 lst_module_to_migrate_all.extend(lst_module_to_migrate)
 
+                lst_path_git_clone_migrate = []
+
                 has_cmd = False
                 cmd_parallel = "parallel :::"
                 for dct_module in lst_module_to_migrate_all:
                     target_addons_path = dct_module.get("target_addons_path")
+                    source_addons_path = dct_module.get("source_addons_path")
                     module_name = dct_module.get("module_name")
                     source_version_odoo = (
                         f'{dct_module.get("source_version_odoo")}.0'
@@ -918,12 +946,18 @@ class TodoUpgrade:
                     source_module_path_to_copy = dct_module.get(
                         "source_module_path"
                     )
-                    target_module_path_to_copy = dct_module.get(
-                        "target_addons_path"
-                    )
+                    # Prepare git environment for target
+                    if target_addons_path not in lst_path_git_clone_migrate:
+                        lst_path_git_clone_migrate.append(target_addons_path)
+                        self.check_and_clone_source_to_target_migration_code(
+                            next_version,
+                            source_addons_path,
+                            target_addons_path,
+                        )
+
                     cmd_migration = (
                         f"echo 'odoo_module_migrate {module_name}' && "
-                        f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
+                        f"cp -r {source_module_path_to_copy} {target_addons_path} && "
                         f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
                         f"python -m odoo_module_migrate --directory {target_addons_path} --modules {module_name} "
                         f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
@@ -937,6 +971,9 @@ class TodoUpgrade:
                 if lst_module_to_migrate_all:
                     if has_cmd:
                         self.todo_upgrade_execute(cmd_parallel)
+                        print("List of path with migrate code :")
+                        print(lst_path_git_clone_migrate)
+                        input("💬 Check migration code, press to continue : ")
 
                     # source_module_path = dct_module_result.get(
                     #     "source_module_path"
@@ -969,11 +1006,6 @@ class TodoUpgrade:
                 # TODO copie to next odoo version
                 #  do commit and continue
                 #  continue migration to loop
-                lst_module_migrate_odoo[index] = True
-                self.dct_progression["state_4_module_migrate_odoo_lst"] = (
-                    lst_module_migrate_odoo
-                )
-                self.write_config()
 
                 if next_version == 17:
                     status = input(
@@ -1001,6 +1033,17 @@ class TodoUpgrade:
                         #     cmd_serial
                         # )
                         self.todo_upgrade_execute(cmd_parallel)
+                        print("List of module with migration 17 :")
+                        print(lst_module_to_migrate_all)
+                        input(
+                            "💬 Check migration 17 code, press to continue : "
+                        )
+
+                lst_module_migrate_odoo[index] = True
+                self.dct_progression["state_4_module_migrate_odoo_lst"] = (
+                    lst_module_migrate_odoo
+                )
+                self.write_config()
 
                 print(f"✅ -> Module upgrade Odoo{next_version} done")
             else:
@@ -1050,9 +1093,14 @@ class TodoUpgrade:
                 ignore_path = (
                     "--ignore-odoo-path " if next_version <= 13 else ""
                 )
+                extra_addons_path_extra = (
+                    f",{path_addons_openupgrade}/addons,{path_addons_openupgrade}/odoo/addons"
+                    if next_version <= 13
+                    else ""
+                )
                 cmd_update_config = (
                     f"./script/git/git_repo_update_group.py {ignore_path}"
-                    f"--extra-addons-path {path_addons_openupgrade},{path_addons_openupgrade}/addons,{path_addons_openupgrade}/odoo/addons "
+                    f"--extra-addons-path {path_addons_openupgrade}{extra_addons_path_extra} "
                     f"&& ./script/generate_config.sh"
                 )
                 self.todo_upgrade_execute(cmd_update_config)
@@ -1083,20 +1131,46 @@ class TodoUpgrade:
                     lst_upgrade_odoo
                 )
                 self.write_config()
+
+                str_wait_next_version = (
+                    " (or wait next version)"
+                    if next_version != lst_next_version[-1]
+                    else ""
+                )
+
+                status = (
+                    input(
+                        f"💬 Do you want to upgrade all{str_wait_next_version}? Press y/Y to upgrade all addons database : "
+                    )
+                    .strip()
+                    .lower()
+                )
+
+                if status == "y":
+                    self.todo_upgrade_execute(
+                        f"./script/addons/update_addons_all.sh {database_name_upgrade}",
+                    )
+
                 print(f"✅ -> Database upgrade Odoo{next_version} done")
 
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
-                status = input(
-                    "💬 Do you want to test this upgrade? Press y/Y to open server with selenium, else ignore it : "
-                ).strip()
+                status = (
+                    input(
+                        "💬 Do you want to test this upgrade? Press y/Y to open server with selenium, else ignore it : "
+                    )
+                    .strip()
+                    .lower()
+                )
 
-                if status.lower().strip() == "y":
+                if status == "y":
                     self.todo.prompt_execute_selenium_and_run_db(
                         database_name_upgrade
                     )
-                    status = input("💬 Press to continue : ").strip()
+                    status = input(
+                        f"💬 Press to continue 4.{index} : "
+                    ).strip()
             else:
                 print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
 
@@ -1404,6 +1478,102 @@ class TodoUpgrade:
                 return status, cmd_executed, str_output
             return status, cmd_executed, output
         return status, cmd_executed
+
+    def check_and_clone_source_to_target_migration_code(
+        self, next_version, source_addons_path, target_addons_path
+    ):
+        if not os.path.exists(os.path.join(source_addons_path, ".git")):
+            return
+        if os.path.exists(os.path.join(target_addons_path, ".git")):
+            return
+        source_dir_name = os.path.basename(source_addons_path)
+        # Clone a project for next version
+        # Get actual branch
+        cmd_git_clone_migrate_source = (
+            f"cd {source_addons_path} && git branch --show-current && cd -"
+        )
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            cmd_git_clone_migrate_source,
+            get_output=True,
+        )
+        branch_source = lst_output[0].strip()
+        branch_target = branch_source.replace(
+            str(next_version - 1), str(next_version)
+        )
+
+        # Get remote branch for actual version
+        cmd_git_clone_migrate_source_same_target = (
+            f"cd {source_addons_path} "
+            f"&& git fetch --all "
+            f'&& git branch -vv | grep "{branch_source}" '
+            f"&& cd -"
+        )
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            cmd_git_clone_migrate_source_same_target,
+            get_output=True,
+        )
+        local_branch, remote, remote_branch = (
+            self.get_local_branch_remote_actual_branch_git(lst_output)
+        )
+        # Get remote branch for next version
+        remote_branch_target = f"{remote}/{branch_target}"
+        cmd_git_clone_migrate_source_same_target = (
+            f"cd {source_addons_path} "
+            f"&& git fetch --all "
+            f'&& git branch --remotes -vv | grep "{remote_branch_target} " '
+            f"&& cd -"
+        )
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            cmd_git_clone_migrate_source_same_target,
+            get_output=True,
+        )
+        has_remote_to_clone = any([a.strip() for a in lst_output])
+
+        # TODO check config if path is added
+        if has_remote_to_clone:
+            # Get remote branch address
+            cmd_remote_address = (
+                f"cd {source_addons_path} "
+                f"&& git remote get-url {remote} "
+                f"&& cd -"
+            )
+            status, cmd_executed, lst_output = self.todo_upgrade_execute(
+                cmd_remote_address,
+                get_output=True,
+            )
+
+            remote_address = lst_output[0].strip()
+
+            # TODO some time, the clone has error, need to repeat
+            cmd_git_clone = (
+                f"cd {os.path.dirname(target_addons_path)} "
+                f"&& git clone {remote_address} {source_dir_name} -b {branch_target} && cd -"
+            )
+            status, cmd_executed, lst_output = self.todo_upgrade_execute(
+                cmd_git_clone,
+                get_output=True,
+            )
+        else:
+            cmd_mkdir = f"mkdir -p {target_addons_path}"
+            status, cmd_executed, lst_output = self.todo_upgrade_execute(
+                cmd_mkdir,
+                get_output=True,
+            )
+
+    def get_local_branch_remote_actual_branch_git(self, lst_output):
+        for line in lst_output:
+            # The current branch is marked with an asterisk (*) at the start of the line
+            if not line.strip().startswith("*"):
+                continue
+            # Split the line to isolate the remote and remote branch name
+            parts = line.split()
+            if len(parts) >= 4:
+                # The remote and remote branch are in the 4th part, e.g., '[origin/main]'
+                remote_info = parts[3].strip("[]")
+                # Split 'origin/main' into 'origin' and 'main'
+                remote, remote_branch = remote_info.split("/", 1)
+                return parts[1], remote, remote_branch
+        return None, None, None
 
     def add_comment_progression(self, comment):
         comment_to_add = f"# {comment}"
