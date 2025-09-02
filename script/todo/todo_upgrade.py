@@ -778,11 +778,12 @@ class TodoUpgrade:
                             f"[{index_missing_module}] {module_missing} - {old_path}"
                         )
                     print("[a] All list above")
+                    print("[e] Add extra custom")
 
                     want_continue = (
                         input(
                             f"💬 Enumerate missing module separate by coma to delete it"
-                            f". The other will be migrate : "
+                            f". The others will be migrate : "
                         )
                         .strip()
                         .lower()
@@ -791,7 +792,10 @@ class TodoUpgrade:
                     is_delete_all = False
 
                     if want_continue:
-                        if want_continue == "a":
+                        lst_want_continue = [
+                            a.strip() for a in want_continue.split(",")
+                        ]
+                        if "a" in lst_want_continue:
                             is_delete_all = True
                             lst_module_to_delete = [
                                 lst_module_missing_next_version[a]
@@ -801,17 +805,36 @@ class TodoUpgrade:
                             ]
                         else:
                             # TODO show error if the index is wrong
+                            lst_want_continue_number = [
+                                int(a)
+                                for a in lst_want_continue
+                                if a.isdigit()
+                            ]
                             lst_module_to_delete = [
-                                lst_module_missing_next_version[int(a.strip())]
-                                for a in want_continue.split(",")
+                                lst_module_missing_next_version[a]
+                                for a in lst_want_continue_number
                                 if 0
-                                <= int(a.strip())
+                                <= a
                                 < len(lst_module_missing_next_version)
                             ]
                             if len(lst_module_to_delete) == len(
                                 lst_module_missing_next_version
                             ):
                                 is_delete_all = True
+
+                        if "e" in lst_want_continue:
+                            want_continue = (
+                                input(
+                                    f"💬 Enumerate module name to delete, separate by coma : "
+                                )
+                                .strip()
+                                .lower()
+                            )
+                            lst_to_extend = [
+                                a.strip() for a in want_continue.split(",")
+                            ]
+                            lst_module_to_delete.extend(lst_to_extend)
+
                     if lst_module_to_delete:
                         msg = f"4.{index}.{chr(option_comment + 65)}.option - Choose delete missing module"
                         self.add_comment_progression(msg)
@@ -1172,6 +1195,7 @@ class TodoUpgrade:
                 self.todo_upgrade_execute(cmd_update_config)
 
                 print("🚸 Please, validate commits after code migration.")
+                print("ℹ To show repo status :\nmake repo_show_status")
                 print(
                     f"🚸 Please, validate this path into config.conf : '{path_addons_openupgrade}'."
                 )
