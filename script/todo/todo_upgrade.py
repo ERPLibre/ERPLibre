@@ -1141,6 +1141,36 @@ class TodoUpgrade:
                             "💬 Check migration 17 code, press to continue : "
                         )
 
+                if next_version == 18:
+                    status = input(
+                        f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
+                    ).strip()
+                    # Apply modification with views_migration_18
+                    has_cmd = False
+                    cmd_serial = ""
+                    cmd_parallel = "parallel :::"
+                    for dct_module in lst_module_to_migrate_all:
+                        module_name = dct_module.get("module_name")
+                        cmd_migration = (
+                            f"echo 'views_migration_18 {module_name}' && "
+                            f"./script/code/odoo_upgrade_code_with_single_module_autosearch.sh {module_name}"
+                        )
+                        cmd_parallel += f' "{cmd_migration}"'
+                        cmd_serial += f"{cmd_migration};"
+                        has_cmd = True
+
+                    if has_cmd:
+                        # self.todo_upgrade_execute(
+                        #     cmd_serial
+                        # )
+                        self.todo_upgrade_execute(cmd_parallel)
+                        print("List of module with migration 18 :")
+                        print(lst_module_to_migrate_all)
+                        print("ℹ To show repo status :\nmake repo_show_status")
+                        input(
+                            "💬 Check migration 18 code, press to continue : "
+                        )
+
                 lst_module_migrate_odoo[index] = True
                 self.dct_progression["state_4_module_migrate_odoo_lst"] = (
                     lst_module_migrate_odoo
