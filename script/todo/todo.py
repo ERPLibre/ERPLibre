@@ -573,6 +573,7 @@ class TODO:
             {"prompt_description": "Migration module coverage"},
             {"prompt_description": "What change between version"},
             {"prompt_description": "OCA guidelines"},
+            {"prompt_description": "OCA migration Odoo 19 milestone"},
         ]
         help_info = self.fill_help_info(lst_instance)
 
@@ -609,6 +610,10 @@ class TODO:
             elif status == "3":
                 print(
                     "https://github.com/OCA/odoo-community.org/blob/master/website/Contribution/CONTRIBUTING.rst"
+                )
+            elif status == "4":
+                print(
+                    "https://github.com/OCA/maintainer-tools/issues/658"
                 )
             else:
                 print("Commande non trouvée 🤖!")
