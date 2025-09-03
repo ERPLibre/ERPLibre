@@ -7,11 +7,19 @@ import json
 import logging
 import os
 import shutil
+import sys
 import zipfile
 from uuid import uuid4
 
 import click
 import todo_file_browser
+
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
+from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
 
@@ -29,6 +37,9 @@ PATH_SOURCE_VENV_MODULE_MIGRATOR = os.path.join(
     PATH_VENV_MODULE_MIGRATOR, "bin", "activate"
 )
 FILENAME_ODOO_VERSION = ".odoo-version"
+LOCAL_MANIFEST = os.path.join(
+    ".repo", "local_manifests", "erplibre_manifest.xml"
+)
 
 
 class TodoUpgrade:
@@ -989,7 +1000,7 @@ class TodoUpgrade:
                             os.path.join(source_module_path, ".git")
                         ):
                             self.todo_upgrade_execute(
-                                f"cd '{source_module_path}' && git stash && cd -"
+                                f"cd '{source_module_path}' && git stash && cd ~-"
                             )
 
                     target_module_path = dct_module_result.get(
@@ -1004,7 +1015,7 @@ class TodoUpgrade:
                             os.path.join(target_module_path, ".git")
                         ):
                             self.todo_upgrade_execute(
-                                f"cd '{target_module_path}' && git stash && cd -"
+                                f"cd '{target_module_path}' && git stash && cd ~-"
                             )
 
                     lst_module_to_migrate_all = dct_module_result.get(
@@ -1047,12 +1058,14 @@ class TodoUpgrade:
                     cmd_migration = (
                         f"echo 'odoo_module_migrate {module_name}' && "
                         f"cp -r {source_module_path_to_copy} {target_addons_path} && "
-                        f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
+                        f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && "
+                        f"source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
                         f"python -m odoo_module_migrate --directory {target_addons_path} --modules {module_name} "
                         f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
-                        f"--no-commit && cd - "
+                        f"--no-commit && "
+                        f"cd ~- "
                         # f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
-                        # f"cd {target_module_path_to_copy} && git commit -am '[MIG] {module_name}: Migration to {target_version_odoo}' && cd -"
+                        # f"cd {target_module_path_to_copy} && git commit -am '[MIG] {module_name}: Migration to {target_version_odoo}' && cd ~-"
                     )
                     cmd_parallel += f' "{cmd_migration}"'
                     has_cmd = True
@@ -1076,7 +1089,7 @@ class TodoUpgrade:
                     #         os.path.join(source_module_path, ".git")
                     #     ):
                     #         self.todo_upgrade_execute(
-                    #             f"cd '{source_module_path}' && git stash && cd -",
+                    #             f"cd '{source_module_path}' && git stash && cd ~-",
                     #         )
                     #
                     # target_module_path = dct_module_result.get(
@@ -1089,7 +1102,7 @@ class TodoUpgrade:
                     # else:
                     #     # TODO check if has file to commit
                     #     self.todo_upgrade_execute(
-                    #         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate_all)} modules: Migration to {next_version}' && cd -",
+                    #         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate_all)} modules: Migration to {next_version}' && cd ~-",
                     #     )
 
                 # TODO copie to next odoo version
@@ -1560,9 +1573,24 @@ class TodoUpgrade:
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         if status and wait_at_error:
-            input(
-                "💬 Error detected, press to continue or ctrl+c to stop : "
-            ).strip()
+            print("[r] to redo the command")
+            wait_status = (
+                input(
+                    "💬 Error detected, press to continue or ctrl+c to stop : "
+                )
+                .strip()
+                .lower()
+            )
+            if wait_status == "r":
+                return self.todo_upgrade_execute(
+                    cmd,
+                    single_source_odoo=single_source_odoo,
+                    new_env=new_env,
+                    quiet=quiet,
+                    get_output=get_output,
+                    output_is_json=output_is_json,
+                    wait_at_error=wait_at_error,
+                )
 
         if get_output:
             if output_is_json:
@@ -1582,23 +1610,30 @@ class TodoUpgrade:
         # Clone a project for next version
         # Get actual branch
         cmd_git_clone_migrate_source = (
-            f"cd {source_addons_path} && git branch --show-current && cd -"
+            f"cd {source_addons_path} && "
+            f"git branch --show-current && "
+            f"cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source,
             get_output=True,
         )
         branch_source = lst_output[0].strip()
+        if not branch_source:
+            # Get branch from repo
+            branch_source = self.get_branch_name_from_local_manifest(
+                source_addons_path, f"{next_version}.0"
+            )
         branch_target = branch_source.replace(
             str(next_version - 1), str(next_version)
         )
-
+        # TODO bug something, with repo OCA_server-tools, branch is wrong
         # Get remote branch for actual version
         cmd_git_clone_migrate_source_same_target = (
             f"cd {source_addons_path} "
             f"&& git fetch --all "
             f'&& git branch -vv | grep "{branch_source}" '
-            f"&& cd -"
+            f"&& cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source_same_target,
@@ -1613,7 +1648,7 @@ class TodoUpgrade:
             f"cd {source_addons_path} "
             f"&& git fetch --all "
             f'&& git branch --remotes -vv | grep "{remote_branch_target} " '
-            f"&& cd -"
+            f"&& cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source_same_target,
@@ -1627,7 +1662,7 @@ class TodoUpgrade:
             cmd_remote_address = (
                 f"cd {source_addons_path} "
                 f"&& git remote get-url {remote} "
-                f"&& cd -"
+                f"&& cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_remote_address,
@@ -1639,7 +1674,7 @@ class TodoUpgrade:
             # TODO some time, the clone has error, need to repeat
             cmd_git_clone = (
                 f"cd {os.path.dirname(target_addons_path)} "
-                f"&& git clone {remote_address} {source_dir_name} -b {branch_target} && cd -"
+                f"&& git clone {remote_address} {source_dir_name} -b {branch_target} && cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_git_clone,
@@ -1651,6 +1686,19 @@ class TodoUpgrade:
                 cmd_mkdir,
                 get_output=True,
             )
+
+    def get_branch_name_from_local_manifest(self, addons_path, default_branch):
+        relative_addons_path = addons_path.replace(os.getcwd() + "/", "")
+        git_tool = GitTool()
+        dct_remote, dct_project, default_remote = (
+            git_tool.get_manifest_xml_info(filename=LOCAL_MANIFEST)
+        )
+        for dct_repo in dct_project.values():
+            path = dct_repo.get("@path")
+            if path == relative_addons_path:
+                revision = dct_repo.get("@revision")
+                return revision
+        return default_branch
 
     def get_local_branch_remote_actual_branch_git(self, lst_output):
         for line in lst_output:
