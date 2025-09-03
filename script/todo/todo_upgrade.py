@@ -973,6 +973,7 @@ class TodoUpgrade:
             option_comment += 1
             msg = f"4.{index}.{chr(option_comment + 65)} - Migrate module"
             self.add_comment_progression(msg)
+            lst_path_git_clone_migrate = []
 
             if not lst_module_migrate_odoo[index]:
                 # TODO Searching module
@@ -1038,8 +1039,6 @@ class TodoUpgrade:
 
                 # TODO remove duplicate au lieu d'extend
                 lst_module_to_migrate_all.extend(lst_module_to_migrate)
-
-                lst_path_git_clone_migrate = []
 
                 has_cmd = False
                 cmd_parallel = "parallel :::"
@@ -1223,6 +1222,10 @@ class TodoUpgrade:
                     )
             else:
                 print(f"✅ -> Fix migration Odoo{next_version} - nothing")
+
+            for path_git_clone_migrate in lst_path_git_clone_migrate:
+                cmd = f"./script/code/git_commit_migration_addons_path.py --path {path_git_clone_migrate} --odoo_version {next_version}.0"
+                self.todo_upgrade_execute(cmd)
 
             option_comment += 1
             msg = f"4.{index}.{chr(option_comment + 65)} - Migrate database"
@@ -1734,7 +1737,7 @@ class TodoUpgrade:
         )
         if not has_existing_target_branch:
             cmd_git_clone = (
-                f"cd {os.path.dirname(target_addons_path)} "
+                f"cd {target_addons_path} "
                 f"&& git checkout -b {branch_target} && cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
