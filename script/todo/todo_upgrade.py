@@ -1648,6 +1648,13 @@ class TodoUpgrade:
             return
         if os.path.exists(os.path.join(target_addons_path, ".git")):
             return
+        # if not os.path.exists(target_addons_path):
+        #     cmd_mkdir = f"mkdir -p {target_addons_path}"
+        #     status, cmd_executed, lst_output = self.todo_upgrade_execute(
+        #         cmd_mkdir,
+        #         get_output=True,
+        #     )
+        #     return
         source_dir_name = os.path.basename(source_addons_path)
         # Clone a project for next version
         # Get actual branch
@@ -1669,7 +1676,6 @@ class TodoUpgrade:
         branch_target = branch_source.replace(
             str(next_version - 1), str(next_version)
         )
-        # TODO bug something, with repo OCA_server-tools, branch is wrong
         # Get remote branch for actual version
         cmd_git_clone_migrate_source_same_target = (
             f"cd {source_addons_path} "
@@ -1695,37 +1701,44 @@ class TodoUpgrade:
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source_same_target,
             get_output=True,
+            wait_at_error=False,
         )
-        has_remote_to_clone = any([a.strip() for a in lst_output])
+        has_existing_target_branch = any([a.strip() for a in lst_output])
 
         # TODO check config if path is added
-        if has_remote_to_clone:
-            # Get remote branch address
-            cmd_remote_address = (
-                f"cd {source_addons_path} "
-                f"&& git remote get-url {remote} "
-                f"&& cd ~-"
-            )
-            status, cmd_executed, lst_output = self.todo_upgrade_execute(
-                cmd_remote_address,
-                get_output=True,
-            )
+        # Get remote branch address
+        cmd_remote_address = (
+            f"cd {source_addons_path} "
+            f"&& git remote get-url {remote} "
+            f"&& cd ~-"
+        )
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            cmd_remote_address,
+            get_output=True,
+        )
 
-            remote_address = lst_output[0].strip()
+        remote_address = lst_output[0].strip()
 
-            # TODO some time, the clone has error, need to repeat
+        # TODO some time, the clone has error, need to repeat
+        branch_to_clone = (
+            branch_target if has_existing_target_branch else branch_source
+        )
+
+        cmd_git_clone = (
+            f"cd {os.path.dirname(target_addons_path)} "
+            f"&& git clone {remote_address} {source_dir_name} -b {branch_to_clone} && cd ~-"
+        )
+        status, cmd_executed, lst_output = self.todo_upgrade_execute(
+            cmd_git_clone,
+            get_output=True,
+        )
+        if not has_existing_target_branch:
             cmd_git_clone = (
                 f"cd {os.path.dirname(target_addons_path)} "
-                f"&& git clone {remote_address} {source_dir_name} -b {branch_target} && cd ~-"
+                f"&& git checkout -b {branch_target} && cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_git_clone,
-                get_output=True,
-            )
-        else:
-            cmd_mkdir = f"mkdir -p {target_addons_path}"
-            status, cmd_executed, lst_output = self.todo_upgrade_execute(
-                cmd_mkdir,
                 get_output=True,
             )
 
