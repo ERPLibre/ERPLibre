@@ -388,11 +388,21 @@ class TodoUpgrade:
         print("✅ -> Restore database")
 
         if not self.dct_progression.get("state_1_neutralize_database"):
-            status, cmd_executed = self.todo_upgrade_execute(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
-                single_source_odoo=True,
+            print("[n] Ignore neutralize database")
+            wait_continue = (
+                input("💬 Neutralize database, press to continue : ")
+                .strip()
+                .lower()
             )
-            if not status:
+            if wait_continue != "n":
+                status, cmd_executed = self.todo_upgrade_execute(
+                    f"./script/addons/update_prod_to_dev.sh {database_name}",
+                    single_source_odoo=True,
+                )
+                if not status:
+                    self.dct_progression["state_1_neutralize_database"] = True
+                    self.write_config()
+            else:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
 
@@ -1075,6 +1085,7 @@ class TodoUpgrade:
                         self.todo_upgrade_execute(cmd_parallel)
                         print("List of path with migrate code :")
                         print(lst_path_git_clone_migrate)
+                        print("ℹ To show repo status :\nmake repo_show_status")
                         input("💬 Check migration code, press to continue : ")
 
                     # source_module_path = dct_module_result.get(
@@ -1137,6 +1148,7 @@ class TodoUpgrade:
                         self.todo_upgrade_execute(cmd_parallel)
                         print("List of module with migration 17 :")
                         print(lst_module_to_migrate_all)
+                        print("ℹ To show repo status :\nmake repo_show_status")
                         input(
                             "💬 Check migration 17 code, press to continue : "
                         )
