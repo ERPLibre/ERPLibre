@@ -39,7 +39,9 @@ RUN cd $ODOO_PREFIX && \
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    python -m venv .venv.erplibre
+    python -m venv .venv.erplibre && \
+    source ./.venv.erplibre/bin/activate && \
+    pip3 install -r requirement/erplibre_require-ments.txt
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
@@ -49,6 +51,7 @@ RUN cd $ODOO_PREFIX && \
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
+    source ./.venv.erplibre/bin/activate && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
@@ -64,10 +67,11 @@ RUN apt update && \
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
-    ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install --upgrade pip && git branch && ls . -lha && \
-    ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install "poetry==${POETRY_VERSION}" && \
-    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry --version && \
-    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry install --no-root -v
+    source ./.venv.$(cat ".erplibre-version" | xargs)/bin/activate && \
+    pip3 install --upgrade pip && git branch && ls . -lha && \
+    pip3 install "poetry==${POETRY_VERSION}" && \
+    poetry --version && \
+    poetry install --no-root -v
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \
@@ -75,14 +79,15 @@ RUN cd $ODOO_PREFIX && \
     npm install
 
 # Create link to addons
-RUN cd $ODOO_PREFIX && \
-    ls  -lha /ERPLibre && \
-    ln -s "odoo${ODOO_VERSION}/addons" addons
+#RUN cd $ODOO_PREFIX && \
+#    ls  -lha /ERPLibre && \
+#    ln -s "odoo${ODOO_VERSION}/addons" addons && \
+#    ln -s "odoo${ODOO_VERSION}/addons" addons
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     head /etc/odoo/odoo.conf && \
-    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
+    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/odoo${ODOO_VERSION}/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
 
 RUN cp /etc/odoo/odoo.conf /odoo.conf
