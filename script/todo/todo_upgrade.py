@@ -1119,6 +1119,36 @@ class TodoUpgrade:
                 #  do commit and continue
                 #  continue migration to loop
 
+                if next_version == 18:
+                    # TODO need odoo 18, validate python version without switch
+                    status = input(
+                        f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
+                    ).strip()
+                    # Apply modification with views_migration_18
+                    has_cmd = False
+                    # cmd_serial = ""
+                    cmd_parallel = "parallel :::"
+                    for path_git_clone_migrate in lst_path_git_clone_migrate:
+                        cmd_migration = (
+                            f"echo 'views_migration_18 {path_git_clone_migrate}' && "
+                            f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
+                        )
+                        cmd_parallel += f' "{cmd_migration}"'
+                        # cmd_serial += f"{cmd_migration};"
+                        has_cmd = True
+
+                    if has_cmd:
+                        # self.todo_upgrade_execute(
+                        #     cmd_serial
+                        # )
+                        self.todo_upgrade_execute(cmd_parallel)
+                        print("List of module with migration 18 :")
+                        print(lst_module_to_migrate_all)
+                        print("ℹ To show repo status :\nmake repo_show_status")
+                        input(
+                            "💬 Check migration 18 code, press to continue : "
+                        )
+
                 if next_version == 17:
                     status = input(
                         f"💬 Please validate repo is ready to run upgrade views_migration_17, press to continue : "
@@ -1150,36 +1180,6 @@ class TodoUpgrade:
                         print("ℹ To show repo status :\nmake repo_show_status")
                         input(
                             "💬 Check migration 17 code, press to continue : "
-                        )
-
-                if next_version == 18:
-                    status = input(
-                        f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
-                    ).strip()
-                    # Apply modification with views_migration_18
-                    has_cmd = False
-                    cmd_serial = ""
-                    cmd_parallel = "parallel :::"
-                    for dct_module in lst_module_to_migrate_all:
-                        module_name = dct_module.get("module_name")
-                        cmd_migration = (
-                            f"echo 'views_migration_18 {module_name}' && "
-                            f"./script/code/odoo_upgrade_code_with_single_module_autosearch.sh {module_name}"
-                        )
-                        cmd_parallel += f' "{cmd_migration}"'
-                        cmd_serial += f"{cmd_migration};"
-                        has_cmd = True
-
-                    if has_cmd:
-                        # self.todo_upgrade_execute(
-                        #     cmd_serial
-                        # )
-                        self.todo_upgrade_execute(cmd_parallel)
-                        print("List of module with migration 18 :")
-                        print(lst_module_to_migrate_all)
-                        print("ℹ To show repo status :\nmake repo_show_status")
-                        input(
-                            "💬 Check migration 18 code, press to continue : "
                         )
 
                 lst_module_migrate_odoo[index] = True
@@ -1686,12 +1686,18 @@ class TodoUpgrade:
             f'&& git branch -vv | grep "{branch_source}" '
             f"&& cd ~-"
         )
+        cmd_git_clone_migrate_source_same_target_remote_only = (
+            f"cd {source_addons_path} " f"&& git remote " f"&& cd ~-"
+        )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source_same_target,
             get_output=True,
         )
         local_branch, remote, remote_branch = (
-            self.get_local_branch_remote_actual_branch_git(lst_output)
+            self.get_local_branch_remote_actual_branch_git(
+                lst_output,
+                cmd_git_clone_migrate_source_same_target_remote_only,
+            )
         )
         # Get remote branch for next version
         remote_branch_target = f"{remote}/{branch_target}"
@@ -1758,7 +1764,9 @@ class TodoUpgrade:
                 return revision
         return default_branch
 
-    def get_local_branch_remote_actual_branch_git(self, lst_output):
+    def get_local_branch_remote_actual_branch_git(
+        self, lst_output, another_cmd
+    ):
         for line in lst_output:
             # The current branch is marked with an asterisk (*) at the start of the line
             if not line.strip().startswith("*"):
@@ -1769,7 +1777,26 @@ class TodoUpgrade:
                 # The remote and remote branch are in the 4th part, e.g., '[origin/main]'
                 remote_info = parts[3].strip("[]")
                 # Split 'origin/main' into 'origin' and 'main'
-                remote, remote_branch = remote_info.split("/", 1)
+                # remote, remote_branch = remote_info.split("/", 1)
+                try:
+                    remote, remote_branch = remote_info.split("/", 1)
+                except ValueError as e:
+                    # # TODO this means no remote, take default one? or last one?
+                    # # TODO supporter la migration 17 vers 18
+                    # print("👹 BUG, you need to push ")
+                    # status, cmd_executed, lst_output = (
+                    #     self.todo_upgrade_execute(
+                    #         another_cmd,
+                    #         get_output=True,
+                    #     )
+                    # )
+                    # if lst_output:
+                    #     return None, lst_output[0], None
+                    # return None, None, None
+                    value = input(
+                        "👹 BUG, you need to push last branch. Please write the remote/branch_name :"
+                    )
+                    remote, remote_branch = value.split("/", 1)
                 return parts[1], remote, remote_branch
         return None, None, None
 
