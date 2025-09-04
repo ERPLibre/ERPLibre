@@ -600,6 +600,9 @@ class TodoUpgrade:
             msg = f"4.{index}.{chr(option_comment + 65)} - Clone Odoo"
             self.add_comment_progression(msg)
 
+            if not os.path.exists(f"odoo{next_version}.0/addons/addons"):
+                os.makedirs(f"odoo{next_version}.0/addons/addons")
+
             if not lst_clone_odoo[index]:
                 self.switch_odoo(next_version - 1)
 
