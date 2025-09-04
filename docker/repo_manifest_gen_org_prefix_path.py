@@ -25,9 +25,13 @@ dstConfigPath = args.dstConfigPath
 addonsDirs = [abspath(join(addonsBaseDir, f)) for f in listdir(addonsBaseDir) if
               isdir(join(addonsBaseDir, f))]
 
+with open(".odoo-version", "r") as f:
+    odoo_version = f.readline()
+    str_odoo_version = f"odoo{odoo_version}.0"
+
 # addonsDirs.insert(0, "/usr/lib/python3/dist-packages/odoo/addons/")
-addonsDirs.insert(0, "/ERPLibre/addons/addons")
-addonsDirs.insert(0, "/ERPLibre/odoo/addons/")
+addonsDirs.insert(0, f"/ERPLibre/{str_odoo_version}/addons/addons")
+addonsDirs.insert(0, f"/ERPLibre/{str_odoo_version}/odoo/addons/")
 
 config = configparser.ConfigParser()
 
