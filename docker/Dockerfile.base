@@ -73,6 +73,8 @@ RUN apt-get update \
     libffi-dev \
     uuid-dev \
     portaudio19-dev \
+    libcups2-dev \
+    shfmt \
     swig \
     && curl -o wkhtmltox.deb -sSL https://${URL_WKHTMLTOX}/ \
     && echo "${SHA1SUM_WKTHMLTOX} wkhtmltox.deb" | sha1sum -c - \

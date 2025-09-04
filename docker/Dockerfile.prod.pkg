@@ -53,6 +53,7 @@ RUN cd $ODOO_PREFIX && \
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
+    source ./.venv.erplibre/bin/activate && \
     ./script/manifest/update_manifest_local_dev.sh
 
 RUN apt update && \
@@ -66,7 +67,7 @@ RUN cd $ODOO_PREFIX && \
     ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install --upgrade pip && git branch && ls . -lha && \
     ./.venv.$(cat ".erplibre-version" | xargs)/bin/pip install "poetry==${POETRY_VERSION}" && \
     ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry --version && \
-    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry install
+    ./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry install --no-root -v
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \

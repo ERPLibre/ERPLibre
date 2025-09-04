@@ -35,14 +35,30 @@ do
     elif [ "$arg" == "--release_beta" ]
     then
         IS_RELEASE_BETA=true
+    elif [ "$arg" == "--odoo_18" ]
+    then
+        output_version=$(python ./script/version/get_version.py --odoo_version 18.0)
+    elif [ "$arg" == "--odoo_17" ]
+    then
+        output_version=$(python ./script/version/get_version.py --odoo_version 17.0)
     elif [ "$arg" == "--odoo_16" ]
     then
         output_version=$(python ./script/version/get_version.py --odoo_version 16.0)
+    elif [ "$arg" == "--odoo_15" ]
+    then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
+        output_version=$(python ./script/version/get_version.py --odoo_version 15.0)
     elif [ "$arg" == "--odoo_14" ]
     then
         IS_DEBIAN_BOOKWORM=false
         IS_DEBIAN_BULLSEYE=false
         output_version=$(python ./script/version/get_version.py --odoo_version 14.0)
+    elif [ "$arg" == "--odoo_13" ]
+    then
+        IS_DEBIAN_BOOKWORM=false
+        IS_DEBIAN_BULLSEYE=false
+        output_version=$(python ./script/version/get_version.py --odoo_version 13.0)
     elif [ "$arg" == "--odoo_12" ]
     then
         IS_DEBIAN_BOOKWORM=false
