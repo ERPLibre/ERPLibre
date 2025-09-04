@@ -253,13 +253,13 @@
         revision="17.0"
         groups="addons,odoo17.0"
     />
-<!--    <project-->
-<!--        name="development.git"-->
-<!--        path="odoo17.0/addons/MathBenTech_development"-->
-<!--        remote="ERPLibre_origin_MathBenTech"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,base,odoo17.0"-->
-<!--    />-->
+    <!--    <project-->
+    <!--        name="development.git"-->
+    <!--        path="odoo17.0/addons/MathBenTech_development"-->
+    <!--        remote="ERPLibre_origin_MathBenTech"-->
+    <!--        revision="17.0"-->
+    <!--        groups="addons,base,odoo17.0"-->
+    <!--    />-->
     <project
         name="donation.git"
         path="odoo17.0/addons/OCA_donation"
@@ -275,13 +275,13 @@
         groups="addons,odoo17.0"
     />
     <project name="edi.git" path="odoo17.0/addons/OCA_edi" remote="OCA" revision="17.0" groups="addons,odoo17.0" />
-<!--    <project-->
-<!--        name="erplibre_addons.git"-->
-<!--        path="odoo17.0/addons/ERPLibre_erplibre_addons"-->
-<!--        remote="ERPLibre"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,base,odoo17.0"-->
-<!--    />-->
+    <project
+        name="erplibre_addons.git"
+        path="odoo17.0/addons/ERPLibre_erplibre_addons"
+        remote="ERPLibre"
+        revision="17.0"
+        groups="addons,base,odoo17.0"
+    />
     <project name="event.git" path="odoo17.0/addons/OCA_event" remote="OCA" revision="17.0" groups="addons,odoo17.0" />
     <project
         name="field-service.git"
@@ -362,13 +362,13 @@
         revision="17.0"
         groups="addons,odoo17.0"
     />
-<!--    <project-->
-<!--        name="medical-fhir.git"-->
-<!--        path="odoo17.0/addons/tegin_medical-fhir"-->
-<!--        remote="tegin"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,odoo17.0"-->
-<!--    />-->
+    <!--    <project-->
+    <!--        name="medical-fhir.git"-->
+    <!--        path="odoo17.0/addons/tegin_medical-fhir"-->
+    <!--        remote="tegin"-->
+    <!--        revision="17.0"-->
+    <!--        groups="addons,odoo17.0"-->
+    <!--    />-->
     <project
         name="mis-builder.git"
         path="odoo17.0/addons/OCA_mis-builder"
@@ -383,20 +383,20 @@
         revision="17.0"
         groups="addons,odoo17.0"
     />
-<!--    <project-->
-<!--        name="muk_web.git"-->
-<!--        path="odoo17.0/addons/muk-it_muk_web"-->
-<!--        remote="muk-it"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,odoo17.0"-->
-<!--    />-->
-<!--    <project-->
-<!--        name="odoo-business-spending-management-quebec-canada.git"-->
-<!--        path="odoo17.0/addons/MathBenTech_odoo-business-spending-management-quebec-canada"-->
-<!--        remote="ERPLibre_origin_MathBenTech"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,base,odoo17.0"-->
-<!--    />-->
+    <!--    <project-->
+    <!--        name="muk_web.git"-->
+    <!--        path="odoo17.0/addons/muk-it_muk_web"-->
+    <!--        remote="muk-it"-->
+    <!--        revision="17.0"-->
+    <!--        groups="addons,odoo17.0"-->
+    <!--    />-->
+    <!--    <project-->
+    <!--        name="odoo-business-spending-management-quebec-canada.git"-->
+    <!--        path="odoo17.0/addons/MathBenTech_odoo-business-spending-management-quebec-canada"-->
+    <!--        remote="ERPLibre_origin_MathBenTech"-->
+    <!--        revision="17.0"-->
+    <!--        groups="addons,base,odoo17.0"-->
+    <!--    />-->
     <project
         name="odoo-cloud-platform.git"
         path="odoo17.0/addons/camptocamp_odoo-cloud-platform"
@@ -520,13 +520,13 @@
         groups="addons,odoo17.0"
     />
     <project name="rma.git" path="odoo17.0/addons/OCA_rma" remote="OCA" revision="17.0" groups="addons,odoo17.0" />
-<!--    <project-->
-<!--        name="saas-addons.git"-->
-<!--        path="odoo17.0/addons/it-projects-llc_saas-addons"-->
-<!--        remote="it-projects-llc"-->
-<!--        revision="17.0"-->
-<!--        groups="addons,odoo17.0"-->
-<!--    />-->
+    <!--    <project-->
+    <!--        name="saas-addons.git"-->
+    <!--        path="odoo17.0/addons/it-projects-llc_saas-addons"-->
+    <!--        remote="it-projects-llc"-->
+    <!--        revision="17.0"-->
+    <!--        groups="addons,odoo17.0"-->
+    <!--    />-->
     <project
         name="sale-reporting.git"
         path="odoo17.0/addons/OCA_sale-reporting"
