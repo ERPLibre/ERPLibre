@@ -86,6 +86,10 @@ RUN cd $ODOO_PREFIX && \
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
+    mkdir -p "/ERPLibre/odoo${ODOO_VERSION}/addons/addons"
+
+RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
     head /etc/odoo/odoo.conf && \
     ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/odoo${ODOO_VERSION}/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
