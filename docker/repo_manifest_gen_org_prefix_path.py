@@ -27,7 +27,7 @@ addonsDirs = [abspath(join(addonsBaseDir, f)) for f in listdir(addonsBaseDir) if
 
 with open(".odoo-version", "r") as f:
     odoo_version = f.readline()
-    str_odoo_version = f"odoo{odoo_version}.0"
+    str_odoo_version = f"odoo{odoo_version}"
 
 # addonsDirs.insert(0, "/usr/lib/python3/dist-packages/odoo/addons/")
 addonsDirs.insert(0, f"/ERPLibre/{str_odoo_version}/addons/addons")
