@@ -73,7 +73,30 @@ class TodoUpgrade:
         default_database_name = "test"
 
         if os.path.exists(UPGRADE_CONFIG_LOG):
-            print("✨ Detected migration, please select an option.")
+            with open(UPGRADE_CONFIG_LOG, "r") as f:
+                try:
+                    old_dct_progression = json.load(f)
+                    self.dct_progression = {
+                        "migration_file": old_dct_progression.get(
+                            "migration_file"
+                        ),
+                        # More useful to ask this question each time
+                        "target_odoo_version": old_dct_progression.get(
+                            "target_odoo_version"
+                        ),
+                        "date_create": old_dct_progression.get("date_create"),
+                    }
+                except json.decoder.JSONDecodeError:
+                    print(
+                        f'⚠️ The config file "{UPGRADE_CONFIG_LOG}" is invalid, ignore it.'
+                    )
+
+            print(
+                f"✨ Detected migration \"{self.dct_progression.get('migration_file')}\" "
+                f"to version \"{self.dct_progression.get('target_odoo_version')}\", "
+                f"please select an option."
+            )
+
             print("[y] Erase progression for a new migration")
             print("[r] Reuse database with new process")
             print(
@@ -84,6 +107,7 @@ class TodoUpgrade:
                 .strip()
                 .lower()
             )
+            self.dct_progression = {}
             if erase_progression_input in ["r", "reuse", "d"]:
                 with open(UPGRADE_CONFIG_LOG, "r") as f:
                     try:
@@ -361,6 +385,20 @@ class TodoUpgrade:
             self.dct_progression["config_database_name"] = database_name
             self.write_config()
 
+        do_neutralize = False
+        if not self.dct_progression.get("state_1_neutralize_database"):
+            print("[n] Ignore neutralize database")
+            wait_continue = (
+                input("💬 Neutralize database, press to continue : ")
+                .strip()
+                .lower()
+            )
+            if wait_continue != "n":
+                do_neutralize = True
+                database_name += "_neutralize"
+                self.dct_progression["config_database_name"] = database_name
+                self.write_config()
+
         print(f"★ Work with database '{database_name}'")
 
         if not self.dct_progression.get("state_1_restore_database"):
@@ -387,26 +425,20 @@ class TodoUpgrade:
 
         print("✅ -> Restore database")
 
-        if not self.dct_progression.get("state_1_neutralize_database"):
-            print("[n] Ignore neutralize database")
-            wait_continue = (
-                input("💬 Neutralize database, press to continue : ")
-                .strip()
-                .lower()
+        print("✅ -> Neutralize database")
+        if do_neutralize:
+            status, cmd_executed = self.todo_upgrade_execute(
+                f"./script/addons/update_prod_to_dev.sh {database_name}",
+                single_source_odoo=True,
             )
-            if wait_continue != "n":
-                status, cmd_executed = self.todo_upgrade_execute(
-                    f"./script/addons/update_prod_to_dev.sh {database_name}",
-                    single_source_odoo=True,
-                )
-                if not status:
-                    self.dct_progression["state_1_neutralize_database"] = True
-                    self.write_config()
-            else:
+            self.dct_progression["state_1_neutralize_database"] = True
+            self.write_config()
+            if not status:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
-
-        print("✅ -> Neutralize database")
+        else:
+            self.dct_progression["state_1_neutralize_database"] = True
+            self.write_config()
 
         config_state_1_uninstall_module = self.dct_progression.get(
             "config_state_1_uninstall_module"
@@ -845,6 +877,26 @@ class TodoUpgrade:
                                 lst_module_missing_next_version
                             ):
                                 is_delete_all = True
+
+                        if next_version == 15:
+                            lst_module_to_delete.append("users_default_groups")
+                            lst_module_to_delete.append(
+                                "web_editor_backend_context"
+                            )
+                            lst_module_to_delete.append(
+                                "website_google_analytics_fixed"
+                            )
+                        elif next_version == 17:
+                            lst_module_to_delete.append(
+                                "export_delete_login_log"
+                            )
+                        elif next_version == 18:
+                            lst_module_to_delete.append(
+                                "base_attachment_object_storage"
+                            )
+                            lst_module_to_delete.append(
+                                "user_password_strength"
+                            )
 
                         if "e" in lst_want_continue:
                             want_continue = (
@@ -1285,7 +1337,7 @@ class TodoUpgrade:
                 self.write_config()
 
                 str_wait_next_version = (
-                    " (or wait next version)"
+                    " (or wait next version 🤖)"
                     if next_version != lst_next_version[-1]
                     else ""
                 )
@@ -1515,7 +1567,7 @@ class TodoUpgrade:
     def check_addons_exist(
         self, lst_module_to_check, ignore_error=True, get_all_info=False
     ):
-        str_module_to_check = ",".join(lst_module_to_check)
+        str_module_to_check = ",".join(sorted(lst_module_to_check))
         status, cmd_executed, dct_output = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./script/addons/check_addons_exist.py --format_json --output_json -m {str_module_to_check}",
             get_output=True,
