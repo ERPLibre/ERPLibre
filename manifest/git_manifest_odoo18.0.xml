@@ -565,13 +565,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="server-tools.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/OCA_server-tools"-->
-    <!--        remote="ERPLibre"-->
-    <!--        revision="ERPLibre/18.0"-->
-    <!--        groups="addons,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="server-tools.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_server-tools"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
     <project
         name="server-ux.git"
         revision="18.0"
