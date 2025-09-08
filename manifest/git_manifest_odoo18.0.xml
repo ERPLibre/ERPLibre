@@ -3,6 +3,7 @@
     <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_MathBenTech" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_OCA" fetch="https://github.com/ERPLibre/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
@@ -341,7 +342,6 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-
     <project
         name="maintenance.git"
         revision="18.0"
@@ -436,7 +436,6 @@
         remote="openeducat"
         groups="addons,odoo18.0"
     />
-
     <project
         name="operating-unit.git"
         revision="18.0"
@@ -567,9 +566,9 @@
     />
     <project
         name="server-tools.git"
-        revision="18.0"
+        revision="18.0_dev"
         path="odoo18.0/addons/OCA_server-tools"
-        remote="OCA"
+        remote="ERPLibre_origin_OCA"
         groups="addons,odoo18.0"
     />
     <project
@@ -593,13 +592,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="survey.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/OCA_survey"-->
-    <!--        remote="ERPLibre"-->
-    <!--        revision="18.0_dev"-->
-    <!--        groups="addons,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="survey.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_survey"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
     <project
         name="stock-logistics-putaway.git"
         revision="18.0"
@@ -621,13 +620,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="timesheet.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/OCA_timesheet"-->
-    <!--        remote="ERPLibre"-->
-    <!--        revision="18.0_dev"-->
-    <!--        groups="addons,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="timesheet.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_timesheet"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
     <project
         name="vertical-association.git"
         revision="18.0"
