@@ -95,7 +95,7 @@ def main():
         return -1
 
     lst_addons_path = addons_path.strip(",").split(",")
-    lst_module = config.module.strip(",").split(",")
+    lst_module = sorted(list(set(config.module.strip(",").split(","))))
 
     dct_module_exist = defaultdict(list)
     dct_module_exist_empty = defaultdict(list)
