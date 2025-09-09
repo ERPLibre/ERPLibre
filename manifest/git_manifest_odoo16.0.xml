@@ -721,6 +721,13 @@
         groups="addons,odoo16.0"
     />
     <project
+        name="sync-addons.git"
+        path="odoo16.0/addons/itpp-labs_sync-addons"
+        remote="itpp-labs"
+        revision="16.0"
+        groups="addons,odoo16.0"
+    />
+    <project
         name="stock-logistics-availability.git"
         revision="16.0"
         path="odoo16.0/addons/OCA_stock-logistics-availability"
