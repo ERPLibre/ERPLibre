@@ -39,6 +39,7 @@ brew install shfmt
 brew install parallel
 brew install swig
 brew install portaudio
+brew install xmlsec1
 echo  "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
 brew install nodejs npm openssl
 sudo npm install -g rtlcss
