@@ -79,20 +79,25 @@ def commit_by_directory():
         print(f"Processing directory: {directory}")
 
         # Ajoute tous les fichiers du répertoire
-        run_git_command(f'cd "{config.path}" && git add {directory}')
+        if os.path.exists(os.path.join(config.path, directory)):
+            mig_prefix_msg = "MIG"
+            run_git_command(f'cd "{config.path}" && git add {directory}')
 
-        # Vérifie si le répertoire a des changements staged
-        commit_result_git_diff = run_git_command(
-            f'cd "{config.path}" && git diff --cached --quiet {directory}',
-            ignore_error=True,
-        )
-        if commit_result_git_diff.returncode == 0:
-            print(f"No changes to commit in {directory}.")
-            continue
+            # Vérifie si le répertoire a des changements staged
+            commit_result_git_diff = run_git_command(
+                f'cd "{config.path}" && git diff --cached --quiet {directory}',
+                ignore_error=True,
+            )
+            if commit_result_git_diff.returncode == 0:
+                print(f"No changes to commit in {directory}.")
+                continue
+        else:
+            mig_prefix_msg = "DEL"
+            run_git_command(f'cd "{config.path}" && git rm -r {directory}')
 
         # Crée le commit
         commit_message = (
-            f"[MIG] {directory}: Migration to {config.odoo_version}"
+            f"[{mig_prefix_msg}] {directory}: Migration to {config.odoo_version}"
         )
         commit_result = run_git_command(
             f'cd "{config.path}" && git commit -m "{commit_message}"'
