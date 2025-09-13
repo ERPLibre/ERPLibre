@@ -98,6 +98,11 @@ def get_config():
         help="Will only update the system by switch environnement.",
     )
     parser.add_argument(
+        "--switch_update",
+        action="store_true",
+        help="Work with --switch, will do repo update",
+    )
+    parser.add_argument(
         "--install_dev",
         action="store_true",
         help="Install developer environment.",
@@ -129,6 +134,7 @@ def get_config():
         args.force_repo = True
     args.is_in_installation = args.install or args.install_dev
     args.is_in_switch = args.switch
+    args.is_in_switch_force_update = args.switch and args.switch_update
     if not (args.install or args.install_dev) and args.force_install:
         args.force_install = False
 
@@ -433,22 +439,25 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation or self.config.is_in_switch:
-        #     addons_path_with_version = (
-        #         ADDONS_TEMPLATE_FILE % self.new_version_odoo
-        #     )
-        #     # To support multiple addons directory, change name before run git repo
-        #     for addons_path in os.listdir("."):
-        #         if (
-        #             addons_path.startswith("addons")
-        #             and addons_path != addons_path_with_version
-        #         ):
-        #             os.rename(addons_path, addons_path + "TEMP")
+            #     addons_path_with_version = (
+            #         ADDONS_TEMPLATE_FILE % self.new_version_odoo
+            #     )
+            #     # To support multiple addons directory, change name before run git repo
+            #     for addons_path in os.listdir("."):
+            #         if (
+            #             addons_path.startswith("addons")
+            #             and addons_path != addons_path_with_version
+            #         ):
+            #             os.rename(addons_path, addons_path + "TEMP")
 
             # TODO need to be force if installation path is all good, return True
             if self.config.install_dev:
                 _logger.info("Installation.")
                 status = self.install_erplibre()
-            elif self.config.is_in_switch:
+            elif (
+                self.config.is_in_switch
+                and self.config.is_in_switch_force_update
+            ):
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
                 status = os.system(
@@ -584,9 +593,9 @@ class Update:
                 #         new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
                 #     else:
                 #         new_target_file = target_file
-                    # Move it and create a symlink
-                    # shutil.move(source_file, new_target_file)
-                    # do_symlink = True
+                # Move it and create a symlink
+                # shutil.move(source_file, new_target_file)
+                # do_symlink = True
             else:
                 # Case 3
                 # Is symlink
