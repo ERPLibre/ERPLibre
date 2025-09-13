@@ -364,6 +364,20 @@
         revision="13.0"
         groups="addons,odoo13.0"
     />
+    <project
+        name="odoo-code-generator-template.git"
+        path="odoo13.0/addons/TechnoLibre_odoo-code-generator-template"
+        remote="ERPLibre_origin_TechnoLibre"
+        revision="13.0"
+        groups="addons,odoo13.0,code_generator,image_db"
+    />
+    <project
+        name="odoo-code-generator.git"
+        path="odoo13.0/addons/TechnoLibre_odoo-code-generator"
+        remote="ERPLibre_origin_TechnoLibre"
+        revision="13.0"
+        groups="addons,odoo13.0,code_generator,image_db"
+    />
     <!--  <project name="odoo-entertainment-addons.git" path="odoo13.0/addons/Numigi_odoo-entertainment-addons" remote="Numigi" revision="13.0" groups="addons,odoo13.0"/>-->
     <project
         name="odoo-formio.git"
