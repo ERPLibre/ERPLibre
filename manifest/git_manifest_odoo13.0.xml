@@ -16,6 +16,7 @@
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
+    <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
@@ -367,7 +368,7 @@
     <project
         name="odoo-formio.git"
         path="odoo13.0/addons/novacode-nl_odoo-formio"
-        remote="novacode-nl"
+        remote="ERPLibre_origin_novacode-nl"
         revision="13.0"
         groups="addons,odoo13.0"
     />

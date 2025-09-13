@@ -17,6 +17,7 @@
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
     <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
+    <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
@@ -262,12 +263,13 @@
         remote="dhongu"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="development.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/MathBenTech_development"-->
-    <!--        remote="ERPLibre_origin_MathBenTech"-->
-    <!--        groups="addons,base,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="development.git"
+        revision="18.0"
+        path="odoo18.0/addons/MathBenTech_development"
+        remote="ERPLibre_origin_MathBenTech"
+        groups="addons,base,odoo18.0"
+    />
     <project
         name="donation.git"
         revision="18.0"
@@ -404,7 +406,7 @@
         name="odoo-formio.git"
         revision="18.0"
         path="odoo18.0/addons/novacode-nl_odoo-formio"
-        remote="novacode-nl"
+        remote="ERPLibre_origin_novacode-nl"
         groups="addons,odoo18.0"
     />
     <project
