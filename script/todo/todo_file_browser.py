@@ -8,12 +8,13 @@ import urwid
 
 
 class FileBrowser(urwid.WidgetWrap):
-    def __init__(self, initial_path, callback):
+    def __init__(self, initial_path, callback, open_dir=False):
         self.callback = callback
         self.current_path = os.path.abspath(initial_path)
         self.list_walker = urwid.SimpleFocusListWalker([])
         self.listbox = urwid.ListBox(self.list_walker)
         super().__init__(self.listbox)
+        self.open_dir = open_dir
         self.refresh_list()
 
     def refresh_list(self):
@@ -22,17 +23,21 @@ class FileBrowser(urwid.WidgetWrap):
         self.list_walker.append(
             urwid.Button("..", on_press=self.go_up_directory)
         )
+        if self.open_dir:
+            self.list_walker.append(
+                urwid.Button(".", on_press=self.select_directory)
+            )
 
         try:
             entries = os.listdir(self.current_path)
-            entries.sort()
+            entries.sort(key=lambda r: r.lower())
             for entry in entries:
                 full_path = os.path.join(self.current_path, entry)
                 if os.path.isdir(full_path):
                     self.list_walker.append(
                         urwid.Button(f"{entry}/", on_press=self.open_directory)
                     )
-                else:
+                elif not self.open_dir:
                     self.list_walker.append(
                         urwid.Button(entry, on_press=self.select_file)
                     )
@@ -54,6 +59,10 @@ class FileBrowser(urwid.WidgetWrap):
         if os.path.isdir(new_path):
             self.current_path = new_path
             self.refresh_list()
+
+    def select_directory(self, button):
+        """Selects a file and calls the callback function."""
+        self.callback(self.current_path)
 
     def select_file(self, button):
         """Selects a file and calls the callback function."""

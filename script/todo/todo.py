@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -18,7 +19,7 @@ VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 INSTALLED_ODOO_VERSION_FILE = os.path.join(
     ".repo", "installed_odoo_version.txt"
 )
-ODOO_VERSION_FILE = os.path.join(".odoo-version")
+ODOO_VERSION_FILE = ".odoo-version"
 ENABLE_CRASH = False
 CRASH_E = None
 
@@ -43,6 +44,14 @@ except ModuleNotFoundError as e:
 if not ENABLE_CRASH:
     print("Importation success!")
 
+logging.basicConfig(
+    format=(
+        "%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d]"
+        " %(message)s"
+    ),
+    datefmt="%Y-%m-%d:%H:%M:%S",
+    level=logging.INFO,
+)
 _logger = logging.getLogger(__name__)
 
 CONFIG_FILE = "./script/todo/todo.json"
@@ -546,7 +555,12 @@ class TODO:
         #         [1] Status Git local et distant
         #         [0] Retour
         # """
+
         lst_instance = self.get_config(["code_from_makefile"])
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Upgrade Module",
+        }
+        lst_instance.append(dct_upgrade_odoo_database)
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -554,6 +568,8 @@ class TODO:
             print()
             if status == "0":
                 return False
+            elif status == str(len(lst_instance)):
+                self.upgrade_module()
             else:
                 cmd_no_found = True
                 try:
@@ -612,9 +628,7 @@ class TODO:
                     "https://github.com/OCA/odoo-community.org/blob/master/website/Contribution/CONTRIBUTING.rst"
                 )
             elif status == "4":
-                print(
-                    "https://github.com/OCA/maintainer-tools/issues/658"
-                )
+                print("https://github.com/OCA/maintainer-tools/issues/658")
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -905,6 +919,10 @@ class TODO:
         else:
             self.prompt_install()
 
+    def upgrade_module(self):
+        upgrade = todo_upgrade.TodoUpgrade(self)
+        upgrade.execute_module_upgrade()
+
     def upgrade_poetry(self):
         # Only show the version to the user
         status = self.executer_commande_live(
@@ -993,6 +1011,15 @@ class TODO:
             return_status_and_command=True,
             new_env=my_env,
         )
+        try:
+            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
+                manifest_file_1 = zip_ref.open("manifest.json")
+            _logger.info(f"Log file '{default_output_path}' is complete and validated.")
+        except Exception as e:
+            _logger.error(e)
+            _logger.error(
+                f"Failed to read manifest.json from backup file '{default_output_path}'."
+            )
         return status, output_path, database_name
 
     def restart_script(self, last_error):

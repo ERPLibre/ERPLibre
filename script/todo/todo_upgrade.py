@@ -24,7 +24,8 @@ from script.git.git_tool import GitTool
 _logger = logging.getLogger(__name__)
 
 PYTHON_BIN = ".venv.erplibre/bin/python3"
-UPGRADE_CONFIG_LOG = ".venv.erplibre/odoo_migration_log.json"
+UPGRADE_DATABASE_CONFIG_LOG = ".venv.erplibre/odoo_database_migration_log.json"
+# UPGRADE_MODULE_CONFIG_LOG = ".venv.erplibre/odoo_module_migration_log.json"
 VENV_NAME_MODULE_MIGRATOR = ".venv"
 LST_PATH_OCA_ODOO_MODULE_MIGRATOR = ["script", "OCA_odoo-module-migrator"]
 PATH_OCA_ODOO_MODULE_MIGRATOR = "./" + "/".join(
@@ -45,6 +46,7 @@ LOCAL_MANIFEST = os.path.join(
 class TodoUpgrade:
     def __init__(self, todo):
         self.file_path = None
+        self.dir_path = None
         self.todo = todo
         self.dct_progression = {}
         self.lst_command_executed = []
@@ -55,25 +57,341 @@ class TodoUpgrade:
         if "date_create" not in self.dct_progression.keys():
             self.dct_progression["date_create"] = str(datetime.datetime.now())
         self.dct_progression["date_update"] = str(datetime.datetime.now())
-        with open(UPGRADE_CONFIG_LOG, "w") as f:
+        with open(UPGRADE_DATABASE_CONFIG_LOG, "w") as f:
             json.dump(self.dct_progression, f, indent=4)
 
     def on_file_selected(self, file_path):
         self.file_path = file_path
         todo_file_browser.exit_program()
 
+    def on_dir_selected(self, dir_path):
+        self.dir_path = dir_path
+        todo_file_browser.exit_program()
+
+    def execute_module_upgrade(self):
+        print("Welcome to Odoo module upgrade processus with ERPLibre 🤖")
+
+        with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
+            try:
+                old_dct_progression = json.load(f)
+                self.dct_progression = old_dct_progression
+                self.lst_command_executed = old_dct_progression.get(
+                    "command_executed"
+                )
+            except json.decoder.JSONDecodeError:
+                print(
+                    f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
+                )
+
+        print(
+            "Migrate a directory repo to migrate all module, or select a directory module."
+        )
+        print("[m] Migrate one module")
+        print("[r] Migrate one repo")
+        print("[]  Directory browser")
+
+        lst_dir_path = []
+        from_version = 0
+        to_version = 0
+
+        status = input("💬 What do you choose : ").strip().lower()
+        if status == "m":
+            print("[p] Path (default)")
+            print("[n] Name")
+
+            status = input("💬 What do you choose : ").strip().lower()
+            if status == "n":
+                module_name = input("💬 Module name : ").strip().lower()
+                from_version = int(
+                    input("💬 From odoo version (12 to 18) : ").strip()
+                )
+                to_version = int(
+                    input("💬 To odoo version (12 to 18) : ").strip()
+                )
+                self.switch_odoo(from_version)
+                # TODO detect path
+                (
+                    lst_module_missing,
+                    lst_module_duplicate,
+                    lst_module_exist,
+                    lst_module_error,
+                ) = self.check_addons_exist([module_name], get_all_info=True)
+                if (
+                    lst_module_missing
+                    or lst_module_duplicate
+                    or lst_module_error
+                ):
+                    if lst_module_missing:
+                        print(f"Missing list : {lst_module_missing}")
+                    if lst_module_duplicate:
+                        print(f"Duplicate list : {lst_module_duplicate}")
+                    if lst_module_error:
+                        print(f"Error list : {lst_module_error}")
+                    return
+                lst_dir_path.extend(lst_module_exist)
+            else:
+                self.dir_path = input("💬 Path : ").strip()
+        elif status == "r":
+            self.dir_path = input("💬 Path : ").strip()
+        else:
+            self.dir_path = None
+
+        if not self.dir_path and not lst_dir_path:
+            initial_dir = os.getcwd()
+
+            file_browser = todo_file_browser.FileBrowser(
+                initial_dir, self.on_dir_selected, open_dir=True
+            )
+            file_browser.run_main_frame()
+
+        if not lst_dir_path and not os.path.exists(self.dir_path):
+            _logger.error(f"Path '{self.dir_path}' not exists.")
+            return
+
+        if not from_version:
+            from_version = int(
+                input("💬 From odoo version (12 to 18) : ").strip()
+            )
+        if not to_version:
+            to_version = int(input("💬 To odoo version (12 to 18) : ").strip())
+
+        # TODO ask option direct migration
+
+        lst_version_to_update = [
+            (a, a + 1) for a in range(from_version, to_version)
+        ]
+        # lst_version_to_update = [(from_version, to_version)]
+        # for actual_version in range(from_version, to_version):
+        #     next_version = actual_version + 1
+        for actual_version, next_version in lst_version_to_update:
+            set_path_migrate_addons = set()
+
+            if not lst_dir_path:
+                if os.path.exists(
+                    os.path.join(self.dir_path, "__manifest__.py")
+                ):
+                    lst_dir_path = [
+                        [os.path.basename(self.dir_path), self.dir_path]
+                    ]
+                else:
+                    lst_dir_path = [
+                        [a, os.path.join(self.dir_path, a)]
+                        for a in os.listdir(self.dir_path)
+                        if os.path.exists(
+                            os.path.join(self.dir_path, a, "__manifest__.py")
+                        )
+                    ]
+
+            lst_path_git_clone_migrate = []
+            lst_module_to_migrate_all = []
+            for dir_path in lst_dir_path:
+                source_manifest_path = os.path.join(
+                    dir_path[1], "__manifest__.py"
+                ).replace(f"odoo{from_version}.0", f"odoo{actual_version}.0")
+
+                is_dir_module = os.path.exists(source_manifest_path)
+                if not is_dir_module:
+                    continue
+                source_module_path = dir_path[1].replace(
+                    f"odoo{from_version}.0", f"odoo{actual_version}.0"
+                )
+                source_addons_path = os.path.dirname(dir_path[1]).replace(
+                    f"odoo{from_version}.0", f"odoo{actual_version}.0"
+                )
+                target_module_path = source_module_path.replace(
+                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
+                )
+                target_manifest_path = source_manifest_path.replace(
+                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
+                )
+                target_addons_path = source_addons_path.replace(
+                    f"odoo{actual_version}.0", f"odoo{next_version}.0"
+                )
+                dct_module = {
+                    "source_module_path": source_module_path,
+                    "source_manifest_path": source_manifest_path,
+                    "source_addons_path": source_addons_path,
+                    "target_module_path": target_module_path,
+                    "target_manifest_path": target_manifest_path,
+                    "target_addons_path": target_addons_path,
+                    "module_name": dir_path[0],
+                    "source_version_odoo": actual_version,
+                    "target_version_odoo": next_version,
+                }
+                lst_module_to_migrate_all.append(dct_module)
+                set_path_migrate_addons.add(target_addons_path)
+                # lst_path_git_clone_migrate.append(target_addons_path)
+            # TODO auto detect version from
+            # TODO if detect from directory, check from repo list
+            # TODO detect from manifest version
+
+            self.switch_odoo(next_version)
+            self.install_OCA_odoo_module_migrator()
+
+            self.internal_module_upgrade(
+                next_version,
+                lst_module_to_migrate_all,
+                lst_path_git_clone_migrate,
+            )
+
+            for commit_path in set_path_migrate_addons:
+                cmd = f"./script/code/git_commit_migration_addons_path.py --path {commit_path} --odoo_version {next_version}.0"
+                self.todo_upgrade_execute(cmd)
+            print(set_path_migrate_addons)
+            status = input(
+                f"💬 Please validate git commit on repos, press to continue : "
+            ).strip()
+
+    def internal_module_upgrade(
+        self,
+        next_version,
+        lst_module_to_migrate_all,
+        lst_path_git_clone_migrate,
+    ):
+        has_cmd = False
+        cmd_parallel = "parallel :::"
+        for dct_module in lst_module_to_migrate_all:
+            target_addons_path = dct_module.get("target_addons_path")
+            source_addons_path = dct_module.get("source_addons_path")
+            module_name = dct_module.get("module_name")
+            source_version_odoo = f'{dct_module.get("source_version_odoo")}.0'
+            target_version_odoo = f'{dct_module.get("target_version_odoo")}.0'
+            source_module_path_to_copy = dct_module.get("source_module_path")
+            # Prepare git environment for target
+            if target_addons_path not in lst_path_git_clone_migrate:
+                lst_path_git_clone_migrate.append(target_addons_path)
+                self.check_and_clone_source_to_target_migration_code(
+                    next_version,
+                    source_addons_path,
+                    target_addons_path,
+                )
+
+            cmd_migration = (
+                f"echo 'odoo_module_migrate {module_name}' && "
+                f"cp -r {source_module_path_to_copy} {target_addons_path} && "
+                f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && "
+                f"source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
+                f"python -m odoo_module_migrate --directory {target_addons_path} --modules {module_name} "
+                f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
+                f"--no-commit && "
+                f"cd ~- "
+                # f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
+                # f"cd {target_module_path_to_copy} && git commit -am '[MIG] {module_name}: Migration to {target_version_odoo}' && cd ~-"
+            )
+            cmd_parallel += f' "{cmd_migration}"'
+            has_cmd = True
+
+        if lst_module_to_migrate_all:
+            if has_cmd:
+                self.todo_upgrade_execute(cmd_parallel)
+                print("List of path with migrate code :")
+                print(lst_path_git_clone_migrate)
+                print("ℹ To show repo status :\nmake repo_show_status")
+                input("💬 Check migration code, press to continue : ")
+
+            # source_module_path = dct_module_result.get(
+            #     "source_module_path"
+            # )
+            # if not source_module_path:
+            #     _logger.error(
+            #         f"Missing source module path '{source_module_path}'"
+            #     )
+            # else:
+            #     if os.path.exists(
+            #         os.path.join(source_module_path, ".git")
+            #     ):
+            #         self.todo_upgrade_execute(
+            #             f"cd '{source_module_path}' && git stash && cd ~-",
+            #         )
+            #
+            # target_module_path = dct_module_result.get(
+            #     "target_module_path"
+            # )
+            # if not target_module_path:
+            #     _logger.error(
+            #         f"Missing target module path '{target_module_path}'"
+            #     )
+            # else:
+            #     # TODO check if has file to commit
+            #     self.todo_upgrade_execute(
+            #         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate_all)} modules: Migration to {next_version}' && cd ~-",
+            #     )
+
+        # TODO copie to next odoo version
+        #  do commit and continue
+        #  continue migration to loop
+
+        if next_version in [18]:
+            # TODO need odoo 18, validate python version without switch
+            status = input(
+                f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
+            ).strip()
+            # Apply modification with views_migration_18
+            has_cmd = False
+            # cmd_serial = ""
+            cmd_parallel = "parallel :::"
+            for path_git_clone_migrate in lst_path_git_clone_migrate:
+                cmd_migration = (
+                    f"echo 'views_migration_18 {path_git_clone_migrate}' && "
+                    f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
+                )
+                cmd_parallel += f' "{cmd_migration}"'
+                # cmd_serial += f"{cmd_migration};"
+                has_cmd = True
+
+            if has_cmd:
+                # self.todo_upgrade_execute(
+                #     cmd_serial
+                # )
+                self.todo_upgrade_execute(cmd_parallel)
+                print("List of module with migration 18 :")
+                print(lst_module_to_migrate_all)
+                print("ℹ To show repo status :\nmake repo_show_status")
+                input("💬 Check migration 18 code, press to continue : ")
+
+        if next_version == 17:
+            status = input(
+                f"💬 Please validate repo is ready to run upgrade views_migration_17, press to continue : "
+            ).strip()
+            # Apply modification with views_migration_17
+            has_cmd = False
+            cmd_serial = ""
+            cmd_parallel = "parallel :::"
+            for dct_module in lst_module_to_migrate_all:
+                database_migration_17_name = (
+                    f"migration_odoo_{next_version}_{str(uuid4())[:6]}"
+                )
+                module_name = dct_module.get("module_name")
+                cmd_migration = (
+                    f"echo 'views_migration_17 {module_name}' && "
+                    f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init"
+                )
+                cmd_parallel += f' "{cmd_migration}"'
+                cmd_serial += f"{cmd_migration};"
+                has_cmd = True
+
+            if has_cmd:
+                # self.todo_upgrade_execute(
+                #     cmd_serial
+                # )
+                self.todo_upgrade_execute(cmd_parallel)
+                print("List of module with migration 17 :")
+                print(lst_module_to_migrate_all)
+                print("ℹ To show repo status :\nmake repo_show_status")
+                input("💬 Check migration 17 code, press to continue : ")
+
     def execute_odoo_upgrade(self):
         # TODO update dev environment for git project
         # TODO Redeploy new production after upgrade
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
-        print("Welcome to Odoo upgrade processus with ERPLibre 🤖")
+        print("Welcome to Odoo database upgrade processus with ERPLibre 🤖")
         self.lst_command_executed = []
         self.dct_module_per_version = {}
         self.dct_module_per_dct_version_path = {}
         default_database_name = "test"
 
-        if os.path.exists(UPGRADE_CONFIG_LOG):
-            with open(UPGRADE_CONFIG_LOG, "r") as f:
+        if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
+            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                 try:
                     old_dct_progression = json.load(f)
                     self.dct_progression = {
@@ -88,7 +406,7 @@ class TodoUpgrade:
                     }
                 except json.decoder.JSONDecodeError:
                     print(
-                        f'⚠️ The config file "{UPGRADE_CONFIG_LOG}" is invalid, ignore it.'
+                        f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
                     )
 
             print(
@@ -109,7 +427,7 @@ class TodoUpgrade:
             )
             self.dct_progression = {}
             if erase_progression_input in ["r", "reuse", "d"]:
-                with open(UPGRADE_CONFIG_LOG, "r") as f:
+                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                     try:
                         old_dct_progression = json.load(f)
                         self.dct_progression = {
@@ -148,17 +466,17 @@ class TodoUpgrade:
                         ] = False
                     except json.decoder.JSONDecodeError:
                         print(
-                            f"⚠️ The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
+                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
                         )
 
                 self.write_config()
             elif erase_progression_input not in ["y", "yes"]:
-                with open(UPGRADE_CONFIG_LOG, "r") as f:
+                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                     try:
                         self.dct_progression = json.load(f)
                     except json.decoder.JSONDecodeError:
                         print(
-                            f"⚠️ The config file '{UPGRADE_CONFIG_LOG}' is invalid, ignore it."
+                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
                         )
 
         if "migration_file" in self.dct_progression:
@@ -539,6 +857,8 @@ class TodoUpgrade:
 
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
+
+        self.install_OCA_odoo_module_migrator()
 
         msg = "4 - Upgrade version with OpenUpgrade"
         print(f"🔷 {msg}")
@@ -1090,152 +1410,14 @@ class TodoUpgrade:
                 else:
                     lst_module_to_migrate_all = []
 
-                self.install_OCA_odoo_module_migrator()
-
                 # TODO remove duplicate au lieu d'extend
                 lst_module_to_migrate_all.extend(lst_module_to_migrate)
 
-                has_cmd = False
-                cmd_parallel = "parallel :::"
-                for dct_module in lst_module_to_migrate_all:
-                    target_addons_path = dct_module.get("target_addons_path")
-                    source_addons_path = dct_module.get("source_addons_path")
-                    module_name = dct_module.get("module_name")
-                    source_version_odoo = (
-                        f'{dct_module.get("source_version_odoo")}.0'
-                    )
-                    target_version_odoo = (
-                        f'{dct_module.get("target_version_odoo")}.0'
-                    )
-                    source_module_path_to_copy = dct_module.get(
-                        "source_module_path"
-                    )
-                    # Prepare git environment for target
-                    if target_addons_path not in lst_path_git_clone_migrate:
-                        lst_path_git_clone_migrate.append(target_addons_path)
-                        self.check_and_clone_source_to_target_migration_code(
-                            next_version,
-                            source_addons_path,
-                            target_addons_path,
-                        )
-
-                    cmd_migration = (
-                        f"echo 'odoo_module_migrate {module_name}' && "
-                        f"cp -r {source_module_path_to_copy} {target_addons_path} && "
-                        f"cd {PATH_OCA_ODOO_MODULE_MIGRATOR} && "
-                        f"source {VENV_NAME_MODULE_MIGRATOR}/bin/activate && "
-                        f"python -m odoo_module_migrate --directory {target_addons_path} --modules {module_name} "
-                        f"--init-version-name {source_version_odoo} --target-version-name {target_version_odoo} "
-                        f"--no-commit && "
-                        f"cd ~- "
-                        # f"cp -r {source_module_path_to_copy} {target_module_path_to_copy} && "
-                        # f"cd {target_module_path_to_copy} && git commit -am '[MIG] {module_name}: Migration to {target_version_odoo}' && cd ~-"
-                    )
-                    cmd_parallel += f' "{cmd_migration}"'
-                    has_cmd = True
-
-                if lst_module_to_migrate_all:
-                    if has_cmd:
-                        self.todo_upgrade_execute(cmd_parallel)
-                        print("List of path with migrate code :")
-                        print(lst_path_git_clone_migrate)
-                        print("ℹ To show repo status :\nmake repo_show_status")
-                        input("💬 Check migration code, press to continue : ")
-
-                    # source_module_path = dct_module_result.get(
-                    #     "source_module_path"
-                    # )
-                    # if not source_module_path:
-                    #     _logger.error(
-                    #         f"Missing source module path '{source_module_path}'"
-                    #     )
-                    # else:
-                    #     if os.path.exists(
-                    #         os.path.join(source_module_path, ".git")
-                    #     ):
-                    #         self.todo_upgrade_execute(
-                    #             f"cd '{source_module_path}' && git stash && cd ~-",
-                    #         )
-                    #
-                    # target_module_path = dct_module_result.get(
-                    #     "target_module_path"
-                    # )
-                    # if not target_module_path:
-                    #     _logger.error(
-                    #         f"Missing target module path '{target_module_path}'"
-                    #     )
-                    # else:
-                    #     # TODO check if has file to commit
-                    #     self.todo_upgrade_execute(
-                    #         f"cd '{target_module_path}' && git commit -am '[MIG] {len(lst_module_to_migrate_all)} modules: Migration to {next_version}' && cd ~-",
-                    #     )
-
-                # TODO copie to next odoo version
-                #  do commit and continue
-                #  continue migration to loop
-
-                if next_version == 18:
-                    # TODO need odoo 18, validate python version without switch
-                    status = input(
-                        f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
-                    ).strip()
-                    # Apply modification with views_migration_18
-                    has_cmd = False
-                    # cmd_serial = ""
-                    cmd_parallel = "parallel :::"
-                    for path_git_clone_migrate in lst_path_git_clone_migrate:
-                        cmd_migration = (
-                            f"echo 'views_migration_18 {path_git_clone_migrate}' && "
-                            f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
-                        )
-                        cmd_parallel += f' "{cmd_migration}"'
-                        # cmd_serial += f"{cmd_migration};"
-                        has_cmd = True
-
-                    if has_cmd:
-                        # self.todo_upgrade_execute(
-                        #     cmd_serial
-                        # )
-                        self.todo_upgrade_execute(cmd_parallel)
-                        print("List of module with migration 18 :")
-                        print(lst_module_to_migrate_all)
-                        print("ℹ To show repo status :\nmake repo_show_status")
-                        input(
-                            "💬 Check migration 18 code, press to continue : "
-                        )
-
-                if next_version == 17:
-                    status = input(
-                        f"💬 Please validate repo is ready to run upgrade views_migration_17, press to continue : "
-                    ).strip()
-                    # Apply modification with views_migration_17
-                    has_cmd = False
-                    cmd_serial = ""
-                    cmd_parallel = "parallel :::"
-                    for dct_module in lst_module_to_migrate_all:
-                        database_migration_17_name = (
-                            f"migration_odoo_{next_version}_{str(uuid4())[:6]}"
-                        )
-                        module_name = dct_module.get("module_name")
-                        cmd_migration = (
-                            f"echo 'views_migration_17 {module_name}' && "
-                            f"./run.sh -d {database_migration_17_name} -i {module_name} --load=base,web,views_migration_17 --dev upgrade --no-http --stop-after-init"
-                        )
-                        cmd_parallel += f' "{cmd_migration}"'
-                        cmd_serial += f"{cmd_migration};"
-                        has_cmd = True
-
-                    if has_cmd:
-                        # self.todo_upgrade_execute(
-                        #     cmd_serial
-                        # )
-                        self.todo_upgrade_execute(cmd_parallel)
-                        print("List of module with migration 17 :")
-                        print(lst_module_to_migrate_all)
-                        print("ℹ To show repo status :\nmake repo_show_status")
-                        input(
-                            "💬 Check migration 17 code, press to continue : "
-                        )
+                self.internal_module_upgrade(
+                    next_version,
+                    lst_module_to_migrate_all,
+                    lst_path_git_clone_migrate,
+                )
 
                 lst_module_migrate_odoo[index] = True
                 self.dct_progression["state_4_module_migrate_odoo_lst"] = (
@@ -1725,7 +1907,7 @@ class TodoUpgrade:
             cmd_git_clone_migrate_source,
             get_output=True,
         )
-        branch_source = lst_output[0].strip()
+        branch_source = lst_output[0].strip() if len(lst_output) else ""
         if not branch_source:
             # Get branch from repo
             branch_source = self.get_branch_name_from_local_manifest(
@@ -1742,18 +1924,31 @@ class TodoUpgrade:
             f"&& cd ~-"
         )
         cmd_git_clone_migrate_source_same_target_remote_only = (
-            f"cd {source_addons_path} " f"&& git remote " f"&& cd ~-"
+            f"cd {source_addons_path} && git remote && cd ~-"
         )
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
             cmd_git_clone_migrate_source_same_target,
             get_output=True,
+            wait_at_error=False,
         )
-        local_branch, remote, remote_branch = (
-            self.get_local_branch_remote_actual_branch_git(
-                lst_output,
+        if status == 1:
+            status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_git_clone_migrate_source_same_target_remote_only,
+                get_output=True,
             )
-        )
+            if lst_output:
+                remote = lst_output[0].strip()
+                # TODO write this modification into repo manifest
+            else:
+                remote = input(
+                    "👹 BUG, you need to push last branch. Please write the remote/ :"
+                )
+        else:
+            local_branch, remote, remote_branch = (
+                self.get_local_branch_remote_actual_branch_git(
+                    lst_output,
+                )
+            )
         # Get remote branch for next version
         remote_branch_target = f"{remote}/{branch_target}"
         cmd_git_clone_migrate_source_same_target = (
@@ -1819,9 +2014,7 @@ class TodoUpgrade:
                 return revision
         return default_branch
 
-    def get_local_branch_remote_actual_branch_git(
-        self, lst_output, another_cmd
-    ):
+    def get_local_branch_remote_actual_branch_git(self, lst_output):
         for line in lst_output:
             # The current branch is marked with an asterisk (*) at the start of the line
             if not line.strip().startswith("*"):
@@ -1839,15 +2032,7 @@ class TodoUpgrade:
                     # # TODO this means no remote, take default one? or last one?
                     # # TODO supporter la migration 17 vers 18
                     # print("👹 BUG, you need to push ")
-                    # status, cmd_executed, lst_output = (
-                    #     self.todo_upgrade_execute(
-                    #         another_cmd,
-                    #         get_output=True,
-                    #     )
-                    # )
-                    # if lst_output:
-                    #     return None, lst_output[0], None
-                    # return None, None, None
+                    # TODO search remote and associate branch
                     value = input(
                         "👹 BUG, you need to push last branch. Please write the remote/branch_name :"
                     )
