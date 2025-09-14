@@ -13,6 +13,8 @@ import sys
 import time
 import zipfile
 
+import todo_file_browser
+
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
@@ -61,6 +63,7 @@ LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 class TODO:
     def __init__(self):
+        self.dir_path = None
         self.kdbx = None
         self.init()
         self.file_path = None
@@ -635,7 +638,10 @@ class TODO:
     def prompt_execute_database(self):
         print("🤖 Faites des modifications sur les bases de données!")
         lst_instance = [
-            {"prompt_description": "Download database"},
+            {
+                "prompt_description": "Download database to create backup (.zip)"
+            },
+            {"prompt_description": "Restore from backup (.zip)"},
         ]
         help_info = self.fill_help_info(lst_instance)
 
@@ -646,6 +652,8 @@ class TODO:
                 return False
             elif status == "1":
                 self.download_database_backup_cli()
+            elif status == "2":
+                self.restore_from_database()
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -967,6 +975,34 @@ class TODO:
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
+    def restore_from_database(self, show_remote_list=True):
+        "./script/database/db_restore.py -d ripbylop_prod_master_upgrade_18 --only_drop"
+        path_image_db = os.path.join(os.getcwd(), "image_db")
+        print("[1] By filename from image_db")
+        print(f"[] Browser image_db {path_image_db}")
+        status = input("💬 Select : ")
+        if status == "1":
+            file_name = status
+        else:
+            self.dir_path = ""
+
+            file_browser = todo_file_browser.FileBrowser(
+                path_image_db, self.on_dir_selected
+            )
+            file_browser.run_main_frame()
+            file_name = os.path.basename(self.dir_path)
+
+        database_name = input("💬 Database name : ")
+        if not database_name:
+            _logger.error("Missing database name")
+        else:
+            status, lst_output = self.executer_commande_live(
+                f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
+                return_status_and_output=True,
+                single_source_erplibre=True,
+                source_erplibre=False,
+            )
+
     def download_database_backup_cli(self, show_remote_list=True):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
         if show_remote_list:
@@ -1014,7 +1050,9 @@ class TODO:
         try:
             with zipfile.ZipFile(default_output_path, "r") as zip_ref:
                 manifest_file_1 = zip_ref.open("manifest.json")
-            _logger.info(f"Log file '{default_output_path}' is complete and validated.")
+            _logger.info(
+                f"Log file '{default_output_path}' is complete and validated."
+            )
         except Exception as e:
             _logger.error(e)
             _logger.error(
@@ -1050,6 +1088,10 @@ class TODO:
             except Exception as e:
                 print("Error detect at first execution.")
                 print(e)
+
+    def on_dir_selected(self, dir_path):
+        self.dir_path = dir_path
+        todo_file_browser.exit_program()
 
 
 if __name__ == "__main__":
