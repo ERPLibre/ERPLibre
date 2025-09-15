@@ -424,6 +424,13 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="odoo-modules.git"
+        path="odoo18.0/addons/muk-it_odoo-modules"
+        remote="muk-it"
+        revision="18.0"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="odoo.git"
         path="odoo18.0/odoo"
         remote="ERPLibre_origin_odoo"
