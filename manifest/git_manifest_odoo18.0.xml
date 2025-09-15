@@ -16,6 +16,7 @@
     <remote name="itpp-labs" fetch="https://github.com/itpp-labs/" />
     <remote name="kinjal-sorathiya" fetch="https://github.com/kinjal-sorathiya/" />
     <remote name="muk-it" fetch="https://github.com/muk-it/" />
+    <remote name="TechnoLibre_origin_muk-it" fetch="https://github.com/TechnoLibre/" />
     <remote name="novacode-nl" fetch="https://github.com/novacode-nl/" />
     <remote name="ERPLibre_origin_novacode-nl" fetch="https://github.com/ERPLibre/" />
     <remote name="obayit" fetch="https://github.com/obayit/" />
@@ -424,9 +425,9 @@
         groups="addons,odoo18.0"
     />
     <project
-        name="odoo-modules.git"
+        name="muk-it_odoo-modules.git"
         path="odoo18.0/addons/muk-it_odoo-modules"
-        remote="muk-it"
+        remote="TechnoLibre_origin_muk-it"
         revision="18.0"
         groups="addons,odoo18.0"
     />
