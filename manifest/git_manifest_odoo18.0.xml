@@ -9,6 +9,7 @@
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
     <remote name="ajepe" fetch="https://github.com/ajepe/" />
+    <remote name="bemade" fetch="https://git.bemade.org/bemade/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
     <remote name="cetmix" fetch="https://github.com/cetmix/" />
     <remote name="dhongu" fetch="https://github.com/dhongu/" />
@@ -147,6 +148,7 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
+    <project name="bemade-addons.git" revision="18.0" path="odoo18.0/addons/bemade_bemade-addons" remote="bemade" groups="addons,odoo18.0" />
     <project name="brand.git" revision="18.0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="business-requirement.git"
