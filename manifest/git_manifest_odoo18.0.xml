@@ -612,6 +612,13 @@
     <!--        groups="addons,odoo18.0"-->
     <!--    />-->
     <project
+        name="sign.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_sign"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="social.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_social"
