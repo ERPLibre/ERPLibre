@@ -24,7 +24,7 @@ from StreamDeck.Transport.Transport import TransportError
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
 DEFAULT_BRIGHTNESS = 30
-FRAMES_PER_SECOND = 100
+FRAMES_PER_SECOND = 25
 KEY_SPACING_PADDING_PLUS = (int(36 * 2.7), int(36 * 1))
 KEY_SPACING_PADDING = (int(36), int(36))
 default_police = ""
@@ -242,17 +242,9 @@ class StreamDeckController(object):
             # TODO support by number and not by ID_MODEL
             if action == "add":
                 id_model = device.get("ID_MODEL")
-                print(f"USB device connected: {id_model}")
-                # 'Stream Deck +'
-                if id_model in [
-                    "Stream_Deck_Original",
-                    "Stream_Deck_Original_v2",
-                    "Stream_Deck_XL",
-                    "Stream_Deck_MK.2",
-                    "Stream_Deck_Plus",
-                    "Stream_Deck_Neo",
-                    "Stream_Deck_Mini",
-                ]:
+                id_vendor = device.get("ID_VENDOR_ID")
+                if id_vendor and id_vendor[1:] == hex(DeviceManager.USB_VID_ELGATO)[2:]:
+                    print(f"USB device connected: {id_model}")
                     # TODO this is a bug, need to update the list from device manager
                     sdc = StreamDeckController()
                     # TODO Le init est le bogue au redémarrage sur le hub
