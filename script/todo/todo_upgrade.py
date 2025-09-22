@@ -415,10 +415,10 @@ class TodoUpgrade:
                 f"please select an option."
             )
 
-            print("[y] Erase progression for a new migration")
-            print("[r] Reuse database with new process")
+            print("[1] Erase progression for a new migration")
+            print("[2] Reuse database with new process")
             print(
-                "[d] Reuse database without state_4, before looping on next version"
+                "[3] Reuse database without state_4, before looping on next version"
             )
             erase_progression_input = (
                 input("💬 Select an option or press to continue : ")
@@ -426,7 +426,7 @@ class TodoUpgrade:
                 .lower()
             )
             self.dct_progression = {}
-            if erase_progression_input in ["r", "reuse", "d"]:
+            if erase_progression_input in ["2"]:
                 with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                     try:
                         old_dct_progression = json.load(f)
@@ -443,7 +443,7 @@ class TodoUpgrade:
                             ),
                         }
                         for key, value in old_dct_progression.items():
-                            if erase_progression_input == "d":
+                            if erase_progression_input == "3":
                                 if (
                                     key.startswith("state_0")
                                     or key.startswith("state_1")
@@ -470,7 +470,7 @@ class TodoUpgrade:
                         )
 
                 self.write_config()
-            elif erase_progression_input not in ["y", "yes"]:
+            elif erase_progression_input not in ["1"]:
                 with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                     try:
                         self.dct_progression = json.load(f)
@@ -705,13 +705,13 @@ class TodoUpgrade:
 
         do_neutralize = False
         if not self.dct_progression.get("state_1_neutralize_database"):
-            print("[n] Ignore neutralize database")
+            print("[1] Ignore neutralize database")
             wait_continue = (
                 input("💬 Neutralize database, press to continue : ")
                 .strip()
                 .lower()
             )
-            if wait_continue != "n":
+            if wait_continue != "1":
                 do_neutralize = True
                 database_name += "_neutralize"
                 self.dct_progression["config_database_name"] = database_name
@@ -1855,7 +1855,7 @@ class TodoUpgrade:
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         if status and wait_at_error:
-            print("[r] to redo the command")
+            print("[1] to redo the command")
             wait_status = (
                 input(
                     "💬 Error detected, press to continue or ctrl+c to stop : "
@@ -1863,7 +1863,7 @@ class TodoUpgrade:
                 .strip()
                 .lower()
             )
-            if wait_status == "r":
+            if wait_status == "1":
                 return self.todo_upgrade_execute(
                     cmd,
                     single_source_odoo=single_source_odoo,
