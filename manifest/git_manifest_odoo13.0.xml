@@ -3,6 +3,7 @@
     <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
+    <remote name="ERPLibre_origin_TechnoLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
     <remote name="OmniaGit" fetch="https://github.com/OmniaGit/" />
