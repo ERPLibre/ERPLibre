@@ -13,8 +13,6 @@ import sys
 import time
 import zipfile
 
-import todo_file_browser
-
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
@@ -32,12 +30,13 @@ try:
     import click
     import humanize
     import openai
+    from pykeepass import PyKeePass
 
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
     import todo_upgrade
-    from pykeepass import PyKeePass
+    import todo_file_browser
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
