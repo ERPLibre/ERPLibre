@@ -606,6 +606,7 @@
         revision="17.0"
         groups="addons,odoo17.0"
     />
+    <project name="sign.git" revision="17.0" path="odoo17.0/addons/OCA_sign" remote="OCA" groups="addons,odoo17.0" />
     <project
         name="shift-planning.git"
         path="odoo17.0/addons/OCA_shift-planning"
