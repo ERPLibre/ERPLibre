@@ -1013,6 +1013,18 @@ class TODO:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
+        status = (
+            input("💬 Would you like to update all addons (y/Y)? ")
+            .strip()
+            .lower()
+        )
+        if status == "y":
+            status, lst_output = self.executer_commande_live(
+                f"./script/addons/update_addons_all.sh {database_name}",
+                return_status_and_output=True,
+                single_source_erplibre=True,
+                source_erplibre=False,
+            )
 
     def download_database_backup_cli(self, show_remote_list=True):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
