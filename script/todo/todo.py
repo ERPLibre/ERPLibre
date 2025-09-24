@@ -30,13 +30,13 @@ try:
     import click
     import humanize
     import openai
-    from pykeepass import PyKeePass
+    import todo_file_browser
 
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
     import todo_upgrade
-    import todo_file_browser
+    from pykeepass import PyKeePass
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
@@ -975,7 +975,6 @@ class TODO:
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
     def restore_from_database(self, show_remote_list=True):
-        "./script/database/db_restore.py -d ripbylop_prod_master_upgrade_18 --only_drop"
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
@@ -990,13 +989,26 @@ class TODO:
             )
             file_browser.run_main_frame()
             file_name = os.path.basename(self.dir_path)
+            print(file_name)
 
         database_name = input("💬 Database name : ")
         if not database_name:
             _logger.error("Missing database name")
-        else:
+            return
+        status, lst_output = self.executer_commande_live(
+            f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
+            return_status_and_output=True,
+            single_source_erplibre=True,
+            source_erplibre=False,
+        )
+        status = (
+            input("💬 Would you like to neutralize database (y/Y)? ")
+            .strip()
+            .lower()
+        )
+        if status == "y":
             status, lst_output = self.executer_commande_live(
-                f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
+                f"./script/addons/update_prod_to_dev.sh {database_name}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
