@@ -600,9 +600,9 @@
     />
     <project
         name="server-ux.git"
-        revision="18.0"
+        revision="18.0_fix_base_tier_validation_message_repetition"
         path="odoo18.0/addons/OCA_server-ux"
-        remote="OCA"
+        remote="ERPLibre_origin_OCA"
         groups="addons,odoo18.0"
     />
     <!--    <project-->
