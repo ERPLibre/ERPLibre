@@ -655,7 +655,6 @@ class TodoUpgrade:
                 lst_module_exist
             )
             self.dct_progression["dct_module_exist"] = dct_module_exist
-            lst_module_duplicate = sorted(list(set(lst_module_duplicate)))
             self.dct_progression["len_lst_module_duplicate"] = len(
                 lst_module_duplicate
             )
