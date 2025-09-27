@@ -1,7 +1,6 @@
-version: "3.3"
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.5.0_odoo_16.0_91a7d1b
+    image: technolibre/erplibre:1.6.0_odoo_18.0_8671c1f
     ports:
       - 8069:8069
       - 8071:8071
@@ -26,12 +25,12 @@ services:
     volumes:
       # See the volume section at the end of the file
       - erplibre_data_dir:/home/odoo/.local/share/Odoo
-      - ./addons/addons:/ERPLibre/odoo16.0/addons/addons
+      - ./addons/addons:/ERPLibre/odoo18.0/addons/addons
       - erplibre_conf:/etc/odoo
     restart: always
 
   db:
-    image: postgis/postgis:12-3.1-alpine
+    image: postgis/postgis:17-3.5-alpine
     environment:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_USER: odoo
