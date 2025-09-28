@@ -425,13 +425,14 @@ class TodoUpgrade:
             print(
                 "[3] Reuse database without state_4, before looping on next version"
             )
+            print("[4] Reuse database without configuration")
             erase_progression_input = (
                 input("💬 Select an option or press to continue : ")
                 .strip()
                 .lower()
             )
             self.dct_progression = {}
-            if erase_progression_input in ["2"]:
+            if erase_progression_input in ["2", "3", "4"]:
                 with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
                     try:
                         old_dct_progression = json.load(f)
@@ -463,7 +464,10 @@ class TodoUpgrade:
                                     or key.startswith(f"config_state_3")
                                 ):
                                     continue
-                            if key.startswith("config_"):
+                            if (
+                                key.startswith("config_")
+                                and erase_progression_input != "4"
+                            ):
                                 self.dct_progression[key] = value
                         # Force to search missing module to fill dict
                         self.dct_progression[
@@ -1025,7 +1029,12 @@ class TodoUpgrade:
             )
 
             # Special case to install module to fix migration
-            if next_version == 13 and "dms" in lst_module_to_analyse:
+            if (
+                next_version == 13
+                and "dms" in lst_module_to_analyse
+                and "muk_dms"
+                not in self.dct_progression.get("dct_module_exist", {}).keys()
+            ):
                 # Force install dms into odoo 12
                 if not config_state_4_install_module[index]:
                     config_state_4_install_module[index] = ["dms"]
