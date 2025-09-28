@@ -57,6 +57,11 @@ class TodoUpgrade:
         if "date_create" not in self.dct_progression.keys():
             self.dct_progression["date_create"] = str(datetime.datetime.now())
         self.dct_progression["date_update"] = str(datetime.datetime.now())
+        # Always put command_executed at the end
+        if "command_executed" in self.dct_progression.keys():
+            value = self.dct_progression["command_executed"]
+            del self.dct_progression["command_executed"]
+            self.dct_progression["command_executed"] = value
         with open(UPGRADE_DATABASE_CONFIG_LOG, "w") as f:
             json.dump(self.dct_progression, f, indent=4)
 
