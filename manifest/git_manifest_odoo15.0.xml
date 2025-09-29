@@ -24,6 +24,7 @@
     <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <remote name="odooaktiv" fetch="https://github.com/odooaktiv/" />
     <remote name="odoomates" fetch="https://github.com/odoomates/" />
+    <remote name="ERPLibre_origin_odoomates" fetch="https://github.com/erplibre/" />
     <remote name="openeducat" fetch="https://github.com/openeducat/" />
     <remote name="pledra" fetch="https://github.com/pledra/" />
     <remote name="tegin" fetch="https://github.com/tegin/" />
@@ -436,8 +437,8 @@
     <project
         name="odooapps.git"
         path="odoo15.0/addons/odoomates_odooapps"
-        remote="odoomates"
-        revision="15.0"
+        remote="ERPLibre_origin_odoomates"
+        revision="15.0_dev"
         groups="addons,odoo15.0"
     />
     <project
