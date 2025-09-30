@@ -30,7 +30,7 @@ services:
     restart: always
 
   db:
-    image: postgis/postgis:17-3.5-alpine
+    image: postgis/postgis:18-3.6-alpine
     environment:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_USER: odoo
