@@ -319,6 +319,11 @@ class TODO:
                 "w: Install all Odoo version with ERPLibre",
                 "make install_odoo_all_version",
             ),
+            "m": (
+                "m",
+                "m: ERPLibre with mobile home",
+                "./mobile/install_and_run.sh",
+            ),
             "0": (
                 "0",
                 "0: Quitter",
