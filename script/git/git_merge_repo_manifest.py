@@ -20,6 +20,9 @@ _logger = logging.getLogger(__name__)
 
 
 DEFAULT_PATH_MANIFEST_CONF = os.path.join("conf", "git_manifest.csv")
+DEFAULT_PATH_MANIFEST_MOBILE_CONF = os.path.join(
+    "conf", "git_manifest_mobile.csv"
+)
 DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
@@ -58,6 +61,11 @@ def get_config():
     )
     parser.add_argument(
         "--with_OCA", action="store_true", help="Add OCA manifest"
+    )
+    parser.add_argument(
+        "--with_mobile",
+        action="store_true",
+        help="Add mobile project manifest",
     )
     args = parser.parse_args()
     return args
@@ -117,6 +125,10 @@ def main():
                         if os.path.exists(path_manifest_odoo_version):
                             lst_input.append(path_manifest_odoo_version)
 
+        elif config.with_mobile:
+            append_file_path_manifest(
+                lst_input, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+            )
         else:
             append_file_path_manifest(lst_input, DEFAULT_PATH_MANIFEST_CONF)
         append_file_path_manifest(
