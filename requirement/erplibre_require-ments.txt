@@ -24,6 +24,7 @@ openai
 humanize
 requests
 urwid
+python-dotenv
 python-dateutil
 unidecode
 sshconf
