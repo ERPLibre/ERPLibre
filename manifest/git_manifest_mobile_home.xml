@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
+
+    <project
+        name="technolibre_home_mobile.git"
+        path="mobile/technolibre_home_mobile"
+        remote="TechnoLibre"
+        revision="main"
+        groups="mobile"
+    />
+</manifest>
