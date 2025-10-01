@@ -28,6 +28,7 @@ try:
     from tkinter import filedialog
 
     import click
+    import dotenv
     import humanize
     import openai
     import todo_file_browser
@@ -58,6 +59,7 @@ _logger = logging.getLogger(__name__)
 CONFIG_FILE = "./script/todo/todo.json"
 CONFIG_OVERRIDE_FILE = "./script/todo/todo_override.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
+PATH_MOBILE_PROJECT_HOME = "./mobile/technolibre_home_mobile/technolibre_home"
 
 
 class TODO:
@@ -331,7 +333,7 @@ class TODO:
             "m": (
                 "m",
                 "m: ERPLibre with mobile home",
-                "./mobile/install_and_run.sh",
+                "./mobile/install_mobile_dev.sh",
             ),
             "0": (
                 "0",
@@ -440,6 +442,10 @@ class TODO:
                 command=command, extra_cmd_web_login=extra_cmd_web_login
             )
 
+        callback = dct_instance.get("callback")
+        if callback:
+            callback(dct_instance)
+
     def fill_help_info(self, lst_instance):
         help_info = "Commande :\n"
         help_end = "[0] Retour\n"
@@ -455,6 +461,14 @@ class TODO:
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
         lst_instance = self.get_config(["instance"])
+        init_len = len(lst_instance)
+
+        if os.path.exists(PATH_MOBILE_PROJECT_HOME):
+            dct_upgrade_odoo_database = {
+                "prompt_description": "Mobile - Compile and run software",
+                "callback": self.callback_make_mobile_home,
+            }
+            lst_instance.append(dct_upgrade_odoo_database)
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -466,7 +480,7 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= init_len:
                         cmd_no_found = False
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
@@ -476,6 +490,12 @@ class TODO:
                             dct_instance,
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
+                        )
+                    elif int_cmd <= len(lst_instance):
+                        # Execute dynamic instance
+                        dct_instance = lst_instance[int_cmd - 1]
+                        self.execute_from_configuration(
+                            dct_instance,
                         )
                 except ValueError:
                     pass
@@ -1120,6 +1140,39 @@ class TODO:
     def on_dir_selected(self, dir_path):
         self.dir_path = dir_path
         todo_file_browser.exit_program()
+
+    def callback_make_mobile_home(self, dct_config):
+        project_name = (
+            input("Your project name, default ERPLibre : ").strip()
+            or "ERPLibre"
+        )
+        project_url_name = (
+            input(
+                "Your project url website, default https://erplibre.ca : "
+            ).strip()
+            or "https://erplibre.ca"
+        )
+
+        dotenv_file = dotenv.find_dotenv(
+            filename=os.path.join(
+                PATH_MOBILE_PROJECT_HOME, "src", ".env.production"
+            )
+        )
+        # dotenv_mobile = dotenv.dotenv_values(dotenv_file)
+        # dotenv_mobile["VITE_TITLE"] = project_name
+        # dotenv_mobile["VITE_WEBSITE_URL"] = project_url_name
+        dotenv.set_key(
+            dotenv_file, "VITE_TITLE", project_name, quote_mode="always"
+        )
+        dotenv.set_key(
+            dotenv_file,
+            "VITE_WEBSITE_URL",
+            project_url_name,
+            quote_mode="always",
+        )
+        status = self.executer_commande_live(
+            "./mobile/compile_and_run.sh", source_erplibre=False
+        )
 
 
 if __name__ == "__main__":
