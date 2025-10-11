@@ -621,6 +621,13 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="spreadsheet.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_spreadsheet"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="social.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_social"
