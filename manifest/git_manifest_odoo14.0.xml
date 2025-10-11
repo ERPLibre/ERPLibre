@@ -2,6 +2,7 @@
 <manifest>
     <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_MathBenTech" fetch="https://github.com/ERPLibre/" />
     <remote name="MathBenTech" fetch="https://github.com/MathBenTech/" />
     <remote name="ERPLibre_origin_TechnoLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
@@ -253,6 +254,13 @@
         name="design-themes.git"
         path="odoo14.0/addons/odoo_design-themes"
         remote="ERPLibre_origin_odoo"
+        revision="14.0"
+        groups="addons,odoo14.0"
+    />
+    <project
+        name="development.git"
+        path="odoo14.0/addons/MathBenTech_development"
+        remote="ERPLibre_origin_MathBenTech"
         revision="14.0"
         groups="addons,odoo14.0"
     />
