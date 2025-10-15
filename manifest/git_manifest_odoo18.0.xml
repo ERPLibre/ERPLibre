@@ -523,7 +523,7 @@
     />
     <project
         name="project.git"
-        revision="18.0-mig-project_budget"
+        revision="18.0_dev"
         path="odoo18.0/addons/OCA_project"
         remote="ERPLibre_origin_OCA"
         groups="addons,odoo18.0"
