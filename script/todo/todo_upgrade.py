@@ -704,7 +704,7 @@ class TodoUpgrade:
         if not database_name:
             database_name = (
                 input(
-                    f"💬 With database name do you want to work with? Default ({default_database_name}) : "
+                    f"💬 Witch database name do you want to work with? Default ({default_database_name}) : "
                 ).strip()
                 or default_database_name
             )
