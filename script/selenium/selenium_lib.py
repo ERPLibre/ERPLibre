@@ -60,8 +60,14 @@ class SeleniumLib(object):
         )
         self.dirname_recording = dir_path_screencast
         self.driver = None
-        with open(".odoo-version") as txt:
-            self.odoo_version = txt.read()
+        if os.path.isfile(".odoo-version"):
+            with open(".odoo-version") as txt:
+                self.odoo_version = txt.read()
+        else:
+            # Default version
+            # TODO instead, need to detect the version from client and detection
+            self.odoo_version = "18.0"
+
 
     def do_screenshot(self):
         if self.config.scenario_screenshot:
