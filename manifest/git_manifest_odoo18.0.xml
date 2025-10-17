@@ -150,7 +150,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="bemade-addons.git" revision="18.0_dev" path="odoo18.0/addons/bemade_bemade-addons" remote="ERPLibre_origin_bemade" groups="addons,odoo18.0" />
+    <project
+        name="bemade-addons.git"
+        revision="18.0_dev"
+        path="odoo18.0/addons/bemade_bemade-addons"
+        remote="ERPLibre_origin_bemade"
+        groups="addons,odoo18.0"
+    />
     <project name="brand.git" revision="18.0" path="odoo18.0/addons/OCA_brand" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="business-requirement.git"
@@ -613,13 +619,7 @@
     <!--        revision="18.0_dev"-->
     <!--        groups="addons,odoo18.0"-->
     <!--    />-->
-    <project
-        name="sign.git"
-        revision="18.0"
-        path="odoo18.0/addons/OCA_sign"
-        remote="OCA"
-        groups="addons,odoo18.0"
-    />
+    <project name="sign.git" revision="18.0" path="odoo18.0/addons/OCA_sign" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="spreadsheet.git"
         revision="18.0"
@@ -697,7 +697,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="web.git" revision="18.0" path="odoo18.0/addons/OCA_web" remote="OCA" groups="addons,odoo18.0" />
+    <project
+        name="web.git"
+        revision="18.0_dev"
+        path="odoo18.0/addons/OCA_web"
+        remote="ERPLibre_origin_OCA"
+        groups="addons,odoo18.0"
+    />
     <project
         name="website-cms.git"
         revision="18.0"
