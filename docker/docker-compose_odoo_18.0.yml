@@ -1,6 +1,6 @@
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_18.0_8671c1f
+    image: technolibre/erplibre:1.6.0_odoo_18.0_4f4f563
     ports:
       - 8069:8069
       - 8071:8071
@@ -21,6 +21,8 @@ services:
     #command: odoo --workers 2 --proxy-mode
     # For production ready
     #command: odoo --workers 2 --proxy-mode --no-database-list
+    # Increase max memory
+    #command: odoo --limit-memory-hard=0 --limit-memory-soft=0
     command: odoo
     volumes:
       # See the volume section at the end of the file
