@@ -4,6 +4,7 @@
     <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_MathBenTech" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_OCA" fetch="https://github.com/ERPLibre/" />
+    <remote name="ERPLibre_origin_CybroOdoo" fetch="https://github.com/ERPLibre/" />
     <remote name="ERPLibre_origin_TechnoLibre" fetch="https://github.com/ERPLibre/" />
     <remote name="Numigi" fetch="https://github.com/Numigi/" />
     <remote name="OCA" fetch="https://github.com/OCA/" />
@@ -37,14 +38,14 @@
         remote="CybroOdoo"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="CybroAddons.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/CybroOdoo_CybroAddons"-->
-    <!--        remote="ERPLibre"-->
-    <!--        clone-depth="1"-->
-    <!--        revision="18.0_dev"-->
-    <!--        groups="addons,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="CybroAddons.git"
+        path="odoo18.0/addons/CybroOdoo_CybroAddons"
+        remote="ERPLibre_origin_CybroOdoo"
+        clone-depth="1"
+        revision="18.0_dev"
+        groups="addons,odoo18.0"
+    />
     <project
         name="account-analytic.git"
         revision="18.0"
