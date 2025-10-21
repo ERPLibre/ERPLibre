@@ -5,6 +5,7 @@
 import datetime
 import getpass
 import json
+import logging
 import os
 import random
 import re
@@ -35,10 +36,38 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from script.config import config_file
 
+logging.basicConfig(
+    format=(
+        "%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d]"
+        " %(message)s"
+    ),
+    datefmt="%Y-%m-%d:%H:%M:%S",
+    level=logging.INFO,
+)
+_logger = logging.getLogger(__name__)
+
 # TODO maybe use TODO lib
 CONFIG_FILE = "./script/todo/todo.json"
 CONFIG_OVERRIDE_FILE = "./private/todo.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
+
+MONTHS_FR = {
+    "janvier": 1,
+    "février": 2,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "août": 8,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "décembre": 12,
+    "decembre": 12,
+}
 
 
 class SeleniumLib(object):
@@ -961,7 +990,7 @@ class SeleniumLib(object):
 
     def odoo_web_click_principal_menu(self):
         # Click menu button
-        if self.odoo_version == "16.0":
+        if self.odoo_version in ["16.0", "17.0", "18.0"]:
             button = self.click_with_mouse_move(
                 By.XPATH,
                 "//button[contains(@class, 'dropdown-toggle') and"
@@ -972,6 +1001,16 @@ class SeleniumLib(object):
             button = self.click_with_mouse_move(
                 By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
             )
+        return button
+
+    def odoo_web_click_open_search(self):
+        # Click search button
+        button = self.click_with_mouse_move(
+            By.XPATH,
+            "//button[contains(@class, 'o_searchview_dropdown_toggler')]",
+            timeout=10,
+        )
+        #
         return button
 
     def odoo_web_principal_menu_click_root_menu(self, from_text=""):
@@ -1056,6 +1095,23 @@ class SeleniumLib(object):
         return self.odoo_web_form_click_by_classname_action(
             "o_form_button_save"
         )
+
+    def odoo_web_change_view(
+        self, view_name="list", raise_error=False, timeout=5
+    ):
+        if view_name not in ["list", "kanban", "timeline"]:
+            msg = f"odoo_web_change_view view_name '{view_name}' invalid"
+            if raise_error:
+                raise Exception(msg)
+            _logger.error(msg)
+            return None
+
+        status_button = self.click_with_mouse_move(
+            by=By.XPATH,
+            value=f"//nav[contains(@class, 'o_cp_switch_buttons')]/button[contains(@class, 'o_{view_name}')]",
+        )
+        print(f"Change view '{view_name}' cliqué.")
+        return status_button
 
     def odoo_web_form_click_web_publish_action(self):
         return self.odoo_web_form_click_button_action("website_publish_button")
@@ -1164,14 +1220,20 @@ class SeleniumLib(object):
         checkbox_div.click()
         # TODO improve speed by observation of comportement
         time.sleep(0.5)
-        checkbox_date_div = self.driver.find_element(
-            By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
-        )
-        # time.sleep(0.5)
         str_date_today = date_to_select.strftime("%Y-%m-%d")
-        new_value = checkbox_date_div.find_element(
-            By.XPATH, f"//td[@data-day='{str_date_today}']"
-        )
+        if self.odoo_version in ["17.0", "18.0"]:
+            checkbox_date_div = self.driver.find_element(
+                By.CSS_SELECTOR, ".o_datetime_picker"
+            )
+            new_value = self.select_date(self.driver, date_to_select)
+        else:
+            checkbox_date_div = self.driver.find_element(
+                By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
+            )
+            # time.sleep(0.5)
+            new_value = checkbox_date_div.find_element(
+                By.XPATH, f"//td[@data-day='{str_date_today}']"
+            )
         new_value.click()
         return new_value
 
@@ -1230,10 +1292,13 @@ class SeleniumLib(object):
                 ".webm", ".mp4"
             )
             if self.config.selenium_video_auto_convert_mp4:
-                os.popen(
-                    "ffmpeg -i"
-                    f" {self.filename_recording} {filename_recording_mp4}"
-                )
+                with_auto_fix = True
+                if with_auto_fix:
+                    cmd = f'ffmpeg -i {self.filename_recording} -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset veryfast -c:a aac -b:a 160k -movflags +faststart {filename_recording_mp4}'
+                else:
+                    cmd = f"ffmpeg -i {self.filename_recording} {filename_recording_mp4}"
+                print(cmd)
+                os.popen(cmd)
 
             if self.config.selenium_video_auto_play_video:
                 print(f"Play video {self.filename_recording}")
@@ -1300,6 +1365,87 @@ class SeleniumLib(object):
         )
 
         return date_naissance.strftime("%Y-%m-%d")
+
+    def _get_visible_month_year(self, picker):
+        header = picker.find_element(
+            By.CSS_SELECTOR, ".o_datetime_picker_header .o_header_part"
+        )
+        text = header.text.strip().lower()  # ex: "octobre 2025"
+        parts = text.split()
+        # s'il y a des espaces insécables ou formats bizarres
+        mois_txt = parts[0].replace("\xa0", " ")
+        annee = int(parts[-1])
+        mois = MONTHS_FR[mois_txt]
+        return (
+            mois,
+            annee,
+            header.text,
+        )  # on retourne aussi le texte exact pour attendre le changement
+
+    def select_date(self, driver, date_to_select):
+        # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
+        picker = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".o_datetime_picker")
+            )
+        )
+
+        # 2) naviguer au bon mois
+        max_hops = 24  # sécurité (2 ans)
+        for _ in range(max_hops):
+            mois_vis, annee_vis, header_txt = self._get_visible_month_year(
+                picker
+            )
+            if (annee_vis, mois_vis) == (
+                date_to_select.year,
+                date_to_select.month,
+            ):
+                break
+
+            # bouton suivant/précédent dans l'entête du picker courant
+            if (annee_vis, mois_vis) < (
+                date_to_select.year,
+                date_to_select.month,
+            ):
+                btn = picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_next"
+                )
+            else:
+                btn = picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_previous"
+                )
+
+            btn.click()
+            # attendre que l'en-tête change pour éviter les doubles clics trop rapides
+            WebDriverWait(driver, 10).until(
+                EC.text_to_be_present_in_element(
+                    (
+                        By.CSS_SELECTOR,
+                        ".o_datetime_picker_header .o_header_part",
+                    ),
+                    "",
+                )
+            )
+            WebDriverWait(driver, 10).until(
+                lambda d: picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_header_part"
+                ).text
+                != header_txt
+            )
+        else:
+            raise RuntimeError(
+                "Impossible d'atteindre le mois voulu dans le délai imparti."
+            )
+
+        # 3) cliquer le jour (les jours cliquables sont des <button> avec un <span> = numéro)
+        day = str(int(date_to_select.day))  # sans zéro en tête
+        day_xpath = f".//button[contains(@class,'o_date_item_cell') and .//span[normalize-space(text())='{day}']]"
+
+        day_btn = WebDriverWait(picker, 10).until(
+            EC.element_to_be_clickable((By.XPATH, day_xpath))
+        )
+
+        return day_btn
 
 
 def get_args(parser):
