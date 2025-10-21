@@ -33,6 +33,8 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from script.config import config_file
+
 # TODO maybe use TODO lib
 CONFIG_FILE = "./script/todo/todo.json"
 CONFIG_OVERRIDE_FILE = "./private/todo.json"
@@ -42,6 +44,8 @@ LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
+        self.config_file = config_file.ConfigFile()
+        self.kdbx = None
         self.video_recorder = None
         self.default_download_dir_path = tempfile.mkdtemp()
         if self.config.video_suffix:
@@ -67,7 +71,6 @@ class SeleniumLib(object):
             # Default version
             # TODO instead, need to detect the version from client and detection
             self.odoo_version = "18.0"
-
 
     def do_screenshot(self):
         if self.config.scenario_screenshot:
@@ -344,7 +347,7 @@ class SeleniumLib(object):
             return self.kdbx
         print("Open KDBX")
         # Open file
-        chemin_fichier_kdbx = self.get_config(["kdbx", "path"])
+        chemin_fichier_kdbx = self.config_file.get_config(["kdbx", "path"])
         if not chemin_fichier_kdbx:
             root = tk.Tk()
             root.withdraw()  # Hide the main window
@@ -356,7 +359,7 @@ class SeleniumLib(object):
             # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
             return
 
-        mot_de_passe_kdbx = self.get_config(["kdbx", "password"])
+        mot_de_passe_kdbx = self.config_file.get_config(["kdbx", "password"])
         if not mot_de_passe_kdbx:
             mot_de_passe_kdbx = getpass.getpass(
                 prompt="Entrez votre mot de passe : "
@@ -367,25 +370,6 @@ class SeleniumLib(object):
         if kp:
             self.kdbx = kp
         return kp
-
-    def get_config(self, lst_params):
-        # Open file
-        config_file = CONFIG_FILE
-        if os.path.exists(CONFIG_OVERRIDE_FILE):
-            config_file = CONFIG_OVERRIDE_FILE
-
-        with open(config_file) as cfg:
-            dct_data = json.load(cfg)
-            for param in lst_params:
-                try:
-                    dct_data = dct_data[param]
-                except KeyError:
-                    # _logger.error(
-                    #     f"KeyError on file {config_file} with keys"
-                    #     f" {lst_params}"
-                    # )
-                    return
-        return dct_data
 
     @staticmethod
     def get_french_word_no_space_no_accent():

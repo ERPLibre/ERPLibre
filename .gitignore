@@ -11,7 +11,6 @@ config.conf
 .coverage*
 coverage*
 
-private
 .repo
 !addons/
 addons/*
@@ -48,5 +47,5 @@ requirements.txt
 requirement/ignore_requirements.txt
 screenshots
 screencasts
-script/todo/todo_override.json
+private/todo/todo_override_private.json
 .erplibre.error.txt

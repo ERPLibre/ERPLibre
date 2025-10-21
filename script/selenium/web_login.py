@@ -3,12 +3,12 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
-import os
 import sys
 import time
 
-import selenium_lib
 from selenium.webdriver.common.by import By
+
+import script.selenium.selenium_lib
 
 
 def fill_parser(parser):

@@ -13,6 +13,8 @@ import sys
 import time
 import zipfile
 
+from script.config import config_file
+
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
@@ -55,10 +57,6 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./script/todo/todo_override.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
-
 
 class TODO:
     def __init__(self):
@@ -66,6 +64,7 @@ class TODO:
         self.kdbx = None
         self.init()
         self.file_path = None
+        self.config_file = config_file.ConfigFile()
 
     def init(self):
         # Get command
@@ -93,7 +92,7 @@ class TODO:
                 )
 
     def run(self):
-        with open(LOGO_ASCII_FILE) as my_file:
+        with open(self.config_file.get_logo_ascii_file_path()) as my_file:
             print(my_file.read())
         print("Ouverture de TODO en cours ...")
         print("🤖 => Entre tes directives par son chiffre et fait Entrée!")
@@ -145,7 +144,7 @@ class TODO:
         if self.kdbx:
             return self.kdbx
         # Open file
-        chemin_fichier_kdbx = self.get_config(["kdbx", "path"])
+        chemin_fichier_kdbx = self.config_file.get_config(["kdbx", "path"])
         if not chemin_fichier_kdbx:
             root = tk.Tk()
             root.withdraw()  # Hide the main window
@@ -154,10 +153,12 @@ class TODO:
                 filetypes=(("KeepassX files", "*.kdbx"),),
             )
         if not chemin_fichier_kdbx:
-            _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
+            _logger.error(
+                f"KDBX is not configured, please fill {self.config_file.CONFIG_FILE}"
+            )
             return
 
-        mot_de_passe_kdbx = self.get_config(["kdbx", "password"])
+        mot_de_passe_kdbx = self.config_file.get_config(["kdbx", "password"])
         if not mot_de_passe_kdbx:
             mot_de_passe_kdbx = getpass.getpass(
                 prompt="Entrez votre mot de passe : "
@@ -168,25 +169,6 @@ class TODO:
         if kp:
             self.kdbx = kp
         return kp
-
-    def get_config(self, lst_params):
-        # Open file
-        config_file = CONFIG_FILE
-        if os.path.exists(CONFIG_OVERRIDE_FILE):
-            config_file = CONFIG_OVERRIDE_FILE
-
-        with open(config_file) as cfg:
-            dct_data = json.load(cfg)
-            for param in lst_params:
-                try:
-                    dct_data = dct_data[param]
-                except KeyError:
-                    _logger.error(
-                        f"KeyError on file {config_file} with keys"
-                        f" {lst_params}"
-                    )
-                    return {}
-        return dct_data
 
     def execute_prompt_ia(self):
         while True:
@@ -200,7 +182,7 @@ class TODO:
             kp = self.get_kdbx()
             if not kp:
                 return
-            nom_configuration = self.get_config(
+            nom_configuration = self.config_file.get_config(
                 ["kdbx_config", "openai", "kdbx_key"]
             )
             entry = kp.find_entries_by_title(nom_configuration, first=True)
@@ -449,7 +431,7 @@ class TODO:
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        lst_instance = self.get_config(["instance"])
+        lst_instance = self.config_file.get_config(["instance"])
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -478,7 +460,7 @@ class TODO:
                     print("Commande non trouvée 🤖!")
 
     def prompt_execute_fonction(self):
-        lst_instance = self.get_config(["function"])
+        lst_instance = self.config_file.get_config(["function"])
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -510,7 +492,7 @@ class TODO:
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        lst_instance = self.get_config(["update_from_makefile"])
+        lst_instance = self.config_file.get_config(["update_from_makefile"])
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Odoo - Migration Database",
         }
@@ -558,7 +540,7 @@ class TODO:
         #         [0] Retour
         # """
 
-        lst_instance = self.get_config(["code_from_makefile"])
+        lst_instance = self.config_file.get_config(["code_from_makefile"])
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Module",
         }

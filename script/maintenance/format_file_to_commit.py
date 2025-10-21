@@ -14,9 +14,11 @@ def execute_shell(cmd):
 
 
 def get_modified_files():
+    lst_cmd_git_status = ["git", "status", "--porcelain"]
+    print(" ".join(lst_cmd_git_status))
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            lst_cmd_git_status,
             capture_output=True,
             text=True,
             check=True,
@@ -29,7 +31,16 @@ def get_modified_files():
                 continue
 
             try:
-                status, file_path = line.strip().replace("  ", " ").split(" ")
+                if "->" in line:
+                    # Example : M file_01 -> file_02
+                    status, old_file_path, code, file_path = (
+                        line.strip().replace("  ", " ").split(" ")
+                    )
+                else:
+                    # Example : M file_01
+                    status, file_path = (
+                        line.strip().replace("  ", " ").split(" ")
+                    )
             except Exception as e:
                 print(f"'{line}'")
                 raise e
@@ -39,12 +50,16 @@ def get_modified_files():
                 or status == "A"
                 or status == "AM"
                 or status == "MM"
-                or status == "D"
+                or status == "R"
+                or status == "RM"
                 or status == "??"
             ):
                 modified_files.append((status, file_path))
+            elif status == "D":
+                # Ignore to format removed file
+                pass
             else:
-                print("")
+                print(f"Not supported status '{status}'")
 
         return modified_files
     except subprocess.CalledProcessError as e:
