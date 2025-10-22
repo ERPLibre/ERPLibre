@@ -32,7 +32,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
 
 from script.config import config_file
 
@@ -73,6 +73,7 @@ MONTHS_FR = {
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
+        self.wait_human_time = config.human_time_speed
         self.config_file = config_file.ConfigFile()
         self.kdbx = None
         self.video_recorder = None
@@ -423,17 +424,46 @@ class SeleniumLib(object):
         button.click()
         return button
 
-    def get_element(self, by: str = By.ID, value: str = None, timeout=5):
+    def get_element(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        timeout=5,
+        wait_clickable=False,
+        is_visible=True,
+    ):
+        only_one = False
         wait = WebDriverWait(self.driver, timeout)
-        ele = wait.until(
-            EC.visibility_of_any_elements_located(
-                (
-                    by,
-                    value,
+        if wait_clickable:
+            ele = wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        by,
+                        value,
+                    )
                 )
             )
-        )
-
+        elif is_visible:
+            ele = wait.until(
+                EC.visibility_of_any_elements_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        else:
+            only_one = True
+            ele = wait.until(
+                EC.presence_of_element_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        if only_one:
+            return ele
         return ele[0]
 
     def get_element_not_visible(
@@ -565,13 +595,14 @@ class SeleniumLib(object):
         viewport_ele_value: str = None,
         element: WebElement = None,
         with_index: bool = False,
+        is_visible=True,
         index_of_list: int = 0,
     ):
         # ele = self.driver.find_element(by, value)
         if element:
             ele = element
         else:
-            ele = self.get_element(by, value, timeout)
+            ele = self.get_element(by, value, timeout, is_visible=is_visible)
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
@@ -882,17 +913,20 @@ class SeleniumLib(object):
         script_text = ""
         if msg:
             msg_to_print = msg.replace("'", "\\'")
-            script_text = f"""
-                // Ajouter le texte
-                const textElement = document.createElement('div');
-                textElement.innerText = '{msg_to_print}';
-                textElement.style.color = '#FFFFFF';
-                textElement.style.fontSize = '24px';
-                textElement.style.marginBottom = '20px';
-                textElement.style.fontWeight = 'bold';
+            lst_mst_to_print = msg_to_print.split("\n")
+            script_text = ""
+            for index, line in enumerate(lst_mst_to_print):
+                script_text += f"""
+                    // Ajouter le texte
+                    const textElement_{index} = document.createElement('div');
+                    textElement_{index}.textContent = '{line}';
+                    textElement_{index}.style.color = '#FFFFFF';
+                    textElement_{index}.style.fontSize = '24px';
+                    textElement_{index}.style.marginBottom = '20px';
+                    textElement_{index}.style.fontWeight = 'bold';
 
-                overlay.appendChild(textElement);
-            """
+                    overlay.appendChild(textElement_{index});
+                """
         script = (
             """
             (function() {
@@ -1010,8 +1044,100 @@ class SeleniumLib(object):
             "//button[contains(@class, 'o_searchview_dropdown_toggler')]",
             timeout=10,
         )
-        #
         return button
+
+    def odoo_web_click_open_search_add_group_custom(self, group_name):
+        # Add personalize group
+        button = self.click_with_mouse_move(
+            By.XPATH,
+            value="//select[contains(@class, 'o_add_custom_group_menu')]",
+            timeout=10,
+        )
+        if self.wait_human_time:
+            time.sleep(1)
+        select_elem = self.get_element(
+            By.XPATH,
+            value="//select[contains(@class, 'o_add_custom_group_menu')]",
+            timeout=10,
+            wait_clickable=False,
+        )
+
+        select_obj = Select(select_elem)
+        # (ex: <option value="customer">Client</option>)
+        select_obj.select_by_value(group_name)
+        return select_elem
+
+    def odoo_web_click_open_search_filter(
+        self,
+        filter_label=None,
+        filter_sub_label=None,
+        lst_update_condition=None,
+    ):
+        if not lst_update_condition:
+            lst_update_condition = []
+        if filter_label:
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//button[contains(@class,'o_menu_item') and contains(normalize-space(.), '{filter_label}')]",
+                timeout=10,
+            )
+        if filter_sub_label:
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//span[contains(@class,'o_item_option') and contains(normalize-space(.), '{filter_sub_label}')]",
+                timeout=10,
+            )
+        if lst_update_condition:
+            filter_text = f"{filter_label}: {filter_sub_label}"
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//small[contains(@class,'o_facet_value') and contains(normalize-space(.), '{filter_text}')]/../..//i[contains(@class,'fa-cog')]",
+                timeout=10,
+                is_visible=False,
+            )
+            time.sleep(1)
+            for item_update_condition in lst_update_condition:
+                condition_value = item_update_condition.get("condition")
+                if condition_value:
+                    select_elem = self.click_with_mouse_move(
+                        By.XPATH,
+                        value=f"//div[contains(@class,'modal-content')]//select[contains(@class,'pe-3')]",
+                        timeout=10,
+                        is_visible=False,
+                    )
+                    select_obj = Select(select_elem)
+                    # (ex: <option value="customer">Client</option>)
+                    select_obj.select_by_value(condition_value)
+                else:
+                    _logger.error(
+                        f"Not supported item_update_condition '{item_update_condition}'"
+                    )
+            # Save
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//footer[contains(@class,'modal-footer')]//button[contains(@class,'btn-primary') and contains(normalize-space(.), 'Confirmer')]",
+                timeout=10,
+            )
+
+    def odoo_fill_search_input(self, text, selection_research=None):
+        input_elem = self.click_with_mouse_move(
+            By.XPATH,
+            value="//input[contains(@class, 'o_searchview_input')]",
+            timeout=10,
+        )
+        input_elem.send_keys(text)
+        time.sleep(1)
+        if not selection_research:
+            input_elem.send_keys(Keys.ENTER)
+        else:
+            input_autocomplete_elem = self.click_with_mouse_move(
+                By.XPATH,
+                value="//ul[contains(@class,'o_searchview_autocomplete')]"
+                f"//li[contains(@class,'o_menu_item') and .//b[normalize-space(.)='{selection_research}']]"
+                "//a[not(contains(@class,'o_expand'))]",
+            )
+
+        return input_elem
 
     def odoo_web_principal_menu_click_root_menu(self, from_text=""):
         if not from_text:
@@ -1468,6 +1594,12 @@ def fill_parser(parser):
         default=0.4,
         type=float,
         help="Pause at the end of an action.",
+    )
+
+    group_animation.add_argument(
+        "--human_time_speed",
+        action="store_true",
+        help="Will wait after each action to help human to follow",
     )
 
     group_browser = parser.add_argument_group(title="Browser")
