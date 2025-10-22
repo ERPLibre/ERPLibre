@@ -3,12 +3,18 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
+import os
 import sys
 import time
 
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
 from selenium.webdriver.common.by import By
 
-import script.selenium.selenium_lib
+from script.selenium import selenium_lib
 
 
 def fill_parser(parser):
