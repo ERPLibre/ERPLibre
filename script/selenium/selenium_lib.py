@@ -907,7 +907,7 @@ class SeleniumLib(object):
 
     # Website
     def odoo_show_robot_message(
-        self, msg="Ho no!", hide_message_after_x_seconds=0
+        self, msg="Ho no!", hide_message_after_x_seconds=0, robot_base64=None
     ):
         # Injecter l'animation SVG dans la page
         script_text = ""
@@ -927,23 +927,20 @@ class SeleniumLib(object):
 
                     overlay.appendChild(textElement_{index});
                 """
-        script = (
-            """
-            (function() {
-                // Créer un div pour l'overlay
-                const overlay = document.createElement('div');
-                overlay.id = 'uniqueOverlay'; // Ajout de l'ID
-                overlay.style.position = 'fixed';
-                overlay.style.top = '0';
-                overlay.style.left = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                overlay.style.display = 'flex';
-                overlay.style.justifyContent = 'center';
-                overlay.style.alignItems = 'center';
-                overlay.style.zIndex = '9999';
+        if robot_base64:
+            script_robot = ""
+            script_add_robot = f"""
+            const img = new Image();
+            img.alt = 'Robot';
+            img.className = 'cute-robot';
+            img.style.width = '150px';
+            img.style.cursor = 'pointer';
 
+            img.src = '{robot_base64}';
+            overlay.appendChild(img);
+"""
+        else:
+            script_robot = """
                 // Contenu SVG du robot
                 const svgContent = `
                     <svg class="cute-robot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150" style="width: 150px; cursor: pointer;">
@@ -969,11 +966,32 @@ class SeleniumLib(object):
                         <rect x="50" y="120" width="15" height="30" rx="5" ry="5" fill="#388E3C"/>
                     </svg>
                 `;
+"""
+            script_add_robot = """
+            // Ajouter le contenu SVG au div
+            overlay.innerHTML += svgContent;
+            """
+        script = (
+            """
+            (function() {
+                // Créer un div pour l'overlay
+                const overlay = document.createElement('div');
+                overlay.id = 'uniqueOverlay'; // Ajout de l'ID
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.style.zIndex = '9999';
                 """
+            + script_robot
             + script_text
+            + script_add_robot
             + """
-                // Ajouter le contenu SVG au div
-                overlay.innerHTML += svgContent;
 
                 // Ajouter un gestionnaire de clic pour supprimer l'overlay
                 overlay.onclick = function() {
