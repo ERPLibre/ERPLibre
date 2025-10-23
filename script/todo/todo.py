@@ -13,6 +13,11 @@ import sys
 import time
 import zipfile
 
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
 from script.config import config_file
 
 file_error_path = ".erplibre.error.txt"
