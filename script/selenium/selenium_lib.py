@@ -1055,6 +1055,17 @@ class SeleniumLib(object):
             )
         return button
 
+    def odoo_web_click_item_list(self, index=0, field_name="name"):
+        # Click item list
+        all_row = self.get_all_element(
+            by=By.XPATH,
+            value=f"//tr[contains(@class, 'o_data_row')]/td[contains(@name, '{field_name}')]",
+            timeout=10,
+        )
+        row = all_row[index] if index < len(all_row) else all_row[-1]
+        button = self.click_with_mouse_move(element=row)
+        return button
+
     def odoo_web_click_open_search(self):
         # Click search button
         button = self.click_with_mouse_move(
