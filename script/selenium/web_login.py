@@ -7,8 +7,14 @@ import os
 import sys
 import time
 
-import selenium_lib
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
 from selenium.webdriver.common.by import By
+
+from script.selenium import selenium_lib
 
 
 def fill_parser(parser):
@@ -30,13 +36,24 @@ def fill_parser(parser):
     )
 
 
-def run(config, selenium_tool):
+def run(
+    config,
+    selenium_tool,
+    default_email_auth=None,
+    default_password_auth=None,
+    no_try_test=False,
+):
     # Trouvez les éléments du formulaire
     courriel_input = selenium_tool.get_element(by=By.NAME, value="login")
-    mot_de_passe_input = selenium_tool.get_element(by=By.NAME, value="password")
+    mot_de_passe_input = selenium_tool.get_element(
+        by=By.NAME, value="password"
+    )
     # div_connexion_button = selenium_tool.get_element(by=By.CLASS_NAME, value="oe_login_buttons")
-    connexion_button = selenium_tool.get_element(by=By.CSS_SELECTOR, value="[type='submit']")
+    connexion_button = selenium_tool.get_element(
+        by=By.CSS_SELECTOR, value="[type='submit']"
+    )
 
+    actual_url = selenium_tool.driver.current_url
     # try:
     #     connexion_button = selenium_tool.driver.find_element(
     #         By.XPATH,
@@ -51,8 +68,18 @@ def run(config, selenium_tool):
     #     )
 
     # Remplissez le courriel et le mot de passe
-    courriel_input.send_keys(config.default_email_auth)
-    mot_de_passe_input.send_keys(config.default_password_auth)
+    email_auth = (
+        default_email_auth if default_email_auth else config.default_email_auth
+    )
+    pass_auth = (
+        default_password_auth
+        if default_password_auth
+        else config.default_password_auth
+    )
+    courriel_input.clear()
+    mot_de_passe_input.clear()
+    courriel_input.send_keys(email_auth)
+    mot_de_passe_input.send_keys(pass_auth)
 
     # Cliquez sur le bouton "Connexion"
     try:
@@ -99,6 +126,21 @@ def run(config, selenium_tool):
     #         )
     #     )
     # )
+
+    if not no_try_test:
+        time.sleep(1)
+        if actual_url in [
+            selenium_tool.driver.current_url,
+            f"{selenium_tool.driver.current_url}?redirect=%2Fweb%3F",
+        ]:
+            run(
+                config,
+                selenium_tool,
+                default_email_auth="test",
+                default_password_auth="test",
+                no_try_test=True,
+            )
+            return
 
     # Remove chatbot if open, because will crash wizard div[4] (to div[5])
     selenium_tool.check_bot_chat_and_close()

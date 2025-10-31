@@ -3,19 +3,22 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import datetime
+import getpass
+import json
+import logging
 import os
 import random
 import re
+import shutil
+import subprocess
 import sys
-import time
-import json
 import tempfile
-from subprocess import getoutput
+import time
 import tkinter as tk
+from subprocess import getoutput
 from tkinter import filedialog
-import getpass
-from pykeepass import PyKeePass
 
+from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
 from selenium import webdriver
 from selenium.common.exceptions import (
@@ -30,17 +33,54 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support.ui import Select, WebDriverWait
+
+from script.config import config_file
+
+logging.basicConfig(
+    format=(
+        "%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d]"
+        " %(message)s"
+    ),
+    datefmt="%Y-%m-%d:%H:%M:%S",
+    level=logging.INFO,
+)
+_logger = logging.getLogger(__name__)
 
 # TODO maybe use TODO lib
 CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo.json"
+CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
+LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
+
+MONTHS_FR = {
+    "janvier": 1,
+    "février": 2,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "août": 8,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "décembre": 12,
+    "decembre": 12,
+}
+
+# TODO maybe use TODO lib
+CONFIG_FILE = "./script/todo/todo.json"
+CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 
 class SeleniumLib(object):
     def __init__(self, config):
         self.config = config
+        self.wait_human_time = config.human_time_speed
+        self.config_file = config_file.ConfigFile()
         self.kdbx = None
         self.video_recorder = None
         self.default_download_dir_path = tempfile.mkdtemp()
@@ -60,8 +100,13 @@ class SeleniumLib(object):
         )
         self.dirname_recording = dir_path_screencast
         self.driver = None
-        with open(".odoo-version") as txt:
-            self.odoo_version = txt.read()
+        if os.path.isfile(".odoo-version"):
+            with open(".odoo-version") as txt:
+                self.odoo_version = txt.read()
+        else:
+            # Default version
+            # TODO instead, need to detect the version from client and detection
+            self.odoo_version = "18.0"
 
     def do_screenshot(self):
         if self.config.scenario_screenshot:
@@ -113,25 +158,155 @@ class SeleniumLib(object):
 
         # Créez une instance du navigateur Firefox avec les options de navigation privée
         try:
-            self.driver = webdriver.Firefox(
-                options=firefox_options, service=firefox_services
+            user = os.environ.get("USER", "Non défini")
+            uid = os.getuid()
+            gid = os.getgid()
+            print(f"INFO: Execute by user: {user}, UID: {uid}, GID: {gid}")
+
+            # Exécuter la commande 'whoami' pour confirmation
+            whoami_result = subprocess.run(
+                ["whoami"], capture_output=True, text=True
             )
-        except Exception:
+            print(f"INFO: Result 'whoami': {whoami_result.stdout.strip()}")
+
+        except Exception as e:
+            print(f"ERROR when check user: {e}")
+
+        try:
+            if self.config.use_chrome_driver:
+                from selenium.webdriver.chrome.options import (
+                    Options as ChromeOptions,
+                )
+                from selenium.webdriver.chrome.service import Service
+
+                chrome_options = ChromeOptions()
+                if self.config.window_size:
+                    # chrome_options.add_argument("--window-size=1920,1080")
+                    chrome_options.add_argument(
+                        f"--window-size={self.config.window_size}"
+                    )
+
+                if self.config.use_network:
+                    chrome_options.set_capability(
+                        "se:name", "ERPLibre selenium"
+                    )
+                    self.driver = webdriver.Remote(
+                        options=chrome_options,
+                        command_executor=self.config.use_network,
+                    )
+                else:
+                    from webdriver_manager.chrome import ChromeDriverManager
+
+                    service = Service(
+                        ChromeDriverManager().install(),
+                        log_path="/tmp/chromedriver.log",
+                    )
+                    self.driver = webdriver.Chrome(
+                        options=chrome_options,
+                        # options=firefox_options,
+                        service=service,
+                        keep_alive=True,
+                    )
+            elif self.config.use_firefox_driver:
+                from selenium.webdriver.firefox.options import Options
+                from selenium.webdriver.firefox.service import Service
+
+                firefox_services = None
+                # shutil.which("geckodriver")
+                if self.config.gecko_binary_path:
+                    firefox_services = Service(
+                        executable_path=self.config.gecko_binary_path,
+                        log_output=self.config.debug,
+                    )
+                firefox_options = webdriver.FirefoxOptions()
+                if not self.config.not_private_mode:
+                    firefox_options.add_argument("--private")
+
+                if self.config.firefox_binary_path:
+                    firefox_options.binary_location = (
+                        self.config.firefox_binary_path
+                    )
+                elif not self.config.use_network:
+                    status_location = subprocess.check_output(
+                        ["which", "firefox"], text=True
+                    ).strip()
+                    firefox_options.binary_location = status_location
+
+                firefox_profile = webdriver.FirefoxProfile()
+                firefox_profile.set_preference(
+                    "browser.cache.disk.enable", False
+                )
+                firefox_profile.set_preference(
+                    "browser.cache.memory.enable", False
+                )
+                firefox_profile.set_preference(
+                    "browser.cache.offline.enable", False
+                )
+                firefox_profile.set_preference("network.http.use-cache", False)
+                firefox_options.set_preference(
+                    "permissions.default.desktop-notification", 1
+                )
+                firefox_options.set_preference(
+                    "browser.download.folderList", 2
+                )
+                firefox_options.set_preference(
+                    "browser.download.manager.showWhenStarting", False
+                )
+                firefox_options.set_preference(
+                    "browser.download.dir", self.default_download_dir_path
+                )
+                firefox_options.set_preference(
+                    "browser.helperApps.neverAsk.saveToDisk",
+                    "application/octet-stream,application/pdf,application/x-pdf",
+                )
+                firefox_options.set_preference("pdfjs.disabled", True)
+                if self.config.window_size:
+                    # chrome_options.add_argument("--window-size=1920,1080")
+                    firefox_options.add_argument(
+                        f"--window-size={self.config.window_size}"
+                    )
+
+                if self.config.headless:
+                    firefox_options.add_argument("--headless")
+                    # firefox_options.add_argument("--disable-gpu")
+                firefox_options.add_argument("--no-sandbox")
+                firefox_options.add_argument("--disable-dev-shm-usage")
+                firefox_options.add_argument("--disable-dbus")
+
+                if self.config.use_network:
+                    firefox_options.set_capability(
+                        "se:name", "ERPLibre selenium"
+                    )
+                    self.driver = webdriver.Remote(
+                        options=firefox_options,
+                        command_executor=self.config.use_network,
+                    )
+                else:
+                    self.driver = webdriver.Firefox(
+                        options=firefox_options,
+                        service=firefox_services,
+                        keep_alive=True,
+                    )
+
+        except Exception as e:
             print(
                 "Cannot open Firefox profile, so will force firefox snap for"
                 " Ubuntu users."
             )
-            firefox_services = Service(
-                executable_path=getoutput(
-                    "find /snap/firefox -name geckodriver"
-                ).split("\n")[-1]
-            )
-            firefox_options.binary_location = getoutput(
-                "find /snap/firefox -name firefox"
-            ).split("\n")[-1]
-            self.driver = webdriver.Firefox(
-                options=firefox_options, service=firefox_services
-            )
+            # TODO au lieu, faire une recherche de geckodriver avant de démarrer
+            # firefox_services = Service(
+            #     executable_path=getoutput(
+            #         "find /snap/firefox -name geckodriver"
+            #     ).split("\n")[-1], log_path='/tmp/geckodriver.log'
+            # )
+            # firefox_options.binary_location = getoutput(
+            #     "find /snap/firefox -name firefox"
+            # ).split("\n")[-1]
+            # self.driver = webdriver.Firefox(
+            #     options=firefox_options, service=firefox_services
+            # )
+            raise e
+        print("The driver is launched!")
 
         # Ajout de l'enregistrement
         if self.config.record_mode:
@@ -152,66 +327,100 @@ class SeleniumLib(object):
 
         # Install DarkReader to help my eyes
         # TODO do a script to check if it's the last version
-        if not self.config.no_dark_mode:
-            self.driver.install_addon(
-                "./script/selenium/darkreader-firefox.xpi", temporary=True
-            )
-            self.driver.install_addon(
-                "./script/selenium/odoo_debug-4.0.xpi", temporary=True
-            )
-
-        if not self.config.not_private_mode and not self.config.no_dark_mode:
-            self.driver.get("about:addons")
-            # Enable Dark Reader into incognito
-            self.click("/html/body/div/div[1]/categories-box/button[2]")
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
-            )
-            # Enable Run in Private Windows
-            try:
-                self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+        if self.config.use_firefox_driver and not self.config.use_network:
+            if not self.config.no_dark_mode:
+                self.driver.install_addon(
+                    "./script/selenium/darkreader-firefox.xpi", temporary=True
                 )
-            except Exception:
-                # For old version before Firefox 138
-                self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                self.driver.install_addon(
+                    "./script/selenium/odoo_debug-4.0.xpi", temporary=True
                 )
 
-            # Enable Odoo_debug into incognito
-            # Back
-            self.click(
-                "/html/body/div/div[2]/addon-page-header/div/div[2]/button"
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/div/div/div/button",
-            )
-            self.click(
-                "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
-            )
-            # Enable Run in Private Windows
-            try:
+            if (
+                not self.config.not_private_mode
+                and not self.config.no_dark_mode
+            ):
+                self.driver.get("about:addons")
+                # Enable Dark Reader into incognito
+                self.click("/html/body/div/div[1]/categories-box/button[2]")
                 self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
                 )
-            except Exception:
-                # For old version before Firefox 138
                 self.click(
-                    "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
                 )
+                # Enable Run in Private Windows
+                try:
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    )
+                except Exception:
+                    # For old version before Firefox 138
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    )
+
+                # Enable Odoo_debug into incognito
+                # Back
+                self.click(
+                    "/html/body/div/div[2]/addon-page-header/div/div[2]/button"
+                )
+                self.click(
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/div/div/div/button",
+                )
+                self.click(
+                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
+                )
+                # Enable Run in Private Windows
+                try:
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
+                    )
+                except Exception:
+                    # For old version before Firefox 138
+                    self.click(
+                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
+                    )
 
         # Ouvrez la page web
         if not ignore_open_web:
             self.driver.get(f"{self.config.url}/web")
 
         # Close tab opening by DarkReader
-        if self.config.not_private_mode and not self.config.no_dark_mode:
-            self.driver.switch_to.window(self.driver.window_handles[-1])
-            self.driver.close()
-            self.driver.switch_to.window(self.driver.window_handles[0])
+        if self.config.use_firefox_driver and not self.config.use_network:
+            if self.config.not_private_mode and not self.config.no_dark_mode:
+                self.driver.switch_to.window(self.driver.window_handles[-1])
+                self.driver.close()
+                self.driver.switch_to.window(self.driver.window_handles[0])
+
+    def get_kdbx(self):
+        if self.kdbx:
+            return self.kdbx
+        print("Open KDBX")
+        # Open file
+        chemin_fichier_kdbx = self.config_file.get_config(["kdbx", "path"])
+        if not chemin_fichier_kdbx:
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            chemin_fichier_kdbx = filedialog.askopenfilename(
+                title="Select a File",
+                filetypes=(("KeepassX files", "*.kdbx"),),
+            )
+        if not chemin_fichier_kdbx:
+            # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
+            return
+
+        mot_de_passe_kdbx = self.config_file.get_config(["kdbx", "password"])
+        if not mot_de_passe_kdbx:
+            mot_de_passe_kdbx = getpass.getpass(
+                prompt="Entrez votre mot de passe : "
+            )
+
+        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
+
+        if kp:
+            self.kdbx = kp
+        return kp
 
     def get_kdbx(self):
         if self.kdbx:
@@ -283,17 +492,46 @@ class SeleniumLib(object):
         button.click()
         return button
 
-    def get_element(self, by: str = By.ID, value: str = None, timeout=5):
+    def get_element(
+        self,
+        by: str = By.ID,
+        value: str = None,
+        timeout=5,
+        wait_clickable=False,
+        is_visible=True,
+    ):
+        only_one = False
         wait = WebDriverWait(self.driver, timeout)
-        ele = wait.until(
-            EC.visibility_of_any_elements_located(
-                (
-                    by,
-                    value,
+        if wait_clickable:
+            ele = wait.until(
+                EC.element_to_be_clickable(
+                    (
+                        by,
+                        value,
+                    )
                 )
             )
-        )
-
+        elif is_visible:
+            ele = wait.until(
+                EC.visibility_of_any_elements_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        else:
+            only_one = True
+            ele = wait.until(
+                EC.presence_of_element_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        if only_one:
+            return ele
         return ele[0]
 
     def get_element_not_visible(
@@ -431,13 +669,14 @@ class SeleniumLib(object):
         viewport_ele_value: str = None,
         element: WebElement = None,
         with_index: bool = False,
+        is_visible=True,
         index_of_list: int = 0,
     ):
         # ele = self.driver.find_element(by, value)
         if element:
             ele = element
         else:
-            ele = self.get_element(by, value, timeout)
+            ele = self.get_element(by, value, timeout, is_visible=is_visible)
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
@@ -742,40 +981,40 @@ class SeleniumLib(object):
 
     # Website
     def odoo_show_robot_message(
-        self, msg="Ho no!", hide_message_after_x_seconds=0
+        self, msg="Ho no!", hide_message_after_x_seconds=0, robot_base64=None
     ):
         # Injecter l'animation SVG dans la page
         script_text = ""
         if msg:
             msg_to_print = msg.replace("'", "\\'")
-            script_text = f"""
-                // Ajouter le texte
-                const textElement = document.createElement('div');
-                textElement.innerText = '{msg_to_print}';
-                textElement.style.color = '#FFFFFF';
-                textElement.style.fontSize = '24px';
-                textElement.style.marginBottom = '20px';
-                textElement.style.fontWeight = 'bold';
+            lst_mst_to_print = msg_to_print.split("\n")
+            script_text = ""
+            for index, line in enumerate(lst_mst_to_print):
+                script_text += f"""
+                    // Ajouter le texte
+                    const textElement_{index} = document.createElement('div');
+                    textElement_{index}.textContent = '{line}';
+                    textElement_{index}.style.color = '#FFFFFF';
+                    textElement_{index}.style.fontSize = '24px';
+                    textElement_{index}.style.marginBottom = '20px';
+                    textElement_{index}.style.fontWeight = 'bold';
 
-                overlay.appendChild(textElement);
-            """
-        script = (
-            """
-            (function() {
-                // Créer un div pour l'overlay
-                const overlay = document.createElement('div');
-                overlay.id = 'uniqueOverlay'; // Ajout de l'ID
-                overlay.style.position = 'fixed';
-                overlay.style.top = '0';
-                overlay.style.left = '0';
-                overlay.style.width = '100%';
-                overlay.style.height = '100%';
-                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-                overlay.style.display = 'flex';
-                overlay.style.justifyContent = 'center';
-                overlay.style.alignItems = 'center';
-                overlay.style.zIndex = '9999';
+                    overlay.appendChild(textElement_{index});
+                """
+        if robot_base64:
+            script_robot = ""
+            script_add_robot = f"""
+            const img = new Image();
+            img.alt = 'Robot';
+            img.className = 'cute-robot';
+            img.style.width = '150px';
+            img.style.cursor = 'pointer';
 
+            img.src = '{robot_base64}';
+            overlay.appendChild(img);
+"""
+        else:
+            script_robot = """
                 // Contenu SVG du robot
                 const svgContent = `
                     <svg class="cute-robot" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 150" style="width: 150px; cursor: pointer;">
@@ -801,11 +1040,32 @@ class SeleniumLib(object):
                         <rect x="50" y="120" width="15" height="30" rx="5" ry="5" fill="#388E3C"/>
                     </svg>
                 `;
+"""
+            script_add_robot = """
+            // Ajouter le contenu SVG au div
+            overlay.innerHTML += svgContent;
+            """
+        script = (
+            """
+            (function() {
+                // Créer un div pour l'overlay
+                const overlay = document.createElement('div');
+                overlay.id = 'uniqueOverlay'; // Ajout de l'ID
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.style.zIndex = '9999';
                 """
+            + script_robot
             + script_text
+            + script_add_robot
             + """
-                // Ajouter le contenu SVG au div
-                overlay.innerHTML += svgContent;
 
                 // Ajouter un gestionnaire de clic pour supprimer l'overlay
                 overlay.onclick = function() {
@@ -856,7 +1116,7 @@ class SeleniumLib(object):
 
     def odoo_web_click_principal_menu(self):
         # Click menu button
-        if self.odoo_version == "16.0":
+        if self.odoo_version in ["16.0", "17.0", "18.0"]:
             button = self.click_with_mouse_move(
                 By.XPATH,
                 "//button[contains(@class, 'dropdown-toggle') and"
@@ -868,6 +1128,119 @@ class SeleniumLib(object):
                 By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
             )
         return button
+
+    def odoo_web_click_item_list(self, index=0, field_name="name"):
+        # Click item list
+        all_row = self.get_all_element(
+            by=By.XPATH,
+            value=f"//tr[contains(@class, 'o_data_row')]/td[contains(@name, '{field_name}')]",
+            timeout=10,
+        )
+        row = all_row[index] if index < len(all_row) else all_row[-1]
+        button = self.click_with_mouse_move(element=row)
+        return button
+
+    def odoo_web_click_open_search(self):
+        # Click search button
+        button = self.click_with_mouse_move(
+            By.XPATH,
+            "//button[contains(@class, 'o_searchview_dropdown_toggler')]",
+            timeout=10,
+        )
+        return button
+
+    def odoo_web_click_open_search_add_group_custom(self, group_name):
+        # Add personalize group
+        button = self.click_with_mouse_move(
+            By.XPATH,
+            value="//select[contains(@class, 'o_add_custom_group_menu')]",
+            timeout=10,
+        )
+        if self.wait_human_time:
+            time.sleep(1)
+        select_elem = self.get_element(
+            By.XPATH,
+            value="//select[contains(@class, 'o_add_custom_group_menu')]",
+            timeout=10,
+            wait_clickable=False,
+        )
+
+        select_obj = Select(select_elem)
+        # (ex: <option value="customer">Client</option>)
+        select_obj.select_by_value(group_name)
+        return select_elem
+
+    def odoo_web_click_open_search_filter(
+        self,
+        filter_label=None,
+        filter_sub_label=None,
+        lst_update_condition=None,
+    ):
+        if not lst_update_condition:
+            lst_update_condition = []
+        if filter_label:
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//button[contains(@class,'o_menu_item') and contains(normalize-space(.), '{filter_label}')]",
+                timeout=10,
+            )
+        if filter_sub_label:
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//span[contains(@class,'o_item_option') and contains(normalize-space(.), '{filter_sub_label}')]",
+                timeout=10,
+            )
+        if lst_update_condition:
+            filter_text = f"{filter_label}: {filter_sub_label}"
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//small[contains(@class,'o_facet_value') and contains(normalize-space(.), '{filter_text}')]/../..//i[contains(@class,'fa-cog')]",
+                timeout=10,
+                is_visible=False,
+            )
+            time.sleep(1)
+            for item_update_condition in lst_update_condition:
+                condition_value = item_update_condition.get("condition")
+                if condition_value:
+                    select_elem = self.click_with_mouse_move(
+                        By.XPATH,
+                        value=f"//div[contains(@class,'modal-content')]//select[contains(@class,'pe-3')]",
+                        timeout=10,
+                        is_visible=False,
+                    )
+                    select_obj = Select(select_elem)
+                    # (ex: <option value="customer">Client</option>)
+                    select_obj.select_by_value(condition_value)
+                else:
+                    _logger.error(
+                        f"Not supported item_update_condition '{item_update_condition}'"
+                    )
+            # Save
+            button = self.click_with_mouse_move(
+                By.XPATH,
+                value=f"//footer[contains(@class,'modal-footer')]//button[contains(@class,'btn-primary') and contains(normalize-space(.), 'Confirmer')]",
+                timeout=10,
+            )
+
+    def odoo_fill_search_input(self, text, selection_research=None):
+        input_elem = self.click_with_mouse_move(
+            By.XPATH,
+            value="//input[contains(@class, 'o_searchview_input')]",
+            timeout=10,
+        )
+        input_elem.send_keys(text)
+        time.sleep(1)
+        if not selection_research:
+            input_elem.send_keys(Keys.ENTER)
+        else:
+            input_autocomplete_elem = self.click_with_mouse_move(
+                By.XPATH,
+                value="//ul[contains(@class,'o_searchview_autocomplete')]"
+                f"//li[contains(@class,'o_menu_item') and .//b[normalize-space(.)='{selection_research}']]"
+                "//a[not(contains(@class,'o_expand'))]",
+            )
+
+        return input_elem
 
     def odoo_web_principal_menu_click_root_menu(self, from_text=""):
         if not from_text:
@@ -951,6 +1324,23 @@ class SeleniumLib(object):
         return self.odoo_web_form_click_by_classname_action(
             "o_form_button_save"
         )
+
+    def odoo_web_change_view(
+        self, view_name="list", raise_error=False, timeout=5
+    ):
+        if view_name not in ["list", "kanban", "timeline"]:
+            msg = f"odoo_web_change_view view_name '{view_name}' invalid"
+            if raise_error:
+                raise Exception(msg)
+            _logger.error(msg)
+            return None
+
+        status_button = self.click_with_mouse_move(
+            by=By.XPATH,
+            value=f"//nav[contains(@class, 'o_cp_switch_buttons')]/button[contains(@class, 'o_{view_name}')]",
+        )
+        print(f"Change view '{view_name}' cliqué.")
+        return status_button
 
     def odoo_web_form_click_web_publish_action(self):
         return self.odoo_web_form_click_button_action("website_publish_button")
@@ -1059,14 +1449,20 @@ class SeleniumLib(object):
         checkbox_div.click()
         # TODO improve speed by observation of comportement
         time.sleep(0.5)
-        checkbox_date_div = self.driver.find_element(
-            By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
-        )
-        # time.sleep(0.5)
         str_date_today = date_to_select.strftime("%Y-%m-%d")
-        new_value = checkbox_date_div.find_element(
-            By.XPATH, f"//td[@data-day='{str_date_today}']"
-        )
+        if self.odoo_version in ["17.0", "18.0"]:
+            checkbox_date_div = self.driver.find_element(
+                By.CSS_SELECTOR, ".o_datetime_picker"
+            )
+            new_value = self.select_date(self.driver, date_to_select)
+        else:
+            checkbox_date_div = self.driver.find_element(
+                By.CSS_SELECTOR, ".bootstrap-datetimepicker-widget"
+            )
+            # time.sleep(0.5)
+            new_value = checkbox_date_div.find_element(
+                By.XPATH, f"//td[@data-day='{str_date_today}']"
+            )
         new_value.click()
         return new_value
 
@@ -1108,6 +1504,9 @@ class SeleniumLib(object):
                     time.sleep(var_wait_time)
             self.video_recorder.start()
 
+    def quit(self):
+        self.driver.quit()
+
     def stop_record(self):
         time.sleep(self.config.selenium_default_delay_presentation)
 
@@ -1122,10 +1521,13 @@ class SeleniumLib(object):
                 ".webm", ".mp4"
             )
             if self.config.selenium_video_auto_convert_mp4:
-                os.popen(
-                    "ffmpeg -i"
-                    f" {self.filename_recording} {filename_recording_mp4}"
-                )
+                with_auto_fix = True
+                if with_auto_fix:
+                    cmd = f'ffmpeg -i {self.filename_recording} -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -crf 23 -preset veryfast -c:a aac -b:a 160k -movflags +faststart {filename_recording_mp4}'
+                else:
+                    cmd = f"ffmpeg -i {self.filename_recording} {filename_recording_mp4}"
+                print(cmd)
+                os.popen(cmd)
 
             if self.config.selenium_video_auto_play_video:
                 print(f"Play video {self.filename_recording}")
@@ -1193,6 +1595,94 @@ class SeleniumLib(object):
 
         return date_naissance.strftime("%Y-%m-%d")
 
+    def _get_visible_month_year(self, picker):
+        header = picker.find_element(
+            By.CSS_SELECTOR, ".o_datetime_picker_header .o_header_part"
+        )
+        text = header.text.strip().lower()  # ex: "octobre 2025"
+        parts = text.split()
+        # s'il y a des espaces insécables ou formats bizarres
+        mois_txt = parts[0].replace("\xa0", " ")
+        annee = int(parts[-1])
+        mois = MONTHS_FR[mois_txt]
+        return (
+            mois,
+            annee,
+            header.text,
+        )  # on retourne aussi le texte exact pour attendre le changement
+
+    def select_date(self, driver, date_to_select):
+        # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
+        picker = WebDriverWait(driver, 10).until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".o_datetime_picker")
+            )
+        )
+
+        # 2) naviguer au bon mois
+        max_hops = 24  # sécurité (2 ans)
+        for _ in range(max_hops):
+            mois_vis, annee_vis, header_txt = self._get_visible_month_year(
+                picker
+            )
+            if (annee_vis, mois_vis) == (
+                date_to_select.year,
+                date_to_select.month,
+            ):
+                break
+
+            # bouton suivant/précédent dans l'entête du picker courant
+            if (annee_vis, mois_vis) < (
+                date_to_select.year,
+                date_to_select.month,
+            ):
+                btn = picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_next"
+                )
+            else:
+                btn = picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_previous"
+                )
+
+            btn.click()
+            # attendre que l'en-tête change pour éviter les doubles clics trop rapides
+            WebDriverWait(driver, 10).until(
+                EC.text_to_be_present_in_element(
+                    (
+                        By.CSS_SELECTOR,
+                        ".o_datetime_picker_header .o_header_part",
+                    ),
+                    "",
+                )
+            )
+            WebDriverWait(driver, 10).until(
+                lambda d: picker.find_element(
+                    By.CSS_SELECTOR, ".o_datetime_picker_header .o_header_part"
+                ).text
+                != header_txt
+            )
+        else:
+            raise RuntimeError(
+                "Impossible d'atteindre le mois voulu dans le délai imparti."
+            )
+
+        # 3) cliquer le jour (les jours cliquables sont des <button> avec un <span> = numéro)
+        day = str(int(date_to_select.day))  # sans zéro en tête
+        day_xpath = f".//button[contains(@class,'o_date_item_cell') and .//span[normalize-space(text())='{day}']]"
+
+        day_btn = WebDriverWait(picker, 10).until(
+            EC.element_to_be_clickable((By.XPATH, day_xpath))
+        )
+
+        return day_btn
+
+
+def get_args(parser):
+    args = parser.parse_args()
+    if args.use_chrome_driver:
+        args.use_firefox_driver = False
+    return args
+
 
 def fill_parser(parser):
     parser.add_argument(
@@ -1209,11 +1699,36 @@ def fill_parser(parser):
         help="Pause at the end of an action.",
     )
 
+    group_animation.add_argument(
+        "--human_time_speed",
+        action="store_true",
+        help="Will wait after each action to help human to follow",
+    )
+
     group_browser = parser.add_argument_group(title="Browser")
     group_browser.add_argument(
         "--not_private_mode",
         action="store_true",
         help="Default is private mode.",
+    )
+    group_browser.add_argument(
+        "--use_chrome_driver",
+        action="store_true",
+        help="Switch to chrome instead of great Firefox.",
+    )
+    group_browser.add_argument(
+        "--use_firefox_driver",
+        action="store_true",
+        default=True,
+        help="The default is firefox.",
+    )
+    group_browser.add_argument(
+        "--use_network",
+        help="Specify the adress, example: http://localhost:4444",
+    )
+    group_browser.add_argument(
+        "--window_size",
+        help="Example 1920,1080",
     )
     group_browser.add_argument(
         "--headless",
