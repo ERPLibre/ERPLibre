@@ -1,0 +1,13 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    exclude-paths:
+      - "requirement/requirements.odoo12.0_python3.7.17.txt"
+      - "requirement/requirements.odoo13.0_python3.7.17.txt"
+      - "requirement/requirements.odoo14.0_python3.8.20.txt"
+      - "requirement/requirements.odoo15.0_python3.8.20.txt"
+      - "requirement/requirements.odoo16.0_python3.10.18.txt"
+      - "requirement/requirements.odoo17.0_python3.10.18.txt"
