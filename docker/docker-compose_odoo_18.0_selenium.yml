@@ -6,7 +6,7 @@ services:
       - 8071:8071
       - 8072:8072
     environment:
-      HOST: db
+      HOST: db,selenium-hub
       PASSWORD: mysecretpassword
       USER: odoo
       POSTGRES_DB: postgres
@@ -15,6 +15,7 @@ services:
       UPDATE_ALL_DB: "False"
     depends_on:
       - db
+      - selenium-hub
     # not behind a proxy
     #command: odoo --workers 0
     # behind a proxy
@@ -42,6 +43,44 @@ services:
     volumes:
       - erplibre-db-data:/var/lib/postgresql/pgdata
     restart: always
+
+  chrome:
+    image: selenium/node-chrome:4.34.0-20250707
+    platform: linux/amd64
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - SE_EVENT_BUS_HOST=selenium-hub
+
+  edge:
+    image: selenium/node-edge:4.34.0-20250707
+    platform: linux/amd64
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - SE_EVENT_BUS_HOST=selenium-hub
+
+  firefox:
+    image: selenium/node-firefox:4.34.0-20250707
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - SE_EVENT_BUS_HOST=selenium-hub
+
+  # put into config.conf selenium_network_url=http://selenium-hub:4444
+  # in python
+  # from odoo.tools import config
+  # config.get("selenium_network_url")
+  selenium-hub:
+    image: selenium/hub:4.34.0-20250707
+    container_name: selenium-hub
+    ports:
+      - "8073:4442"
+      - "8074:4443"
+      - "8075:4444"
 
 # We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
 # - docker volume --help
