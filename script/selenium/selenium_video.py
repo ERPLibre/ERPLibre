@@ -2,10 +2,15 @@
 
 import threading
 
-import gi
+try:
+    import gi
 
-gi.require_version("Gst", "1.0")
-from gi.repository import Gst
+    gi.require_version("Gst", "1.0")
+    from gi.repository import Gst
+except ImportError:
+    print("Please read installation script/selenium/install.md")
+    raise
+
 
 Gst.init(None)
 
