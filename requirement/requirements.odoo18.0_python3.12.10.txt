@@ -1,7 +1,7 @@
 # For OSX
 cython
 
-setuptools==65.5.1
+setuptools==78.1.1
 
 # Module voice_to_text
 #SpeechRecognition==3.10.0
@@ -52,3 +52,9 @@ pydevd-odoo
 # Extra module
 meteostat==1.6.8
 
+# Fix build
+beautifulsoup4==4.13.5
+# pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
+#pylint-odoo==9.3.22
+pylint==3.3.9
+isort==6.1.0
