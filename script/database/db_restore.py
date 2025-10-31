@@ -50,6 +50,16 @@ SUGGESTION
         action="store_true",
         help="Delete all database cache to clone, begin by _cache_.",
     )
+    parser.add_argument(
+        "--ignore_cache",
+        action="store_true",
+        help="Ignore creating _cache_ when restoring.",
+    )
+    parser.add_argument(
+        "--only_drop",
+        action="store_true",
+        help="Will only drop database if exist.",
+    )
     args = parser.parse_args()
     return args
 
@@ -122,8 +132,10 @@ def main():
             arg = f"{arg_base} --drop --database {config.database}"
             out = check_output(arg.split(" ")).decode()
             print(out)
+        if config.only_drop:
+            return
         # Check cache exist
-        if cache_database not in lst_db_cache:
+        if cache_database not in lst_db_cache and not config.ignore_cache:
             _logger.info(
                 f"## Create cache {cache_database} from image"
                 f" {config.image} ##"
@@ -135,13 +147,23 @@ def main():
             out = check_output(arg.split(" ")).decode()
             print(out)
         # Clone database
-        _logger.info(
-            f"## Clone cache {cache_database} to database {config.database} ##"
-        )
-        arg = (
-            f"{arg_base} --clone --from_database"
-            f" {cache_database} --database {config.database}"
-        )
+        if config.ignore_cache:
+            _logger.info(
+                f"## Restoring {config.image} to database {config.database} ##"
+            )
+            arg = (
+                f"{arg_base} --restore --restore_image"
+                f" {config.image} --database {config.database}"
+            )
+        else:
+            _logger.info(
+                f"## Clone cache {cache_database} to database {config.database} ##"
+            )
+            arg = (
+                f"{arg_base} --clone --from_database"
+                f" {cache_database} --database {config.database}"
+            )
+        print(arg)
         out = check_output(arg.split(" ")).decode()
         print(out)
 

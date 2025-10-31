@@ -1,5 +1,18 @@
 # FAQ
 
+## Into execution
+
+### wkthmltopdf TimeoutError
+
+If you find this bug on server log :
+`odoo.addons.base.models.ir_actions_report: wkhtmltopdf: Exit with code 1 due to network error: TimeoutError`
+
+Into configuration, technique, go to ir.config_parameter (system parameter) and add configuration :
+```
+key : report.url
+value : http://127.0.0.1:8069
+```
+
 ## Scripting
 
 ### Search all duplicate file recursively in given directory
@@ -188,7 +201,8 @@ limit_memory_hard = 0
 ### Error non-overlapping IPv4 address pool
 
 You got this error when you start a
-docker-compose: `ERROR: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network`
+docker-compose:
+`ERROR: could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network`
 
 It's because the subnet is limited, you need to change it.
 

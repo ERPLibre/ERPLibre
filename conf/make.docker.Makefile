@@ -95,4 +95,8 @@ docker_build_release_beta:
 # docker clean all
 .PHONY: docker_clean_all
 docker_clean_all:
-	docker system prune -a --volumes
+	./script/terminal/validate_to_continue.sh "⚠️ This will REMOVE unused images, containers, networks, and VOLUMES." && docker system prune -a --volumes
+
+.PHONY: docker_compose_clean_all
+docker_compose_clean_all:
+	./script/terminal/validate_to_continue.sh "⚠️ This will REMOVE docker compose images, volumes and network." && docker-compose down --rmi all -v

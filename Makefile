@@ -130,6 +130,10 @@ open_selenium:
 ############
 .PHONY: format
 format:
+	./script/maintenance/format_file_to_commit.py
+
+.PHONY: format_all
+format_all:
 	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
 .PHONY: format_code_generator
@@ -211,6 +215,11 @@ repo_configure_group_code_generator:
 .PHONY: repo_show_status
 repo_show_status:
 	.venv.erplibre/bin/repo forall -pc "git status -s"
+
+# Show git stash for all repo
+.PHONY: repo_do_stash
+repo_do_stash:
+	.venv.erplibre/bin/repo forall -pc "git stash"
 
 # Show divergence between actual repository and production manifest
 .PHONY: repo_diff_manifest_production
@@ -299,7 +308,7 @@ i18n_generate_demo_portal:
 
 .PHONY: clean
 clean:
-	find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
+	find . \( -name '__pycache__' -type d -prune -o -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf {} +
 
 ###############
 #  Statistic  #
