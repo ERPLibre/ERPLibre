@@ -44,7 +44,7 @@ psutil==5.8.0
 psycopg2==2.9.2
 pyopenssl==20.0.1
 PyPDF2==1.26.0
-python-ldap==3.4.0
+python-ldap==3.4.5
 pyusb==1.0.2
 requests==2.30.0
 reportlab==3.6.5
