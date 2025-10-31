@@ -35,20 +35,28 @@ RUN cd ; mkdir -p .bin/ && \
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    python -m venv .venv
+    python -m venv .venv.$ERPLIBRE_VERSION
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    curl https://storage.googleapis.com/git-repo-downloads/repo > ./.venv/repo && \
-    chmod +x ./.venv/repo
+    python -m venv .venv.erplibre && \
+    source ./.venv.erplibre/bin/activate && \
+    pip3 install -r requirement/erplibre_require-ments.txt
+
+RUN cd $ODOO_PREFIX && \
+    ls  -lha /ERPLibre && \
+    curl https://storage.googleapis.com/git-repo-downloads/repo > .venv.erplibre/bin/repo && \
+    chmod +x .venv.erplibre/bin/repo
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
+    source ./.venv.erplibre/bin/activate && \
     ./script/version/update_env_version.py --erplibre_version "${ERPLIBRE_VERSION}" --partial_install
 
 RUN cd $ODOO_PREFIX && ls ./manifest -la && \
     ls  -lha /ERPLibre && \
+    source ./.venv.erplibre/bin/activate && \
     ./script/manifest/update_manifest_local_dev.sh
 
 RUN apt update && \
@@ -59,25 +67,25 @@ RUN apt update && \
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     echo "${ERPLIBRE_VERSION}" && \
-    ./.venv/bin/pip install --upgrade pip && git branch && ls . -lha && \
-    ./.venv/bin/pip install "poetry==${POETRY_VERSION}" && \
-    ./.venv/bin/poetry --version && \
-    ./.venv/bin/poetry install
+    source ./.venv.$(cat ".erplibre-version" | xargs)/bin/activate && \
+    pip3 install --upgrade pip && git branch && ls . -lha && \
+    pip3 install "poetry==${POETRY_VERSION}" && \
+    poetry --version && \
+    poetry install --no-root -v
 
 # Install local npm
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     npm install
 
-# Create link to addons
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
-    ln -s "addons.odoo${ODOO_VERSION}" addons
+    mkdir -p "/ERPLibre/odoo${ODOO_VERSION}/addons/addons"
 
 RUN cd $ODOO_PREFIX && \
     ls  -lha /ERPLibre && \
     head /etc/odoo/odoo.conf && \
-    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
+    ./docker/repo_manifest_gen_org_prefix_path.py $ODOO_PREFIX/odoo${ODOO_VERSION}/addons /etc/odoo/odoo.conf /etc/odoo/odoo.conf && \
     head /etc/odoo/odoo.conf
 
 RUN cp /etc/odoo/odoo.conf /odoo.conf

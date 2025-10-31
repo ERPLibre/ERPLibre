@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-source ./.venv/bin/activate
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
+# Search by default local configuration
 CONFIG_PATH="./config.conf"
 ORIGIN_CONFIG_PATH=CONFIG_PATH
 if [ ! -f "${CONFIG_PATH}" ]; then
@@ -13,7 +13,11 @@ if [ ! -f "${CONFIG_PATH}" ]; then
   fi
 fi
 
-python3 ./odoo/odoo-bin -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 "$@"
+if [ "$ODOO_MODE_TEST" = "true" ]; then
+  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 --log-level=test --test-enable --no-http --stop-after-init "$@"
+else
+  ./odoo_bin.sh -c "${CONFIG_PATH}" --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-hard=0 "$@"
+fi
 # When need more memory RAM for instance by force
 #python3 ./odoo/odoo-bin -c ${CONFIG_PATH} --limit-time-real 99999 --limit-time-cpu 99999 --limit-memory-soft=8589934592 --limit-memory-hard=10737418240 $@
 

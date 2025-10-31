@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-LOG_FILE := ./.venv/make_test.log
+LOG_FILE := ./.venv.$(cat ".erplibre-version" | xargs)/make_test.log
 #############
 #  General  #
 #############
@@ -38,11 +38,12 @@ endif
 -include ./conf/make.documentation.Makefile
 -include ./conf/make.image_db.Makefile
 -include ./conf/make.installation.Makefile
+-include ./conf/make.installation.poetry.Makefile
 -include ./conf/make.test.Makefile
 -include ./conf/make.todo.Makefile
 
 # Include private Makefile
--include ./conf/make.private.Makefile
+-include ./private/make.private.Makefile
 
 # Example for update
 .PHONY: custom_run_example
@@ -91,12 +92,12 @@ pyenv_update:
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test
-	./.venv/bin/python3 ./odoo/odoo-bin db --create --database test
+	./odoo_bin.sh db --create --database test
 
 .PHONY: db_clone_test_to_test2
 db_clone_test_to_test2:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test2
-	./.venv/bin/python3 ./odoo/odoo-bin db --clone --database test2 --from_database test
+	./odoo_bin.sh db --drop --database test2
+	./odoo_bin.sh db --clone --database test2 --from_database test
 
 .PHONY: db_test_export
 db_test_export:
@@ -122,53 +123,57 @@ open_terminal:
 ##############
 .PHONY: open_selenium
 open_selenium:
-	./.venv/bin/python ./script/selenium/web_login.py
+	./.venv.erplibre/bin/python ./script/selenium/web_login.py
 
 ############
 #  format  #
 ############
 .PHONY: format
 format:
+	./script/maintenance/format_file_to_commit.py
+
+.PHONY: format_all
+format_all:
 	parallel ::: "./script/make.sh format_code_generator" "./script/make.sh format_code_generator_template" "./script/make.sh format_script" "./script/make.sh format_erplibre_addons" "./script/make.sh format_supported_addons"
 
 .PHONY: format_code_generator
 format_code_generator:
-	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator/
 	./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator/
 
 .PHONY: format_erplibre_addons
 format_erplibre_addons:
-	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_addons/
 	./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_addons/
-	.venv/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/ERPLibre_erplibre_theme_addons/
 	./script/maintenance/black.sh ./addons/ERPLibre_erplibre_theme_addons/
 	#./script/maintenance/prettier_xml.sh ./addons/ERPLibre_erplibre_theme_addons/
 
 .PHONY: format_supported_addons
 format_supported_addons:
-	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_erplibre-family-management/
 	./script/maintenance/black.sh ./addons/MathBenTech_erplibre-family-management/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
-	.venv/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
 	./script/maintenance/black.sh ./addons/MathBenTech_odoo-business-spending-management-quebec-canada/
 	#./script/maintenance/prettier_xml.sh ./addons/MathBenTech_erplibre-family-management/
 
 .PHONY: format_code_generator_template
 format_code_generator_template:
-	.venv/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
+	.venv.erplibre/bin/isort --profile black -l 79 ./addons/TechnoLibre_odoo-code-generator-template/
 	./script/maintenance/black.sh ./addons/TechnoLibre_odoo-code-generator-template/
 	#./script/maintenance/prettier_xml.sh ./addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: format_script
 format_script:
-	#.venv/bin/isort --profile black -l 79 ./script/ --gitignore
+	#.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
 	./script/maintenance/black.sh ./script/
 
 .PHONY: format_script_isort_only
 format_script_isort_only:
-	.venv/bin/isort --profile black -l 79 ./script/ --gitignore
+	.venv.erplibre/bin/isort --profile black -l 79 ./script/ --gitignore
 
 #########
 #  log  #
@@ -176,13 +181,6 @@ format_script_isort_only:
 .PHONY: log_show_test
 log_show_test:
 	vim ${LOG_FILE}
-
-##########
-# poetry #
-##########
-.PHONY: poetry_update
-poetry_update:
-	./script/poetry/poetry_update.py
 
 ###########
 #  clean  #
@@ -216,7 +214,12 @@ repo_configure_group_code_generator:
 # Show git status for all repo
 .PHONY: repo_show_status
 repo_show_status:
-	./.venv/repo forall -pc "git status -s"
+	.venv.erplibre/bin/repo forall -pc "git status -s"
+
+# Show git stash for all repo
+.PHONY: repo_do_stash
+repo_do_stash:
+	.venv.erplibre/bin/repo forall -pc "git stash"
 
 # Show divergence between actual repository and production manifest
 .PHONY: repo_diff_manifest_production
@@ -285,6 +288,11 @@ config_gen_image_db:
 	./script/git/git_repo_update_group.py --group base,image_db
 	./script/generate_config.sh
 
+.PHONY: config_gen_migration
+config_gen_migration:
+	./script/git/git_repo_update_group.py --group base,addons,migration
+	./script/generate_config.sh
+
 ##########
 #  I18n  #
 ##########
@@ -292,7 +300,7 @@ config_gen_image_db:
 # i18n generation demo_portal
 .PHONY: i18n_generate_demo_portal
 i18n_generate_demo_portal:
-	./.venv/bin/python3 ./odoo/odoo-bin i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
+	./odoo_bin.sh i18n --database code_generator --module demo_portal --addons_path addons/TechnoLibre_odoo-code-generator
 
 ###########
 #  Clean  #
@@ -300,7 +308,7 @@ i18n_generate_demo_portal:
 
 .PHONY: clean
 clean:
-	find . -type f -name '*.py[co]' -delete -o -type d -name __pycache__ -delete
+	find . \( -name '__pycache__' -type d -prune -o -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf {} +
 
 ###############
 #  Statistic  #

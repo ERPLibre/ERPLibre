@@ -1,6 +1,6 @@
 wget https://github.com/mozilla/geckodriver/releases/download/v0.34.0/geckodriver-v0.34.0-linux64.tar.gz
 tar xvf geckodriver-v0.34.0-linux64.tar.gz
-sudo mv ./.venv/geckodriver /usr/bin/geckdriver
+sudo mv ./.venv.erplibre/geckodriver /usr/bin/geckdriver
 
 pip install selenium
 

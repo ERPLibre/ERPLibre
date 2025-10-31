@@ -198,7 +198,7 @@ rm -r ~/.local/share/Odoo/filestore/database_name
 ## Create module scaffold
 
 ```bash
-source ./.venv/bin/activate
+source ./.venv.erplibre/bin/activate
 python odoo/odoo-bin scaffold MODULE_NAME addons/REPO_NAME/
 ```
 
@@ -212,7 +212,7 @@ Read GIT_REPO.md to understand how changer version.
 
 ## Python version
 
-Your actual version is in file .python-version. Use script `./script/version/change_python_version.sh 3.7.16` to change
+Your actual version is in file .python-odoo-version. Use script `./script/version/change_python_version.sh 3.7.16` to change
 to version 3.7.16 .
 
 Run the installation, `make install_dev`.
@@ -228,16 +228,8 @@ When you need to change python 3.7.17 to 3.8.10, do :
 ```bash
 rm -r .venv
 make install_dev
-./.venv/bin/poetry lock --no-update
+./.venv.$(cat ".erplibre-version" | xargs)/bin/poetry lock --no-update
 ```
-
-And update file script/install/install_locally.sh
-
-`ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.7/site-packages/`
-
-to
-
-`ln -fs ${EL_HOME_ODOO}/odoo ${EL_HOME}/.venv/lib/python3.8/site-packages/`
 
 # Pull request
 

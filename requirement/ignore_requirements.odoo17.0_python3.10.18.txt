@@ -1,0 +1,16 @@
+dateutil
+keystoneclient
+ldap
+swiftclient
+cv2
+speech_recognition
+PIL
+en_core_web_sm
+googletrans
+infobip-api-python-sdk
+pygount
+dataclasses
+
+pypiwin32
+
+cadquery

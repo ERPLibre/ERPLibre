@@ -37,7 +37,7 @@ def get_config():
     parser.add_argument(
         "-m",
         "--manifest",
-        default="./default.xml",
+        default=".repo/local_manifests/erplibre_manifest.xml",
         help="The manifest to compare with actual code.",
     )
     args = parser.parse_args()

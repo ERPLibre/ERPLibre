@@ -2,7 +2,7 @@
 # © 2021-2024 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-# This script need only basic importation
+# This script need only basic importation, it needs to be supported by python of your system
 import argparse
 import json
 import logging
@@ -18,11 +18,11 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
-VERSION_PYTHON_FILE = os.path.join(".python-version")
+VERSION_PYTHON_FILE = os.path.join(".python-odoo-version")
+INSTALLED_ODOO_VERSION_FILE = ".repo/installed_odoo_version.txt"
 VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
-VENV_FILE = os.path.join(".venv")
 ADDONS_PATH = os.path.join("addons")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
@@ -32,13 +32,14 @@ PYPROJECT_FILE = os.path.join("pyproject.toml")
 PYPROJECT_TEMPLATE_FILE = "pyproject.%s.toml"
 POETRY_LOCK_FILE = os.path.join("poetry.lock")
 POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
-PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
+# PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
 PIP_REQUIREMENT_TEMPLATE_FILE = "requirements.%s.txt"
 PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
     "requirement", "ignore_requirements.txt"
 )
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
-ADDONS_TEMPLATE_FILE = "addons.odoo%s"
+ADDONS_TEMPLATE_FILE = "odoo%s/addons"
+ODOO_TEMPLATE_FILE = "odoo%s"
 ERPLIBRE_TEMPLATE_VERSION = "odoo%s_python%s"
 
 
@@ -96,6 +97,11 @@ def get_config():
         help="Will only update the system by switch environnement.",
     )
     parser.add_argument(
+        "--switch_update",
+        action="store_true",
+        help="Work with --switch, will do repo update",
+    )
+    parser.add_argument(
         "--install_dev",
         action="store_true",
         help="Install developer environment.",
@@ -108,7 +114,7 @@ def get_config():
     parser.add_argument(
         "--force_install",
         action="store_true",
-        help="Will erase .venv and create symbolic link after installation.",
+        help="Will erase .venv.odooVersion and create symbolic link after installation.",
     )
     parser.add_argument(
         "--force_repo",
@@ -127,6 +133,7 @@ def get_config():
         args.force_repo = True
     args.is_in_installation = args.install or args.install_dev
     args.is_in_switch = args.switch
+    args.is_in_switch_force_update = args.switch and args.switch_update
     if not (args.install or args.install_dev) and args.force_install:
         args.force_install = False
 
@@ -145,6 +152,9 @@ class Update:
         self.new_version_odoo = None
         self.new_version_python = None
         self.new_version_poetry = None
+        self.expected_odoo_name = None
+        self.expected_odoo_path = None
+        self.expected_addons_name = None
         self.expected_venv_name = None
         self.expected_manifest_name = None
         self.expected_manifest_path = None
@@ -152,7 +162,6 @@ class Update:
         self.expected_pyproject_path = None
         self.expected_poetry_lock_name = None
         self.expected_poetry_lock_path = None
-        self.do_backup_venv = False
 
     def check_version_data(self):
         die(
@@ -179,10 +188,13 @@ class Update:
             self.python_version = txt.read().strip()
         with open(VERSION_ODOO_FILE) as txt:
             self.odoo_version = txt.read().strip()
+        with open(VERSION_POETRY_FILE) as txt:
+            poetry_version = txt.read().strip()
 
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
+        _logger.info(f"Poetry version: {poetry_version}")
         erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (
             self.odoo_version,
             self.python_version,
@@ -207,6 +219,13 @@ class Update:
             )
             return False
 
+        if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
+            with open(INSTALLED_ODOO_VERSION_FILE) as txt:
+                lst_version_installed = sorted(txt.read().splitlines())
+                str_installed_version = "Installed version: " + ", ".join(
+                    lst_version_installed
+                )
+                _logger.info(str_installed_version)
         return True
 
     def validate_version(self):
@@ -317,6 +336,10 @@ class Update:
         self.expected_addons_name = (
             ADDONS_TEMPLATE_FILE % self.new_version_odoo
         )
+        self.expected_odoo_name = ODOO_TEMPLATE_FILE % self.new_version_odoo
+        self.expected_odoo_path = os.path.join(
+            ".", self.expected_odoo_name, "odoo", "."
+        )
         self.expected_pip_requirement_path = os.path.join(
             ".", "requirement", self.expected_pip_requirement_name
         )
@@ -332,25 +355,11 @@ class Update:
 
     def validate_environment(self):
         status = True
-        # Validate .venv
-        status &= self.update_link_file(
-            "Virtual environnement",
-            VENV_FILE,
-            self.expected_venv_name,
-            is_directory=True,
-            do_delete_source=self.config.install_dev
-            or self.config.force_install,
-        )
-        venv_exist = os.path.exists(VENV_FILE)
+        venv_exist = os.path.exists(self.expected_venv_name)
         if not venv_exist and not self.config.install_dev:
             _logger.info("Relaunch this script with --install_dev argument.")
-        # Validate Git repo
-        status &= self.update_link_file(
-            "Git repositories",
-            MANIFEST_FILE_PATH,
-            self.expected_manifest_path,
-            do_delete_source=True,
-        )
+        # Validate Odoo repo
+        # TODO need to remove this from architecture
         # Validate Poetry and pip
         status &= self.update_link_file(
             "Poetry project toml",
@@ -365,12 +374,6 @@ class Update:
             do_delete_source=True,
         )
         status &= self.update_link_file(
-            "Pip requirement.txt",
-            PIP_REQUIREMENT_FILE,
-            self.expected_pip_requirement_path,
-            do_delete_source=True,
-        )
-        status &= self.update_link_file(
             "Pip ignore_requirement.txt",
             PIP_IGNORE_REQUIREMENT_FILE,
             self.expected_pip_ignore_requirement_path,
@@ -378,36 +381,25 @@ class Update:
         )
         if not os.path.isdir(self.expected_addons_name):
             status = False
-        # status &= self.update_link_file(
-        #     "Directory 'addons'",
-        #     ADDONS_PATH,
-        #     self.expected_addons_name,
-        #     is_directory=True,
-        #     do_delete_source=self.config.install_dev
-        #     or self.config.force_install,
-        # )
         return status
 
     def update_environment(self):
         status = True
-        do_action = bool(any([self.config.install_dev, self.config.install]))
-        if self.do_backup_venv and do_action:
-            venv_backup_name = (
-                f".venv_backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
-            )
-            shutil.move(VENV_FILE, venv_backup_name)
-            self.execute_log.append(f"Move .venv to backup {venv_backup_name}")
         if self.config.force_repo:
             # TODO add script to check difference before erase all
             os.system("./script/git/clean_repo_manifest.sh")
             self.execute_log.append(
                 f"Clear all repo from manifest, everything is deleted"
             )
-        if self.config.force_install:
-            os.system(f"rm -rf ./{VENV_FILE}")
-            self.execute_log.append(f"Remove ./{VENV_FILE}")
 
         # Always overwrite version
+        _logger.info(
+            f"Update local file, "
+            f"python version '{self.new_version_python}', "
+            f"erplibre version '{self.new_version_erplibre}', "
+            f"odoo version '{self.new_version_odoo}', "
+            f"poetry version '{self.new_version_poetry}'"
+        )
         with open(VERSION_PYTHON_FILE, "w") as txt:
             txt.write(self.new_version_python)
         with open(VERSION_ERPLIBRE_FILE, "w") as txt:
@@ -418,27 +410,14 @@ class Update:
             txt.write(self.new_version_poetry)
 
         if self.config.is_in_installation or self.config.is_in_switch:
-            addons_path_with_version = f"addons.odoo{self.new_version_odoo}"
-            # To support multiple addons directory, change name before run git repo
-            for addons_path in os.listdir("."):
-                if (
-                    addons_path.startswith("addons")
-                    and addons_path != addons_path_with_version
-                ):
-                    os.rename(addons_path, addons_path + "TEMP")
-
             # TODO need to be force if installation path is all good, return True
             if self.config.install_dev:
                 _logger.info("Installation.")
                 status = self.install_erplibre()
-
-                # Re-update if launch installation
-                if self.config.install_dev:
-                    self._update_directory_to_link(
-                        VENV_FILE, self.expected_venv_name
-                    )
-                    # self._update_directory_to_link(ADDONS_PATH, self.expected_addons_name)
-            elif self.config.is_in_switch:
+            elif (
+                self.config.is_in_switch
+                and self.config.is_in_switch_force_update
+            ):
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
                 status = os.system(
@@ -446,13 +425,13 @@ class Update:
                 )
 
             # To support multiple addons directory, remove TEMP
-            for addons_path in os.listdir("."):
-                if (
-                    addons_path.startswith("addons")
-                    and addons_path != addons_path_with_version
-                    and addons_path.endswith("TEMP")
-                ):
-                    os.rename(addons_path, addons_path[:-4])
+            # for addons_path in os.listdir("."):
+            #     if (
+            #         addons_path.startswith("addons")
+            #         and addons_path != addons_path_with_version
+            #         and addons_path.endswith("TEMP")
+            #     ):
+            #         os.rename(addons_path, addons_path[:-4])
             for addons_path in os.listdir("."):
                 if addons_path.startswith("addons"):
                     # In same time, force to create addons if not existing
@@ -461,28 +440,18 @@ class Update:
                         os.makedirs(addons_dir_path)
 
             # Force create addons link
-            if os.path.isdir(ADDONS_PATH):
-                if os.path.islink(ADDONS_PATH):
-                    os.remove(ADDONS_PATH)
-                else:
-                    os.rename(
-                        ADDONS_PATH,
-                        ADDONS_PATH
-                        + "_"
-                        + time.strftime("%Yy%mm%dd-%Hh%Mm%Ss"),
-                    )
-            os.symlink(addons_path_with_version, ADDONS_PATH)
+            # if os.path.isdir(ADDONS_PATH):
+            #     if os.path.islink(ADDONS_PATH):
+            #         os.remove(ADDONS_PATH)
+            #     else:
+            #         os.rename(
+            #             ADDONS_PATH,
+            #             ADDONS_PATH
+            #             + "_"
+            #             + time.strftime("%Yy%mm%dd-%Hh%Mm%Ss"),
+            #         )
+            # os.symlink(addons_path_with_version, ADDONS_PATH)
         return status
-
-    def _update_directory_to_link(self, dir_to_check, link_name):
-        actuel_venv_is_symlink = os.path.islink(dir_to_check)
-        if not actuel_venv_is_symlink:
-            # Move it and create a symlink
-            shutil.move(dir_to_check, link_name)
-            os.symlink(link_name, dir_to_check)
-            msg = f"Create symbolic link {link_name} to {dir_to_check}"
-            _logger.info(msg)
-            self.execute_log.append(msg)
 
     def print_log(self):
         if not self.execute_log:
@@ -497,7 +466,7 @@ class Update:
         if not pycharm_is_installed or not self.execute_log:
             return
         os.system(
-            "./.venv/bin/python ./script/ide/pycharm_configuration.py --init"
+            "./.venv.erplibre/bin/python ./script/ide/pycharm_configuration.py --init"
         )
 
     def install_erplibre(self):
@@ -537,7 +506,7 @@ class Update:
         source_file_is_symlink = os.path.islink(source_file)
         target_file_exist = os.path.exists(target_file)
         if not target_file_exist:
-            _logger.warning(f"'{target_file}' not exist.")
+            _logger.error(f"'{target_file}' not exist.")
         do_symlink = False
         # Case 4
         if source_file_is_symlink and not source_file_exist:
@@ -564,8 +533,8 @@ class Update:
                         )
                         os.system(f"ls -lha {source_file}")
                         sys.exit(1)
-                    else:
-                        do_switch_origin_sim = True
+                    # else:
+                    #     do_switch_origin_sim = True
                 else:
                     source_file_is_file = os.path.isfile(source_file)
                     if not source_file_is_file:
@@ -575,18 +544,6 @@ class Update:
                         )
                         os.system(f"ls -lha {source_file}")
                         sys.exit(1)
-                    else:
-                        do_switch_origin_sim = True
-                if do_switch_origin_sim:
-                    # Check if not erase an existing
-                    if target_file_exist:
-                        # Create a backup
-                        new_target_file = f"{target_file}.backup_{time.strftime('%Yy%mm%dd-%Hh%Mm%Ss')}"
-                    else:
-                        new_target_file = target_file
-                    # Move it and create a symlink
-                    shutil.move(source_file, new_target_file)
-                    do_symlink = True
             else:
                 # Case 3
                 # Is symlink
@@ -613,7 +570,9 @@ class Update:
                 do_delete_source = do_delete_source or os.path.exists(
                     target_file
                 )
-                if ref_symlink_source_from_root == target_file:
+                if os.path.normpath(
+                    ref_symlink_source_from_root
+                ) == os.path.normpath(target_file):
                     _logger.info(
                         f"{component_name}:The system configuration is good."
                     )
@@ -723,18 +682,20 @@ def main():
         update.pycharm_update()
 
         # Update OCB configuration
-        os.system("./.venv/bin/python ./script/git/git_repo_update_group.py")
+        os.system(
+            "./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py"
+        )
         os.system("./script/generate_config.sh")
         # TODO ignore this if installation fail
 
-        # TODO this cause an error at first execution, need to source ./.venv/bin/activate and rerun
-        # subprocess.run(['source', './.venv/bin/activate'], shell=True)
+        # TODO this cause an error at first execution, need to source ./.venv.erplibre/bin/activate and rerun
+        # subprocess.run(['source', './.venv.erplibre/bin/activate'], shell=True)
         # subprocess.run(['make', 'config_gen_all'])
         # status = os.system(f"make config_gen_all")
         #
         # if not status:
         #     print("Please run:")
-        #     print("source ./.venv/bin/activate")
+        #     print("source ./.venv.erplibre/bin/activate")
         #     print("make config_gen_all")
 
 

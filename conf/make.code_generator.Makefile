@@ -30,11 +30,11 @@ db_restore_erplibre_base_db_template:
 
 .PHONY: db_drop_db_code_generator
 db_drop_db_code_generator:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database code_generator
+	./odoo_bin.sh db --drop --database code_generator
 
 .PHONY: db_drop_db_template
 db_drop_db_template:
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database template
+	./odoo_bin.sh db --drop --database template
 
 .PHONY: db_test_re_export_website_attachments
 db_test_re_export_website_attachments:
@@ -288,39 +288,39 @@ test_code_generator_demo_mariadb_sql_example_1:
 
 .PHONY: test_addons_code_generator
 test_addons_code_generator:
-	./.venv/bin/coverage erase
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database test_addons_code_generator
+	./.venv.erplibre/bin/coverage erase
+	./odoo_bin.sh db --drop --database test_addons_code_generator
 	# TODO missing test in code_generator
 	./test.sh --dev cg -d test_addons_code_generator --db-filter test_addons_code_generator -i code_generator
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: test_addons_code_generator_code_generator
 test_addons_code_generator_code_generator:
 	# TODO this test only generation, not test
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./script/database/db_restore.py --database test_addons_code_generator_code_generator
 	./test.sh --dev cg -d test_addons_code_generator_code_generator --db-filter test_addons_code_generator_code_generator -i code_generator_code_generator
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 .PHONY: test_addons_code_generator_template_code_generator
 test_addons_code_generator_template_code_generator:
 	# TODO this test only generation, not test
-	./.venv/bin/coverage erase
+	./.venv.erplibre/bin/coverage erase
 	./script/database/db_restore.py --database test_addons_code_generator_template_code_generator
 	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator
 	./test.sh --dev cg -d test_addons_code_generator_template_code_generator --db-filter test_addons_code_generator_template_code_generator -i code_generator_template_code_generator
-	./.venv/bin/coverage combine -a
-	./.venv/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage combine -a
+	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 # generate config repo code_generator

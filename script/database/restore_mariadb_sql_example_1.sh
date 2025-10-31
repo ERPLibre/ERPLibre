@@ -26,4 +26,4 @@ echo "Import SQL file"
 mysql -u organization -porganization mariadb_sql_example_1 < ${SQL_PATH}
 
 echo "Fix SQL in database"
-./.venv/bin/python ./script/database/fix_mariadb_sql_example_1.py
+./.venv.erplibre/bin/python ./script/database/fix_mariadb_sql_example_1.py

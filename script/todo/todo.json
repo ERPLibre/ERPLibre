@@ -18,7 +18,7 @@
     "function": [
         {
             "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16",
-            "command": "./.venv/bin/python ./script/selenium/web_login.py"
+            "command": "./.venv.erplibre/bin/python ./script/selenium/web_login.py"
         }
     ],
     "update_from_makefile": [
@@ -32,6 +32,14 @@
         {
             "prompt_description": "Show code status",
             "makefile_cmd": "repo_show_status"
+        },
+        {
+            "prompt_description": "Stash all code",
+            "makefile_cmd": "repo_do_stash"
+        },
+        {
+            "prompt_description": "Format modified code",
+            "makefile_cmd": "format"
         }
     ]
 }

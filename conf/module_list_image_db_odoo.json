@@ -239,6 +239,24 @@
             }
         ]
     },
+    "odoo13.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "fetchmail_notify_error_to_sender",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline"
+                ]
+            }
+        ]
+    },
     "odoo14.0_base": {
         "base": "",
         "disable": false,
@@ -427,6 +445,33 @@
             }
         ]
     },
+    "odoo15.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_listview_range_select",
+                    "web_dialog_size",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job",
+                    "web_advanced_search"
+                ]
+            }
+        ]
+    },
     "odoo16.0_base": {
         "base": "",
         "disable": false,
@@ -446,7 +491,6 @@
                     "web_search_with_and",
                     "web_listview_range_select",
                     "web_dialog_size",
-                    "password_security",
                     "web_refresher",
                     "date_range",
                     "partner_contact_access_link",
@@ -532,7 +576,6 @@
                     "web_search_with_and",
                     "web_listview_range_select",
                     "web_dialog_size",
-                    "password_security",
                     "web_refresher",
                     "date_range",
                     "partner_contact_access_link",
@@ -636,6 +679,57 @@
                     "website_payment",
                     "website_slides",
                     "website_snippet_country_dropdown"
+                ]
+            }
+        ]
+    },
+    "odoo17.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "auto_backup",
+                    "disable_odoo_online",
+                    "mail_debrand",
+                    "remove_odoo_enterprise",
+                    "web_responsive",
+                    "web_timeline",
+                    "server_action_mass_edit",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_dialog_size",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "auditlog",
+                    "queue_job"
+                ]
+            }
+        ]
+    },
+    "odoo18.0_base": {
+        "base": "",
+        "disable": false,
+        "image_list": [
+            {
+                "module": [
+                    "auth_user_case_insensitive",
+                    "disable_odoo_online",
+                    "remove_odoo_enterprise",
+                    "web_dark_mode",
+                    "web_theme_classic",
+                    "muk_web_theme",
+                    "web_timeline",
+                    "server_action_mass_edit",
+                    "partner_firstname",
+                    "web_search_with_and",
+                    "web_dialog_size",
+                    "web_refresher",
+                    "date_range",
+                    "partner_contact_access_link",
+                    "queue_job"
                 ]
             }
         ]
