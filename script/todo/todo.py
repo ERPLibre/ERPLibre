@@ -784,6 +784,9 @@ class TODO:
             if not source_odoo and os.path.exists("./.erplibre-version"):
                 with open("./.erplibre-version") as f:
                     source_odoo = f.read()
+            if not source_odoo:
+                _logger.error(f"You cannot execute Odoo command if no version is installed. Command : {commande}")
+                return -1
             commande = (
                 f"source ./.venv.{source_odoo}/bin/activate && {commande}"
             )
