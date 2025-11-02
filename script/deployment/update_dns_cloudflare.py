@@ -5,8 +5,8 @@
 import argparse
 import logging
 
-import CloudFlare
 import requests
+from cloudflare import Cloudflare
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -82,7 +82,7 @@ def get_config():
 
 class ManageCloudFlare:
     def __init__(self, profile, debug=False, raw=False):
-        self.cf = CloudFlare.CloudFlare(profile=profile, debug=debug, raw=raw)
+        self.cf = Cloudflare(profile=profile, debug=debug, raw=raw)
         self.raw = raw
 
     @staticmethod
