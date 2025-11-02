@@ -8,7 +8,7 @@ sudo adduser --system --quiet --shell=/bin/bash --home=/${EL_USER} --gecos 'ERPL
 sudo adduser ${EL_USER} sudo
 
 echo -e "\n---- Creating the ERPLIBRE PostgreSQL User  ----"
-sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
+sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 
 #echo -e "\n---- Create Log directory ----"
 #sudo mkdir /var/log/${EL_USER}
@@ -22,8 +22,8 @@ sudo chown -R ${EL_USER}:${EL_USER} ${EL_HOME}
 # Install ERPLIBRE
 #--------------------------------------------------
 echo -e "\n==== Clone this installation  ===="
-REMOTE_URL_GIT=`git remote get-url origin`
-BRANCH_GIT=`git rev-parse --abbrev-ref HEAD`
+REMOTE_URL_GIT=$(git remote get-url origin)
+BRANCH_GIT=$(git rev-parse --abbrev-ref HEAD)
 if [ "HEAD" = "${BRANCH_GIT}" ]; then
   # Checkout version of env_var.sh
   sudo su ${EL_USER} -c "git clone --branch v${ERPLIBRE_VERSION} ${REMOTE_URL_GIT} ${EL_HOME_ERPLIBRE}"
@@ -43,7 +43,7 @@ cd ${LAST_PWD}
 #--------------------------------------------------
 # Adding ERPLIBRE as a daemon
 #--------------------------------------------------
-./script/install/install_daemon.sh
+./script/systemd/install_daemon.sh
 
 #--------------------------------------------------
 # Install Nginx if needed
