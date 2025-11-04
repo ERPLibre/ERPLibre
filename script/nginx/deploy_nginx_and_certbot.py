@@ -52,6 +52,10 @@ def get_config():
         help="Separate by ; for multiple domains. Main domain is first on the list.",
     )
     parser.add_argument(
+        "--admin_email",
+        help="Will configure certbot with admin email to receive information about the certificate.",
+    )
+    parser.add_argument(
         "--odoo_version",
         default="18.0",
         help="Specify only one version, 12.0 to 18.0",
@@ -131,7 +135,16 @@ def main():
         if config.generate_nginx:
             time.sleep(10)
         cmd_lst_domain = " -d " + " -d ".join(lst_domain)
-        cmd_certbot = "sudo certbot --nginx%s" % cmd_lst_domain
+        cmd_more_certbot_cmd = ""
+
+        if config.admin_email:
+            cmd_more_certbot_cmd += (
+                f"--email {config.admin_email} --non-interactive --agree-tos "
+            )
+
+        cmd_certbot = (
+            f"sudo certbot {cmd_more_certbot_cmd}--nginx{cmd_lst_domain}"
+        )
         print(cmd_certbot)
         os.system(cmd_certbot)
 

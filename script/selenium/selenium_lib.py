@@ -47,10 +47,6 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-# TODO maybe use TODO lib
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 MONTHS_FR = {
     "janvier": 1,
@@ -69,11 +65,6 @@ MONTHS_FR = {
     "décembre": 12,
     "decembre": 12,
 }
-
-# TODO maybe use TODO lib
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 
 
 class SeleniumLib(object):
@@ -421,53 +412,6 @@ class SeleniumLib(object):
         if kp:
             self.kdbx = kp
         return kp
-
-    def get_kdbx(self):
-        if self.kdbx:
-            return self.kdbx
-        # Open file
-        chemin_fichier_kdbx = self.get_config(["kdbx", "path"])
-        if not chemin_fichier_kdbx:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            chemin_fichier_kdbx = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
-        if not chemin_fichier_kdbx:
-            # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
-            return
-
-        mot_de_passe_kdbx = self.get_config(["kdbx", "password"])
-        if not mot_de_passe_kdbx:
-            mot_de_passe_kdbx = getpass.getpass(
-                prompt="Entrez votre mot de passe : "
-            )
-
-        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
-
-        if kp:
-            self.kdbx = kp
-        return kp
-
-    def get_config(self, lst_params):
-        # Open file
-        config_file = CONFIG_FILE
-        if os.path.exists(CONFIG_OVERRIDE_FILE):
-            config_file = CONFIG_OVERRIDE_FILE
-
-        with open(config_file) as cfg:
-            dct_data = json.load(cfg)
-            for param in lst_params:
-                try:
-                    dct_data = dct_data[param]
-                except KeyError:
-                    # _logger.error(
-                    #     f"KeyError on file {config_file} with keys"
-                    #     f" {lst_params}"
-                    # )
-                    return
-        return dct_data
 
     @staticmethod
     def get_french_word_no_space_no_accent():

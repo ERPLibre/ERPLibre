@@ -16,7 +16,7 @@
 #--------------------------------------------------
 echo -e "\n* Create init file"
 sudo rm -f /tmp/${EL_CONFIG}
-cat <<EOF > /tmp/${EL_CONFIG}
+cat <<EOF >/tmp/${EL_CONFIG}
 [Unit]
 Description=${EL_USER}
 Requires=postgresql.service

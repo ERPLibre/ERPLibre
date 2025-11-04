@@ -25,6 +25,9 @@ humanize
 requests
 urwid
 python-dateutil
+unidecode
+sshconf
+cloudflare
 
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0
