@@ -31,6 +31,14 @@ def get_modified_files():
                 continue
 
             try:
+                has_space = False
+                file_path_space = ""
+                if '"' in line:
+                    has_space = True
+                    file_path_space = line[
+                        line.index('"') + 1 : line.rindex('"')
+                    ]
+                    line = line.replace(f'"{file_path_space}"', "replace")
                 if "->" in line:
                     # Example : M file_01 -> file_02
                     status, old_file_path, code, file_path = (
@@ -41,6 +49,9 @@ def get_modified_files():
                     status, file_path = (
                         line.strip().replace("  ", " ").split(" ")
                     )
+                if has_space:
+                    file_path = file_path_space
+
             except Exception as e:
                 print(f"'{line}'")
                 raise e
