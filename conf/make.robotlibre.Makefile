@@ -13,12 +13,12 @@ robot_libre_init:
 	echo "Robot Libre init"
 	echo "Sorry for your lost data"
 	echo "Generate repository"
-	./script/manifest/update_manifest_local_dev.sh "-g base,image_db,code_generator"
+	#./script/manifest/update_manifest_local_dev.sh "-g base,image_db,code_generator"
 	echo "Generate new fast configuration repo"
-	./script/git/git_repo_update_group.py --group base,code_generator
+	#./script/git/git_repo_update_group.py --group base,code_generator
 	echo "Generate configuration"
-	./script/generate_config.sh
-	./script/git/git_change_remote_https_to_git.py
+	#./script/generate_config.sh
+	#./script/git/git_change_remote_https_to_git.py
 
 .PHONY: robot_libre_pre
 robot_libre_pre:
