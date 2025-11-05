@@ -32,6 +32,7 @@ endif
 
 # Include all Makefile
 -include ./conf/make.code_generator.Makefile
+-include ./conf/make.robotlibre.Makefile
 -include ./conf/make.erplibre.Makefile
 -include ./conf/make.database.Makefile
 -include ./conf/make.docker.Makefile
