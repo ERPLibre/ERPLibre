@@ -10,6 +10,9 @@ try:
 except ImportError:
     print("Please read installation script/selenium/install.md")
     raise
+except ModuleNotFoundError:
+    print("Please read installation script/selenium/install.md")
+    raise
 
 
 Gst.init(None)

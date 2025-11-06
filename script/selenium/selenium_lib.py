@@ -35,6 +35,11 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
 from script.config import config_file
 
 logging.basicConfig(
@@ -253,9 +258,12 @@ class SeleniumLib(object):
                 firefox_options.set_preference("pdfjs.disabled", True)
                 if self.config.window_size:
                     # chrome_options.add_argument("--window-size=1920,1080")
-                    firefox_options.add_argument(
-                        f"--window-size={self.config.window_size}"
-                    )
+                    # firefox_options.add_argument(
+                    #     f"--window-size={self.config.window_size}"
+                    # )
+                    width, height = self.config.window_size.split(",")
+                    firefox_options.add_argument("--width=" + str(width))
+                    firefox_options.add_argument("--height=" + str(height))
 
                 if self.config.headless:
                     firefox_options.add_argument("--headless")
