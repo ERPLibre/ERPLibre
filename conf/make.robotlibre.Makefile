@@ -90,11 +90,11 @@ robot_libre_run:
 
 .PHONY: robot_libre_open
 robot_libre_open:
-	./.venv/bin/python ./script/selenium/web_login.py
+	source .venv.erplibre/bin/activate;python ./script/selenium/web_login.py
 
 .PHONY: robot_libre_open_record
 robot_libre_open_record:
-	./.venv/bin/python ./script/selenium/web_login.py --record_mode
+	source .venv.erplibre/bin/activate;python ./script/selenium/web_login.py --record_mode
 
 .PHONY: robot_libre_format
 robot_libre_format:
@@ -107,3 +107,15 @@ robot_libre_generate:
 .PHONY: run_db
 run_db:
 	./run.sh -d $(bd)
+
+.PHONY: robot_libre_selenium_generate_code_example_01
+robot_libre_selenium_generate_code_example_01:
+	source .venv.erplibre/bin/activate;python ./script/selenium/scenario/selenium_devops.py --open_me_devops --generate_code
+
+.PHONY: robot_libre_selenium_generate_code_example_01_record
+robot_libre_selenium_generate_code_example_01_record:
+	source .venv.erplibre/bin/activate;python ./script/selenium/scenario/selenium_devops.py --open_me_devops --generate_code --not_private_mode --video_suffix not_private_mode --no_dark_mode --record_mode --window_size 1920,1080
+
+.PHONY: robot_libre_selenium_generate_code_example_01_record_cell
+robot_libre_selenium_generate_code_example_01_record_cell:
+	source .venv.erplibre/bin/activate;python ./script/selenium/scenario/selenium_devops.py --open_me_devops --generate_code --not_private_mode --video_suffix not_private_mode --no_dark_mode --record_mode --window_size 1080,1920
