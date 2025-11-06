@@ -30,18 +30,18 @@ robot_libre:
 	./script/make.sh robot_libre_pre
 	echo "Install devops"
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database robotlibre --restore_image robotlibre_last
+	./odoo_bin.sh db --backup --database robotlibre --restore_image robotlibre_last
 
 .PHONY: robot_libre_fast
 robot_libre_fast:
 	echo "FAST! RobotLibre"
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database _cache_robotlibre_last
+	./odoo_bin.sh db --drop --database _cache_robotlibre_last
 	./script/database/db_restore.py --database robotlibre --image robotlibre_last
 
 .PHONY: robot_libre_fast_update
 robot_libre_fast_update:
 	echo "FAST! RobotLibre with update"
-	./.venv/bin/python3 ./odoo/odoo-bin db --drop --database _cache_robotlibre_last
+	./odoo_bin.sh db --drop --database _cache_robotlibre_last
 	./script/database/db_restore.py --database robotlibre --image robotlibre_last
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops
 
@@ -50,20 +50,20 @@ robot_libre_extra:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops and erplibre_devops_extra"
 	./script/addons/install_addons_dev.sh robotlibre erplibre_devops,erplibre_devops_extra
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database robotlibre --restore_image robotlibre_last
+	./odoo_bin.sh db --backup --database robotlibre --restore_image robotlibre_last
 
 .PHONY: robot_libre_me
 robot_libre_me:
 	./script/make.sh robot_libre_pre
 	echo "Install erplibre_devops, erplibre_devops_me and erplibre_devops_extra"
 	OPEN_DASHBOARD=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops,erplibre_devops_me,erplibre_devops_extra
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database robotlibre --restore_image robotlibre_last
+	./odoo_bin.sh db --backup --database robotlibre --restore_image robotlibre_last
 
 .PHONY: robot_libre_me_only
 robot_libre_me_only:
 	./script/make.sh robot_libre
 	IS_ONLY_ME=TRUE ./run.sh --dev cg -d robotlibre -i erplibre_devops_me
-	./.venv/bin/python3 ./odoo/odoo-bin db --backup --database robotlibre --restore_image robotlibre_last
+	./odoo_bin.sh db --backup --database robotlibre --restore_image robotlibre_last
 
 .PHONY: robot_libre_me_auto
 robot_libre_me_auto:
