@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
@@ -97,7 +97,10 @@ def main():
     # Default paths and fallback values (same logic as in the bash script)
     el_user = args.user
     el_home_erplibre = args.home_erplibre or os.getcwd()
-    el_config_name = args.config_name or f"erplibre_{el_user}_{os.path.basename(os.getcwd())}"
+    el_config_name = (
+        args.config_name
+        or f"erplibre_{el_user}_{os.path.basename(os.getcwd())}"
+    )
     exec_param = (
         " "
         + f" {w_cmd("-d", args.database or "")} {w_cmd("-p", args.port or "")}".strip()
