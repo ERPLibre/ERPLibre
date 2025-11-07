@@ -1,6 +1,7 @@
 name,script_path,parameters,folder,default
 run,./odoo/odoo-bin,--limit-time-real 999999 -c config.conf,run,True
 run_parallel_test,./script/test/run_parallel_test.py,,test,
+robotlibre_devops_update,./odoo/odoo-bin,--limit-time-real 999999 --no-http -c config.conf --stop-after-init --dev cg -d robotlibre -u erplibre_devops,devops,
 cg_cg,./odoo/odoo-bin,--limit-time-real 999999 --no-http -c config.conf --stop-after-init --dev cg -d code_generator -i code_generator_code_generator,code_generator,
 cg_cg_template,./odoo/odoo-bin,--limit-time-real 999999 --no-http -c config.conf --stop-after-init --dev cg -d template -i code_generator_template_code_generator,code_generator_template,
 code_generator_auto_backup,./odoo/odoo-bin,--limit-time-real 999999 --no-http -c config.conf --stop-after-init --dev cg -d code_generator -i code_generator_auto_backup,code_generator,
