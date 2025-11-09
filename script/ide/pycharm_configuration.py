@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
@@ -26,6 +26,7 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
 IDEA_PATH = "./.idea"
+DEFAULT_ODOO_BIN = "./odoo/odoo-bin"  # Will be replaced dynamic
 IDEA_MISC = os.path.join(IDEA_PATH, "misc.xml")
 IDEA_WORKSPACE = os.path.join(IDEA_PATH, "workspace.xml")
 VCS_WORKSPACE = os.path.join(IDEA_PATH, "vcs.xml")
@@ -35,6 +36,12 @@ PATH_DEFAULT_CONFIGURATION = "./conf/pycharm_default_configuration.csv"
 PATH_DEFAULT_CONFIGURATION_PRIVATE = (
     "./private/pycharm_default_configuration.private.csv"
 )
+if os.path.isfile(".odoo-version"):
+    with open(".odoo-version") as txt:
+        odoo_version = txt.read()
+    DEFAULT_ODOO_BIN_UPDATE = f"./odoo{odoo_version}/odoo/odoo-bin"
+else:
+    DEFAULT_ODOO_BIN_UPDATE = None
 
 
 def get_config():
@@ -342,6 +349,10 @@ def add_configuration(dct_xml, file_name, config):
         conf_default = bool(default_conf.get("default"))
         if conf_default:
             last_default = f"Python.{conf_name}"
+        if DEFAULT_ODOO_BIN_UPDATE:
+            conf_script_path = conf_script_path.replace(
+                DEFAULT_ODOO_BIN, DEFAULT_ODOO_BIN_UPDATE
+            )
         conf_script_path_replace = (
             conf_script_path
             if not conf_script_path.startswith("./")

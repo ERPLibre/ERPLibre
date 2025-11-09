@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
@@ -24,7 +24,9 @@ DEFAULT_PATH_MANIFEST_ODOO_CONF = os.path.join("conf", "git_manifest_odoo.csv")
 DEFAULT_PATH_MANIFEST_PRIVATE_CONF = os.path.join(
     "private", "default_git_manifest.csv"
 )
-DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(".repo", "installed_odoo_version.txt")
+DEFAULT_PATH_INSTALLED_ODOO_VERSION = os.path.join(
+    ".repo", "installed_odoo_version.txt"
+)
 
 
 def get_config():
@@ -44,7 +46,11 @@ def get_config():
         "--input",
         help="First manifest to merge into input2. Second manifest, overwrite by input1.",
     )
-    parser.add_argument("--output", default=".repo/local_manifests/erplibre_manifest.xml", help="Output of new manifest")
+    parser.add_argument(
+        "--output",
+        default=".repo/local_manifests/erplibre_manifest.xml",
+        help="Output of new manifest",
+    )
     parser.add_argument(
         "--att_revision_only",
         action="store_true",
@@ -89,11 +95,14 @@ def main():
 
             if os.path.exists(DEFAULT_PATH_INSTALLED_ODOO_VERSION):
                 with open(DEFAULT_PATH_INSTALLED_ODOO_VERSION, "r") as f:
-                    lst_installed_odoo_version = [a.strip() for a in f.readlines()]
+                    lst_installed_odoo_version = [
+                        a.strip() for a in f.readlines()
+                    ]
                 if lst_installed_odoo_version:
                     for installed_odoo_version in lst_installed_odoo_version:
                         path_manifest_odoo_version = os.path.join(
-                            "manifest", f"git_manifest_{installed_odoo_version}.xml"
+                            "manifest",
+                            f"git_manifest_{installed_odoo_version}.xml",
                         )
                         if os.path.exists(path_manifest_odoo_version):
                             lst_input.append(path_manifest_odoo_version)
@@ -102,7 +111,8 @@ def main():
                                 f"ERROR: {path_manifest_odoo_version} does not exist"
                             )
                         path_manifest_odoo_version = os.path.join(
-                            "manifest", f"git_manifest_{installed_odoo_version}_dev.xml"
+                            "manifest",
+                            f"git_manifest_{installed_odoo_version}_dev.xml",
                         )
                         if os.path.exists(path_manifest_odoo_version):
                             lst_input.append(path_manifest_odoo_version)

@@ -82,7 +82,7 @@ if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."
   exit 1
 fi
-sudo apt-get install libmariadbd-dev -y
+sudo apt-get install libmariadbd-dev freetds-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get libmariadb installation error."

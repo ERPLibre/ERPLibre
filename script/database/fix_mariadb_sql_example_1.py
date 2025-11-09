@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 from collections import defaultdict
 
@@ -161,19 +161,19 @@ def delete_record(cr):
     cr.execute(query_search)
 
     query_search = """
-    DELETE FROM `tbl_commande_membre_produit` 
+    DELETE FROM `tbl_commande_membre_produit`
     WHERE NoFournisseurProduitCommande in (22659, 22724, 22662, 22663, 22732, 22670, 22705, 22737, 22741, 22679, 22680, 22682, 22655);
     """
     cr.execute(query_search)
 
     query_search = """
-    DELETE FROM `tbl_echange_service` 
+    DELETE FROM `tbl_echange_service`
     WHERE NoMembreVendeur in (7703);
     """
     cr.execute(query_search)
 
     query_search = """
-    DELETE FROM `tbl_categorie_sous_categorie` 
+    DELETE FROM `tbl_categorie_sous_categorie`
     WHERE NoCategorie in (999);
     """
     cr.execute(query_search)
@@ -210,7 +210,7 @@ def migrate_record(cr):
     i = 0
     for sous_categorie_id in lst_sous_categorie:
         i += 1
-        query_search = f"""UPDATE tbl_sous_categorie set NoSousCategorieId={i} 
+        query_search = f"""UPDATE tbl_sous_categorie set NoSousCategorieId={i}
         WHERE NoCategorie={sous_categorie_id[1]} and NoSousCategorie='{sous_categorie_id[0]}'
         """
         cr.execute(query_search)
@@ -232,7 +232,7 @@ def migrate_record(cr):
                 f"Get null from {categorie_sous_categorie_id[2]} and"
                 f" {categorie_sous_categorie_id[1]}"
             )
-        query_search = f"""UPDATE tbl_categorie_sous_categorie set NoSousCategorieId={id_sous_categorie} 
+        query_search = f"""UPDATE tbl_categorie_sous_categorie set NoSousCategorieId={id_sous_categorie}
         WHERE NoCategorieSousCategorie={categorie_sous_categorie_id[0]}
         """
         cr.execute(query_search)

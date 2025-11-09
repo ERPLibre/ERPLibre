@@ -1,20 +1,21 @@
 #!/usr/bin/env python
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
-import psycopg2
 import sys
 import time
 
-if __name__ == '__main__':
+import psycopg2
+
+if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument('--db_host', required=True)
-    arg_parser.add_argument('--db_port', required=True)
-    arg_parser.add_argument('--db_user', required=True)
-    arg_parser.add_argument('--db_password', required=True)
-    arg_parser.add_argument('--db_name', required=False, default="postgres")
-    arg_parser.add_argument('--timeout', type=int, default=10)
+    arg_parser.add_argument("--db_host", required=True)
+    arg_parser.add_argument("--db_port", required=True)
+    arg_parser.add_argument("--db_user", required=True)
+    arg_parser.add_argument("--db_password", required=True)
+    arg_parser.add_argument("--db_name", required=False, default="postgres")
+    arg_parser.add_argument("--timeout", type=int, default=10)
 
     args = arg_parser.parse_args()
 
@@ -22,12 +23,16 @@ if __name__ == '__main__':
     print("Try connection to postgres...")
 
     connected = False
-    error = ''
+    error = ""
     while ((time.time() - start_time) < args.timeout) or connected is True:
         try:
-            conn = psycopg2.connect(user=args.db_user, host=args.db_host,
-                                    port=args.db_port, password=args.db_password,
-                                    dbname=args.db_name)
+            conn = psycopg2.connect(
+                user=args.db_user,
+                host=args.db_host,
+                port=args.db_port,
+                password=args.db_password,
+                dbname=args.db_name,
+            )
             break
         except psycopg2.OperationalError as e:
             error = e

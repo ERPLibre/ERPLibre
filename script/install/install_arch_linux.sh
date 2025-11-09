@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
 install_package() {
-    local package_name=$1
+  local package_name=$1
 
-    # Check package is already installed
-    if pacman -Qs "$package_name" > /dev/null; then
-        echo "$package_name is already installed."
-    else
-        echo "Installation of package $package_name..."
-        yes|yay -S "$package_name"
-    fi
+  # Check package is already installed
+  if pacman -Qs "$package_name" >/dev/null; then
+    echo "$package_name is already installed."
+  else
+    echo "Installation of package $package_name..."
+    yes | yay -S "$package_name"
+  fi
 }
 
 # Odoo installation
@@ -18,6 +18,7 @@ install_package postgresql
 install_package mariadb
 install_package libev
 install_package wkhtmltopdf
+install_package freetds
 
 echo "Need password to create symbolic link, create postgres user and install npm :"
 sudo ln -fs /usr/lib/libldap.so /usr/lib/libldap_r.so

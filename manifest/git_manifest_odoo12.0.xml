@@ -325,7 +325,7 @@
         name="erplibre_addons.git"
         path="odoo12.0/addons/ERPLibre_erplibre_addons"
         remote="ERPLibre"
-        revision="12.0_erplibre_devops"
+        revision="12.0"
         groups="addons,odoo12.0,base"
     />
     <project

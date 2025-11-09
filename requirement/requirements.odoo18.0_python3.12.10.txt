@@ -64,3 +64,9 @@ cryptography==46.0.3
 pyopenssl==25.3.0
 # This will ignore pyopenssl from pysaml2==7.5.4
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
+
+# Fix compilation, until pymssql==2.3.9 is release
+git+https://github.com/pymssql/pymssql.git
+
+# Force last version, because too old into pip
+git+https://github.com/berkerpeksag/astor.git

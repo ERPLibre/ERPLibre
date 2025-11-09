@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2024 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
@@ -13,7 +13,6 @@ import uuid
 
 from git import Repo
 from git.exc import InvalidGitRepositoryError, NoSuchPathError
-
 
 logging.basicConfig(
     format=(
@@ -383,10 +382,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = (
-                "./odoo_bin.sh db --drop --database"
-                f" {bd_name_demo}"
-            )
+            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_demo}"
             _logger.info(cmd)
             os.system(cmd)
 
@@ -467,10 +463,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = (
-                "./odoo_bin.sh db --drop --database"
-                f" {bd_name_template}"
-            )
+            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_template}"
             _logger.info(cmd)
             os.system(cmd)
 
@@ -538,10 +531,7 @@ class ProjectManagement:
         os.system(cmd)
 
         if not self.keep_bd_alive:
-            cmd = (
-                "./odoo_bin.sh db --drop --database"
-                f" {bd_name_generator}"
-            )
+            cmd = "./odoo_bin.sh db --drop --database" f" {bd_name_generator}"
             _logger.info(cmd)
             os.system(cmd)
 

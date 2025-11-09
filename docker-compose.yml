@@ -32,14 +32,14 @@ services:
     restart: always
 
   db:
-    image: postgis/postgis:18-3.6-alpine
+    image: postgis/postgis:17-3.6-alpine
     environment:
       POSTGRES_PASSWORD: mysecretpassword
       POSTGRES_USER: odoo
       POSTGRES_DB: postgres
-      PGDATA: /var/lib/postgresql/pgdata
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - erplibre-db-data:/var/lib/postgresql/pgdata
+      - erplibre-db-data:/var/lib/postgresql/data/pgdata
     restart: always
 
 # We configure volume without specific destination to let docker manage it. To configure it through docker use (read related documentation before continuing) :
