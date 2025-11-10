@@ -78,6 +78,13 @@ def get_modified_files():
                         )
                     if has_space:
                         file_path = file_path_space
+                    # Remove ignoring
+                    if (
+                        file_path.endswith(".zip")
+                        or file_path.endswith(".tar.gz")
+                        or file_path.endswith("__pycache__/")
+                    ):
+                        continue
                     file_path = os.path.join(directory, file_path)
 
                 except Exception as e:
