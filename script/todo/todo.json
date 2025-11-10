@@ -13,6 +13,16 @@
             "prompt_description": "Test - Instance de base minimale",
             "makefile_cmd": "db_restore_erplibre_base_db_test",
             "database": "test"
+        },
+        {
+            "prompt_description": "Ouvrir RobotLibre \uD83E\uDD16 minimal",
+            "makefile_cmd": "robot_libre",
+            "database": "robotlibre"
+        },
+        {
+            "prompt_description": "Ouvrir RobotLibre \uD83E\uDD16 en activant la recherche",
+            "makefile_cmd": "robot_libre_all",
+            "database": "robotlibre"
         }
     ],
     "function": [

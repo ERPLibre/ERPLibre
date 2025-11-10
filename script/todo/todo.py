@@ -209,7 +209,7 @@ class TODO:
     def prompt_execute(self):
         help_info = """Commande :
 [1] Run - Exécuter et installer une instance
-[2] Exec - Automatisation - Démonstration des fonctions développées
+[2] Automatisation - Démonstration des fonctions développées
 [3] Mise à jour - Update all developed staging source code
 [4] Code - Outil pour développeur
 [5] Doc - Recherche de documentation
@@ -408,11 +408,16 @@ class TODO:
 
         makefile_cmd = dct_instance.get("makefile_cmd")
         if makefile_cmd and not ignore_makefile:
-            self.executer_commande_live(
+            status = self.executer_commande_live(
                 f"make {makefile_cmd}",
                 source_erplibre=False,
                 single_source_erplibre=True,
             )
+            if status:
+                _logger.error(
+                    f"Status {status} - exit execute_from_configuration"
+                )
+                return
 
         if exec_run_db:
             db_name = dct_instance.get("database")
@@ -785,7 +790,9 @@ class TODO:
                 with open("./.erplibre-version") as f:
                     source_odoo = f.read()
             if not source_odoo:
-                _logger.error(f"You cannot execute Odoo command if no version is installed. Command : {commande}")
+                _logger.error(
+                    f"You cannot execute Odoo command if no version is installed. Command : {commande}"
+                )
                 return -1
             commande = (
                 f"source ./.venv.{source_odoo}/bin/activate && {commande}"
