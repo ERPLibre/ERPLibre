@@ -1231,6 +1231,27 @@ class SeleniumLib(object):
         print(f"Bouton du statusbar avec le label '{status_label}' cliqué.")
         return status_button
 
+    def odoo_profile_click_dark_mode(self, enable_dark_mode=False):
+        profile_button = self.click_with_mouse_move(
+            By.XPATH,
+            "//div[contains(@class, 'o_user_menu')]/button[contains(@class, 'py-1')]",
+        )
+        select_dark_element = self.get_element(
+            By.XPATH,
+            "//div[contains(@class, 'o_popover')]//span[@data-menu=\"color_scheme.switch\"]//input",
+        )
+        if select_dark_element.is_selected() != enable_dark_mode:
+            dark_mode_button = self.click_with_mouse_move(
+                By.XPATH,
+                "//div[contains(@class, 'o_popover')]//span[@data-menu=\"color_scheme.switch\"]//input",
+            )
+        else:
+            # close it
+            self.click_with_mouse_move(
+                By.XPATH,
+                "//div[contains(@class, 'o_user_menu')]/button[contains(@class, 'py-1')]",
+            )
+
     def odoo_web_form_click_statusbar_button_status_floating(
         self, status_label, timeout=10
     ):
