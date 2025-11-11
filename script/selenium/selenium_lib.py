@@ -397,7 +397,9 @@ class SeleniumLib(object):
             return self.kdbx
         print("Open KDBX")
         # Open file
-        chemin_fichier_kdbx = self.config_file.get_config(["kdbx", "path"])
+        chemin_fichier_kdbx = self.config_file.get_config_value(
+            ["kdbx", "path"]
+        )
         if not chemin_fichier_kdbx:
             root = tk.Tk()
             root.withdraw()  # Hide the main window
@@ -409,7 +411,9 @@ class SeleniumLib(object):
             # _logger.error(f"KDBX is not configured, please fill {CONFIG_FILE}")
             return
 
-        mot_de_passe_kdbx = self.config_file.get_config(["kdbx", "password"])
+        mot_de_passe_kdbx = self.config_file.get_config_value(
+            ["kdbx", "password"]
+        )
         if not mot_de_passe_kdbx:
             mot_de_passe_kdbx = getpass.getpass(
                 prompt="Entrez votre mot de passe : "

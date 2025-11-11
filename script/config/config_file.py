@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+from typing import Any, Dict, Literal, Mapping
 
 CONFIG_FILE = "./script/todo/todo.json"
 CONFIG_OVERRIDE_FILE = "./private/todo/todo_override.json"
@@ -23,34 +24,74 @@ _logger = logging.getLogger(__name__)
 
 
 class ConfigFile:
-    def get_config(self, lst_params):
-        # Open file
-        config_file = CONFIG_FILE
-        if os.path.exists(CONFIG_OVERRIDE_FILE):
-            config_file = CONFIG_OVERRIDE_FILE
+    def get_config(self, key_param: str):
+        # Open file and update dct_data
+        dct_data_init = {}
+        dct_data_second = {}
+        dct_data_final = {}
 
-        find_in_private = False
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE) as cfg:
+                dct_data_init = json.load(cfg)
+
+        if os.path.exists(CONFIG_OVERRIDE_FILE):
+            with open(CONFIG_OVERRIDE_FILE) as cfg:
+                dct_data_second = json.load(cfg)
+
         if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
             with open(CONFIG_OVERRIDE_PRIVATE_FILE) as cfg:
-                dct_data = json.load(cfg)
-                for param in lst_params:
-                    if param in dct_data.keys():
-                        find_in_private = True
-                        dct_data = dct_data[param]
+                dct_data_final = json.load(cfg)
 
-        if not find_in_private:
-            with open(config_file) as cfg:
-                dct_data = json.load(cfg)
-                for param in lst_params:
-                    try:
-                        dct_data = dct_data[param]
-                    except KeyError:
-                        _logger.error(
-                            f"KeyError on file {config_file} with keys"
-                            f" {lst_params}"
-                        )
-                        return {}
+        dct_data_first_merge = self.deep_merge_with_lists(
+            dct_data_init, dct_data_final, list_strategy="extend"
+        )
+        dct_data = self.deep_merge_with_lists(
+            dct_data_first_merge, dct_data_second, list_strategy="extend"
+        )
+
+        return dct_data.get(key_param)
+
+    def get_config_value(self, lst_params: list):
+        dct_data = self.get_config(lst_params[0])
+        for param in lst_params[1:]:
+            if param in dct_data.keys():
+                find_in_private = True
+                dct_data = dct_data.get(param)
         return dct_data
 
     def get_logo_ascii_file_path(self):
         return LOGO_ASCII_FILE
+
+    def deep_merge_with_lists(
+        self,
+        dest: Mapping[str, Any],
+        src: Mapping[str, Any],
+        list_strategy: Literal["replace", "extend"] = "replace",
+    ) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for k, v in dest.items():
+            result[k] = v.copy() if isinstance(v, dict) else v
+
+        for k, v in src.items():
+            if (
+                k in result
+                and isinstance(result[k], dict)
+                and isinstance(v, dict)
+            ):
+                result[k] = self.deep_merge_with_lists(
+                    result[k], v, list_strategy
+                )
+            elif (
+                k in result
+                and isinstance(result[k], list)
+                and isinstance(v, list)
+                and list_strategy == "extend"
+            ):
+                # on étend : dest_list + src_list
+                result[k] = result[k] + v
+            elif k in result and isinstance(result[k], str):
+                if v:
+                    result[k] = v
+            else:
+                result[k] = v
+        return result
