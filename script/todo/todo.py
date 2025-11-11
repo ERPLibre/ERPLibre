@@ -153,7 +153,9 @@ class TODO:
         if self.kdbx:
             return self.kdbx
         # Open file
-        chemin_fichier_kdbx = self.config_file.get_config(["kdbx", "path"])
+        chemin_fichier_kdbx = self.config_file.get_config_value(
+            ["kdbx", "path"]
+        )
         if not chemin_fichier_kdbx:
             root = tk.Tk()
             root.withdraw()  # Hide the main window
@@ -167,7 +169,9 @@ class TODO:
             )
             return
 
-        mot_de_passe_kdbx = self.config_file.get_config(["kdbx", "password"])
+        mot_de_passe_kdbx = self.config_file.get_config_value(
+            ["kdbx", "password"]
+        )
         if not mot_de_passe_kdbx:
             mot_de_passe_kdbx = getpass.getpass(
                 prompt="Entrez votre mot de passe : "
@@ -191,7 +195,7 @@ class TODO:
             kp = self.get_kdbx()
             if not kp:
                 return
-            nom_configuration = self.config_file.get_config(
+            nom_configuration = self.config_file.get_config_value(
                 ["kdbx_config", "openai", "kdbx_key"]
             )
             entry = kp.find_entries_by_title(nom_configuration, first=True)
@@ -209,7 +213,7 @@ class TODO:
     def prompt_execute(self):
         help_info = """Commande :
 [1] Run - Exécuter et installer une instance
-[2] Exec - Automatisation - Démonstration des fonctions développées
+[2] Automatisation - Démonstration des fonctions développées
 [3] Mise à jour - Update all developed staging source code
 [4] Code - Outil pour développeur
 [5] Doc - Recherche de documentation
@@ -408,11 +412,16 @@ class TODO:
 
         makefile_cmd = dct_instance.get("makefile_cmd")
         if makefile_cmd and not ignore_makefile:
-            self.executer_commande_live(
+            status = self.executer_commande_live(
                 f"make {makefile_cmd}",
                 source_erplibre=False,
                 single_source_erplibre=True,
             )
+            if status:
+                _logger.error(
+                    f"Status {status} - exit execute_from_configuration"
+                )
+                return
 
         if exec_run_db:
             db_name = dct_instance.get("database")
@@ -440,7 +449,7 @@ class TODO:
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        lst_instance = self.config_file.get_config(["instance"])
+        lst_instance = self.config_file.get_config("instance")
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -469,7 +478,7 @@ class TODO:
                     print("Commande non trouvée 🤖!")
 
     def prompt_execute_fonction(self):
-        lst_instance = self.config_file.get_config(["function"])
+        lst_instance = self.config_file.get_config("function")
         help_info = self.fill_help_info(lst_instance)
 
         while True:
@@ -501,7 +510,7 @@ class TODO:
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        lst_instance = self.config_file.get_config(["update_from_makefile"])
+        lst_instance = self.config_file.get_config("update_from_makefile")
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Odoo - Migration Database",
         }
@@ -549,7 +558,7 @@ class TODO:
         #         [0] Retour
         # """
 
-        lst_instance = self.config_file.get_config(["code_from_makefile"])
+        lst_instance = self.config_file.get_config("code_from_makefile")
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Module",
         }
@@ -785,7 +794,9 @@ class TODO:
                 with open("./.erplibre-version") as f:
                     source_odoo = f.read()
             if not source_odoo:
-                _logger.error(f"You cannot execute Odoo command if no version is installed. Command : {commande}")
+                _logger.error(
+                    f"You cannot execute Odoo command if no version is installed. Command : {commande}"
+                )
                 return -1
             commande = (
                 f"source ./.venv.{source_odoo}/bin/activate && {commande}"

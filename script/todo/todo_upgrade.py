@@ -76,17 +76,18 @@ class TodoUpgrade:
     def execute_module_upgrade(self):
         print("Welcome to Odoo module upgrade processus with ERPLibre 🤖")
 
-        with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-            try:
-                old_dct_progression = json.load(f)
-                self.dct_progression = old_dct_progression
-                self.lst_command_executed = old_dct_progression.get(
-                    "command_executed"
-                )
-            except json.decoder.JSONDecodeError:
-                print(
-                    f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
-                )
+        if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
+            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
+                try:
+                    old_dct_progression = json.load(f)
+                    self.dct_progression = old_dct_progression
+                    self.lst_command_executed = old_dct_progression.get(
+                        "command_executed"
+                    )
+                except json.decoder.JSONDecodeError:
+                    print(
+                        f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
+                    )
 
         print(
             "Migrate a directory repo to migrate all module, or select a directory module."
