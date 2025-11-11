@@ -133,7 +133,7 @@ def extract_lambda(node):
 def fill_search_field(ast_obj, var_name="", py_filename=""):
     ast_obj_type = type(ast_obj)
     result = None
-    if ast_obj_type is ast.Str:
+    if ast_obj_type is ast.Constant:
         result = ast_obj.s
     elif ast_obj_type is ast.Lambda:
         result = extract_lambda(ast_obj)
@@ -224,7 +224,7 @@ def main():
                             and type(node.targets[0]) is ast.Name
                             # and node.targets[0].id in ("_name",)
                             # and node.targets[0].id in ("_name", "_inherit")
-                            and type(node.value) is ast.Str
+                            and type(node.value) is ast.Constant
                         ):
                             model_name = ""
                             is_inherit = False
@@ -266,7 +266,7 @@ def main():
                             # Detect fields
                             # TODO do it!
                             if model_name and (
-                                type(node.value) is ast.Str
+                                type(node.value) is ast.Constant
                                 and node.value.s == model_name
                                 or type(node.value) is ast.List
                                 and model_name
