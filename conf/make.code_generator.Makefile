@@ -242,6 +242,15 @@ test_code_generator_code_template_demo_portal:
 	./script/code_generator/search_class_model.py --quiet -d ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template/demo_portal -t ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_portal --with_inherit
 	./script/code_generator/install_and_test_code_generator.sh test_template code_generator_template_demo_portal ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template code_generator_demo_portal
 
+.PHONY: test_code_generator_code_template_demo_internal
+test_code_generator_code_template_demo_internal:
+	#./script/code_generator/check_git_change_code_generator.sh ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template
+	./script/database/db_restore.py --database test_template
+	./script/addons/install_addons_dev.sh test_template demo_internal
+	#./script/addons/install_addons_dev.sh test_template code_generator_template_demo_internal
+	./script/code_generator/search_class_model.py --quiet -d ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template/demo_internal -t ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template/code_generator_template_demo_internal
+	./script/code_generator/install_and_test_code_generator.sh test_template code_generator_template_demo_internal ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template code_generator_demo_internal
+
 .PHONY: test_code_generator_code_template_demo_internal_inherit
 test_code_generator_code_template_demo_internal_inherit:
 	./script/code_generator/check_git_change_code_generator.sh ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template

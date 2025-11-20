@@ -790,7 +790,7 @@ async def test_exec(
     return test_result, test_status, test_name, total_time
 
 
-def check_git_change():
+async def check_git_change():
     """
     return True if success
     """
@@ -810,10 +810,8 @@ def check_git_change():
             test_name="Init check_git_change OCA_server-tools",
         ),
     ]
-    commands = asyncio.gather(*task_list)
-    tpl_result = loop.run_until_complete(commands)
+    tpl_result = await asyncio.gather(*task_list)
     status = any([a[1] for a in tpl_result])
-    loop.close()
     return not status
 
 
@@ -962,7 +960,7 @@ def main():
     config = get_config()
     start_time = time.time()
     if not config.ignore_init_check_git:
-        success = check_git_change()
+        success = asyncio.run(check_git_change())
     else:
         success = True
     status = False

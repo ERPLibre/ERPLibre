@@ -311,16 +311,11 @@ def main():
             lst_model_inherit_name.remove(ignored_inherit)
     models_inherit_name = "; ".join(lst_model_inherit_name)
     if not config.json:
-        if not models_name:
-            _logger.warning(f"Missing models class in {config.directory}")
-        elif not config.quiet:
+        if not config.quiet:
             # _logger.info(models_name)
             print(models_name)
             print(models_inherit_name)
     else:
-        if config.show_error_json and not models_name:
-            _logger.warning(f"Missing models class in {config.directory}")
-
         if config.format_json:
             output = json.dumps(dct_model, indent=4, sort_keys=True)
         else:
