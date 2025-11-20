@@ -32,7 +32,7 @@ with open(filename_odoo_version, "r") as f:
     odoo_version = f.readline()
 
 CODE_GENERATOR_DIRECTORY = (
-    f"./odoo{ODOO_VERSION}/addons/TechnoLibre_odoo-code-generator-template/"
+    f"./odoo{odoo_version}/addons/TechnoLibre_odoo-code-generator-template/"
 )
 CODE_GENERATOR_DEMO_NAME = "code_generator_demo"
 KEY_REPLACE_CODE_GENERATOR_DEMO = 'MODULE_NAME = "%s"'
@@ -143,7 +143,7 @@ class ProjectManagement:
 
         # Replace addons/ by odoo12.0/addons/
         module_directory = module_directory.replace(
-            "addons/", f"odoo{ODOO_VERSION}/addons/"
+            "addons/", f"odoo{odoo_version}/addons/"
         )
 
         self.module_directory = module_directory
