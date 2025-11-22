@@ -164,8 +164,8 @@ def run(
     # selenium_tool.driver.quit()
 
     # Force use dark mode if enable
-    selenium_tool.odoo_profile_click_dark_mode(
-        enable_dark_mode=not config.no_dark_mode
+    selenium_tool.odoo_profile_click(
+        enable_dark_mode=not config.no_dark_mode, enable_tour=False
     )
 
     print("End web_login.py")
