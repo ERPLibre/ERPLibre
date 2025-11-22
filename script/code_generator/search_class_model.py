@@ -13,6 +13,31 @@ from pathlib import Path
 logging.basicConfig(level=logging.DEBUG)
 _logger = logging.getLogger(__name__)
 
+ARGS_TYPE_PARAM = {
+    "Char": ["string", "size"],
+    "Text": ["string"],
+    "Integer": ["string"],
+    "Float": ["string"],
+    "Boolean": ["string"],
+    "Date": ["string"],
+    "Datetime": ["string"],
+    "Binary": ["string"],
+    "Html": ["string"],
+    "Json": ["string"],
+    "Many2one": ["comodel_name", "string"],
+    "One2many": ["comodel_name", "inverse_name", "string"],
+    "Many2many": ["comodel_name", "relation", "column1", "column2", "string"],
+    "Monetary": ["string", "currency_field"],
+    "Selection": ["selection", "string"],
+    "Reference": ["string"],
+    "Image": ["string"],
+    "Properties": ["string"],
+    "PropertiesDefinition": ["string"],
+    "Serialized": ["string"],
+    "Many2oneReference": ["string"],
+    "Id": [],
+}
+
 
 def get_config():
     """Parse command line arguments, extracting the config file name,
@@ -270,7 +295,6 @@ def main():
                                     "is_inherit": is_inherit,
                                 }
                             # Detect fields
-                            # TODO do it!
                             if model_name and (
                                 type(node.value) is ast.Constant
                                 and node.value.value == model_name
@@ -295,6 +319,29 @@ def main():
                                             "sequence": sequence,
                                         }
                                         dct_fields[var_name] = d
+                                        lst_args = [
+                                            a.value for a in node.value.args
+                                        ]
+                                        if lst_args:
+                                            lst_default_arg_position = (
+                                                ARGS_TYPE_PARAM.get(
+                                                    node.value.func.attr, []
+                                                )
+                                            )
+                                            for (
+                                                index_arg_position,
+                                                default_arg_position,
+                                            ) in enumerate(
+                                                lst_default_arg_position
+                                            ):
+                                                if index_arg_position < len(
+                                                    lst_args
+                                                ):
+                                                    d[default_arg_position] = (
+                                                        lst_args[
+                                                            index_arg_position
+                                                        ]
+                                                    )
                                         for keyword in node.value.keywords:
                                             value = fill_search_field(
                                                 keyword.value, var_name
