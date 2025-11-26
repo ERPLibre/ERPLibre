@@ -44,6 +44,27 @@ def get_modified_files():
             check=True,
         )
         lines_project = result.stdout.strip().split("\n\n")
+
+        if os.path.isfile(".odoo-version"):
+            with open(".odoo-version") as txt:
+                odoo_version = txt.read()
+            path_addons = os.path.join(
+                f"odoo{odoo_version}", "addons", "addons"
+            )
+            if os.path.exists(os.path.join(path_addons, ".git")):
+                # Detected hidden private repository
+                result = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=path_addons,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                output = result.stdout.strip()
+                if output:
+                    lines_addons_project = f"project {path_addons}/\n" + output
+                    lines_project.append(lines_addons_project)
+
         for str_project_line in lines_project:
             line_repo = str_project_line.split("\n")
             projet_name = line_repo[0]

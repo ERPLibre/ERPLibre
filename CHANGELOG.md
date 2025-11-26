@@ -7,6 +7,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+**Migration notes**
+
+Recreating the virtual environment, use installation guide from tool `make`.
+
 ## Added
 
 - Support Odoo migration database and module with TODO
@@ -16,10 +20,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Separate ERPLibre python installation from Odoo python with .venv.erplibre and .venv.odoo18
 - Implement auto-installation with TODO.py
 - TODO show documentation, download database, help with code formatting
+- Performance script to mesure request per second
+- Support Mainframe architecture 390x
+- Deployment with Cloudflare and Nginx
+- Support Apache configuration like Nginx
+- Support RobotLibre code generator
+- Support ERPLibre DevOps, automation procedure about DevOps
+- ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
 
 ## Changed
 
 - Docker support postgresql 18
+- Format script search diff file into each repository
 
 ## [1.6.0] - 2025-04-25
 

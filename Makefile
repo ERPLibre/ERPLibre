@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 LOG_FILE := ./.venv.$(cat ".erplibre-version" | xargs)/make_test.log
+ODOO_VERSION := $(shell cat .odoo-version | xargs)
 #############
 #  General  #
 #############

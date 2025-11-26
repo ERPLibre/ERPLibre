@@ -98,11 +98,11 @@ robot_libre_open_record:
 
 .PHONY: robot_libre_format
 robot_libre_format:
-	parallel ::: "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/erplibre_devops" "./script/maintenance/format.sh ./addons/ERPLibre_erplibre_addons/erplibre_devops_me"
+	parallel ::: "./script/maintenance/format.sh ./odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons/erplibre_devops" "./script/maintenance/format.sh ./odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons/erplibre_devops_me"
 
 .PHONY: robot_libre_generate
 robot_libre_generate:
-	./script/code_generator/new_project.py -f -d ./addons/ERPLibre_erplibre_addons -m erplibre_devops
+	./script/code_generator/new_project.py -f -d ./odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons -m erplibre_devops
 
 .PHONY: run_db
 run_db:

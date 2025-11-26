@@ -5,7 +5,10 @@
 import asyncio
 from collections import deque
 
-import uvloop
+try:
+    import uvloop
+except ImportError:
+    uvloop = None
 
 
 async def run_in_serial(task_list):
@@ -95,40 +98,54 @@ def print_summary_task(task_list, lst_task_name=None):
 def execute(config, lst_task, use_uvloop=False):
     error_detected = False
     return_value = None
-    if not config.no_parallel and asyncio.get_event_loop().is_closed():
-        asyncio.set_event_loop(asyncio.new_event_loop())
 
+    # --- Mode 1 : pas de parallélisme → déjà OK avec asyncio.run ---
     if config.no_parallel:
-        return_value = asyncio.run(run_in_serial(lst_task))
-    elif config.max_process:
+        # run_in_serial doit être une coroutine (async def)
+        try:
+            if use_uvloop and uvloop is not None:
+                # À faire AVANT la création de la loop
+                asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+            return_value = asyncio.run(run_in_serial(lst_task))
+        except Exception as e:
+            error_detected = True
+            print(e)
+        return return_value, error_detected
+
+    # --- Mode 2 : AsyncioPool (on suppose qu'il gère sa loop lui-même) ---
+    if config.max_process:
         pool = AsyncioPool(config.max_process)
         for task in lst_task:
             pool.add_coro(task)
         try:
+            # API existante, on ne touche pas
             return_value = pool.run_until_complete()
-        finally:
-            pool.close()
-    else:
-        # Use maximal resource
-        if use_uvloop:
-            uvloop.install()
-        loop = asyncio.get_event_loop()
-        # Can fix when cannot attach child to loop
-        # if sys.platform != "win32":
-        #     policy = asyncio.get_event_loop_policy()
-        #     watcher = asyncio.SafeChildWatcher()
-        #     watcher.attach_loop(loop)
-        #     policy.set_child_watcher(watcher)
-        if config.debug:
-            loop.set_debug(True)
-        try:
-            commands = asyncio.gather(*lst_task)
-            return_value = loop.run_until_complete(commands)
-        except RuntimeError as e:
+        except Exception as e:
             error_detected = True
             print(e)
         finally:
-            loop.close()
+            pool.close()
+        return return_value, error_detected
+
+    # --- Mode 3 : utilisation maximale des ressources avec asyncio.gather ---
+    async def _run_max_resources(tasks, debug: bool):
+        if debug:
+            loop = asyncio.get_running_loop()
+            loop.set_debug(True)
+        # tasks doit être une liste de coroutines
+        results = await asyncio.gather(*tasks)
+        return results
+
+    try:
+        if use_uvloop and uvloop is not None:
+            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+        return_value = asyncio.run(_run_max_resources(lst_task, config.debug))
+    except RuntimeError as e:
+        # par ex. si tu appelles ça depuis un environnement où il y a
+        # déjà une loop (Jupyter, certains frameworks)
+        error_detected = True
+        print(e)
+
     return return_value, error_detected
 
 

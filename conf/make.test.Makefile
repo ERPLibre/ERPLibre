@@ -53,9 +53,9 @@ test_full_fast_coverage:
 	# TODO This test is broken in parallel
 	#./script/make.sh test_coverage_code_generator_hello_world
 	./.venv.erplibre/bin/coverage combine -a
-	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage report -m --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
 	# run: make open_test_coverage
 
 
@@ -67,9 +67,9 @@ test_cg_demo:
 	./.venv.erplibre/bin/coverage erase
 	./script/addons/coverage_install_addons_dev.sh test code_generator_demo
 	./.venv.erplibre/bin/coverage combine -a
-	./.venv.erplibre/bin/coverage report -m --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage html --include="addons/TechnoLibre_odoo-code-generator/*"
-	./.venv.erplibre/bin/coverage json --include="addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage report -m --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage html --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
+	./.venv.erplibre/bin/coverage json --include="./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/*"
 
 .PHONY: test_base
 test_base:
@@ -87,12 +87,12 @@ test_extra:
 
 .PHONY: test_format
 test_format:
-	./script/maintenance/black.sh --check ./addons/TechnoLibre_odoo-code-generator/
-	./script/maintenance/black.sh --check ./addons/TechnoLibre_odoo-code-generator-template/
+	./script/maintenance/black.sh --check ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator/
+	./script/maintenance/black.sh --check ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template/
 
 .PHONY: test_installation_demo
 test_installation_demo:
-	./script/code_generator/check_git_change_code_generator.sh ./addons/TechnoLibre_odoo-code-generator-template
+	./script/code_generator/check_git_change_code_generator.sh ./odoo$(ODOO_VERSION)/addons/TechnoLibre_odoo-code-generator-template
 	./script/database/db_restore.py --database test_demo
 	./script/addons/install_addons.sh test_demo demo_helpdesk_data,demo_internal,demo_internal_inherit,demo_mariadb_sql_example_1,demo_portal,demo_website_data,demo_website_leaflet,demo_website_snippet
 	./script/addons/install_addons_theme.sh test_demo theme_website_demo_code_generator
