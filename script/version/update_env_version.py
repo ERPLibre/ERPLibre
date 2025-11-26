@@ -34,9 +34,6 @@ POETRY_LOCK_FILE = os.path.join("poetry.lock")
 POETRY_LOCK_TEMPLATE_FILE = "poetry.%s.lock"
 # PIP_REQUIREMENT_FILE = os.path.join("requirements.txt")
 PIP_REQUIREMENT_TEMPLATE_FILE = "requirements.%s.txt"
-PIP_IGNORE_REQUIREMENT_FILE = os.path.join(
-    "requirement", "ignore_requirements.txt"
-)
 PIP_IGNORE_REQUIREMENT_TEMPLATE_FILE = "ignore_requirements.%s.txt"
 ADDONS_TEMPLATE_FILE = "odoo%s/addons"
 ODOO_TEMPLATE_FILE = "odoo%s"
@@ -371,12 +368,6 @@ class Update:
             "Poetry lock",
             POETRY_LOCK_FILE,
             self.expected_poetry_lock_path,
-            do_delete_source=True,
-        )
-        status &= self.update_link_file(
-            "Pip ignore_requirement.txt",
-            PIP_IGNORE_REQUIREMENT_FILE,
-            self.expected_pip_ignore_requirement_path,
             do_delete_source=True,
         )
         if not os.path.isdir(self.expected_addons_name):
