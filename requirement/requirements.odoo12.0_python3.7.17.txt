@@ -134,7 +134,7 @@ azure.storage.blob==12.19.0
 sqlparse==0.4.4
 zeep==4.2.1
 python-jose==3.3.0
-pypdf==4.3.1
+pypdf==6.4.0
 factur-x==3.6
 sqlalchemy==2.0.36
 josepy==1.14.0
