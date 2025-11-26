@@ -66,4 +66,4 @@ pyopenssl==25.3.0
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 
 # Fix compilation, until pymssql==2.3.9 is release
-git+https://github.com/pymssql/pymssql.git
+#git+https://github.com/pymssql/pymssql.git
