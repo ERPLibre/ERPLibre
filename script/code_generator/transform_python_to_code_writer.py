@@ -74,13 +74,15 @@ def main():
     no_tab = 0
 
     # Validate file format
-    out = subprocess.check_output(
+    out = subprocess.run(
         f"python -m tabnanny {config.file}",
-        stderr=subprocess.STDOUT,
         shell=True,
+        capture_output=True,
+        text=True,
     )
-    if out:
-        print(out)
+    result = (out.stdout or "") + (out.stderr or "")
+    if result:
+        print(result)
         sys.exit(1)
 
     # with tokenize.open(config.file) as f:

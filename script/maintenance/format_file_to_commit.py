@@ -4,14 +4,21 @@
 
 import os
 import subprocess
+import sys
 
 IGNORE_EXTENSION = []
 IGNORE_FILE_NAME = ["Makefile"]
 
 
 def execute_shell(cmd):
-    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-    return out.decode().strip() if out else ""
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    return result.returncode, output.strip()
 
 
 def get_modified_files():
@@ -152,4 +159,7 @@ if __name__ == "__main__":
             has_file = True
     if has_file:
         print(cmd_format)
-        execute_shell(cmd_format)
+        status, output = execute_shell(cmd_format)
+        if status != 0:
+            print(output)
+        sys.exit(status)

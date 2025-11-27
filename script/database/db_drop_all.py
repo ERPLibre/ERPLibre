@@ -12,8 +12,14 @@ _logger = logging.getLogger(__name__)
 
 
 def execute_shell(cmd):
-    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-    return out.decode().strip() if out else ""
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    return result.returncode, output.strip()
 
 
 def get_config():
