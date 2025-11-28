@@ -47,7 +47,7 @@ def get_config():
 def main():
     config = get_config()
 
-    out_db = execute_shell("./odoo_bin.sh db --list")
+    status, out_db = execute_shell("./odoo_bin.sh db --list")
     lst_db = out_db.split("\n")
 
     lst_database_to_delete = []

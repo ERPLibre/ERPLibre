@@ -26,7 +26,7 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAME = os.path.basename(os.getcwd())
 IDEA_PATH = "./.idea"
-DEFAULT_ODOO_BIN = "./odoo/odoo-bin"  # Will be replaced dynamic
+DEFAULT_ODOO_BIN = "./odoo/odoo-bin"  # Need this to replace static configuration
 IDEA_MISC = os.path.join(IDEA_PATH, "misc.xml")
 IDEA_WORKSPACE = os.path.join(IDEA_PATH, "workspace.xml")
 VCS_WORKSPACE = os.path.join(IDEA_PATH, "vcs.xml")
