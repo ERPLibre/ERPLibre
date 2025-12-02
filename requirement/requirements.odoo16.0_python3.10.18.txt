@@ -52,7 +52,7 @@ urllib3==2.5.0
 cachetools==5.5.2
 setuptools==65.5.1
 boto3==1.38.42
-Werkzeug==2.0.2
+Werkzeug==3.1.4
 xlrd==1.2.0
 
 # Force python 3.10 over odoo/requirements.txt to remove warning
