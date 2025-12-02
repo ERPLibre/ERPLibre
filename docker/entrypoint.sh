@@ -81,6 +81,12 @@ case "$1" in
         sleep 999999
       fi
       python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+      if [[ -n "${INIT_CMD:-}" ]]; then
+        echo "Execute INIT_CMD : ${INIT_CMD}"
+        bash -lc "${INIT_CMD}"
+      else
+        echo "No INIT_CMD to execute, continue..."
+      fi
       if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
         # --stop-after-init
         python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
@@ -95,6 +101,12 @@ case "$1" in
       sleep 999999
     fi
     python3 ./docker/wait-for-psql.py "${DB_ARGS[@]}" --timeout=30
+    if [[ -n "${INIT_CMD:-}" ]]; then
+      echo "Execute INIT_CMD : ${INIT_CMD}"
+      bash -lc "${INIT_CMD}"
+    else
+      echo "No INIT_CMD to execute, continue..."
+    fi
     if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
       python3 "$ODOO_EXEC_BIN" "$@" "${DB_ARGS[@]}" -c /etc/odoo/odoo.conf -u all -d "${DB_NAME}"
     else
