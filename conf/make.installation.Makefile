@@ -11,6 +11,10 @@ install_dev:
 	#	./script/install/install_locally_dev.sh
 	./script/version/update_env_version.py --install_dev
 
+.PHONY: install_erplibre
+install_erplibre:
+	./script/install/install_erplibre.sh
+
 .PHONY: install_odoo_18
 install_odoo_18:
 	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --install_dev
