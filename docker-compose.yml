@@ -21,6 +21,10 @@ services:
       PIP_EXTRA_REQUIREMENTS_ODOO: ""
       # ERPLibre tools' venv (.venv.erplibre), the one of script/
       PIP_EXTRA_REQUIREMENTS_ERPLIBRE: ""
+      # Shell command run at each start, once PostgreSQL answers and before
+      # Odoo, as odoo, in /ERPLibre; a failure stops the container. Python
+      # packages go in the PIP_EXTRA_REQUIREMENTS_* lists above.
+      INIT_CMD: ""
     # The venvs belong to root: the container starts as root to install the
     # PIP_EXTRA_REQUIREMENTS_* lists, then the entrypoint runs Odoo as odoo.
     user: root

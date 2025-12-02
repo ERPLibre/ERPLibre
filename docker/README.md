@@ -123,6 +123,21 @@ it. Pass the account:
 docker compose exec -u odoo ERPLibre bash
 ```
 
+### A command at each start
+
+`INIT_CMD` holds a shell command that `docker/entrypoint.sh` runs in a bash
+login shell at each start, once PostgreSQL answers and before Odoo, in
+`/ERPLibre`, as the account that runs Odoo. A command that fails stops the
+container before Odoo, with its error in `docker compose logs`; the log names
+the step, never the command. A Python package belongs in the
+`PIP_EXTRA_REQUIREMENTS_*` lists instead: run as `odoo`, a pip cannot write in
+a venv the build left to root.
+
+```yaml
+    environment:
+      INIT_CMD: "./script/my_startup.sh"
+```
+
 ### Pulling the code from Odoo
 
 `erplibre_info_git_fetch` fetches and pulls the git clones from Odoo, which

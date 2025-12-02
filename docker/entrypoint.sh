@@ -82,6 +82,23 @@ start_warmup() {
   python3 ./script/odoo/warmup_http.py -c "$ODOO_RC" -- "$@" 2>/dev/null &
 }
 
+# run_init_cmd : runs INIT_CMD, when set, in a bash login shell, at each start,
+# once PostgreSQL answers and before Odoo, in /ERPLibre (ODOO_PREFIX). It runs
+# as the account that runs Odoo: "odoo" behind entrypoint_pip_extra.sh, with
+# no capability left. A command that fails stops the container before Odoo,
+# with its error in "docker compose logs". The log names the step, never the
+# command, which may carry a secret.
+run_init_cmd() {
+  if [[ -z "${INIT_CMD:-}" ]]; then
+    return 0
+  fi
+  echo "INIT_CMD: running"
+  if ! bash -lc "${INIT_CMD}"; then
+    echo "Error: INIT_CMD failed; Odoo does not start." >&2
+    exit 1
+  fi
+}
+
 # run_odoo ODOO_ARGS... : waits for PostgreSQL, then replaces this shell with
 # Odoo, the probe beside it. Odoo becomes the container's PID 1: it receives
 # the SIGTERM of "docker stop" itself and shuts down gracefully, where a shell
@@ -95,6 +112,7 @@ run_odoo() {
     sleep 999999
   fi
   python3 ./docker/wait-for-psql.py --config "$ODOO_RC" --timeout=30
+  run_init_cmd
   local odoo_args=("$@")
   if [[ "${UPDATE_ALL_DB}" == "True" ]]; then
     odoo_args+=(-u all -d "${DB_NAME}")
