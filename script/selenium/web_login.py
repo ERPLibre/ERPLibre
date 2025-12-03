@@ -147,9 +147,8 @@ def run(
 
     # Open View
     if config.open_dashboard:
-        selenium_tool.click(
-            "/html/body/header/nav/div/div[1]/div[2]/div/div/div/ul/li[3]/a",
-            timeout=15,
+        selenium_tool.odoo_website_menu_click(
+            "Tableaux de bord"
         )
 
     # Open conversation chat
