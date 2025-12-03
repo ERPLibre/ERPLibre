@@ -14,7 +14,7 @@ EL_USER=${USER}
 UBUNTU_VERSION=$(lsb_release -rs)
 DEBIAN_VERSION=$(lsb_release -cs)
 OS=$(lsb_release -si)
-if [ "25.04" == "${UBUNTU_VERSION}" ] || [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
+if [ "25.10" == "${UBUNTU_VERSION}" ] || [ "25.04" == "${UBUNTU_VERSION}" ] || [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [ "20.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
