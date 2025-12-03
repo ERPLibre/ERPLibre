@@ -39,7 +39,7 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
-  sudo apt install wkhtmltopdf rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential -y
+  sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential npm -y
 fi
 
 #--------------------------------------------------
