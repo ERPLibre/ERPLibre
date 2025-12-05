@@ -319,9 +319,15 @@ def main():
                                             "sequence": sequence,
                                         }
                                         dct_fields[var_name] = d
-                                        lst_args = [
-                                            a.value for a in node.value.args
-                                        ]
+                                        lst_args = []
+                                        for keyword in node.value.args:
+                                            value = _fill_search_field(
+                                                keyword, var_name
+                                            )
+                                            # Waste to stock None value
+                                            if value is not None:
+                                                lst_args.append(value)
+
                                         if lst_args:
                                             lst_default_arg_position = (
                                                 ARGS_TYPE_PARAM.get(
@@ -403,6 +409,67 @@ def main():
         os.system(f"./script/maintenance/format.sh {hooks_file_path}")
 
     return 0
+
+
+def extract_lambda(self, node):
+    result = ast.unparse(node)
+    if result[0] == "(" and result[-1] == ")":
+        result = result[1:-1]
+    return result
+
+
+def _fill_search_field(ast_obj, var_name=""):
+    ast_obj_type = type(ast_obj)
+    result = None
+    if ast_obj_type is ast.Lambda:
+        result = extract_lambda(ast_obj)
+    elif ast_obj_type is ast.Constant:
+        result = ast_obj.value
+    elif ast_obj_type is ast.UnaryOp:
+        if type(ast_obj.op) is ast.USub:
+            # value is negative
+            result = ast_obj.operand.n * -1
+        else:
+            _logger.warning(
+                f"Cannot support keyword of variable {var_name} type"
+                f" {ast_obj_type} operator {type(ast_obj.op)}."
+            )
+    elif ast_obj_type is ast.Name:
+        result = ast_obj.id
+    elif ast_obj_type is ast.Attribute:
+        # Support -> fields.Date.context_today
+        parent_node = ast_obj
+        lst_call_lambda = []
+        if hasattr(parent_node, "id"):
+            while hasattr(parent_node, "value"):
+                lst_call_lambda.insert(0, parent_node.attr)
+                parent_node = parent_node.value
+            lst_call_lambda.insert(0, parent_node.id)
+            result = ".".join(lst_call_lambda)
+        # else:
+        #     # default=uuid.uuid4().hex
+        #     _logger.warning(
+        #         f"Cannot support keyword of variable {var_name} type"
+        #         f" {ast_obj_type} in filename {self.py_filename}, because"
+        #         " parent_node is type ast.Call."
+        #     )
+    elif ast_obj_type is ast.List:
+        result = [_fill_search_field(a, var_name) for a in ast_obj.elts]
+    elif ast_obj_type is ast.Dict:
+        result = {
+            _fill_search_field(k, var_name): _fill_search_field(
+                ast_obj.values[i], var_name
+            )
+            for (i, k) in enumerate(ast_obj.keys)
+        }
+    elif ast_obj_type is ast.Tuple:
+        result = tuple([_fill_search_field(a, var_name) for a in ast_obj.elts])
+    else:
+        _logger.warning(
+            f"Cannot support keyword of variable {var_name} type"
+            f" {ast_obj_type}."
+        )
+    return result
 
 
 if __name__ == "__main__":
