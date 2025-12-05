@@ -48,7 +48,7 @@ python-ldap==3.4.0
 pyusb==1.0.2
 requests==2.31.0
 reportlab==3.6.5
-urllib3==2.5.0
+urllib3==2.6.0
 cachetools==5.5.2
 setuptools==65.5.1
 boto3==1.38.42
