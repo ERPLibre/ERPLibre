@@ -60,6 +60,11 @@ SUGGESTION
         action="store_true",
         help="Will only drop database if exist.",
     )
+    parser.add_argument(
+        "--neutralize",
+        action="store_true",
+        help="Will disable all cron.",
+    )
     args = parser.parse_args()
     return args
 
@@ -163,6 +168,8 @@ def main():
                 f"{arg_base} --clone --from_database"
                 f" {cache_database} --database {config.database}"
             )
+        if config.neutralize:
+            arg += " --neutralize"
         print(arg)
         out = check_output(arg.split(" ")).decode()
         print(out)
