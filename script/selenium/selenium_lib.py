@@ -456,6 +456,7 @@ class SeleniumLib(object):
         value: str = None,
         timeout=5,
         wait_clickable=False,
+        wait_is_invisible=False,
         is_visible=True,
     ):
         only_one = False
@@ -472,6 +473,15 @@ class SeleniumLib(object):
         elif is_visible:
             ele = wait.until(
                 EC.visibility_of_any_elements_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        elif wait_is_invisible:
+            ele = wait.until(
+                EC.invisibility_of_element_located(
                     (
                         by,
                         value,
@@ -1618,6 +1628,15 @@ class SeleniumLib(object):
             annee,
             header.text,
         )  # on retourne aussi le texte exact pour attendre le changement
+
+    def wait_is_invisible(self, by, value):
+        div_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+        wait = WebDriverWait(driver, 10)
+        wait.until(
+            EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
+        )
 
     def select_date(self, driver, date_to_select):
         # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
