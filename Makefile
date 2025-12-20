@@ -1,6 +1,11 @@
 SHELL := /bin/bash
-LOG_FILE := ./.venv.$(cat ".erplibre-version" | xargs)/make_test.log
-ODOO_VERSION := $(shell cat .odoo-version | xargs)
+ERPLIBRE_VERSION := $(strip \
+	$(if $(wildcard .erplibre-version),$(shell cat .erplibre-version),) \
+)
+ODOO_VERSION := $(strip \
+	$(if $(wildcard .odoo-version),$(shell cat .odoo-version),) \
+)
+LOG_FILE := ./.venv.$(ERPLIBRE_VERSION)/make_test.log
 #############
 #  General  #
 #############

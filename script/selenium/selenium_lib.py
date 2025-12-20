@@ -4,18 +4,15 @@
 
 import datetime
 import getpass
-import json
 import logging
 import os
 import random
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import tkinter as tk
-from subprocess import getoutput
 from tkinter import filedialog
 
 from pykeepass import PyKeePass
@@ -79,7 +76,10 @@ class SeleniumLib(object):
         self.config_file = config_file.ConfigFile()
         self.kdbx = None
         self.video_recorder = None
-        self.default_download_dir_path = tempfile.mkdtemp()
+        if config.use_download_path_default:
+            self.default_download_dir_path = "/home/seluser/Downloads"
+        else:
+            self.default_download_dir_path = tempfile.mkdtemp()
         if self.config.video_suffix:
             self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
@@ -136,9 +136,10 @@ class SeleniumLib(object):
         firefox_options.set_preference(
             "browser.download.manager.showWhenStarting", False
         )
-        firefox_options.set_preference(
-            "browser.download.dir", self.default_download_dir_path
-        )
+        if self.default_download_dir_path:
+            firefox_options.set_preference(
+                "browser.download.dir", self.default_download_dir_path
+            )
         firefox_options.set_preference(
             "browser.helperApps.neverAsk.saveToDisk",
             "application/octet-stream,application/pdf,application/x-pdf",
@@ -248,9 +249,10 @@ class SeleniumLib(object):
                 firefox_options.set_preference(
                     "browser.download.manager.showWhenStarting", False
                 )
-                firefox_options.set_preference(
-                    "browser.download.dir", self.default_download_dir_path
-                )
+                if self.default_download_dir_path:
+                    firefox_options.set_preference(
+                        "browser.download.dir", self.default_download_dir_path
+                    )
                 firefox_options.set_preference(
                     "browser.helperApps.neverAsk.saveToDisk",
                     "application/octet-stream,application/pdf,application/x-pdf",
@@ -454,6 +456,7 @@ class SeleniumLib(object):
         value: str = None,
         timeout=5,
         wait_clickable=False,
+        wait_is_invisible=False,
         is_visible=True,
     ):
         only_one = False
@@ -470,6 +473,15 @@ class SeleniumLib(object):
         elif is_visible:
             ele = wait.until(
                 EC.visibility_of_any_elements_located(
+                    (
+                        by,
+                        value,
+                    )
+                )
+            )
+        elif wait_is_invisible:
+            ele = wait.until(
+                EC.invisibility_of_element_located(
                     (
                         by,
                         value,
@@ -813,35 +825,59 @@ class SeleniumLib(object):
     def scrollto_element(
         self,
         element,
-        offset_middle=True,
         smooth_scroll=True,
         smooth_speed=50,
         smooth_fps=1 / 25,
         viewport_ele=None,
     ):
+        window_y = self.driver.execute_script(
+            "return window.scrollY || window.pageYOffset;"
+        )
+        window_height = self.driver.get_window_size().get("height")
+        element_height = element.rect["height"]
+        viewport_height = self.driver.execute_script(
+            "return window.innerHeight || document.documentElement.clientHeight;"
+        )
         if viewport_ele:
             scroll_origin = ScrollOrigin.from_element(viewport_ele, 10, 10)
         else:
             scroll_origin = ScrollOrigin.from_viewport(10, 10)
         delta_y = element.rect["y"]
-        if offset_middle:
-            # TODO check size windows and divide by 2
-            delta_y -= 400
+        target_distance = (
+            delta_y - (viewport_height - element_height) / 2 - window_y
+        )
+        if window_y < delta_y < window_y + viewport_height - 50:
+            # No need to scroll
+            return
         print(f"scroll to xpath at y:{delta_y} position")
         if smooth_scroll:
             actual_pos = 0
-            while delta_y > actual_pos:
-                actual_pos += smooth_speed
-                print(actual_pos)
+            # Detect go top or bot
+            if delta_y > window_y:
+                step = abs(int(smooth_speed))  # to the top
+                condition = lambda a, d: a < d
+                go_down = True
+            else:
+                step = -abs(int(smooth_speed))  # to the bot
+                condition = lambda a, d: a > d
+                go_down = False
+            while condition(actual_pos, target_distance):
+                # TODO detect when cannot scroll, stop scrolling
+                actual_pos += step
+                if go_down and actual_pos > target_distance:
+                    step = actual_pos - target_distance
+                elif not go_down and actual_pos < target_distance:
+                    step = actual_pos - target_distance
+
                 ActionChains(self.driver).scroll_from_origin(
-                    scroll_origin, 0, int(smooth_speed)
+                    scroll_origin, 0, int(step)
                 ).perform()
                 print(f"Wait {smooth_fps} seconds")
                 time.sleep(smooth_fps)
             print("end")
         else:
             ActionChains(self.driver).scroll_from_origin(
-                scroll_origin, 0, int(delta_y)
+                scroll_origin, 0, int(target_distance)
             ).perform()
 
         # action = ActionChains(self.driver)
@@ -1593,6 +1629,15 @@ class SeleniumLib(object):
             header.text,
         )  # on retourne aussi le texte exact pour attendre le changement
 
+    def wait_is_invisible(self, by, value):
+        div_field = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.NAME, field_name))
+        )
+        wait = WebDriverWait(driver, 10)
+        wait.until(
+            EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
+        )
+
     def select_date(self, driver, date_to_select):
         # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
         picker = WebDriverWait(driver, 10).until(
@@ -1707,6 +1752,14 @@ def fill_parser(parser):
     group_browser.add_argument(
         "--use_network",
         help="Specify the adress, example: http://localhost:4444",
+    )
+    group_browser.add_argument(
+        "--use_download_path_default",
+        action="store_true",
+        help="Actually, the download path is a temporary directory. "
+        "This will enable default path to /home/seluser/Downloads, "
+        "need this with Selenium Grid by network. "
+        "Will delete all file into /home/seluser/Downloads at startup.",
     )
     group_browser.add_argument(
         "--window_size",

@@ -12,7 +12,7 @@
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
     <remote name="ajepe" fetch="https://github.com/ajepe/" />
     <remote name="bemade" fetch="https://git.bemade.org/bemade/" />
-    <remote name="ERPLibre_origin_bemade" fetch="https://eregion.chezlepro.ca/TechnoLibre/" />
+    <remote name="ERPLibre_origin_bemade" fetch="https://git.bemade.org/technolibre/" />
     <remote name="camptocamp" fetch="https://github.com/camptocamp/" />
     <remote name="cetmix" fetch="https://github.com/cetmix/" />
     <remote name="dhongu" fetch="https://github.com/dhongu/" />

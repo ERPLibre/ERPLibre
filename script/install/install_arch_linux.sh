@@ -62,3 +62,7 @@ install_package cmake
 install_package parallel
 install_package tk
 install_package shfmt
+
+# For erplibre_devops
+install_package sshpass
+

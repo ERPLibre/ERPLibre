@@ -415,7 +415,7 @@ def combine_requirements(config):
                 print(f"Internal error, missing result for {lst_requirement}.")
 
     # Support ignored requirements
-    lst_ignore = get_list_ignored()
+    lst_ignore, ignore_requirement_file = get_list_ignored()
     lst_ignored_key = []
     for key in dct_requirements.keys():
         for ignored in lst_ignore:
@@ -423,6 +423,9 @@ def combine_requirements(config):
                 lst_ignored_key.append(key)
     for key in lst_ignored_key:
         del dct_requirements[key]
+        print(
+            f"{Fore.YELLOW}WARNING{Style.RESET_ALL} - Ignore '{key}' from '{ignore_requirement_file}'"
+        )
 
     venv_dir = f".venv.{config.set_version_erplibre}"
     with open(f"./{venv_dir}/build_dependency.txt", "w") as f:
@@ -521,9 +524,22 @@ def call_poetry_add_build_dependency():
 
 
 def get_list_ignored():
-    with open("./requirement/ignore_requirements.txt", "r") as f:
-        lst_ignore_requirements = [a.strip() for a in f.readlines()]
-    return lst_ignore_requirements
+    odoo_erplibre_version = ""
+    with open("./.erplibre-version", "r", encoding="utf-8") as fichier:
+        odoo_erplibre_version = fichier.read().strip()
+    if not odoo_erplibre_version:
+        _logger.warning(
+            "Missing ./.erplibre-version file to determine which requirement/ignore_requirement to use."
+        )
+        return []
+    ignore_requirement_file = (
+        f"./requirement/ignore_requirements.{odoo_erplibre_version}.txt"
+    )
+    with open(ignore_requirement_file, "r") as f:
+        lst_ignore_requirements = [
+            a.strip() for a in f.readlines() if a.strip()
+        ]
+    return lst_ignore_requirements, ignore_requirement_file
 
 
 def main():

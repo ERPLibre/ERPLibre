@@ -12,8 +12,14 @@ _logger = logging.getLogger(__name__)
 
 
 def execute_shell(cmd):
-    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-    return out.decode().strip() if out else ""
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    return result.returncode, output.strip()
 
 
 def get_config():
@@ -41,7 +47,7 @@ def get_config():
 def main():
     config = get_config()
 
-    out_db = execute_shell("./odoo_bin.sh db --list")
+    status, out_db = execute_shell("./odoo_bin.sh db --list")
     lst_db = out_db.split("\n")
 
     lst_database_to_delete = []

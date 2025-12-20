@@ -27,11 +27,13 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Support RobotLibre code generator
 - Support ERPLibre DevOps, automation procedure about DevOps
 - ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
+- Support Selenium grid from selenium_lib.py
 
 ## Changed
 
 - Docker support postgresql 18
 - Format script search diff file into each repository
+- Support neutralize database from Odoo
 
 ## [1.6.0] - 2025-04-25
 

@@ -14,3 +14,5 @@ dataclasses
 pypiwin32
 
 cadquery
+pymysql
+pymssql

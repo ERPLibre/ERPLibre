@@ -111,4 +111,4 @@ docker_clean_all:
 
 .PHONY: docker_compose_clean_all
 docker_compose_clean_all:
-	./script/terminal/validate_to_continue.sh "⚠️ This will REMOVE docker compose images, volumes and network." && docker-compose down --rmi all -v
+	./script/terminal/validate_to_continue.sh "⚠️ This will REMOVE docker compose images, volumes and network." && docker compose down --rmi all -v

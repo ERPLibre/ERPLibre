@@ -4,25 +4,36 @@
 
 import os
 import subprocess
+import sys
 
 IGNORE_EXTENSION = []
 IGNORE_FILE_NAME = ["Makefile"]
 
 
 def execute_shell(cmd):
-    out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-    return out.decode().strip() if out else ""
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    return result.returncode, output.strip()
 
 
 def get_modified_files():
     lst_cmd_git_status = ["git", "status", "--porcelain"]
-    lst_cmd_git_status_repo = [
-        ".venv.erplibre/bin/repo",
-        "forall",
-        "-p",
-        "-c",
-        "git status -s",
-    ]
+    path_repo_bin = ".venv.erplibre/bin/repo"
+    if os.path.exists(path_repo_bin):
+        lst_cmd_git_status_repo = [
+            path_repo_bin,
+            "forall",
+            "-p",
+            "-c",
+            "git status -s",
+        ]
+    else:
+        lst_cmd_git_status_repo = []
     try:
         print(" ".join(lst_cmd_git_status))
         result = subprocess.run(
@@ -35,15 +46,18 @@ def get_modified_files():
 
         lst_lines = [(".", lines_local)]
 
-        print(" ".join(lst_cmd_git_status_repo))
+        if lst_cmd_git_status_repo:
+            print(" ".join(lst_cmd_git_status_repo))
 
-        result = subprocess.run(
-            lst_cmd_git_status_repo,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        lines_project = result.stdout.strip().split("\n\n")
+            result = subprocess.run(
+                lst_cmd_git_status_repo,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            lines_project = result.stdout.strip().split("\n\n")
+        else:
+            lines_project = []
 
         if os.path.isfile(".odoo-version"):
             with open(".odoo-version") as txt:
@@ -145,4 +159,7 @@ if __name__ == "__main__":
             has_file = True
     if has_file:
         print(cmd_format)
-        execute_shell(cmd_format)
+        status, output = execute_shell(cmd_format)
+        if status != 0:
+            print(output)
+        sys.exit(status)

@@ -14,7 +14,7 @@ EL_USER=${USER}
 UBUNTU_VERSION=$(lsb_release -rs)
 DEBIAN_VERSION=$(lsb_release -cs)
 OS=$(lsb_release -si)
-if [ "25.04" == "${UBUNTU_VERSION}" ] || [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
+if [ "25.10" == "${UBUNTU_VERSION}" ] || [ "25.04" == "${UBUNTU_VERSION}" ] || [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [ "20.04" == "${UBUNTU_VERSION}" ]; then
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
@@ -39,7 +39,7 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
-  sudo apt install wkhtmltopdf rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential -y
+  sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential npm -y
 fi
 
 #--------------------------------------------------
