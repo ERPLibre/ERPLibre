@@ -2,6 +2,7 @@
 # © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import configparser
 import datetime
 import getpass
 import json
@@ -220,6 +221,7 @@ class TODO:
 [4] Code - Outil pour développeur
 [5] Doc - Recherche de documentation
 [6] Database - Outils sur les bases de données
+[7] Process - Outils sur les exécutions
 [0] Retour
 """
         while True:
@@ -249,6 +251,10 @@ class TODO:
                     return
             elif status == "6":
                 status = self.prompt_execute_database()
+                if status is not False:
+                    return
+            elif status == "7":
+                status = self.prompt_execute_process()
                 if status is not False:
                     return
             else:
@@ -681,6 +687,23 @@ class TODO:
             else:
                 print("Commande non trouvée 🤖!")
 
+    def prompt_execute_process(self):
+        print("🤖 Manipuler les processus d'exécution!")
+        lst_instance = [
+            {"prompt_description": "Kill process from actual port"},
+        ]
+        help_info = self.fill_help_info(lst_instance)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.process_kill_from_port()
+            else:
+                print("Commande non trouvée 🤖!")
+
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
             data_version = json.load(txt)
@@ -1055,6 +1078,16 @@ class TODO:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
+
+    def process_kill_from_port(self):
+        cfg = configparser.ConfigParser()
+        cfg.read("./config.conf")
+        http_port = cfg.getint("options", "http_port")
+
+        status = self.executer_commande_live(
+            f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",
+            source_erplibre=False,
+        )
 
     def download_database_backup_cli(self, show_remote_list=True):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")

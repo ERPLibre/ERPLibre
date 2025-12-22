@@ -29,6 +29,7 @@ python-dateutil
 unidecode
 sshconf
 cloudflare
+psutil
 
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0
