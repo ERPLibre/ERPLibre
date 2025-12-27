@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 import zipfile
 
 new_path = os.path.normpath(
@@ -30,6 +31,13 @@ INSTALLED_ODOO_VERSION_FILE = os.path.join(
 ODOO_VERSION_FILE = ".odoo-version"
 ENABLE_CRASH = False
 CRASH_E = None
+# Support mobile ERPLibre
+ANDROID_DIR = "android"
+MOBILE_HOME_PATH = "./mobile/technolibre_home_mobile/technolibre_home"
+STRINGS_FILE = os.path.join(
+    MOBILE_HOME_PATH, ANDROID_DIR, "app/src/main/res/values/strings.xml"
+)
+GRADLE_FILE = os.path.join(MOBILE_HOME_PATH, ANDROID_DIR, "app/build.gradle")
 
 try:
     import tkinter as tk
@@ -67,7 +75,6 @@ _logger = logging.getLogger(__name__)
 CONFIG_FILE = "./script/todo/todo.json"
 CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
 LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
-PATH_MOBILE_PROJECT_HOME = "./mobile/technolibre_home_mobile/technolibre_home"
 
 
 class TODO:
@@ -469,7 +476,7 @@ class TODO:
         lst_instance = self.config_file.get_config("instance")
         init_len = len(lst_instance)
 
-        if os.path.exists(PATH_MOBILE_PROJECT_HOME):
+        if os.path.exists(MOBILE_HOME_PATH):
             dct_upgrade_odoo_database = {
                 "prompt_description": "Mobile - Compile and run software",
                 "callback": self.callback_make_mobile_home,
@@ -1180,12 +1187,34 @@ class TODO:
         todo_file_browser.exit_program()
 
     def callback_make_mobile_home(self, dct_config):
+        # Read file
         default_project_name = "ERPLibre"
+        default_package_name = "ca.erplibre.home"
+        # Read default information
+        if os.path.exists(STRINGS_FILE):
+            tree = ET.parse(STRINGS_FILE)
+            root = tree.getroot()
+            for elem in root.findall("string"):
+                if elem.get("name") == "app_name":
+                    default_project_name = elem.text
+                if elem.get("name") == "package_name":
+                    default_package_name = elem.text
+
         default_project_url_name = "https://erplibre.ca"
+        # Read default information
+        dotenv_file = dotenv.find_dotenv(
+            filename=os.path.join(MOBILE_HOME_PATH, "src", ".env.production")
+        )
+        default_project_url_name = dotenv.get_key(
+            dotenv_file, "VITE_WEBSITE_URL"
+        )
+
         default_debug = False
         project_name = default_project_name
         project_url_name = default_project_url_name
+        package_name = default_package_name
         do_debug = default_debug
+        do_change_picture_menu = False
 
         do_personalize = input(
             "Do you want to personalize the mobile application (Y) : "
@@ -1193,9 +1222,15 @@ class TODO:
         if do_personalize.strip().lower() == "y":
             project_name = (
                 input(
-                    f"Your project name, default {default_project_name} : "
+                    f'Your project name (Separate by space in title), default "{default_project_name}" : '
                 ).strip()
                 or default_project_name
+            )
+            package_name = (
+                input(
+                    f'Your package name (separate by . lower case, 3 works like DOMAIN.NAME.OBJECT), default "{default_package_name}" : '
+                ).strip()
+                or default_package_name
             )
             project_url_name = (
                 input(
@@ -1204,15 +1239,24 @@ class TODO:
                 or default_project_url_name
             )
             do_debug = (
-                input("Do you want debug information (Y) :").strip().lower()
+                input("Compilation with debug information, default No (Y) : ")
+                .strip()
+                .lower()
+                == "y"
+            )
+            do_change_picture_menu = (
+                input(
+                    "Want to change picture from menu, you need android-studio (Y) : "
+                )
+                .strip()
+                .lower()
                 == "y"
             )
 
-        dotenv_file = dotenv.find_dotenv(
-            filename=os.path.join(
-                PATH_MOBILE_PROJECT_HOME, "src", ".env.production"
-            )
-        )
+        # Rename with script bash
+        cmd_client = f'cd {MOBILE_HOME_PATH} && npx cap init "{project_name}" "{package_name}" && ./rename_android.sh "{project_name}" "{package_name}" && npx cap sync android'
+        self.executer_commande_live(cmd_client, source_erplibre=False)
+
         # dotenv_mobile = dotenv.dotenv_values(dotenv_file)
         # dotenv_mobile["VITE_TITLE"] = project_name
         # dotenv_mobile["VITE_WEBSITE_URL"] = project_url_name
@@ -1231,6 +1275,20 @@ class TODO:
             "true" if do_debug else "false",
             quote_mode="never",
         )
+
+        if do_change_picture_menu:
+            status = self.executer_commande_live(
+                f"cd {MOBILE_HOME_PATH} && npx cap open android;bash",
+                source_erplibre=False,
+                new_window=True,
+            )
+            print(
+                "Guide for Android-Studio, wait loading is finish. Right-click to app/New/Image Asset and load your image."
+            )
+            input(
+                "Did you finish to update image with Android-Studio ? Press to continue ..."
+            )
+
         status = self.executer_commande_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
