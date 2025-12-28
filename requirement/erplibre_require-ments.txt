@@ -31,6 +31,9 @@ sshconf
 cloudflare
 psutil
 
+# For mobile
+pillow
+
 # Force upgrade package to fix Ubuntu 25.04
 virtualenv==20.30.0
 

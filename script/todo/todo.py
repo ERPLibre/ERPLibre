@@ -33,7 +33,7 @@ ENABLE_CRASH = False
 CRASH_E = None
 # Support mobile ERPLibre
 ANDROID_DIR = "android"
-MOBILE_HOME_PATH = "./mobile/technolibre_home_mobile/technolibre_home"
+MOBILE_HOME_PATH = "./mobile/erplibre_home_mobile"
 STRINGS_FILE = os.path.join(
     MOBILE_HOME_PATH, ANDROID_DIR, "app/src/main/res/values/strings.xml"
 )
