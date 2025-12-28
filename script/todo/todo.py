@@ -1208,10 +1208,14 @@ class TODO:
         default_project_url_name = dotenv.get_key(
             dotenv_file, "VITE_WEBSITE_URL"
         )
+        default_project_note_subject = dotenv.get_key(
+            dotenv_file, "VITE_LABEL_NOTE"
+        )
 
         default_debug = False
         project_name = default_project_name
         project_url_name = default_project_url_name
+        project_principal_subject = default_project_note_subject
         package_name = default_package_name
         do_debug = default_debug
         do_change_picture_menu = False
@@ -1234,9 +1238,15 @@ class TODO:
             )
             project_url_name = (
                 input(
-                    f"Your project url website, default {default_project_url_name} : "
+                    f'Your project url website, default "{default_project_url_name}" : '
                 ).strip()
                 or default_project_url_name
+            )
+            project_principal_subject = (
+                input(
+                    f'Your project subject, default "{default_project_note_subject}" : '
+                ).strip()
+                or default_project_note_subject
             )
             do_debug = (
                 input("Compilation with debug information, default No (Y) : ")
@@ -1271,6 +1281,12 @@ class TODO:
         )
         dotenv.set_key(
             dotenv_file,
+            "VITE_LABEL_NOTE",
+            project_principal_subject,
+            quote_mode="always",
+        )
+        dotenv.set_key(
+            dotenv_file,
             "VITE_DEBUG_DEV",
             "true" if do_debug else "false",
             quote_mode="never",
@@ -1288,6 +1304,10 @@ class TODO:
             input(
                 "Did you finish to update image with Android-Studio ? Press to continue ..."
             )
+            cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/company_logo.png"
+            self.executer_commande_live(cmd_client, source_erplibre=False)
+            cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
+            self.executer_commande_live(cmd_client, source_erplibre=False)
 
         status = self.executer_commande_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
