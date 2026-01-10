@@ -23,6 +23,7 @@ robot_libre_init:
 .PHONY: robot_libre_pre
 robot_libre_pre:
 	echo "Create database robotlibre"
+	./script/config/setup_odoo_config_conf_devops.py
 	./script/database/db_restore.py --database robotlibre
 
 .PHONY: robot_libre
