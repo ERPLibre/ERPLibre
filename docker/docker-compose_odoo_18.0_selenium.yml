@@ -69,6 +69,8 @@ services:
       - selenium-hub
     environment:
       - SE_EVENT_BUS_HOST=selenium-hub
+#      - SE_NODE_OVERRIDE_MAX_SESSIONS=true
+#      - SE_NODE_MAX_SESSIONS=2
 
   # put into config.conf selenium_network_url=http://selenium-hub:4444
   # in python
