@@ -129,6 +129,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/TechnoLibre_odoo-code-generator-template," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/bemade_bemade-addons," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/camptocamp_odoo-cloud-platform," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME_ODOO_PROJECT}/addons/cetmix_cetmix-tower," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/dhongu_deltatech," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/muk-it_odoo-modules," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/novacode-nl_odoo-formio," >> "${EL_CONFIG_FILE}"

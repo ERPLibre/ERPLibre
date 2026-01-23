@@ -182,7 +182,7 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <!--    <project name="cetmix-tower.git" revision="18.0" path="odoo18.0/addons/cetmix_cetmix-tower" remote="cetmix" groups="addons,odoo18.0" />-->
+    <project name="cetmix-tower.git" revision="18.0" path="odoo18.0/addons/cetmix_cetmix-tower" remote="cetmix" groups="addons,odoo18.0" />
     <project
         name="community-data-files.git"
         revision="18.0"
