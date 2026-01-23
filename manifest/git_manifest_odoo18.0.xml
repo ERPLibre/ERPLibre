@@ -283,6 +283,13 @@
         groups="addons,base,odoo18.0"
     />
     <project
+        name="design-themes.git"
+        path="odoo18.0/addons/odoo_design-themes"
+        remote="ERPLibre_origin_odoo"
+        revision="18.0"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="donation.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_donation"

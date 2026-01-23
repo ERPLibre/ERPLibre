@@ -123,6 +123,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_website," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_website-cms," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_wms," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME_ODOO_PROJECT}/addons/ONLYOFFICE_onlyoffice_odoo," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OmniaGit_odooplm," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/TechnoLibre_odoo-code-generator," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/TechnoLibre_odoo-code-generator-template," >> "${EL_CONFIG_FILE}"
@@ -131,6 +132,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/dhongu_deltatech," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/muk-it_odoo-modules," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/novacode-nl_odoo-formio," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME_ODOO_PROJECT}/addons/odoo_design-themes," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/odoomates_odooapps," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/openeducat_openeducat_erp," >> "${EL_CONFIG_FILE}"
 fi
