@@ -133,6 +133,13 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="automation.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_automation"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="bank-payment.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_bank-payment"

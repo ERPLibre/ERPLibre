@@ -43,6 +43,7 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_account-payment," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_account-reconcile," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_apps-store," >> "${EL_CONFIG_FILE}"
+    printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_automation," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_bank-payment," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_bank-payment-alternative," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_bank-statement-import," >> "${EL_CONFIG_FILE}"
