@@ -189,7 +189,13 @@
         remote="OCA"
         groups="addons,odoo18.0"
     />
-    <project name="cetmix-tower.git" revision="18.0" path="odoo18.0/addons/cetmix_cetmix-tower" remote="cetmix" groups="addons,odoo18.0" />
+    <project
+        name="cetmix-tower.git"
+        revision="18.0"
+        path="odoo18.0/addons/cetmix_cetmix-tower"
+        remote="cetmix"
+        groups="addons,odoo18.0"
+    />
     <project
         name="community-data-files.git"
         revision="18.0"
@@ -652,6 +658,13 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="shopfloor-app.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_shopfloor-app"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="social.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_social"
@@ -694,6 +707,20 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="report-print-send.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_report-print-send"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="rest-framework.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_rest-framework"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="vertical-association.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_vertical-association"
@@ -726,6 +753,13 @@
         revision="18.0_dev"
         path="odoo18.0/addons/OCA_web"
         remote="ERPLibre_origin_OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="web-api.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_web-api"
+        remote="OCA"
         groups="addons,odoo18.0"
     />
     <project
