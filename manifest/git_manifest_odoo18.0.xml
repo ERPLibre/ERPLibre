@@ -126,6 +126,20 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="agreement.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_agreement"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="ai.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_ai"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="apps-store.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_apps-store"
@@ -350,6 +364,8 @@
         groups="addons,odoo18.0"
     />
     <project name="hr.git" revision="18.0" path="odoo18.0/addons/OCA_hr" remote="OCA" groups="addons,odoo18.0" />
+    <project name="hr-attendance.git" revision="18.0" path="odoo18.0/addons/OCA_hr-attendance" remote="OCA" groups="addons,odoo18.0" />
+    <project name="hr-expense.git" revision="18.0" path="odoo18.0/addons/OCA_hr-expense" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="hr-holidays.git"
         revision="18.0"
@@ -358,9 +374,30 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="infrastructure.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_infrastructure"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="intrastat-extrastat.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_intrastat-extrastat"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="interface-github.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_interface-github"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="iot.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_iot"
         remote="OCA"
         groups="addons,odoo18.0"
     />
@@ -386,6 +423,7 @@
         groups="addons,odoo18.0"
     />
     <project name="mail.git" revision="18.0" path="odoo18.0/addons/OCA_mail" remote="OCA" groups="addons,odoo18.0" />
+    <project name="mass-mailing.git" revision="18.0" path="odoo18.0/addons/OCA_mass-mailing" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="management-system.git"
         revision="18.0"
@@ -397,6 +435,13 @@
         name="manufacture.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_manufacture"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="manufacture-reporting.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_manufacture-reporting"
         remote="OCA"
         groups="addons,odoo18.0"
     />
@@ -420,6 +465,13 @@
         revision="18.0"
         path="odoo18.0/addons/OCA_multi-company"
         remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="muk-it_odoo-modules.git"
+        path="odoo18.0/addons/muk-it_odoo-modules"
+        remote="TechnoLibre_origin_muk-it"
+        revision="18.0"
         groups="addons,odoo18.0"
     />
     <!--    <project name="muk_web.git" revision="18.0" path="odoo18.0/addons/muk-it_muk_web" remote="muk-it" groups="addons,odoo18.0" />-->
@@ -458,10 +510,10 @@
         groups="addons,odoo18.0"
     />
     <project
-        name="muk-it_odoo-modules.git"
-        path="odoo18.0/addons/muk-it_odoo-modules"
-        remote="TechnoLibre_origin_muk-it"
+        name="odoo-pim.git"
         revision="18.0"
+        path="odoo18.0/addons/OCA_odoo-pim"
+        remote="OCA"
         groups="addons,odoo18.0"
     />
     <project
@@ -511,6 +563,13 @@
         name="partner-contact.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_partner-contact"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="payroll.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_payroll"
         remote="OCA"
         groups="addons,odoo18.0"
     />
@@ -565,6 +624,13 @@
         groups="addons,odoo18.0"
     />
     <project
+        name="purchase-reporting.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_purchase-reporting"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="purchase-workflow.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_purchase-workflow"
@@ -573,9 +639,30 @@
     />
     <project name="queue.git" revision="18.0" path="odoo18.0/addons/OCA_queue" remote="OCA" groups="addons,odoo18.0" />
     <project
+        name="repair.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_repair"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="report-print-send.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_report-print-send"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
         name="reporting-engine.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_reporting-engine"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="rest-framework.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_rest-framework"
         remote="OCA"
         groups="addons,odoo18.0"
     />
@@ -586,6 +673,27 @@
     <!--        remote="it-projects-llc"-->
     <!--        groups="addons,odoo18.0"-->
     <!--    />-->
+    <project
+        name="sale-blanket.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_sale-blanket"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="sale-channel.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_sale-channel"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="sale-promotion.git"
+        revision="18.0"
+        path="odoo18.0/addons/OCA_sale-promotion"
+        remote="OCA"
+        groups="addons,odoo18.0"
+    />
     <project
         name="sale-reporting.git"
         revision="18.0"
@@ -642,13 +750,13 @@
         remote="ERPLibre_origin_OCA"
         groups="addons,odoo18.0"
     />
-    <!--    <project-->
-    <!--        name="shift-planning.git"-->
-    <!--        revision="18.0" path="odoo18.0/addons/OCA_shift-planning"-->
-    <!--        remote="ERPLibre"-->
-    <!--        revision="18.0_dev"-->
-    <!--        groups="addons,odoo18.0"-->
-    <!--    />-->
+    <project
+        name="shift-planning.git"
+        revision="18.0_dev"
+        path="odoo18.0/addons/OCA_shift-planning"
+        remote="ERPLibre_origin_OCA"
+        groups="addons,odoo18.0"
+    />
     <project name="sign.git" revision="18.0" path="odoo18.0/addons/OCA_sign" remote="OCA" groups="addons,odoo18.0" />
     <project
         name="spreadsheet.git"
@@ -703,20 +811,6 @@
         name="timesheet.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_timesheet"
-        remote="OCA"
-        groups="addons,odoo18.0"
-    />
-    <project
-        name="report-print-send.git"
-        revision="18.0"
-        path="odoo18.0/addons/OCA_report-print-send"
-        remote="OCA"
-        groups="addons,odoo18.0"
-    />
-    <project
-        name="rest-framework.git"
-        revision="18.0"
-        path="odoo18.0/addons/OCA_rest-framework"
         remote="OCA"
         groups="addons,odoo18.0"
     />
