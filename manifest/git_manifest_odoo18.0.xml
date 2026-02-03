@@ -57,9 +57,9 @@
     />
     <project
         name="account-budgeting.git"
-        revision="18.0-mig-account_budget_oca"
+        revision="18.0"
         path="odoo18.0/addons/OCA_account-budgeting"
-        remote="ERPLibre_origin_OCA"
+        remote="OCA"
         groups="addons,odoo18.0"
     />
     <project
