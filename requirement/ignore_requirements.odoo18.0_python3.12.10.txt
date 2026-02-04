@@ -16,3 +16,6 @@ pypiwin32
 cadquery
 pymysql
 pymssql
+
+# Conflict with pdfminer.six
+pdfminer
