@@ -856,7 +856,7 @@ class TODO:
             commande = (
                 f"source ./.venv.{source_odoo}/bin/activate && {commande}"
             )
-        elif new_window:
+        elif new_window and self.cmd_source_default:
             commande = self.cmd_source_default % commande
 
         print("🏠 ⬇ Execute command :")
