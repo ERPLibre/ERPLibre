@@ -752,9 +752,9 @@
     />
     <project
         name="shift-planning.git"
-        revision="18.0_dev"
+        revision="18.0"
         path="odoo18.0/addons/OCA_shift-planning"
-        remote="ERPLibre_origin_OCA"
+        remote="OCA"
         groups="addons,odoo18.0"
     />
     <project name="sign.git" revision="18.0" path="odoo18.0/addons/OCA_sign" remote="OCA" groups="addons,odoo18.0" />
