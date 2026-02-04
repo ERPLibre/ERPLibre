@@ -14,6 +14,6 @@ sudo snap install core
 sudo snap refresh core
 
 # https://certbot.eff.org/lets-encrypt/debianbuster-nginx
-# Cerbot
+# Certbot
 sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot

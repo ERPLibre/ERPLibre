@@ -731,15 +731,24 @@ class TodoUpgrade:
         if not self.dct_progression.get("state_1_restore_database"):
             file_name = os.path.basename(self.file_path)
             image_db_file_path = os.path.join("image_db", file_name)
-            if os.path.exists(image_db_file_path):
-                if not shutil._samefile(self.file_path, image_db_file_path):
+            str_will_copy = (
+                f"🤖 will copy '{self.file_path}' to '{image_db_file_path}'"
+            )
+            if not shutil._samefile(self.file_path, image_db_file_path):
+                do_copy = False
+                if os.path.exists(image_db_file_path):
                     status_overwrite_image_db = input(
-                        f"🤖 will copy '{self.file_path}' to '{image_db_file_path}', "
+                        f"{str_will_copy}, "
                         f"a file already exist, do you want to continue (y/Y) : "
                     ).strip()
-                    if status_overwrite_image_db.lower() != "y":
-                        return
-                    os.remove(image_db_file_path)
+                    if status_overwrite_image_db.lower() == "y":
+                        do_copy = True
+                        os.remove(image_db_file_path)
+                else:
+                    print(str_will_copy)
+                    do_copy = True
+
+                if do_copy:
                     shutil.copy(self.file_path, image_db_file_path)
 
             status, cmd_executed = self.todo_upgrade_execute(

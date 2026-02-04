@@ -4,7 +4,7 @@
 
     <project
         name="technolibre_home_mobile.git"
-        path="mobile/technolibre_home_mobile"
+        path="mobile/erplibre_home_mobile"
         remote="TechnoLibre"
         revision="main"
         groups="mobile"

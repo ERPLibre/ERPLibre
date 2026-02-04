@@ -68,6 +68,8 @@ MONTHS_FR = {
     "decembre": 12,
 }
 
+defaut_timeout = 60
+
 
 class SeleniumLib(object):
     def __init__(self, config):
@@ -437,7 +439,7 @@ class SeleniumLib(object):
                 word = ""
         return word
 
-    def click(self, xpath, timeout=5):
+    def click(self, xpath, timeout=defaut_timeout):
         wait = WebDriverWait(self.driver, timeout)
         button = wait.until(
             EC.element_to_be_clickable(
@@ -454,7 +456,7 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout=5,
+        timeout=defaut_timeout,
         wait_clickable=False,
         wait_is_invisible=False,
         is_visible=True,
@@ -503,7 +505,7 @@ class SeleniumLib(object):
         return ele[0]
 
     def get_element_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=5
+        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
     ):
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
@@ -518,7 +520,7 @@ class SeleniumLib(object):
         return ele
 
     def get_elements_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=5
+        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
     ):
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
@@ -533,12 +535,14 @@ class SeleniumLib(object):
         return ele
 
     def get_text_from_element(
-        self, by: str = By.ID, value: str = None, timeout=5
+        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
     ):
         ele = self.get_element(by, value, timeout=timeout)
         return ele.text
 
-    def get_all_element(self, by: str = By.ID, value: str = None, timeout=5):
+    def get_all_element(
+        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+    ):
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.visibility_of_all_elements_located(
@@ -556,7 +560,7 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=5,
+        timeout=defaut_timeout,
         inject_cursor=False,
     ):
         new_element = self.wait_new_element(
@@ -573,7 +577,7 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=5,
+        timeout=defaut_timeout,
         timeout_wait=None,
     ):
         element = None
@@ -588,7 +592,11 @@ class SeleniumLib(object):
         return element
 
     def wait_add_new_element_and_click(
-        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=defaut_timeout,
     ):
         new_element = self.wait_add_new_element(
             by=by, value=value, delay_wait=delay_wait, timeout=timeout
@@ -597,7 +605,11 @@ class SeleniumLib(object):
         return new_element
 
     def wait_add_new_element(
-        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=defaut_timeout,
     ):
         all_element_init = self.get_all_element(by=by, value=value)
         len_all_element_init = len(all_element_init)
@@ -612,7 +624,11 @@ class SeleniumLib(object):
         return new_element
 
     def wait_increment_number_text_and_click(
-        self, by: str = By.ID, value: str = None, delay_wait=1, timeout=5
+        self,
+        by: str = By.ID,
+        value: str = None,
+        delay_wait=1,
+        timeout=defaut_timeout,
     ):
         element_init = self.get_element(by=by, value=value, timeout=timeout)
         actual_number = int(element_init.text)
@@ -631,7 +647,7 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = 5,
+        timeout: int = defaut_timeout,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
@@ -696,7 +712,7 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = 5,
+        timeout: int = defaut_timeout,
         form="carre",
     ):
 
@@ -720,7 +736,7 @@ class SeleniumLib(object):
         value: str = None,
         text_value: str = "",
         delay_after: int = -1,
-        timeout: int = 5,
+        timeout: int = defaut_timeout,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
@@ -1093,7 +1109,7 @@ class SeleniumLib(object):
                 " odoo_website_menu_click"
             )
         button = self.click_with_mouse_move(
-            By.LINK_TEXT, from_text, timeout=30
+            By.LINK_TEXT, from_text, timeout=defaut_timeout
         )
         return button
 
@@ -1113,11 +1129,10 @@ class SeleniumLib(object):
                 By.XPATH,
                 "//button[contains(@class, 'dropdown-toggle') and"
                 " .//i[contains(@class, 'oi-apps')]]",
-                timeout=10,
             )
         elif self.odoo_version == "14.0":
             button = self.click_with_mouse_move(
-                By.CSS_SELECTOR, "a.full[data-toggle='dropdown']", timeout=30
+                By.CSS_SELECTOR, "a.full[data-toggle='dropdown']"
             )
         return button
 
@@ -1126,7 +1141,6 @@ class SeleniumLib(object):
         all_row = self.get_all_element(
             by=By.XPATH,
             value=f"//tr[contains(@class, 'o_data_row')]/td[contains(@name, '{field_name}')]",
-            timeout=10,
         )
         row = all_row[index] if index < len(all_row) else all_row[-1]
         button = self.click_with_mouse_move(element=row)
@@ -1137,7 +1151,6 @@ class SeleniumLib(object):
         button = self.click_with_mouse_move(
             By.XPATH,
             "//button[contains(@class, 'o_searchview_dropdown_toggler')]",
-            timeout=10,
         )
         return button
 
@@ -1146,14 +1159,12 @@ class SeleniumLib(object):
         button = self.click_with_mouse_move(
             By.XPATH,
             value="//select[contains(@class, 'o_add_custom_group_menu')]",
-            timeout=10,
         )
         if self.wait_human_time:
             time.sleep(1)
         select_elem = self.get_element(
             By.XPATH,
             value="//select[contains(@class, 'o_add_custom_group_menu')]",
-            timeout=10,
             wait_clickable=False,
         )
 
@@ -1174,20 +1185,17 @@ class SeleniumLib(object):
             button = self.click_with_mouse_move(
                 By.XPATH,
                 value=f"//button[contains(@class,'o_menu_item') and contains(normalize-space(.), '{filter_label}')]",
-                timeout=10,
             )
         if filter_sub_label:
             button = self.click_with_mouse_move(
                 By.XPATH,
                 value=f"//span[contains(@class,'o_item_option') and contains(normalize-space(.), '{filter_sub_label}')]",
-                timeout=10,
             )
         if lst_update_condition:
             filter_text = f"{filter_label}: {filter_sub_label}"
             button = self.click_with_mouse_move(
                 By.XPATH,
                 value=f"//small[contains(@class,'o_facet_value') and contains(normalize-space(.), '{filter_text}')]/../..//i[contains(@class,'fa-cog')]",
-                timeout=10,
                 is_visible=False,
             )
             time.sleep(1)
@@ -1197,7 +1205,6 @@ class SeleniumLib(object):
                     select_elem = self.click_with_mouse_move(
                         By.XPATH,
                         value=f"//div[contains(@class,'modal-content')]//select[contains(@class,'pe-3')]",
-                        timeout=10,
                         is_visible=False,
                     )
                     select_obj = Select(select_elem)
@@ -1211,14 +1218,12 @@ class SeleniumLib(object):
             button = self.click_with_mouse_move(
                 By.XPATH,
                 value=f"//footer[contains(@class,'modal-footer')]//button[contains(@class,'btn-primary') and contains(normalize-space(.), 'Confirmer')]",
-                timeout=10,
             )
 
     def odoo_fill_search_input(self, text, selection_research=None):
         input_elem = self.click_with_mouse_move(
             By.XPATH,
             value="//input[contains(@class, 'o_searchview_input')]",
-            timeout=10,
         )
         input_elem.send_keys(text)
         time.sleep(1)
@@ -1240,15 +1245,13 @@ class SeleniumLib(object):
                 "Cannot click, empty parameter from method"
                 " odoo_web_principal_menu_click_root_menu"
             )
-        button = self.click_with_mouse_move(
-            By.LINK_TEXT, from_text, timeout=30
-        )
+        button = self.click_with_mouse_move(By.LINK_TEXT, from_text)
         # If not work, force it
         # selenium_tool.driver.execute_script("arguments[0].click();", button)
         return button
 
     def odoo_web_form_click_statusbar_button_status(
-        self, status_label, timeout=10
+        self, status_label, timeout=defaut_timeout
     ):
         try:
             status_button = self.click_with_mouse_move(
@@ -1294,7 +1297,7 @@ class SeleniumLib(object):
         toggle_data_menu("color_scheme.switch", enable_dark_mode)
 
     def odoo_web_form_click_statusbar_button_status_floating(
-        self, status_label, timeout=10
+        self, status_label, timeout=defaut_timeout
     ):
         status_button = self.click_with_mouse_move(
             By.XPATH,
@@ -1306,7 +1309,7 @@ class SeleniumLib(object):
         return status_button
 
     def odoo_web_form_click_statusbar_button_status_plus(
-        self, status_label, timeout=10
+        self, status_label, timeout=defaut_timeout
     ):
         status_button = self.click_with_mouse_move(
             By.XPATH,
@@ -1324,7 +1327,6 @@ class SeleniumLib(object):
             By.XPATH,
             f"//button[contains(@class, '{btn_class}') and contains(span,"
             f" '{btn_label}')]",
-            timeout=30,
         )
         print(f"Bouton du statusbar avec le label '{btn_label}' cliqué.")
         return status_button
@@ -1333,7 +1335,6 @@ class SeleniumLib(object):
         status_button = self.click_with_mouse_move(
             By.NAME,
             btn_action,
-            timeout=30,
         )
         print(f"Bouton avec l'action '{btn_action}' cliqué.")
         return status_button
@@ -1343,9 +1344,7 @@ class SeleniumLib(object):
             "o_form_button_save"
         )
 
-    def odoo_web_change_view(
-        self, view_name="list", raise_error=False, timeout=5
-    ):
+    def odoo_web_change_view(self, view_name="list", raise_error=False):
         if view_name not in ["list", "kanban", "timeline"]:
             msg = f"odoo_web_change_view view_name '{view_name}' invalid"
             if raise_error:
@@ -1367,7 +1366,6 @@ class SeleniumLib(object):
         status_button = self.click_with_mouse_move(
             By.CLASS_NAME,
             custom_class_name,
-            timeout=30,
         )
         print(f"Bouton avec l'action '{custom_class_name}' cliqué.")
         return status_button
@@ -1378,7 +1376,6 @@ class SeleniumLib(object):
             By.XPATH,
             "//div[contains(@class,"
             f" 'o_kanban_record')]//span[contains(text(), '{card_label}')]",
-            timeout=30,
         )
         # kanban_card = self.driver.find_element(By.XPATH,
         #                                        f"//div[contains(@class, 'o_kanban_record')]//span[contains(text(), '{card_label}')]")
@@ -1388,9 +1385,7 @@ class SeleniumLib(object):
 
     def odoo_web_action_button_new(self):
         # From web view kanban, list
-        return self.click_with_mouse_move(
-            By.CLASS_NAME, "o-kanban-button-new", timeout=30
-        )
+        return self.click_with_mouse_move(By.CLASS_NAME, "o-kanban-button-new")
 
     def odoo_web_kanban_click(self, button_text, btn_class="btn-primary"):
         # From web view kanban, list
@@ -1398,14 +1393,12 @@ class SeleniumLib(object):
             By.XPATH,
             f"//button[contains(@class, 'btn {btn_class} o_kanban_edit') and"
             f" text()='{button_text}']",
-            timeout=30,
         )
 
     def odoo_web_form_notebook_tab_click(self, tab_text):
         return self.click_with_mouse_move(
             By.XPATH,
             f"//a[text()='{tab_text}']",
-            timeout=30,
         )
 
     # Web

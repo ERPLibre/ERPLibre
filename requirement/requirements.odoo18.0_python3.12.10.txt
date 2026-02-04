@@ -56,7 +56,7 @@ meteostat==1.6.8
 beautifulsoup4==4.13.5
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
-pylint==3.3.9
+#pylint==3.3.9
 isort==6.1.0
 
 # Fix some OS
