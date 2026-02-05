@@ -228,7 +228,9 @@ class SeleniumLib(object):
                     )
                 elif not self.config.use_network:
                     # test snap firefox for Ubuntu first
-                    snap_firefox_path = "/snap/bin/firefox"
+                    snap_firefox_path = (
+                        "/snap/firefox/current/usr/lib/firefox/firefox"
+                    )
                     firefox_path_exist = Path(snap_firefox_path).exists()
                     if firefox_path_exist:
                         firefox_options.binary_location = snap_firefox_path
