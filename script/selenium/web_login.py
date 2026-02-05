@@ -147,9 +147,7 @@ def run(
 
     # Open View
     if config.open_dashboard:
-        selenium_tool.odoo_website_menu_click(
-            "Tableaux de bord"
-        )
+        selenium_tool.odoo_website_menu_click("Tableaux de bord")
 
     # Open conversation chat
     # conversation_button = selenium_tool.driver.find_element(By.XPATH, '/html/body/header/nav/ul[3]/li[2]/a')
@@ -163,6 +161,7 @@ def run(
     # selenium_tool.driver.quit()
 
     # Force use dark mode if enable
+    time.sleep(1)
     selenium_tool.odoo_profile_click(
         enable_dark_mode=not config.no_dark_mode, enable_tour=False
     )

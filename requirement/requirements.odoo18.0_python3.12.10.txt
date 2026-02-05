@@ -1,7 +1,7 @@
 # For OSX
 cython
 
-setuptools==80.9.0
+setuptools==80.10.2
 
 # Module voice_to_text
 #SpeechRecognition==3.10.0
@@ -38,7 +38,8 @@ pre-commit
 #hubspot-api-client==10.0.0
 
 # Optional Odoo
-pdfminer
+#pdfminer
+pdfminer.six==20260107
 
 # Optional PyDev
 pydevd-odoo
@@ -57,7 +58,7 @@ beautifulsoup4==4.13.5
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
 #pylint==3.3.9
-isort==6.1.0
+isort==7.0.0
 
 # Fix some OS
 cryptography==46.0.3
@@ -68,4 +69,4 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 # Fix compilation, until pymssql==2.3.9 is release
 #git+https://github.com/pymssql/pymssql.git
 
-pillow==12.0.0
+pillow==12.1.0

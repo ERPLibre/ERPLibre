@@ -1,6 +1,6 @@
 services:
   ERPLibre:
-    image: technolibre/erplibre:1.6.0_odoo_18.0_2492ba3
+    image: technolibre/erplibre:1.6.0_odoo_18.0_eae4054
     ports:
       - 8069:8069
       - 8071:8071
