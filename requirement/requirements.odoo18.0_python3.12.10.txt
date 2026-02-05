@@ -53,7 +53,7 @@ pydevd-odoo
 meteostat==1.6.8
 
 # Fix build
-beautifulsoup4==4.13.5
+beautifulsoup4==4.14.3
 # pylint-odoo depend on pylint==3.3.9 https://github.com/OCA/pylint-odoo/pull/541
 #pylint-odoo==9.3.22
 #pylint==3.3.9
