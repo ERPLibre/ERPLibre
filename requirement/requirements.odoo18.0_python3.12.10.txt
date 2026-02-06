@@ -61,7 +61,7 @@ beautifulsoup4==4.13.5
 isort==7.0.0
 
 # Fix some OS
-cryptography==46.0.3
+cryptography==46.0.4
 pyopenssl==25.3.0
 # This will ignore pyopenssl from pysaml2==7.5.4
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
