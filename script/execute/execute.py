@@ -138,7 +138,12 @@ class Execute:
                     return_status_and_output
                     or return_status_and_output_and_command
                 ):
-                    lst_output.append(ligne)
+                    # Remove last \n char
+                    lst_output.append(
+                        ligne.removesuffix("\r\n")
+                        .removesuffix("\n")
+                        .removesuffix("\r")
+                    )
 
             process.wait()  # Attendre la fin du process
             return_status = process.returncode

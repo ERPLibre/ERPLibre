@@ -7,9 +7,6 @@ import logging
 import os
 import sys
 
-import git
-from git import Repo
-
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
@@ -27,9 +24,6 @@ def get_config():
 
     :return: dict of config file settings and command line arguments
     """
-    config = GitTool.get_project_config()
-
-    # TODO update description
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""\
@@ -65,6 +59,10 @@ def get_config():
         "--add_repo",
         help="Add repo, separate by ; for list",
     )
+    parser.add_argument(
+        "--database",
+        help="Add repo from module found into database.",
+    )
     args = parser.parse_args()
     return args
 
@@ -72,12 +70,13 @@ def get_config():
 def main():
     config = get_config()
     git_tool = GitTool()
+    execute_cmd = execute.Execute()
+    index_to_remove = len(os.getcwd()) + 1
 
     filter_group = config.group if config.group else None
 
     lst_whitelist = []
     if config.from_backup_path or config.from_backup_name:
-        execute_cmd = execute.Execute()
         # script/database/get_repo_from_backup.py
         # --backup_name bpir_prod_5_dec_2025_2026-02-04_14h27m54s.zip
         if config.from_backup_path:
@@ -91,7 +90,28 @@ def main():
             single_source_erplibre=True,
             return_status_and_output=True,
         )
-        index_to_remove = len(os.getcwd()) + 1
+        for line in output:
+            repo_name = line[index_to_remove:].strip()
+            lst_whitelist.append(repo_name)
+
+    if config.database:
+        cmd = f"./script/database/get_module_list_from_database.py --database {config.database}"
+        status, output = execute_cmd.exec_command_live(
+            cmd,
+            quiet=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+            return_status_and_output=True,
+        )
+        str_module = ";".join(output)
+        cmd = f'./script/database/get_repo_from_module.py --module "{str_module}"'
+        status, output = execute_cmd.exec_command_live(
+            cmd,
+            quiet=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+            return_status_and_output=True,
+        )
         for line in output:
             repo_name = line[index_to_remove:].strip()
             lst_whitelist.append(repo_name)

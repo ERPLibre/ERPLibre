@@ -457,7 +457,9 @@ class GitTool:
                 continue
             # groups = repo.get("group")
             # Use variable instead of hardcoded path
-            if update_repo.startswith(os.path.join(filter_group, "addons")):
+            if update_repo.startswith(
+                os.path.join(self.odoo_version_long, "addons")
+            ):
                 lst_path = update_repo.split("/", 1)
                 update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + lst_path[1]
                 # str_repo = (

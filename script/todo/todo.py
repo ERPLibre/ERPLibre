@@ -206,6 +206,7 @@ class TODO:
 [5] Doc - Recherche de documentation
 [6] Database - Outils sur les bases de données
 [7] Process - Outils sur les exécutions
+[8] Config - Traitement du fichier de configuration
 [0] Retour
 """
         while True:
@@ -239,6 +240,10 @@ class TODO:
                     return
             elif status == "7":
                 status = self.prompt_execute_process()
+                if status is not False:
+                    return
+            elif status == "8":
+                status = self.prompt_execute_config()
                 if status is not False:
                     return
             else:
@@ -436,10 +441,10 @@ class TODO:
         if callback:
             callback(dct_instance)
 
-    def fill_help_info(self, lst_instance):
+    def fill_help_info(self, lst_choice):
         help_info = "Commande :\n"
         help_end = "[0] Retour\n"
-        for i, dct_instance in enumerate(lst_instance):
+        for i, dct_instance in enumerate(lst_choice):
             help_info += (
                 f"[{i + 1}] " + dct_instance["prompt_description"] + "\n"
             )
@@ -450,16 +455,16 @@ class TODO:
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        lst_instance = self.config_file.get_config("instance")
-        init_len = len(lst_instance)
+        lst_choice = self.config_file.get_config("instance")
+        init_len = len(lst_choice)
 
         if os.path.exists(MOBILE_HOME_PATH):
             dct_upgrade_odoo_database = {
                 "prompt_description": "Mobile - Compile and run software",
                 "callback": self.callback_make_mobile_home,
             }
-            lst_instance.append(dct_upgrade_odoo_database)
-        help_info = self.fill_help_info(lst_instance)
+            lst_choice.append(dct_upgrade_odoo_database)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -475,15 +480,15 @@ class TODO:
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
                         )
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
                             dct_instance,
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
                         )
-                    elif int_cmd <= len(lst_instance):
+                    elif int_cmd <= len(lst_choice):
                         # Execute dynamic instance
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
                             dct_instance,
                         )
@@ -493,8 +498,8 @@ class TODO:
                     print("Commande non trouvée 🤖!")
 
     def prompt_execute_fonction(self):
-        lst_instance = self.config_file.get_config("function")
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice = self.config_file.get_config("function")
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -505,9 +510,9 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -525,34 +530,34 @@ class TODO:
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        lst_instance = self.config_file.get_config("update_from_makefile")
+        lst_choice = self.config_file.get_config("update_from_makefile")
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Odoo - Migration Database",
         }
-        lst_instance.append(dct_upgrade_odoo_database)
+        lst_choice.append(dct_upgrade_odoo_database)
         dct_upgrade_poetry = {
             "prompt_description": "Upgrade Poetry - Dependency of Odoo",
         }
-        lst_instance.append(dct_upgrade_poetry)
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice.append(dct_upgrade_poetry)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_instance) - 1):
+            elif status == str(len(lst_choice) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
                 upgrade.execute_odoo_upgrade()
-            elif status == str(len(lst_instance)):
+            elif status == str(len(lst_choice)):
                 self.upgrade_poetry()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -573,27 +578,27 @@ class TODO:
         #         [0] Retour
         # """
 
-        lst_instance = self.config_file.get_config("code_from_makefile")
+        lst_choice = self.config_file.get_config("code_from_makefile")
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Module",
         }
-        lst_instance.append(dct_upgrade_odoo_database)
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice.append(dct_upgrade_odoo_database)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_instance)):
+            elif status == str(len(lst_choice)):
                 self.upgrade_module()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -602,13 +607,13 @@ class TODO:
 
     def prompt_execute_doc(self):
         print("🤖 Vous cherchez de la documentation?")
-        lst_instance = [
+        lst_choice = [
             {"prompt_description": "Migration module coverage"},
             {"prompt_description": "What change between version"},
             {"prompt_description": "OCA guidelines"},
             {"prompt_description": "OCA migration Odoo 19 milestone"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -651,13 +656,13 @@ class TODO:
 
     def prompt_execute_database(self):
         print("🤖 Faites des modifications sur les bases de données!")
-        lst_instance = [
+        lst_choice = [
             {
                 "prompt_description": "Download database to create backup (.zip)"
             },
             {"prompt_description": "Restore from backup (.zip)"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -673,10 +678,10 @@ class TODO:
 
     def prompt_execute_process(self):
         print("🤖 Manipuler les processus d'exécution!")
-        lst_instance = [
+        lst_choice = [
             {"prompt_description": "Kill process from actual port"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -687,6 +692,122 @@ class TODO:
                 self.process_kill_from_port()
             else:
                 print("Commande non trouvée 🤖!")
+
+    def prompt_execute_config(self):
+        print("🤖 Manipuler la configuration ERPLibre et Odoo!")
+        lst_choice = [
+            {"prompt_description": "Generate all configuration"},
+            {"prompt_description": "Generate from pre-configuration"},
+            {"prompt_description": "Generate from backup file"},
+            {"prompt_description": "Generate from database"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.generate_config()
+            elif status == "2":
+                self.generate_config_from_preconfiguration()
+            elif status == "3":
+                self.generate_config_from_backup()
+            elif status == "4":
+                self.generate_config_from_database()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_config(self, add_arg=None):
+        # Repeating to get all item before get group
+        cmd = (
+            f"./script/git/git_repo_update_group.py;"
+            f"./script/generate_config.sh"
+        )
+        if add_arg:
+            cmd += (
+                f";./script/git/git_repo_update_group.py {add_arg};"
+                f"./script/generate_config.sh"
+            )
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+    def generate_config_from_preconfiguration(self):
+        lst_choice = [
+            {"prompt_description": "base"},
+            {"prompt_description": "base + code_generator"},
+            {"prompt_description": "base + image_db"},
+            {"prompt_description": "all"},
+            # {"prompt_description": "base + migration"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                group = "base"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "2":
+                group = "base,code_generator"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "3":
+                group = "base,image_db"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "4":
+                self.generate_config()
+            # elif status == "5":
+            #     group = "base,migration"
+            #     str_group = f"--group {group}"
+            #     self.generate_config(add_arg=str_group)
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_config_from_backup(self):
+        file_name = self.open_file_image_db()
+        add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
+        self.generate_config(add_arg=add_arg)
+
+    def generate_config_from_database(self):
+        cmd_server = f"./odoo_bin.sh db --list"
+        status, output = self.execute.exec_command_live(
+            cmd_server,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+        lst_choice = [{"prompt_description": a.strip()} for a in output]
+
+        help_info = self.fill_help_info(lst_choice)
+
+        lst_str_choice = [str(a) for a in range(len(lst_choice) + 1) if a]
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status in lst_str_choice:
+                database_name = output[int(status) - 1].strip()
+                print(database_name)
+                str_arg = f"--database {database_name}"
+                self.generate_config(add_arg=str_arg)
+                return False
+            else:
+                print("Commande non trouvée 🤖!")
+        # file_name = self.open_file_image_db()
+        # add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
+        #
+        # self.generate_config(add_arg=add_arg)
 
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
@@ -899,14 +1020,7 @@ class TODO:
         if status == "1":
             file_name = status
         else:
-            self.dir_path = ""
-
-            file_browser = todo_file_browser.FileBrowser(
-                path_image_db, self.on_dir_selected
-            )
-            file_browser.run_main_frame()
-            file_name = os.path.basename(self.dir_path)
-            print(file_name)
+            file_name = self.open_file_image_db
 
         database_name = input("💬 Database name : ")
         if not database_name:
@@ -942,6 +1056,19 @@ class TODO:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
+
+    def open_file_image_db(self):
+        self.dir_path = ""
+        path_image_db = os.path.join(os.getcwd(), "image_db")
+
+        # self.dir_path is over-write into on_dir_selected
+        file_browser = todo_file_browser.FileBrowser(
+            path_image_db, self.on_dir_selected
+        )
+        file_browser.run_main_frame()
+        file_name = os.path.basename(self.dir_path)
+        print(file_name)
+        return file_name
 
     def process_kill_from_port(self):
         cfg = configparser.ConfigParser()
