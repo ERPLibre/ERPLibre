@@ -426,14 +426,25 @@ class GitTool:
         filter_group=None,
         extra_path=None,
         ignore_odoo_path=None,
-        lst_whitelist=None
+        lst_add_repo=None,
+        lst_whitelist=None,
     ):
         filename_locally = os.path.join(repo_path, "script/generate_config.sh")
         if not filter_group:
             filter_group = self.odoo_version_long
-        lst_repo = self.get_repo_info(
+        lst_repo_origin = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )
+        if lst_whitelist:
+            lst_repo = []
+            for repo in lst_repo_origin:
+                if (
+                    repo.get("path") in lst_whitelist
+                    or repo.get("path") in lst_add_repo
+                ):
+                    lst_repo.append(repo)
+        else:
+            lst_repo = lst_repo_origin
         lst_result = []
         if not lst_repo:
             print(
