@@ -131,7 +131,7 @@ azure-identity==1.15.0
 azure.identity==1.15.0
 azure-storage-blob==12.19.0
 azure.storage.blob==12.19.0
-sqlparse==0.4.4
+sqlparse==0.5.4
 zeep==4.2.1
 python-jose==3.3.0
 pypdf==4.3.1
