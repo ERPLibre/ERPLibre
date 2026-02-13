@@ -579,10 +579,17 @@ class TODO:
         # """
 
         lst_choice = self.config_file.get_config("code_from_makefile")
+
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Open SHELL",
+        }
+        lst_choice.append(dct_upgrade_odoo_database)
+
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Module",
         }
         lst_choice.append(dct_upgrade_odoo_database)
+
         help_info = self.fill_help_info(lst_choice)
 
         while True:
@@ -592,6 +599,8 @@ class TODO:
                 return False
             elif status == str(len(lst_choice)):
                 self.upgrade_module()
+            elif status == str(len(lst_choice) - 1):
+                self.open_shell_on_database()
             else:
                 cmd_no_found = True
                 try:
@@ -778,14 +787,20 @@ class TODO:
         self.generate_config(add_arg=add_arg)
 
     def generate_config_from_database(self):
+        database_name = self.select_database()
+        str_arg = f"--database {database_name}"
+        self.generate_config(add_arg=str_arg)
+        return False
+
+    def select_database(self):
         cmd_server = f"./odoo_bin.sh db --list"
-        status, output = self.execute.exec_command_live(
+        status, lst_database = self.execute.exec_command_live(
             cmd_server,
             return_status_and_output=True,
             source_erplibre=False,
             single_source_erplibre=True,
         )
-        lst_choice = [{"prompt_description": a.strip()} for a in output]
+        lst_choice = [{"prompt_description": a.strip()} for a in lst_database]
 
         help_info = self.fill_help_info(lst_choice)
 
@@ -797,17 +812,11 @@ class TODO:
             if status == "0":
                 return False
             elif status in lst_str_choice:
-                database_name = output[int(status) - 1].strip()
+                database_name = lst_database[int(status) - 1].strip()
                 print(database_name)
-                str_arg = f"--database {database_name}"
-                self.generate_config(add_arg=str_arg)
-                return False
+                return database_name
             else:
                 print("Commande non trouvée 🤖!")
-        # file_name = self.open_file_image_db()
-        # add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
-        #
-        # self.generate_config(add_arg=add_arg)
 
     def get_odoo_version(self):
         with open(VERSION_DATA_FILE) as txt:
@@ -963,6 +972,17 @@ class TODO:
             print("No error")
         else:
             self.prompt_install()
+
+    def open_shell_on_database(self):
+        database = self.select_database()
+        cmd_server = f"./odoo_bin.sh shell -d {database}"
+        status, lst_database = self.execute.exec_command_live(
+            cmd_server,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+            new_window=True,
+        )
 
     def upgrade_module(self):
         upgrade = todo_upgrade.TodoUpgrade(self)
