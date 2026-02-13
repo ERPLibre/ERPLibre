@@ -19,6 +19,7 @@ new_path = os.path.normpath(
 )
 sys.path.append(new_path)
 
+from script.execute import execute
 from script.git.git_tool import GitTool
 
 _logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class TodoUpgrade:
         self.lst_command_executed = []
         self.dct_module_per_version = {}
         self.dct_module_per_dct_version_path = {}
+        self.execute = execute.Execute()
 
     def write_config(self):
         if "date_create" not in self.dct_progression.keys():
@@ -1857,7 +1859,7 @@ class TodoUpgrade:
             get_output = True
         output = None
         if get_output:
-            status, cmd_executed, output = self.todo.executer_commande_live(
+            status, cmd_executed, output = self.execute.exec_command_live(
                 cmd,
                 source_erplibre=False,
                 single_source_odoo=single_source_odoo,
@@ -1866,7 +1868,7 @@ class TodoUpgrade:
                 quiet=quiet,
             )
         else:
-            status, cmd_executed = self.todo.executer_commande_live(
+            status, cmd_executed = self.execute.exec_command_live(
                 cmd,
                 source_erplibre=False,
                 single_source_odoo=single_source_odoo,
