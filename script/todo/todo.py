@@ -54,6 +54,8 @@ try:
     # import rich
     import todo_upgrade
     from pykeepass import PyKeePass
+
+    from script.execute import execute
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
@@ -81,34 +83,9 @@ class TODO:
     def __init__(self):
         self.dir_path = None
         self.kdbx = None
-        self.init()
         self.file_path = None
         self.config_file = config_file.ConfigFile()
-
-    def init(self):
-        # Get command
-        self.cmd_source_erplibre = ""
-        self.cmd_source_default = ""
-        exec_path_gnome_terminal = shutil.which("gnome-terminal")
-        if exec_path_gnome_terminal:
-            self.cmd_source_erplibre = (
-                f"gnome-terminal -- bash -c 'source"
-                f" ./{cst_venv_erplibre}/bin/activate;%s'"
-            )
-            self.cmd_source_default = "gnome-terminal -- bash -c '" f"%s'"
-        else:
-            exec_path_tell = shutil.which("osascript")
-            if exec_path_tell:
-                self.cmd_source_erplibre = (
-                    "osascript -e 'tell application \"Terminal\"'"
-                )
-                self.cmd_source_erplibre += " -e 'tell application \"System Events\" to keystroke \"t\" using {command down}' -e 'delay 0.1' -e 'do script \""
-                self.cmd_source_erplibre += f"cd {os.getcwd()}; source ./{cst_venv_erplibre}/bin/activate; %s\" in front window'"
-                self.cmd_source_erplibre += " -e 'end tell'"
-            else:
-                self.cmd_source_erplibre = (
-                    f"source ./{cst_venv_erplibre}/bin/activate;%s"
-                )
+        self.execute = execute.Execute()
 
     def run(self):
         with open(self.config_file.get_logo_ascii_file_path()) as my_file:
@@ -150,7 +127,7 @@ class TODO:
                 #     f" ./{cst_venv_erplibre}/bin/activate;make todo'"
                 # )
                 cmd = "make todo"
-                self.executer_commande_live(cmd, source_erplibre=True)
+                self.execute.exec_command_live(cmd, source_erplibre=True)
             # elif status == "3" or status == "install":
             #     print("install")
             else:
@@ -229,6 +206,7 @@ class TODO:
 [5] Doc - Recherche de documentation
 [6] Database - Outils sur les bases de données
 [7] Process - Outils sur les exécutions
+[8] Config - Traitement du fichier de configuration
 [0] Retour
 """
         while True:
@@ -264,6 +242,10 @@ class TODO:
                 status = self.prompt_execute_process()
                 if status is not False:
                     return
+            elif status == "8":
+                status = self.prompt_execute_config()
+                if status is not False:
+                    return
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -280,7 +262,7 @@ class TODO:
         )
         if first_installation_input == "y":
             cmd = "./script/version/update_env_version.py --install"
-            self.executer_commande_live(cmd, source_erplibre=True)
+            self.execute.exec_command_live(cmd, source_erplibre=True)
             print("Wait after OS installation before continue.")
 
         # First detect pycharm, need to be open before installation and close to increase speed
@@ -312,7 +294,7 @@ class TODO:
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
 
                 cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
-                self.executer_commande_live(
+                self.execute.exec_command_live(
                     cmd,
                     source_erplibre=False,
                     single_source_erplibre=False,
@@ -432,7 +414,7 @@ class TODO:
 
         makefile_cmd = dct_instance.get("makefile_cmd")
         if makefile_cmd and not ignore_makefile:
-            status = self.executer_commande_live(
+            status = self.execute.exec_command_live(
                 f"make {makefile_cmd}",
                 source_erplibre=False,
                 single_source_erplibre=True,
@@ -459,10 +441,10 @@ class TODO:
         if callback:
             callback(dct_instance)
 
-    def fill_help_info(self, lst_instance):
+    def fill_help_info(self, lst_choice):
         help_info = "Commande :\n"
         help_end = "[0] Retour\n"
-        for i, dct_instance in enumerate(lst_instance):
+        for i, dct_instance in enumerate(lst_choice):
             help_info += (
                 f"[{i + 1}] " + dct_instance["prompt_description"] + "\n"
             )
@@ -473,16 +455,16 @@ class TODO:
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        lst_instance = self.config_file.get_config("instance")
-        init_len = len(lst_instance)
+        lst_choice = self.config_file.get_config("instance")
+        init_len = len(lst_choice)
 
         if os.path.exists(MOBILE_HOME_PATH):
             dct_upgrade_odoo_database = {
                 "prompt_description": "Mobile - Compile and run software",
                 "callback": self.callback_make_mobile_home,
             }
-            lst_instance.append(dct_upgrade_odoo_database)
-        help_info = self.fill_help_info(lst_instance)
+            lst_choice.append(dct_upgrade_odoo_database)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -498,15 +480,15 @@ class TODO:
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
                         )
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
                             dct_instance,
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
                         )
-                    elif int_cmd <= len(lst_instance):
+                    elif int_cmd <= len(lst_choice):
                         # Execute dynamic instance
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
                             dct_instance,
                         )
@@ -516,8 +498,8 @@ class TODO:
                     print("Commande non trouvée 🤖!")
 
     def prompt_execute_fonction(self):
-        lst_instance = self.config_file.get_config("function")
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice = self.config_file.get_config("function")
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -528,9 +510,9 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -538,7 +520,7 @@ class TODO:
                     print("Commande non trouvée 🤖!")
 
     def prompt_execute_update(self):
-        # self.executer_commande_live(f"make {makefile_cmd}")
+        # self.execute.exec_command_live(f"make {makefile_cmd}")
         print("🤖 Mise à jour du développement")
         # TODO détecter les modules en modification pour faire la mise à jour en cours
         # TODO demander sur quel BD faire la mise à jour
@@ -548,34 +530,34 @@ class TODO:
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        lst_instance = self.config_file.get_config("update_from_makefile")
+        lst_choice = self.config_file.get_config("update_from_makefile")
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Odoo - Migration Database",
         }
-        lst_instance.append(dct_upgrade_odoo_database)
+        lst_choice.append(dct_upgrade_odoo_database)
         dct_upgrade_poetry = {
             "prompt_description": "Upgrade Poetry - Dependency of Odoo",
         }
-        lst_instance.append(dct_upgrade_poetry)
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice.append(dct_upgrade_poetry)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_instance) - 1):
+            elif status == str(len(lst_choice) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
                 upgrade.execute_odoo_upgrade()
-            elif status == str(len(lst_instance)):
+            elif status == str(len(lst_choice)):
                 self.upgrade_poetry()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -596,27 +578,36 @@ class TODO:
         #         [0] Retour
         # """
 
-        lst_instance = self.config_file.get_config("code_from_makefile")
+        lst_choice = self.config_file.get_config("code_from_makefile")
+
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Open SHELL",
+        }
+        lst_choice.append(dct_upgrade_odoo_database)
+
         dct_upgrade_odoo_database = {
             "prompt_description": "Upgrade Module",
         }
-        lst_instance.append(dct_upgrade_odoo_database)
-        help_info = self.fill_help_info(lst_instance)
+        lst_choice.append(dct_upgrade_odoo_database)
+
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_instance)):
+            elif status == str(len(lst_choice)):
                 self.upgrade_module()
+            elif status == str(len(lst_choice) - 1):
+                self.open_shell_on_database()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_instance):
+                    if 0 < int_cmd <= len(lst_choice):
                         cmd_no_found = False
-                        dct_instance = lst_instance[int_cmd - 1]
+                        dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(dct_instance)
                 except ValueError:
                     pass
@@ -625,13 +616,13 @@ class TODO:
 
     def prompt_execute_doc(self):
         print("🤖 Vous cherchez de la documentation?")
-        lst_instance = [
+        lst_choice = [
             {"prompt_description": "Migration module coverage"},
             {"prompt_description": "What change between version"},
             {"prompt_description": "OCA guidelines"},
             {"prompt_description": "OCA migration Odoo 19 milestone"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -674,13 +665,13 @@ class TODO:
 
     def prompt_execute_database(self):
         print("🤖 Faites des modifications sur les bases de données!")
-        lst_instance = [
+        lst_choice = [
             {
                 "prompt_description": "Download database to create backup (.zip)"
             },
             {"prompt_description": "Restore from backup (.zip)"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -696,10 +687,10 @@ class TODO:
 
     def prompt_execute_process(self):
         print("🤖 Manipuler les processus d'exécution!")
-        lst_instance = [
+        lst_choice = [
             {"prompt_description": "Kill process from actual port"},
         ]
-        help_info = self.fill_help_info(lst_instance)
+        help_info = self.fill_help_info(lst_choice)
 
         while True:
             status = click.prompt(help_info)
@@ -708,6 +699,122 @@ class TODO:
                 return False
             elif status == "1":
                 self.process_kill_from_port()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def prompt_execute_config(self):
+        print("🤖 Manipuler la configuration ERPLibre et Odoo!")
+        lst_choice = [
+            {"prompt_description": "Generate all configuration"},
+            {"prompt_description": "Generate from pre-configuration"},
+            {"prompt_description": "Generate from backup file"},
+            {"prompt_description": "Generate from database"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.generate_config()
+            elif status == "2":
+                self.generate_config_from_preconfiguration()
+            elif status == "3":
+                self.generate_config_from_backup()
+            elif status == "4":
+                self.generate_config_from_database()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_config(self, add_arg=None):
+        # Repeating to get all item before get group
+        cmd = (
+            f"./script/git/git_repo_update_group.py;"
+            f"./script/generate_config.sh"
+        )
+        if add_arg:
+            cmd += (
+                f";./script/git/git_repo_update_group.py {add_arg};"
+                f"./script/generate_config.sh"
+            )
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+    def generate_config_from_preconfiguration(self):
+        lst_choice = [
+            {"prompt_description": "base"},
+            {"prompt_description": "base + code_generator"},
+            {"prompt_description": "base + image_db"},
+            {"prompt_description": "all"},
+            # {"prompt_description": "base + migration"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                group = "base"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "2":
+                group = "base,code_generator"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "3":
+                group = "base,image_db"
+                str_group = f"--group {group}"
+                self.generate_config(add_arg=str_group)
+            elif status == "4":
+                self.generate_config()
+            # elif status == "5":
+            #     group = "base,migration"
+            #     str_group = f"--group {group}"
+            #     self.generate_config(add_arg=str_group)
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_config_from_backup(self):
+        file_name = self.open_file_image_db()
+        add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
+        self.generate_config(add_arg=add_arg)
+
+    def generate_config_from_database(self):
+        database_name = self.select_database()
+        str_arg = f"--database {database_name}"
+        self.generate_config(add_arg=str_arg)
+        return False
+
+    def select_database(self):
+        cmd_server = f"./odoo_bin.sh db --list"
+        status, lst_database = self.execute.exec_command_live(
+            cmd_server,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+        lst_choice = [{"prompt_description": a.strip()} for a in lst_database]
+
+        help_info = self.fill_help_info(lst_choice)
+
+        lst_str_choice = [str(a) for a in range(len(lst_choice) + 1) if a]
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status in lst_str_choice:
+                database_name = lst_database[int(status) - 1].strip()
+                print(database_name)
+                return database_name
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -776,13 +883,13 @@ class TODO:
         #     f'parallel ::: "./run.sh -d {bd}" "sleep'
         #     f' 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
         # )
-        # self.executer_commande_live(cmd)
+        # self.execute.exec_command_live(cmd)
         cmd_server = f"./run.sh -d {bd};bash"
-        self.executer_commande_live(cmd_server)
+        self.execute.exec_command_live(cmd_server)
         cmd_client = (
             f"sleep 3;./script/selenium/web_login.py{extra_cmd_web_login};bash"
         )
-        self.executer_commande_live(cmd_client)
+        self.execute.exec_command_live(cmd_client)
 
     def prompt_execute_selenium(self, command=None, extra_cmd_web_login=""):
         lst_cmd = []
@@ -798,132 +905,12 @@ class TODO:
             lst_cmd.append(cmd + extra_cmd_web_login)
 
         if len(lst_cmd) == 1:
-            self.executer_commande_live(lst_cmd[0])
+            self.execute.exec_command_live(lst_cmd[0])
         elif len(lst_cmd) > 1:
             new_cmd = "parallel ::: "
             for i, cmd in enumerate(lst_cmd):
                 new_cmd += f' "sleep {1 * i};{cmd}"'
-            self.executer_commande_live(new_cmd)
-
-    def executer_commande_live(
-        self,
-        commande,
-        source_erplibre=True,
-        quiet=False,
-        single_source_erplibre=False,
-        new_window=False,
-        single_source_odoo=False,
-        source_odoo="",
-        new_env=None,
-        return_status_and_command=False,
-        return_status_and_output=False,
-        return_status_and_output_and_command=False,
-    ):
-        """
-        Exécute une commande et affiche la sortie en direct.
-
-        Args:
-            commande (str): La commande à exécuter (sous forme de chaîne de caractères).
-        """
-
-        my_env = os.environ.copy()
-        if new_env:
-            my_env.update(new_env)
-
-        process_start_time = time.time()
-        return_status = None
-        if source_erplibre:
-            # commande = f"source ./{cst_venv_erplibre}/bin/activate && " + commande
-            # cmd = (
-            #     f"gnome-terminal --tab -- bash -c 'source"
-            #     f" ./{cst_venv_erplibre}/bin/activate;{commande}'"
-            # )
-            commande = self.cmd_source_erplibre % commande
-            # os.system(f"./script/terminal/open_terminal.sh {commande}")
-        elif single_source_erplibre:
-            commande = (
-                f"source ./{cst_venv_erplibre}/bin/activate && %s" % commande
-            )
-        elif single_source_odoo:
-            if not source_odoo and os.path.exists("./.erplibre-version"):
-                with open("./.erplibre-version") as f:
-                    source_odoo = f.read()
-            if not source_odoo:
-                _logger.error(
-                    f"You cannot execute Odoo command if no version is installed. Command : {commande}"
-                )
-                return -1
-            commande = (
-                f"source ./.venv.{source_odoo}/bin/activate && {commande}"
-            )
-        elif new_window and self.cmd_source_default:
-            commande = self.cmd_source_default % commande
-
-        print("🏠 ⬇ Execute command :")
-        print(commande)
-        lst_output = []
-
-        try:
-            process = subprocess.Popen(
-                commande,
-                shell=True,
-                executable="/bin/bash",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Désactive la mise en tampon pour la sortie en direct
-                universal_newlines=True,  # Pour traiter les sauts de lignes correctement
-                env=my_env,
-            )
-
-            while True:
-                ligne = process.stdout.readline()
-                if not ligne:
-                    break
-                print(ligne, end="")
-                if (
-                    return_status_and_output
-                    or return_status_and_output_and_command
-                ):
-                    lst_output.append(ligne)
-
-            process.wait()  # Attendre la fin du process
-            return_status = process.returncode
-            if process.returncode != 0 and not quiet:
-                print(
-                    "La commande a retourné un code d'erreur :"
-                    f" {process.returncode}"
-                )
-
-        except FileNotFoundError:
-            if "password" in commande:
-                print(
-                    f"Erreur : La commande '{commande.split(' ')[0]}'[...] n'a"
-                    " pas été trouvée."
-                )
-            else:
-                print(
-                    f"Erreur : La commande '{commande}' n'a pas été trouvée."
-                )
-        except Exception as e:
-            print(f"Une erreur s'est produite : {e}")
-        process_end_time = time.time()
-        duration_sec = process_end_time - process_start_time
-        if humanize:
-            duration_delta = datetime.timedelta(seconds=duration_sec)
-            humain_time = humanize.precisedelta(duration_delta)
-            print(f"🏠 ⬆ Executed ({humain_time}) :")
-        else:
-            print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :")
-        print(commande)
-        print()
-        if return_status_and_output_and_command:
-            return return_status, commande, lst_output
-        if return_status_and_command:
-            return return_status, commande
-        if return_status_and_output:
-            return return_status, lst_output
-        return return_status
+            self.execute.exec_command_live(new_cmd)
 
     def crash_diagnostic(self, e):
         # TODO show message at start if os.path.exists(file_error_path)
@@ -948,7 +935,7 @@ class TODO:
             time.sleep(0.5)
             cmd = "./script/todo/source_todo.sh"
             # self.restart_script(e)
-            self.executer_commande_live(cmd, source_erplibre=True)
+            self.execute.exec_command_live(cmd, source_erplibre=True)
             sys.exit(1)
         if os.path.exists(cst_venv_erplibre):
             print("Import error : ")
@@ -980,11 +967,22 @@ class TODO:
                 from pykeepass import PyKeePass
             except ImportError:
                 print("Rerun and exit")
-                self.executer_commande_live(cmd, source_erplibre=True)
+                self.execute.exec_command_live(cmd, source_erplibre=True)
                 sys.exit(1)
             print("No error")
         else:
             self.prompt_install()
+
+    def open_shell_on_database(self):
+        database = self.select_database()
+        cmd_server = f"./odoo_bin.sh shell -d {database}"
+        status, lst_database = self.execute.exec_command_live(
+            cmd_server,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+            new_window=True,
+        )
 
     def upgrade_module(self):
         upgrade = todo_upgrade.TodoUpgrade(self)
@@ -992,7 +990,7 @@ class TODO:
 
     def upgrade_poetry(self):
         # Only show the version to the user
-        status = self.executer_commande_live(
+        status = self.execute.exec_command_live(
             f"make version",
             source_erplibre=False,
         )
@@ -1001,7 +999,7 @@ class TODO:
             "💬 Would you like to fetch all your git repositories, you need it (y/Y) : "
         )
         if git_repo_update_input.strip().lower() == "y":
-            status = self.executer_commande_live(
+            status = self.execute.exec_command_live(
                 f"./script/manifest/update_manifest_local_dev.sh",
                 source_erplibre=False,
             )
@@ -1022,7 +1020,7 @@ class TODO:
             except Exception as e:
                 pass
 
-        status = self.executer_commande_live(
+        status = self.execute.exec_command_live(
             f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
             f"./script/poetry/poetry_update.py -f",
             source_erplibre=False,
@@ -1042,20 +1040,13 @@ class TODO:
         if status == "1":
             file_name = status
         else:
-            self.dir_path = ""
-
-            file_browser = todo_file_browser.FileBrowser(
-                path_image_db, self.on_dir_selected
-            )
-            file_browser.run_main_frame()
-            file_name = os.path.basename(self.dir_path)
-            print(file_name)
+            file_name = self.open_file_image_db
 
         database_name = input("💬 Database name : ")
         if not database_name:
             _logger.error("Missing database name")
             return
-        status, lst_output = self.executer_commande_live(
+        status, lst_output = self.execute.exec_command_live(
             f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
             return_status_and_output=True,
             single_source_erplibre=True,
@@ -1067,7 +1058,7 @@ class TODO:
             .lower()
         )
         if status == "y":
-            status, lst_output = self.executer_commande_live(
+            status, lst_output = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
@@ -1079,19 +1070,32 @@ class TODO:
             .lower()
         )
         if status == "y":
-            status, lst_output = self.executer_commande_live(
+            status, lst_output = self.execute.exec_command_live(
                 f"./script/addons/update_addons_all.sh {database_name}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
 
+    def open_file_image_db(self):
+        self.dir_path = ""
+        path_image_db = os.path.join(os.getcwd(), "image_db")
+
+        # self.dir_path is over-write into on_dir_selected
+        file_browser = todo_file_browser.FileBrowser(
+            path_image_db, self.on_dir_selected
+        )
+        file_browser.run_main_frame()
+        file_name = os.path.basename(self.dir_path)
+        print(file_name)
+        return file_name
+
     def process_kill_from_port(self):
         cfg = configparser.ConfigParser()
         cfg.read("./config.conf")
         http_port = cfg.getint("options", "http_port")
 
-        status = self.executer_commande_live(
+        status = self.execute.exec_command_live(
             f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",
             source_erplibre=False,
         )
@@ -1099,7 +1103,7 @@ class TODO:
     def download_database_backup_cli(self, show_remote_list=True):
         database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
         if show_remote_list:
-            status, lst_output = self.executer_commande_live(
+            status, lst_output = self.execute.exec_command_live(
                 f"python3 ./script/database/list_remote.py --raw --odoo-url {database_domain}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
@@ -1134,7 +1138,7 @@ class TODO:
         my_env["DATABASE_NAME"] = database_name
         my_env["OUTPUT_FILE_PATH"] = output_path
         my_env["ODOO_URL"] = database_domain
-        status, cmd_executed = self.executer_commande_live(
+        status, cmd_executed = self.execute.exec_command_live(
             cmd,
             source_erplibre=False,
             return_status_and_command=True,
@@ -1265,7 +1269,7 @@ class TODO:
 
         # Rename with script bash
         cmd_client = f'cd {MOBILE_HOME_PATH} && npx cap init "{project_name}" "{package_name}" && ./rename_android.sh "{project_name}" "{package_name}" && npx cap sync android'
-        self.executer_commande_live(cmd_client, source_erplibre=False)
+        self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
         # dotenv_mobile = dotenv.dotenv_values(dotenv_file)
         # dotenv_mobile["VITE_TITLE"] = project_name
@@ -1293,7 +1297,7 @@ class TODO:
         )
 
         if do_change_picture_menu:
-            status = self.executer_commande_live(
+            status = self.execute.exec_command_live(
                 f"cd {MOBILE_HOME_PATH} && npx cap open android;bash",
                 source_erplibre=False,
                 new_window=True,
@@ -1305,11 +1309,11 @@ class TODO:
                 "Did you finish to update image with Android-Studio ? Press to continue ..."
             )
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/company_logo.png"
-            self.executer_commande_live(cmd_client, source_erplibre=False)
+            self.execute.exec_command_live(cmd_client, source_erplibre=False)
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
-            self.executer_commande_live(cmd_client, source_erplibre=False)
+            self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
-        status = self.executer_commande_live(
+        status = self.execute.exec_command_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
 

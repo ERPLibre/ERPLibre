@@ -15,7 +15,13 @@ else
   MANIFEST_TARGET="$EL_MANIFEST_DEV"
 fi
 
+if command -v nproc >/dev/null 2>&1; then
+  JOBS="$(nproc --all)"
+else
+  JOBS="$(sysctl -n hw.ncpu)"
+fi
+
 .venv.erplibre/bin/repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --verify HEAD) -m ${MANIFEST_TARGET} -g base,code_generator
-.venv.erplibre/bin/repo sync -c -j $(nproc --all) -v -m ${MANIFEST_TARGET}
+.venv.erplibre/bin/repo sync -c -j "$JOBS" -v -m ${MANIFEST_TARGET}
 
 kill ${DAEMON_PID}

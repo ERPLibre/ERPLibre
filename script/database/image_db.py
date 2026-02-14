@@ -359,6 +359,7 @@ def run_cmd(cmd, quiet=False, sys_exit=True):
     if not quiet:
         _logger.info(f"Run cmd: {cmd}")
     debut = time.time()
+    # Maybe can use exec_command_live
     process = subprocess.Popen(
         cmd,
         shell=True,

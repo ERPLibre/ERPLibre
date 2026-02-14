@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog
 
 from pykeepass import PyKeePass
@@ -226,10 +227,18 @@ class SeleniumLib(object):
                         self.config.firefox_binary_path
                     )
                 elif not self.config.use_network:
-                    status_location = subprocess.check_output(
-                        ["which", "firefox"], text=True
-                    ).strip()
-                    firefox_options.binary_location = status_location
+                    # test snap firefox for Ubuntu first
+                    snap_firefox_path = (
+                        "/snap/firefox/current/usr/lib/firefox/firefox"
+                    )
+                    firefox_path_exist = Path(snap_firefox_path).exists()
+                    if firefox_path_exist:
+                        firefox_options.binary_location = snap_firefox_path
+                    else:
+                        status_location = subprocess.check_output(
+                            ["which", "firefox"], text=True
+                        ).strip()
+                        firefox_options.binary_location = status_location
 
                 firefox_profile = webdriver.FirefoxProfile()
                 firefox_profile.set_preference(

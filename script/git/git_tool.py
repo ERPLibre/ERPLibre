@@ -74,7 +74,7 @@ class GitTool:
     def get_transformed_repo_info_from_url(
         self,
         url: str,
-        repo_path: str = "./",
+        repo_path: str = ".",
         get_obj: bool = True,
         is_submodule: bool = True,
         organization_force: str = None,
@@ -103,15 +103,16 @@ class GitTool:
             repo_name = repo_name[:-4]
         if is_submodule:
             if not sub_path or sub_path == ".":
-                path = f"{repo_name}"
+                path = repo_name
             else:
-                path = f"{sub_path}/{organization}_{repo_name}"
+                path = os.path.join(sub_path, f"{organization}_{repo_name}")
         else:
-            path = f"{repo_path}"
-        if repo_path[-1] == "/":
-            relative_path = f"{repo_path}{path}"
-        else:
-            relative_path = f"{repo_path}/{path}"
+            path = repo_path
+        relative_path = os.path.join(repo_path, path)
+        # if repo_path[-1] == "/":
+        #     relative_path = f"{repo_path}{path}"
+        # else:
+        #     relative_path = f"{repo_path}/{path}"
         relative_path = os.path.normpath(relative_path)
 
         original_organization = organization
@@ -150,7 +151,7 @@ class GitTool:
 
     def get_repo_info(
         self,
-        repo_path: str = "./",
+        repo_path: str = ".",
         add_root: bool = False,
         is_manifest: bool = True,
         filter_group=None,
@@ -166,7 +167,7 @@ class GitTool:
         )
 
     def get_repo_info_submodule(
-        self, repo_path: str = "./", add_root: bool = False
+        self, repo_path: str = ".", add_root: bool = False
     ) -> list:
         """
         Get information about submodule from repo_path
@@ -182,7 +183,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        filename = f"{repo_path}/.gitmodules"
+        filename = os.path.join(repo_path, ".gitmodules")
         lst_repo = []
         with open(filename) as file:
             txt = file.readlines()
@@ -200,7 +201,7 @@ class GitTool:
                         "url_https": url_https,
                         "url_git": url_git,
                         "path": path,
-                        "relative_path": f"{repo_path}/{path}",
+                        "relative_path": os.path.join(repo_path, path),
                         "name": name,
                     }
                     lst_repo.append(data)
@@ -225,7 +226,7 @@ class GitTool:
                 "url_https": url_https,
                 "url_git": url_git,
                 "path": path,
-                "relative_path": f"{repo_path}/{path}",
+                "relative_path": os.path.join(repo_path, path),
                 "name": name,
             }
             lst_repo.append(data)
@@ -248,7 +249,7 @@ class GitTool:
         return lst_repo
 
     def get_repo_info_manifest_xml(
-        self, repo_path: str = "./", add_root: bool = False, filter_group=None
+        self, repo_path: str = ".", add_root: bool = False, filter_group=None
     ) -> list:
         """
         Get information about manifest of Repo from repo_path
@@ -318,7 +319,7 @@ class GitTool:
                 "url_https": url_https,
                 "url_git": url_git,
                 "path": path,
-                "relative_path": f"{repo_path}/{path}",
+                "relative_path": os.path.join(repo_path, path),
                 "name": name,
                 "group": groups,
             }
@@ -351,7 +352,7 @@ class GitTool:
         return lst_repo
 
     def get_manifest_xml_info(
-        self, repo_path: str = "./", filename=None, add_root: bool = False
+        self, repo_path: str = ".", filename=None, add_root: bool = False
     ) -> list:
         """
         Get contain of manifest
@@ -388,7 +389,7 @@ class GitTool:
         return dct_remote, dct_project, default_remote
 
     @staticmethod
-    def get_project_config(repo_path="./"):
+    def get_project_config(repo_path="."):
         """
         Get information about configuration in env_var.sh
         :param repo_path: path of repo to get information env_var.sh
@@ -397,7 +398,7 @@ class GitTool:
             CST_EL_GITHUB_TOKEN: TOKEN,
         }
         """
-        filename = f"{repo_path}env_var.sh"
+        filename = os.path.join(repo_path, "env_var.sh")
         with open(filename) as file:
             txt = file.readlines()
         txt = [a[:-1] for a in txt if "=" in a]
@@ -421,17 +422,29 @@ class GitTool:
 
     def generate_generate_config(
         self,
-        repo_path="./",
+        repo_path=".",
         filter_group=None,
         extra_path=None,
         ignore_odoo_path=None,
+        lst_add_repo=None,
+        lst_whitelist=None,
     ):
-        filename_locally = f"{repo_path}script/generate_config.sh"
+        filename_locally = os.path.join(repo_path, "script/generate_config.sh")
         if not filter_group:
             filter_group = self.odoo_version_long
-        lst_repo = self.get_repo_info(
+        lst_repo_origin = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )
+        if lst_whitelist:
+            lst_repo = []
+            for repo in lst_repo_origin:
+                if (
+                    repo.get("path") in lst_whitelist
+                    or repo.get("path") in lst_add_repo
+                ):
+                    lst_repo.append(repo)
+        else:
+            lst_repo = lst_repo_origin
         lst_result = []
         if not lst_repo:
             print(
@@ -444,7 +457,9 @@ class GitTool:
                 continue
             # groups = repo.get("group")
             # Use variable instead of hardcoded path
-            if update_repo.startswith(f"{filter_group}/addons"):
+            if update_repo.startswith(
+                os.path.join(self.odoo_version_long, "addons")
+            ):
                 lst_path = update_repo.split("/", 1)
                 update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + lst_path[1]
                 # str_repo = (
@@ -715,7 +730,7 @@ class GitTool:
             print(str_xml_text + "\n")
 
     def generate_git_modules(
-        self, lst_repo: List[Struct], repo_path: str = "./"
+        self, lst_repo: List[Struct], repo_path: str = "."
     ):
         lst_modules = []
         for repo in lst_repo:
@@ -727,10 +742,10 @@ class GitTool:
                 )
 
         # create file
-        with open(f"{repo_path}.gitmodules", mode="w") as file:
+        with open(os.path.join(repo_path, ".gitmodules"), mode="w") as file:
             file.writelines(lst_modules)
 
-    def get_source_repo_addons(self, repo_path="./", add_repo_root=False):
+    def get_source_repo_addons(self, repo_path=".", add_repo_root=False):
         """
         Read file CST_FILE_SOURCE_REPO_ADDONS and return structure of data
         :param repo_path: path to find file CST_FILE_SOURCE_REPO_ADDONS
@@ -745,7 +760,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        file_name = f"{repo_path}{CST_FILE_SOURCE_REPO_ADDONS}"
+        file_name = os.path.join(repo_path, CST_FILE_SOURCE_REPO_ADDONS)
         lst_result = []
         if add_repo_root:
             # TODO what to do if origin not exist?
@@ -800,7 +815,7 @@ class GitTool:
             lst_result.append(repo_info)
         return lst_result
 
-    def get_manifest_file(self, repo_path: str = "./"):
+    def get_manifest_file(self, repo_path: str = "."):
         """
         Find .repo and return default manifest file.
         :param repo_path: path to search .repo
@@ -811,7 +826,7 @@ class GitTool:
         )
         if os.path.exists(file):
             return file
-        file = f"{repo_path}/.repo/manifest.xml"
+        file = os.path.join(repo_path, ".repo/manifest.xml")
         if not os.path.exists(file):
             return ""
         with open(file) as xml:
@@ -824,8 +839,8 @@ class GitTool:
 
     def get_matching_repo(
         self,
-        actual_repo="./",
-        repo_compare_to="./",
+        actual_repo=".",
+        repo_compare_to=".",
         force_normalize_compare=False,
         sync_with_submodule=False,
     ):
