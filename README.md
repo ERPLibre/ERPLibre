@@ -57,7 +57,7 @@ cd ERPLibre
 Follow the instruction on the following script, it will try to detect your environment.
 
 ```bash
-./install.sh
+make
 ```
 
 ### Manually
@@ -81,11 +81,11 @@ git clone https://github.com/ERPLibre/ERPLibre.git
 cd ERPLibre
 ```
 
-Support Ubuntu 20.04, 22.04, 24.04 and OSX. The installation duration is more than 30 minutes.
+Support Ubuntu 20.04, 22.04, 24.04, 25.04 and OSX.
 
 ```bash
 make install_os
-make install_odoo_16
+make install_odoo_18
 ```
 
 Update your configuration if you need to run from another interface than 127.0.0.1, file `config.conf`
