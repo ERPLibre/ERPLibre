@@ -39,7 +39,7 @@ libsass==0.20.1
 lxml==4.6.5
 MarkupSafe==1.1.1
 ofxparse==0.21
-Pillow==10.3.0
+Pillow==12.1.1
 psutil==5.8.0
 psycopg2==2.9.2
 pyopenssl==20.0.1
