@@ -39,6 +39,8 @@ STRINGS_FILE = os.path.join(
 )
 GRADLE_FILE = os.path.join(MOBILE_HOME_PATH, ANDROID_DIR, "app/build.gradle")
 
+from script.execute import execute
+
 try:
     import tkinter as tk
     from tkinter import filedialog
@@ -55,7 +57,6 @@ try:
     import todo_upgrade
     from pykeepass import PyKeePass
 
-    from script.execute import execute
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
