@@ -61,7 +61,7 @@ beautifulsoup4==4.13.5
 isort==7.0.0
 
 # Fix some OS
-cryptography==46.0.3
+cryptography==46.0.5
 pyopenssl==25.3.0
 # This will ignore pyopenssl from pysaml2==7.5.4
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
@@ -69,4 +69,9 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 # Fix compilation, until pymssql==2.3.9 is release
 #git+https://github.com/pymssql/pymssql.git
 
-pillow==12.1.0
+pandas==2.3.3
+pillow==12.1.1
+s3fs==2026.2.0
+aiobotocore==3.1.2
+botocore==1.42.42
+boto3==1.42.42
