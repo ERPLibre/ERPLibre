@@ -155,7 +155,7 @@ paramiko==3.5.1
 # Force version for security update
 pyyaml==6.0
 lxml==4.9.1
-cryptography==39.0.1
+cryptography==46.0.5
 psutil==5.9.0
 Pillow==9.3.0
 Babel==2.9.1

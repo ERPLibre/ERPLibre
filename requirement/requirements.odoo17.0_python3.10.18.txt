@@ -30,7 +30,7 @@ git+https://github.com/psf/black.git@24.8.0
 pre-commit
 
 # For python 3.10 from odoo/requirements.txt, poetry_update.py cannot support python_version
-cryptography==3.4.8
+cryptography==46.0.5
 freezegun==0.3.15
 gevent==23.9.0
 greenlet==3.2.1
