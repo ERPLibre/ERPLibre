@@ -81,7 +81,7 @@ open_doc_user:
 doc_clean_user:
 	make -C doc/odoo_documentation-user clean
 
-# documentation markdown
+# documentation markdown - generate multilingual documentation (en + fr)
 .PHONY: doc_markdown
 doc_markdown:
-	./.venv.erplibre/bin/mmg --verbose --yes ./doc/CODE_GENERATOR.base.md
+	source ./.venv.erplibre/bin/activate && find . -name "*.base.md" -not -path "./.venv*" -not -path "./addons/*" -not -path "./odoo*" -not -path "./.repo/*" -not -path "./node_modules/*" -exec mmg --verbose --yes {} \;

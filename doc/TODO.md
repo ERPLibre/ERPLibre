@@ -1,12 +1,13 @@
-# Note healtcheck
 
-Table à vérifier dans pgsql: ir_ui_view
+# Health check note
 
-Restore une BD:
+Table to verify in pgsql: ir_ui_view
 
-- un module est installé mais n'est pas physiquement là
+Restore a database:
 
-Une DB est installé mais on n'arrive pas à l'exécuté
+- a module is installed but is not physically present
+
+A database is installed but cannot be executed
 
 HEALTHCHECK CMD curl --fail http://localhost:8069/web || exit 1
 

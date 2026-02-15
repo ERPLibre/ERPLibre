@@ -1,3 +1,4 @@
+
 # Migration
 
 Run this script when doing database migration. Example :

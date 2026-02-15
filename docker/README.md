@@ -1,3 +1,4 @@
+
 # ERPLibre - Docker
 
 Those images are prepared to permit better portability and reproducibility of ERPLibre release.
@@ -5,7 +6,6 @@ Those images are prepared to permit better portability and reproducibility of ER
 Due the growing code of ERPLibre, it could also simplify development.
 
 NOTE: Those Dockerfiles themselves are in heavy development for now. Incompatibilities between releases are normal until the interface is stabilized.
-
 
 ## Pre-requirements
 
@@ -21,6 +21,7 @@ NOTE: Those Dockerfiles themselves are in heavy development for now. Incompatibi
 ## Getting started
 
 Be sure to start daemon docker
+
 ```bash
 systemctl start docker
 ```
@@ -36,6 +37,7 @@ docker build -f Dockerfile.prod.pkg -t technolibre/erplibre:12.0-pkg .
 ### Running ERPLibre using Docker-Compose
 
 Go at the root of this git project.
+
 ```bash
 cd ERPLibre
 docker compose -f docker-compose.yml up -d
@@ -44,12 +46,14 @@ docker compose -f docker-compose.yml up -d
 ### Diagnostic Docker-Compose
 
 Show docker-compose information
+
 ```bash
 docker compose ps
 docker compose logs IMAGE_NAME
 ```
 
 Show docker information
+
 ```bash
 docker ps -a
 docker volume ls
@@ -57,12 +61,14 @@ docker inspect DOCKER_NAME
 ```
 
 Connect to a running docker
+
 ```bash
 docker exec -ti DOCKER_NAME bash
 docker exec -u root -ti DOCKER_NAME bash
 ```
 
 Commands for debugging
+
 ```bash
 docker run -p 8069:8069 --entrypoint bash -ti DOCKER_NAME
 docker exec -ti DOCKER_NAME bash
@@ -78,43 +84,51 @@ docker stats erplibre_ERPLibre_1
 ### Cleaning
 
 Delete all system
+
 ```bash
 docker system prune -a
 ```
 
 Delete docker image
+
 ```bash
 docker image prune
 docker rmi $(docker images -q)
 ```
 
 Delete volumes
+
 ```bash
 docker compose rm -v
 ```
 
 Delete containers
+
 ```bash
 docker rm $(docker ps -a | grep -v IMAGE | awk '{print $1}')
 ```
 
 Delete volume
+
 ```bash
 docker volume prune
 ```
 
 # Change docker directory
 You can change the docker directory by editing file `/etc/docker/daemon.json`
+
 ```json
 {
   "data-root": "/home/docker"
 }
 ```
+
 And restart docker service. You can delete or move all older locations of docker.
 
 Or
 
 Add `--data-root /second_drive/docker` like example following into file `/lib/systemd/system/docker.service` :
+
 ```
 ExecStart=/usr/bin/dockerd --data-root /second_drive/docker -H fd:// --containerd=/run/containerd/containerd.sock
 ```

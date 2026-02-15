@@ -1,3 +1,4 @@
+
 # How to generate code
 
 Never run this on production environment, this create circular dependencies and will cause frustration to clean damage.
