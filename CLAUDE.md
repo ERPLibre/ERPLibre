@@ -190,6 +190,39 @@ ERPLibre inclut un système de génération de modules Odoo :
 
 Documentation : `doc/CODE_GENERATOR.md`
 
+## Documentation multilingue
+
+La documentation est bilingue (anglais/français) via **mmg** (Multilingual Markdown Generator).
+
+### Fonctionnement
+- Les fichiers sources sont les `.base.md` (contiennent les deux langues)
+- `mmg` génère : `FICHIER.md` (anglais) et `FICHIER.fr.md` (français)
+- Marqueurs : `<!-- [en] -->`, `<!-- [fr] -->`, `<!-- [common] -->` (blocs de code partagés)
+
+### Commandes
+```bash
+make doc_markdown            # Regénérer toute la doc multilingue
+```
+
+### Convention
+- **Ne jamais modifier directement** les fichiers `.md` ou `.fr.md` générés
+- Toujours modifier le fichier `.base.md` correspondant, puis exécuter `make doc_markdown`
+- Les blocs de code vont dans `<!-- [common] -->`, le texte dans `<!-- [en] -->` et `<!-- [fr] -->`
+- En-tête obligatoire dans chaque `.base.md` :
+```
+<!---------------------------->
+<!-- multilingual suffix: en, fr -->
+<!-- no suffix: en -->
+<!---------------------------->
+```
+
+### Fichiers concernés (30 fichiers)
+- Racine : `README`, `CHANGELOG`, `TODO`
+- `doc/` : DEVELOPMENT, PRODUCTION, DISCOVER, RUN, MIGRATION, WINDOWS_INSTALLATION, FAQ, GIT_REPO, POETRY, RELEASE, UPDATE, CONTRIBUTION, HOWTO, TODO, CODE_GENERATOR
+- `docker/` : README
+- `script/*/` : database, deployment, fork_github_repo, nginx, restful, selenium (2), todo, odoo/migration
+- `.github/ISSUE_TEMPLATE/` : bug_report, feature_request
+
 ## Déploiement
 
 - **Docker** : `docker-compose.yml` (PostgreSQL 18 + PostGIS 3.6)
@@ -211,3 +244,5 @@ Plateformes supportées : Ubuntu 20.04-25.04, Debian 12, Arch Linux, macOS (pyen
 - La DB PostgreSQL par défaut est sur le port 5432, mot de passe admin : `admin`
 - Port Odoo par défaut : 8069, longpolling : 8072
 - Pour les commits : suivre le format `[TYPE] description` (ex: `[FIX]`, `[UPD]`, `[ADD]`, `[REM]`)
+- Pour la documentation : modifier les `.base.md`, jamais les `.md` ou `.fr.md` directement
+- Outil mmg disponible via `source .venv.erplibre/bin/activate && mmg`
