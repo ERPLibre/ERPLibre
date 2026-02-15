@@ -1,3 +1,4 @@
+
 # FAQ
 
 ## Into execution
@@ -8,6 +9,7 @@ If you find this bug on server log :
 `odoo.addons.base.models.ir_actions_report: wkhtmltopdf: Exit with code 1 due to network error: TimeoutError`
 
 Into configuration, technique, go to ir.config_parameter (system parameter) and add configuration :
+
 ```
 key : report.url
 value : http://127.0.0.1:8069
