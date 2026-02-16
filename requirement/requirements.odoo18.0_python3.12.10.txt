@@ -72,6 +72,6 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 pandas==2.3.3
 pillow==12.1.1
 s3fs==2026.2.0
-aiobotocore==3.1.2
+aiobotocore==3.1.3
 botocore==1.42.42
 boto3==1.42.42
