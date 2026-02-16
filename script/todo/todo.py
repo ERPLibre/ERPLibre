@@ -801,6 +801,7 @@ class TODO:
     def generate_config(self, add_arg=None):
         # Repeating to get all item before get group
         cmd = (
+            f"./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA;"
             f"./script/git/git_repo_update_group.py;"
             f"./script/generate_config.sh"
         )
