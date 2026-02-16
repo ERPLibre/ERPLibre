@@ -114,7 +114,7 @@ Pour generer un docker, executez :
 
 <!-- [common] -->
 ```bash
-make docker_build_odoo_16
+make docker_build_odoo_18
 ```
 
 <!-- [en] -->

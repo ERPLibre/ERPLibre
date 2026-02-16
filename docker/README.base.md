@@ -242,7 +242,7 @@ ExecStart=/usr/bin/dockerd --data-root /second_drive/docker -H fd:// --container
 <!-- [en] -->
 # Update docker
 When building your docker with script
-> make docker_build_odoo_16
+> make docker_build_odoo_18
 
 List your docker version
 > docker images
@@ -257,7 +257,7 @@ When getting and error about missing module, or after an upgrade, you need to up
 <!-- [fr] -->
 # Mettre à jour docker
 Lors de la construction de votre docker avec le script
-> make docker_build_odoo_16
+> make docker_build_odoo_18
 
 Listez vos versions docker
 > docker images
