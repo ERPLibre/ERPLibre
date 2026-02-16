@@ -56,7 +56,7 @@ make doc_markdown
 To generate a docker, run:
 
 ```bash
-make docker_build_odoo_16
+make docker_build_odoo_18
 ```
 
 ### Rename old version to new version

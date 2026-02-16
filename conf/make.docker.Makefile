@@ -57,12 +57,12 @@ docker_build_odoo_18:
 docker_build_odoo_17:
 	./script/docker/docker_build.sh --odoo_17
 
-.PHONY: docker_build_odoo_16
-docker_build_odoo_16:
+.PHONY: docker_build_odoo_18
+docker_build_odoo_18:
 	./script/docker/docker_build.sh --odoo_16
 
-.PHONY: docker_build_odoo_16_clean
-docker_build_odoo_16_clean:
+.PHONY: docker_build_odoo_18_clean
+docker_build_odoo_18_clean:
 	./script/docker/docker_build.sh --odoo_16 --no-cache
 
 .PHONY: docker_build_odoo_15

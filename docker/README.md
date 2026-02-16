@@ -135,7 +135,7 @@ ExecStart=/usr/bin/dockerd --data-root /second_drive/docker -H fd:// --container
 
 # Update docker
 When building your docker with script
-> make docker_build_odoo_16
+> make docker_build_odoo_18
 
 List your docker version
 > docker images
