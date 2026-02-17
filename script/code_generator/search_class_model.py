@@ -239,14 +239,30 @@ def main():
     lst_model_inherit_name = []
     lst_search_target = ("_name",)
     dct_model = {}
+    lst_depends = []
 
     lst_search_inherit_target = ("_inherit",) if config.with_inherit else []
 
     # lst_py_file = glob.glob(os.path.join(config.directory, "***", "*.py"))
     lst_py_file = Path(config.directory).rglob("*.py")
+    directory = os.path.normpath(config.directory)
     for py_file in lst_py_file:
-        if py_file == "__init__.py":
+        if str(py_file).endswith("__init__.py"):
             continue
+
+        # Extract depends from manifest
+        relative_file = str(py_file)[len(directory) + 1 :]
+        if relative_file == "__manifest__.py":
+            with open(py_file, "r", encoding="utf-8") as f:
+                source = f.read()
+            try:
+                manifest = ast.literal_eval(source)
+            except (ValueError, SyntaxError):
+                manifest = None
+            if manifest:
+                lst_depends = manifest.get("depends", [])
+
+        # Extract models
         with open(py_file, "r") as source:
             f_lines = source.read()
             try:
@@ -370,6 +386,9 @@ def main():
                                             )
                                             if value is not None:
                                                 d[keyword.arg] = value
+    dct_data = {"model": dct_model}
+    if lst_depends:
+        dct_data["depends"] = lst_depends
     lst_model_name.sort()
     lst_model_inherit_name.sort()
     models_name = "; ".join(lst_model_name)
@@ -386,9 +405,9 @@ def main():
             print(models_inherit_name)
     else:
         if config.format_json:
-            output = json.dumps(dct_model, indent=4, sort_keys=True)
+            output = json.dumps(dct_data, indent=4, sort_keys=True)
         else:
-            output = json.dumps(dct_model)
+            output = json.dumps(dct_data)
         print(output)
 
     if config.template_dir:
