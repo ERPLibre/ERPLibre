@@ -21,6 +21,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.config import config_file
+from script.execute import execute
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -54,8 +55,6 @@ try:
     # import rich
     import todo_upgrade
     from pykeepass import PyKeePass
-
-    from script.execute import execute
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True

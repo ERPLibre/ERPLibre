@@ -10,7 +10,10 @@ import subprocess
 import sys
 import time
 
-import humanize
+try:
+    import humanize
+except ModuleNotFoundError as e:
+    humanize = None
 
 cst_venv_erplibre = ".venv.erplibre"
 
