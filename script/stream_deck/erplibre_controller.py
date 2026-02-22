@@ -11,15 +11,24 @@ import threading
 import time
 from fractions import Fraction
 
-import cv2
-import requests
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
-from StreamDeck.DeviceManager import DeviceManager
-from StreamDeck.Devices.StreamDeck import DialEventType, TouchscreenEventType
-from StreamDeck.ImageHelpers import PILHelper
-from StreamDeck.Transport.Transport import TransportError
+try:
+    import cv2
+    import requests
 
-# import keyboard
+    # import keyboard
+    from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
+    from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.Devices.StreamDeck import (
+        DialEventType,
+        TouchscreenEventType,
+    )
+    from StreamDeck.ImageHelpers import PILHelper
+    from StreamDeck.Transport.Transport import TransportError
+except ImportError as e:
+    print(
+        "Install python dependency: pip install -r script/stream_deck/requirements.txt"
+    )
+    raise e
 
 
 ASSETS_PATH = os.path.join(os.path.dirname(__file__), "Assets")
@@ -243,7 +252,10 @@ class StreamDeckController(object):
             if action == "add":
                 id_model = device.get("ID_MODEL")
                 id_vendor = device.get("ID_VENDOR_ID")
-                if id_vendor and id_vendor[1:] == hex(DeviceManager.USB_VID_ELGATO)[2:]:
+                if (
+                    id_vendor
+                    and id_vendor[1:] == hex(DeviceManager.USB_VID_ELGATO)[2:]
+                ):
                     print(f"USB device connected: {id_model}")
                     # TODO this is a bug, need to update the list from device manager
                     sdc = StreamDeckController()
