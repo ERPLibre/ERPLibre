@@ -753,8 +753,12 @@ class TodoUpgrade:
                 if do_copy:
                     shutil.copy(self.file_path, image_db_file_path)
 
+            neutralize_arg = ""
+            if start_version >= 16 and do_neutralize:
+                neutralize_arg = " --neutralize"
+
             status, cmd_executed = self.todo_upgrade_execute(
-                f"./script/database/db_restore.py --database {database_name} --image {file_name} --ignore_cache",
+                f"./script/database/db_restore.py --database {database_name} --image {file_name} --ignore_cache{neutralize_arg}",
                 single_source_odoo=True,
             )
             if not status:
@@ -769,6 +773,16 @@ class TodoUpgrade:
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 single_source_odoo=True,
             )
+
+            # TODO exécuter next line si status != 0 et log contient
+            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
+            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d ripbylop_stage_prod_17_nov_2025
+            # psycopg2.errors.ForeignKeyViolation: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
+            # DÉTAIL : Key (channel_id)=(20) is not present in table "discuss_channel".
+            # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
+            # Puis faire un retry de la commande, sinon rien
+
             self.dct_progression["state_1_neutralize_database"] = True
             self.write_config()
             if not status:
@@ -1888,6 +1902,10 @@ class TodoUpgrade:
                 .strip()
                 .lower()
             )
+
+            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
+            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+
             if wait_status == "1":
                 return self.todo_upgrade_execute(
                     cmd,
