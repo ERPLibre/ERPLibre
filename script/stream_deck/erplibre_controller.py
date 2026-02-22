@@ -5,6 +5,7 @@
 import io
 import itertools
 import os
+import sys
 import random
 import subprocess
 import threading
@@ -17,7 +18,7 @@ try:
 
     # import keyboard
     from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageSequence
-    from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.DeviceManager import DeviceManager, ProbeError
     from StreamDeck.Devices.StreamDeck import (
         DialEventType,
         TouchscreenEventType,
@@ -55,7 +56,11 @@ feature_resize = "linear_from_start"
 class StreamDeckController(object):
     def init(self):
         self.streamdeck_brightness = DEFAULT_BRIGHTNESS
-        streamdecks = DeviceManager().enumerate()
+        try:
+            streamdecks = DeviceManager().enumerate()
+        except ProbeError:
+            print("Driver error, read file script/stream_deck/INSTALL.md")
+            sys.exit(1)
         self.lst_smyles = [
             {"x": 0, "y": 10},
             {"x": 220, "y": 10},
