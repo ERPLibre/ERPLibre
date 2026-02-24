@@ -15,6 +15,22 @@ key : report.url
 value : http://127.0.0.1:8069
 ```
 
+### wkthmltopdf installation debian 13 and more
+
+You need libssl1.1, it's deprecated.
+
+```bash
+echo "deb http://security.debian.org/debian-security bullseye-security main" | sudo tee /etc/apt/sources.list.d/bullseye-security.list
+sudo apt update
+sudo apt install libssl1.1
+sudo rm /etc/apt/sources.list.d/bullseye-security.list
+sudo apt update
+```
+
+### wkthmltopdf installation alternative
+
+If you cannot install wkhtmltopdf, you can run a docker and update configuration, check repo https://github.com/acsone/kwkhtmltopdf
+
 ## Scripting
 
 ### Search all duplicate file recursively in given directory

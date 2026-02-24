@@ -34,6 +34,35 @@ value : http://127.0.0.1:8069
 ```
 
 <!-- [en] -->
+### wkthmltopdf installation debian 13 and more
+
+You need libssl1.1, it's deprecated.
+
+<!-- [fr] -->
+### Installation de wkthmltopdf sur Debian 13 et plus
+
+Vous avez besoin de libssl1.1, qui est déprécié.
+
+<!-- [common] -->
+```bash
+echo "deb http://security.debian.org/debian-security bullseye-security main" | sudo tee /etc/apt/sources.list.d/bullseye-security.list
+sudo apt update
+sudo apt install libssl1.1
+sudo rm /etc/apt/sources.list.d/bullseye-security.list
+sudo apt update
+```
+
+<!-- [en] -->
+### wkthmltopdf installation alternative
+
+If you cannot install wkhtmltopdf, you can run a docker and update configuration, check repo https://github.com/acsone/kwkhtmltopdf
+
+<!-- [fr] -->
+### Installation alternative de wkthmltopdf
+
+Si vous ne pouvez pas installer wkhtmltopdf, vous pouvez exécuter un Docker et mettre à jour la configuration, consultez le dépôt https://github.com/acsone/kwkhtmltopdf
+
+<!-- [en] -->
 ## Scripting
 
 ### Search all duplicate file recursively in given directory
