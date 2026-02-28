@@ -1041,7 +1041,7 @@ class TODO:
         if status == "1":
             file_name = status
         else:
-            file_name = self.open_file_image_db
+            file_name = self.open_file_image_db()
 
         database_name = input("💬 Database name : ")
         if not database_name:
