@@ -208,6 +208,7 @@ class TODO:
 [6] Database - Outils sur les bases de données
 [7] Process - Outils sur les exécutions
 [8] Config - Traitement du fichier de configuration
+[9] Réseau - Outil réseautique
 [0] Retour
 """
         while True:
@@ -245,6 +246,10 @@ class TODO:
                     return
             elif status == "8":
                 status = self.prompt_execute_config()
+                if status is not False:
+                    return
+            elif status == "9":
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             else:
@@ -748,6 +753,50 @@ class TODO:
                 self.generate_config_queue_job()
             else:
                 print("Commande non trouvée 🤖!")
+
+    def prompt_execute_network(self):
+        print("🤖 Outil réseautique!")
+        lst_choice = [
+            {"prompt_description": "SSH port-forwarding"},
+            {"prompt_description": "Network performance request per second"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.generate_network_port_forwarding()
+            elif status == "2":
+                self.generate_network_performance_test()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_network_port_forwarding(self, add_arg=None):
+        # ssh -L local_port:localhost:remote_port SSH_connection
+        ssh_connection = click.prompt(
+            "SSH connection, check ~/.ssh/config or user@address"
+        )
+        local_port = click.prompt("local port (8069)")
+        remote_port = click.prompt("remote port (8069)")
+        cmd = f"ssh -L {local_port}:localhost:{remote_port} {ssh_connection}"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=False,
+        )
+
+    def generate_network_performance_test(self, add_arg=None):
+        # ./script/performance/test_performance.sh
+        address = click.prompt("https address, like https://erplibre.com")
+        cmd = f"./script/performance/test_performance.sh {address}"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
 
     def generate_config(self, add_arg=None):
         # Repeating to get all item before get group
