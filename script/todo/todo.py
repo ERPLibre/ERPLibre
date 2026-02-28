@@ -727,6 +727,7 @@ class TODO:
             {"prompt_description": "Generate from pre-configuration"},
             {"prompt_description": "Generate from backup file"},
             {"prompt_description": "Generate from database"},
+            {"prompt_description": "Setup queue job for parallelism"},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -743,6 +744,8 @@ class TODO:
                 self.generate_config_from_backup()
             elif status == "4":
                 self.generate_config_from_database()
+            elif status == "5":
+                self.generate_config_queue_job()
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -828,6 +831,14 @@ class TODO:
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
+
+    def generate_config_queue_job(self):
+        cmd = "./script/config/setup_odoo_config_conf_devops.py"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
 
     def select_database(self):
         cmd_server = f"./odoo_bin.sh db --list"
