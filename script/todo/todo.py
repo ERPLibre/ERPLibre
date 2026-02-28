@@ -600,6 +600,12 @@ class TODO:
         }
         lst_choice.append(dct_upgrade_odoo_database)
 
+        lst_choice.append(
+            {
+                "prompt_description": "Debug",
+            }
+        )
+
         help_info = self.fill_help_info(lst_choice)
 
         while True:
@@ -608,8 +614,10 @@ class TODO:
             if status == "0":
                 return False
             elif status == str(len(lst_choice)):
-                self.upgrade_module()
+                self.debug_ide()
             elif status == str(len(lst_choice) - 1):
+                self.upgrade_module()
+            elif status == str(len(lst_choice) - 2):
                 self.open_shell_on_database()
             else:
                 cmd_no_found = True
@@ -788,6 +796,25 @@ class TODO:
             #     group = "base,migration"
             #     str_group = f"--group {group}"
             #     self.generate_config(add_arg=str_group)
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def debug_ide(self):
+        lst_choice = [
+            {"prompt_description": "Debug todo.py"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.open_pycharm_file(
+                    os.getcwd(),
+                    os.path.join(os.getcwd(), "script/todo/todo.py"),
+                )
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -993,6 +1020,17 @@ class TODO:
             single_source_erplibre=True,
             new_window=True,
         )
+
+    def open_pycharm_file(self, folder, filename):
+        cmd = "~/.local/share/JetBrains/Toolbox/scripts/pycharm"
+        # cmd = "/snap/bin/pycharm-community"
+        # if pycharm_arg:
+        #     cmd += f" {pycharm_arg}"
+        if folder:
+            cmd += f" {folder}"
+        if filename:
+            cmd += f" --line 1 {filename}"
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def upgrade_module(self):
         upgrade = todo_upgrade.TodoUpgrade(self)
