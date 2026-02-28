@@ -459,12 +459,20 @@ class TODO:
         lst_choice = self.config_file.get_config("instance")
         init_len = len(lst_choice)
 
+        # Support mobile ERPLibre
         if os.path.exists(MOBILE_HOME_PATH):
             dct_upgrade_odoo_database = {
                 "prompt_description": "Mobile - Compile and run software",
                 "callback": self.callback_make_mobile_home,
             }
             lst_choice.append(dct_upgrade_odoo_database)
+
+        # Support custom database to execute
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Choisir sa base de données",
+            "callback": self.callback_execute_custom_database,
+        }
+        lst_choice.insert(0, dct_upgrade_odoo_database)
         help_info = self.fill_help_info(lst_choice)
 
         while True:
@@ -476,7 +484,7 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= init_len:
+                    if 1 < int_cmd <= init_len:
                         cmd_no_found = False
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
@@ -487,7 +495,8 @@ class TODO:
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
                         )
-                    elif int_cmd <= len(lst_choice):
+                    elif int_cmd <= len(lst_choice) or 1 == int_cmd:
+                        cmd_no_found = False
                         # Execute dynamic instance
                         dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
@@ -1032,6 +1041,10 @@ class TODO:
 
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
+
+    def callback_execute_custom_database(self, dct_config):
+        database_name = self.select_database()
+        self.prompt_execute_selenium_and_run_db(database_name)
 
     def restore_from_database(self, show_remote_list=True):
         path_image_db = os.path.join(os.getcwd(), "image_db")
