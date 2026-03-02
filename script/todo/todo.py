@@ -693,6 +693,7 @@ class TODO:
                 "prompt_description": "Download database to create backup (.zip)"
             },
             {"prompt_description": "Restore from backup (.zip)"},
+            {"prompt_description": "Create backup (.zip)"},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -705,6 +706,8 @@ class TODO:
                 self.download_database_backup_cli()
             elif status == "2":
                 self.restore_from_database()
+            elif status == "3":
+                self.create_backup_from_database()
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -1155,22 +1158,34 @@ class TODO:
         else:
             file_name = self.open_file_image_db()
 
-        database_name = input("💬 Database name : ")
+        default_database_name = file_name.replace(" ", "_")
+        if default_database_name.endswith(".zip"):
+            default_database_name = default_database_name[:-4]
+
+        database_name = input(
+            f"💬 Database name (default={default_database_name}) : "
+        )
         if not database_name:
-            _logger.error("Missing database name")
-            return
+            database_name = default_database_name
+
+        status = (
+            input("💬 Would you like to neutralize database (n/N)? ")
+            .strip()
+            .lower()
+        )
+        is_neutralize = False
+        more_arg = ""
+        if status != "n":
+            more_arg = "--neutralize "
+            is_neutralize = True
+            database_name += "_neutralize"
         status, lst_output = self.execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
+            f"python3 ./script/database/db_restore.py -d {database_name} {more_arg}--ignore_cache --image {file_name}",
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
         )
-        status = (
-            input("💬 Would you like to neutralize database (y/Y)? ")
-            .strip()
-            .lower()
-        )
-        if status == "y":
+        if is_neutralize:
             status, lst_output = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 return_status_and_output=True,
@@ -1189,6 +1204,32 @@ class TODO:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
+
+    def create_backup_from_database(self, show_remote_list=True):
+        database_name = self.select_database()
+        str_arg = f"--database {database_name}"
+
+        backup_name = input("💬 Backup name (default = name+date.zip) : ")
+        if not backup_name:
+            backup_name = (
+                database_name
+                + "_"
+                + datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+                + ".zip"
+            )
+
+        if not backup_name.endswith(".zip"):
+            backup_name = backup_name + ".zip"
+
+        print(backup_name)
+
+        cmd = f"./odoo_bin.sh db --backup --database {database_name} --restore_image {backup_name}"
+        status, lst_output = self.execute.exec_command_live(
+            cmd,
+            return_status_and_output=True,
+            single_source_erplibre=True,
+            source_erplibre=False,
+        )
 
     def open_file_image_db(self):
         self.dir_path = ""
