@@ -1,3 +1,4 @@
+
 # Deployment from Odoo
 
 ## Support Wildcard
@@ -5,6 +6,7 @@
 You can support Wildcard domain, like *.mysite.com
 
 Generate manually the certificate :
+
 ```bash
 sudo certbot certonly --manual --preferred-challenges=dns --server https://acme-v02.api.letsencrypt.org/directory -d "*.mysite.com" -d "*.mysecondsite.com"
 ```

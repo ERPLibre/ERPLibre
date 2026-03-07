@@ -1,3 +1,4 @@
+
 # Comment générer du code
 
 Ne jamais exécuter le générateur de code dans un environnement de production, il y a création de dépendances circulaires pouvant causer de la frustration à nettoyer tous les dommages. D'ailleurs, il est nécessaire d'exécuter en mode développement, avec l'argument `--dev cg`.
@@ -179,7 +180,7 @@ Aller dans le module «Code generator» et créer un module «test».
     - Choisir le «Modèle» : «Contact»;
     - Choisir unité de temps en «Minutes» dans «Exécuter tous les»;
     - Modifier «Nombre d'appel» à -1 pour exécution sans arrêt;
-    - Activer «Force nextcall» pour permettre que l'interval soit basé sur le moment d'installation du module.
+    - Activer «Force nextcall» pour permettre que l'intervalle soit basé sur le moment d'installation du module.
     - Ajouter le code :
 
 ```python
@@ -279,7 +280,7 @@ Aller dans le module «Code generator» et créer un module «theme_test»:
 - Sur l'onglet «Technical Data», activer «Website theme»;
 - Appuyer sur le bouton «Views»:
   - Aller à l'onglet «theme_website»:
-    - Mettre les couleurs désirés;
+    - Mettre les couleurs désirées;
   - Appuyer «Generate».
 
 Générer le module avec «Action/Générer code».
@@ -331,16 +332,16 @@ make db_restore_erplibre_base_db_test_module_test
 
 ### Exporter un site web vers un module
 
-Cette technique a été testé sans thème d'installé.
+Cette technique a été testée sans thème installé.
 
 Ce qui est exporté : Les pages, les fichiers attachés et les fichiers CSS.
 Ce qui n'est pas exporté à notre connaissance : Les menus, les fichiers XML autres.
 
 À propos des fichiers attachés, ils sont importés et associés à un xml_id. Les doublons sont enlevés et les noms
-duppliqués sont gérés. Les URL sont réécrites dans chaque page.
+dupliqués sont gérés. Les URL sont réécrites dans chaque page.
 
 À propos des fichiers CSS, pour modifier les couleurs sans avoir de thème, aller en mode debug assets, dans le website
-builder, activé `Inclure tous les fichiers SCSS`. Vous pourrez ainsi modifier les fichiers `user_color_palette`
+builder, activer `Inclure tous les fichiers SCSS`. Vous pourrez ainsi modifier les fichiers `user_color_palette`
 et `user_theme_color_palette`.
 
 Exemple pour `/website/static/src/scss/options/colors/user_color_palette.scss` :
@@ -381,7 +382,7 @@ Modifier le module `code_generator_demo_export_website` pour décider du nouveau
 Suggestion, faites un clone de votre BD de production avant de l'exporter pour ne pas l'affecter, l'exportation modifie
 des informations dans la base de données.
 
-Le résultat généré montre les fichiers modifiés, mais il doit être adapté, surement être transformé en thème.
+Le résultat généré montre les fichiers modifiés, mais il doit être adapté, sûrement être transformé en thème.
 
 Supposons que le nom de votre BD est `test_website` :
 
@@ -408,7 +409,7 @@ Supposons que le nom de votre BD est `test_website` :
 
 Un fichier temporaire `./image_db/test_website_backup.zip` a été créé, vous pouvez aller l'effacer.
 
-Maintenant, modifier chaques fichiers manuellements de la liste désiré à importer (comme ajouter un espace à la fin du
+Maintenant, modifier chaque fichier manuellement de la liste désirée à importer (comme ajouter un espace à la fin du
 fichier, le formatage va l'effacer) et exécuter :
 
 ```bash
@@ -472,7 +473,7 @@ make config_gen_all
 
 # Créer un générateur de code
 
-Le script suivant sert à démarrer projet avec le générateur de code en appuie.
+Le script suivant sert à démarrer un projet avec le générateur de code en appui.
 
 ```bash
 ./script/code_generator/new_project.py -d CHEMIN -m NOM_DU_MODULE
@@ -512,7 +513,7 @@ make addons_install_code_generator_demo
 
 Au besoin, renommer votre module qui débute par `MODULE_NAME = "code_generator_"`
 
-Pour continuer avec l'exemple, généré le template `code_generator_template_demo_website_snippet`, ceci va écraser `code_generator_demo_website_snippet`:
+Pour continuer avec l'exemple, générer le template `code_generator_template_demo_website_snippet`, ceci va écraser `code_generator_demo_website_snippet` :
 
 ```bash
 make db_restore_erplibre_base_db_template
@@ -560,7 +561,7 @@ make db_restore_erplibre_base_db_code_generator
 
 Maintenant, vous pouvez le tester! Pour info, on ne peut pas installer un module généré avec son générateur de code associé, puisqu'il y a une duplication des modèles!
 
-Il est maintenant possible de modifier les paramètres via l'interface manuelle pour ce module, puis le regénérer en effaçant la BD. Ajouter un modèle et une vue.
+Il est maintenant possible de modifier les paramètres via l'interface manuelle pour ce module, puis le régénérer en effaçant la BD. Ajouter un modèle et une vue.
 
 ```bash
 make db_restore_erplibre_base_db_code_generator

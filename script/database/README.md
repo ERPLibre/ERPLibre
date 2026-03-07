@@ -1,3 +1,4 @@
+
 # Database
 
 This section is for code generator database migrator.
@@ -9,6 +10,7 @@ You need to install script `./script/install/install_dev_extra_ubuntu.sh`.
 ## Restore database
 
 Run script to restore database:
+
 ```bash
 ./script/database/restore_mariadb_sql_example_1.sh
 ```

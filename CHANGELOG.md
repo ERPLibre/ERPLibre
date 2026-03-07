@@ -1,9 +1,11 @@
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com). This project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 
 ## [Unreleased]
 
@@ -35,6 +37,7 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Docker support postgresql 18
 - Format script search diff file into each repository
 - Support neutralize database from Odoo
+
 
 ## [1.6.0] - 2025-04-25
 
@@ -77,11 +80,13 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - OSX and recent Ubuntu installation
 - Cloudflare script integration
 
+
 ## [1.5.0] - 2023-07-07
 
 **Migration notes**
 
 Recreating the virtual environment
+
 
 ```bash
 rm -rf ~/.poetry
@@ -93,7 +98,9 @@ rm -rf ./.venv
 make install
 ```
 
+
 Do a backup of your database and update all modules :
+
 
 ```bash
 ./run.sh --no-http --stop-after-init -d DATABASE -u all
@@ -158,6 +165,7 @@ Do a backup of your database and update all modules :
 - Module project_time_management
 - Support of vatnumber, too old
 - Deprecated python dependency like pycrypto
+
 
 ## [1.4.0] - 2022-10-05
 
@@ -226,6 +234,7 @@ Do a backup of your database and update all modules :
 
 - Module package erplibre from ERPLibre_erplibre_addons and use instead image creation, check Makefile
 
+
 ## [1.3.0] - 2022-01-25
 
 **Migration note**
@@ -267,6 +276,7 @@ recreate. `rm -rf ~/.poetry`
 
 - Downgrade Werkzeug==0.11.15, only this version is supported by Odoo 12.0. This fixes some http request behind a proxy.
 
+
 ## [1.2.1] - 2021-09-28
 
 ### Added
@@ -294,6 +304,7 @@ recreate. `rm -rf ~/.poetry`
 ### Fixed
 
 - Mobile view menu item in Web interface from muk_web_theme
+
 
 ## [1.2.0] - 2021-07-21
 
@@ -373,6 +384,7 @@ Because addons repository has change, config file need to be updated.
 - Poetry installation
 - Geospatial with postgis can be installed
 
+
 ## [1.1.1] - 2020-12-11
 
 ### Added
@@ -394,6 +406,7 @@ Because addons repository has change, config file need to be updated.
 - db_backup to accept public host key on sftp
 - Docker dependency
 - Freeze poetry version 1.0.10
+
 
 ## [1.1.0] - 2020-09-30
 
@@ -417,6 +430,7 @@ Because addons repository has change, config file need to be updated.
 - Rename venv to .venv
 - More documentation on how to use ERPLibre
 
+
 ## [1.0.1] - 2020-07-14
 
 ### Added
@@ -437,6 +451,7 @@ Because addons repository has change, config file need to be updated.
 
 - Production installation with git_repo
 
+
 ## [1.0.0] - 2020-07-04
 
 ### Added
@@ -448,6 +463,7 @@ Because addons repository has change, config file need to be updated.
 
 - Git submodule
 
+
 ## [0.1.1] - 2020-04-28
 
 ### Added
@@ -456,6 +472,7 @@ Because addons repository has change, config file need to be updated.
 - Support [SanteLibre.ca](https://santelibre.ca) with MRP, website, hr, ecommerce
 - Donation module with thermometer for website
 - Script to fork project and all repos in submodule to create ERPLibre
+
 
 ## [0.1.0] - 2020-04-20
 
@@ -472,6 +489,7 @@ Because addons repository has change, config file need to be updated.
 ### Fixed
 
 - Support only python3.6 and python3.7, python3.8 causes error in runtime.
+
 
 [Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...HEAD
 
