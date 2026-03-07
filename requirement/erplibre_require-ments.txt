@@ -30,6 +30,7 @@ unidecode
 sshconf
 cloudflare
 psutil
+mmg
 
 # For mobile
 pillow
