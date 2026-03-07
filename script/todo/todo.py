@@ -21,6 +21,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.config import config_file
+from script.execute import execute
 
 file_error_path = ".erplibre.error.txt"
 cst_venv_erplibre = ".venv.erplibre"
@@ -56,7 +57,6 @@ try:
     # import rich
     import todo_upgrade
     from pykeepass import PyKeePass
-
 except ModuleNotFoundError as e:
     humanize = None
     ENABLE_CRASH = True
@@ -208,6 +208,7 @@ class TODO:
 [6] Database - Outils sur les bases de données
 [7] Process - Outils sur les exécutions
 [8] Config - Traitement du fichier de configuration
+[9] Réseau - Outil réseautique
 [0] Retour
 """
         while True:
@@ -245,6 +246,10 @@ class TODO:
                     return
             elif status == "8":
                 status = self.prompt_execute_config()
+                if status is not False:
+                    return
+            elif status == "9":
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             else:
@@ -459,12 +464,20 @@ class TODO:
         lst_choice = self.config_file.get_config("instance")
         init_len = len(lst_choice)
 
+        # Support mobile ERPLibre
         if os.path.exists(MOBILE_HOME_PATH):
             dct_upgrade_odoo_database = {
                 "prompt_description": "Mobile - Compile and run software",
                 "callback": self.callback_make_mobile_home,
             }
             lst_choice.append(dct_upgrade_odoo_database)
+
+        # Support custom database to execute
+        dct_upgrade_odoo_database = {
+            "prompt_description": "Choisir sa base de données",
+            "callback": self.callback_execute_custom_database,
+        }
+        lst_choice.insert(0, dct_upgrade_odoo_database)
         help_info = self.fill_help_info(lst_choice)
 
         while True:
@@ -476,7 +489,7 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= init_len:
+                    if 1 < int_cmd <= init_len:
                         cmd_no_found = False
                         status = click.confirm(
                             "Voulez-vous une nouvelle instance?"
@@ -487,7 +500,8 @@ class TODO:
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
                         )
-                    elif int_cmd <= len(lst_choice):
+                    elif int_cmd <= len(lst_choice) or 1 == int_cmd:
+                        cmd_no_found = False
                         # Execute dynamic instance
                         dct_instance = lst_choice[int_cmd - 1]
                         self.execute_from_configuration(
@@ -591,6 +605,12 @@ class TODO:
         }
         lst_choice.append(dct_upgrade_odoo_database)
 
+        lst_choice.append(
+            {
+                "prompt_description": "Debug",
+            }
+        )
+
         help_info = self.fill_help_info(lst_choice)
 
         while True:
@@ -599,8 +619,10 @@ class TODO:
             if status == "0":
                 return False
             elif status == str(len(lst_choice)):
-                self.upgrade_module()
+                self.debug_ide()
             elif status == str(len(lst_choice) - 1):
+                self.upgrade_module()
+            elif status == str(len(lst_choice) - 2):
                 self.open_shell_on_database()
             else:
                 cmd_no_found = True
@@ -671,6 +693,7 @@ class TODO:
                 "prompt_description": "Download database to create backup (.zip)"
             },
             {"prompt_description": "Restore from backup (.zip)"},
+            {"prompt_description": "Create backup (.zip)"},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -683,6 +706,8 @@ class TODO:
                 self.download_database_backup_cli()
             elif status == "2":
                 self.restore_from_database()
+            elif status == "3":
+                self.create_backup_from_database()
             else:
                 print("Commande non trouvée 🤖!")
 
@@ -710,6 +735,7 @@ class TODO:
             {"prompt_description": "Generate from pre-configuration"},
             {"prompt_description": "Generate from backup file"},
             {"prompt_description": "Generate from database"},
+            {"prompt_description": "Setup queue job for parallelism"},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -726,12 +752,59 @@ class TODO:
                 self.generate_config_from_backup()
             elif status == "4":
                 self.generate_config_from_database()
+            elif status == "5":
+                self.generate_config_queue_job()
             else:
                 print("Commande non trouvée 🤖!")
+
+    def prompt_execute_network(self):
+        print("🤖 Outil réseautique!")
+        lst_choice = [
+            {"prompt_description": "SSH port-forwarding"},
+            {"prompt_description": "Network performance request per second"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.generate_network_port_forwarding()
+            elif status == "2":
+                self.generate_network_performance_test()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def generate_network_port_forwarding(self, add_arg=None):
+        # ssh -L local_port:localhost:remote_port SSH_connection
+        ssh_connection = click.prompt(
+            "SSH connection, check ~/.ssh/config or user@address"
+        )
+        local_port = click.prompt("local port (8069)")
+        remote_port = click.prompt("remote port (8069)")
+        cmd = f"ssh -L {local_port}:localhost:{remote_port} {ssh_connection}"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=False,
+        )
+
+    def generate_network_performance_test(self, add_arg=None):
+        # ./script/performance/test_performance.sh
+        address = click.prompt("https address, like https://erplibre.com")
+        cmd = f"./script/performance/test_performance.sh {address}"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
 
     def generate_config(self, add_arg=None):
         # Repeating to get all item before get group
         cmd = (
+            f"./script/git/git_merge_repo_manifest.py --output .repo/local_manifests/erplibre_manifest.xml --with_OCA;"
             f"./script/git/git_repo_update_group.py;"
             f"./script/generate_config.sh"
         )
@@ -782,6 +855,25 @@ class TODO:
             else:
                 print("Commande non trouvée 🤖!")
 
+    def debug_ide(self):
+        lst_choice = [
+            {"prompt_description": "Debug todo.py"},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.open_pycharm_file(
+                    os.getcwd(),
+                    os.path.join(os.getcwd(), "script/todo/todo.py"),
+                )
+            else:
+                print("Commande non trouvée 🤖!")
+
     def generate_config_from_backup(self):
         file_name = self.open_file_image_db()
         add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
@@ -792,6 +884,14 @@ class TODO:
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
+
+    def generate_config_queue_job(self):
+        cmd = "./script/config/setup_odoo_config_conf_devops.py"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
 
     def select_database(self):
         cmd_server = f"./odoo_bin.sh db --list"
@@ -985,6 +1085,17 @@ class TODO:
             new_window=True,
         )
 
+    def open_pycharm_file(self, folder, filename):
+        cmd = "~/.local/share/JetBrains/Toolbox/scripts/pycharm"
+        # cmd = "/snap/bin/pycharm-community"
+        # if pycharm_arg:
+        #     cmd += f" {pycharm_arg}"
+        if folder:
+            cmd += f" {folder}"
+        if filename:
+            cmd += f" --line 1 {filename}"
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
     def upgrade_module(self):
         upgrade = todo_upgrade.TodoUpgrade(self)
         upgrade.execute_module_upgrade()
@@ -1033,6 +1144,10 @@ class TODO:
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
+    def callback_execute_custom_database(self, dct_config):
+        database_name = self.select_database()
+        self.prompt_execute_selenium_and_run_db(database_name)
+
     def restore_from_database(self, show_remote_list=True):
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
@@ -1041,24 +1156,36 @@ class TODO:
         if status == "1":
             file_name = status
         else:
-            file_name = self.open_file_image_db
+            file_name = self.open_file_image_db()
 
-        database_name = input("💬 Database name : ")
+        default_database_name = file_name.replace(" ", "_")
+        if default_database_name.endswith(".zip"):
+            default_database_name = default_database_name[:-4]
+
+        database_name = input(
+            f"💬 Database name (default={default_database_name}) : "
+        )
         if not database_name:
-            _logger.error("Missing database name")
-            return
+            database_name = default_database_name
+
+        status = (
+            input("💬 Would you like to neutralize database (n/N)? ")
+            .strip()
+            .lower()
+        )
+        is_neutralize = False
+        more_arg = ""
+        if status != "n":
+            more_arg = "--neutralize "
+            is_neutralize = True
+            database_name += "_neutralize"
         status, lst_output = self.execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} --ignore_cache --image {file_name}",
+            f"python3 ./script/database/db_restore.py -d {database_name} {more_arg}--ignore_cache --image {file_name}",
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
         )
-        status = (
-            input("💬 Would you like to neutralize database (y/Y)? ")
-            .strip()
-            .lower()
-        )
-        if status == "y":
+        if is_neutralize:
             status, lst_output = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
                 return_status_and_output=True,
@@ -1077,6 +1204,32 @@ class TODO:
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
+
+    def create_backup_from_database(self, show_remote_list=True):
+        database_name = self.select_database()
+        str_arg = f"--database {database_name}"
+
+        backup_name = input("💬 Backup name (default = name+date.zip) : ")
+        if not backup_name:
+            backup_name = (
+                database_name
+                + "_"
+                + datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+                + ".zip"
+            )
+
+        if not backup_name.endswith(".zip"):
+            backup_name = backup_name + ".zip"
+
+        print(backup_name)
+
+        cmd = f"./odoo_bin.sh db --backup --database {database_name} --restore_image {backup_name}"
+        status, lst_output = self.execute.exec_command_live(
+            cmd,
+            return_status_and_output=True,
+            single_source_erplibre=True,
+            source_erplibre=False,
+        )
 
     def open_file_image_db(self):
         self.dir_path = ""

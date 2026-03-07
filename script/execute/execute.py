@@ -12,7 +12,7 @@ import time
 
 try:
     import humanize
-except ImportError:
+except ModuleNotFoundError as e:
     humanize = None
 
 cst_venv_erplibre = ".venv.erplibre"
