@@ -42,12 +42,12 @@ True. Redirect your DNS to the proxy's ip and add your A and AAAA into `EL_WEBSI
 #### With proxy nginx production, install certbot before for SSL
 
 <!-- [fr] -->
-### 2. Modifier les parametres
+### 2. Modifier les paramètres
 
-Modifiez le fichier env_var.sh pour l'installation en production. Activez nginx si vous avez besoin d'un proxy avec `EL_INSTALL_NGINX` a
-True. Redirigez votre DNS vers l'adresse IP du proxy et ajoutez vos enregistrements A et AAAA dans `EL_WEBSITE_NAME` separes par des espaces.
+Modifiez le fichier env_var.sh pour l'installation en production. Activez nginx si vous avez besoin d'un proxy avec `EL_INSTALL_NGINX` à
+True. Redirigez votre DNS vers l'adresse IP du proxy et ajoutez vos enregistrements A et AAAA dans `EL_WEBSITE_NAME` séparés par des espaces.
 
-### 3. Executer les scripts :
+### 3. Exécuter les scripts :
 
 #### Avec le proxy nginx en production, installer certbot avant pour le SSL
 
@@ -85,7 +85,7 @@ A service is running by SystemD. You can access it with the DNS name found in `e
 Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
 
 <!-- [fr] -->
-Un service est en cours d'execution via SystemD. Vous pouvez y acceder avec le nom DNS trouve dans `env_var.sh`
+Un service est en cours d'exécution via SystemD. Vous pouvez y accéder avec le nom DNS trouvé dans `env_var.sh`
 
 #### Serveur Ubuntu 20.04
 
@@ -105,11 +105,11 @@ A service is running by SystemD, you can access it with the DNS name found in `e
 Generate a ssl certificate
 
 <!-- [fr] -->
-Un service est en cours d'execution via SystemD, vous pouvez y acceder avec le nom DNS trouve dans `env_var.sh`
+Un service est en cours d'exécution via SystemD, vous pouvez y accéder avec le nom DNS trouvé dans `env_var.sh`
 
 ### 4. SSL :
 
-Generer un certificat SSL
+Générer un certificat SSL
 
 <!-- [common] -->
 ```bash
@@ -133,7 +133,7 @@ sudo systemctl -feu [EL_USER]
 Comment the following line in `/[EL_USER]/erplibre/config.conf`
 
 <!-- [fr] -->
-## Executer par adresse IP
+## Exécuter par adresse IP
 
 Commentez la ligne suivante dans `/[EL_USER]/erplibre/config.conf`
 
@@ -151,7 +151,7 @@ Restart daemon:
 <!-- [fr] -->
 Ajoutez votre adresse IP comme server_name dans la configuration nginx `/etc/nginx/sites-available/[EL_WEBSITE_NAME]`
 
-Redemarrer le daemon :
+Redémarrer le daemon :
 
 <!-- [common] -->
 ```bash
@@ -163,7 +163,7 @@ sudo systemctl restart [EL_USER]
 ## Production execution
 
 <!-- [fr] -->
-## Execution en production
+## Exécution en production
 
 <!-- [common] -->
 ```bash
@@ -181,12 +181,12 @@ database. WARNING, this is not safe for production, you will expose all data.
 1. Run
 
 <!-- [fr] -->
-## Deplacer la base de donnees de production vers le developpement
+## Déplacer la base de données de production vers le développement
 
-Lorsque vous deplacez une base de donnees de production vers votre environnement de developpement, vous souhaitez supprimer les serveurs de messagerie et installer un utilisateur de test pour tester la base de donnees. ATTENTION, ceci n'est pas securitaire pour la production, vous exposerez toutes les donnees.
+Lorsque vous déplacez une base de données de production vers votre environnement de développement, vous souhaitez supprimer les serveurs de messagerie et installer un utilisateur de test pour tester la base de données. ATTENTION, ceci n'est pas sécuritaire pour la production, vous exposerez toutes les données.
 
-1. Copiez votre image de base de donnees dans le repertoire image_db, par exemple le nom de l'image est `my_db.zip`
-1. Executez
+1. Copiez votre image de base de données dans le répertoire image_db, par exemple le nom de l'image est `my_db.zip`
+1. Exécutez
 
 <!-- [common] -->
 ```bash
@@ -200,9 +200,9 @@ Lorsque vous deplacez une base de donnees de production vers votre environnement
 Update all features.
 
 <!-- [fr] -->
-## Mise a jour de la production
+## Mise à jour de la production
 
-Mettre a jour toutes les fonctionnalites.
+Mettre à jour toutes les fonctionnalités.
 
 <!-- [common] -->
 ```bash
@@ -228,12 +228,12 @@ CAUTION, this will delete user's home, it's irrevocable.
 Pour afficher les fichiers de configuration :
 > psql -U postgres -c 'SHOW config_file'
 
-Editez ce fichier pour accepter les interfaces de tous les reseaux :
+Éditez ce fichier pour accepter les interfaces de tous les réseaux :
 > /var/lib/postgres/data/postgresql.conf
 
 # Supprimer une instance en production
 
-ATTENTION, ceci supprimera le repertoire personnel de l'utilisateur, c'est irrevocable.
+ATTENTION, ceci supprimera le répertoire personnel de l'utilisateur, c'est irrévocable.
 
 <!-- [common] -->
 ```bash
@@ -246,9 +246,9 @@ ATTENTION, ceci supprimera le repertoire personnel de l'utilisateur, c'est irrev
 First you need a valid python3 interpreter running with cloudflare module installed: (make sure your pip3 pointing the right python3)
 
 <!-- [fr] -->
-# Mettre a jour l'IP lorsque l'IP publique change avec CloudFlare et crontab
+# Mettre à jour l'IP lorsque l'IP publique change avec CloudFlare et crontab
 
-Vous avez d'abord besoin d'un interpreteur python3 valide avec le module cloudflare installe : (assurez-vous que votre pip3 pointe vers le bon python3)
+Vous avez d'abord besoin d'un interpréteur python3 valide avec le module cloudflare installé : (assurez-vous que votre pip3 pointe vers le bon python3)
 
 <!-- [common] -->
 ```bash
@@ -259,7 +259,7 @@ pip3 install cloudflare==2.20.0
 Then you need to create the cfg files with credentials for your cloudflare account.
 
 <!-- [fr] -->
-Ensuite, vous devez creer les fichiers cfg avec les identifiants de votre compte cloudflare.
+Ensuite, vous devez créer les fichiers cfg avec les identifiants de votre compte cloudflare.
 
 <!-- [common] -->
 ```bash
@@ -270,7 +270,7 @@ mkdir ~/.cloudflare
 Edit ~/.cloudflare/cloudflare.cfg
 
 <!-- [fr] -->
-Editez ~/.cloudflare/cloudflare.cfg
+Éditez ~/.cloudflare/cloudflare.cfg
 
 <!-- [common] -->
 ```
@@ -292,16 +292,16 @@ Notes:
 - For each crontab run, if public IP did not change compared to what is on cloudflare, the script will not do unnecessary changes and let everything as is.
 
 <!-- [fr] -->
-Ajoutez votre cron et specifiez le python3 que vous souhaitez utiliser.
-- USER est l'utilisateur local avec les permissions pour executer le script
-- PATH est le chemin vers l'interieur du dossier ERPLibre/deployment/
+Ajoutez votre cron et spécifiez le python3 que vous souhaitez utiliser.
+- USER est l'utilisateur local avec les permissions pour exécuter le script
+- PATH est le chemin vers l'intérieur du dossier ERPLibre/deployment/
 - PROFILE_NAME doit correspondre au PROFILE_NAME dans cloudflare.cfg
 - CLOUDFLARE_ZONE_NAME est le nom de la zone du site web sur cloudflare
 - DNS_NAME est le nom d'un enregistrement DNS A disponible sur cette zone
 
 Notes :
-- Un seul crontab est necessaire car le script recherchera automatiquement toutes les zones disponibles avec une IP obsolete et les mettra a jour sur tous les enregistrements A.
-- A chaque execution du crontab, si l'IP publique n'a pas change par rapport a ce qui est sur cloudflare, le script ne fera pas de changements inutiles et laissera tout en l'etat.
+- Un seul crontab est nécessaire car le script recherchera automatiquement toutes les zones disponibles avec une IP obsolète et les mettra à jour sur tous les enregistrements A.
+- À chaque exécution du crontab, si l'IP publique n'a pas changé par rapport à ce qui est sur cloudflare, le script ne fera pas de changements inutiles et laissera tout en l'état.
 
 <!-- [common] -->
 ```bash
@@ -314,7 +314,7 @@ vim /etc/crontab
 Check log with
 
 <!-- [fr] -->
-Verifier les journaux avec
+Vérifier les journaux avec
 
 <!-- [common] -->
 ```bash
@@ -325,7 +325,7 @@ sudo journalctl -feu cron
 If you want to log what is happening and when the script is run, like logging when ip changes, you can add a logging part to your cron
 
 <!-- [fr] -->
-Si vous souhaitez journaliser ce qui se passe et quand le script est execute, comme la journalisation des changements d'IP, vous pouvez ajouter une partie de journalisation a votre cron
+Si vous souhaitez journaliser ce qui se passe et quand le script est exécuté, comme la journalisation des changements d'IP, vous pouvez ajouter une partie de journalisation à votre cron
 
 <!-- [common] -->
 ```bash
@@ -339,7 +339,7 @@ vim /etc/crontab
 You can then read all logs with this command (Need to have ts installed: sudo apt install moreutils)
 
 <!-- [fr] -->
-Vous pouvez ensuite lire tous les journaux avec cette commande (Necessite l'installation de ts : sudo apt install moreutils)
+Vous pouvez ensuite lire tous les journaux avec cette commande (Nécessite l'installation de ts : sudo apt install moreutils)
 
 <!-- [common] -->
 ```bash
@@ -358,11 +358,11 @@ Run script to update configuration :
 <!-- [fr] -->
 # Docker
 
-## Mise a jour
+## Mise à jour
 
-Lors de la mise a jour d'un docker, vous devez mettre a jour la liste des modules.
+Lors de la mise à jour d'un docker, vous devez mettre à jour la liste des modules.
 
-Executez le script pour mettre a jour la configuration :
+Exécutez le script pour mettre à jour la configuration :
 
 <!-- [common] -->
 ```bash
@@ -373,7 +373,7 @@ Executez le script pour mettre a jour la configuration :
 Edit the docker-compose.yml and update the command line (change DATABASE) to :
 
 <!-- [fr] -->
-Editez le docker-compose.yml et mettez a jour la ligne de commande (changez DATABASE) pour :
+Éditez le docker-compose.yml et mettez à jour la ligne de commande (changez DATABASE) pour :
 
 <!-- [common] -->
 ```yaml
@@ -388,7 +388,7 @@ Restart the docker :
 <!-- [fr] -->
 Note, l'objectif est d'appeler `env['ir.module.module'].update_list()`.
 
-Redemarrez le docker :
+Redémarrez le docker :
 
 <!-- [common] -->
 ```bash
@@ -402,9 +402,9 @@ Revert the command in docker-compose.yml.
 You can validate in log the update, you need to find `odoo.modules.loading: updating modules list`, check
 
 <!-- [fr] -->
-Revertez la commande dans docker-compose.yml.
+Annulez la commande dans docker-compose.yml.
 
-Vous pouvez valider la mise a jour dans les journaux, vous devez trouver `odoo.modules.loading: updating modules list`, verifiez
+Vous pouvez valider la mise à jour dans les journaux, vous devez trouver `odoo.modules.loading: updating modules list`, vérifiez
 
 <!-- [common] -->
 ```bash
@@ -419,11 +419,11 @@ Do a backup on url https://HOST/web/database/manager
 Edit the docker-compose.yml and update the command line (change DATABASE) to :
 
 <!-- [fr] -->
-## Tout mettre a jour
+## Tout mettre à jour
 
-Faites une sauvegarde a l'URL https://HOST/web/database/manager
+Faites une sauvegarde à l'URL https://HOST/web/database/manager
 
-Editez le docker-compose.yml et mettez a jour la ligne de commande (changez DATABASE) pour :
+Éditez le docker-compose.yml et mettez à jour la ligne de commande (changez DATABASE) pour :
 
 <!-- [common] -->
 ```yaml
@@ -434,7 +434,7 @@ Editez le docker-compose.yml et mettez a jour la ligne de commande (changez DATA
 Watch log to see error, if you got error, you need to do some code to migrate your data, depend the case.
 
 <!-- [fr] -->
-Surveillez les journaux pour voir les erreurs, si vous obtenez une erreur, vous devez ecrire du code pour migrer vos donnees, selon le cas.
+Surveillez les journaux pour voir les erreurs, si vous obtenez une erreur, vous devez écrire du code pour migrer vos données, selon le cas.
 
 <!-- [common] -->
 ```bash
