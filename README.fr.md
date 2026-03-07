@@ -53,7 +53,7 @@ Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 - **Mainframe** : architecture 390x
 
 
-# Installation
+# Installation en production
 
 ## Installation facile sur Ubuntu ou Debian avec Docker
 
@@ -61,6 +61,39 @@ Ceci a ete teste sur Debian 12 et Ubuntu 24.04 LTS.
 
 **Note** : Ceci est prevu pour un environnement de test, sur un reseau local ou un environnement similaire non expose
 directement a Internet.
+
+
+1. Assurez-vous que Docker et le serveur web nginx sont installes :<BR>
+   `sudo apt install docker.io docker-compose-v2 nginx`
+1. Obtenez le dernier fichier Docker compose d'ERPLibre :<BR>
+   `wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/master/docker-compose.yml`
+1. Installez et lancez ERPLibre avec Docker en mode daemon (serveur web) :<BR>
+   ``sudo docker compose up -d`
+1. Ouvrez l'etape finale d'installation a cette page web :<BR>
+   `http://[server IP]:8069/web/database/manager`<BR>
+   ![odoo_first_installation.png](doc/image/odoo_first_installation.png)
+1. Terminez l'installation en fournissant un nom de base de donnees, un courriel et un mot de passe, puis cliquez sur **Create Database**.
+   Selon les ressources de votre systeme, **cela peut prendre plus de 2 minutes sans retour visuel !** Verifiez
+   l'indicateur de chargement de votre navigateur.
+1. Ensuite, la page web se rechargera automatiquement et vous devriez voir la liste des applications dans ERPLibre :<BR>
+   ![odoo_application_list.png](doc/image/odoo_application_list.png)
+
+   Vous pouvez maintenant personnaliser votre installation ERPLibre.
+
+
+Pour plus d'informations, consultez le [guide Docker](./docker/README.md).
+
+## Installation depuis le code source
+
+### Installation automatisee
+
+
+Pour Debian/Ubuntu
+
+
+```bash
+sudo apt install make python3
+```
 
 
 Clonez le projet :

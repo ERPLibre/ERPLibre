@@ -110,7 +110,7 @@ Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 <!-- [en] -->
 
-# Installation
+# Installation in production
 
 ## Easy installation on Ubuntu or Debian using Docker
 
@@ -121,7 +121,7 @@ Internet.
 
 <!-- [fr] -->
 
-# Installation
+# Installation en production
 
 ## Installation facile sur Ubuntu ou Debian avec Docker
 
@@ -133,13 +133,13 @@ directement a Internet.
 <!-- [en] -->
 
 1. Make sure Docker and nginx web server are installed:<BR>
-   ```sudo apt install docker.io docker-compose-v2 nginx```
+   `sudo apt install docker.io docker-compose-v2 nginx`
 1. Get the latest ERPLibre Docker compose file:<BR>
-   ```wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.6.0/docker-compose.yml```
+   `wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/master/docker-compose.yml`
 1. Install and run ERPLibre with Docker running as a daemon (web server):<BR>
-   ```sudo docker compose up -d```
+   `sudo docker compose up -d`
 1. Open the final installation step at this web page :<BR>
-   ```http://[server IP]:8069```<BR>
+   `http://[server IP]:8069/web/database/manager`<BR>
    ![odoo_first_installation.png](doc/image/odoo_first_installation.png)
 1. Finish the installation by providing a database name, email and password. then click on **Create Database**.
    Depending on your system resources **this may take more than 2 minutes without feedback !** Check your browser
@@ -152,13 +152,13 @@ directement a Internet.
 <!-- [fr] -->
 
 1. Assurez-vous que Docker et le serveur web nginx sont installes :<BR>
-   ```sudo apt install docker.io docker-compose-v2 nginx```
+   `sudo apt install docker.io docker-compose-v2 nginx`
 1. Obtenez le dernier fichier Docker compose d'ERPLibre :<BR>
-   ```wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/v1.6.0/docker-compose.yml```
+   `wget https://raw.githubusercontent.com/ERPLibre/ERPLibre/master/docker-compose.yml`
 1. Installez et lancez ERPLibre avec Docker en mode daemon (serveur web) :<BR>
-   ```sudo docker compose up -d```
+   ``sudo docker compose up -d`
 1. Ouvrez l'etape finale d'installation a cette page web :<BR>
-   ```http://[server IP]:8069```<BR>
+   `http://[server IP]:8069/web/database/manager`<BR>
    ![odoo_first_installation.png](doc/image/odoo_first_installation.png)
 1. Terminez l'installation en fournissant un nom de base de donnees, un courriel et un mot de passe, puis cliquez sur **Create Database**.
    Selon les ressources de votre systeme, **cela peut prendre plus de 2 minutes sans retour visuel !** Verifiez
