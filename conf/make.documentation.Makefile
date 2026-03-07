@@ -84,4 +84,11 @@ doc_clean_user:
 # documentation markdown - generate multilingual documentation (en + fr)
 .PHONY: doc_markdown
 doc_markdown:
-	source ./.venv.erplibre/bin/activate && find . -name "*.base.md" -not -path "./.venv*" -not -path "./addons/*" -not -path "./odoo*" -not -path "./.repo/*" -not -path "./node_modules/*" -exec mmg --verbose --yes {} \;
+	source ./.venv.erplibre/bin/activate && \
+		find . -name "*.base.md" \
+		  -not -path "./.venv*" \
+		  -not -path "./addons/*" \
+		  -not -path "./odoo*" \
+		  -not -path "./.repo/*" \
+		  -not -path "./node_modules/*" \
+		  | parallel mmg --verbose --yes {}
