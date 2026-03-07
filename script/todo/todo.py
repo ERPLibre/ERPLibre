@@ -209,6 +209,7 @@ class TODO:
 [7] Process - Outils sur les exécutions
 [8] Config - Traitement du fichier de configuration
 [9] Réseau - Outil réseautique
+[10] Sécurité - Audit de sécurité des dépendances
 [0] Retour
 """
         while True:
@@ -250,6 +251,10 @@ class TODO:
                     return
             elif status == "9":
                 status = self.prompt_execute_network()
+                if status is not False:
+                    return
+            elif status == "10":
+                status = self.prompt_execute_security()
                 if status is not False:
                     return
             else:
@@ -799,6 +804,100 @@ class TODO:
             cmd,
             source_erplibre=False,
             single_source_erplibre=True,
+        )
+
+    def prompt_execute_security(self):
+        print("🤖 Audit de sécurité des dépendances!")
+        lst_choice = [
+            {
+                "prompt_description": "pip-audit - Vérifier les vulnérabilités sur les environnements Python"
+            },
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_pip_audit()
+            else:
+                print("Commande non trouvée 🤖!")
+
+    def execute_pip_audit(self):
+        lst_version, lst_version_installed, odoo_installed_version = (
+            self.get_odoo_version()
+        )
+
+        # Build list of installed environments
+        dct_env = {}
+        key_i = 0
+        for dct_version in lst_version[::-1]:
+            erplibre_version = dct_version.get("erplibre_version")
+            venv_path = f".venv.{erplibre_version}"
+            req_path = f"requirement/requirements.{erplibre_version}.txt"
+            odoo_version = f"odoo{dct_version.get('odoo_version')}"
+
+            if not os.path.isdir(venv_path):
+                continue
+
+            key_i += 1
+            key_s = str(key_i)
+            label = f"{key_s}: {erplibre_version}"
+            if odoo_version == odoo_installed_version:
+                label += " - Actuel"
+            if dct_version.get("default"):
+                label += " - Défaut"
+
+            dct_env[key_s] = {
+                "label": label,
+                "venv_path": venv_path,
+                "req_path": req_path,
+                "erplibre_version": erplibre_version,
+            }
+
+        if not dct_env:
+            print(
+                "Aucun environnement installé trouvé. Installez"
+                " d'abord une version d'Odoo."
+            )
+            return
+
+        # Show selection menu
+        str_input = (
+            "💬 Choisir un environnement pour l'audit :\n\t"
+            + "\n\t".join([v["label"] for v in dct_env.values()])
+            + "\n\t0: Retour"
+            + "\nSélection : "
+        )
+        env_input = ""
+        while env_input not in dct_env.keys() and env_input != "0":
+            if env_input:
+                print(
+                    f"Erreur, impossible de comprendre la valeur"
+                    f" '{env_input}'"
+                )
+            env_input = input(str_input).strip()
+
+        if env_input == "0":
+            return
+
+        selected = dct_env[env_input]
+        venv_path = selected["venv_path"]
+        req_path = selected["req_path"]
+
+        if not os.path.isfile(req_path):
+            print(f"Fichier de dépendances introuvable : {req_path}")
+            return
+
+        # TODO support bash from parameter if open gnome-terminal
+        cmd = f"pip-audit -r {req_path} -l;bash"
+        print(f"Exécution : {cmd}")
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=True,
+            single_source_erplibre=False,
         )
 
     def generate_config(self, add_arg=None):
