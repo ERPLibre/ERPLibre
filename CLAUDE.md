@@ -223,6 +223,29 @@ make doc_markdown            # Regénérer toute la doc multilingue
 - `script/*/` : database, deployment, fork_github_repo, nginx, restful, selenium (2), todo, odoo/migration
 - `.github/ISSUE_TEMPLATE/` : bug_report, feature_request
 
+## Internationalisation du CLI TODO (i18n)
+
+Le CLI interactif `script/todo/todo.py` supporte le français et l'anglais.
+
+### Architecture
+- **`script/todo/todo_i18n.py`** — Module de traduction (dictionnaire `TRANSLATIONS`, fonctions `t()`, `get_lang()`, `set_lang()`)
+- Les chaînes traduisibles utilisent `t("clé")` au lieu de texte en dur
+- Les entrées de `todo.json` peuvent avoir un champ `prompt_description_key` résolu via `t()` (fallback sur `prompt_description`)
+
+### Résolution de la langue (priorité)
+1. Variable d'environnement `EL_LANG` (définie dans `env_var.sh`, défaut `"fr"`)
+2. Défaut : `"fr"`
+
+### Comportement
+- Première exécution : prompt bilingue demande à l'utilisateur de choisir sa langue
+- Le choix est persisté dans `env_var.sh`
+- Changement de langue possible via le menu Execute > Langue/Language
+
+### Ajouter une traduction
+1. Ajouter la clé dans `TRANSLATIONS` de `todo_i18n.py` avec les valeurs `"fr"` et `"en"`
+2. Remplacer la chaîne en dur par `t("ma_clé")` dans `todo.py`
+3. Pour les entrées JSON : ajouter `"prompt_description_key": "ma_clé"` dans `todo.json`
+
 ## Déploiement
 
 - **Docker** : `docker-compose.yml` (PostgreSQL 18 + PostGIS 3.6)
@@ -231,7 +254,7 @@ make doc_markdown            # Regénérer toute la doc multilingue
 - **SSL** : Certbot pour les certificats
 - **DNS** : `script/deployment/update_dns_cloudflare.py`
 
-Plateformes supportées : Ubuntu 20.04-25.04, Debian 12, Arch Linux, macOS (pyenv), Windows (WSL/Docker).
+Plateformes supportées : Ubuntu 20.04-25.04, Linux Mint 22.3, Debian 12, Arch Linux, macOS (pyenv), Windows (WSL/Docker).
 
 ## Points d'attention pour Claude
 
