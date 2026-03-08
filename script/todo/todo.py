@@ -240,7 +240,8 @@ class TODO:
 [8] {t("menu_config")}
 [9] {t("menu_network")}
 [10] {t("menu_security")}
-[11] {t("menu_lang")}
+[11] {t("menu_test")}
+[12] {t("menu_lang")}
 [0] {t("back")}
 """
         while True:
@@ -289,6 +290,10 @@ class TODO:
                 if status is not False:
                     return
             elif status == "11":
+                status = self.prompt_execute_test()
+                if status is not False:
+                    return
+            elif status == "12":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -858,6 +863,118 @@ class TODO:
                 self.execute_pip_audit()
             else:
                 print(t("cmd_not_found"))
+
+    def prompt_execute_test(self):
+        print(f"🤖 {t('test_description')}")
+        lst_choice = [
+            {"prompt_description": t("test_run_module")},
+            {"prompt_description": t("test_run_module_coverage")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_test_module(coverage=False)
+            elif status == "2":
+                self.execute_test_module(coverage=True)
+            else:
+                print(t("cmd_not_found"))
+
+    def execute_test_module(self, coverage=False):
+        # Module name
+        module_name = input(t("test_enter_module_name")).strip()
+        if not module_name:
+            print(t("test_module_required"))
+            return
+
+        # Database name
+        db_name = input(t("test_db_name")).strip()
+        if not db_name:
+            db_name = "test_todo_tmp"
+
+        # Extra modules
+        extra_modules = input(
+            t("test_install_extra_modules")
+        ).strip()
+
+        # Log level
+        log_level = input(t("test_log_level")).strip()
+        if not log_level:
+            log_level = "test"
+
+        # Build module list
+        modules_to_install = module_name
+        if extra_modules:
+            modules_to_install += f",{extra_modules}"
+
+        # Step 1: Create temp DB
+        print(f"\n--- {t('test_creating_db')} '{db_name}' ---")
+        cmd_restore = (
+            f"./script/database/db_restore.py --database {db_name}"
+        )
+        self.execute.exec_command_live(
+            cmd_restore,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        # Step 2: Install modules
+        print(f"\n--- {t('test_installing_modules')}: {modules_to_install} ---")
+        cmd_install = (
+            f"./script/addons/install_addons.sh"
+            f" {db_name} {modules_to_install}"
+        )
+        self.execute.exec_command_live(
+            cmd_install,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        # Step 3: Run tests
+        print(f"\n--- {t('test_running')}: {module_name} ---")
+        cmd_test = (
+            f"ODOO_MODE_TEST=true"
+            f" ./run.sh"
+            f" -d {db_name}"
+            f" -u {module_name}"
+            f" --log-level={log_level}"
+        )
+        if coverage:
+            cmd_test = f"ODOO_MODE_COVERAGE=true {cmd_test}"
+        status_code, output = self.execute.exec_command_live(
+            cmd_test,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        if status_code == 0:
+            print(f"\n✅ {t('test_success')}")
+        else:
+            print(f"\n❌ {t('test_failed')} {status_code}")
+
+        # Step 4: Cleanup
+        lang = get_lang()
+        keep_input = input(t("test_keep_db")).strip().lower()
+        keep = keep_input in (
+            ("o", "oui") if lang == "fr" else ("y", "yes")
+        )
+        if keep:
+            print(f"{t('test_db_kept')}: {db_name}")
+        else:
+            print(f"\n--- {t('test_cleaning_db')} '{db_name}' ---")
+            cmd_drop = (
+                f"./odoo_bin.sh db --drop --database {db_name}"
+            )
+            self.execute.exec_command_live(
+                cmd_drop,
+                source_erplibre=False,
+                single_source_erplibre=True,
+            )
 
     def execute_pip_audit(self):
         lst_version, lst_version_installed, odoo_installed_version = (

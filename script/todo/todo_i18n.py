@@ -343,6 +343,75 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
+    # Test section
+    "menu_test": {
+        "fr": "Test - Tester un module Odoo",
+        "en": "Test - Test an Odoo module",
+    },
+    "test_description": {
+        "fr": "Tester un module Odoo sur une base de données temporaire!",
+        "en": "Test an Odoo module on a temporary database!",
+    },
+    "test_run_module": {
+        "fr": "Tester un module",
+        "en": "Test a module",
+    },
+    "test_run_module_coverage": {
+        "fr": "Tester un module avec couverture de code",
+        "en": "Test a module with code coverage",
+    },
+    "test_enter_module_name": {
+        "fr": "Nom du module à tester : ",
+        "en": "Module name to test: ",
+    },
+    "test_db_name": {
+        "fr": "Nom de la base de données temporaire (défaut: test_todo_tmp) : ",
+        "en": "Temporary database name (default: test_todo_tmp): ",
+    },
+    "test_install_extra_modules": {
+        "fr": "Modules supplémentaires à installer (séparés par des virgules, vide pour aucun) : ",
+        "en": "Extra modules to install (comma-separated, empty for none): ",
+    },
+    "test_log_level": {
+        "fr": "Niveau de log (défaut: test) : ",
+        "en": "Log level (default: test): ",
+    },
+    "test_creating_db": {
+        "fr": "Création de la base de données temporaire",
+        "en": "Creating temporary database",
+    },
+    "test_installing_modules": {
+        "fr": "Installation des modules",
+        "en": "Installing modules",
+    },
+    "test_running": {
+        "fr": "Exécution des tests",
+        "en": "Running tests",
+    },
+    "test_cleaning_db": {
+        "fr": "Suppression de la base de données temporaire",
+        "en": "Cleaning up temporary database",
+    },
+    "test_keep_db": {
+        "fr": "Conserver la base de données temporaire? (o/N) : ",
+        "en": "Keep the temporary database? (y/N): ",
+    },
+    "test_db_kept": {
+        "fr": "Base de données conservée",
+        "en": "Database kept",
+    },
+    "test_success": {
+        "fr": "Tests terminés avec succès!",
+        "en": "Tests completed successfully!",
+    },
+    "test_failed": {
+        "fr": "Les tests ont échoué avec le code de retour",
+        "en": "Tests failed with return code",
+    },
+    "test_module_required": {
+        "fr": "Le nom du module est requis!",
+        "en": "Module name is required!",
+    },
     # Language selection
     "lang_prompt": {
         "fr": "Choisir la langue / Choose language",
