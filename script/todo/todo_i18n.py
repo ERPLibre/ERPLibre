@@ -437,6 +437,55 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
+    # Infrastructure (pyinfra) section
+    "menu_infra": {
+        "fr": "Infra - Gestion de l'infrastructure (pyinfra)",
+        "en": "Infra - Infrastructure management (pyinfra)",
+    },
+    "infra_description": {
+        "fr": "Gérer l'infrastructure avec pyinfra!",
+        "en": "Manage infrastructure with pyinfra!",
+    },
+    "infra_dry_run": {
+        "fr": "Dry-run - Voir les changements sans exécuter",
+        "en": "Dry-run - Preview changes without executing",
+    },
+    "infra_full_install": {
+        "fr": "Installation complète (système + Python + Odoo)",
+        "en": "Full installation (system + Python + Odoo)",
+    },
+    "infra_system_only": {
+        "fr": "Dépendances système seulement (apt, npm, wkhtmltopdf)",
+        "en": "System dependencies only (apt, npm, wkhtmltopdf)",
+    },
+    "infra_python_only": {
+        "fr": "Environnements Python seulement (pyenv, venvs, Poetry)",
+        "en": "Python environments only (pyenv, venvs, Poetry)",
+    },
+    "infra_remote_server": {
+        "fr": "Serveur distant - Demander l'adresse du serveur",
+        "en": "Remote server - Ask for server address",
+    },
+    "infra_remote_host": {
+        "fr": "Adresse du serveur (ex: user@serveur.com) : ",
+        "en": "Server address (e.g. user@server.com): ",
+    },
+    "infra_remote_deploy": {
+        "fr": "Déployer sur le serveur distant",
+        "en": "Deploy to remote server",
+    },
+    "infra_remote_dry_run": {
+        "fr": "Dry-run sur le serveur distant",
+        "en": "Dry-run on remote server",
+    },
+    "infra_host_required": {
+        "fr": "L'adresse du serveur est requise!",
+        "en": "Server address is required!",
+    },
+    "infra_pyinfra_not_found": {
+        "fr": "pyinfra n'est pas installé. Installer avec: pip install pyinfra",
+        "en": "pyinfra is not installed. Install with: pip install pyinfra",
+    },
 }
 
 

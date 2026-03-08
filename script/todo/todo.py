@@ -241,7 +241,8 @@ class TODO:
 [9] {t("menu_network")}
 [10] {t("menu_security")}
 [11] {t("menu_test")}
-[12] {t("menu_lang")}
+[12] {t("menu_infra")}
+[13] {t("menu_lang")}
 [0] {t("back")}
 """
         while True:
@@ -294,6 +295,10 @@ class TODO:
                 if status is not False:
                     return
             elif status == "12":
+                status = self.prompt_execute_infra()
+                if status is not False:
+                    return
+            elif status == "13":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -975,6 +980,113 @@ class TODO:
                 source_erplibre=False,
                 single_source_erplibre=True,
             )
+
+    def prompt_execute_infra(self):
+        print(f"🤖 {t('infra_description')}")
+        lst_choice = [
+            {"prompt_description": t("infra_dry_run")},
+            {"prompt_description": t("infra_full_install")},
+            {"prompt_description": t("infra_system_only")},
+            {"prompt_description": t("infra_python_only")},
+            {"prompt_description": t("infra_remote_server")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._run_pyinfra("pyinfra/deploy.py", dry_run=True)
+            elif status == "2":
+                self._run_pyinfra("pyinfra/deploy.py")
+            elif status == "3":
+                self._run_pyinfra(
+                    "pyinfra/deploys/system.py",
+                    extra_imports=[
+                        "pyinfra/deploys/nodejs.py",
+                        "pyinfra/deploys/wkhtmltopdf.py",
+                    ],
+                )
+            elif status == "4":
+                self._run_pyinfra("pyinfra/deploys/python_env.py")
+            elif status == "5":
+                self._prompt_infra_remote()
+            else:
+                print(t("cmd_not_found"))
+
+    def _prompt_infra_remote(self):
+        host = input(t("infra_remote_host")).strip()
+        if not host:
+            print(t("infra_host_required"))
+            return
+
+        lst_choice = [
+            {"prompt_description": t("infra_remote_dry_run")},
+            {"prompt_description": t("infra_remote_deploy")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._run_pyinfra(
+                    "pyinfra/deploy.py", dry_run=True, host=host
+                )
+            elif status == "2":
+                self._run_pyinfra("pyinfra/deploy.py", host=host)
+            else:
+                print(t("cmd_not_found"))
+
+    def _run_pyinfra(
+        self, deploy_file, dry_run=False, host=None,
+        extra_imports=None,
+    ):
+        # Check if pyinfra is available
+        pyinfra_check = shutil.which("pyinfra")
+        if not pyinfra_check:
+            # Try in the erplibre venv
+            venv_pyinfra = os.path.join(
+                cst_venv_erplibre, "bin", "pyinfra"
+            )
+            if os.path.isfile(venv_pyinfra):
+                pyinfra_bin = venv_pyinfra
+            else:
+                print(t("infra_pyinfra_not_found"))
+                return
+        else:
+            pyinfra_bin = "pyinfra"
+
+        target = host if host else "@local"
+        cmd_parts = [pyinfra_bin, target, deploy_file]
+        if dry_run:
+            cmd_parts.append("--dry")
+
+        cmd = " ".join(cmd_parts)
+        print(f"{t('will_execute')} {cmd}")
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        # Run extra deploy files if specified
+        if extra_imports:
+            for extra_file in extra_imports:
+                cmd_parts_extra = [pyinfra_bin, target, extra_file]
+                if dry_run:
+                    cmd_parts_extra.append("--dry")
+                cmd_extra = " ".join(cmd_parts_extra)
+                print(f"{t('will_execute')} {cmd_extra}")
+                self.execute.exec_command_live(
+                    cmd_extra,
+                    source_erplibre=False,
+                    single_source_erplibre=True,
+                )
 
     def execute_pip_audit(self):
         lst_version, lst_version_installed, odoo_installed_version = (
