@@ -10,45 +10,45 @@
     },
     "instance": [
         {
-            "prompt_description": "Test - Instance de base minimale",
+            "prompt_description_key": "json_instance_test",
             "makefile_cmd": "db_restore_erplibre_base_db_test",
             "database": "test"
         },
         {
-            "prompt_description": "Ouvrir RobotLibre \uD83E\uDD16 minimal",
+            "prompt_description_key": "json_robot_minimal",
             "makefile_cmd": "robot_libre",
             "database": "robotlibre"
         },
         {
-            "prompt_description": "Ouvrir RobotLibre \uD83E\uDD16 en activant la recherche",
+            "prompt_description_key": "json_robot_search",
             "makefile_cmd": "robot_libre_all",
             "database": "robotlibre"
         }
     ],
     "function": [
         {
-            "prompt_description": "Ouvrir ERPLibre avec TODO \uD83E\uDD16",
+            "prompt_description_key": "json_open_erplibre_todo",
             "command": "./.venv.erplibre/bin/python ./script/selenium/web_login.py"
         }
     ],
     "update_from_makefile": [
         {
-            "prompt_description": "Update all erplibre_base on database test",
+            "prompt_description_key": "json_update_erplibre_base_test",
             "makefile_cmd": "db_erplibre_base_db_test_update_all",
             "database": "test"
         }
     ],
     "code_from_makefile": [
         {
-            "prompt_description": "Show code status",
+            "prompt_description_key": "json_show_code_status",
             "makefile_cmd": "repo_show_status"
         },
         {
-            "prompt_description": "Stash all code",
+            "prompt_description_key": "json_stash_all_code",
             "makefile_cmd": "repo_do_stash"
         },
         {
-            "prompt_description": "Format modified code",
+            "prompt_description_key": "json_format_modified_code",
             "makefile_cmd": "format"
         }
     ]

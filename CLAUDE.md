@@ -223,6 +223,29 @@ make doc_markdown            # Regénérer toute la doc multilingue
 - `script/*/` : database, deployment, fork_github_repo, nginx, restful, selenium (2), todo, odoo/migration
 - `.github/ISSUE_TEMPLATE/` : bug_report, feature_request
 
+## Internationalisation du CLI TODO (i18n)
+
+Le CLI interactif `script/todo/todo.py` supporte le français et l'anglais.
+
+### Architecture
+- **`script/todo/todo_i18n.py`** — Module de traduction (dictionnaire `TRANSLATIONS`, fonctions `t()`, `get_lang()`, `set_lang()`)
+- Les chaînes traduisibles utilisent `t("clé")` au lieu de texte en dur
+- Les entrées de `todo.json` peuvent avoir un champ `prompt_description_key` résolu via `t()` (fallback sur `prompt_description`)
+
+### Résolution de la langue (priorité)
+1. Variable d'environnement `EL_LANG` (définie dans `env_var.sh`, défaut `"fr"`)
+2. Défaut : `"fr"`
+
+### Comportement
+- Première exécution : prompt bilingue demande à l'utilisateur de choisir sa langue
+- Le choix est persisté dans `env_var.sh`
+- Changement de langue possible via le menu Execute > Langue/Language
+
+### Ajouter une traduction
+1. Ajouter la clé dans `TRANSLATIONS` de `todo_i18n.py` avec les valeurs `"fr"` et `"en"`
+2. Remplacer la chaîne en dur par `t("ma_clé")` dans `todo.py`
+3. Pour les entrées JSON : ajouter `"prompt_description_key": "ma_clé"` dans `todo.json`
+
 ## Déploiement
 
 - **Docker** : `docker-compose.yml` (PostgreSQL 18 + PostGIS 3.6)
@@ -231,7 +254,7 @@ make doc_markdown            # Regénérer toute la doc multilingue
 - **SSL** : Certbot pour les certificats
 - **DNS** : `script/deployment/update_dns_cloudflare.py`
 
-Plateformes supportées : Ubuntu 20.04-25.04, Debian 12, Arch Linux, macOS (pyenv), Windows (WSL/Docker).
+Plateformes supportées : Ubuntu 20.04-25.04, Linux Mint 22.3, Debian 12, Arch Linux, macOS (pyenv), Windows (WSL/Docker).
 
 ## Points d'attention pour Claude
 
@@ -246,3 +269,59 @@ Plateformes supportées : Ubuntu 20.04-25.04, Debian 12, Arch Linux, macOS (pyen
 - Pour les commits : suivre le format `[TYPE] description` (ex: `[FIX]`, `[UPD]`, `[ADD]`, `[REM]`)
 - Pour la documentation : modifier les `.base.md`, jamais les `.md` ou `.fr.md` directement
 - Outil mmg disponible via `source .venv.erplibre/bin/activate && mmg`
+
+## Workflow Orchestration
+
+### 1. Plan Mode Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately
+- Don't keep pushing.
+- Use plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
+
+### 2. Subagent Strategy
+- Use subagents liberally to keep the main context window clean.
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+- Capture Lessons: Update AGENT.md with any change in approach the user has asked you to make.
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until the mistake rate drops.
+- Review lessons at session start for relevant project
+
+### 4. Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself, "Would a staff engineer approve this?"
+- Run tests, check logs, and demonstrate correctness.
+
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes, pause and ask, "Is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes
+- Don't over-engineer.
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+- When given a bug report, just fix it. Don't ask for hand-holding
+- Point at logs, errors, and failing tests.
+- Then resolve them.
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
+
+## Task Management
+
+1. **Plan First**: Write a plan to `tasks/todo.md` with checkable items.
+2. **Verify Plan**: Check in before starting implementation.
+3. **Track Progress**: Mark items complete as you go.
+4. **Explain Changes**: High-level summary at each step.
+5. **Document Results**: Add review section to `tasks/todo.md`
+6. **Capture Lessons**: Update `tasks/lessons.md` after corrections
+
+## Core Principles
+
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
