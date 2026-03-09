@@ -897,9 +897,7 @@ class TODO:
             db_name = "test_todo_tmp"
 
         # Extra modules
-        extra_modules = input(
-            t("test_install_extra_modules")
-        ).strip()
+        extra_modules = input(t("test_install_extra_modules")).strip()
 
         # Log level
         log_level = input(t("test_log_level")).strip()
@@ -913,9 +911,7 @@ class TODO:
 
         # Step 1: Create temp DB
         print(f"\n--- {t('test_creating_db')} '{db_name}' ---")
-        cmd_restore = (
-            f"./script/database/db_restore.py --database {db_name}"
-        )
+        cmd_restore = f"./script/database/db_restore.py --database {db_name}"
         self.execute.exec_command_live(
             cmd_restore,
             source_erplibre=False,
@@ -923,7 +919,9 @@ class TODO:
         )
 
         # Step 2: Install modules
-        print(f"\n--- {t('test_installing_modules')}: {modules_to_install} ---")
+        print(
+            f"\n--- {t('test_installing_modules')}: {modules_to_install} ---"
+        )
         cmd_install = (
             f"./script/addons/install_addons.sh"
             f" {db_name} {modules_to_install}"
@@ -960,16 +958,12 @@ class TODO:
         # Step 4: Cleanup
         lang = get_lang()
         keep_input = input(t("test_keep_db")).strip().lower()
-        keep = keep_input in (
-            ("o", "oui") if lang == "fr" else ("y", "yes")
-        )
+        keep = keep_input in (("o", "oui") if lang == "fr" else ("y", "yes"))
         if keep:
             print(f"{t('test_db_kept')}: {db_name}")
         else:
             print(f"\n--- {t('test_cleaning_db')} '{db_name}' ---")
-            cmd_drop = (
-                f"./odoo_bin.sh db --drop --database {db_name}"
-            )
+            cmd_drop = f"./odoo_bin.sh db --drop --database {db_name}"
             self.execute.exec_command_live(
                 cmd_drop,
                 source_erplibre=False,
