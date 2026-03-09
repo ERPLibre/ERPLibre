@@ -8,6 +8,30 @@ import psutil
 
 STOP_PARENT_KILL = ["./odoo_bin.sh", "./run.sh"]
 
+# Processes that must never be killed — killing these
+# can crash the desktop session or the system.
+PROTECTED_NAMES = {
+    "systemd",
+    "init",
+    "gnome-session",
+    "gnome-session-binary",
+    "gnome-shell",
+    "gdm",
+    "gdm3",
+    "gdm-session-worker",
+    "lightdm",
+    "sddm",
+    "Xorg",
+    "Xwayland",
+    "plasmashell",
+    "kwin_wayland",
+    "kwin_x11",
+    "loginctl",
+    "login",
+    "sshd",
+    "tmux: server",
+}
+
 
 def proc_desc(p: psutil.Process) -> str:
     try:
@@ -131,6 +155,11 @@ def main():
         default=1,
         help="Kill parent too",
     )
+    ap.add_argument(
+        "--automatic",
+        action="store_true",
+        help="Ignore ask confirmation before killing",
+    )
     args = ap.parse_args()
 
     if not (1 <= args.port <= 65535):
@@ -151,20 +180,53 @@ def main():
 
         print(f"\nListener PID {pid} ancestry:")
         for i, p in enumerate(chain):
-            prefix = "  " + ("-> " if p == target else "   ")
-            print(prefix + proc_desc(p))
+            prefix = " " + ("-> " if p == target else "  ")
+            print(f"[{i}]" + prefix + proc_desc(p))
 
         if target is None:
             continue
 
-        if target.pid == 1 and not args.allow_pid1:
+        if target.pid == 1:
             print(
-                "Refus: la cible est PID 1 (systemd). Utilise plutôt systemctl pour arrêter le service.",
-                file=sys.stderr,
+                "Refus: la cible est PID 1 (systemd)."
+                " Utilise plutôt systemctl pour arrêter"
+                " le service.",
+            )
+            continue
+        if target.name() in PROTECTED_NAMES:
+            print(
+                f"Refus: le process '{target.name()}' semble être protégé et dangereux à être arrêter.",
             )
             continue
 
         action = "KILL" if args.force else "TERM"
+
+        if not args.automatic:
+            has_response = False
+            ignore_kill = False
+            while not has_response and not ignore_kill:
+                confirm = (
+                    input(
+                        f"Tuer ce processus index {args.nb_parent} (enter) ou mettre "
+                        f"l'index [0 to {len(chain) - 1}] du "
+                        f"process à tuer, (c/C) pour annuler : \n"
+                    )
+                    .strip()
+                    .lower()
+                )
+                if not confirm:
+                    has_response = True
+                    continue
+                if confirm == "c":
+                    ignore_kill = True
+                    print("Cancel")
+                    continue
+                if confirm.isdigit():
+                    has_response = True
+                    target = chain[int(confirm)]
+            if ignore_kill:
+                continue
+
         if args.kill_tree:
             print(f"Target: pid={target.pid} ({action}) + children (tree)")
             if not args.dry_run:
@@ -173,7 +235,6 @@ def main():
                     print(
                         "Toujours vivants:",
                         ", ".join(str(p.pid) for p in alive),
-                        file=sys.stderr,
                     )
         else:
             print(f"Target: pid={target.pid} ({action})")
