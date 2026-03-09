@@ -304,8 +304,16 @@ TRANSLATIONS = {
         "en": "Create backup (.zip)",
     },
     "kill_process_port": {
-        "fr": "Terminer le processus du port actuel",
-        "en": "Kill process from actual port",
+        "fr": "Terminer le processus Odoo du port actuel",
+        "en": "Kill Odoo process from actual port",
+    },
+    "kill_git_daemon": {
+        "fr": "Terminer le processus du serveur git daemon",
+        "en": "Kill git daemon server process",
+    },
+    "kill_git_daemon_done": {
+        "fr": "Processus git daemon terminé.",
+        "en": "Git daemon process killed.",
     },
     "generate_all_config": {
         "fr": "Générer toute la configuration",
@@ -411,6 +419,63 @@ TRANSLATIONS = {
     "test_module_required": {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
+    },
+    # Git section
+    "menu_git": {
+        "fr": "Git - Outils Git",
+        "en": "Git - Git tools",
+    },
+    "git_manage": {
+        "fr": "Outils de gestion Git!",
+        "en": "Git management tools!",
+    },
+    "git_local_server": {
+        "fr": "Serveur git local",
+        "en": "Local git server",
+    },
+    "git_repo_manage": {
+        "fr": "Gérer le serveur de dépôts git local!",
+        "en": "Manage local git repository server!",
+    },
+    "git_repo_deploy_local": {
+        "fr": "Déployer un serveur git local (~/.git-server)",
+        "en": "Deploy a local git server (~/.git-server)",
+    },
+    "git_repo_deploy_production": {
+        "fr": "Déployer un serveur git production (/srv/git, root requis)",
+        "en": "Deploy a production git server (/srv/git, root required)",
+    },
+    "git_repo_deploy_starting": {
+        "fr": "Démarrage du déploiement du serveur git...",
+        "en": "Starting git server deployment...",
+    },
+    "git_mode_local": {
+        "fr": "Mode local (~/.git-server)",
+        "en": "Local mode (~/.git-server)",
+    },
+    "git_mode_production": {
+        "fr": "Mode production (/srv/git, root requis)",
+        "en": "Production mode (/srv/git, root required)",
+    },
+    "git_action_all": {
+        "fr": "Tout exécuter (init + remote + push + serve)",
+        "en": "Run all (init + remote + push + serve)",
+    },
+    "git_action_init": {
+        "fr": "Init - Créer les bare repos",
+        "en": "Init - Create bare repos",
+    },
+    "git_action_remote": {
+        "fr": "Remote - Ajouter les remotes locaux",
+        "en": "Remote - Add local remotes",
+    },
+    "git_action_push": {
+        "fr": "Push - Pousser vers le serveur local",
+        "en": "Push - Push to local server",
+    },
+    "git_action_serve": {
+        "fr": "Serve - Démarrer le daemon git",
+        "en": "Serve - Start git daemon",
     },
     # Language selection
     "lang_prompt": {

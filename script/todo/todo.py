@@ -236,12 +236,13 @@ class TODO:
 [4] {t("menu_code")}
 [5] {t("menu_doc")}
 [6] {t("menu_database")}
-[7] {t("menu_process")}
-[8] {t("menu_config")}
-[9] {t("menu_network")}
-[10] {t("menu_security")}
-[11] {t("menu_test")}
-[12] {t("menu_lang")}
+[7] {t("menu_git")}
+[8] {t("menu_process")}
+[9] {t("menu_config")}
+[10] {t("menu_network")}
+[11] {t("menu_security")}
+[12] {t("menu_test")}
+[13] {t("menu_lang")}
 [0] {t("back")}
 """
         while True:
@@ -274,26 +275,30 @@ class TODO:
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_process()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_config()
+                status = self.prompt_execute_process()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_config()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_test()
+                status = self.prompt_execute_security()
                 if status is not False:
                     return
             elif status == "12":
+                status = self.prompt_execute_test()
+                if status is not False:
+                    return
+            elif status == "13":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -681,6 +686,120 @@ class TODO:
                 if cmd_no_found:
                     print(t("cmd_not_found"))
 
+    def prompt_execute_git(self):
+        print(f"🤖 {t('git_manage')}")
+        lst_choice = [
+            {"prompt_description": t("git_local_server")},
+        ]
+
+        # Append config-driven entries
+        lst_config = self.config_file.get_config("git_from_makefile")
+        if lst_config:
+            lst_choice.extend(lst_config)
+
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.prompt_execute_git_local_server()
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(lst_choice):
+                        cmd_no_found = False
+                        dct_instance = lst_choice[int_cmd - 1]
+                        self.execute_from_configuration(dct_instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print(t("cmd_not_found"))
+
+    def prompt_execute_git_local_server(self):
+        print(f"🤖 {t('git_repo_manage')}")
+        lst_choice = [
+            {"prompt_description": t("git_repo_deploy_local")},
+            {"prompt_description": t("git_repo_deploy_production")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._prompt_git_server_actions(production_ready=False)
+            elif status == "2":
+                self._prompt_git_server_actions(production_ready=True)
+            else:
+                print(t("cmd_not_found"))
+
+    def _prompt_git_server_actions(self, production_ready=False):
+        mode = (
+            t("git_mode_production")
+            if production_ready
+            else t("git_mode_local")
+        )
+        print(f"🤖 {mode}")
+        lst_choice = [
+            {"prompt_description": t("git_action_all")},
+            {"prompt_description": t("git_action_init")},
+            {"prompt_description": t("git_action_remote")},
+            {"prompt_description": t("git_action_push")},
+            {"prompt_description": t("git_action_serve")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="all",
+                )
+            elif status == "2":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="init",
+                )
+            elif status == "3":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="remote",
+                )
+            elif status == "4":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="push",
+                )
+            elif status == "5":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="serve",
+                )
+            else:
+                print(t("cmd_not_found"))
+
+    def _deploy_git_server(self, production_ready=False, action="all"):
+        print(t("git_repo_deploy_starting"))
+        cmd = (
+            "python3 ./script/git/git_local_server.py -v" f" --action {action}"
+        )
+        if production_ready:
+            cmd += " --production-ready"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+        )
+
     def prompt_execute_doc(self):
         print(f"🤖 {t('doc_search')}")
         lst_choice = [
@@ -757,6 +876,7 @@ class TODO:
         print(f"🤖 {t('process_manage')}")
         lst_choice = [
             {"prompt_description": t("kill_process_port")},
+            {"prompt_description": t("kill_git_daemon")},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -767,8 +887,17 @@ class TODO:
                 return False
             elif status == "1":
                 self.process_kill_from_port()
+            elif status == "2":
+                self.process_kill_git_daemon()
             else:
                 print(t("cmd_not_found"))
+
+    def process_kill_git_daemon(self):
+        self.execute.exec_command_live(
+            "pkill -f 'git daemon'",
+            source_erplibre=False,
+        )
+        print(t("kill_git_daemon_done"))
 
     def prompt_execute_config(self):
         print(f"🤖 {t('config_manage')}")
