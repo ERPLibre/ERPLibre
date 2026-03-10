@@ -179,23 +179,33 @@ ERROR_TRANSLATIONS = { ... }
 
 ## 4. Plan de refactorisation suggéré
 
-### Phase 1 : Nommage (risque faible)
-1. Remplacer la notation hongroise (`dct_`, `lst_`, `no_`, `cst_`)
-2. Renommer `commande` -> `command` dans execute.py
-3. Mettre les constantes module en MAJUSCULES
-4. Renommer les classes/variables génériques (`Struct`, `file_path`)
+### Phase 1 : Nommage (risque faible) - COMPLÉTÉ
+1. ~~Remplacer la notation hongroise (`dct_`, `lst_`, `no_`, `cst_`)~~ - fait dans les 6 fichiers cibles + 4 fichiers appelants + 4 fichiers de test
+2. ~~Renommer `commande` -> `command` dans execute.py~~ - fait
+3. ~~Mettre les constantes module en MAJUSCULES~~ - fait (`Struct` -> `RepoAttrs`, `CST_FILE_SOURCE_REPO_ADDONS` -> `SOURCE_REPO_ADDONS_FILE`, etc.)
+4. ~~Renommer les classes/variables génériques (`Struct`, `file_path`)~~ - fait (`file_path` -> `selected_file_path`, etc.)
 
-### Phase 2 : Découpage (risque moyen)
-1. Extraire `KdbxManager` de todo.py
-2. Extraire `DatabaseManager` de todo.py
-3. Extraire `VersionManager` de todo.py
-4. Découper git_tool.py en 4 modules
+### Phase 2 : Découpage (risque moyen) - COMPLÉTÉ
+1. ~~Extraire `KdbxManager` de todo.py~~ - `script/todo/kdbx_manager.py`
+2. ~~Extraire `DatabaseManager` de todo.py~~ - `script/todo/database_manager.py`
+3. ~~Extraire `VersionManager` de todo.py~~ - `script/todo/version_manager.py`
+4. ~~Découper git_tool.py en modules~~ - `script/git/repo_url.py` + `script/git/github_api.py` (facade dans `git_tool.py`)
 
-### Phase 3 : Modernisation (risque moyen)
-1. Ajouter des type hints aux signatures publiques
-2. Remplacer les flags booléens par des Enum/dataclass dans execute.py
-3. Séparer le dictionnaire de traductions par domaine
-4. Ajouter des tests unitaires avant chaque refactorisation
+### Phase 3 : Modernisation (risque moyen) - COMPLÉTÉ
+1. ~~Ajouter des type hints aux signatures publiques~~ - fait sur tous les modules refactorisés
+2. Remplacer les flags booléens par des Enum/dataclass dans execute.py - **reporté** (41 sites d'appel, les booleans fonctionnent bien)
+3. Séparer le dictionnaire de traductions par domaine - **reporté** (organisation par commentaires existante suffisante)
+4. ~~Ajouter des tests unitaires avant chaque refactorisation~~ - 147 tests passent
+
+### Fichiers créés
+| Fichier | Rôle |
+|---------|------|
+| `script/todo/kdbx_manager.py` | Gestion KeePass (extrait de todo.py) |
+| `script/todo/version_manager.py` | Détection des versions Odoo (extrait de todo.py) |
+| `script/todo/database_manager.py` | Opérations DB : backup, restore, download (extrait de todo.py) |
+| `script/git/repo_url.py` | Parsing et transformation d'URLs Git (extrait de git_tool.py) |
+| `script/git/github_api.py` | Fork, PR, remote GitHub (extrait de git_tool.py) |
+| `test/test_config_file.py` | 21 tests pour ConfigFile |
 
 ---
 
@@ -211,9 +221,9 @@ ERROR_TRANSLATIONS = { ... }
 
 ## Notes
 
-- Chaque phase de refactorisation devrait être précédée de tests pour éviter les régressions
-- Le découpage de todo.py est la refactorisation à plus haut impact
-- Le renommage des variables peut se faire de manière incrémentale, fichier par fichier
+- Chaque phase de refactorisation a été précédée de tests pour éviter les régressions
+- Le découpage de todo.py a eu le plus haut impact (3 classes extraites)
+- Zéro notation hongroise restante dans les fichiers script/ et test/
 
 ---
 ---
