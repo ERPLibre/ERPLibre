@@ -17,7 +17,9 @@ from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
 from script.git import github_api
-from script.git.repo_url import get_transformed_repo_info_from_url as _get_transformed_repo_info
+from script.git.repo_url import (
+    get_transformed_repo_info_from_url as _get_transformed_repo_info,
+)
 from script.git.repo_url import get_url as _get_url
 
 SOURCE_REPO_ADDONS_FILE = "source_repo_addons.csv"
@@ -300,7 +302,7 @@ class GitTool:
         :param repo_path: path of repo to get information about submodule
         :param filename: manifest filename. Default none, or use this instead use repo_path
         :param add_root: add information about root repository
-        :return: dct_remote, dct_project, default_remote
+        :return: remotes_by_name, projects_by_name, default_remote
 
         """
         if filename is None:
@@ -401,8 +403,8 @@ class GitTool:
             if update_repo.startswith(
                 os.path.join(self.odoo_version_long, "addons")
             ):
-                lst_path = update_repo.split("/", 1)
-                update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + lst_path[1]
+                path_parts = update_repo.split("/", 1)
+                update_repo = f"${{EL_HOME_ODOO_PROJECT}}/" + path_parts[1]
                 # str_repo = (
                 #     f'    printf "${{EL_HOME}}/{update_repo}," >> '
                 #     '"${EL_CONFIG_FILE}"\n'
@@ -499,46 +501,42 @@ class GitTool:
         default_entries = []
 
         # Fill with configuration
-        for dct_value in remotes_config.values():
-            remote_name = dct_value.get("@name")
+        for entry in remotes_config.values():
+            remote_name = entry.get("@name")
             if remote_name not in remote_names:
                 remote_entries.append(
                     OrderedDict(
                         [
                             ("@name", remote_name),
-                            ("@fetch", dct_value.get("@fetch")),
+                            ("@fetch", entry.get("@fetch")),
                         ]
                     )
                 )
                 remote_names.append(remote_name)
-        for dct_value in projects_config.values():
-            lst_project_info = [
-                ("@name", dct_value.get("@name")),
-                ("@path", dct_value.get("@path")),
+        for entry in projects_config.values():
+            project_attrs = [
+                ("@name", entry.get("@name")),
+                ("@path", entry.get("@path")),
             ]
-            if "@remote" in dct_value:
-                lst_project_info.append(("@remote", dct_value.get("@remote")))
-            if "@revision" in dct_value:
-                lst_project_info.append(
-                    ("@revision", dct_value.get("@revision"))
+            if "@remote" in entry:
+                project_attrs.append(("@remote", entry.get("@remote")))
+            if "@revision" in entry:
+                project_attrs.append(("@revision", entry.get("@revision")))
+            if "@clone-depth" in entry:
+                project_attrs.append(
+                    ("@clone-depth", entry.get("@clone-depth"))
                 )
-            if "@clone-depth" in dct_value:
-                lst_project_info.append(
-                    ("@clone-depth", dct_value.get("@clone-depth"))
-                )
-            if "@groups" in dct_value:
-                lst_project_info.append(("@groups", dct_value.get("@groups")))
-            if "@upstream" in dct_value:
-                lst_project_info.append(
-                    ("@upstream", dct_value.get("@upstream"))
-                )
-            if "@dest-branch" in dct_value:
-                lst_project_info.append(
-                    ("@dest-branch", dct_value.get("@dest-branch"))
+            if "@groups" in entry:
+                project_attrs.append(("@groups", entry.get("@groups")))
+            if "@upstream" in entry:
+                project_attrs.append(("@upstream", entry.get("@upstream")))
+            if "@dest-branch" in entry:
+                project_attrs.append(
+                    ("@dest-branch", entry.get("@dest-branch"))
                 )
 
-            project_entries.append(OrderedDict(lst_project_info))
-            project_names.append(dct_value.get("@name"))
+            project_entries.append(OrderedDict(project_attrs))
+            project_names.append(entry.get("@name"))
 
         for repo in repo_list:
             if not repo.is_submodule:
@@ -559,10 +557,7 @@ class GitTool:
                     )
                 )
             else:
-                if (
-                    keep_original
-                    and repo.project_name not in projects_config
-                ):
+                if keep_original and repo.project_name not in projects_config:
                     # Exception, create a new remote to keep tracking on original
                     original_organization = (
                         f"{repo.original_organization}_origin"
@@ -583,22 +578,22 @@ class GitTool:
                 # Add project, only unique project
                 if repo.project_name not in project_names:
                     project_names.append(repo.project_name)
-                    lst_project_info = [
+                    project_attrs = [
                         ("@name", repo.project_name),
                         ("@path", repo.path),
                         ("@remote", original_organization),
                     ]
                     if repo.revision:
-                        lst_project_info.append(("@revision", repo.revision))
+                        project_attrs.append(("@revision", repo.revision))
                     if repo.clone_depth:
-                        lst_project_info.append(
+                        project_attrs.append(
                             ("@clone-depth", repo.clone_depth)
                         )
                     if repo.sub_path == "addons":
-                        lst_project_info.append(("@groups", "addons"))
+                        project_attrs.append(("@groups", "addons"))
                     else:
-                        lst_project_info.append(("@groups", "odoo"))
-                    project_entries.append(OrderedDict(lst_project_info))
+                        project_attrs.append(("@groups", "odoo"))
+                    project_entries.append(OrderedDict(project_attrs))
 
         if default_remote and not default_entries:
             default_entries.append(
@@ -613,12 +608,15 @@ class GitTool:
             )
 
         # Order in alphabetic
-        sorted_remotes = sorted(remote_entries, key=lambda key: key.get("@name"))
+        sorted_remotes = sorted(
+            remote_entries, key=lambda key: key.get("@name")
+        )
         sorted_defaults = sorted(
             default_entries, key=lambda key: key.get("@remote")
         )
         sorted_projects = sorted(
-            project_entries, key=lambda key: key.get("@name") + key.get("@path")
+            project_entries,
+            key=lambda key: key.get("@name") + key.get("@path"),
         )
 
         manifest_dict = OrderedDict(
@@ -817,9 +815,7 @@ class GitTool:
                 name = f"{repo_name}"
                 repo_info["name"] = name
 
-        compare_by_name = {
-            a.get("name"): a for a in compare_repos
-        }
+        compare_by_name = {a.get("name"): a for a in compare_repos}
         set_compare = set(compare_by_name.keys())
 
         same_names = set_actual_repo.intersection(set_compare)
@@ -833,9 +829,7 @@ class GitTool:
 
         matches = []
         for key in same_names:
-            matches.append(
-                (actual_adapted[key], compare_by_name[key])
-            )
+            matches.append((actual_adapted[key], compare_by_name[key]))
 
         return matches, missing_names, extra_names
 

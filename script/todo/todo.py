@@ -1519,7 +1519,7 @@ class TODO:
         self.dir_path = dir_path
         todo_file_browser.exit_program()
 
-    def callback_make_mobile_home(self, dct_config):
+    def callback_make_mobile_home(self, config):
         # Read file
         default_project_name = "ERPLibre"
         default_package_name = "ca.erplibre.home"

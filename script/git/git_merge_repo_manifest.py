@@ -75,12 +75,12 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    lst_input = config.input
-    if not lst_input:
-        lst_input = []
+    input_paths = config.input
+    if not input_paths:
+        input_paths = []
         if config.with_OCA:
             append_file_path_manifest(
-                lst_input, DEFAULT_PATH_MANIFEST_ODOO_CONF
+                input_paths, DEFAULT_PATH_MANIFEST_ODOO_CONF
             )
             if os.path.exists(".odoo-version"):
                 with open(".odoo-version", "r") as f:
@@ -90,7 +90,7 @@ def main():
                         "manifest", f"git_manifest_odoo{odoo_version}.xml"
                     )
                     if os.path.exists(path_manifest_odoo_version):
-                        lst_input.append(path_manifest_odoo_version)
+                        input_paths.append(path_manifest_odoo_version)
                     else:
                         print(
                             f"ERROR: {path_manifest_odoo_version} does not exist"
@@ -99,21 +99,19 @@ def main():
                         "manifest", f"git_manifest_odoo{odoo_version}_dev.xml"
                     )
                     if os.path.exists(path_manifest_odoo_version):
-                        lst_input.append(path_manifest_odoo_version)
+                        input_paths.append(path_manifest_odoo_version)
 
             if os.path.exists(DEFAULT_PATH_INSTALLED_ODOO_VERSION):
                 with open(DEFAULT_PATH_INSTALLED_ODOO_VERSION, "r") as f:
-                    lst_installed_odoo_version = [
-                        a.strip() for a in f.readlines()
-                    ]
-                if lst_installed_odoo_version:
-                    for installed_odoo_version in lst_installed_odoo_version:
+                    installed_versions = [a.strip() for a in f.readlines()]
+                if installed_versions:
+                    for installed_odoo_version in installed_versions:
                         path_manifest_odoo_version = os.path.join(
                             "manifest",
                             f"git_manifest_{installed_odoo_version}.xml",
                         )
                         if os.path.exists(path_manifest_odoo_version):
-                            lst_input.append(path_manifest_odoo_version)
+                            input_paths.append(path_manifest_odoo_version)
                         else:
                             print(
                                 f"ERROR: {path_manifest_odoo_version} does not exist"
@@ -123,81 +121,81 @@ def main():
                             f"git_manifest_{installed_odoo_version}_dev.xml",
                         )
                         if os.path.exists(path_manifest_odoo_version):
-                            lst_input.append(path_manifest_odoo_version)
+                            input_paths.append(path_manifest_odoo_version)
 
         elif config.with_mobile:
             append_file_path_manifest(
-                lst_input, DEFAULT_PATH_MANIFEST_MOBILE_CONF
+                input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
             )
         else:
-            append_file_path_manifest(lst_input, DEFAULT_PATH_MANIFEST_CONF)
+            append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_CONF)
         append_file_path_manifest(
-            lst_input, DEFAULT_PATH_MANIFEST_PRIVATE_CONF
+            input_paths, DEFAULT_PATH_MANIFEST_PRIVATE_CONF
         )
 
-    dct_remote_total = {}
-    dct_project_total = {}
+    remotes_total = {}
+    projects_total = {}
     default_remote_total = None
 
     # Be sure all input is unique
-    lst_input = list(set(lst_input))
+    input_paths = list(set(input_paths))
 
-    for index, input_path in enumerate(lst_input):
+    for index, input_path in enumerate(input_paths):
         (
-            dct_remote,
-            dct_project,
+            remotes,
+            projects,
             default_remote,
         ) = git_tool.get_manifest_xml_info(filename=input_path, add_root=True)
 
         # Support multiple version odoo
-        dct_project_copy = dct_project
-        dct_project = {}
-        for key, value in dct_project_copy.items():
+        projects_copy = projects
+        projects = {}
+        for key, value in projects_copy.items():
             new_key = f"{key}+{value.get('@path')}"
-            dct_project[new_key] = value
+            projects[new_key] = value
 
-        if len(lst_input) == 1:
+        if len(input_paths) == 1:
             # Only 1 input, same output
-            dct_remote_total = dct_remote
-            dct_project_total = dct_project
+            remotes_total = remotes
+            projects_total = projects
             break
         elif not index:
             # Preparation to accumulate data
-            dct_remote_total = copy.deepcopy(dct_remote)
-            dct_project_total = copy.deepcopy(dct_project)
+            remotes_total = copy.deepcopy(remotes)
+            projects_total = copy.deepcopy(projects)
             continue
-        for key, value in dct_project.items():
-            if key in dct_project_total.keys():
+        for key, value in projects.items():
+            if key in projects_total:
                 if config.att_revision_only:
                     revision = value.get("@revision")
                     if revision:
-                        dct_project_total[key]["@revision"] = revision
+                        projects_total[key]["@revision"] = revision
                 else:
-                    dct_project_total[key].update(value)
+                    projects_total[key].update(value)
             else:
-                dct_project_total[key] = copy.deepcopy(value)
+                projects_total[key] = copy.deepcopy(value)
 
-        for key, value in dct_remote.items():
-            if key in dct_remote_total.keys():
-                dct_remote_total[key].update(value)
+        for key, value in remotes.items():
+            if key in remotes_total:
+                remotes_total[key].update(value)
             else:
-                dct_remote_total[key] = copy.deepcopy(value)
+                remotes_total[key] = copy.deepcopy(value)
 
     git_tool.generate_repo_manifest(
-        remotes_config=dct_remote_total,
-        projects_config=dct_project_total,
+        remotes_config=remotes_total,
+        projects_config=projects_total,
         output=config.output,
         default_remote=default_remote_total,
     )
 
 
-def append_file_path_manifest(lst_input, path_manifest):
+def append_file_path_manifest(input_paths, path_manifest):
     if os.path.exists(path_manifest):
         with open(path_manifest, "r") as f:
             csv_file = csv.DictReader(f)
             for row in csv_file:
                 filepath = row.get("filepath")
-                lst_input.append(filepath)
+                input_paths.append(filepath)
 
 
 if __name__ == "__main__":
