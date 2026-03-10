@@ -120,9 +120,7 @@ class TestGetOdooVersion(unittest.TestCase):
                 "script.todo.version_manager.ODOO_VERSION_FILE",
                 odoo_version_file,
             ):
-                lst_version, lst_installed, odoo_current = (
-                    get_odoo_version()
-                )
+                lst_version, lst_installed, odoo_current = get_odoo_version()
 
             self.assertEqual(len(lst_version), 2)
             self.assertEqual(odoo_current, "odoo18.0")
@@ -158,9 +156,7 @@ class TestGetOdooVersion(unittest.TestCase):
                 "script.todo.version_manager.ODOO_VERSION_FILE",
                 os.path.join(tmpdir, "nonexistent"),
             ):
-                lst_version, lst_installed, odoo_current = (
-                    get_odoo_version()
-                )
+                lst_version, lst_installed, odoo_current = get_odoo_version()
 
             self.assertEqual(lst_installed, ["odoo16.0", "odoo18.0"])
             self.assertIsNone(odoo_current)
@@ -171,7 +167,9 @@ class TestGetOdooVersion(unittest.TestCase):
             with open(version_file, "w") as f:
                 json.dump({}, f)
 
-            with patch("script.todo.version_manager.VERSION_DATA_FILE", version_file):
+            with patch(
+                "script.todo.version_manager.VERSION_DATA_FILE", version_file
+            ):
                 with self.assertRaises(Exception):
                     get_odoo_version()
 
@@ -329,25 +327,28 @@ class TestSetupClaudeCommit(unittest.TestCase):
 
 
 class TestSelectDatabase(unittest.TestCase):
-    @patch("script.todo.todo.click")
+    @patch("script.todo.database_manager.click")
     def test_select_database_returns_name(self, mock_click):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
             0,
             ["db_test", "db_prod"],
         )
         mock_click.prompt.return_value = "1"
-        result = todo.select_database()
+        result = todo.db_manager.select_database()
         self.assertEqual(result, "db_test")
 
-    @patch("script.todo.todo.click")
+    @patch("script.todo.database_manager.click")
     def test_select_database_returns_false_on_zero(self, mock_click):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, ["db_test"])
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
+            0,
+            ["db_test"],
+        )
         mock_click.prompt.return_value = "0"
-        result = todo.select_database()
+        result = todo.db_manager.select_database()
         self.assertFalse(result)
 
 
@@ -355,41 +356,53 @@ class TestRestoreFromDatabase(unittest.TestCase):
     @patch("builtins.input")
     def test_restore_by_filename(self, mock_input):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, [])
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
+            0,
+            [],
+        )
         # status="1" (by filename), db name default, no neutralize
         mock_input.side_effect = ["1", "", "n", "n"]
-        todo.restore_from_database()
-        cmd = todo.execute.exec_command_live.call_args_list[0][0][0]
+        todo.db_manager.restore_from_database()
+        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
+            0
+        ]
         self.assertIn("db_restore.py", cmd)
 
     @patch("builtins.input")
     def test_restore_with_neutralize(self, mock_input):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (0, [])
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
+            0,
+            [],
+        )
         mock_input.side_effect = ["1", "mydb", "y", "n"]
-        todo.restore_from_database()
-        cmd = todo.execute.exec_command_live.call_args_list[0][0][0]
+        todo.db_manager.restore_from_database()
+        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
+            0
+        ]
         self.assertIn("--neutralize", cmd)
         self.assertIn("mydb_neutralize", cmd)
 
 
 class TestCreateBackupFromDatabase(unittest.TestCase):
-    @patch("script.todo.todo.click")
+    @patch("script.todo.database_manager.click")
     @patch("builtins.input")
     def test_creates_backup_command(self, mock_input, mock_click):
         todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = (
+        todo.db_manager._execute = MagicMock()
+        todo.db_manager._execute.exec_command_live.return_value = (
             0,
             ["test_db"],
         )
         mock_click.prompt.return_value = "1"
         # backup name input
         mock_input.return_value = "backup.zip"
-        todo.create_backup_from_database()
-        cmd = todo.execute.exec_command_live.call_args_list[-1][0][0]
+        todo.db_manager.create_backup_from_database()
+        cmd = todo.db_manager._execute.exec_command_live.call_args_list[-1][0][
+            0
+        ]
         self.assertIn("--backup", cmd)
         self.assertIn("test_db", cmd)
 

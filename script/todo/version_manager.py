@@ -12,7 +12,7 @@ INSTALLED_ODOO_VERSION_FILE = os.path.join(
 ODOO_VERSION_FILE = ".odoo-version"
 
 
-def get_odoo_version():
+def get_odoo_version() -> tuple[list[dict], list[str], str | None]:
     """
     Read version configuration and return sorted versions,
     installed versions, and current version.
@@ -40,8 +40,6 @@ def get_odoo_version():
         with open(ODOO_VERSION_FILE) as txt:
             odoo_installed_version = f"odoo{txt.read().strip()}"
 
-    versions = sorted(
-        version_entries, key=lambda k: k.get("erplibre_version")
-    )
+    versions = sorted(version_entries, key=lambda k: k.get("erplibre_version"))
 
     return versions, installed_versions, odoo_installed_version

@@ -24,10 +24,10 @@ _logger = logging.getLogger(__name__)
 
 
 class ConfigFile:
-    def get_config(self, key_param: str):
-        config_base = {}
-        config_override = {}
-        config_private = {}
+    def get_config(self, key_param: str) -> Any:
+        config_base: dict = {}
+        config_override: dict = {}
+        config_private: dict = {}
 
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE) as cfg:
@@ -50,14 +50,14 @@ class ConfigFile:
 
         return merged_config.get(key_param)
 
-    def get_config_value(self, params: list):
+    def get_config_value(self, params: list[str]) -> Any:
         config_data = self.get_config(params[0])
         for param in params[1:]:
             if param in config_data:
                 config_data = config_data.get(param)
         return config_data
 
-    def get_logo_ascii_file_path(self):
+    def get_logo_ascii_file_path(self) -> str:
         return LOGO_ASCII_FILE
 
     def deep_merge_with_lists(

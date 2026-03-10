@@ -85,9 +85,7 @@ class TODO:
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
         self.kdbx_manager = KdbxManager(self.config_file)
-        self.db_manager = DatabaseManager(
-            self.execute, self.fill_help_info
-        )
+        self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
 
     def _ask_language(self):
         if not lang_is_configured():
@@ -431,7 +429,9 @@ class TODO:
         odoo_password = instance.get("password")
 
         if kdbx_key:
-            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(kdbx_key)
+            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(
+                kdbx_key
+            )
         elif odoo_user and odoo_password:
             extra_cmd_web_login = (
                 f" --default_email_auth {odoo_user} --default_password_auth"
@@ -818,8 +818,8 @@ class TODO:
                 f"{name} <{email}>",
             )
             content = content.replace(
-                'Your Name ',
-                f'{name} ',
+                "Your Name ",
+                f"{name} ",
             )
 
             os.makedirs(dest_dir, exist_ok=True)
@@ -1309,33 +1309,9 @@ class TODO:
             single_source_erplibre=True,
         )
 
-    def select_database(self):
-        cmd_server = f"./odoo_bin.sh db --list"
-        status, databases = self.execute.exec_command_live(
-            cmd_server,
-            return_status_and_output=True,
-            source_erplibre=False,
-            single_source_erplibre=True,
-        )
-        choices = [{"prompt_description": a.strip()} for a in databases]
-
-        help_info = self.fill_help_info(choices)
-
-        valid_choices = [str(a) for a in range(len(choices) + 1) if a]
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status in valid_choices:
-                database_name = databases[int(status) - 1].strip()
-                print(database_name)
-                return database_name
-            else:
-                print(t("cmd_not_found"))
-
-    def prompt_execute_selenium_and_run_db(self, db_name, extra_cmd_web_login=""):
+    def prompt_execute_selenium_and_run_db(
+        self, db_name, extra_cmd_web_login=""
+    ):
         cmd_server = f"./run.sh -d {db_name};bash"
         self.execute.exec_command_live(cmd_server)
         cmd_client = (
@@ -1500,102 +1476,6 @@ class TODO:
         database_name = self.db_manager.select_database()
         self.prompt_execute_selenium_and_run_db(database_name)
 
-    def restore_from_database(self, show_remote_list=True):
-        path_image_db = os.path.join(os.getcwd(), "image_db")
-        print("[1] By filename from image_db")
-        print(f"[] Browser image_db {path_image_db}")
-        status = input("💬 Select : ")
-        if status == "1":
-            file_name = status
-        else:
-            file_name = self.db_manager.open_file_image_db()
-
-        default_database_name = file_name.replace(" ", "_")
-        if default_database_name.endswith(".zip"):
-            default_database_name = default_database_name[:-4]
-
-        database_name = input(
-            f"💬 Database name (default={default_database_name}) : "
-        )
-        if not database_name:
-            database_name = default_database_name
-
-        status = (
-            input("💬 Would you like to neutralize database (n/N)? ")
-            .strip()
-            .lower()
-        )
-        is_neutralize = False
-        more_arg = ""
-        if status != "n":
-            more_arg = "--neutralize "
-            is_neutralize = True
-            database_name += "_neutralize"
-        status, output_lines = self.execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} {more_arg}--ignore_cache --image {file_name}",
-            return_status_and_output=True,
-            single_source_erplibre=True,
-            source_erplibre=False,
-        )
-        if is_neutralize:
-            status, output_lines = self.execute.exec_command_live(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-        status = (
-            input("💬 Would you like to update all addons (y/Y)? ")
-            .strip()
-            .lower()
-        )
-        if status == "y":
-            status, output_lines = self.execute.exec_command_live(
-                f"./script/addons/update_addons_all.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-
-    def create_backup_from_database(self, show_remote_list=True):
-        database_name = self.db_manager.select_database()
-        str_arg = f"--database {database_name}"
-
-        backup_name = input("💬 Backup name (default = name+date.zip) : ")
-        if not backup_name:
-            backup_name = (
-                database_name
-                + "_"
-                + datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-                + ".zip"
-            )
-
-        if not backup_name.endswith(".zip"):
-            backup_name = backup_name + ".zip"
-
-        print(backup_name)
-
-        cmd = f"./odoo_bin.sh db --backup --database {database_name} --restore_image {backup_name}"
-        status, output_lines = self.execute.exec_command_live(
-            cmd,
-            return_status_and_output=True,
-            single_source_erplibre=True,
-            source_erplibre=False,
-        )
-
-    def open_file_image_db(self):
-        self.dir_path = ""
-        path_image_db = os.path.join(os.getcwd(), "image_db")
-
-        # self.dir_path is over-write into on_dir_selected
-        file_browser = todo_file_browser.FileBrowser(
-            path_image_db, self.on_dir_selected
-        )
-        file_browser.run_main_frame()
-        file_name = os.path.basename(self.dir_path)
-        print(file_name)
-        return file_name
-
     def process_kill_from_port(self):
         cfg = configparser.ConfigParser()
         cfg.read("./config.conf")
@@ -1605,63 +1485,6 @@ class TODO:
             f"./script/process/kill_process_by_port.py {http_port} --kill-tree --nb_parent 2",
             source_erplibre=False,
         )
-
-    def download_database_backup_cli(self, show_remote_list=True):
-        database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
-        if show_remote_list:
-            status, output_lines = self.execute.exec_command_live(
-                f"python3 ./script/database/list_remote.py --raw --odoo-url {database_domain}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-            if len(output_lines) > 1:
-                for index, output in enumerate(output_lines):
-                    print(f"{index + 1} - {output}")
-                database_name = input("Select id of database :").strip()
-            elif len(output_lines) == 1:
-                database_name = output_lines[0].strip()
-            else:
-                database_name = input(
-                    "Cannot read remote database, Database name :\n"
-                )
-        else:
-            database_name = input("Database name :\n")
-
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-        default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
-        output_path = input(
-            f"Output path (default: {default_output_path}) : "
-        ).strip()
-        if not output_path:
-            output_path = default_output_path
-
-        master_password = getpass.getpass(prompt="Master password : ")
-
-        cmd = "script/database/download_remote.sh --quiet"
-        my_env = os.environ.copy()
-        my_env["MASTER_PWD"] = master_password
-        my_env["DATABASE_NAME"] = database_name
-        my_env["OUTPUT_FILE_PATH"] = output_path
-        my_env["ODOO_URL"] = database_domain
-        status, cmd_executed = self.execute.exec_command_live(
-            cmd,
-            source_erplibre=False,
-            return_status_and_command=True,
-            new_env=my_env,
-        )
-        try:
-            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
-                manifest_file_1 = zip_ref.open("manifest.json")
-            _logger.info(
-                f"Log file '{default_output_path}' is complete and validated."
-            )
-        except Exception as e:
-            _logger.error(e)
-            _logger.error(
-                f"Failed to read manifest.json from backup file '{default_output_path}'."
-            )
-        return status, output_path, database_name
 
     def restart_script(self, last_error):
         print(f"🤖 {t('reboot_todo')}")

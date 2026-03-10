@@ -21,15 +21,15 @@ except Exception:
 
 
 class DatabaseManager:
-    def __init__(self, execute, fill_help_info):
+    def __init__(self, execute, fill_help_info) -> None:
         self._execute = execute
         self._fill_help_info = fill_help_info
-        self._dir_path = None
+        self._dir_path: str | None = None
 
-    def _on_dir_selected(self, path):
+    def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
 
-    def select_database(self):
+    def select_database(self) -> str | bool:
         cmd_server = "./odoo_bin.sh db --list"
         status, databases = self._execute.exec_command_live(
             cmd_server,
@@ -39,9 +39,7 @@ class DatabaseManager:
         )
         choices = [{"prompt_description": a.strip()} for a in databases]
         help_info = self._fill_help_info(choices)
-        valid_choices = [
-            str(a) for a in range(len(choices) + 1) if a
-        ]
+        valid_choices = [str(a) for a in range(len(choices) + 1) if a]
 
         while True:
             status = click.prompt(help_info)
@@ -55,7 +53,7 @@ class DatabaseManager:
             else:
                 print(t("cmd_not_found"))
 
-    def restore_from_database(self, show_remote_list=True):
+    def restore_from_database(self, show_remote_list: bool = True) -> None:
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
@@ -76,9 +74,7 @@ class DatabaseManager:
             database_name = default_database_name
 
         status = (
-            input(
-                "\U0001f4ac Would you like to neutralize database (n/N)? "
-            )
+            input("\U0001f4ac Would you like to neutralize database (n/N)? ")
             .strip()
             .lower()
         )
@@ -103,9 +99,7 @@ class DatabaseManager:
                 source_erplibre=False,
             )
         status = (
-            input(
-                "\U0001f4ac Would you like to update all addons (y/Y)? "
-            )
+            input("\U0001f4ac Would you like to update all addons (y/Y)? ")
             .strip()
             .lower()
         )
@@ -117,7 +111,9 @@ class DatabaseManager:
                 source_erplibre=False,
             )
 
-    def create_backup_from_database(self, show_remote_list=True):
+    def create_backup_from_database(
+        self, show_remote_list: bool = True
+    ) -> None:
         database_name = self.select_database()
         backup_name = input(
             "\U0001f4ac Backup name (default = name+date.zip) : "
@@ -126,9 +122,7 @@ class DatabaseManager:
             backup_name = (
                 database_name
                 + "_"
-                + datetime.datetime.now().strftime(
-                    "%Y-%m-%d_%Hh%Mm%Ss"
-                )
+                + datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
                 + ".zip"
             )
 
@@ -148,7 +142,7 @@ class DatabaseManager:
             source_erplibre=False,
         )
 
-    def open_file_image_db(self):
+    def open_file_image_db(self) -> str:
         self._dir_path = ""
         path_image_db = os.path.join(os.getcwd(), "image_db")
 
@@ -160,10 +154,10 @@ class DatabaseManager:
         print(file_name)
         return file_name
 
-    def download_database_backup_cli(self, show_remote_list=True):
-        database_domain = input(
-            "Domain Odoo (ex. https://mondomain.com) : "
-        )
+    def download_database_backup_cli(
+        self, show_remote_list: bool = True
+    ) -> tuple[int, str, str]:
+        database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
         if show_remote_list:
             status, output_lines = self._execute.exec_command_live(
                 f"python3 ./script/database/list_remote.py --raw"
@@ -175,9 +169,7 @@ class DatabaseManager:
             if len(output_lines) > 1:
                 for index, output in enumerate(output_lines):
                     print(f"{index + 1} - {output}")
-                database_name = input(
-                    "Select id of database :"
-                ).strip()
+                database_name = input("Select id of database :").strip()
             elif len(output_lines) == 1:
                 database_name = output_lines[0].strip()
             else:
@@ -187,12 +179,8 @@ class DatabaseManager:
         else:
             database_name = input("Database name :\n")
 
-        timestamp = datetime.datetime.now().strftime(
-            "%Y-%m-%d_%Hh%Mm%Ss"
-        )
-        default_output_path = (
-            f"./image_db/{database_name}_{timestamp}.zip"
-        )
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+        default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
         output_path = input(
             f"Output path (default: {default_output_path}) : "
         ).strip()
@@ -214,9 +202,7 @@ class DatabaseManager:
             new_env=my_env,
         )
         try:
-            with zipfile.ZipFile(
-                default_output_path, "r"
-            ) as zip_ref:
+            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
                 manifest_file_1 = zip_ref.open("manifest.json")
             _logger.info(
                 f"Log file '{default_output_path}' is complete"

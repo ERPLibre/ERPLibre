@@ -21,7 +21,7 @@ except ModuleNotFoundError:
 
 
 class KdbxManager:
-    def __init__(self, config_file):
+    def __init__(self, config_file) -> None:
         self._config_file = config_file
         self._kdbx = None
 
@@ -29,9 +29,7 @@ class KdbxManager:
         if self._kdbx:
             return self._kdbx
 
-        kdbx_file_path = self._config_file.get_config_value(
-            ["kdbx", "path"]
-        )
+        kdbx_file_path = self._config_file.get_config_value(["kdbx", "path"])
         if not kdbx_file_path:
             if tk is None:
                 _logger.error("tkinter is not available")
@@ -64,7 +62,9 @@ class KdbxManager:
             self._kdbx = kp
         return kp
 
-    def get_extra_command_user(self, kdbx_key):
+    def get_extra_command_user(
+        self, kdbx_key: str | list | None
+    ) -> str | list:
         values = []
         if kdbx_key:
             kp = self.get_kdbx()
@@ -79,15 +79,11 @@ class KdbxManager:
                 try:
                     odoo_user = entry.username
                 except AttributeError:
-                    _logger.error(
-                        f"Cannot find username from keys {key}"
-                    )
+                    _logger.error(f"Cannot find username from keys {key}")
                 try:
                     odoo_password = entry.password
                 except AttributeError:
-                    _logger.error(
-                        f"Cannot find password from keys {key}"
-                    )
+                    _logger.error(f"Cannot find password from keys {key}")
                 values.append(
                     " --default_email_auth"
                     f" {odoo_user} --default_password_auth"
