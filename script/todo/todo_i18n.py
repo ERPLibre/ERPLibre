@@ -554,7 +554,7 @@ TRANSLATIONS = {
 }
 
 
-def get_lang():
+def get_lang() -> str:
     global _current_lang
     if _current_lang is not None:
         return _current_lang
@@ -586,7 +586,7 @@ def get_lang():
     return _current_lang
 
 
-def set_lang(lang):
+def set_lang(lang: str) -> None:
     global _current_lang
     _current_lang = lang
 
@@ -614,7 +614,7 @@ def set_lang(lang):
             f.write(content)
 
 
-def lang_is_configured():
+def lang_is_configured() -> bool:
     """Check if a language has been explicitly set."""
     if os.path.exists(ENV_VAR_FILE):
         try:
@@ -626,7 +626,7 @@ def lang_is_configured():
     return False
 
 
-def t(key):
+def t(key: str) -> str:
     entry = TRANSLATIONS.get(key)
     if entry is None:
         return key

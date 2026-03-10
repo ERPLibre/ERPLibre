@@ -35,9 +35,9 @@ _logger = logging.getLogger(__name__)
 
 
 class Execute:
-    def __init__(self):
-        self.cmd_source_erplibre = ""
-        self.cmd_source_default = ""
+    def __init__(self) -> None:
+        self.cmd_source_erplibre: str = ""
+        self.cmd_source_default: str = ""
         exec_path_gnome_terminal = shutil.which("gnome-terminal")
         if exec_path_gnome_terminal:
             self.cmd_source_erplibre = (
@@ -61,17 +61,22 @@ class Execute:
 
     def exec_command_live(
         self,
-        command,
-        source_erplibre=True,
-        quiet=False,
-        single_source_erplibre=False,
-        new_window=False,
-        single_source_odoo=False,
-        source_odoo="",
-        new_env=None,
-        return_status_and_command=False,
-        return_status_and_output=False,
-        return_status_and_output_and_command=False,
+        command: str,
+        source_erplibre: bool = True,
+        quiet: bool = False,
+        single_source_erplibre: bool = False,
+        new_window: bool = False,
+        single_source_odoo: bool = False,
+        source_odoo: str = "",
+        new_env: dict | None = None,
+        return_status_and_command: bool = False,
+        return_status_and_output: bool = False,
+        return_status_and_output_and_command: bool = False,
+    ) -> (
+        int
+        | tuple[int, str]
+        | tuple[int, list[str]]
+        | tuple[int, str, list[str]]
     ):
         """
         Execute a command and display its output live.
@@ -95,9 +100,7 @@ class Execute:
             command = self.cmd_source_erplibre % command
             # os.system(f"./script/terminal/open_terminal.sh {command}")
         elif single_source_erplibre:
-            command = (
-                f"source ./{VENV_ERPLIBRE}/bin/activate && %s" % command
-            )
+            command = f"source ./{VENV_ERPLIBRE}/bin/activate && %s" % command
         elif single_source_odoo:
             if not source_odoo and os.path.exists("./.erplibre-version"):
                 with open("./.erplibre-version") as f:
@@ -107,9 +110,7 @@ class Execute:
                     f"You cannot execute Odoo command if no version is installed. Command : {command}"
                 )
                 return -1
-            command = (
-                f"source ./.venv.{source_odoo}/bin/activate && {command}"
-            )
+            command = f"source ./.venv.{source_odoo}/bin/activate && {command}"
         if new_window and self.cmd_source_default:
             command = self.cmd_source_default % command
 
@@ -151,10 +152,7 @@ class Execute:
             process.wait()
             exit_code = process.returncode
             if process.returncode != 0 and not quiet:
-                print(
-                    "Command returned error code:"
-                    f" {process.returncode}"
-                )
+                print("Command returned error code:" f" {process.returncode}")
 
         except FileNotFoundError:
             if not quiet:
@@ -164,9 +162,7 @@ class Execute:
                         " not found."
                     )
                 else:
-                    print(
-                        f"Error: Command '{command}' not found."
-                    )
+                    print(f"Error: Command '{command}' not found.")
         except Exception as e:
             if not quiet:
                 print(f"An error occurred: {e}")
