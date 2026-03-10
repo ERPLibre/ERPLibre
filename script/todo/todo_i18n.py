@@ -368,6 +368,22 @@ TRANSLATIONS = {
         "fr": "Tester un module avec couverture de code",
         "en": "Test a module with code coverage",
     },
+    "test_run_unit_tests": {
+        "fr": "Tests unitaires ERPLibre",
+        "en": "ERPLibre unit tests",
+    },
+    "test_unit_running": {
+        "fr": "Exécution des tests unitaires",
+        "en": "Running unit tests",
+    },
+    "test_unit_success": {
+        "fr": "Tous les tests unitaires ont réussi",
+        "en": "All unit tests passed",
+    },
+    "test_unit_failed": {
+        "fr": "Des tests unitaires ont échoué, code de sortie",
+        "en": "Some unit tests failed, exit code",
+    },
     "test_enter_module_name": {
         "fr": "Nom du module à tester : ",
         "en": "Module name to test: ",

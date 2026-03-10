@@ -998,6 +998,7 @@ class TODO:
         lst_choice = [
             {"prompt_description": t("test_run_module")},
             {"prompt_description": t("test_run_module_coverage")},
+            {"prompt_description": t("test_run_unit_tests")},
         ]
         help_info = self.fill_help_info(lst_choice)
 
@@ -1010,6 +1011,8 @@ class TODO:
                 self.execute_test_module(coverage=False)
             elif status == "2":
                 self.execute_test_module(coverage=True)
+            elif status == "3":
+                self.execute_unit_tests()
             else:
                 print(t("cmd_not_found"))
 
@@ -1098,6 +1101,22 @@ class TODO:
                 source_erplibre=False,
                 single_source_erplibre=True,
             )
+
+    def execute_unit_tests(self):
+        print(f"\n--- {t('test_unit_running')} ---")
+        cmd = (
+            ".venv.erplibre/bin/python -m unittest discover"
+            " -s test -p 'test_*.py' -v"
+        )
+        status_code, output = self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            return_status_and_output=True,
+        )
+        if status_code == 0:
+            print(f"\n✅ {t('test_unit_success')}")
+        else:
+            print(f"\n❌ {t('test_unit_failed')}: {status_code}")
 
     def execute_pip_audit(self):
         lst_version, lst_version_installed, odoo_installed_version = (
