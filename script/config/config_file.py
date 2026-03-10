@@ -26,27 +26,27 @@ _logger = logging.getLogger(__name__)
 class ConfigFile:
     def get_config(self, key_param: str):
         # Open file and update dct_data
-        dct_data_init = {}
-        dct_data_second = {}
-        dct_data_final = {}
+        config_base = {}
+        config_override = {}
+        config_private = {}
 
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE) as cfg:
-                dct_data_init = json.load(cfg)
+                config_base = json.load(cfg)
 
         if os.path.exists(CONFIG_OVERRIDE_FILE):
             with open(CONFIG_OVERRIDE_FILE) as cfg:
-                dct_data_second = json.load(cfg)
+                config_override = json.load(cfg)
 
         if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
             with open(CONFIG_OVERRIDE_PRIVATE_FILE) as cfg:
-                dct_data_final = json.load(cfg)
+                config_private = json.load(cfg)
 
-        dct_data_first_merge = self.deep_merge_with_lists(
-            dct_data_init, dct_data_final, list_strategy="extend"
+        merged_base_private = self.deep_merge_with_lists(
+            config_base, config_private, list_strategy="extend"
         )
         dct_data = self.deep_merge_with_lists(
-            dct_data_first_merge, dct_data_second, list_strategy="extend"
+            merged_base_private, config_override, list_strategy="extend"
         )
 
         return dct_data.get(key_param)
@@ -55,7 +55,6 @@ class ConfigFile:
         dct_data = self.get_config(lst_params[0])
         for param in lst_params[1:]:
             if param in dct_data.keys():
-                find_in_private = True
                 dct_data = dct_data.get(param)
         return dct_data
 

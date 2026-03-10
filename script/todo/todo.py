@@ -24,8 +24,8 @@ from script.config import config_file
 from script.execute import execute
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 
-file_error_path = ".erplibre.error.txt"
-cst_venv_erplibre = ".venv.erplibre"
+ERROR_LOG_PATH = ".erplibre.error.txt"
+VENV_ERPLIBRE = ".venv.erplibre"
 VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
 INSTALLED_ODOO_VERSION_FILE = os.path.join(
     ".repo", "installed_odoo_version.txt"
@@ -137,11 +137,11 @@ class TODO:
                 status = click.prompt(help_info)
             except NameError:
                 print("Do")
-                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
                 sys.exit(1)
             except ImportError:
                 print("Do")
-                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
                 sys.exit(1)
             except click.exceptions.Abort:
                 sys.exit(0)
@@ -157,7 +157,7 @@ class TODO:
             elif status == "4":
                 # cmd = (
                 #     f"gnome-terminal --tab -- bash -c 'source"
-                #     f" ./{cst_venv_erplibre}/bin/activate;make todo'"
+                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
                 # )
                 cmd = "make todo"
                 self.execute.exec_command_live(cmd, source_erplibre=True)
@@ -1461,15 +1461,15 @@ class TODO:
             self.execute.exec_command_live(new_cmd)
 
     def crash_diagnostic(self, e):
-        # TODO show message at start if os.path.exists(file_error_path)
-        if os.path.exists(file_error_path) and not os.path.exists(
-            cst_venv_erplibre
+        # TODO show message at start if os.path.exists(ERROR_LOG_PATH)
+        if os.path.exists(ERROR_LOG_PATH) and not os.path.exists(
+            VENV_ERPLIBRE
         ):
             print("Got error : ")
             print(e)
-            print("Got error at first execution.", file_error_path)
+            print("Got error at first execution.", ERROR_LOG_PATH)
             try:
-                file = open(file_error_path, "r")
+                file = open(ERROR_LOG_PATH, "r")
                 content = file.read()
                 # TODO si vide, ajouter notre erreur
                 print(content)
@@ -1485,7 +1485,7 @@ class TODO:
             # self.restart_script(e)
             self.execute.exec_command_live(cmd, source_erplibre=True)
             sys.exit(1)
-        if os.path.exists(cst_venv_erplibre):
+        if os.path.exists(VENV_ERPLIBRE):
             print("Import error : ")
             print(e)
             # TODO auto-detect gnome-terminal, or choose another. Is it done already?
@@ -1493,13 +1493,13 @@ class TODO:
             # self.prompt_install()
 
             # print(
-            #     f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate"
+            #     f"You forgot to activate source \nsource ./{VENV_ERPLIBRE}/bin/activate"
             # )
             # time.sleep(0.5)
             # cmd = "./script/todo/source_todo.sh"
             print("Re-execute TODO 🤖 or execute :")
             print()
-            print(f"source {cst_venv_erplibre}/bin/activate;make")
+            print(f"source {VENV_ERPLIBRE}/bin/activate;make")
             print()
             cmd = "./script/todo/todo.py"
             # # self.restart_script(e)
@@ -1763,16 +1763,16 @@ class TODO:
         print(f"🤖 {t('reboot_todo')}")
         # os.execv(sys.executable, ['python'] + sys.argv)
         # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
-        if os.path.exists(cst_venv_erplibre) and not os.path.exists(
-            file_error_path
+        if os.path.exists(VENV_ERPLIBRE) and not os.path.exists(
+            ERROR_LOG_PATH
         ):
             # TODO mettre check import suivant ne vont pas planter
             try:
-                with open(file_error_path, "w") as f_file:
+                with open(ERROR_LOG_PATH, "w") as f_file:
                     f_file.write(str(last_error))
                     pass  # The file is created and closed here, no content is written
                 print(
-                    f"Try to reopen process with before :\nsource ./{cst_venv_erplibre}/bin/activate && exec python "
+                    f"Try to reopen process with before :\nsource ./{VENV_ERPLIBRE}/bin/activate && exec python "
                     + " ".join(sys.argv)
                 )
                 os.execv(
@@ -1780,7 +1780,7 @@ class TODO:
                     [
                         "/bin/bash",
                         "-c",
-                        f"source ./{cst_venv_erplibre}/bin/activate && exec python "
+                        f"source ./{VENV_ERPLIBRE}/bin/activate && exec python "
                         + " ".join(sys.argv),
                     ],
                 )

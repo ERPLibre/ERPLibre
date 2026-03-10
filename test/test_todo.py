@@ -13,6 +13,7 @@ from script.todo.todo import (
     CONFIG_FILE,
     CONFIG_OVERRIDE_FILE,
     ENABLE_CRASH,
+    ERROR_LOG_PATH,
     GRADLE_FILE,
     INSTALLED_ODOO_VERSION_FILE,
     LOGO_ASCII_FILE,
@@ -20,9 +21,8 @@ from script.todo.todo import (
     ODOO_VERSION_FILE,
     STRINGS_FILE,
     TODO,
+    VENV_ERPLIBRE,
     VERSION_DATA_FILE,
-    cst_venv_erplibre,
-    file_error_path,
 )
 
 
@@ -237,10 +237,10 @@ class TestConstants(unittest.TestCase):
         self.assertEqual(LOGO_ASCII_FILE, "./script/todo/logo_ascii.txt")
 
     def test_venv_erplibre(self):
-        self.assertEqual(cst_venv_erplibre, ".venv.erplibre")
+        self.assertEqual(VENV_ERPLIBRE, ".venv.erplibre")
 
     def test_file_error_path(self):
-        self.assertEqual(file_error_path, ".erplibre.error.txt")
+        self.assertEqual(ERROR_LOG_PATH, ".erplibre.error.txt")
 
     def test_version_data_file(self):
         self.assertEqual(

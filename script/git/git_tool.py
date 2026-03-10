@@ -16,14 +16,14 @@ from git import Repo
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
-CST_FILE_SOURCE_REPO_ADDONS = "source_repo_addons.csv"
-CST_EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
+SOURCE_REPO_ADDONS_FILE = "source_repo_addons.csv"
+EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
 DEFAULT_WEBSITE = "erplibre.ca"
 DEFAULT_REMOTE_URL = "https://github.com/ERPLibre/ERPLibre.git"
 
 
-class Struct(object):
+class RepoAttrs(object):
     def __init__(self, **entries):
         self.__dict__.update(entries)
 
@@ -146,7 +146,7 @@ class GitTool:
             "sub_path": sub_path,
         }
         if get_obj:
-            return Struct(**d)
+            return RepoAttrs(**d)
         return d
 
     def get_repo_info(
@@ -190,10 +190,10 @@ class GitTool:
 
         name = ""
         url = ""
-        no_line = 0
+        line_number = 0
         first_execution = True
         for line in txt:
-            no_line += 1
+            line_number += 1
             if line[:12] == '[submodule "':
                 if not first_execution:
                     data = {
@@ -395,7 +395,7 @@ class GitTool:
         :param repo_path: path of repo to get information env_var.sh
         :return:
         {
-            CST_EL_GITHUB_TOKEN: TOKEN,
+            EL_GITHUB_TOKEN: TOKEN,
         }
         """
         filename = os.path.join(repo_path, "env_var.sh")
@@ -403,7 +403,7 @@ class GitTool:
             txt = file.readlines()
         txt = [a[:-1] for a in txt if "=" in a]
 
-        lst_filter = [CST_EL_GITHUB_TOKEN]
+        lst_filter = [EL_GITHUB_TOKEN]
         dct_config = {}
         # Take filtered value and get bash string values
         for f in lst_filter:
@@ -411,7 +411,7 @@ class GitTool:
                 if f in v:
                     lst_v = v.split("=")
                     if len(lst_v) > 1:
-                        dct_config[CST_EL_GITHUB_TOKEN] = v.split("=")[1][1:-1]
+                        dct_config[EL_GITHUB_TOKEN] = v.split("=")[1][1:-1]
         return dct_config
 
     @staticmethod
@@ -531,7 +531,7 @@ class GitTool:
 
     def generate_repo_manifest(
         self,
-        lst_repo: List[Struct] = [],
+        lst_repo: List[RepoAttrs] = [],
         output: str = "",
         dct_remote={},
         dct_project={},
@@ -730,7 +730,7 @@ class GitTool:
             print(str_xml_text + "\n")
 
     def generate_git_modules(
-        self, lst_repo: List[Struct], repo_path: str = "."
+        self, lst_repo: List[RepoAttrs], repo_path: str = "."
     ):
         lst_modules = []
         for repo in lst_repo:
@@ -747,8 +747,8 @@ class GitTool:
 
     def get_source_repo_addons(self, repo_path=".", add_repo_root=False):
         """
-        Read file CST_FILE_SOURCE_REPO_ADDONS and return structure of data
-        :param repo_path: path to find file CST_FILE_SOURCE_REPO_ADDONS
+        Read file SOURCE_REPO_ADDONS_FILE and return structure of data
+        :param repo_path: path to find file SOURCE_REPO_ADDONS_FILE
         :param add_repo_root: force adding repo root in the list
         :return:
         [{
@@ -760,7 +760,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        file_name = os.path.join(repo_path, CST_FILE_SOURCE_REPO_ADDONS)
+        file_name = os.path.join(repo_path, SOURCE_REPO_ADDONS_FILE)
         lst_result = []
         if add_repo_root:
             # TODO what to do if origin not exist?
@@ -959,7 +959,7 @@ class GitTool:
 
     @staticmethod
     def add_and_fetch_remote(
-        repo_info: Struct, root_repo: Repo = None, branch_name: str = ""
+        repo_info: RepoAttrs, root_repo: Repo = None, branch_name: str = ""
     ):
         """
         Deprecated function, not use anymore git submodule

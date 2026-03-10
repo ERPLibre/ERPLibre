@@ -69,7 +69,7 @@ def get_ancestry(pid: int):
     return chain
 
 
-def choose_target(chain, nb_parent):
+def choose_target(chain, parent_depth):
     """
     Decide which process to kill.
     Default: kill the highest ancestor before PID 1 (so not systemd).
@@ -77,13 +77,13 @@ def choose_target(chain, nb_parent):
     if not chain:
         return None
 
-    lst_chain_parent = []
+    parent_chain = []
     for pid in chain:
-        lst_chain_parent.append(pid)
+        parent_chain.append(pid)
         for str_to_stop in STOP_PARENT_KILL:
             if str_to_stop in pid.cmdline():
-                return pid, lst_chain_parent
-    return chain[nb_parent - 1], [chain[nb_parent - 1]]
+                return pid, parent_chain
+    return chain[parent_depth - 1], [chain[parent_depth - 1]]
 
 
 def kill_process(p: psutil.Process, force: bool):
@@ -151,6 +151,7 @@ def main():
     )
     ap.add_argument(
         "--nb_parent",
+        dest="parent_depth",
         type=int,
         default=1,
         help="Kill parent too",
@@ -176,7 +177,7 @@ def main():
         if not chain:
             continue
 
-        target, lst_target = choose_target(chain, args.nb_parent)
+        target, lst_target = choose_target(chain, args.parent_depth)
 
         print(f"\nListener PID {pid} ancestry:")
         for i, p in enumerate(chain):
@@ -207,7 +208,7 @@ def main():
             while not has_response and not ignore_kill:
                 confirm = (
                     input(
-                        f"Tuer ce processus index {args.nb_parent} (enter) ou mettre "
+                        f"Tuer ce processus index {args.parent_depth} (enter) ou mettre "
                         f"l'index [0 to {len(chain) - 1}] du "
                         f"process à tuer, (c/C) pour annuler : \n"
                     )

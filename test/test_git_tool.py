@@ -9,28 +9,28 @@ from collections import OrderedDict
 from unittest.mock import MagicMock, mock_open, patch
 
 from script.git.git_tool import (
-    CST_EL_GITHUB_TOKEN,
-    CST_FILE_SOURCE_REPO_ADDONS,
     DEFAULT_PROJECT_NAME,
     DEFAULT_REMOTE_URL,
     DEFAULT_WEBSITE,
+    EL_GITHUB_TOKEN,
     GitTool,
-    Struct,
+    RepoAttrs,
+    SOURCE_REPO_ADDONS_FILE,
 )
 
 
-class TestStruct(unittest.TestCase):
+class TestRepoAttrs(unittest.TestCase):
     def test_basic_attributes(self):
-        s = Struct(a=1, b="hello")
+        s = RepoAttrs(a=1, b="hello")
         self.assertEqual(s.a, 1)
         self.assertEqual(s.b, "hello")
 
     def test_empty_struct(self):
-        s = Struct()
+        s = RepoAttrs()
         self.assertEqual(s.__dict__, {})
 
     def test_override_existing(self):
-        s = Struct(x=10)
+        s = RepoAttrs(x=10)
         self.assertEqual(s.x, 10)
 
 
@@ -98,7 +98,7 @@ class TestGetTransformedRepoInfo(unittest.TestCase):
             "https://github.com/OCA/web.git",
             get_obj=True,
         )
-        self.assertIsInstance(result, Struct)
+        self.assertIsInstance(result, RepoAttrs)
         self.assertEqual(result.organization, "OCA")
 
     def test_organization_force(self):
@@ -216,7 +216,7 @@ class TestGetProjectConfig(unittest.TestCase):
                 env_var_path = os.path.join(tmpdir, "env_var.sh")
                 os.rename(f.name, env_var_path)
                 result = GitTool.get_project_config(repo_path=tmpdir)
-                self.assertEqual(result[CST_EL_GITHUB_TOKEN], "my_token_123")
+                self.assertEqual(result[EL_GITHUB_TOKEN], "my_token_123")
             finally:
                 if os.path.exists(env_var_path):
                     os.unlink(env_var_path)
@@ -314,7 +314,7 @@ class TestGetManifestXmlInfo(unittest.TestCase):
 
 class TestConstants(unittest.TestCase):
     def test_file_source_repo_addons(self):
-        self.assertEqual(CST_FILE_SOURCE_REPO_ADDONS, "source_repo_addons.csv")
+        self.assertEqual(SOURCE_REPO_ADDONS_FILE, "source_repo_addons.csv")
 
     def test_default_project_name(self):
         self.assertEqual(DEFAULT_PROJECT_NAME, "ERPLibre")
