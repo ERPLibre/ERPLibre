@@ -243,6 +243,7 @@ class TODO:
 [11] {t("menu_security")}
 [12] {t("menu_test")}
 [13] {t("menu_lang")}
+[14] {t("menu_gpt_code")}
 [0] {t("back")}
 """
         while True:
@@ -300,6 +301,10 @@ class TODO:
                     return
             elif status == "13":
                 status = self._change_language()
+                if status is not False:
+                    return
+            elif status == "14":
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             else:
@@ -799,6 +804,62 @@ class TODO:
             cmd,
             source_erplibre=False,
         )
+
+    def prompt_execute_gpt_code(self):
+        print(f"🤖 {t('gpt_code_manage')}")
+        lst_choice = [
+            {"prompt_description": t("gpt_code_claude_commit")},
+        ]
+        help_info = self.fill_help_info(lst_choice)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._setup_claude_commit()
+            else:
+                print(t("cmd_not_found"))
+
+    def _setup_claude_commit(self):
+        dest_dir = os.path.expanduser("~/.claude/commands")
+        dest_file = os.path.join(dest_dir, "commit.md")
+
+        if os.path.exists(dest_file):
+            print(t("gpt_code_commit_exists"))
+            return
+
+        name = input(t("gpt_code_enter_name")).strip()
+        email = input(t("gpt_code_enter_email")).strip()
+
+        template_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "conf",
+            "template_claude_commands_commit.md",
+        )
+        try:
+            with open(template_path) as f:
+                content = f.read()
+
+            content = content.replace(
+                "Your Name <your@email.com>",
+                f"{name} <{email}>",
+            )
+            content = content.replace(
+                'Your Name ',
+                f'{name} ',
+            )
+
+            os.makedirs(dest_dir, exist_ok=True)
+            with open(dest_file, "w") as f:
+                f.write(content)
+
+            print(t("gpt_code_commit_created"))
+        except Exception as e:
+            print(f"{t('gpt_code_commit_error')}{e}")
 
     def prompt_execute_doc(self):
         print(f"🤖 {t('doc_search')}")

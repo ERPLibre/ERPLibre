@@ -518,6 +518,39 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
+    # GPT code section
+    "menu_gpt_code": {
+        "fr": "GPT code - Outils d'assistant IA",
+        "en": "GPT code - AI assistant tools",
+    },
+    "gpt_code_manage": {
+        "fr": "Outils d'assistant IA pour le développement!",
+        "en": "AI assistant tools for development!",
+    },
+    "gpt_code_claude_commit": {
+        "fr": "Configurer le commit Claude Code",
+        "en": "Configure Claude Code commit",
+    },
+    "gpt_code_enter_name": {
+        "fr": "Entrez votre nom complet : ",
+        "en": "Enter your full name: ",
+    },
+    "gpt_code_enter_email": {
+        "fr": "Entrez votre courriel : ",
+        "en": "Enter your email: ",
+    },
+    "gpt_code_commit_exists": {
+        "fr": "Le fichier ~/.claude/commands/commit.md existe déjà. Aucune action effectuée.",
+        "en": "File ~/.claude/commands/commit.md already exists. No action taken.",
+    },
+    "gpt_code_commit_created": {
+        "fr": "Fichier ~/.claude/commands/commit.md créé avec succès!",
+        "en": "File ~/.claude/commands/commit.md created successfully!",
+    },
+    "gpt_code_commit_error": {
+        "fr": "Erreur lors de la création du fichier : ",
+        "en": "Error creating file: ",
+    },
 }
 
 
