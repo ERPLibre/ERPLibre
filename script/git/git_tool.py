@@ -16,6 +16,10 @@ from git import Repo
 from giturlparse import parse  # pip install giturlparse
 from retrying import retry  # pip install retrying
 
+from script.git import github_api
+from script.git.repo_url import get_transformed_repo_info_from_url as _get_transformed_repo_info
+from script.git.repo_url import get_url as _get_url
+
 SOURCE_REPO_ADDONS_FILE = "source_repo_addons.csv"
 EL_GITHUB_TOKEN = "EL_GITHUB_TOKEN"
 DEFAULT_PROJECT_NAME = "ERPLibre"
@@ -56,20 +60,13 @@ class GitTool:
         return f"odoo{self.odoo_version}"
 
     @staticmethod
-    def get_url(url: str) -> object:
+    def get_url(url: str) -> tuple[str, str, str]:
         """
         Transform an url in git and https.
         :param url: The url to transform in https and git
         :return: (url, url_https, url_git)
         """
-        if "https" in url:
-            url_git = f"git@{url[8:].replace('/', ':', 1)}"
-            url_https = url
-        else:
-            url_https = f"https://{(url[4:]).replace(':', '/')}"
-            url_git = url
-
-        return url, url_https, url_git
+        return _get_url(url)
 
     def get_transformed_repo_info_from_url(
         self,
@@ -82,72 +79,17 @@ class GitTool:
         revision: str = "",
         clone_depth: str = "",
     ) -> object:
-        """
-
-        :param url:
-        :param repo_path:
-        :param get_obj:
-        :param is_submodule:
-        :param organization_force: Keep repo_path and change organization
-        :param sub_path:
-        :param revision: Tag or branch name. When empty, use default branch.
-        :param clone_depth: length of git history to clone. Clone all git when empty.
-        Set to 0 to increase speed to clone, set to empty for development.
-        :return:
-        """
-        _, url_https, url_git = self.get_url(url)
-        url_split = url_https.split("/")
-        organization = url_split[3]
-        repo_name = url_split[4]
-        if repo_name[-4:] == ".git":
-            repo_name = repo_name[:-4]
-        if is_submodule:
-            if not sub_path or sub_path == ".":
-                path = repo_name
-            else:
-                path = os.path.join(sub_path, f"{organization}_{repo_name}")
-        else:
-            path = repo_path
-        relative_path = os.path.join(repo_path, path)
-        # if repo_path[-1] == "/":
-        #     relative_path = f"{repo_path}{path}"
-        # else:
-        #     relative_path = f"{repo_path}/{path}"
-        relative_path = os.path.normpath(relative_path)
-
-        original_organization = organization
-        url_https_original_organization = url_https[: url_https.rfind("/")]
-        project_name = url_https[url_https.rfind("/") + 1 :]
-        #     begin_original = url_git[url_git.find(":") + 1:]
-        #     original_organization = begin_original[:begin_original.find("/")]
-        if organization_force:
-            organization = organization_force
-            url_split = url_https.split("/")
-            url_split[3] = organization
-            url_https = "/".join(url_split)
-            url, _, url_git = self.get_url(url_https)
-        url_https_organization = url_https[: url_https.rfind("/")]
-
-        repo_data = {
-            "url": url,
-            "url_git": url_git,
-            "url_https": url_https,
-            "organization": organization,
-            "original_organization": original_organization,
-            "url_https_organization": url_https_organization,
-            "url_https_original_organization": url_https_original_organization,
-            "project_name": project_name,
-            "revision": revision,
-            "clone_depth": clone_depth,
-            "repo_name": repo_name,
-            "path": path,
-            "relative_path": relative_path,
-            "is_submodule": is_submodule,
-            "sub_path": sub_path,
-        }
-        if get_obj:
-            return RepoAttrs(**repo_data)
-        return repo_data
+        return _get_transformed_repo_info(
+            url=url,
+            repo_path=repo_path,
+            get_obj=get_obj,
+            is_submodule=is_submodule,
+            organization_force=organization_force,
+            sub_path=sub_path,
+            revision=revision,
+            clone_depth=clone_depth,
+            repo_attrs_class=RepoAttrs,
+        )
 
     def get_repo_info(
         self,
@@ -953,135 +895,22 @@ class GitTool:
     def add_and_fetch_remote(
         repo_info: RepoAttrs, root_repo: Repo = None, branch_name: str = ""
     ):
-        """
-        Deprecated function, not use anymore git submodule
-        :param repo_info:
-        :param root_repo:
-        :param branch_name:
-        :return:
-        """
-        try:
-            working_repo = Repo(repo_info.relative_path)
-            if repo_info.organization in [
-                a.name for a in working_repo.remotes
-            ]:
-                print(
-                    f'Remote "{repo_info.organization}" already exist '
-                    f"in {repo_info.relative_path}"
-                )
-                return
-        except git.NoSuchPathError:
-            print(f"New repo {repo_info.relative_path}")
-            if not root_repo:
-                print(
-                    f"Missing git repository to root for repo {repo_info.path}"
-                )
-                return
-            if branch_name:
-                submodule_repo = retry(
-                    wait_exponential_multiplier=1000, stop_max_delay=15000
-                )(root_repo.create_submodule)(
-                    repo_info.path,
-                    repo_info.path,
-                    url=repo_info.url_https,
-                    branch=branch_name,
-                )
-            else:
-                submodule_repo = retry(
-                    wait_exponential_multiplier=1000, stop_max_delay=15000
-                )(root_repo.create_submodule)(
-                    repo_info.path, repo_info.path, url=repo_info.url_https
-                )
-                return
-        # Add remote
-        upstream_remote = retry(
-            wait_exponential_multiplier=1000, stop_max_delay=15000
-        )(working_repo.create_remote)(
-            repo_info.organization, repo_info.url_https
+        """Deprecated function, not use anymore git submodule"""
+        return github_api.add_and_fetch_remote(
+            repo_info, root_repo, branch_name
         )
-        print(
-            'Remote "%s" created for %s'
-            % (repo_info.organization, repo_info.url_https)
-        )
-
-        # Fetch the remote
-        retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
-            upstream_remote.fetch
-        )()
-        print('Remote "%s" fetched' % repo_info.organization)
 
     def get_pull_request_repo(
         self, upstream_url: str, github_token: str, organization_name: str = ""
     ):
-        """
-
-        :param upstream_url:
-        :param github_token:
-        :param organization_name:
-        :return: List of url if success, else False
-        """
-        gh = GitHub(token=github_token)
-        parsed_url = parse(upstream_url)
-
-        # Fork the repo
-        status, user = gh.user.get()
-        user_name = (
-            user["login"] if not organization_name else organization_name
+        return github_api.get_pull_request_repo(
+            upstream_url, github_token, organization_name
         )
-        status, lst_pull = gh.repos[user_name][parsed_url.repo].pulls.get()
-        if type(lst_pull) is dict:
-            print(f"For url {upstream_url}, got {lst_pull.get('message')}")
-            return False
-        else:
-            for pull in lst_pull:
-                print(pull.get("html_url"))
-        return lst_pull
 
     def fork_repo(
         self, upstream_url: str, github_token: str, organization_name: str = ""
     ):
-        # https://developer.github.com/apps/building-integrations/setting-up-and-registering-oauth-apps/about-scopes-for-oauth-apps/
-        gh = GitHub(token=github_token)
-        parsed_url = parse(upstream_url)
-
-        # Fork the repo
-        status, user = gh.user.get()
-        user_name = (
-            user["login"] if not organization_name else organization_name
+        return github_api.fork_repo(
+            upstream_url, github_token, organization_name
         )
-        status, forked_repo = gh.repos[user_name][parsed_url.repo].get()
-        if status == 404:
-            status, upstream_repo = gh.repos[parsed_url.owner][
-                parsed_url.repo
-            ].get()
-            if status == 404:
-                print("Unable to find repo %s" % upstream_url)
-                exit(1)
-            args = {}
-            if organization_name:
-                args["organization"] = organization_name
-            status, forked_repo = gh.repos[parsed_url.owner][
-                parsed_url.repo
-            ].forks.post(**args)
-            if status == 404:
-                print(
-                    f"{Fore.RED}Error{Style.RESET_ALL} when forking repo"
-                    f" {forked_repo}"
-                )
-                exit(1)
-            else:
-                try:
-                    print(
-                        "Forked %s to %s"
-                        % (upstream_url, forked_repo["html_url"])
-                    )
-                except Exception as e:
-                    print(e)
-                    print(forked_repo)
-                    print(upstream_url)
-        elif status == 202:
-            print("Forked repo %s already exists" % forked_repo["full_name"])
-        elif status != 200:
-            print("Status not supported: %s - %s" % (status, forked_repo))
-            exit(1)
         return forked_repo
