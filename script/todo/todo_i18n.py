@@ -5,7 +5,7 @@
 import os
 import re
 
-CONFIG_OVERRIDE_PRIVATE_FILE = "./env_var.sh"
+ENV_VAR_FILE = "./env_var.sh"
 
 _current_lang = None
 
@@ -560,9 +560,9 @@ def get_lang():
         return _current_lang
 
     # 1. Check env_var.sh file
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
             match = re.search(
                 r'^EL_LANG=["\']?(\w+)["\']?', content, re.MULTILINE
@@ -591,9 +591,9 @@ def set_lang(lang):
     _current_lang = lang
 
     # Persist to env_var.sh
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
         except OSError:
             return
@@ -610,15 +610,15 @@ def set_lang(lang):
         else:
             content = content.rstrip("\n") + "\n" + new_line + "\n"
 
-        with open(CONFIG_OVERRIDE_PRIVATE_FILE, "w") as f:
+        with open(ENV_VAR_FILE, "w") as f:
             f.write(content)
 
 
 def lang_is_configured():
     """Check if a language has been explicitly set."""
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
             return bool(re.search(r"^EL_LANG=", content, re.MULTILINE))
         except OSError:

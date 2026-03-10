@@ -184,8 +184,8 @@ def main():
                 dct_remote_total[key] = copy.deepcopy(value)
 
     git_tool.generate_repo_manifest(
-        dct_remote=dct_remote_total,
-        dct_project=dct_project_total,
+        remotes_config=dct_remote_total,
+        projects_config=dct_project_total,
         output=config.output,
         default_remote=default_remote_total,
     )

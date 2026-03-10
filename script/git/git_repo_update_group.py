@@ -125,8 +125,8 @@ def main():
         filter_group=filter_group,
         extra_path=config.extra_addons_path,
         ignore_odoo_path=config.ignore_odoo_path,
-        lst_add_repo=lst_add_repo,
-        lst_whitelist=lst_whitelist,
+        add_repos=lst_add_repo,
+        whitelist=lst_whitelist,
     )
 
 

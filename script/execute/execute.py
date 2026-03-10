@@ -74,10 +74,10 @@ class Execute:
         return_status_and_output_and_command=False,
     ):
         """
-        Exécute une command et affiche la sortie en direct.
+        Execute a command and display its output live.
 
         Args:
-            command (str): La command à exécuter (sous forme de chaîne de caractères).
+            command (str): The command to execute.
         """
 
         my_env = os.environ.copy()
@@ -126,8 +126,8 @@ class Execute:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,  # Désactive la mise en tampon pour la sortie en direct
-                universal_newlines=True,  # Pour traiter les sauts de lines correctement
+                bufsize=1,  # Disable buffering for live output
+                universal_newlines=True,  # Handle line breaks correctly
                 env=my_env,
             )
 
@@ -148,11 +148,11 @@ class Execute:
                         .removesuffix("\r")
                     )
 
-            process.wait()  # Attendre la fin du process
+            process.wait()
             exit_code = process.returncode
             if process.returncode != 0 and not quiet:
                 print(
-                    "La command a retourné un code d'erreur :"
+                    "Command returned error code:"
                     f" {process.returncode}"
                 )
 
@@ -160,23 +160,23 @@ class Execute:
             if not quiet:
                 if "password" in command:
                     print(
-                        f"Erreur : La command '{command.split(' ')[0]}'[...] n'a"
-                        " pas été trouvée."
+                        f"Error: Command '{command.split(' ')[0]}'[...]"
+                        " not found."
                     )
                 else:
                     print(
-                        f"Erreur : La command '{command}' n'a pas été trouvée."
+                        f"Error: Command '{command}' not found."
                     )
         except Exception as e:
             if not quiet:
-                print(f"Une erreur s'est produite : {e}")
+                print(f"An error occurred: {e}")
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
         if humanize:
             duration_delta = datetime.timedelta(seconds=duration_sec)
-            humain_time = humanize.precisedelta(duration_delta)
+            human_time = humanize.precisedelta(duration_delta)
             if not quiet:
-                print(f"🏠 ⬆ Executed ({humain_time}) :")
+                print(f"🏠 ⬆ Executed ({human_time}) :")
         else:
             if not quiet:
                 print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :")

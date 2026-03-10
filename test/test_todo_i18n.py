@@ -82,7 +82,7 @@ class TestGetLang(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "en")
@@ -97,7 +97,7 @@ class TestGetLang(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "fr")
@@ -107,7 +107,7 @@ class TestGetLang(unittest.TestCase):
     def test_env_variable_fallback(self):
         with patch.object(
             todo_i18n,
-            "CONFIG_OVERRIDE_PRIVATE_FILE",
+            "ENV_VAR_FILE",
             "/nonexistent/path",
         ), patch.dict(os.environ, {"EL_LANG": "en"}):
             result = todo_i18n.get_lang()
@@ -116,7 +116,7 @@ class TestGetLang(unittest.TestCase):
     def test_default_is_fr(self):
         with patch.object(
             todo_i18n,
-            "CONFIG_OVERRIDE_PRIVATE_FILE",
+            "ENV_VAR_FILE",
             "/nonexistent/path",
         ), patch.dict(os.environ, {}, clear=True):
             result = todo_i18n.get_lang()
@@ -130,7 +130,7 @@ class TestGetLang(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ), patch.dict(os.environ, {}, clear=True):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "fr")
@@ -159,7 +159,7 @@ class TestSetLang(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     todo_i18n.set_lang("en")
                 with open(f.name) as rf:
@@ -177,7 +177,7 @@ class TestSetLang(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     todo_i18n.set_lang("en")
                 with open(f.name) as rf:
@@ -190,7 +190,7 @@ class TestSetLang(unittest.TestCase):
     def test_nonexistent_file_no_crash(self):
         with patch.object(
             todo_i18n,
-            "CONFIG_OVERRIDE_PRIVATE_FILE",
+            "ENV_VAR_FILE",
             "/nonexistent/path",
         ):
             todo_i18n.set_lang("en")
@@ -208,7 +208,7 @@ class TestLangIsConfigured(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     result = todo_i18n.lang_is_configured()
                 self.assertTrue(result)
@@ -223,7 +223,7 @@ class TestLangIsConfigured(unittest.TestCase):
             f.flush()
             try:
                 with patch.object(
-                    todo_i18n, "CONFIG_OVERRIDE_PRIVATE_FILE", f.name
+                    todo_i18n, "ENV_VAR_FILE", f.name
                 ):
                     result = todo_i18n.lang_is_configured()
                 self.assertFalse(result)
@@ -233,7 +233,7 @@ class TestLangIsConfigured(unittest.TestCase):
     def test_returns_false_when_file_missing(self):
         with patch.object(
             todo_i18n,
-            "CONFIG_OVERRIDE_PRIVATE_FILE",
+            "ENV_VAR_FILE",
             "/nonexistent/path",
         ):
             result = todo_i18n.lang_is_configured()

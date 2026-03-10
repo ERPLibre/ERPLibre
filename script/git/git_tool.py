@@ -128,7 +128,7 @@ class GitTool:
             url, _, url_git = self.get_url(url_https)
         url_https_organization = url_https[: url_https.rfind("/")]
 
-        d = {
+        repo_data = {
             "url": url,
             "url_git": url_git,
             "url_https": url_https,
@@ -146,8 +146,8 @@ class GitTool:
             "sub_path": sub_path,
         }
         if get_obj:
-            return RepoAttrs(**d)
-        return d
+            return RepoAttrs(**repo_data)
+        return repo_data
 
     def get_repo_info(
         self,
@@ -184,7 +184,7 @@ class GitTool:
         }]
         """
         filename = os.path.join(repo_path, ".gitmodules")
-        lst_repo = []
+        repos = []
         with open(filename) as file:
             txt = file.readlines()
 
@@ -204,7 +204,7 @@ class GitTool:
                         "relative_path": os.path.join(repo_path, path),
                         "name": name,
                     }
-                    lst_repo.append(data)
+                    repos.append(data)
                 name = line[12:-3]
                 first_execution = False
                 continue
@@ -229,7 +229,7 @@ class GitTool:
                 "relative_path": os.path.join(repo_path, path),
                 "name": name,
             }
-            lst_repo.append(data)
+            repos.append(data)
 
         if add_root:
             repo_root = Repo(repo_path)
@@ -243,10 +243,10 @@ class GitTool:
                 "path": repo_path,
                 "name": "",
             }
-            lst_repo.insert(0, data)
+            repos.insert(0, data)
         # Sort
-        lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
-        return lst_repo
+        repos = sorted(repos, key=lambda k: k.get("name"))
+        return repos
 
     def get_repo_info_manifest_xml(
         self, repo_path: str = ".", add_root: bool = False, filter_group=None
@@ -266,7 +266,7 @@ class GitTool:
             "name": name of the submodule
         }]
         """
-        lst_filter_group = filter_group.split(",") if filter_group else []
+        filter_groups = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
         if not manifest_file:
             return []
@@ -275,30 +275,29 @@ class GitTool:
             filename = manifest_file
         else:
             filename = os.path.normpath(os.path.join(repo_path, manifest_file))
-        lst_repo = []
+        repos = []
         with open(filename) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
-            dct_manifest = xml_dict.get("manifest")
-        if not dct_manifest:
+            manifest_data = xml_dict.get("manifest")
+        if not manifest_data:
             return []
-        if dct_manifest.get("default"):
-            default_remote = dct_manifest.get("default").get("@remote")
+        if manifest_data.get("default"):
+            default_remote = manifest_data.get("default").get("@remote")
         else:
             default_remote = None
-        lst_remote = dct_manifest.get("remote")
-        if type(lst_remote) is dict:
-            lst_remote = [lst_remote]
-        lst_project = dct_manifest.get("project")
-        if type(lst_project) is dict:
-            lst_project = [lst_project]
-        dct_remote = {a.get("@name"): a.get("@fetch") for a in lst_remote}
-        for project in lst_project:
+        remotes = manifest_data.get("remote")
+        if type(remotes) is dict:
+            remotes = [remotes]
+        projects = manifest_data.get("project")
+        if type(projects) is dict:
+            projects = [projects]
+        remotes_by_name = {a.get("@name"): a.get("@fetch") for a in remotes}
+        for project in projects:
             groups = project.get("@groups")
-            lst_group = groups.split(",") if groups else []
-            # Continue if lst_filter exist and group in filter
-            for group in lst_group:
-                if lst_filter_group and group not in lst_filter_group:
+            project_groups = groups.split(",") if groups else []
+            for group in project_groups:
+                if filter_groups and group not in filter_groups:
                     continue
                 else:
                     break
@@ -308,10 +307,10 @@ class GitTool:
             # get name and remote .git
             path = project.get("@path")
             name = path
-            url_prefix = dct_remote.get(project.get("@remote"))
+            url_prefix = remotes_by_name.get(project.get("@remote"))
             if not url_prefix:
                 # get default remote
-                url_prefix = dct_remote.get(default_remote)
+                url_prefix = remotes_by_name.get(default_remote)
             url = f"{url_prefix}{project.get('@name')}"
             url, url_https, url_git = self.get_url(url)
             data = {
@@ -323,7 +322,7 @@ class GitTool:
                 "name": name,
                 "group": groups,
             }
-            lst_repo.append(data)
+            repos.append(data)
 
         if add_root:
             repo_root = Repo(repo_path)
@@ -346,10 +345,10 @@ class GitTool:
                 "path": repo_path,
                 "name": "",
             }
-            lst_repo.insert(0, data)
+            repos.insert(0, data)
         # Sort
-        lst_repo = sorted(lst_repo, key=lambda k: k.get("name"))
-        return lst_repo
+        repos = sorted(repos, key=lambda k: k.get("name"))
+        return repos
 
     def get_manifest_xml_info(
         self, repo_path: str = ".", filename=None, add_root: bool = False
@@ -368,25 +367,25 @@ class GitTool:
         with open(filename) as xml:
             xml_as_string = xml.read()
             xml_dict = xmltodict.parse(xml_as_string)
-            dct_manifest = xml_dict.get("manifest")
-        if not dct_manifest:
+            manifest_data = xml_dict.get("manifest")
+        if not manifest_data:
             return {}, {}, None
-        default_remote = dct_manifest.get("default")
-        lst_remote = dct_manifest.get("remote")
-        if type(lst_remote) is dict:
-            lst_remote = [lst_remote]
-        lst_project = dct_manifest.get("project")
-        if type(lst_project) is dict:
-            lst_project = [lst_project]
-        if lst_remote:
-            dct_remote = {a.get("@name"): a for a in lst_remote}
+        default_remote = manifest_data.get("default")
+        remotes = manifest_data.get("remote")
+        if type(remotes) is dict:
+            remotes = [remotes]
+        projects = manifest_data.get("project")
+        if type(projects) is dict:
+            projects = [projects]
+        if remotes:
+            remotes_by_name = {a.get("@name"): a for a in remotes}
         else:
-            dct_remote = {}
-        if lst_project:
-            dct_project = {a.get("@name"): a for a in lst_project}
+            remotes_by_name = {}
+        if projects:
+            projects_by_name = {a.get("@name"): a for a in projects}
         else:
-            dct_project = {}
-        return dct_remote, dct_project, default_remote
+            projects_by_name = {}
+        return remotes_by_name, projects_by_name, default_remote
 
     @staticmethod
     def get_project_config(repo_path="."):
@@ -403,20 +402,20 @@ class GitTool:
             txt = file.readlines()
         txt = [a[:-1] for a in txt if "=" in a]
 
-        lst_filter = [EL_GITHUB_TOKEN]
-        dct_config = {}
+        filter_keys = [EL_GITHUB_TOKEN]
+        config = {}
         # Take filtered value and get bash string values
-        for f in lst_filter:
-            for v in txt:
-                if f in v:
-                    lst_v = v.split("=")
-                    if len(lst_v) > 1:
-                        dct_config[EL_GITHUB_TOKEN] = v.split("=")[1][1:-1]
-        return dct_config
+        for key in filter_keys:
+            for line in txt:
+                if key in line:
+                    parts = line.split("=")
+                    if len(parts) > 1:
+                        config[EL_GITHUB_TOKEN] = line.split("=")[1][1:-1]
+        return config
 
     @staticmethod
-    def open_repo_web_browser(dct_repo):
-        url = dct_repo.get("url_https")
+    def open_repo_web_browser(repo_info):
+        url = repo_info.get("url_https")
         if url:
             webbrowser.open_new_tab(url)
 
@@ -426,31 +425,31 @@ class GitTool:
         filter_group=None,
         extra_path=None,
         ignore_odoo_path=None,
-        lst_add_repo=None,
-        lst_whitelist=None,
+        add_repos=None,
+        whitelist=None,
     ):
         filename_locally = os.path.join(repo_path, "script/generate_config.sh")
         if not filter_group:
             filter_group = self.odoo_version_long
-        lst_repo_origin = self.get_repo_info(
+        all_repos = self.get_repo_info(
             repo_path=repo_path, filter_group=filter_group
         )
-        if lst_whitelist:
-            lst_repo = []
-            for repo in lst_repo_origin:
+        if whitelist:
+            repos = []
+            for repo in all_repos:
                 if (
-                    repo.get("path") in lst_whitelist
-                    or repo.get("path") in lst_add_repo
+                    repo.get("path") in whitelist
+                    or repo.get("path") in add_repos
                 ):
-                    lst_repo.append(repo)
+                    repos.append(repo)
         else:
-            lst_repo = lst_repo_origin
-        lst_result = []
-        if not lst_repo:
+            repos = all_repos
+        results = []
+        if not repos:
             print(
                 f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: List of repo is empty when write generate_config."
             )
-        for repo in lst_repo:
+        for repo in repos:
             update_repo = repo.get("path")
             # Exception, ignore addons/OCA_web and root
             if update_repo in ["addons/OCA_web", "odoo", "image_db"]:
@@ -472,14 +471,14 @@ class GitTool:
                 # Ignore repo if not starting by addons
                 # if update_repo.startswith("addons"):
                 #     lst_result.append(str_repo)
-                lst_result.append(str_repo)
+                results.append(str_repo)
         if extra_path:
             for each_extra_path in extra_path.strip().split(","):
                 str_repo = (
                     f'    printf "{each_extra_path}," >> '
                     '"${EL_CONFIG_FILE}"\n'
                 )
-                lst_result.append(str_repo)
+                results.append(str_repo)
         with open(filename_locally) as file:
             all_lines = file.readlines()
         # search place to add/replace lines
@@ -501,10 +500,10 @@ class GitTool:
                 and 'if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then\n' == line
             ):
                 index_find = index + 1
-                for insert_line in lst_result:
+                for insert_line in results:
                     all_lines.insert(index_find, insert_line)
                     index_find += 1
-                if not lst_result:
+                if not results:
                     all_lines.insert(index_find, '\tprintf ""\n')
                     index_find += 1
                 find_index = True
@@ -531,37 +530,37 @@ class GitTool:
 
     def generate_repo_manifest(
         self,
-        lst_repo: List[RepoAttrs] = [],
+        repo_list: List[RepoAttrs] = [],
         output: str = "",
-        dct_remote={},
-        dct_project={},
+        remotes_config={},
+        projects_config={},
         default_remote=None,
         keep_original=False,
         default_branch=None,
     ):
         """
         Generate repo manifest
-        :param lst_repo: optional, update manifest with list_repo
+        :param repo_list: optional, update manifest with list_repo
         :param output: filename to write output
-        :param dct_remote: dict of remote information
-        :param dct_project: dict of project information
+        :param remotes_config: dict of remote information
+        :param projects_config: dict of project information
         :param default_remote: dict of default remote
         :param keep_original: if True, can manage multiple organization with same name,
            but with different fetch url
         :param default_branch: default branch name
         :return:
         """
-        lst_remote = []
-        lst_remote_name = []
-        lst_project = []
-        lst_project_name = []
-        lst_default = []
+        remote_entries = []
+        remote_names = []
+        project_entries = []
+        project_names = []
+        default_entries = []
 
         # Fill with configuration
-        for dct_value in dct_remote.values():
+        for dct_value in remotes_config.values():
             remote_name = dct_value.get("@name")
-            if remote_name not in lst_remote_name:
-                lst_remote.append(
+            if remote_name not in remote_names:
+                remote_entries.append(
                     OrderedDict(
                         [
                             ("@name", remote_name),
@@ -569,45 +568,45 @@ class GitTool:
                         ]
                     )
                 )
-                lst_remote_name.append(remote_name)
-        for dct_value in dct_project.values():
+                remote_names.append(remote_name)
+        for dct_value in projects_config.values():
             lst_project_info = [
                 ("@name", dct_value.get("@name")),
                 ("@path", dct_value.get("@path")),
             ]
-            if "@remote" in dct_value.keys():
+            if "@remote" in dct_value:
                 lst_project_info.append(("@remote", dct_value.get("@remote")))
-            if "@revision" in dct_value.keys():
+            if "@revision" in dct_value:
                 lst_project_info.append(
                     ("@revision", dct_value.get("@revision"))
                 )
-            if "@clone-depth" in dct_value.keys():
+            if "@clone-depth" in dct_value:
                 lst_project_info.append(
                     ("@clone-depth", dct_value.get("@clone-depth"))
                 )
-            if "@groups" in dct_value.keys():
+            if "@groups" in dct_value:
                 lst_project_info.append(("@groups", dct_value.get("@groups")))
-            if "@upstream" in dct_value.keys():
+            if "@upstream" in dct_value:
                 lst_project_info.append(
                     ("@upstream", dct_value.get("@upstream"))
                 )
-            if "@dest-branch" in dct_value.keys():
+            if "@dest-branch" in dct_value:
                 lst_project_info.append(
                     ("@dest-branch", dct_value.get("@dest-branch"))
                 )
 
-            lst_project.append(OrderedDict(lst_project_info))
-            lst_project_name.append(dct_value.get("@name"))
+            project_entries.append(OrderedDict(lst_project_info))
+            project_names.append(dct_value.get("@name"))
 
-        for repo in lst_repo:
+        for repo in repo_list:
             if not repo.is_submodule:
                 # Default
-                if lst_default:
+                if default_entries:
                     raise Exception(
                         "Cannot have many root repo. "
                         "Validate why 2 or more is not submodule."
                     )
-                lst_default.append(
+                default_entries.append(
                     OrderedDict(
                         [
                             ("@remote", repo.original_organization),
@@ -620,7 +619,7 @@ class GitTool:
             else:
                 if (
                     keep_original
-                    and repo.project_name not in dct_project.keys()
+                    and repo.project_name not in projects_config
                 ):
                     # Exception, create a new remote to keep tracking on original
                     original_organization = (
@@ -629,8 +628,8 @@ class GitTool:
                 else:
                     original_organization = repo.original_organization
                 # Add remote, only unique remote
-                if original_organization not in lst_remote_name:
-                    lst_remote.append(
+                if original_organization not in remote_names:
+                    remote_entries.append(
                         OrderedDict(
                             [
                                 ("@name", original_organization),
@@ -638,10 +637,10 @@ class GitTool:
                             ]
                         )
                     )
-                    lst_remote_name.append(repo.original_organization)
+                    remote_names.append(repo.original_organization)
                 # Add project, only unique project
-                if repo.project_name not in lst_project_name:
-                    lst_project_name.append(repo.project_name)
+                if repo.project_name not in project_names:
+                    project_names.append(repo.project_name)
                     lst_project_info = [
                         ("@name", repo.project_name),
                         ("@path", repo.path),
@@ -657,10 +656,10 @@ class GitTool:
                         lst_project_info.append(("@groups", "addons"))
                     else:
                         lst_project_info.append(("@groups", "odoo"))
-                    lst_project.append(OrderedDict(lst_project_info))
+                    project_entries.append(OrderedDict(lst_project_info))
 
-        if default_remote and not lst_default:
-            lst_default.append(
+        if default_remote and not default_entries:
+            default_entries.append(
                 OrderedDict(
                     [
                         ("@remote", default_remote.get("@remote")),
@@ -672,29 +671,29 @@ class GitTool:
             )
 
         # Order in alphabetic
-        lst_order_remote = sorted(lst_remote, key=lambda key: key.get("@name"))
-        lst_order_default = sorted(
-            lst_default, key=lambda key: key.get("@remote")
+        sorted_remotes = sorted(remote_entries, key=lambda key: key.get("@name"))
+        sorted_defaults = sorted(
+            default_entries, key=lambda key: key.get("@remote")
         )
-        lst_order_project = sorted(
-            lst_project, key=lambda key: key.get("@name") + key.get("@path")
+        sorted_projects = sorted(
+            project_entries, key=lambda key: key.get("@name") + key.get("@path")
         )
 
-        dct_repo = OrderedDict(
+        manifest_dict = OrderedDict(
             [
                 (
                     "manifest",
                     OrderedDict(
                         [
-                            ("remote", lst_order_remote),
-                            ("default", lst_order_default),
-                            ("project", lst_order_project),
+                            ("remote", sorted_remotes),
+                            ("default", sorted_defaults),
+                            ("project", sorted_projects),
                         ]
                     ),
                 )
             ]
         )
-        str_xml_text = xmltodict.unparse(dct_repo, pretty=True)
+        str_xml_text = xmltodict.unparse(manifest_dict, pretty=True)
 
         pos_insert = str_xml_text.rfind("</remote>")
         if pos_insert >= 0:
@@ -730,12 +729,12 @@ class GitTool:
             print(str_xml_text + "\n")
 
     def generate_git_modules(
-        self, lst_repo: List[RepoAttrs], repo_path: str = "."
+        self, repo_list: List[RepoAttrs], repo_path: str = "."
     ):
-        lst_modules = []
-        for repo in lst_repo:
+        modules = []
+        for repo in repo_list:
             if repo.is_submodule:
-                lst_modules.append(
+                modules.append(
                     f'[submodule "{repo.path}"]\n'
                     f"\turl = {repo.url_https}\n"
                     f"\tpath = {repo.path}\n"
@@ -743,7 +742,7 @@ class GitTool:
 
         # create file
         with open(os.path.join(repo_path, ".gitmodules"), mode="w") as file:
-            file.writelines(lst_modules)
+            file.writelines(modules)
 
     def get_source_repo_addons(self, repo_path=".", add_repo_root=False):
         """
@@ -761,7 +760,7 @@ class GitTool:
         }]
         """
         file_name = os.path.join(repo_path, SOURCE_REPO_ADDONS_FILE)
-        lst_result = []
+        results = []
         if add_repo_root:
             # TODO what to do if origin not exist?
             repo = Repo(repo_path)
@@ -769,7 +768,7 @@ class GitTool:
             repo_info = self.get_transformed_repo_info_from_url(
                 url, repo_path=repo_path, get_obj=False, is_submodule=False
             )
-            lst_result.append(repo_info)
+            results.append(repo_info)
         with open(file_name) as file:
             all_lines = file.readlines()
             if all_lines:
@@ -812,8 +811,8 @@ class GitTool:
                 revision=revision,
                 clone_depth=clone_depth,
             )
-            lst_result.append(repo_info)
-        return lst_result
+            results.append(repo_info)
+        return results
 
     def get_manifest_file(self, repo_path: str = "."):
         """
@@ -852,23 +851,20 @@ class GitTool:
         :param sync_with_submodule: force use submodule with repo_compare_to
         :return: (list of matches, list of missing, list of more)
         """
-        lst_repo_info_actual = self.get_repo_info_manifest_xml(actual_repo)
-        dct_repo_info_actual = {a.get("name"): a for a in lst_repo_info_actual}
-        # set_actual = set(dct_repo_info_actual.keys())
-        # set_actual_repo = set(
-        #     [a[a.find("_") + 1:] for a in dct_repo_info_actual.keys()])
+        actual_repos = self.get_repo_info_manifest_xml(actual_repo)
+        actual_by_name = {a.get("name"): a for a in actual_repos}
 
-        dct_repo_info_actual_adapted = {
+        actual_adapted = {
             key[key.find("_") + 1 :]: item
-            for key, item in dct_repo_info_actual.items()
+            for key, item in actual_by_name.items()
         }
-        set_actual_repo = set(dct_repo_info_actual_adapted.keys())
+        set_actual_repo = set(actual_adapted.keys())
 
-        lst_repo_info_compare = self.get_repo_info(
+        compare_repos = self.get_repo_info(
             repo_compare_to, is_manifest=not sync_with_submodule
         )
         if force_normalize_compare:
-            for repo_info in lst_repo_info_compare:
+            for repo_info in compare_repos:
                 url_https = repo_info.get("url_https")
                 url_split = url_https.split("/")
                 organization = url_split[3]
@@ -879,59 +875,55 @@ class GitTool:
                 name = f"{repo_name}"
                 repo_info["name"] = name
 
-        dct_repo_info_compare = {
-            a.get("name"): a for a in lst_repo_info_compare
+        compare_by_name = {
+            a.get("name"): a for a in compare_repos
         }
-        set_compare = set(dct_repo_info_compare.keys())
+        set_compare = set(compare_by_name.keys())
 
-        # TODO finish the match
-        # lst_same_name = set_actual.intersection(set_compare)
-        # lst_missing_name = set_compare.difference(set_actual)
-
-        lst_same_name_normalize = set_actual_repo.intersection(set_compare)
-        lst_missing_name_normalize = set_compare.difference(set_actual_repo)
-        lst_over_name_normalize = set_actual_repo.difference(set_compare)
+        same_names = set_actual_repo.intersection(set_compare)
+        missing_names = set_compare.difference(set_actual_repo)
+        extra_names = set_actual_repo.difference(set_compare)
         print(
-            f"Has {len(lst_same_name_normalize)} sames, "
-            f"{len(lst_missing_name_normalize)} missing, "
-            f"{len(lst_over_name_normalize)} more."
+            f"Has {len(same_names)} sames, "
+            f"{len(missing_names)} missing, "
+            f"{len(extra_names)} more."
         )
 
-        lst_match = []
-        for key in lst_same_name_normalize:
-            lst_match.append(
-                (dct_repo_info_actual_adapted[key], dct_repo_info_compare[key])
+        matches = []
+        for key in same_names:
+            matches.append(
+                (actual_adapted[key], compare_by_name[key])
             )
 
-        return lst_match, lst_missing_name_normalize, lst_over_name_normalize
+        return matches, missing_names, extra_names
 
     @staticmethod
     def sync_to(result, checkout_when_diff=False):
-        lst_compare_repo_info, lst_missing_info, lst_over_info = result
-        total = len(lst_missing_info)
+        compared_repos, missing_repos, extra_repos = result
+        total = len(missing_repos)
         if total:
             print(f"\nList of missing : {total}")
             i = 0
-            for info in lst_missing_info:
+            for info in missing_repos:
                 i += 1
                 print(f"Nb element {i}/{total}")
                 print(f"Missing '{info}'")
 
-        total = len(lst_over_info)
+        total = len(extra_repos)
         if total:
             print(f"\nList of over : {total}")
             i = 0
-            for info in lst_over_info:
+            for info in extra_repos:
                 i += 1
                 print(f"Nb element {i}/{total}")
                 print(f"Missing '{info}'")
 
-        total = len(lst_compare_repo_info)
+        total = len(compared_repos)
         print(f"\nList of normalize : {total}")
-        lst_same = []
-        lst_diff = []
+        same = []
+        diffs = []
         i = 0
-        for original, compare_to in lst_compare_repo_info:
+        for original, compare_to in compared_repos:
             i += 1
             print(f"Nb element {i}/{total}")
             repo_original = Repo(original.get("relative_path"))
@@ -943,7 +935,7 @@ class GitTool:
                     f"DIFF - {original.get('name')} - O {commit_original} - "
                     f"R {commit_compare}"
                 )
-                lst_diff.append((original, compare_to))
+                diffs.append((original, compare_to))
                 if checkout_when_diff:
                     # Update all remote
                     for remote in repo_original.remotes:
@@ -954,8 +946,8 @@ class GitTool:
                     repo_original.git.checkout(commit_compare)
             else:
                 print(f"SAME - {original.get('name')}")
-                lst_same.append((original, compare_to))
-        print(f"finish same {len(lst_same)}, diff {len(lst_diff)}")
+                same.append((original, compare_to))
+        print(f"finish same {len(same)}, diff {len(diffs)}")
 
     @staticmethod
     def add_and_fetch_remote(

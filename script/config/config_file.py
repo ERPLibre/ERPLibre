@@ -25,7 +25,6 @@ _logger = logging.getLogger(__name__)
 
 class ConfigFile:
     def get_config(self, key_param: str):
-        # Open file and update dct_data
         config_base = {}
         config_override = {}
         config_private = {}
@@ -45,18 +44,18 @@ class ConfigFile:
         merged_base_private = self.deep_merge_with_lists(
             config_base, config_private, list_strategy="extend"
         )
-        dct_data = self.deep_merge_with_lists(
+        merged_config = self.deep_merge_with_lists(
             merged_base_private, config_override, list_strategy="extend"
         )
 
-        return dct_data.get(key_param)
+        return merged_config.get(key_param)
 
-    def get_config_value(self, lst_params: list):
-        dct_data = self.get_config(lst_params[0])
-        for param in lst_params[1:]:
-            if param in dct_data.keys():
-                dct_data = dct_data.get(param)
-        return dct_data
+    def get_config_value(self, params: list):
+        config_data = self.get_config(params[0])
+        for param in params[1:]:
+            if param in config_data:
+                config_data = config_data.get(param)
+        return config_data
 
     def get_logo_ascii_file_path(self):
         return LOGO_ASCII_FILE
@@ -86,7 +85,7 @@ class ConfigFile:
                 and isinstance(v, list)
                 and list_strategy == "extend"
             ):
-                # on étend : dest_list + src_list
+                # Extend: dest_list + src_list
                 result[k] = result[k] + v
             elif k in result and isinstance(result[k], str):
                 if v:

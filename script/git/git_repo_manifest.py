@@ -97,8 +97,8 @@ def main():
     git_tool.generate_repo_manifest(
         lst_repo_organization,
         output=f"{config.dir}{config.manifest}",
-        dct_remote=dct_remote,
-        dct_project=dct_project,
+        remotes_config=dct_remote,
+        projects_config=dct_project,
         keep_original=config.keep_origin,
         **kwargs,
     )

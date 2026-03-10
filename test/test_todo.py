@@ -31,7 +31,7 @@ class TestTODOInit(unittest.TestCase):
         todo = TODO()
         self.assertIsNone(todo.dir_path)
         self.assertIsNone(todo.kdbx)
-        self.assertIsNone(todo.file_path)
+        self.assertIsNone(todo.selected_file_path)
         self.assertIsNotNone(todo.config_file)
         self.assertIsNotNone(todo.execute)
 

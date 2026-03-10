@@ -9,7 +9,7 @@ import psutil
 
 from script.process.kill_process_by_port import (
     PROTECTED_NAMES,
-    STOP_PARENT_KILL,
+    WRAPPER_SCRIPT_NAMES,
     choose_target,
     find_listeners,
     get_ancestry,
@@ -241,10 +241,10 @@ class TestProtectedNames(unittest.TestCase):
 
 class TestStopParentKill(unittest.TestCase):
     def test_contains_run_sh(self):
-        self.assertIn("./run.sh", STOP_PARENT_KILL)
+        self.assertIn("./run.sh", WRAPPER_SCRIPT_NAMES)
 
     def test_contains_odoo_bin_sh(self):
-        self.assertIn("./odoo_bin.sh", STOP_PARENT_KILL)
+        self.assertIn("./odoo_bin.sh", WRAPPER_SCRIPT_NAMES)
 
 
 if __name__ == "__main__":
