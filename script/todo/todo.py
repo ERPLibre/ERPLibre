@@ -22,15 +22,13 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.todo.database_manager import DatabaseManager
+from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
+from script.todo.version_manager import get_odoo_version
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
-VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
-INSTALLED_ODOO_VERSION_FILE = os.path.join(
-    ".repo", "installed_odoo_version.txt"
-)
-ODOO_VERSION_FILE = ".odoo-version"
 ENABLE_CRASH = False
 CRASH_E = None
 # Support mobile ERPLibre
@@ -83,10 +81,13 @@ LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 class TODO:
     def __init__(self):
         self.dir_path = None
-        self.kdbx = None
         self.selected_file_path = None
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
+        self.kdbx_manager = KdbxManager(self.config_file)
+        self.db_manager = DatabaseManager(
+            self.execute, self.fill_help_info
+        )
 
     def _ask_language(self):
         if not lang_is_configured():
@@ -169,38 +170,6 @@ class TODO:
         print(status)
         # manipuler()
 
-    def get_kdbx(self):
-        if self.kdbx:
-            return self.kdbx
-        # Open file
-        kdbx_file_path = self.config_file.get_config_value(
-            ["kdbx", "path"]
-        )
-        if not kdbx_file_path:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            kdbx_file_path = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
-        if not kdbx_file_path:
-            _logger.error(
-                f"KDBX is not configured, please fill {self.config_file.CONFIG_FILE}"
-            )
-            return
-
-        kdbx_password = self.config_file.get_config_value(
-            ["kdbx", "password"]
-        )
-        if not kdbx_password:
-            kdbx_password = getpass.getpass(prompt=t("enter_password"))
-
-        kp = PyKeePass(kdbx_file_path, password=kdbx_password)
-
-        if kp:
-            self.kdbx = kp
-        return kp
-
     def execute_prompt_ia(self):
         while True:
             help_info = f"""{t("command")}
@@ -210,7 +179,7 @@ class TODO:
             print()
             if status == "0":
                 return
-            kp = self.get_kdbx()
+            kp = self.kdbx_manager.get_kdbx()
             if not kp:
                 return
             config_name = self.config_file.get_config_value(
@@ -393,7 +362,7 @@ class TODO:
         }
         commands_end = {}
         versions, installed_versions, odoo_installed_version = (
-            self.get_odoo_version()
+            get_odoo_version()
         )
 
         for version_info in versions[::-1]:
@@ -462,7 +431,7 @@ class TODO:
         odoo_password = instance.get("password")
 
         if kdbx_key:
-            extra_cmd_web_login = self.kdbx_get_extra_command_user(kdbx_key)
+            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(kdbx_key)
         elif odoo_user and odoo_password:
             extra_cmd_web_login = (
                 f" --default_email_auth {odoo_user} --default_password_auth"
@@ -925,11 +894,11 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self.download_database_backup_cli()
+                self.db_manager.download_database_backup_cli()
             elif status == "2":
-                self.restore_from_database()
+                self.db_manager.restore_from_database()
             elif status == "3":
-                self.create_backup_from_database()
+                self.db_manager.create_backup_from_database()
             else:
                 print(t("cmd_not_found"))
 
@@ -1181,7 +1150,7 @@ class TODO:
 
     def execute_pip_audit(self):
         versions, installed_versions, odoo_installed_version = (
-            self.get_odoo_version()
+            get_odoo_version()
         )
 
         # Build list of installed environments
@@ -1322,12 +1291,12 @@ class TODO:
                 print(t("cmd_not_found"))
 
     def generate_config_from_backup(self):
-        file_name = self.open_file_image_db()
+        file_name = self.db_manager.open_file_image_db()
         add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
         self.generate_config(add_arg=add_arg)
 
     def generate_config_from_database(self):
-        database_name = self.select_database()
+        database_name = self.db_manager.select_database()
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -1365,66 +1334,6 @@ class TODO:
                 return database_name
             else:
                 print(t("cmd_not_found"))
-
-    def get_odoo_version(self):
-        with open(VERSION_DATA_FILE) as txt:
-            data_version = json.load(txt)
-
-        if not data_version:
-            raise Exception(
-                f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'"
-            )
-        version_entries = []
-        for key, value in data_version.items():
-            version_entries.append(value)
-            value["erplibre_version"] = key
-
-        installed_versions = []
-        if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
-            with open(INSTALLED_ODOO_VERSION_FILE) as txt:
-                installed_versions = sorted(txt.read().splitlines())
-
-        odoo_installed_version = None
-        if os.path.exists(ODOO_VERSION_FILE):
-            with open(ODOO_VERSION_FILE) as txt:
-                odoo_installed_version = f"odoo{txt.read().strip()}"
-
-        # Add odoo version installation on command
-        versions = sorted(
-            version_entries, key=lambda k: k.get("erplibre_version")
-        )
-
-        return versions, installed_versions, odoo_installed_version
-
-    def kdbx_get_extra_command_user(self, kdbx_key):
-        values = []
-        if kdbx_key:
-            kp = self.get_kdbx()
-            if not kp:
-                return ""
-            if type(kdbx_key) is not list:
-                kdbx_keys = [kdbx_key]
-            else:
-                kdbx_keys = kdbx_key
-            for key in kdbx_keys:
-                entry = kp.find_entries_by_title(key, first=True)
-                try:
-                    odoo_user = entry.username
-                except AttributeError:
-                    _logger.error(f"Cannot find username from keys {key}")
-                try:
-                    odoo_password = entry.password
-                except AttributeError:
-                    _logger.error(f"Cannot find password from keys {key}")
-                values.append(
-                    " --default_email_auth"
-                    f" {odoo_user} --default_password_auth '{odoo_password}'"
-                )
-        if len(values) == 0:
-            return ""
-        elif len(values) == 1:
-            return values[0]
-        return values
 
     def prompt_execute_selenium_and_run_db(self, db_name, extra_cmd_web_login=""):
         cmd_server = f"./run.sh -d {db_name};bash"
@@ -1517,7 +1426,7 @@ class TODO:
             self.prompt_install()
 
     def open_shell_on_database(self):
-        database = self.select_database()
+        database = self.db_manager.select_database()
         if database:
             cmd_server = f"./odoo_bin.sh shell -d {database}"
             status, databases = self.execute.exec_command_live(
@@ -1588,7 +1497,7 @@ class TODO:
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
     def callback_execute_custom_database(self, config):
-        database_name = self.select_database()
+        database_name = self.db_manager.select_database()
         self.prompt_execute_selenium_and_run_db(database_name)
 
     def restore_from_database(self, show_remote_list=True):
@@ -1599,7 +1508,7 @@ class TODO:
         if status == "1":
             file_name = status
         else:
-            file_name = self.open_file_image_db()
+            file_name = self.db_manager.open_file_image_db()
 
         default_database_name = file_name.replace(" ", "_")
         if default_database_name.endswith(".zip"):
@@ -1649,7 +1558,7 @@ class TODO:
             )
 
     def create_backup_from_database(self, show_remote_list=True):
-        database_name = self.select_database()
+        database_name = self.db_manager.select_database()
         str_arg = f"--database {database_name}"
 
         backup_name = input("💬 Backup name (default = name+date.zip) : ")

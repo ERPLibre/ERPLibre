@@ -15,14 +15,17 @@ from script.todo.todo import (
     ENABLE_CRASH,
     ERROR_LOG_PATH,
     GRADLE_FILE,
-    INSTALLED_ODOO_VERSION_FILE,
     LOGO_ASCII_FILE,
     MOBILE_HOME_PATH,
-    ODOO_VERSION_FILE,
     STRINGS_FILE,
     TODO,
     VENV_ERPLIBRE,
+)
+from script.todo.version_manager import (
+    INSTALLED_ODOO_VERSION_FILE,
+    ODOO_VERSION_FILE,
     VERSION_DATA_FILE,
+    get_odoo_version,
 )
 
 
@@ -30,10 +33,10 @@ class TestTODOInit(unittest.TestCase):
     def test_initial_attributes(self):
         todo = TODO()
         self.assertIsNone(todo.dir_path)
-        self.assertIsNone(todo.kdbx)
         self.assertIsNone(todo.selected_file_path)
         self.assertIsNotNone(todo.config_file)
         self.assertIsNotNone(todo.execute)
+        self.assertIsNotNone(todo.kdbx_manager)
 
 
 class TestFillHelpInfo(unittest.TestCase):
@@ -99,7 +102,6 @@ class TestGetOdooVersion(unittest.TestCase):
                 "is_deprecated": False,
             },
         }
-        todo = TODO()
         with tempfile.TemporaryDirectory() as tmpdir:
             version_file = os.path.join(tmpdir, "version.json")
             with open(version_file, "w") as f:
@@ -110,16 +112,16 @@ class TestGetOdooVersion(unittest.TestCase):
                 f.write("18.0")
 
             with patch(
-                "script.todo.todo.VERSION_DATA_FILE", version_file
+                "script.todo.version_manager.VERSION_DATA_FILE", version_file
             ), patch(
-                "script.todo.todo.INSTALLED_ODOO_VERSION_FILE",
+                "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
                 os.path.join(tmpdir, "nonexistent.txt"),
             ), patch(
-                "script.todo.todo.ODOO_VERSION_FILE",
+                "script.todo.version_manager.ODOO_VERSION_FILE",
                 odoo_version_file,
             ):
                 lst_version, lst_installed, odoo_current = (
-                    todo.get_odoo_version()
+                    get_odoo_version()
                 )
 
             self.assertEqual(len(lst_version), 2)
@@ -138,7 +140,6 @@ class TestGetOdooVersion(unittest.TestCase):
                 "is_deprecated": False,
             },
         }
-        todo = TODO()
         with tempfile.TemporaryDirectory() as tmpdir:
             version_file = os.path.join(tmpdir, "version.json")
             with open(version_file, "w") as f:
@@ -149,31 +150,30 @@ class TestGetOdooVersion(unittest.TestCase):
                 f.write("odoo18.0\nodoo16.0\n")
 
             with patch(
-                "script.todo.todo.VERSION_DATA_FILE", version_file
+                "script.todo.version_manager.VERSION_DATA_FILE", version_file
             ), patch(
-                "script.todo.todo.INSTALLED_ODOO_VERSION_FILE",
+                "script.todo.version_manager.INSTALLED_ODOO_VERSION_FILE",
                 installed_file,
             ), patch(
-                "script.todo.todo.ODOO_VERSION_FILE",
+                "script.todo.version_manager.ODOO_VERSION_FILE",
                 os.path.join(tmpdir, "nonexistent"),
             ):
                 lst_version, lst_installed, odoo_current = (
-                    todo.get_odoo_version()
+                    get_odoo_version()
                 )
 
             self.assertEqual(lst_installed, ["odoo16.0", "odoo18.0"])
             self.assertIsNone(odoo_current)
 
     def test_no_version_data_raises(self):
-        todo = TODO()
         with tempfile.TemporaryDirectory() as tmpdir:
             version_file = os.path.join(tmpdir, "empty.json")
             with open(version_file, "w") as f:
                 json.dump({}, f)
 
-            with patch("script.todo.todo.VERSION_DATA_FILE", version_file):
+            with patch("script.todo.version_manager.VERSION_DATA_FILE", version_file):
                 with self.assertRaises(Exception):
-                    todo.get_odoo_version()
+                    get_odoo_version()
 
 
 class TestOnDirSelected(unittest.TestCase):
@@ -303,18 +303,18 @@ class TestExecuteUnitTests(unittest.TestCase):
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
     def test_empty_kdbx_key(self):
         todo = TODO()
-        result = todo.kdbx_get_extra_command_user("")
+        result = todo.kdbx_manager.get_extra_command_user("")
         self.assertEqual(result, "")
 
     def test_none_kdbx_key(self):
         todo = TODO()
-        result = todo.kdbx_get_extra_command_user(None)
+        result = todo.kdbx_manager.get_extra_command_user(None)
         self.assertEqual(result, "")
 
     def test_kdbx_not_available(self):
         todo = TODO()
-        todo.get_kdbx = MagicMock(return_value=None)
-        result = todo.kdbx_get_extra_command_user("some_key")
+        todo.kdbx_manager.get_kdbx = MagicMock(return_value=None)
+        result = todo.kdbx_manager.get_extra_command_user("some_key")
         self.assertEqual(result, "")
 
 
@@ -326,6 +326,72 @@ class TestSetupClaudeCommit(unittest.TestCase):
         ) as mock_print:
             todo._setup_claude_commit()
         # Should print exists message without asking for input
+
+
+class TestSelectDatabase(unittest.TestCase):
+    @patch("script.todo.todo.click")
+    def test_select_database_returns_name(self, mock_click):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (
+            0,
+            ["db_test", "db_prod"],
+        )
+        mock_click.prompt.return_value = "1"
+        result = todo.select_database()
+        self.assertEqual(result, "db_test")
+
+    @patch("script.todo.todo.click")
+    def test_select_database_returns_false_on_zero(self, mock_click):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["db_test"])
+        mock_click.prompt.return_value = "0"
+        result = todo.select_database()
+        self.assertFalse(result)
+
+
+class TestRestoreFromDatabase(unittest.TestCase):
+    @patch("builtins.input")
+    def test_restore_by_filename(self, mock_input):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, [])
+        # status="1" (by filename), db name default, no neutralize
+        mock_input.side_effect = ["1", "", "n", "n"]
+        todo.restore_from_database()
+        cmd = todo.execute.exec_command_live.call_args_list[0][0][0]
+        self.assertIn("db_restore.py", cmd)
+
+    @patch("builtins.input")
+    def test_restore_with_neutralize(self, mock_input):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, [])
+        mock_input.side_effect = ["1", "mydb", "y", "n"]
+        todo.restore_from_database()
+        cmd = todo.execute.exec_command_live.call_args_list[0][0][0]
+        self.assertIn("--neutralize", cmd)
+        self.assertIn("mydb_neutralize", cmd)
+
+
+class TestCreateBackupFromDatabase(unittest.TestCase):
+    @patch("script.todo.todo.click")
+    @patch("builtins.input")
+    def test_creates_backup_command(self, mock_input, mock_click):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (
+            0,
+            ["test_db"],
+        )
+        mock_click.prompt.return_value = "1"
+        # backup name input
+        mock_input.return_value = "backup.zip"
+        todo.create_backup_from_database()
+        cmd = todo.execute.exec_command_live.call_args_list[-1][0][0]
+        self.assertIn("--backup", cmd)
+        self.assertIn("test_db", cmd)
 
 
 if __name__ == "__main__":
