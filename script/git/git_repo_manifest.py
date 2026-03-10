@@ -67,10 +67,10 @@ def main():
     config = get_config()
     git_tool = GitTool()
 
-    lst_repo = git_tool.get_source_repo_addons(
+    repos = git_tool.get_source_repo_addons(
         repo_path=config.dir, add_repo_root=True
     )
-    lst_repo_organization = [
+    repo_list = [
         git_tool.get_transformed_repo_info_from_url(
             a.get("url"),
             repo_path=config.dir,
@@ -80,25 +80,25 @@ def main():
             revision=a.get("revision"),
             clone_depth=a.get("clone_depth"),
         )
-        for a in lst_repo
+        for a in repos
     ]
 
     # Update origin to new repo
     if not config.clear:
-        dct_remote, dct_project, _ = git_tool.get_manifest_xml_info(
+        remotes, projects, _ = git_tool.get_manifest_xml_info(
             repo_path=config.dir, add_root=True
         )
     else:
-        dct_remote = {}
-        dct_project = {}
+        remotes = {}
+        projects = {}
     kwargs = {}
     if config.default_branch:
         kwargs["default_branch"] = config.default_branch
     git_tool.generate_repo_manifest(
-        lst_repo_organization,
+        repo_list,
         output=f"{config.dir}{config.manifest}",
-        remotes_config=dct_remote,
-        projects_config=dct_project,
+        remotes_config=remotes,
+        projects_config=projects,
         keep_original=config.keep_origin,
         **kwargs,
     )

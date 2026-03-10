@@ -13,9 +13,9 @@ from script.git.git_tool import (
     DEFAULT_REMOTE_URL,
     DEFAULT_WEBSITE,
     EL_GITHUB_TOKEN,
+    SOURCE_REPO_ADDONS_FILE,
     GitTool,
     RepoAttrs,
-    SOURCE_REPO_ADDONS_FILE,
 )
 
 
@@ -282,11 +282,11 @@ class TestGetManifestXmlInfo(unittest.TestCase):
             f.write(xml_content)
             f.flush()
             try:
-                dct_remote, dct_project, default_remote = (
-                    gt.get_manifest_xml_info(filename=f.name)
+                remotes, projects, default_remote = gt.get_manifest_xml_info(
+                    filename=f.name
                 )
-                self.assertIn("OCA", dct_remote)
-                self.assertIn("server-tools.git", dct_project)
+                self.assertIn("OCA", remotes)
+                self.assertIn("server-tools.git", projects)
                 self.assertEqual(default_remote["@remote"], "OCA")
             finally:
                 os.unlink(f.name)
@@ -302,11 +302,11 @@ class TestGetManifestXmlInfo(unittest.TestCase):
             f.write(xml_content)
             f.flush()
             try:
-                dct_remote, dct_project, default_remote = (
-                    gt.get_manifest_xml_info(filename=f.name)
+                remotes, projects, default_remote = gt.get_manifest_xml_info(
+                    filename=f.name
                 )
-                self.assertEqual(dct_remote, {})
-                self.assertEqual(dct_project, {})
+                self.assertEqual(remotes, {})
+                self.assertEqual(projects, {})
                 self.assertIsNone(default_remote)
             finally:
                 os.unlink(f.name)

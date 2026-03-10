@@ -49,11 +49,11 @@ class TestFillHelpInfo(unittest.TestCase):
             "command": "Command:",
             "back": "Back",
         }.get(k, k)
-        lst_choice = [
+        choices = [
             {"prompt_description": "Option A"},
             {"prompt_description": "Option B"},
         ]
-        result = self.todo.fill_help_info(lst_choice)
+        result = self.todo.fill_help_info(choices)
         self.assertIn("[1] Option A", result)
         self.assertIn("[2] Option B", result)
         self.assertIn("[0] Back", result)
@@ -65,13 +65,13 @@ class TestFillHelpInfo(unittest.TestCase):
             "back": "Back",
             "my_key": "Translated Description",
         }.get(k, k)
-        lst_choice = [
+        choices = [
             {
                 "prompt_description": "fallback",
                 "prompt_description_key": "my_key",
             },
         ]
-        result = self.todo.fill_help_info(lst_choice)
+        result = self.todo.fill_help_info(choices)
         self.assertIn("[1] Translated Description", result)
 
     @patch("script.todo.todo.t")
@@ -120,12 +120,12 @@ class TestGetOdooVersion(unittest.TestCase):
                 "script.todo.version_manager.ODOO_VERSION_FILE",
                 odoo_version_file,
             ):
-                lst_version, lst_installed, odoo_current = get_odoo_version()
+                versions, installed, odoo_current = get_odoo_version()
 
-            self.assertEqual(len(lst_version), 2)
+            self.assertEqual(len(versions), 2)
             self.assertEqual(odoo_current, "odoo18.0")
             # Check erplibre_version was added
-            names = [v["erplibre_version"] for v in lst_version]
+            names = [v["erplibre_version"] for v in versions]
             self.assertIn("odoo18.0_python3.12.10", names)
             self.assertIn("odoo16.0_python3.10.18", names)
 
@@ -156,9 +156,9 @@ class TestGetOdooVersion(unittest.TestCase):
                 "script.todo.version_manager.ODOO_VERSION_FILE",
                 os.path.join(tmpdir, "nonexistent"),
             ):
-                lst_version, lst_installed, odoo_current = get_odoo_version()
+                versions, installed, odoo_current = get_odoo_version()
 
-            self.assertEqual(lst_installed, ["odoo16.0", "odoo18.0"])
+            self.assertEqual(installed, ["odoo16.0", "odoo18.0"])
             self.assertIsNone(odoo_current)
 
     def test_no_version_data_raises(self):
