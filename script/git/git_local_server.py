@@ -26,6 +26,8 @@ PRODUCTION_GIT_PATH = "/srv/git"
 DEFAULT_MANIFEST = ".repo/local_manifests/erplibre_manifest.xml"
 DEFAULT_REMOTE_NAME = "local"
 DEFAULT_PORT = 9418
+ERPLIBRE_REPO_NAME = "erplibre/erplibre"
+ERPLIBRE_REPO_URL = "https://github.com/erplibre"
 
 
 def get_config():
@@ -176,6 +178,40 @@ def parse_manifest(manifest_path):
         )
 
     return projects
+
+
+def get_erplibre_root_project(erplibre_root):
+    """Build a project entry for the ERPLibre root repo.
+
+    The root repo is not in the manifest (it is managed
+    by git directly, not Google Repo) but needs to be
+    included in the local git server.
+    """
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            erplibre_root,
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    revision = (
+        result.stdout.strip()
+        if result.returncode == 0
+        else "master"
+    )
+
+    return {
+        "name": ERPLIBRE_REPO_NAME,
+        "path": ".",
+        "remote": "origin",
+        "revision": revision,
+        "fetch_url": ERPLIBRE_REPO_URL,
+    }
 
 
 def init_bare_repos(git_path, projects):
@@ -588,7 +624,13 @@ def main():
     print()
 
     projects = parse_manifest(manifest_path)
-    print(f"Found {len(projects)} projects in manifest")
+    erplibre_project = get_erplibre_root_project(erplibre_root)
+    projects.append(erplibre_project)
+    print(
+        f"Found {len(projects)} projects"
+        f" ({len(projects) - 1} from manifest"
+        f" + erplibre root)"
+    )
     print()
 
     action = config.action
