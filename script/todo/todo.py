@@ -197,20 +197,20 @@ class TODO:
 
     def prompt_execute(self):
         help_info = f"""{t("command")}
-[1] {t("menu_run")}
-[2] {t("menu_automation")}
-[3] {t("menu_update")}
-[4] {t("menu_code")}
+[1] {t("menu_automation")}
+[2] {t("menu_code")}
+[3] {t("menu_config")}
+[4] {t("menu_database")}
 [5] {t("menu_doc")}
-[6] {t("menu_database")}
-[7] {t("menu_git")}
-[8] {t("menu_process")}
-[9] {t("menu_config")}
-[10] {t("menu_network")}
-[11] {t("menu_security")}
-[12] {t("menu_test")}
-[13] {t("menu_lang")}
-[14] {t("menu_gpt_code")}
+[6] {t("menu_git")}
+[7] {t("menu_gpt_code")}
+[8] {t("menu_lang")}
+[9] {t("menu_network")}
+[10] {t("menu_process")}
+[11] {t("menu_run")}
+[12] {t("menu_security")}
+[13] {t("menu_test")}
+[14] {t("menu_update")}
 [0] {t("back")}
 """
         while True:
@@ -219,19 +219,19 @@ class TODO:
             if status == "0":
                 return
             elif status == "1":
-                status = self.prompt_execute_instance()
-                if status is not False:
-                    return
-            elif status == "2":
                 status = self.prompt_execute_function()
                 if status is not False:
                     return
+            elif status == "2":
+                status = self.prompt_execute_code()
+                if status is not False:
+                    return
             elif status == "3":
-                status = self.prompt_execute_update()
+                status = self.prompt_execute_config()
                 if status is not False:
                     return
             elif status == "4":
-                status = self.prompt_execute_code()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "5":
@@ -239,39 +239,39 @@ class TODO:
                 if status is not False:
                     return
             elif status == "6":
-                status = self.prompt_execute_database()
-                if status is not False:
-                    return
-            elif status == "7":
                 status = self.prompt_execute_git()
                 if status is not False:
                     return
+            elif status == "7":
+                status = self.prompt_execute_gpt_code()
+                if status is not False:
+                    return
             elif status == "8":
-                status = self.prompt_execute_process()
-                if status is not False:
-                    return
-            elif status == "9":
-                status = self.prompt_execute_config()
-                if status is not False:
-                    return
-            elif status == "10":
-                status = self.prompt_execute_network()
-                if status is not False:
-                    return
-            elif status == "11":
-                status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "12":
-                status = self.prompt_execute_test()
-                if status is not False:
-                    return
-            elif status == "13":
                 status = self._change_language()
                 if status is not False:
                     return
+            elif status == "9":
+                status = self.prompt_execute_network()
+                if status is not False:
+                    return
+            elif status == "10":
+                status = self.prompt_execute_process()
+                if status is not False:
+                    return
+            elif status == "11":
+                status = self.prompt_execute_instance()
+                if status is not False:
+                    return
+            elif status == "12":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "13":
+                status = self.prompt_execute_test()
+                if status is not False:
+                    return
             elif status == "14":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_update()
                 if status is not False:
                     return
             else:
