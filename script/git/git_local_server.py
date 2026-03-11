@@ -733,7 +733,7 @@ def print_clone_commands(git_path, projects, port):
         if port != DEFAULT_PORT
         else "git://localhost"
     )
-    count = 0
+    lines = []
     for project in projects:
         repo_name = project["name"]
         if not repo_name.endswith(".git"):
@@ -743,12 +743,14 @@ def print_clone_commands(git_path, projects, port):
             clone_path = project["path"]
             if clone_path == ".":
                 clone_path = "erplibre"
-            print(
+            lines.append(
                 f"  git clone {base_url}/{repo_name}"
                 f" {clone_path}"
             )
-            count += 1
-    print(f"\nTotal: {count} repos available")
+    lines.sort()
+    for line in lines:
+        print(line)
+    print(f"\nTotal: {len(lines)} repos available")
     print()
 
 
