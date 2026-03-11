@@ -12,7 +12,6 @@ openupgradelib
 unidiff
 colorama
 wheel
-cloudflare
 selenium
 uvloop
 python-randomword-fr
@@ -32,6 +31,8 @@ cloudflare
 psutil
 mmg
 pip-audit
+tldextract
+PyYAML
 
 # For mobile
 pillow
@@ -44,3 +45,7 @@ git+https://github.com/psf/black.git@24.8.0
 pre-commit
 
 odoo-module-migrator
+
+# Ignore because need installation system
+# pymysql
+# Don't forget to install selenium script/selenium/requirements.txt
