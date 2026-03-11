@@ -137,6 +137,15 @@ Use --production-ready for /srv/git (requires root).
         ),
     )
     parser.add_argument(
+        "--unshallow",
+        action="store_true",
+        help=(
+            "Fetch full history for shallow repos before"
+            " push (slow for large repos like odoo)."
+            " Default: push shallow for performance"
+        ),
+    )
+    parser.add_argument(
         "-j",
         "--jobs",
         type=int,
@@ -283,6 +292,16 @@ async def _init_single_bare_repo(git_path, project, semaphore):
             bare_path, "git-daemon-export-ok"
         )
         open(export_file, "w").close()
+
+        # Allow pushing from shallow clones
+        await _run_git(
+            "git",
+            "-C",
+            bare_path,
+            "config",
+            "receive.shallowUpdate",
+            "true",
+        )
 
         return "created"
 
@@ -508,12 +527,60 @@ async def _update_bare_head(git_path, project):
     )
 
 
+async def _try_unshallow(repo_path, project, remote_name):
+    """Try to unshallow a repo by fetching full history."""
+    shallow_file = os.path.join(
+        repo_path, ".git", "shallow"
+    )
+    _logger.info(
+        f"  Unshallowing {project['path']}..."
+    )
+    stdout, _, _ = await _run_git(
+        "git", "-C", repo_path, "remote"
+    )
+    remotes = [
+        r
+        for r in stdout.strip().split("\n")
+        if r and r != remote_name
+    ]
+    manifest_remote = project.get("remote", "")
+    if manifest_remote in remotes:
+        remotes.remove(manifest_remote)
+        remotes.insert(0, manifest_remote)
+
+    for try_remote in remotes:
+        try:
+            await _run_git(
+                "git",
+                "-C",
+                repo_path,
+                "fetch",
+                "--unshallow",
+                try_remote,
+                timeout=300,
+            )
+        except asyncio.TimeoutError:
+            continue
+        if not os.path.exists(shallow_file):
+            _logger.info(
+                f"  Unshallowed via {try_remote}"
+            )
+            return
+    if os.path.exists(shallow_file):
+        _logger.warning(
+            f"  Unshallow failed for"
+            f" {project['path']},"
+            " falling back to shallow push"
+        )
+
+
 async def _push_single_repo(
     erplibre_root,
     git_path,
     project,
     remote_name,
     push_all_branches,
+    unshallow,
     semaphore,
 ):
     """Push a single repo to local remote (async)."""
@@ -525,52 +592,36 @@ async def _push_single_repo(
             _logger.warning(f"  Not found: {repo_path}")
             return "error", False
 
-        # Unshallow if needed (clone-depth in manifest)
+        # Handle shallow repos
         shallow_file = os.path.join(
             repo_path, ".git", "shallow"
         )
         if os.path.exists(shallow_file):
-            _logger.info(
-                f"  Unshallowing {project['path']}..."
-            )
-            stdout, _, _ = await _run_git(
-                "git", "-C", repo_path, "remote"
-            )
-            remotes = [
-                r
-                for r in stdout.strip().split("\n")
-                if r and r != remote_name
-            ]
-            manifest_remote = project.get("remote", "")
-            if manifest_remote in remotes:
-                remotes.remove(manifest_remote)
-                remotes.insert(0, manifest_remote)
-
-            for try_remote in remotes:
-                try:
+            if unshallow:
+                await _try_unshallow(
+                    repo_path, project, remote_name
+                )
+            else:
+                # Enable shallow push on bare repo
+                repo_name = project["name"]
+                if not repo_name.endswith(".git"):
+                    repo_name += ".git"
+                bare_path = os.path.join(
+                    git_path, repo_name
+                )
+                if os.path.isdir(bare_path):
                     await _run_git(
                         "git",
                         "-C",
-                        repo_path,
-                        "fetch",
-                        "--unshallow",
-                        try_remote,
-                        timeout=300,
+                        bare_path,
+                        "config",
+                        "receive.shallowUpdate",
+                        "true",
                     )
-                except asyncio.TimeoutError:
-                    continue
-                if not os.path.exists(shallow_file):
-                    _logger.info(
-                        f"  Unshallowed via {try_remote}"
-                    )
-                    break
-            else:
-                if os.path.exists(shallow_file):
-                    _logger.warning(
-                        f"  Unshallow failed for"
-                        f" {project['path']},"
-                        " push may fail"
-                    )
+                _logger.info(
+                    f"  Shallow push for"
+                    f" {project['path']}"
+                )
 
         # Handle detached HEAD: checkout manifest branch
         did_checkout = False
@@ -641,6 +692,7 @@ async def push_to_local(
     projects,
     remote_name,
     push_all_branches,
+    unshallow,
     jobs,
 ):
     """Push to local remote for each repo (async)."""
@@ -654,6 +706,7 @@ async def push_to_local(
                 p,
                 remote_name,
                 push_all_branches,
+                unshallow,
                 semaphore,
             )
             for p in projects
@@ -751,6 +804,7 @@ async def run_actions(config, erplibre_root, projects):
             projects,
             config.remote_name,
             config.push_all_branches,
+            config.unshallow,
             jobs,
         )
         print()
