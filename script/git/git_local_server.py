@@ -5,10 +5,16 @@
 import argparse
 import logging
 import os
-import signal
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+
+new_path = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "..")
+)
+sys.path.append(new_path)
+
+from script.execute.execute import Execute
 
 _logger = logging.getLogger(__name__)
 
@@ -529,28 +535,21 @@ def serve_git_daemon(git_path, projects, port):
     """Start git daemon to serve repos."""
     print_clone_commands(git_path, projects, port)
 
-    cmd = [
-        "git",
-        "daemon",
-        "--reuseaddr",
-        f"--base-path={git_path}",
-        f"--port={port}",
-        "--export-all",
-        "--enable=receive-pack",
-        git_path,
-    ]
+    cmd = (
+        f"git daemon --reuseaddr"
+        f" --base-path={git_path}"
+        f" --port={port}"
+        f" --export-all"
+        f" --enable=receive-pack"
+        f" {git_path}"
+    )
     print(f"Starting git daemon on port {port}...")
     print(f"  Base path: {git_path}")
     print(f"  URL: git://localhost:{port}/")
     print("  Press Ctrl+C to stop")
 
-    try:
-        process = subprocess.Popen(cmd)
-        process.wait()
-    except KeyboardInterrupt:
-        print("\nStopping git daemon...")
-        process.send_signal(signal.SIGTERM)
-        process.wait()
+    execute = Execute()
+    execute.exec_command_live(cmd, source_erplibre=False)
 
 
 def main():
