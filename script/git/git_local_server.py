@@ -740,9 +740,12 @@ def print_clone_commands(git_path, projects, port):
             repo_name += ".git"
         bare_path = os.path.join(git_path, repo_name)
         if os.path.isdir(bare_path):
+            clone_path = project["path"]
+            if clone_path == ".":
+                clone_path = "erplibre"
             print(
                 f"  git clone {base_url}/{repo_name}"
-                f" {project['path']}"
+                f" {clone_path}"
             )
             count += 1
     print(f"\nTotal: {count} repos available")
