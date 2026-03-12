@@ -41,9 +41,6 @@ GRADLE_FILE = os.path.join(MOBILE_HOME_PATH, ANDROID_DIR, "app/build.gradle")
 
 
 try:
-    import tkinter as tk
-    from tkinter import filedialog
-
     import click
     import dotenv
     import humanize
@@ -1385,9 +1382,6 @@ class TODO:
             # # self.restart_script(e)
             try:
                 # TODO duplicate
-                import tkinter as tk
-                from tkinter import filedialog
-
                 import click
                 import humanize
                 import openai
