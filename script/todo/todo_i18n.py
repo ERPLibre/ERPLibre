@@ -558,6 +558,69 @@ TRANSLATIONS = {
         "fr": "Serve - Démarrer le daemon git",
         "en": "Serve - Start git daemon",
     },
+    # Git remote add
+    "git_add_remote": {
+        "fr": "Ajouter un remote vers un dépôt local",
+        "en": "Add a remote to a local repository",
+    },
+    "git_add_remote_name_prompt": {
+        "fr": "Nom du remote (défaut: localhost) : ",
+        "en": "Remote name (default: localhost): ",
+    },
+    "git_add_remote_url_prompt": {
+        "fr": "Adresse du dépôt (ex: git://192.168.1.100/mon-repo.git) : ",
+        "en": "Repository address (e.g.: git://192.168.1.100/my-repo.git): ",
+    },
+    "git_add_remote_url_required": {
+        "fr": "L'adresse du dépôt est requise!",
+        "en": "Repository address is required!",
+    },
+    "git_add_remote_success": {
+        "fr": "Remote ajouté avec succès!",
+        "en": "Remote added successfully!",
+    },
+    "git_add_remote_error": {
+        "fr": "Erreur lors de l'ajout du remote : ",
+        "en": "Error adding remote: ",
+    },
+    # Git config vim
+    "git_config_vim": {
+        "fr": "Configuration git local par vim",
+        "en": "Configure git local editor to vim",
+    },
+    "git_config_vim_success": {
+        "fr": "Éditeur git configuré sur vim avec succès!",
+        "en": "Git editor configured to vim successfully!",
+    },
+    "git_config_vim_error": {
+        "fr": "Erreur lors de la configuration : ",
+        "en": "Error during configuration: ",
+    },
+    # GPT code - Claude automation
+    "gpt_code_claude_add_automation": {
+        "fr": "Ajouter une automatisation avec Claude dans todo.py",
+        "en": "Add an automation with Claude in todo.py",
+    },
+    "gpt_code_claude_add_automation_prompt": {
+        "fr": "Description de la commande à ajouter : ",
+        "en": "Description of the command to add: ",
+    },
+    "gpt_code_claude_add_automation_cmd_prompt": {
+        "fr": "Commande bash à exécuter : ",
+        "en": "Bash command to execute: ",
+    },
+    "gpt_code_claude_add_automation_section_prompt": {
+        "fr": "Section du menu (git/code/config/network/process) : ",
+        "en": "Menu section (git/code/config/network/process): ",
+    },
+    "gpt_code_claude_add_automation_success": {
+        "fr": "Automatisation ajoutée avec succès dans todo.json!",
+        "en": "Automation added successfully in todo.json!",
+    },
+    "gpt_code_claude_add_automation_error": {
+        "fr": "Erreur lors de l'ajout de l'automatisation : ",
+        "en": "Error adding automation: ",
+    },
     # Language selection
     "lang_prompt": {
         "fr": "Choisir la langue / Choose language",

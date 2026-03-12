@@ -52,5 +52,10 @@
             "makefile_cmd": "format"
         }
     ],
-    "git_from_makefile": []
+    "git_from_makefile": [
+        {
+            "prompt_description_key": "git_config_vim",
+            "bash_command": "git config --global core.editor \"vim\""
+        }
+    ]
 }

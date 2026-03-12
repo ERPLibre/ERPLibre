@@ -456,6 +456,13 @@ class TODO:
                 db_name, extra_cmd_web_login=extra_cmd_web_login
             )
 
+        bash_command = instance.get("bash_command")
+        if bash_command:
+            print(f"{t('will_execute')} {bash_command}")
+            self.execute.exec_command_live(
+                bash_command, source_erplibre=False
+            )
+
         command = instance.get("command")
         if command:
             self.prompt_execute_selenium(
@@ -661,6 +668,7 @@ class TODO:
         print(f"🤖 {t('git_manage')}")
         choices = [
             {"prompt_description": t("git_local_server")},
+            {"prompt_description": t("git_add_remote")},
         ]
 
         # Append config-driven entries
@@ -677,6 +685,8 @@ class TODO:
                 return False
             elif status == "1":
                 self.prompt_execute_git_local_server()
+            elif status == "2":
+                self._git_add_remote()
             else:
                 cmd_no_found = True
                 try:
@@ -689,6 +699,24 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print(t("cmd_not_found"))
+
+    def _git_add_remote(self):
+        remote_name = (
+            input(t("git_add_remote_name_prompt")).strip() or "localhost"
+        )
+        remote_url = input(t("git_add_remote_url_prompt")).strip()
+        if not remote_url:
+            print(t("git_add_remote_url_required"))
+            return
+        cmd = f"git remote add {remote_name} {remote_url}"
+        print(f"{t('will_execute')} {cmd}")
+        try:
+            self.execute.exec_command_live(
+                cmd, source_erplibre=False
+            )
+            print(t("git_add_remote_success"))
+        except Exception as e:
+            print(f"{t('git_add_remote_error')}{e}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('git_repo_manage')}")
@@ -775,6 +803,7 @@ class TODO:
         print(f"🤖 {t('gpt_code_manage')}")
         choices = [
             {"prompt_description": t("gpt_code_claude_commit")},
+            {"prompt_description": t("gpt_code_claude_add_automation")},
             {"prompt_description": t("menu_rtk")},
         ]
         help_info = self.fill_help_info(choices)
@@ -787,6 +816,8 @@ class TODO:
             elif status == "1":
                 self._setup_claude_commit()
             elif status == "2":
+                self._claude_add_automation()
+            elif status == "3":
                 self.prompt_execute_rtk()
             else:
                 print(t("cmd_not_found"))
@@ -829,6 +860,45 @@ class TODO:
             print(t("gpt_code_commit_created"))
         except Exception as e:
             print(f"{t('gpt_code_commit_error')}{e}")
+
+    def _claude_add_automation(self):
+        description = input(
+            t("gpt_code_claude_add_automation_prompt")
+        ).strip()
+        if not description:
+            return
+        command = input(
+            t("gpt_code_claude_add_automation_cmd_prompt")
+        ).strip()
+        if not command:
+            return
+        section = (
+            input(
+                t("gpt_code_claude_add_automation_section_prompt")
+            ).strip()
+            or "git"
+        )
+        section_key = f"{section}_from_makefile"
+        config_path = os.path.join(
+            os.path.dirname(__file__), "todo.json"
+        )
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            if section_key not in config:
+                config[section_key] = []
+            config[section_key].append(
+                {
+                    "prompt_description": description,
+                    "bash_command": command,
+                }
+            )
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+                f.write("\n")
+            print(t("gpt_code_claude_add_automation_success"))
+        except Exception as e:
+            print(f"{t('gpt_code_claude_add_automation_error')}{e}")
 
     def prompt_execute_doc(self):
         print(f"🤖 {t('doc_search')}")
