@@ -775,6 +775,7 @@ class TODO:
         print(f"🤖 {t('gpt_code_manage')}")
         choices = [
             {"prompt_description": t("gpt_code_claude_commit")},
+            {"prompt_description": t("menu_rtk")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -785,6 +786,8 @@ class TODO:
                 return False
             elif status == "1":
                 self._setup_claude_commit()
+            elif status == "2":
+                self.prompt_execute_rtk()
             else:
                 print(t("cmd_not_found"))
 
@@ -925,6 +928,116 @@ class TODO:
             source_erplibre=False,
         )
         print(t("kill_git_daemon_done"))
+
+    def prompt_execute_rtk(self):
+        print(f"🤖 {t('rtk_manage')}")
+        choices = [
+            {"prompt_description": t("rtk_install")},
+            {"prompt_description": t("rtk_version")},
+            {"prompt_description": t("rtk_gain")},
+            {"prompt_description": t("rtk_discover")},
+            {"prompt_description": t("rtk_init_global")},
+            {"prompt_description": t("rtk_status")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.rtk_install()
+            elif status == "2":
+                self.rtk_check_version()
+            elif status == "3":
+                self.rtk_show_gain()
+            elif status == "4":
+                self.rtk_discover()
+            elif status == "5":
+                self.rtk_init_global()
+            elif status == "6":
+                self.rtk_check_status()
+            else:
+                print(t("cmd_not_found"))
+
+    def rtk_install(self):
+        print(f"🤖 {t('rtk_install_method')}")
+        choices = [
+            {"prompt_description": t("rtk_install_curl")},
+            {"prompt_description": t("rtk_install_brew")},
+            {"prompt_description": t("rtk_install_cargo")},
+        ]
+        help_info = self.fill_help_info(choices)
+        status = click.prompt(help_info)
+        print()
+        if status == "0":
+            return
+        elif status == "1":
+            self.execute.exec_command_live(
+                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
+                source_erplibre=False,
+            )
+        elif status == "2":
+            self.execute.exec_command_live(
+                "brew install rtk",
+                source_erplibre=False,
+            )
+        elif status == "3":
+            self.execute.exec_command_live(
+                "cargo install --git https://github.com/rtk-ai/rtk",
+                source_erplibre=False,
+            )
+        else:
+            print(t("cmd_not_found"))
+
+    def rtk_check_version(self):
+        self.execute.exec_command_live(
+            "rtk --version",
+            source_erplibre=False,
+        )
+
+    def rtk_show_gain(self):
+        self.execute.exec_command_live(
+            "rtk gain",
+            source_erplibre=False,
+        )
+
+    def rtk_discover(self):
+        self.execute.exec_command_live(
+            "rtk discover",
+            source_erplibre=False,
+        )
+
+    def rtk_init_global(self):
+        self.execute.exec_command_live(
+            "rtk init --global",
+            source_erplibre=False,
+        )
+
+    def rtk_check_status(self):
+        rtk_path = shutil.which("rtk")
+        if rtk_path is None:
+            print(t("rtk_not_installed"))
+            return
+
+        result = self.execute.exec_command_live(
+            "rtk --version",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        if isinstance(result, tuple) and result[0] == 0:
+            version_output = " ".join(result[1]).strip()
+            print(f"{t('rtk_installed_version')}{version_output}")
+        else:
+            print(f"{t('rtk_installed_version')}?")
+
+        config_path = os.path.expanduser("~/.config/rtk/config.toml")
+        if os.path.exists(config_path):
+            print(t("rtk_hook_active"))
+        else:
+            print(t("rtk_hook_inactive"))
 
     def prompt_execute_config(self):
         print(f"🤖 {t('config_manage')}")

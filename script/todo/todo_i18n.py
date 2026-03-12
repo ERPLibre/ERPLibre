@@ -96,9 +96,74 @@ TRANSLATIONS = {
         "fr": "Sécurité - Audit de sécurité des dépendances",
         "en": "Security - Dependency security audit",
     },
+    "menu_rtk": {
+        "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
+        "en": "RTK - CLI proxy to reduce LLM token consumption",
+    },
     "menu_lang": {
         "fr": "Langue - Changer la langue / Change language",
         "en": "Language - Change language / Changer la langue",
+    },
+    # RTK (Rust Token Killer)
+    "rtk_manage": {
+        "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",
+        "en": "Manage RTK (Rust Token Killer) for token optimization!",
+    },
+    "rtk_install": {
+        "fr": "Installer RTK",
+        "en": "Install RTK",
+    },
+    "rtk_version": {
+        "fr": "Vérifier la version de RTK",
+        "en": "Check RTK version",
+    },
+    "rtk_gain": {
+        "fr": "Afficher les économies de tokens cumulées",
+        "en": "Show cumulative token savings",
+    },
+    "rtk_discover": {
+        "fr": "Identifier les opportunités d'optimisation",
+        "en": "Discover optimization opportunities",
+    },
+    "rtk_init_global": {
+        "fr": "Initialiser le hook auto-rewrite global",
+        "en": "Initialize global auto-rewrite hook",
+    },
+    "rtk_status": {
+        "fr": "Vérifier le statut de RTK",
+        "en": "Check RTK status",
+    },
+    "rtk_not_installed": {
+        "fr": "RTK n'est pas installé. Utilisez l'option 1 pour l'installer.",
+        "en": "RTK is not installed. Use option 1 to install it.",
+    },
+    "rtk_installed_version": {
+        "fr": "RTK est installé, version : ",
+        "en": "RTK is installed, version: ",
+    },
+    "rtk_hook_active": {
+        "fr": "Hook auto-rewrite global : actif",
+        "en": "Global auto-rewrite hook: active",
+    },
+    "rtk_hook_inactive": {
+        "fr": "Hook auto-rewrite global : inactif",
+        "en": "Global auto-rewrite hook: inactive",
+    },
+    "rtk_install_method": {
+        "fr": "Méthode d'installation :",
+        "en": "Installation method:",
+    },
+    "rtk_install_curl": {
+        "fr": "curl - Script d'installation automatique",
+        "en": "curl - Automatic install script",
+    },
+    "rtk_install_brew": {
+        "fr": "brew - Homebrew (macOS/Linux)",
+        "en": "brew - Homebrew (macOS/Linux)",
+    },
+    "rtk_install_cargo": {
+        "fr": "cargo - Compilation depuis les sources (Rust requis)",
+        "en": "cargo - Build from source (Rust required)",
     },
     # Prompts and messages
     "enter_password": {
