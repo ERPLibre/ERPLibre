@@ -104,6 +104,39 @@ TRANSLATIONS = {
         "fr": "Langue - Changer la langue / Change language",
         "en": "Language - Change language / Changer la langue",
     },
+    # Deploy section
+    "Deploy - Deploy ERPLibre locally": {
+        "fr": "Déploiement - Déployer ERPLibre localement",
+        "en": "Deploy - Deploy ERPLibre locally",
+    },
+    "Deploy ERPLibre to a local directory!": {
+        "fr": "Déployer ERPLibre dans un répertoire local!",
+        "en": "Deploy ERPLibre to a local directory!",
+    },
+    "Clone ERPLibre locally (git clone)": {
+        "fr": "Cloner ERPLibre localement (git clone)",
+        "en": "Clone ERPLibre locally (git clone)",
+    },
+    "Target directory path (default: ~/erplibre): ": {
+        "fr": "Chemin du répertoire cible (défaut: ~/erplibre) : ",
+        "en": "Target directory path (default: ~/erplibre): ",
+    },
+    "Directory already exists: ": {
+        "fr": "Le répertoire existe déjà : ",
+        "en": "Directory already exists: ",
+    },
+    "Cloning ERPLibre...": {
+        "fr": "Clonage d'ERPLibre en cours...",
+        "en": "Cloning ERPLibre...",
+    },
+    "ERPLibre cloned successfully to: ": {
+        "fr": "ERPLibre cloné avec succès dans : ",
+        "en": "ERPLibre cloned successfully to: ",
+    },
+    "Error cloning ERPLibre: ": {
+        "fr": "Erreur lors du clonage d'ERPLibre : ",
+        "en": "Error cloning ERPLibre: ",
+    },
     # RTK (Rust Token Killer)
     "Manage RTK (Rust Token Killer) for token optimization!": {
         "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",

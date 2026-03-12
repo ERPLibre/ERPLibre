@@ -208,6 +208,7 @@ class TODO:
 [12] {t("Security - Dependency security audit")}
 [13] {t("Test - Test an Odoo module")}
 [14] {t("Update - Update all developed staging source code")}
+[15] {t("Deploy - Deploy ERPLibre locally")}
 [0] {t("Back")}
 """
         while True:
@@ -269,6 +270,10 @@ class TODO:
                     return
             elif status == "14":
                 status = self.prompt_execute_update()
+                if status is not False:
+                    return
+            elif status == "15":
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             else:
@@ -605,6 +610,61 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print(t("Command not found !"))
+
+    def prompt_execute_deploy(self):
+        print(
+            f"🤖 {t('Deploy ERPLibre to a local directory!')}"
+        )
+        choices = [
+            {
+                "prompt_description": t(
+                    "Clone ERPLibre locally (git clone)"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._deploy_clone_erplibre()
+            else:
+                print(t("Command not found !"))
+
+    def _deploy_clone_erplibre(self):
+        default_path = os.path.expanduser("~/erplibre")
+        target_path = (
+            input(
+                t("Target directory path (default: ~/erplibre): ")
+            ).strip()
+            or default_path
+        )
+        target_path = os.path.expanduser(target_path)
+        if os.path.exists(target_path):
+            print(
+                f"{t('Directory already exists: ')}{target_path}"
+            )
+            return
+        print(t("Cloning ERPLibre..."))
+        cmd = (
+            "git clone"
+            " https://github.com/erplibre/erplibre"
+            f" {target_path}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        try:
+            self.execute.exec_command_live(
+                cmd, source_erplibre=False
+            )
+            print(
+                f"{t('ERPLibre cloned successfully to: ')}"
+                f"{target_path}"
+            )
+        except Exception as e:
+            print(f"{t('Error cloning ERPLibre: ')}{e}")
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
