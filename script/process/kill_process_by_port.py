@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 import argparse
 import sys
 
 import psutil
 
-STOP_PARENT_KILL = ["./odoo_bin.sh", "./run.sh"]
+WRAPPER_SCRIPT_NAMES = ["./odoo_bin.sh", "./run.sh"]
 
 # Processes that must never be killed — killing these
 # can crash the desktop session or the system.
@@ -69,7 +69,7 @@ def get_ancestry(pid: int):
     return chain
 
 
-def choose_target(chain, nb_parent):
+def choose_target(chain, parent_depth):
     """
     Decide which process to kill.
     Default: kill the highest ancestor before PID 1 (so not systemd).
@@ -77,13 +77,13 @@ def choose_target(chain, nb_parent):
     if not chain:
         return None
 
-    lst_chain_parent = []
-    for pid in chain:
-        lst_chain_parent.append(pid)
-        for str_to_stop in STOP_PARENT_KILL:
-            if str_to_stop in pid.cmdline():
-                return pid, lst_chain_parent
-    return chain[nb_parent - 1], [chain[nb_parent - 1]]
+    ancestors = []
+    for proc in chain:
+        ancestors.append(proc)
+        for wrapper in WRAPPER_SCRIPT_NAMES:
+            if wrapper in proc.cmdline():
+                return proc, ancestors
+    return chain[parent_depth - 1], [chain[parent_depth - 1]]
 
 
 def kill_process(p: psutil.Process, force: bool):
@@ -151,6 +151,7 @@ def main():
     )
     ap.add_argument(
         "--nb_parent",
+        dest="parent_depth",
         type=int,
         default=1,
         help="Kill parent too",
@@ -163,12 +164,12 @@ def main():
     args = ap.parse_args()
 
     if not (1 <= args.port <= 65535):
-        print("Port invalide (1-65535).", file=sys.stderr)
+        print("Invalid port (1-65535).", file=sys.stderr)
         return 2
 
     pids = find_listeners(args.port)
     if not pids:
-        print(f"Aucun process en LISTEN sur {args.port}.")
+        print(f"No process listening on port {args.port}.")
         return 1
 
     for pid in pids:
@@ -176,7 +177,7 @@ def main():
         if not chain:
             continue
 
-        target, lst_target = choose_target(chain, args.nb_parent)
+        target, target_chain = choose_target(chain, args.parent_depth)
 
         print(f"\nListener PID {pid} ancestry:")
         for i, p in enumerate(chain):
@@ -188,14 +189,14 @@ def main():
 
         if target.pid == 1:
             print(
-                "Refus: la cible est PID 1 (systemd)."
-                " Utilise plutôt systemctl pour arrêter"
-                " le service.",
+                "Refused: target is PID 1 (systemd)."
+                " Use systemctl to stop the service"
+                " instead.",
             )
             continue
         if target.name() in PROTECTED_NAMES:
             print(
-                f"Refus: le process '{target.name()}' semble être protégé et dangereux à être arrêter.",
+                f"Refused: process '{target.name()}' is protected and dangerous to kill.",
             )
             continue
 
@@ -207,9 +208,9 @@ def main():
             while not has_response and not ignore_kill:
                 confirm = (
                     input(
-                        f"Tuer ce processus index {args.nb_parent} (enter) ou mettre "
-                        f"l'index [0 to {len(chain) - 1}] du "
-                        f"process à tuer, (c/C) pour annuler : \n"
+                        f"Kill process at index {args.parent_depth} (enter) or enter "
+                        f"index [0 to {len(chain) - 1}] of "
+                        f"process to kill, (c/C) to cancel: \n"
                     )
                     .strip()
                     .lower()
@@ -233,7 +234,7 @@ def main():
                 alive = kill_tree(target, force=args.force)
                 if alive:
                     print(
-                        "Toujours vivants:",
+                        "Still alive:",
                         ", ".join(str(p.pid) for p in alive),
                     )
         else:
@@ -243,7 +244,7 @@ def main():
                     kill_process(target, force=args.force)
                 except psutil.AccessDenied as e:
                     print(
-                        f"AccessDenied: {e} (lance le script avec sudo).",
+                        f"AccessDenied: {e} (run the script with sudo).",
                         file=sys.stderr,
                     )
 

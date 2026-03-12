@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import argparse
@@ -75,7 +75,7 @@ def main():
 
     filter_group = config.group if config.group else None
 
-    lst_whitelist = []
+    whitelist = []
     if config.from_backup_path or config.from_backup_name:
         # script/database/get_repo_from_backup.py
         # --backup_name bpir_prod_5_dec_2025_2026-02-04_14h27m54s.zip
@@ -92,7 +92,7 @@ def main():
         )
         for line in output:
             repo_name = line[index_to_remove:].strip()
-            lst_whitelist.append(repo_name)
+            whitelist.append(repo_name)
 
     if config.database:
         cmd = f"./script/database/get_module_list_from_database.py --database {config.database}"
@@ -114,19 +114,19 @@ def main():
         )
         for line in output:
             repo_name = line[index_to_remove:].strip()
-            lst_whitelist.append(repo_name)
+            whitelist.append(repo_name)
 
     if config.add_repo:
-        lst_add_repo = [a.strip() for a in config.add_repo.split(";")]
+        extra_repos = [a.strip() for a in config.add_repo.split(";")]
     else:
-        lst_add_repo = []
+        extra_repos = []
 
     git_tool.generate_generate_config(
         filter_group=filter_group,
         extra_path=config.extra_addons_path,
         ignore_odoo_path=config.ignore_odoo_path,
-        lst_add_repo=lst_add_repo,
-        lst_whitelist=lst_whitelist,
+        add_repos=extra_repos,
+        whitelist=whitelist,
     )
 
 

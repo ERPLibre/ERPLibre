@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import os
 import re
 
-CONFIG_OVERRIDE_PRIVATE_FILE = "./env_var.sh"
+ENV_VAR_FILE = "./env_var.sh"
 
 _current_lang = None
 
@@ -304,8 +304,16 @@ TRANSLATIONS = {
         "en": "Create backup (.zip)",
     },
     "kill_process_port": {
-        "fr": "Terminer le processus du port actuel",
-        "en": "Kill process from actual port",
+        "fr": "Terminer le processus Odoo du port actuel",
+        "en": "Kill Odoo process from actual port",
+    },
+    "kill_git_daemon": {
+        "fr": "Terminer le processus du serveur git daemon",
+        "en": "Kill git daemon server process",
+    },
+    "kill_git_daemon_done": {
+        "fr": "Processus git daemon terminé.",
+        "en": "Git daemon process killed.",
     },
     "generate_all_config": {
         "fr": "Générer toute la configuration",
@@ -360,6 +368,22 @@ TRANSLATIONS = {
         "fr": "Tester un module avec couverture de code",
         "en": "Test a module with code coverage",
     },
+    "test_run_unit_tests": {
+        "fr": "Tests unitaires ERPLibre",
+        "en": "ERPLibre unit tests",
+    },
+    "test_unit_running": {
+        "fr": "Exécution des tests unitaires",
+        "en": "Running unit tests",
+    },
+    "test_unit_success": {
+        "fr": "Tous les tests unitaires ont réussi",
+        "en": "All unit tests passed",
+    },
+    "test_unit_failed": {
+        "fr": "Des tests unitaires ont échoué, code de sortie",
+        "en": "Some unit tests failed, exit code",
+    },
     "test_enter_module_name": {
         "fr": "Nom du module à tester : ",
         "en": "Module name to test: ",
@@ -412,6 +436,63 @@ TRANSLATIONS = {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
     },
+    # Git section
+    "menu_git": {
+        "fr": "Git - Outils Git",
+        "en": "Git - Git tools",
+    },
+    "git_manage": {
+        "fr": "Outils de gestion Git!",
+        "en": "Git management tools!",
+    },
+    "git_local_server": {
+        "fr": "Serveur git local",
+        "en": "Local git server",
+    },
+    "git_repo_manage": {
+        "fr": "Gérer le serveur de dépôts git local!",
+        "en": "Manage local git repository server!",
+    },
+    "git_repo_deploy_local": {
+        "fr": "Déployer un serveur git local (~/.git-server)",
+        "en": "Deploy a local git server (~/.git-server)",
+    },
+    "git_repo_deploy_production": {
+        "fr": "Déployer un serveur git production (/srv/git, root requis)",
+        "en": "Deploy a production git server (/srv/git, root required)",
+    },
+    "git_repo_deploy_starting": {
+        "fr": "Démarrage du déploiement du serveur git...",
+        "en": "Starting git server deployment...",
+    },
+    "git_mode_local": {
+        "fr": "Mode local (~/.git-server)",
+        "en": "Local mode (~/.git-server)",
+    },
+    "git_mode_production": {
+        "fr": "Mode production (/srv/git, root requis)",
+        "en": "Production mode (/srv/git, root required)",
+    },
+    "git_action_all": {
+        "fr": "Tout exécuter (init + remote + push + serve)",
+        "en": "Run all (init + remote + push + serve)",
+    },
+    "git_action_init": {
+        "fr": "Init - Créer les bare repos",
+        "en": "Init - Create bare repos",
+    },
+    "git_action_remote": {
+        "fr": "Remote - Ajouter les remotes locaux",
+        "en": "Remote - Add local remotes",
+    },
+    "git_action_push": {
+        "fr": "Push - Pousser vers le serveur local",
+        "en": "Push - Push to local server",
+    },
+    "git_action_serve": {
+        "fr": "Serve - Démarrer le daemon git",
+        "en": "Serve - Start git daemon",
+    },
     # Language selection
     "lang_prompt": {
         "fr": "Choisir la langue / Choose language",
@@ -437,18 +518,51 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
+    # GPT code section
+    "menu_gpt_code": {
+        "fr": "GPT code - Outils d'assistant IA",
+        "en": "GPT code - AI assistant tools",
+    },
+    "gpt_code_manage": {
+        "fr": "Outils d'assistant IA pour le développement!",
+        "en": "AI assistant tools for development!",
+    },
+    "gpt_code_claude_commit": {
+        "fr": "Configurer le commit Claude Code",
+        "en": "Configure Claude Code commit",
+    },
+    "gpt_code_enter_name": {
+        "fr": "Entrez votre nom complet : ",
+        "en": "Enter your full name: ",
+    },
+    "gpt_code_enter_email": {
+        "fr": "Entrez votre courriel : ",
+        "en": "Enter your email: ",
+    },
+    "gpt_code_commit_exists": {
+        "fr": "Le fichier ~/.claude/commands/commit.md existe déjà. Aucune action effectuée.",
+        "en": "File ~/.claude/commands/commit.md already exists. No action taken.",
+    },
+    "gpt_code_commit_created": {
+        "fr": "Fichier ~/.claude/commands/commit.md créé avec succès!",
+        "en": "File ~/.claude/commands/commit.md created successfully!",
+    },
+    "gpt_code_commit_error": {
+        "fr": "Erreur lors de la création du fichier : ",
+        "en": "Error creating file: ",
+    },
 }
 
 
-def get_lang():
+def get_lang() -> str:
     global _current_lang
     if _current_lang is not None:
         return _current_lang
 
     # 1. Check env_var.sh file
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
             match = re.search(
                 r'^EL_LANG=["\']?(\w+)["\']?', content, re.MULTILINE
@@ -472,14 +586,14 @@ def get_lang():
     return _current_lang
 
 
-def set_lang(lang):
+def set_lang(lang: str) -> None:
     global _current_lang
     _current_lang = lang
 
     # Persist to env_var.sh
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
         except OSError:
             return
@@ -496,15 +610,15 @@ def set_lang(lang):
         else:
             content = content.rstrip("\n") + "\n" + new_line + "\n"
 
-        with open(CONFIG_OVERRIDE_PRIVATE_FILE, "w") as f:
+        with open(ENV_VAR_FILE, "w") as f:
             f.write(content)
 
 
-def lang_is_configured():
+def lang_is_configured() -> bool:
     """Check if a language has been explicitly set."""
-    if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+    if os.path.exists(ENV_VAR_FILE):
         try:
-            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as f:
+            with open(ENV_VAR_FILE) as f:
                 content = f.read()
             return bool(re.search(r"^EL_LANG=", content, re.MULTILINE))
         except OSError:
@@ -512,7 +626,7 @@ def lang_is_configured():
     return False
 
 
-def t(key):
+def t(key: str) -> str:
     entry = TRANSLATIONS.get(key)
     if entry is None:
         return key

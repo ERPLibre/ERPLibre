@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# © 2021-2025 TechnoLibre (http://www.technolibre.ca)
+# © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
 import configparser
@@ -22,15 +22,13 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.todo.database_manager import DatabaseManager
+from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
+from script.todo.version_manager import get_odoo_version
 
-file_error_path = ".erplibre.error.txt"
-cst_venv_erplibre = ".venv.erplibre"
-VERSION_DATA_FILE = os.path.join("conf", "supported_version_erplibre.json")
-INSTALLED_ODOO_VERSION_FILE = os.path.join(
-    ".repo", "installed_odoo_version.txt"
-)
-ODOO_VERSION_FILE = ".odoo-version"
+ERROR_LOG_PATH = ".erplibre.error.txt"
+VENV_ERPLIBRE = ".venv.erplibre"
 ENABLE_CRASH = False
 CRASH_E = None
 # Support mobile ERPLibre
@@ -83,10 +81,11 @@ LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
 class TODO:
     def __init__(self):
         self.dir_path = None
-        self.kdbx = None
-        self.file_path = None
+        self.selected_file_path = None
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
+        self.kdbx_manager = KdbxManager(self.config_file)
+        self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
 
     def _ask_language(self):
         if not lang_is_configured():
@@ -137,11 +136,11 @@ class TODO:
                 status = click.prompt(help_info)
             except NameError:
                 print("Do")
-                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
                 sys.exit(1)
             except ImportError:
                 print("Do")
-                print(f"source ./{cst_venv_erplibre}/bin/activate && make")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
                 sys.exit(1)
             except click.exceptions.Abort:
                 sys.exit(0)
@@ -157,7 +156,7 @@ class TODO:
             elif status == "4":
                 # cmd = (
                 #     f"gnome-terminal --tab -- bash -c 'source"
-                #     f" ./{cst_venv_erplibre}/bin/activate;make todo'"
+                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
                 # )
                 cmd = "make todo"
                 self.execute.exec_command_live(cmd, source_erplibre=True)
@@ -169,38 +168,6 @@ class TODO:
         print(status)
         # manipuler()
 
-    def get_kdbx(self):
-        if self.kdbx:
-            return self.kdbx
-        # Open file
-        chemin_fichier_kdbx = self.config_file.get_config_value(
-            ["kdbx", "path"]
-        )
-        if not chemin_fichier_kdbx:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            chemin_fichier_kdbx = filedialog.askopenfilename(
-                title="Select a File",
-                filetypes=(("KeepassX files", "*.kdbx"),),
-            )
-        if not chemin_fichier_kdbx:
-            _logger.error(
-                f"KDBX is not configured, please fill {self.config_file.CONFIG_FILE}"
-            )
-            return
-
-        mot_de_passe_kdbx = self.config_file.get_config_value(
-            ["kdbx", "password"]
-        )
-        if not mot_de_passe_kdbx:
-            mot_de_passe_kdbx = getpass.getpass(prompt=t("enter_password"))
-
-        kp = PyKeePass(chemin_fichier_kdbx, password=mot_de_passe_kdbx)
-
-        if kp:
-            self.kdbx = kp
-        return kp
-
     def execute_prompt_ia(self):
         while True:
             help_info = f"""{t("command")}
@@ -210,13 +177,13 @@ class TODO:
             print()
             if status == "0":
                 return
-            kp = self.get_kdbx()
+            kp = self.kdbx_manager.get_kdbx()
             if not kp:
                 return
-            nom_configuration = self.config_file.get_config_value(
+            config_name = self.config_file.get_config_value(
                 ["kdbx_config", "openai", "kdbx_key"]
             )
-            entry = kp.find_entries_by_title(nom_configuration, first=True)
+            entry = kp.find_entries_by_title(config_name, first=True)
 
             client = openai.OpenAI(api_key=entry.password)
             prompt_update = status
@@ -230,18 +197,20 @@ class TODO:
 
     def prompt_execute(self):
         help_info = f"""{t("command")}
-[1] {t("menu_run")}
-[2] {t("menu_automation")}
-[3] {t("menu_update")}
-[4] {t("menu_code")}
+[1] {t("menu_automation")}
+[2] {t("menu_code")}
+[3] {t("menu_config")}
+[4] {t("menu_database")}
 [5] {t("menu_doc")}
-[6] {t("menu_database")}
-[7] {t("menu_process")}
-[8] {t("menu_config")}
+[6] {t("menu_git")}
+[7] {t("menu_gpt_code")}
+[8] {t("menu_lang")}
 [9] {t("menu_network")}
-[10] {t("menu_security")}
-[11] {t("menu_test")}
-[12] {t("menu_lang")}
+[10] {t("menu_process")}
+[11] {t("menu_run")}
+[12] {t("menu_security")}
+[13] {t("menu_test")}
+[14] {t("menu_update")}
 [0] {t("back")}
 """
         while True:
@@ -250,19 +219,19 @@ class TODO:
             if status == "0":
                 return
             elif status == "1":
-                status = self.prompt_execute_instance()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "2":
-                status = self.prompt_execute_fonction()
+                status = self.prompt_execute_code()
                 if status is not False:
                     return
             elif status == "3":
-                status = self.prompt_execute_update()
+                status = self.prompt_execute_config()
                 if status is not False:
                     return
             elif status == "4":
-                status = self.prompt_execute_code()
+                status = self.prompt_execute_database()
                 if status is not False:
                     return
             elif status == "5":
@@ -270,15 +239,15 @@ class TODO:
                 if status is not False:
                     return
             elif status == "6":
-                status = self.prompt_execute_database()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_process()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_config()
+                status = self._change_language()
                 if status is not False:
                     return
             elif status == "9":
@@ -286,15 +255,23 @@ class TODO:
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_process()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_test()
+                status = self.prompt_execute_instance()
                 if status is not False:
                     return
             elif status == "12":
-                status = self._change_language()
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "13":
+                status = self.prompt_execute_test()
+                if status is not False:
+                    return
+            elif status == "14":
+                status = self.prompt_execute_update()
                 if status is not False:
                     return
             else:
@@ -360,7 +337,7 @@ class TODO:
         # TODO maybe update q to only install erplibre from install_locally
         # TODO problem installing with q, the script depend on odoo
         key_i = 0
-        dct_cmd_intern_begin = {
+        commands_begin = {
             "q": (
                 "q",
                 "q: ERPLibre only with system python without Odoo",
@@ -381,43 +358,43 @@ class TODO:
                 f"0: {t('menu_quit')}",
             ),
         }
-        dct_final_cmd_intern = {}
-        lst_version, lst_version_installed, odoo_installed_version = (
-            self.get_odoo_version()
+        commands_end = {}
+        versions, installed_versions, odoo_installed_version = (
+            get_odoo_version()
         )
 
-        for dct_version in lst_version[::-1]:
+        for version_info in versions[::-1]:
             key_i += 1
             key_s = str(key_i)
-            label = f"{key_s}: Odoo {dct_version.get('odoo_version')}"
+            label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
 
-            odoo_version = f"odoo{dct_version.get('odoo_version')}"
-            if odoo_version in lst_version_installed:
+            odoo_version = f"odoo{version_info.get('odoo_version')}"
+            if odoo_version in installed_versions:
                 label += " - Installed"
             if odoo_version == odoo_installed_version:
                 label += " - Actual"
-            if dct_version.get("default"):
+            if version_info.get("default"):
                 label += " - Default"
-            if dct_version.get("is_deprecated"):
+            if version_info.get("is_deprecated"):
                 label += " - Deprecated"
-            erplibre_version = dct_version.get("erplibre_version")
-            dct_cmd_intern_begin[key_s] = (
+            erplibre_version = version_info.get("erplibre_version")
+            commands_begin[key_s] = (
                 key_s,
                 label,
                 f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
             )
 
         # Add final command
-        dct_cmd_intern = {**dct_cmd_intern_begin, **dct_final_cmd_intern}
+        install_commands = {**commands_begin, **commands_end}
 
         # Show command
         odoo_version_input = ""
-        while odoo_version_input not in dct_cmd_intern.keys():
+        while odoo_version_input not in install_commands:
             if odoo_version_input:
                 print(f"{t('error_value')} '{odoo_version_input}'")
             str_input_dyn_odoo_version = (
                 f"💬 {t('choose_version')}\n\t"
-                + "\n\t".join([a[1] for a in dct_cmd_intern.values()])
+                + "\n\t".join([a[1] for a in install_commands.values()])
                 + f"\n{t('selection')}"
             )
             odoo_version_input = (
@@ -427,7 +404,7 @@ class TODO:
         if odoo_version_input == "0":
             return
 
-        cmd_intern = dct_cmd_intern.get(odoo_version_input)[2]
+        cmd_intern = install_commands.get(odoo_version_input)[2]
         print(f"{t('will_execute')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
@@ -444,15 +421,17 @@ class TODO:
             self.restart_script(str(e))
 
     def execute_from_configuration(
-        self, dct_instance, exec_run_db=False, ignore_makefile=False
+        self, instance, exec_run_db=False, ignore_makefile=False
     ):
         # exec_run_db need argument database
-        kdbx_key = dct_instance.get("kdbx_key")
-        odoo_user = dct_instance.get("user")
-        odoo_password = dct_instance.get("password")
+        kdbx_key = instance.get("kdbx_key")
+        odoo_user = instance.get("user")
+        odoo_password = instance.get("password")
 
         if kdbx_key:
-            extra_cmd_web_login = self.kdbx_get_extra_command_user(kdbx_key)
+            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(
+                kdbx_key
+            )
         elif odoo_user and odoo_password:
             extra_cmd_web_login = (
                 f" --default_email_auth {odoo_user} --default_password_auth"
@@ -461,7 +440,7 @@ class TODO:
         else:
             extra_cmd_web_login = ""
 
-        makefile_cmd = dct_instance.get("makefile_cmd")
+        makefile_cmd = instance.get("makefile_cmd")
         if makefile_cmd and not ignore_makefile:
             status = self.execute.exec_command_live(
                 f"make {makefile_cmd}",
@@ -475,30 +454,30 @@ class TODO:
                 return
 
         if exec_run_db:
-            db_name = dct_instance.get("database")
+            db_name = instance.get("database")
             self.prompt_execute_selenium_and_run_db(
                 db_name, extra_cmd_web_login=extra_cmd_web_login
             )
 
-        command = dct_instance.get("command")
+        command = instance.get("command")
         if command:
             self.prompt_execute_selenium(
                 command=command, extra_cmd_web_login=extra_cmd_web_login
             )
 
-        callback = dct_instance.get("callback")
+        callback = instance.get("callback")
         if callback:
-            callback(dct_instance)
+            callback(instance)
 
-    def fill_help_info(self, lst_choice):
+    def fill_help_info(self, choices):
         help_info = t("command") + "\n"
         help_end = f"[0] {t('back')}\n"
-        for i, dct_instance in enumerate(lst_choice):
-            desc_key = dct_instance.get("prompt_description_key")
+        for i, instance in enumerate(choices):
+            desc_key = instance.get("prompt_description_key")
             if desc_key:
                 desc = t(desc_key)
             else:
-                desc = dct_instance["prompt_description"]
+                desc = instance["prompt_description"]
             help_info += f"[{i + 1}] " + desc + "\n"
         help_info += help_end
         return help_info
@@ -507,24 +486,24 @@ class TODO:
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
         # TODO proposer la création de docker
-        lst_choice = self.config_file.get_config("instance")
-        init_len = len(lst_choice)
+        choices = self.config_file.get_config("instance")
+        init_len = len(choices)
 
         # Support mobile ERPLibre
         if os.path.exists(MOBILE_HOME_PATH):
-            dct_upgrade_odoo_database = {
+            menu_entry = {
                 "prompt_description": t("mobile_compile_run"),
                 "callback": self.callback_make_mobile_home,
             }
-            lst_choice.append(dct_upgrade_odoo_database)
+            choices.append(menu_entry)
 
         # Support custom database to execute
-        dct_upgrade_odoo_database = {
+        menu_entry = {
             "prompt_description": t("choose_database"),
             "callback": self.callback_execute_custom_database,
         }
-        lst_choice.insert(0, dct_upgrade_odoo_database)
-        help_info = self.fill_help_info(lst_choice)
+        choices.insert(0, menu_entry)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -538,27 +517,27 @@ class TODO:
                     if 1 < int_cmd <= init_len:
                         cmd_no_found = False
                         status = click.confirm(t("new_instance_confirm"))
-                        dct_instance = lst_choice[int_cmd - 1]
+                        instance = choices[int_cmd - 1]
                         self.execute_from_configuration(
-                            dct_instance,
+                            instance,
                             exec_run_db=True,
                             ignore_makefile=not bool(status),
                         )
-                    elif int_cmd <= len(lst_choice) or 1 == int_cmd:
+                    elif int_cmd <= len(choices) or 1 == int_cmd:
                         cmd_no_found = False
                         # Execute dynamic instance
-                        dct_instance = lst_choice[int_cmd - 1]
+                        instance = choices[int_cmd - 1]
                         self.execute_from_configuration(
-                            dct_instance,
+                            instance,
                         )
                 except ValueError:
                     pass
                 if cmd_no_found:
                     print(t("cmd_not_found"))
 
-    def prompt_execute_fonction(self):
-        lst_choice = self.config_file.get_config("function")
-        help_info = self.fill_help_info(lst_choice)
+    def prompt_execute_function(self):
+        choices = self.config_file.get_config("function")
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -569,10 +548,10 @@ class TODO:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_choice):
+                    if 0 < int_cmd <= len(choices):
                         cmd_no_found = False
-                        dct_instance = lst_choice[int_cmd - 1]
-                        self.execute_from_configuration(dct_instance)
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -589,35 +568,35 @@ class TODO:
         # TODO faire la mise à jour de ERPLibre
         # TODO faire l'upgrade d'un odoo vers un autre
 
-        lst_choice = self.config_file.get_config("update_from_makefile")
-        dct_upgrade_odoo_database = {
+        choices = self.config_file.get_config("update_from_makefile")
+        menu_entry = {
             "prompt_description": t("upgrade_odoo_migration"),
         }
-        lst_choice.append(dct_upgrade_odoo_database)
-        dct_upgrade_poetry = {
+        choices.append(menu_entry)
+        poetry_entry = {
             "prompt_description": t("upgrade_poetry_dependency"),
         }
-        lst_choice.append(dct_upgrade_poetry)
-        help_info = self.fill_help_info(lst_choice)
+        choices.append(poetry_entry)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_choice) - 1):
+            elif status == str(len(choices) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
                 upgrade.execute_odoo_upgrade()
-            elif status == str(len(lst_choice)):
+            elif status == str(len(choices)):
                 self.upgrade_poetry()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status) - 1
-                    if 0 < int_cmd <= len(lst_choice):
+                    if 0 < int_cmd <= len(choices):
                         cmd_no_found = False
-                        dct_instance = lst_choice[int_cmd - 1]
-                        self.execute_from_configuration(dct_instance)
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -637,59 +616,229 @@ class TODO:
         #         [0] Retour
         # """
 
-        lst_choice = self.config_file.get_config("code_from_makefile")
+        choices = self.config_file.get_config("code_from_makefile")
 
-        dct_upgrade_odoo_database = {
+        menu_entry = {
             "prompt_description": t("open_shell"),
         }
-        lst_choice.append(dct_upgrade_odoo_database)
+        choices.append(menu_entry)
 
-        dct_upgrade_odoo_database = {
+        menu_entry = {
             "prompt_description": t("upgrade_module"),
         }
-        lst_choice.append(dct_upgrade_odoo_database)
+        choices.append(menu_entry)
 
-        lst_choice.append(
+        choices.append(
             {
                 "prompt_description": t("debug"),
             }
         )
 
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            elif status == str(len(lst_choice)):
+            elif status == str(len(choices)):
                 self.debug_ide()
-            elif status == str(len(lst_choice) - 1):
+            elif status == str(len(choices) - 1):
                 self.upgrade_module()
-            elif status == str(len(lst_choice) - 2):
+            elif status == str(len(choices) - 2):
                 self.open_shell_on_database()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(lst_choice):
+                    if 0 < int_cmd <= len(choices):
                         cmd_no_found = False
-                        dct_instance = lst_choice[int_cmd - 1]
-                        self.execute_from_configuration(dct_instance)
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
                     print(t("cmd_not_found"))
 
+    def prompt_execute_git(self):
+        print(f"🤖 {t('git_manage')}")
+        choices = [
+            {"prompt_description": t("git_local_server")},
+        ]
+
+        # Append config-driven entries
+        config_entries = self.config_file.get_config("git_from_makefile")
+        if config_entries:
+            choices.extend(config_entries)
+
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.prompt_execute_git_local_server()
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(choices):
+                        cmd_no_found = False
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print(t("cmd_not_found"))
+
+    def prompt_execute_git_local_server(self):
+        print(f"🤖 {t('git_repo_manage')}")
+        choices = [
+            {"prompt_description": t("git_repo_deploy_local")},
+            {"prompt_description": t("git_repo_deploy_production")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._prompt_git_server_actions(production_ready=False)
+            elif status == "2":
+                self._prompt_git_server_actions(production_ready=True)
+            else:
+                print(t("cmd_not_found"))
+
+    def _prompt_git_server_actions(self, production_ready=False):
+        mode = (
+            t("git_mode_production")
+            if production_ready
+            else t("git_mode_local")
+        )
+        print(f"🤖 {mode}")
+        choices = [
+            {"prompt_description": t("git_action_all")},
+            {"prompt_description": t("git_action_init")},
+            {"prompt_description": t("git_action_remote")},
+            {"prompt_description": t("git_action_push")},
+            {"prompt_description": t("git_action_serve")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="all",
+                )
+            elif status == "2":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="init",
+                )
+            elif status == "3":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="remote",
+                )
+            elif status == "4":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="push",
+                )
+            elif status == "5":
+                self._deploy_git_server(
+                    production_ready=production_ready,
+                    action="serve",
+                )
+            else:
+                print(t("cmd_not_found"))
+
+    def _deploy_git_server(self, production_ready=False, action="all"):
+        print(t("git_repo_deploy_starting"))
+        cmd = (
+            "python3 ./script/git/git_local_server.py -v" f" --action {action}"
+        )
+        if production_ready:
+            cmd += " --production-ready"
+        self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+        )
+
+    def prompt_execute_gpt_code(self):
+        print(f"🤖 {t('gpt_code_manage')}")
+        choices = [
+            {"prompt_description": t("gpt_code_claude_commit")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._setup_claude_commit()
+            else:
+                print(t("cmd_not_found"))
+
+    def _setup_claude_commit(self):
+        dest_dir = os.path.expanduser("~/.claude/commands")
+        dest_file = os.path.join(dest_dir, "commit.md")
+
+        if os.path.exists(dest_file):
+            print(t("gpt_code_commit_exists"))
+            return
+
+        name = input(t("gpt_code_enter_name")).strip()
+        email = input(t("gpt_code_enter_email")).strip()
+
+        template_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "conf",
+            "template_claude_commands_commit.md",
+        )
+        try:
+            with open(template_path) as f:
+                content = f.read()
+
+            content = content.replace(
+                "Your Name <your@email.com>",
+                f"{name} <{email}>",
+            )
+            content = content.replace(
+                "Your Name ",
+                f"{name} ",
+            )
+
+            os.makedirs(dest_dir, exist_ok=True)
+            with open(dest_file, "w") as f:
+                f.write(content)
+
+            print(t("gpt_code_commit_created"))
+        except Exception as e:
+            print(f"{t('gpt_code_commit_error')}{e}")
+
     def prompt_execute_doc(self):
         print(f"🤖 {t('doc_search')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("migration_module_coverage")},
             {"prompt_description": t("what_change_between_version")},
             {"prompt_description": t("oca_guidelines")},
             {"prompt_description": t("oca_migration_odoo_19")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -732,12 +881,12 @@ class TODO:
 
     def prompt_execute_database(self):
         print(f"🤖 {t('db_modify')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("download_db_backup")},
             {"prompt_description": t("restore_from_backup")},
             {"prompt_description": t("create_backup")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -745,20 +894,21 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self.download_database_backup_cli()
+                self.db_manager.download_database_backup_cli()
             elif status == "2":
-                self.restore_from_database()
+                self.db_manager.restore_from_database()
             elif status == "3":
-                self.create_backup_from_database()
+                self.db_manager.create_backup_from_database()
             else:
                 print(t("cmd_not_found"))
 
     def prompt_execute_process(self):
         print(f"🤖 {t('process_manage')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("kill_process_port")},
+            {"prompt_description": t("kill_git_daemon")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -767,19 +917,28 @@ class TODO:
                 return False
             elif status == "1":
                 self.process_kill_from_port()
+            elif status == "2":
+                self.process_kill_git_daemon()
             else:
                 print(t("cmd_not_found"))
 
+    def process_kill_git_daemon(self):
+        self.execute.exec_command_live(
+            "pkill -f 'git daemon'",
+            source_erplibre=False,
+        )
+        print(t("kill_git_daemon_done"))
+
     def prompt_execute_config(self):
         print(f"🤖 {t('config_manage')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("generate_all_config")},
             {"prompt_description": t("generate_from_preconfig")},
             {"prompt_description": t("generate_from_backup")},
             {"prompt_description": t("generate_from_database")},
             {"prompt_description": t("setup_queue_job_for_parallelism")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -801,7 +960,7 @@ class TODO:
 
     def prompt_execute_network(self):
         print(f"🤖 {t('network_tools')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("ssh_port_forwarding")},
             {
                 "prompt_description": t(
@@ -809,7 +968,7 @@ class TODO:
                 )
             },
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -849,10 +1008,10 @@ class TODO:
 
     def prompt_execute_security(self):
         print(f"🤖 {t('security_audit')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("pip_audit_desc")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -866,11 +1025,12 @@ class TODO:
 
     def prompt_execute_test(self):
         print(f"🤖 {t('test_description')}")
-        lst_choice = [
+        choices = [
             {"prompt_description": t("test_run_module")},
             {"prompt_description": t("test_run_module_coverage")},
+            {"prompt_description": t("test_run_unit_tests")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -881,6 +1041,8 @@ class TODO:
                 self.execute_test_module(coverage=False)
             elif status == "2":
                 self.execute_test_module(coverage=True)
+            elif status == "3":
+                self.execute_unit_tests()
             else:
                 print(t("cmd_not_found"))
 
@@ -970,19 +1132,35 @@ class TODO:
                 single_source_erplibre=True,
             )
 
+    def execute_unit_tests(self):
+        print(f"\n--- {t('test_unit_running')} ---")
+        cmd = (
+            ".venv.erplibre/bin/python -m unittest discover"
+            " -s test -p 'test_*.py' -v"
+        )
+        status_code, output = self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            return_status_and_output=True,
+        )
+        if status_code == 0:
+            print(f"\n✅ {t('test_unit_success')}")
+        else:
+            print(f"\n❌ {t('test_unit_failed')}: {status_code}")
+
     def execute_pip_audit(self):
-        lst_version, lst_version_installed, odoo_installed_version = (
-            self.get_odoo_version()
+        versions, installed_versions, odoo_installed_version = (
+            get_odoo_version()
         )
 
         # Build list of installed environments
-        dct_env = {}
+        environments = {}
         key_i = 0
-        for dct_version in lst_version[::-1]:
-            erplibre_version = dct_version.get("erplibre_version")
+        for version_info in versions[::-1]:
+            erplibre_version = version_info.get("erplibre_version")
             venv_path = f".venv.{erplibre_version}"
             req_path = f"requirement/requirements.{erplibre_version}.txt"
-            odoo_version = f"odoo{dct_version.get('odoo_version')}"
+            odoo_version = f"odoo{version_info.get('odoo_version')}"
 
             if not os.path.isdir(venv_path):
                 continue
@@ -992,29 +1170,29 @@ class TODO:
             label = f"{key_s}: {erplibre_version}"
             if odoo_version == odoo_installed_version:
                 label += f" - {t('current')}"
-            if dct_version.get("default"):
+            if version_info.get("default"):
                 label += f" - {t('default')}"
 
-            dct_env[key_s] = {
+            environments[key_s] = {
                 "label": label,
                 "venv_path": venv_path,
                 "req_path": req_path,
                 "erplibre_version": erplibre_version,
             }
 
-        if not dct_env:
+        if not environments:
             print(t("no_env_installed"))
             return
 
         # Show selection menu
         str_input = (
             f"💬 {t('choose_env_audit')}\n\t"
-            + "\n\t".join([v["label"] for v in dct_env.values()])
+            + "\n\t".join([v["label"] for v in environments.values()])
             + f"\n\t0: {t('back')}"
             + f"\n{t('selection')}"
         )
         env_input = ""
-        while env_input not in dct_env.keys() and env_input != "0":
+        while env_input not in environments and env_input != "0":
             if env_input:
                 print(f"{t('error_value')}" f" '{env_input}'")
             env_input = input(str_input).strip()
@@ -1022,7 +1200,7 @@ class TODO:
         if env_input == "0":
             return
 
-        selected = dct_env[env_input]
+        selected = environments[env_input]
         venv_path = selected["venv_path"]
         req_path = selected["req_path"]
 
@@ -1058,14 +1236,14 @@ class TODO:
         )
 
     def generate_config_from_preconfiguration(self):
-        lst_choice = [
+        choices = [
             {"prompt_description": t("preconfig_base")},
             {"prompt_description": t("preconfig_base_code_generator")},
             {"prompt_description": t("preconfig_base_image_db")},
             {"prompt_description": t("preconfig_all")},
             # {"prompt_description": "base + migration"},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -1094,10 +1272,10 @@ class TODO:
                 print(t("cmd_not_found"))
 
     def debug_ide(self):
-        lst_choice = [
+        choices = [
             {"prompt_description": t("debug_todo_py")},
         ]
-        help_info = self.fill_help_info(lst_choice)
+        help_info = self.fill_help_info(choices)
 
         while True:
             status = click.prompt(help_info)
@@ -1113,12 +1291,12 @@ class TODO:
                 print(t("cmd_not_found"))
 
     def generate_config_from_backup(self):
-        file_name = self.open_file_image_db()
+        file_name = self.db_manager.open_file_image_db()
         add_arg = f"--from_backup_name {file_name} --add_repo odoo18.0/addons/MathBenTech_development"
         self.generate_config(add_arg=add_arg)
 
     def generate_config_from_database(self):
-        database_name = self.select_database()
+        database_name = self.db_manager.select_database()
         str_arg = f"--database {database_name}"
         self.generate_config(add_arg=str_arg)
         return False
@@ -1131,99 +1309,10 @@ class TODO:
             single_source_erplibre=True,
         )
 
-    def select_database(self):
-        cmd_server = f"./odoo_bin.sh db --list"
-        status, lst_database = self.execute.exec_command_live(
-            cmd_server,
-            return_status_and_output=True,
-            source_erplibre=False,
-            single_source_erplibre=True,
-        )
-        lst_choice = [{"prompt_description": a.strip()} for a in lst_database]
-
-        help_info = self.fill_help_info(lst_choice)
-
-        lst_str_choice = [str(a) for a in range(len(lst_choice) + 1) if a]
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status in lst_str_choice:
-                database_name = lst_database[int(status) - 1].strip()
-                print(database_name)
-                return database_name
-            else:
-                print(t("cmd_not_found"))
-
-    def get_odoo_version(self):
-        with open(VERSION_DATA_FILE) as txt:
-            data_version = json.load(txt)
-
-        if not data_version:
-            raise Exception(
-                f"Internal error, no Odoo version is supported, please valide file '{VERSION_DATA_FILE}'"
-            )
-        lst_version_transform = []
-        for key, value in data_version.items():
-            lst_version_transform.append(value)
-            value["erplibre_version"] = key
-
-        lst_version_installed = []
-        if os.path.exists(INSTALLED_ODOO_VERSION_FILE):
-            with open(INSTALLED_ODOO_VERSION_FILE) as txt:
-                lst_version_installed = sorted(txt.read().splitlines())
-
-        odoo_installed_version = None
-        if os.path.exists(ODOO_VERSION_FILE):
-            with open(ODOO_VERSION_FILE) as txt:
-                odoo_installed_version = f"odoo{txt.read().strip()}"
-
-        # Add odoo version installation on command
-        lst_version = sorted(
-            lst_version_transform, key=lambda k: k.get("erplibre_version")
-        )
-
-        return lst_version, lst_version_installed, odoo_installed_version
-
-    def kdbx_get_extra_command_user(self, kdbx_key):
-        lst_value = []
-        if kdbx_key:
-            kp = self.get_kdbx()
-            if not kp:
-                return ""
-            if type(kdbx_key) is not list:
-                lst_kdbx_key = [kdbx_key]
-            else:
-                lst_kdbx_key = kdbx_key
-            for key in lst_kdbx_key:
-                entry = kp.find_entries_by_title(key, first=True)
-                try:
-                    odoo_user = entry.username
-                except AttributeError:
-                    _logger.error(f"Cannot find username from keys {key}")
-                try:
-                    odoo_password = entry.password
-                except AttributeError:
-                    _logger.error(f"Cannot find password from keys {key}")
-                lst_value.append(
-                    " --default_email_auth"
-                    f" {odoo_user} --default_password_auth '{odoo_password}'"
-                )
-        if len(lst_value) == 0:
-            return ""
-        elif len(lst_value) == 1:
-            return lst_value[0]
-        return lst_value
-
-    def prompt_execute_selenium_and_run_db(self, bd, extra_cmd_web_login=""):
-        # cmd = (
-        #     f'parallel ::: "./run.sh -d {bd}" "sleep'
-        #     f' 3;./script/selenium/web_login.py{extra_cmd_web_login}"'
-        # )
-        # self.execute.exec_command_live(cmd)
-        cmd_server = f"./run.sh -d {bd};bash"
+    def prompt_execute_selenium_and_run_db(
+        self, db_name, extra_cmd_web_login=""
+    ):
+        cmd_server = f"./run.sh -d {db_name};bash"
         self.execute.exec_command_live(cmd_server)
         cmd_client = (
             f"sleep 3;./script/selenium/web_login.py{extra_cmd_web_login};bash"
@@ -1231,7 +1320,7 @@ class TODO:
         self.execute.exec_command_live(cmd_client)
 
     def prompt_execute_selenium(self, command=None, extra_cmd_web_login=""):
-        lst_cmd = []
+        commands = []
         if not command:
             cmd = "./script/selenium/web_login.py"
         else:
@@ -1239,28 +1328,28 @@ class TODO:
 
         if type(extra_cmd_web_login) is list:
             for item in extra_cmd_web_login:
-                lst_cmd.append(cmd + item)
+                commands.append(cmd + item)
         else:
-            lst_cmd.append(cmd + extra_cmd_web_login)
+            commands.append(cmd + extra_cmd_web_login)
 
-        if len(lst_cmd) == 1:
-            self.execute.exec_command_live(lst_cmd[0])
-        elif len(lst_cmd) > 1:
+        if len(commands) == 1:
+            self.execute.exec_command_live(commands[0])
+        elif len(commands) > 1:
             new_cmd = "parallel ::: "
-            for i, cmd in enumerate(lst_cmd):
+            for i, cmd in enumerate(commands):
                 new_cmd += f' "sleep {1 * i};{cmd}"'
             self.execute.exec_command_live(new_cmd)
 
     def crash_diagnostic(self, e):
-        # TODO show message at start if os.path.exists(file_error_path)
-        if os.path.exists(file_error_path) and not os.path.exists(
-            cst_venv_erplibre
+        # TODO show message at start if os.path.exists(ERROR_LOG_PATH)
+        if os.path.exists(ERROR_LOG_PATH) and not os.path.exists(
+            VENV_ERPLIBRE
         ):
             print("Got error : ")
             print(e)
-            print("Got error at first execution.", file_error_path)
+            print("Got error at first execution.", ERROR_LOG_PATH)
             try:
-                file = open(file_error_path, "r")
+                file = open(ERROR_LOG_PATH, "r")
                 content = file.read()
                 # TODO si vide, ajouter notre erreur
                 print(content)
@@ -1276,7 +1365,7 @@ class TODO:
             # self.restart_script(e)
             self.execute.exec_command_live(cmd, source_erplibre=True)
             sys.exit(1)
-        if os.path.exists(cst_venv_erplibre):
+        if os.path.exists(VENV_ERPLIBRE):
             print("Import error : ")
             print(e)
             # TODO auto-detect gnome-terminal, or choose another. Is it done already?
@@ -1284,13 +1373,13 @@ class TODO:
             # self.prompt_install()
 
             # print(
-            #     f"You forgot to activate source \nsource ./{cst_venv_erplibre}/bin/activate"
+            #     f"You forgot to activate source \nsource ./{VENV_ERPLIBRE}/bin/activate"
             # )
             # time.sleep(0.5)
             # cmd = "./script/todo/source_todo.sh"
             print("Re-execute TODO 🤖 or execute :")
             print()
-            print(f"source {cst_venv_erplibre}/bin/activate;make")
+            print(f"source {VENV_ERPLIBRE}/bin/activate;make")
             print()
             cmd = "./script/todo/todo.py"
             # # self.restart_script(e)
@@ -1313,10 +1402,10 @@ class TODO:
             self.prompt_install()
 
     def open_shell_on_database(self):
-        database = self.select_database()
+        database = self.db_manager.select_database()
         if database:
             cmd_server = f"./odoo_bin.sh shell -d {database}"
-            status, lst_database = self.execute.exec_command_live(
+            status, databases = self.execute.exec_command_live(
                 cmd_server,
                 return_status_and_output=True,
                 source_erplibre=False,
@@ -1383,105 +1472,9 @@ class TODO:
         if os.path.exists(poetry_lock):
             shutil.copy2(poetry_lock, path_file_odoo_lock)
 
-    def callback_execute_custom_database(self, dct_config):
-        database_name = self.select_database()
+    def callback_execute_custom_database(self, config):
+        database_name = self.db_manager.select_database()
         self.prompt_execute_selenium_and_run_db(database_name)
-
-    def restore_from_database(self, show_remote_list=True):
-        path_image_db = os.path.join(os.getcwd(), "image_db")
-        print("[1] By filename from image_db")
-        print(f"[] Browser image_db {path_image_db}")
-        status = input("💬 Select : ")
-        if status == "1":
-            file_name = status
-        else:
-            file_name = self.open_file_image_db()
-
-        default_database_name = file_name.replace(" ", "_")
-        if default_database_name.endswith(".zip"):
-            default_database_name = default_database_name[:-4]
-
-        database_name = input(
-            f"💬 Database name (default={default_database_name}) : "
-        )
-        if not database_name:
-            database_name = default_database_name
-
-        status = (
-            input("💬 Would you like to neutralize database (n/N)? ")
-            .strip()
-            .lower()
-        )
-        is_neutralize = False
-        more_arg = ""
-        if status != "n":
-            more_arg = "--neutralize "
-            is_neutralize = True
-            database_name += "_neutralize"
-        status, lst_output = self.execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} {more_arg}--ignore_cache --image {file_name}",
-            return_status_and_output=True,
-            single_source_erplibre=True,
-            source_erplibre=False,
-        )
-        if is_neutralize:
-            status, lst_output = self.execute.exec_command_live(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-        status = (
-            input("💬 Would you like to update all addons (y/Y)? ")
-            .strip()
-            .lower()
-        )
-        if status == "y":
-            status, lst_output = self.execute.exec_command_live(
-                f"./script/addons/update_addons_all.sh {database_name}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-
-    def create_backup_from_database(self, show_remote_list=True):
-        database_name = self.select_database()
-        str_arg = f"--database {database_name}"
-
-        backup_name = input("💬 Backup name (default = name+date.zip) : ")
-        if not backup_name:
-            backup_name = (
-                database_name
-                + "_"
-                + datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-                + ".zip"
-            )
-
-        if not backup_name.endswith(".zip"):
-            backup_name = backup_name + ".zip"
-
-        print(backup_name)
-
-        cmd = f"./odoo_bin.sh db --backup --database {database_name} --restore_image {backup_name}"
-        status, lst_output = self.execute.exec_command_live(
-            cmd,
-            return_status_and_output=True,
-            single_source_erplibre=True,
-            source_erplibre=False,
-        )
-
-    def open_file_image_db(self):
-        self.dir_path = ""
-        path_image_db = os.path.join(os.getcwd(), "image_db")
-
-        # self.dir_path is over-write into on_dir_selected
-        file_browser = todo_file_browser.FileBrowser(
-            path_image_db, self.on_dir_selected
-        )
-        file_browser.run_main_frame()
-        file_name = os.path.basename(self.dir_path)
-        print(file_name)
-        return file_name
 
     def process_kill_from_port(self):
         cfg = configparser.ConfigParser()
@@ -1493,77 +1486,20 @@ class TODO:
             source_erplibre=False,
         )
 
-    def download_database_backup_cli(self, show_remote_list=True):
-        database_domain = input("Domain Odoo (ex. https://mondomain.com) : ")
-        if show_remote_list:
-            status, lst_output = self.execute.exec_command_live(
-                f"python3 ./script/database/list_remote.py --raw --odoo-url {database_domain}",
-                return_status_and_output=True,
-                single_source_erplibre=True,
-                source_erplibre=False,
-            )
-            if len(lst_output) > 1:
-                for index, output in enumerate(lst_output):
-                    print(f"{index + 1} - {output}")
-                database_name = input("Select id of database :").strip()
-            elif len(lst_output) == 1:
-                database_name = lst_output[0].strip()
-            else:
-                database_name = input(
-                    "Cannot read remote database, Database name :\n"
-                )
-        else:
-            database_name = input("Database name :\n")
-
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
-        default_output_path = f"./image_db/{database_name}_{timestamp}.zip"
-        output_path = input(
-            f"Output path (default: {default_output_path}) : "
-        ).strip()
-        if not output_path:
-            output_path = default_output_path
-
-        master_password = getpass.getpass(prompt="Master password : ")
-
-        cmd = "script/database/download_remote.sh --quiet"
-        my_env = os.environ.copy()
-        my_env["MASTER_PWD"] = master_password
-        my_env["DATABASE_NAME"] = database_name
-        my_env["OUTPUT_FILE_PATH"] = output_path
-        my_env["ODOO_URL"] = database_domain
-        status, cmd_executed = self.execute.exec_command_live(
-            cmd,
-            source_erplibre=False,
-            return_status_and_command=True,
-            new_env=my_env,
-        )
-        try:
-            with zipfile.ZipFile(default_output_path, "r") as zip_ref:
-                manifest_file_1 = zip_ref.open("manifest.json")
-            _logger.info(
-                f"Log file '{default_output_path}' is complete and validated."
-            )
-        except Exception as e:
-            _logger.error(e)
-            _logger.error(
-                f"Failed to read manifest.json from backup file '{default_output_path}'."
-            )
-        return status, output_path, database_name
-
     def restart_script(self, last_error):
         print(f"🤖 {t('reboot_todo')}")
         # os.execv(sys.executable, ['python'] + sys.argv)
         # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
-        if os.path.exists(cst_venv_erplibre) and not os.path.exists(
-            file_error_path
+        if os.path.exists(VENV_ERPLIBRE) and not os.path.exists(
+            ERROR_LOG_PATH
         ):
             # TODO mettre check import suivant ne vont pas planter
             try:
-                with open(file_error_path, "w") as f_file:
+                with open(ERROR_LOG_PATH, "w") as f_file:
                     f_file.write(str(last_error))
                     pass  # The file is created and closed here, no content is written
                 print(
-                    f"Try to reopen process with before :\nsource ./{cst_venv_erplibre}/bin/activate && exec python "
+                    f"Try to reopen process with before :\nsource ./{VENV_ERPLIBRE}/bin/activate && exec python "
                     + " ".join(sys.argv)
                 )
                 os.execv(
@@ -1571,7 +1507,7 @@ class TODO:
                     [
                         "/bin/bash",
                         "-c",
-                        f"source ./{cst_venv_erplibre}/bin/activate && exec python "
+                        f"source ./{VENV_ERPLIBRE}/bin/activate && exec python "
                         + " ".join(sys.argv),
                     ],
                 )
@@ -1583,7 +1519,7 @@ class TODO:
         self.dir_path = dir_path
         todo_file_browser.exit_program()
 
-    def callback_make_mobile_home(self, dct_config):
+    def callback_make_mobile_home(self, config):
         # Read file
         default_project_name = "ERPLibre"
         default_package_name = "ca.erplibre.home"

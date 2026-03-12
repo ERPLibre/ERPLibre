@@ -51,5 +51,6 @@
             "prompt_description_key": "json_format_modified_code",
             "makefile_cmd": "format"
         }
-    ]
+    ],
+    "git_from_makefile": []
 }
