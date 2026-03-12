@@ -15,715 +15,699 @@ TRANSLATIONS = {
         "fr": "L'importation est un succès!",
         "en": "Importation success!",
     },
-    "opening": {
+    "Opening TODO ...": {
         "fr": "Ouverture de TODO en cours ...",
         "en": "Opening TODO ...",
     },
-    "enter_directives": {
+    "=> Enter your choice by number and press Enter!": {
         "fr": "=> Entre tes directives par son chiffre et fait Entrée!",
         "en": "=> Enter your choice by number and press Enter!",
     },
-    "command": {
+    "Command:": {
         "fr": "Commande :",
         "en": "Command:",
     },
-    "menu_execute": {
+    "Execute": {
         "fr": "Exécution",
         "en": "Execute",
     },
-    "menu_install": {
+    "Install": {
         "fr": "Installation",
         "en": "Install",
     },
-    "menu_question": {
+    "Question": {
         "fr": "Question",
         "en": "Question",
     },
-    "menu_fork": {
+    "Fork - Open TODO in a new tab": {
         "fr": "Fork - Ouvre TODO dans une nouvelle tabulation",
         "en": "Fork - Open TODO in a new tab",
     },
-    "menu_quit": {
+    "Quit": {
         "fr": "Quitter",
         "en": "Quit",
     },
-    "cmd_not_found": {
+    "Command not found !": {
         "fr": "Commande non trouvée !",
         "en": "Command not found !",
     },
-    "back": {
+    "Back": {
         "fr": "Retour",
         "en": "Back",
     },
     # Execute submenu
-    "menu_run": {
+    "Run - Execute and install an instance": {
         "fr": "Run - Exécuter et installer une instance",
         "en": "Run - Execute and install an instance",
     },
-    "menu_automation": {
+    "Automation - Demonstration of developed features": {
         "fr": "Automatisation - Demonstration des fonctions développées",
         "en": "Automation - Demonstration of developed features",
     },
-    "menu_update": {
+    "Update - Update all developed staging source code": {
         "fr": "Mise à jour - Update all developed staging source code",
         "en": "Update - Update all developed staging source code",
     },
-    "menu_code": {
+    "Code - Developer tools": {
         "fr": "Code - Outil pour développeur",
         "en": "Code - Developer tools",
     },
-    "menu_doc": {
+    "Doc - Documentation search": {
         "fr": "Doc - Recherche de documentation",
         "en": "Doc - Documentation search",
     },
-    "menu_database": {
+    "Database - Database tools": {
         "fr": "Database - Outils sur les bases de données",
         "en": "Database - Database tools",
     },
-    "menu_process": {
+    "Process - Execution tools": {
         "fr": "Process - Outils sur les executions",
         "en": "Process - Execution tools",
     },
-    "menu_config": {
+    "Config - Configuration file management": {
         "fr": "Config - Traitement du fichier de configuration",
         "en": "Config - Configuration file management",
     },
-    "menu_network": {
+    "Network - Network tools": {
         "fr": "Réseau - Outil réseautique",
         "en": "Network - Network tools",
     },
-    "menu_security": {
+    "Security - Dependency security audit": {
         "fr": "Sécurité - Audit de sécurité des dépendances",
         "en": "Security - Dependency security audit",
     },
-    "menu_rtk": {
+    "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "RTK - CLI proxy to reduce LLM token consumption",
     },
-    "menu_lang": {
+    "Language - Change language / Changer la langue": {
         "fr": "Langue - Changer la langue / Change language",
         "en": "Language - Change language / Changer la langue",
     },
     # RTK (Rust Token Killer)
-    "rtk_manage": {
+    "Manage RTK (Rust Token Killer) for token optimization!": {
         "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",
         "en": "Manage RTK (Rust Token Killer) for token optimization!",
     },
-    "rtk_install": {
+    "Install RTK": {
         "fr": "Installer RTK",
         "en": "Install RTK",
     },
-    "rtk_version": {
+    "Check RTK version": {
         "fr": "Vérifier la version de RTK",
         "en": "Check RTK version",
     },
-    "rtk_gain": {
+    "Show cumulative token savings": {
         "fr": "Afficher les économies de tokens cumulées",
         "en": "Show cumulative token savings",
     },
-    "rtk_discover": {
+    "Discover optimization opportunities": {
         "fr": "Identifier les opportunités d'optimisation",
         "en": "Discover optimization opportunities",
     },
-    "rtk_init_global": {
+    "Initialize global auto-rewrite hook": {
         "fr": "Initialiser le hook auto-rewrite global",
         "en": "Initialize global auto-rewrite hook",
     },
-    "rtk_status": {
+    "Check RTK status": {
         "fr": "Vérifier le statut de RTK",
         "en": "Check RTK status",
     },
-    "rtk_not_installed": {
+    "RTK is not installed. Use option 1 to install it.": {
         "fr": "RTK n'est pas installé. Utilisez l'option 1 pour l'installer.",
         "en": "RTK is not installed. Use option 1 to install it.",
     },
-    "rtk_installed_version": {
+    "RTK is installed, version: ": {
         "fr": "RTK est installé, version : ",
         "en": "RTK is installed, version: ",
     },
-    "rtk_hook_active": {
+    "Global auto-rewrite hook: active": {
         "fr": "Hook auto-rewrite global : actif",
         "en": "Global auto-rewrite hook: active",
     },
-    "rtk_hook_inactive": {
+    "Global auto-rewrite hook: inactive": {
         "fr": "Hook auto-rewrite global : inactif",
         "en": "Global auto-rewrite hook: inactive",
     },
-    "rtk_install_method": {
+    "Installation method:": {
         "fr": "Méthode d'installation :",
         "en": "Installation method:",
     },
-    "rtk_install_curl": {
+    "curl - Automatic install script": {
         "fr": "curl - Script d'installation automatique",
         "en": "curl - Automatic install script",
     },
-    "rtk_install_brew": {
+    "brew - Homebrew (macOS/Linux)": {
         "fr": "brew - Homebrew (macOS/Linux)",
         "en": "brew - Homebrew (macOS/Linux)",
     },
-    "rtk_install_cargo": {
+    "cargo - Build from source (Rust required)": {
         "fr": "cargo - Compilation depuis les sources (Rust requis)",
         "en": "cargo - Build from source (Rust required)",
     },
     # Prompts and messages
-    "enter_password": {
+    "Enter your password: ": {
         "fr": "Entrez votre mot de passe : ",
         "en": "Enter your password: ",
     },
-    "ia_prompt": {
+    "Write your question ": {
         "fr": "Écrit moi ta question ",
         "en": "Write your question ",
     },
-    "new_instance_confirm": {
+    "Do you want a new instance?": {
         "fr": "Voulez-vous une nouvelle instance?",
         "en": "Do you want a new instance?",
     },
-    "ssh_port_forwarding": {
+    "SSH port-forwarding": {
         "fr": "SSH port-forwarding",
         "en": "SSH port-forwarding",
     },
-    "network_performance_request_per_second": {
+    "Network performance request per second": {
         "fr": "Performance réseau en requêtes par seconde",
         "en": "Network performance request per second",
     },
-    "setup_queue_job_for_parallelism": {
+    "Setup queue job for parallelism": {
         "fr": "Configurer la file d'attente pour l'exécution parallèle",
         "en": "Setup queue job for parallelism",
     },
-    "choose_database": {
+    "Choose your database": {
         "fr": "Choisir sa base de données",
         "en": "Choose your database",
     },
-    "update_dev": {
+    "Development update": {
         "fr": "Mise à jour du développement",
         "en": "Development update",
     },
-    "code_need": {
+    "What do you need for development?": {
         "fr": "Qu'avez-vous de besoin pour développer?",
         "en": "What do you need for development?",
     },
-    "doc_search": {
+    "Looking for documentation?": {
         "fr": "Vous cherchez de la documentation?",
         "en": "Looking for documentation?",
     },
-    "db_modify": {
+    "Make changes to databases!": {
         "fr": "Faites des modifications sur les bases de données!",
         "en": "Make changes to databases!",
     },
-    "process_manage": {
+    "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",
     },
-    "config_manage": {
+    "Manage ERPLibre and Odoo configuration!": {
         "fr": "Manipuler la configuration ERPLibre et Odoo!",
         "en": "Manage ERPLibre and Odoo configuration!",
     },
-    "network_tools": {
+    "Network tools!": {
         "fr": "Outil réseautique!",
         "en": "Network tools!",
     },
-    "security_audit": {
+    "Dependency security audit!": {
         "fr": "Audit de securite des dépendances!",
         "en": "Dependency security audit!",
     },
-    "script_failed": {
+    "The Bash script failed with return code": {
         "fr": "Le script Bash a échoué avec le code de retour",
         "en": "The Bash script failed with return code",
     },
-    "no_env_installed": {
+    "No installed environment found. Install an Odoo version first.": {
         "fr": "Aucun environnement installe trouve. Installez d'abord une version d'Odoo.",
         "en": "No installed environment found. Install an Odoo version first.",
     },
-    "choose_env_audit": {
+    "Choose an environment for the audit:": {
         "fr": "Choisir un environnement pour l'audit :",
         "en": "Choose an environment for the audit:",
     },
-    "selection": {
+    "Select: ": {
         "fr": "Sélection : ",
         "en": "Select: ",
     },
-    "error_value": {
+    "Error, cannot understand value": {
         "fr": "Erreur, impossible de comprendre la valeur",
         "en": "Error, cannot understand value",
     },
-    "dep_file_not_found": {
+    "Dependencies file not found: ": {
         "fr": "Fichier de dépendances introuvable : ",
         "en": "Dependencies file not found: ",
     },
-    "execution": {
+    "Execution: ": {
         "fr": "Execution : ",
         "en": "Execution: ",
     },
-    "current": {
+    "Current": {
         "fr": "Actuel",
         "en": "Current",
     },
-    "default": {
+    "Default": {
         "fr": "Défaut",
         "en": "Default",
     },
-    "reboot_todo": {
+    "Reboot TODO ...": {
         "fr": "Reboot TODO ...",
         "en": "Reboot TODO ...",
     },
-    "pip_audit_desc": {
+    "pip-audit - Check vulnerabilities on Python environments": {
         "fr": "pip-audit - Verifier les vulnérabilités sur les environnements Python",
         "en": "pip-audit - Check vulnerabilities on Python environments",
     },
-    "will_execute": {
+    "Will execute:": {
         "fr": "Va exécuter :",
         "en": "Will execute:",
     },
-    "choose_version": {
+    "Choose a version:": {
         "fr": "Choisir une version :",
         "en": "Choose a version:",
     },
-    "error_cannot_understand": {
-        "fr": "Erreur, impossible de comprendre la valeur",
-        "en": "Error, cannot understand value",
-    },
     # todo.json translatable prompt_descriptions
-    "json_instance_test": {
+    "Test - Minimal base instance": {
         "fr": "Test - Instance de base minimale",
         "en": "Test - Minimal base instance",
     },
-    "json_robot_minimal": {
+    "Open RobotLibre 🤖 minimal": {
         "fr": "Ouvrir RobotLibre 🤖 minimal",
         "en": "Open RobotLibre 🤖 minimal",
     },
-    "json_robot_search": {
+    "Open RobotLibre 🤖 with search enabled": {
         "fr": "Ouvrir RobotLibre 🤖 en activant la recherche",
         "en": "Open RobotLibre 🤖 with search enabled",
     },
-    "json_open_erplibre_todo": {
+    "Open ERPLibre with TODO 🤖": {
         "fr": "Ouvrir ERPLibre avec TODO 🤖",
         "en": "Open ERPLibre with TODO 🤖",
     },
-    "json_update_erplibre_base_test": {
+    "Update all erplibre_base on database test": {
         "fr": "Mise à jour de tous les erplibre_base sur la base de données test",
         "en": "Update all erplibre_base on database test",
     },
-    "json_show_code_status": {
+    "Show code status": {
         "fr": "Afficher le statut du code",
         "en": "Show code status",
     },
-    "json_stash_all_code": {
+    "Stash all code": {
         "fr": "Remiser tout le code",
         "en": "Stash all code",
     },
-    "json_format_modified_code": {
+    "Format modified code": {
         "fr": "Formater le code modifié",
         "en": "Format modified code",
     },
     # todo.py hardcoded prompt_descriptions
-    "mobile_compile_run": {
+    "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",
     },
-    "upgrade_odoo_migration": {
+    "Upgrade Odoo - Migration Database": {
         "fr": "Mise à jour Odoo - Migration de base de données",
         "en": "Upgrade Odoo - Migration Database",
     },
-    "upgrade_poetry_dependency": {
+    "Upgrade Poetry - Dependency of Odoo": {
         "fr": "Mise à jour Poetry - Dépendances d'Odoo",
         "en": "Upgrade Poetry - Dependency of Odoo",
     },
-    "open_shell": {
+    "Open SHELL": {
         "fr": "Ouvrir le SHELL",
         "en": "Open SHELL",
     },
-    "upgrade_module": {
+    "Upgrade Module": {
         "fr": "Mise à jour de module",
         "en": "Upgrade Module",
     },
-    "debug": {
+    "Debug": {
         "fr": "Débogage",
         "en": "Debug",
     },
-    "migration_module_coverage": {
+    "Migration module coverage": {
         "fr": "Couverture de migration des modules",
         "en": "Migration module coverage",
     },
-    "what_change_between_version": {
+    "What change between version": {
         "fr": "Quels changements entre les versions",
         "en": "What change between version",
     },
-    "oca_guidelines": {
+    "OCA guidelines": {
         "fr": "Directives OCA",
         "en": "OCA guidelines",
     },
-    "oca_migration_odoo_19": {
+    "OCA migration Odoo 19 milestone": {
         "fr": "Migration OCA Odoo 19 - Jalons",
         "en": "OCA migration Odoo 19 milestone",
     },
-    "download_db_backup": {
+    "Download database to create backup (.zip)": {
         "fr": "Télécharger une base de données pour créer une sauvegarde (.zip)",
         "en": "Download database to create backup (.zip)",
     },
-    "restore_from_backup": {
+    "Restore from backup (.zip)": {
         "fr": "Restaurer a partir d'une sauvegarde (.zip)",
         "en": "Restore from backup (.zip)",
     },
-    "create_backup": {
+    "Create backup (.zip)": {
         "fr": "Créer une sauvegarde (.zip)",
         "en": "Create backup (.zip)",
     },
-    "kill_process_port": {
+    "Kill Odoo process from actual port": {
         "fr": "Terminer le processus Odoo du port actuel",
         "en": "Kill Odoo process from actual port",
     },
-    "kill_git_daemon": {
+    "Kill git daemon server process": {
         "fr": "Terminer le processus du serveur git daemon",
         "en": "Kill git daemon server process",
     },
-    "kill_git_daemon_done": {
+    "Git daemon process killed.": {
         "fr": "Processus git daemon terminé.",
         "en": "Git daemon process killed.",
     },
-    "generate_all_config": {
+    "Generate all configuration": {
         "fr": "Générer toute la configuration",
         "en": "Generate all configuration",
     },
-    "generate_from_preconfig": {
+    "Generate from pre-configuration": {
         "fr": "Générer a partir de la pre-configuration",
         "en": "Generate from pre-configuration",
     },
-    "generate_from_backup": {
+    "Generate from backup file": {
         "fr": "Générer a partir d'un fichier de sauvegarde",
         "en": "Generate from backup file",
     },
-    "generate_from_database": {
+    "Generate from database": {
         "fr": "Générer a partir de la base de données",
         "en": "Generate from database",
     },
-    "preconfig_base": {
+    "base": {
         "fr": "base",
         "en": "base",
     },
-    "preconfig_base_code_generator": {
+    "base + code_generator": {
         "fr": "base + code_generator",
         "en": "base + code_generator",
     },
-    "preconfig_base_image_db": {
+    "base + image_db": {
         "fr": "base + image_db",
         "en": "base + image_db",
     },
-    "preconfig_all": {
+    "all": {
         "fr": "tout",
         "en": "all",
     },
-    "debug_todo_py": {
+    "Debug todo.py": {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
     # Test section
-    "menu_test": {
+    "Test - Test an Odoo module": {
         "fr": "Test - Tester un module Odoo",
         "en": "Test - Test an Odoo module",
     },
-    "test_description": {
+    "Test an Odoo module on a temporary database!": {
         "fr": "Tester un module Odoo sur une base de données temporaire!",
         "en": "Test an Odoo module on a temporary database!",
     },
-    "test_run_module": {
+    "Test a module": {
         "fr": "Tester un module",
         "en": "Test a module",
     },
-    "test_run_module_coverage": {
+    "Test a module with code coverage": {
         "fr": "Tester un module avec couverture de code",
         "en": "Test a module with code coverage",
     },
-    "test_run_unit_tests": {
+    "ERPLibre unit tests": {
         "fr": "Tests unitaires ERPLibre",
         "en": "ERPLibre unit tests",
     },
-    "test_unit_running": {
+    "Running unit tests": {
         "fr": "Exécution des tests unitaires",
         "en": "Running unit tests",
     },
-    "test_unit_success": {
+    "All unit tests passed": {
         "fr": "Tous les tests unitaires ont réussi",
         "en": "All unit tests passed",
     },
-    "test_unit_failed": {
+    "Some unit tests failed, exit code": {
         "fr": "Des tests unitaires ont échoué, code de sortie",
         "en": "Some unit tests failed, exit code",
     },
-    "test_enter_module_name": {
+    "Module name to test: ": {
         "fr": "Nom du module à tester : ",
         "en": "Module name to test: ",
     },
-    "test_db_name": {
+    "Temporary database name (default: test_todo_tmp): ": {
         "fr": "Nom de la base de données temporaire (défaut: test_todo_tmp) : ",
         "en": "Temporary database name (default: test_todo_tmp): ",
     },
-    "test_install_extra_modules": {
+    "Extra modules to install (comma-separated, empty for none): ": {
         "fr": "Modules supplémentaires à installer (séparés par des virgules, vide pour aucun) : ",
         "en": "Extra modules to install (comma-separated, empty for none): ",
     },
-    "test_log_level": {
+    "Log level (default: test): ": {
         "fr": "Niveau de log (défaut: test) : ",
         "en": "Log level (default: test): ",
     },
-    "test_creating_db": {
+    "Creating temporary database": {
         "fr": "Création de la base de données temporaire",
         "en": "Creating temporary database",
     },
-    "test_installing_modules": {
+    "Installing modules": {
         "fr": "Installation des modules",
         "en": "Installing modules",
     },
-    "test_running": {
+    "Running tests": {
         "fr": "Exécution des tests",
         "en": "Running tests",
     },
-    "test_cleaning_db": {
+    "Cleaning up temporary database": {
         "fr": "Suppression de la base de données temporaire",
         "en": "Cleaning up temporary database",
     },
-    "test_keep_db": {
+    "Keep the temporary database? (y/N): ": {
         "fr": "Conserver la base de données temporaire? (o/N) : ",
         "en": "Keep the temporary database? (y/N): ",
     },
-    "test_db_kept": {
+    "Database kept": {
         "fr": "Base de données conservée",
         "en": "Database kept",
     },
-    "test_success": {
+    "Tests completed successfully!": {
         "fr": "Tests terminés avec succès!",
         "en": "Tests completed successfully!",
     },
-    "test_failed": {
+    "Tests failed with return code": {
         "fr": "Les tests ont échoué avec le code de retour",
         "en": "Tests failed with return code",
     },
-    "test_module_required": {
+    "Module name is required!": {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
     },
     # Git section
-    "menu_git": {
+    "Git - Git tools": {
         "fr": "Git - Outils Git",
         "en": "Git - Git tools",
     },
-    "git_manage": {
+    "Git management tools!": {
         "fr": "Outils de gestion Git!",
         "en": "Git management tools!",
     },
-    "git_local_server": {
+    "Local git server": {
         "fr": "Serveur git local",
         "en": "Local git server",
     },
-    "git_repo_manage": {
+    "Manage local git repository server!": {
         "fr": "Gérer le serveur de dépôts git local!",
         "en": "Manage local git repository server!",
     },
-    "git_repo_deploy_local": {
+    "Deploy a local git server (~/.git-server)": {
         "fr": "Déployer un serveur git local (~/.git-server)",
         "en": "Deploy a local git server (~/.git-server)",
     },
-    "git_repo_deploy_production": {
+    "Deploy a production git server (/srv/git, root required)": {
         "fr": "Déployer un serveur git production (/srv/git, root requis)",
         "en": "Deploy a production git server (/srv/git, root required)",
     },
-    "git_repo_deploy_starting": {
+    "Starting git server deployment...": {
         "fr": "Démarrage du déploiement du serveur git...",
         "en": "Starting git server deployment...",
     },
-    "git_mode_local": {
+    "Local mode (~/.git-server)": {
         "fr": "Mode local (~/.git-server)",
         "en": "Local mode (~/.git-server)",
     },
-    "git_mode_production": {
+    "Production mode (/srv/git, root required)": {
         "fr": "Mode production (/srv/git, root requis)",
         "en": "Production mode (/srv/git, root required)",
     },
-    "git_action_all": {
+    "Run all (init + remote + push + serve)": {
         "fr": "Tout exécuter (init + remote + push + serve)",
         "en": "Run all (init + remote + push + serve)",
     },
-    "git_action_init": {
+    "Init - Create bare repos": {
         "fr": "Init - Créer les bare repos",
         "en": "Init - Create bare repos",
     },
-    "git_action_remote": {
+    "Remote - Add local remotes": {
         "fr": "Remote - Ajouter les remotes locaux",
         "en": "Remote - Add local remotes",
     },
-    "git_action_push": {
+    "Push - Push to local server": {
         "fr": "Push - Pousser vers le serveur local",
         "en": "Push - Push to local server",
     },
-    "git_action_serve": {
+    "Serve - Start git daemon": {
         "fr": "Serve - Démarrer le daemon git",
         "en": "Serve - Start git daemon",
     },
     # Git remote add
-    "git_add_remote": {
+    "Add a remote to a local repository": {
         "fr": "Ajouter un remote vers un dépôt local",
         "en": "Add a remote to a local repository",
     },
-    "git_add_remote_name_prompt": {
+    "Remote name (default: localhost): ": {
         "fr": "Nom du remote (défaut: localhost) : ",
         "en": "Remote name (default: localhost): ",
     },
-    "git_add_remote_url_prompt": {
+    "Repository address (e.g.: git://192.168.1.100/my-repo.git): ": {
         "fr": "Adresse du dépôt (ex: git://192.168.1.100/mon-repo.git) : ",
         "en": "Repository address (e.g.: git://192.168.1.100/my-repo.git): ",
     },
-    "git_add_remote_url_required": {
+    "Repository address is required!": {
         "fr": "L'adresse du dépôt est requise!",
         "en": "Repository address is required!",
     },
-    "git_add_remote_success": {
+    "Remote added successfully!": {
         "fr": "Remote ajouté avec succès!",
         "en": "Remote added successfully!",
     },
-    "git_add_remote_error": {
+    "Error adding remote: ": {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
     # Git config vim
-    "git_config_vim": {
+    "Configure git local editor to vim": {
         "fr": "Configuration git local par vim",
         "en": "Configure git local editor to vim",
     },
-    "git_config_vim_success": {
+    "Git editor configured to vim successfully!": {
         "fr": "Éditeur git configuré sur vim avec succès!",
         "en": "Git editor configured to vim successfully!",
     },
-    "git_config_vim_error": {
+    "Error during configuration: ": {
         "fr": "Erreur lors de la configuration : ",
         "en": "Error during configuration: ",
     },
     # GPT code - Claude automation
-    "gpt_code_claude_add_automation": {
+    "Add an automation with Claude in todo.py": {
         "fr": "Ajouter une automatisation avec Claude dans todo.py",
         "en": "Add an automation with Claude in todo.py",
     },
-    "gpt_code_claude_add_automation_prompt": {
+    "Description of the command to add: ": {
         "fr": "Description de la commande à ajouter : ",
         "en": "Description of the command to add: ",
     },
-    "gpt_code_claude_add_automation_cmd_prompt": {
+    "Bash command to execute: ": {
         "fr": "Commande bash à exécuter : ",
         "en": "Bash command to execute: ",
     },
-    "gpt_code_claude_add_automation_section_prompt": {
+    "Menu section (git/code/config/network/process): ": {
         "fr": "Section du menu (git/code/config/network/process) : ",
         "en": "Menu section (git/code/config/network/process): ",
     },
-    "gpt_code_claude_add_automation_success": {
+    "Automation added successfully in todo.json!": {
         "fr": "Automatisation ajoutée avec succès dans todo.json!",
         "en": "Automation added successfully in todo.json!",
     },
-    "gpt_code_claude_add_automation_error": {
+    "Error adding automation: ": {
         "fr": "Erreur lors de l'ajout de l'automatisation : ",
         "en": "Error adding automation: ",
     },
     # Language selection
-    "lang_prompt": {
+    "Choose language / Choisir la langue": {
         "fr": "Choisir la langue / Choose language",
         "en": "Choose language / Choisir la langue",
     },
-    "lang_french": {
+    "French": {
         "fr": "Francais",
         "en": "French",
     },
-    "lang_english": {
+    "English": {
         "fr": "Anglais",
         "en": "English",
     },
-    "lang_changed": {
+    "Language changed to: English": {
         "fr": "Langue changée pour : Francais",
         "en": "Language changed to: English",
     },
-    "execution_time": {
+    "TODO execution time": {
         "fr": "Temps d'exécution TODO",
         "en": "TODO execution time",
     },
-    "keyboard_interrupt": {
+    "Keyboard interrupt": {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
     # GPT code section
-    "menu_gpt_code": {
+    "GPT code - AI assistant tools": {
         "fr": "GPT code - Outils d'assistant IA",
         "en": "GPT code - AI assistant tools",
     },
-    "gpt_code_manage": {
+    "AI assistant tools for development!": {
         "fr": "Outils d'assistant IA pour le développement!",
         "en": "AI assistant tools for development!",
     },
-    "gpt_code_claude_configs": {
+    "Configure Claude Code configurations": {
         "fr": "Configurer les configurations Claude Code",
         "en": "Configure Claude Code configurations",
     },
-    "gpt_code_claude_commit": {
+    "Commit - OCA/Odoo commit command": {
         "fr": "Commit - Commande de commit OCA/Odoo",
         "en": "Commit - OCA/Odoo commit command",
     },
-    "gpt_code_claude_todo_add_command": {
+    "Todo Add Command - Add a command to todo.py menu": {
         "fr": "Todo Add Command - Ajouter une commande au menu todo.py",
         "en": "Todo Add Command - Add a command to todo.py menu",
     },
-    "gpt_code_enter_name": {
+    "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
         "en": "Enter your full name: ",
     },
-    "gpt_code_enter_email": {
+    "Enter your email: ": {
         "fr": "Entrez votre courriel : ",
         "en": "Enter your email: ",
     },
-    "gpt_code_claude_configs_manage": {
+    "Deploy Claude Code commands!": {
         "fr": "Déployer les commandes Claude Code!",
         "en": "Deploy Claude Code commands!",
     },
-    "gpt_code_claude_list_commands": {
+    "Show installed custom commands": {
         "fr": "Afficher les commandes personnalisées installées",
         "en": "Show installed custom commands",
     },
-    "gpt_code_claude_no_commands": {
+    "No custom commands found in ~/.claude/commands/": {
         "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
         "en": "No custom commands found in ~/.claude/commands/",
     },
-    "gpt_code_claude_list_header": {
+    "Claude Code custom commands:": {
         "fr": "Commandes personnalisées Claude Code :",
         "en": "Claude Code custom commands:",
     },
-    "gpt_code_claude_list_total": {
+    "Total:": {
         "fr": "Total :",
         "en": "Total:",
     },
-    "gpt_code_cmd_exists": {
+    "File already exists: ": {
         "fr": "Le fichier existe déjà : ",
         "en": "File already exists: ",
     },
-    "gpt_code_cmd_overwrite": {
+    "Do you want to overwrite the file? (y/Y): ": {
         "fr": "Voulez-vous écraser le fichier? (y/Y) : ",
         "en": "Do you want to overwrite the file? (y/Y): ",
     },
-    "gpt_code_cmd_nothing_to_do": {
+    "Nothing to do.": {
         "fr": "Rien à faire.",
         "en": "Nothing to do.",
     },
-    "gpt_code_cmd_created": {
+    "File created successfully: ": {
         "fr": "Fichier créé avec succès : ",
         "en": "File created successfully: ",
     },
-    "gpt_code_cmd_error": {
-        "fr": "Erreur lors de la création du fichier : ",
-        "en": "Error creating file: ",
-    },
-    "gpt_code_commit_exists": {
-        "fr": "Le fichier ~/.claude/commands/commit.md existe déjà. Aucune action effectuée.",
-        "en": "File ~/.claude/commands/commit.md already exists. No action taken.",
-    },
-    "gpt_code_commit_created": {
-        "fr": "Fichier ~/.claude/commands/commit.md créé avec succès!",
-        "en": "File ~/.claude/commands/commit.md created successfully!",
-    },
-    "gpt_code_commit_error": {
+    "Error creating file: ": {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
