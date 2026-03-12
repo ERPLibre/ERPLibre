@@ -802,7 +802,7 @@ class TODO:
     def prompt_execute_gpt_code(self):
         print(f"🤖 {t('gpt_code_manage')}")
         choices = [
-            {"prompt_description": t("gpt_code_claude_commit")},
+            {"prompt_description": t("gpt_code_claude_configs")},
             {"prompt_description": t("gpt_code_claude_add_automation")},
             {"prompt_description": t("menu_rtk")},
         ]
@@ -814,7 +814,7 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self._setup_claude_commit()
+                self._prompt_claude_configs()
             elif status == "2":
                 self._claude_add_automation()
             elif status == "3":
@@ -822,44 +822,118 @@ class TODO:
             else:
                 print(t("cmd_not_found"))
 
-    def _setup_claude_commit(self):
+    def _prompt_claude_configs(self):
+        print(f"🤖 {t('gpt_code_claude_configs_manage')}")
+        choices = [
+            {"prompt_description": t("gpt_code_claude_commit")},
+            {
+                "prompt_description": t(
+                    "gpt_code_claude_todo_add_command"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "gpt_code_claude_list_commands"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._setup_claude_command(
+                    "commit",
+                    "template_claude_commands_commit.md",
+                    personalize=True,
+                )
+            elif status == "2":
+                self._setup_claude_command(
+                    "todo_add_command",
+                    "template_claude_commands_todo_add_command.md",
+                )
+            elif status == "3":
+                self._list_claude_commands()
+            else:
+                print(t("cmd_not_found"))
+
+    def _list_claude_commands(self):
+        commands_dir = os.path.expanduser("~/.claude/commands")
+        if not os.path.isdir(commands_dir):
+            print(t("gpt_code_claude_no_commands"))
+            return
+        files = sorted(
+            f
+            for f in os.listdir(commands_dir)
+            if f.endswith(".md")
+        )
+        if not files:
+            print(t("gpt_code_claude_no_commands"))
+            return
+        print(t("gpt_code_claude_list_header"))
+        print("-" * 50)
+        for f in files:
+            filepath = os.path.join(commands_dir, f)
+            mtime = os.path.getmtime(filepath)
+            date_str = datetime.datetime.fromtimestamp(mtime).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+            name = f[:-3]  # remove .md
+            print(f"  /{name:<30} {date_str}")
+        print("-" * 50)
+        print(
+            f"{t('gpt_code_claude_list_total')}"
+            f" {len(files)}"
+        )
+
+    def _setup_claude_command(
+        self, command_name, template_filename, personalize=False
+    ):
         dest_dir = os.path.expanduser("~/.claude/commands")
-        dest_file = os.path.join(dest_dir, "commit.md")
+        dest_file = os.path.join(dest_dir, f"{command_name}.md")
 
         if os.path.exists(dest_file):
-            print(t("gpt_code_commit_exists"))
-            return
-
-        name = input(t("gpt_code_enter_name")).strip()
-        email = input(t("gpt_code_enter_email")).strip()
+            print(f"{t('gpt_code_cmd_exists')}{dest_file}")
+            overwrite = input(
+                t("gpt_code_cmd_overwrite")
+            ).strip()
+            if overwrite not in ("y", "Y"):
+                print(t("gpt_code_cmd_nothing_to_do"))
+                return
 
         template_path = os.path.join(
             os.path.dirname(__file__),
             "..",
             "..",
             "conf",
-            "template_claude_commands_commit.md",
+            template_filename,
         )
         try:
             with open(template_path) as f:
                 content = f.read()
 
-            content = content.replace(
-                "Your Name <your@email.com>",
-                f"{name} <{email}>",
-            )
-            content = content.replace(
-                "Your Name ",
-                f"{name} ",
-            )
+            if personalize:
+                name = input(t("gpt_code_enter_name")).strip()
+                email = input(t("gpt_code_enter_email")).strip()
+                content = content.replace(
+                    "Your Name <your@email.com>",
+                    f"{name} <{email}>",
+                )
+                content = content.replace(
+                    "Your Name ",
+                    f"{name} ",
+                )
 
             os.makedirs(dest_dir, exist_ok=True)
             with open(dest_file, "w") as f:
                 f.write(content)
 
-            print(t("gpt_code_commit_created"))
+            print(f"{t('gpt_code_cmd_created')}{dest_file}")
         except Exception as e:
-            print(f"{t('gpt_code_commit_error')}{e}")
+            print(f"{t('gpt_code_cmd_error')}{e}")
 
     def _claude_add_automation(self):
         description = input(

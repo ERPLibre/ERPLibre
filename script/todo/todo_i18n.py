@@ -655,9 +655,17 @@ TRANSLATIONS = {
         "fr": "Outils d'assistant IA pour le développement!",
         "en": "AI assistant tools for development!",
     },
+    "gpt_code_claude_configs": {
+        "fr": "Configurer les configurations Claude Code",
+        "en": "Configure Claude Code configurations",
+    },
     "gpt_code_claude_commit": {
-        "fr": "Configurer le commit Claude Code",
-        "en": "Configure Claude Code commit",
+        "fr": "Commit - Commande de commit OCA/Odoo",
+        "en": "Commit - OCA/Odoo commit command",
+    },
+    "gpt_code_claude_todo_add_command": {
+        "fr": "Todo Add Command - Ajouter une commande au menu todo.py",
+        "en": "Todo Add Command - Add a command to todo.py menu",
     },
     "gpt_code_enter_name": {
         "fr": "Entrez votre nom complet : ",
@@ -666,6 +674,46 @@ TRANSLATIONS = {
     "gpt_code_enter_email": {
         "fr": "Entrez votre courriel : ",
         "en": "Enter your email: ",
+    },
+    "gpt_code_claude_configs_manage": {
+        "fr": "Déployer les commandes Claude Code!",
+        "en": "Deploy Claude Code commands!",
+    },
+    "gpt_code_claude_list_commands": {
+        "fr": "Afficher les commandes personnalisées installées",
+        "en": "Show installed custom commands",
+    },
+    "gpt_code_claude_no_commands": {
+        "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
+        "en": "No custom commands found in ~/.claude/commands/",
+    },
+    "gpt_code_claude_list_header": {
+        "fr": "Commandes personnalisées Claude Code :",
+        "en": "Claude Code custom commands:",
+    },
+    "gpt_code_claude_list_total": {
+        "fr": "Total :",
+        "en": "Total:",
+    },
+    "gpt_code_cmd_exists": {
+        "fr": "Le fichier existe déjà : ",
+        "en": "File already exists: ",
+    },
+    "gpt_code_cmd_overwrite": {
+        "fr": "Voulez-vous écraser le fichier? (y/Y) : ",
+        "en": "Do you want to overwrite the file? (y/Y): ",
+    },
+    "gpt_code_cmd_nothing_to_do": {
+        "fr": "Rien à faire.",
+        "en": "Nothing to do.",
+    },
+    "gpt_code_cmd_created": {
+        "fr": "Fichier créé avec succès : ",
+        "en": "File created successfully: ",
+    },
+    "gpt_code_cmd_error": {
+        "fr": "Erreur lors de la création du fichier : ",
+        "en": "Error creating file: ",
     },
     "gpt_code_commit_exists": {
         "fr": "Le fichier ~/.claude/commands/commit.md existe déjà. Aucune action effectuée.",
