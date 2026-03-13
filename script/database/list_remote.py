@@ -10,28 +10,31 @@ def get_db_list_xmlrpc(odoo_url):
     Retrieves the list of Odoo databases using the XML-RPC API.
     """
     try:
-        common = xmlrpc.client.ServerProxy(f'{odoo_url}/xmlrpc/db')
+        common = xmlrpc.client.ServerProxy(f"{odoo_url}/xmlrpc/db")
         db_list = common.list()
         return db_list
     except xmlrpc.client.Fault as e:
-        print(f"XML-RPC Error: {e.faultCode} - {e.faultString}", file=sys.stderr)
+        print(
+            f"XML-RPC Error: {e.faultCode} - {e.faultString}", file=sys.stderr
+        )
         return []
     except Exception as e:
         print(f"Connection Error: {e}", file=sys.stderr)
         return []
 
+
 # --- CLI using Click ---
 @click.command()
 @click.option(
-    '--odoo-url',
-    default='http://localhost:8069',
-    help='URL of the Odoo server.',
-    show_default=True
+    "--odoo-url",
+    default="http://localhost:8069",
+    help="URL of the Odoo server.",
+    show_default=True,
 )
 @click.option(
-    '--raw',
+    "--raw",
     is_flag=True,
-    help='Output one database per line, without extra formatting. Useful for scripting.'
+    help="Output one database per line, without extra formatting. Useful for scripting.",
 )
 def list_databases(odoo_url, raw=False):
     """
@@ -56,5 +59,5 @@ def list_databases(odoo_url, raw=False):
 
 
 # --- Script Execution ---
-if __name__ == '__main__':
+if __name__ == "__main__":
     list_databases()

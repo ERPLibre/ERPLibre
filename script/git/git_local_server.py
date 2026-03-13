@@ -151,8 +151,7 @@ Use --production-ready for /srv/git (requires root).
         type=int,
         default=DEFAULT_JOBS,
         help=(
-            "Parallel jobs for init/remote/push"
-            f" (default: {DEFAULT_JOBS})"
+            "Parallel jobs for init/remote/push" f" (default: {DEFAULT_JOBS})"
         ),
     )
     parser.add_argument(
@@ -247,11 +246,7 @@ def get_erplibre_root_project(erplibre_root):
         capture_output=True,
         text=True,
     )
-    revision = (
-        result.stdout.strip()
-        if result.returncode == 0
-        else "master"
-    )
+    revision = result.stdout.strip() if result.returncode == 0 else "master"
 
     return {
         "name": ERPLIBRE_REPO_NAME,
@@ -278,19 +273,13 @@ async def _init_single_bare_repo(git_path, project, semaphore):
             return "skipped"
 
         _logger.info(f"  Creating: {bare_path}")
-        _, err, rc = await _run_git(
-            "git", "init", "--bare", bare_path
-        )
+        _, err, rc = await _run_git("git", "init", "--bare", bare_path)
         if rc != 0:
-            _logger.warning(
-                f"  Init failed: {bare_path}: {err.strip()}"
-            )
+            _logger.warning(f"  Init failed: {bare_path}: {err.strip()}")
             return "error"
 
         # Enable git daemon export
-        export_file = os.path.join(
-            bare_path, "git-daemon-export-ok"
-        )
+        export_file = os.path.join(bare_path, "git-daemon-export-ok")
         open(export_file, "w").close()
 
         # Allow pushing from shallow clones
@@ -312,10 +301,7 @@ async def init_bare_repos(git_path, projects, jobs):
     semaphore = asyncio.Semaphore(jobs)
 
     results = await asyncio.gather(
-        *[
-            _init_single_bare_repo(git_path, p, semaphore)
-            for p in projects
-        ]
+        *[_init_single_bare_repo(git_path, p, semaphore) for p in projects]
     )
 
     created = results.count("created")
@@ -352,9 +338,7 @@ async def _add_single_remote(
 ):
     """Add or update remote for a single repo (async)."""
     async with semaphore:
-        repo_path = os.path.join(
-            erplibre_root, project["path"]
-        )
+        repo_path = os.path.join(erplibre_root, project["path"])
         if not os.path.isdir(repo_path):
             _logger.warning(f"  Not found: {repo_path}")
             return "error"
@@ -368,9 +352,7 @@ async def _add_single_remote(
         )
 
         # Check if remote already exists
-        stdout, _, _ = await _run_git(
-            "git", "-C", repo_path, "remote"
-        )
+        stdout, _, _ = await _run_git("git", "-C", repo_path, "remote")
         existing_remotes = stdout.strip().split("\n")
 
         if remote_name in existing_remotes:
@@ -403,8 +385,7 @@ async def _add_single_remote(
             )
             if rc != 0:
                 _logger.warning(
-                    f"  add failed for"
-                    f" {project['path']}: {err.strip()}"
+                    f"  add failed for" f" {project['path']}: {err.strip()}"
                 )
                 return "error"
             _logger.info(f"  Added: {project['path']}")
@@ -447,10 +428,7 @@ async def add_remotes(
     added = results.count("added")
     updated = results.count("updated")
     errors = results.count("error")
-    print(
-        f"Remotes: {added} added, {updated} updated,"
-        f" {errors} errors"
-    )
+    print(f"Remotes: {added} added, {updated} updated," f" {errors} errors")
 
 
 # --- Async workers for push ---
@@ -458,9 +436,7 @@ async def add_remotes(
 
 async def _is_detached_head(repo_path):
     """Check if a repo is in detached HEAD state."""
-    _, _, rc = await _run_git(
-        "git", "-C", repo_path, "symbolic-ref", "HEAD"
-    )
+    _, _, rc = await _run_git("git", "-C", repo_path, "symbolic-ref", "HEAD")
     return rc != 0
 
 
@@ -471,9 +447,7 @@ async def _checkout_manifest_branch(repo_path, revision):
     on the exact commit. We create/checkout a local branch
     matching the manifest revision so git push works.
     """
-    branch = (
-        revision.split("/")[-1] if "/" in revision else revision
-    )
+    branch = revision.split("/")[-1] if "/" in revision else revision
 
     # Check if local branch already exists
     _, _, rc = await _run_git(
@@ -485,9 +459,7 @@ async def _checkout_manifest_branch(repo_path, revision):
         f"refs/heads/{branch}",
     )
     if rc == 0:
-        await _run_git(
-            "git", "-C", repo_path, "checkout", branch
-        )
+        await _run_git("git", "-C", repo_path, "checkout", branch)
     else:
         await _run_git(
             "git",
@@ -514,9 +486,7 @@ async def _update_bare_head(git_path, project):
     revision = project.get("revision", "")
     if not revision:
         return
-    branch = (
-        revision.split("/")[-1] if "/" in revision else revision
-    )
+    branch = revision.split("/")[-1] if "/" in revision else revision
     await _run_git(
         "git",
         "-C",
@@ -529,20 +499,10 @@ async def _update_bare_head(git_path, project):
 
 async def _try_unshallow(repo_path, project, remote_name):
     """Try to unshallow a repo by fetching full history."""
-    shallow_file = os.path.join(
-        repo_path, ".git", "shallow"
-    )
-    _logger.info(
-        f"  Unshallowing {project['path']}..."
-    )
-    stdout, _, _ = await _run_git(
-        "git", "-C", repo_path, "remote"
-    )
-    remotes = [
-        r
-        for r in stdout.strip().split("\n")
-        if r and r != remote_name
-    ]
+    shallow_file = os.path.join(repo_path, ".git", "shallow")
+    _logger.info(f"  Unshallowing {project['path']}...")
+    stdout, _, _ = await _run_git("git", "-C", repo_path, "remote")
+    remotes = [r for r in stdout.strip().split("\n") if r and r != remote_name]
     manifest_remote = project.get("remote", "")
     if manifest_remote in remotes:
         remotes.remove(manifest_remote)
@@ -562,9 +522,7 @@ async def _try_unshallow(repo_path, project, remote_name):
         except asyncio.TimeoutError:
             continue
         if not os.path.exists(shallow_file):
-            _logger.info(
-                f"  Unshallowed via {try_remote}"
-            )
+            _logger.info(f"  Unshallowed via {try_remote}")
             return
     if os.path.exists(shallow_file):
         _logger.warning(
@@ -585,30 +543,22 @@ async def _push_single_repo(
 ):
     """Push a single repo to local remote (async)."""
     async with semaphore:
-        repo_path = os.path.join(
-            erplibre_root, project["path"]
-        )
+        repo_path = os.path.join(erplibre_root, project["path"])
         if not os.path.isdir(repo_path):
             _logger.warning(f"  Not found: {repo_path}")
             return "error", False
 
         # Handle shallow repos
-        shallow_file = os.path.join(
-            repo_path, ".git", "shallow"
-        )
+        shallow_file = os.path.join(repo_path, ".git", "shallow")
         if os.path.exists(shallow_file):
             if unshallow:
-                await _try_unshallow(
-                    repo_path, project, remote_name
-                )
+                await _try_unshallow(repo_path, project, remote_name)
             else:
                 # Enable shallow push on bare repo
                 repo_name = project["name"]
                 if not repo_name.endswith(".git"):
                     repo_name += ".git"
-                bare_path = os.path.join(
-                    git_path, repo_name
-                )
+                bare_path = os.path.join(git_path, repo_name)
                 if os.path.isdir(bare_path):
                     await _run_git(
                         "git",
@@ -618,19 +568,14 @@ async def _push_single_repo(
                         "receive.shallowUpdate",
                         "true",
                     )
-                _logger.info(
-                    f"  Shallow push for"
-                    f" {project['path']}"
-                )
+                _logger.info(f"  Shallow push for" f" {project['path']}")
 
         # Handle detached HEAD: checkout manifest branch
         did_checkout = False
         if await _is_detached_head(repo_path):
             revision = project.get("revision", "")
             if revision:
-                branch = await _checkout_manifest_branch(
-                    repo_path, revision
-                )
+                branch = await _checkout_manifest_branch(repo_path, revision)
                 _logger.info(
                     f"  Checkout {branch} for"
                     f" {project['path']}"
@@ -663,9 +608,7 @@ async def _push_single_repo(
                     "push",
                     remote_name,
                 ]
-            _, err, rc = await _run_git(
-                *cmd, timeout=120
-            )
+            _, err, rc = await _run_git(*cmd, timeout=120)
             if rc != 0:
                 _logger.warning(
                     f"  Push failed for"
@@ -675,14 +618,10 @@ async def _push_single_repo(
                 return "error", did_checkout
             else:
                 await _update_bare_head(git_path, project)
-                _logger.info(
-                    f"  Pushed: {project['path']}"
-                )
+                _logger.info(f"  Pushed: {project['path']}")
                 return "pushed", did_checkout
         except asyncio.TimeoutError:
-            _logger.warning(
-                f"  Timeout pushing {project['path']}"
-            )
+            _logger.warning(f"  Timeout pushing {project['path']}")
             return "error", did_checkout
 
 
@@ -744,8 +683,7 @@ def print_clone_commands(git_path, projects, port):
             if clone_path == ".":
                 clone_path = "erplibre"
             lines.append(
-                f"  git clone {base_url}/{repo_name}"
-                f" {clone_path}"
+                f"  git clone {base_url}/{repo_name}" f" {clone_path}"
             )
     lines.sort()
     for line in lines:

@@ -96,9 +96,7 @@ def commit_by_directory():
             run_git_command(f'cd "{config.path}" && git rm -r {directory}')
 
         # Crée le commit
-        commit_message = (
-            f"[{mig_prefix_msg}] {directory}: Migration to {config.odoo_version}"
-        )
+        commit_message = f"[{mig_prefix_msg}] {directory}: Migration to {config.odoo_version}"
         commit_result = run_git_command(
             f'cd "{config.path}" && git commit -m "{commit_message}"'
         )
