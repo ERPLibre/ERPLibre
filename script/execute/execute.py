@@ -115,7 +115,7 @@ class Execute:
             command = self.cmd_source_default % command
 
         if not quiet:
-            print("🏠 ⬇ Execute command :")
+            print("🏠 ⬇ Execute command :\n")
             print(command)
         output_lines = []
 
@@ -172,10 +172,10 @@ class Execute:
             duration_delta = datetime.timedelta(seconds=duration_sec)
             human_time = humanize.precisedelta(duration_delta)
             if not quiet:
-                print(f"🏠 ⬆ Executed ({human_time}) :")
+                print(f"🏠 ⬆ Executed ({human_time}) :\n")
         else:
             if not quiet:
-                print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :")
+                print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :\n")
         if not quiet:
             print(command)
             print()

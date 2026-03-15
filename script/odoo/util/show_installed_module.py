@@ -2,7 +2,9 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-installed_modules = env["ir.module.module"].search([('state', '=', 'installed')])
+installed_modules = env["ir.module.module"].search(
+    [("state", "=", "installed")]
+)
 
 print("Installed modules:")
 

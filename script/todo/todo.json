@@ -10,47 +10,52 @@
     },
     "instance": [
         {
-            "prompt_description_key": "json_instance_test",
+            "prompt_description_key": "Test - Minimal base instance",
             "makefile_cmd": "db_restore_erplibre_base_db_test",
             "database": "test"
         },
         {
-            "prompt_description_key": "json_robot_minimal",
+            "prompt_description_key": "Open RobotLibre 🤖 minimal",
             "makefile_cmd": "robot_libre",
             "database": "robotlibre"
         },
         {
-            "prompt_description_key": "json_robot_search",
+            "prompt_description_key": "Open RobotLibre 🤖 with search enabled",
             "makefile_cmd": "robot_libre_all",
             "database": "robotlibre"
         }
     ],
     "function": [
         {
-            "prompt_description_key": "json_open_erplibre_todo",
+            "prompt_description_key": "Open ERPLibre with TODO 🤖",
             "command": "./.venv.erplibre/bin/python ./script/selenium/web_login.py"
         }
     ],
     "update_from_makefile": [
         {
-            "prompt_description_key": "json_update_erplibre_base_test",
+            "prompt_description_key": "Update all erplibre_base on database test",
             "makefile_cmd": "db_erplibre_base_db_test_update_all",
             "database": "test"
         }
     ],
     "code_from_makefile": [
         {
-            "prompt_description_key": "json_show_code_status",
+            "prompt_description_key": "Show code status",
             "makefile_cmd": "repo_show_status"
         },
         {
-            "prompt_description_key": "json_stash_all_code",
+            "prompt_description_key": "Stash all code",
             "makefile_cmd": "repo_do_stash"
         },
         {
-            "prompt_description_key": "json_format_modified_code",
+            "prompt_description_key": "Format modified code",
             "makefile_cmd": "format"
         }
     ],
-    "git_from_makefile": []
+    "git_from_makefile": [
+        {
+            "prompt_description_key": "Configure git local editor to vim",
+            "bash_command": "git config --global core.editor \"vim\""
+        }
+    ]
 }

@@ -41,9 +41,6 @@ GRADLE_FILE = os.path.join(MOBILE_HOME_PATH, ANDROID_DIR, "app/build.gradle")
 
 
 try:
-    import tkinter as tk
-    from tkinter import filedialog
-
     import click
     import dotenv
     import humanize
@@ -103,33 +100,33 @@ class TODO:
 
     def _change_language(self):
         print()
-        print(t("lang_prompt") + ":")
-        print(f"[1] {t('lang_french')}")
-        print(f"[2] {t('lang_english')}")
-        print(f"[0] {t('back')}")
+        print(t("Choose language / Choisir la langue") + ":")
+        print(f"[1] {t('French')}")
+        print(f"[2] {t('English')}")
+        print(f"[0] {t('Back')}")
         choice = ""
         while choice not in ("0", "1", "2"):
-            choice = input(t("selection")).strip()
+            choice = input(t("Select: ")).strip()
         if choice == "0":
             return False
         elif choice == "1":
             set_lang("fr")
         else:
             set_lang("en")
-        print(t("lang_changed"))
+        print(t("Language changed to: English"))
 
     def run(self):
         with open(self.config_file.get_logo_ascii_file_path()) as my_file:
             print(my_file.read())
         self._ask_language()
-        print(t("opening"))
-        print(f"🤖 {t('enter_directives')}")
-        help_info = f"""{t("command")}
-[1] {t("menu_execute")}
-[2] {t("menu_install")}
-[3] {t("menu_question")}
-[4] {t("menu_fork")}
-[0] {t("menu_quit")}
+        print(t("Opening TODO ..."))
+        print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
+        help_info = f"""{t("Command:")}
+[1] {t("Execute")}
+[2] {t("Install")}
+[3] {t("Question")}
+[4] {t("Fork - Open TODO in a new tab")}
+[0] {t("Quit")}
 """
         while True:
             try:
@@ -163,16 +160,16 @@ class TODO:
             # elif status == "3" or status == "install":
             #     print("install")
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
         print(status)
         # manipuler()
 
     def execute_prompt_ia(self):
         while True:
-            help_info = f"""{t("command")}
-[0] {t("back")}
-{t("ia_prompt")}"""
+            help_info = f"""{t("Command:")}
+[0] {t("Back")}
+{t("Write your question ")}"""
             status = click.prompt(help_info)
             print()
             if status == "0":
@@ -196,22 +193,23 @@ class TODO:
             print()
 
     def prompt_execute(self):
-        help_info = f"""{t("command")}
-[1] {t("menu_automation")}
-[2] {t("menu_code")}
-[3] {t("menu_config")}
-[4] {t("menu_database")}
-[5] {t("menu_doc")}
-[6] {t("menu_git")}
-[7] {t("menu_gpt_code")}
-[8] {t("menu_lang")}
-[9] {t("menu_network")}
-[10] {t("menu_process")}
-[11] {t("menu_run")}
-[12] {t("menu_security")}
-[13] {t("menu_test")}
-[14] {t("menu_update")}
-[0] {t("back")}
+        help_info = f"""{t("Command:")}
+[1] {t("Automation - Demonstration of developed features")}
+[2] {t("Code - Developer tools")}
+[3] {t("Config - Configuration file management")}
+[4] {t("Database - Database tools")}
+[5] {t("Doc - Documentation search")}
+[6] {t("Git - Git tools")}
+[7] {t("GPT code - AI assistant tools")}
+[8] {t("Language - Change language / Changer la langue")}
+[9] {t("Network - Network tools")}
+[10] {t("Process - Execution tools")}
+[11] {t("Run - Execute and install an instance")}
+[12] {t("Security - Dependency security audit")}
+[13] {t("Test - Test an Odoo module")}
+[14] {t("Update - Update all developed staging source code")}
+[15] {t("Deploy - Deploy ERPLibre locally")}
+[0] {t("Back")}
 """
         while True:
             status = click.prompt(help_info)
@@ -274,8 +272,12 @@ class TODO:
                 status = self.prompt_execute_update()
                 if status is not False:
                     return
+            elif status == "15":
+                status = self.prompt_execute_deploy()
+                if status is not False:
+                    return
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def prompt_install(self):
         print("Detect first installation from code source.")
@@ -355,7 +357,7 @@ class TODO:
             ),
             "0": (
                 "0",
-                f"0: {t('menu_quit')}",
+                f"0: {t('Quit')}",
             ),
         }
         commands_end = {}
@@ -373,7 +375,7 @@ class TODO:
                 label += " - Installed"
             if odoo_version == odoo_installed_version:
                 label += " - Actual"
-            if version_info.get("default"):
+            if version_info.get("Default"):
                 label += " - Default"
             if version_info.get("is_deprecated"):
                 label += " - Deprecated"
@@ -391,11 +393,13 @@ class TODO:
         odoo_version_input = ""
         while odoo_version_input not in install_commands:
             if odoo_version_input:
-                print(f"{t('error_value')} '{odoo_version_input}'")
+                print(
+                    f"{t('Error, cannot understand value')} '{odoo_version_input}'"
+                )
             str_input_dyn_odoo_version = (
-                f"💬 {t('choose_version')}\n\t"
+                f"💬 {t('Choose a version:')}\n\t"
                 + "\n\t".join([a[1] for a in install_commands.values()])
-                + f"\n{t('selection')}"
+                + f"\n{t('Select: ')}"
             )
             odoo_version_input = (
                 input(str_input_dyn_odoo_version).strip().lower()
@@ -405,7 +409,7 @@ class TODO:
             return
 
         cmd_intern = install_commands.get(odoo_version_input)[2]
-        print(f"{t('will_execute')}\n{cmd_intern}")
+        print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
         # TODO check script open_terminal_code_generator.sh
@@ -415,7 +419,9 @@ class TODO:
                 cmd_intern, shell=True, executable="/bin/bash", check=True
             )
         except subprocess.CalledProcessError as e:
-            print(f"{t('script_failed')} {e.returncode}.")
+            print(
+                f"{t('The Bash script failed with return code')} {e.returncode}."
+            )
             print("Wait after installation and open projects by terminal.")
             print("make open_terminal")
             self.restart_script(str(e))
@@ -459,7 +465,12 @@ class TODO:
                 db_name, extra_cmd_web_login=extra_cmd_web_login
             )
 
-        command = instance.get("command")
+        bash_command = instance.get("bash_command")
+        if bash_command:
+            print(f"{t('Will execute:')} {bash_command}")
+            self.execute.exec_command_live(bash_command, source_erplibre=False)
+
+        command = instance.get("Command:")
         if command:
             self.prompt_execute_selenium(
                 command=command, extra_cmd_web_login=extra_cmd_web_login
@@ -470,8 +481,8 @@ class TODO:
             callback(instance)
 
     def fill_help_info(self, choices):
-        help_info = t("command") + "\n"
-        help_end = f"[0] {t('back')}\n"
+        help_info = t("Command:") + "\n"
+        help_end = f"[0] {t('Back')}\n"
         for i, instance in enumerate(choices):
             desc_key = instance.get("prompt_description_key")
             if desc_key:
@@ -492,14 +503,14 @@ class TODO:
         # Support mobile ERPLibre
         if os.path.exists(MOBILE_HOME_PATH):
             menu_entry = {
-                "prompt_description": t("mobile_compile_run"),
+                "prompt_description": t("Mobile - Compile and run software"),
                 "callback": self.callback_make_mobile_home,
             }
             choices.append(menu_entry)
 
         # Support custom database to execute
         menu_entry = {
-            "prompt_description": t("choose_database"),
+            "prompt_description": t("Choose your database"),
             "callback": self.callback_execute_custom_database,
         }
         choices.insert(0, menu_entry)
@@ -516,7 +527,9 @@ class TODO:
                     int_cmd = int(status)
                     if 1 < int_cmd <= init_len:
                         cmd_no_found = False
-                        status = click.confirm(t("new_instance_confirm"))
+                        status = click.confirm(
+                            t("Do you want a new instance?")
+                        )
                         instance = choices[int_cmd - 1]
                         self.execute_from_configuration(
                             instance,
@@ -533,7 +546,7 @@ class TODO:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print(t("cmd_not_found"))
+                    print(t("Command not found !"))
 
     def prompt_execute_function(self):
         choices = self.config_file.get_config("function")
@@ -555,11 +568,11 @@ class TODO:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print(t("cmd_not_found"))
+                    print(t("Command not found !"))
 
     def prompt_execute_update(self):
         # self.execute.exec_command_live(f"make {makefile_cmd}")
-        print(f"🤖 {t('update_dev')}")
+        print(f"🤖 {t('Development update')}")
         # TODO détecter les modules en modification pour faire la mise à jour en cours
         # TODO demander sur quel BD faire la mise à jour
         # TODO proposer les modules manuelles selon la configuration à mettre à jour
@@ -570,11 +583,11 @@ class TODO:
 
         choices = self.config_file.get_config("update_from_makefile")
         menu_entry = {
-            "prompt_description": t("upgrade_odoo_migration"),
+            "prompt_description": t("Upgrade Odoo - Migration Database"),
         }
         choices.append(menu_entry)
         poetry_entry = {
-            "prompt_description": t("upgrade_poetry_dependency"),
+            "prompt_description": t("Upgrade Poetry - Dependency of Odoo"),
         }
         choices.append(poetry_entry)
         help_info = self.fill_help_info(choices)
@@ -600,10 +613,50 @@ class TODO:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print(t("cmd_not_found"))
+                    print(t("Command not found !"))
+
+    def prompt_execute_deploy(self):
+        print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
+        choices = [
+            {"prompt_description": t("Clone ERPLibre locally (git clone)")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._deploy_clone_erplibre()
+            else:
+                print(t("Command not found !"))
+
+    def _deploy_clone_erplibre(self):
+        default_path = os.path.expanduser("~/erplibre")
+        target_path = (
+            input(t("Target directory path (default: ~/erplibre): ")).strip()
+            or default_path
+        )
+        target_path = os.path.expanduser(target_path)
+        if os.path.exists(target_path):
+            print(f"{t('Directory already exists: ')}{target_path}")
+            return
+        print(t("Cloning ERPLibre..."))
+        cmd = (
+            "git clone"
+            " https://github.com/erplibre/erplibre"
+            f" {target_path}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
+        except Exception as e:
+            print(f"{t('Error cloning ERPLibre: ')}{e}")
 
     def prompt_execute_code(self):
-        print(f"🤖 {t('code_need')}")
+        print(f"🤖 {t('What do you need for development?')}")
         #         help_info = """Commande :
         #         [1] Status Git local et distant
         #         [2] Démarrer le générateur de code
@@ -619,18 +672,18 @@ class TODO:
         choices = self.config_file.get_config("code_from_makefile")
 
         menu_entry = {
-            "prompt_description": t("open_shell"),
+            "prompt_description": t("Open SHELL"),
         }
         choices.append(menu_entry)
 
         menu_entry = {
-            "prompt_description": t("upgrade_module"),
+            "prompt_description": t("Upgrade Module"),
         }
         choices.append(menu_entry)
 
         choices.append(
             {
-                "prompt_description": t("debug"),
+                "prompt_description": t("Debug"),
             }
         )
 
@@ -658,12 +711,13 @@ class TODO:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print(t("cmd_not_found"))
+                    print(t("Command not found !"))
 
     def prompt_execute_git(self):
-        print(f"🤖 {t('git_manage')}")
+        print(f"🤖 {t('Git management tools!')}")
         choices = [
-            {"prompt_description": t("git_local_server")},
+            {"prompt_description": t("Local git server")},
+            {"prompt_description": t("Add a remote to a local repository")},
         ]
 
         # Append config-driven entries
@@ -680,6 +734,8 @@ class TODO:
                 return False
             elif status == "1":
                 self.prompt_execute_git_local_server()
+            elif status == "2":
+                self._git_add_remote()
             else:
                 cmd_no_found = True
                 try:
@@ -691,13 +747,40 @@ class TODO:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print(t("cmd_not_found"))
+                    print(t("Command not found !"))
+
+    def _git_add_remote(self):
+        remote_name = (
+            input(t("Remote name (default: localhost): ")).strip()
+            or "localhost"
+        )
+        remote_url = input(
+            t("Repository address (e.g.: git://192.168.1.100/my-repo.git): ")
+        ).strip()
+        if not remote_url:
+            print(t("Repository address is required!"))
+            return
+        cmd = f"git remote add {remote_name} {remote_url}"
+        print(f"{t('Will execute:')} {cmd}")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            print(t("Remote added successfully!"))
+        except Exception as e:
+            print(f"{t('Error adding remote: ')}{e}")
 
     def prompt_execute_git_local_server(self):
-        print(f"🤖 {t('git_repo_manage')}")
+        print(f"🤖 {t('Manage local git repository server!')}")
         choices = [
-            {"prompt_description": t("git_repo_deploy_local")},
-            {"prompt_description": t("git_repo_deploy_production")},
+            {
+                "prompt_description": t(
+                    "Deploy a local git server (~/.git-server)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Deploy a production git server (/srv/git, root required)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -711,21 +794,25 @@ class TODO:
             elif status == "2":
                 self._prompt_git_server_actions(production_ready=True)
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def _prompt_git_server_actions(self, production_ready=False):
         mode = (
-            t("git_mode_production")
+            t("Production mode (/srv/git, root required)")
             if production_ready
-            else t("git_mode_local")
+            else t("Local mode (~/.git-server)")
         )
         print(f"🤖 {mode}")
         choices = [
-            {"prompt_description": t("git_action_all")},
-            {"prompt_description": t("git_action_init")},
-            {"prompt_description": t("git_action_remote")},
-            {"prompt_description": t("git_action_push")},
-            {"prompt_description": t("git_action_serve")},
+            {
+                "prompt_description": t(
+                    "Run all (init + remote + push + serve)"
+                )
+            },
+            {"prompt_description": t("Init - Create bare repos")},
+            {"prompt_description": t("Remote - Add local remotes")},
+            {"prompt_description": t("Push - Push to local server")},
+            {"prompt_description": t("Serve - Start git daemon")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -760,10 +847,10 @@ class TODO:
                     action="serve",
                 )
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def _deploy_git_server(self, production_ready=False, action="all"):
-        print(t("git_repo_deploy_starting"))
+        print(t("Starting git server deployment..."))
         cmd = (
             "python3 ./script/git/git_local_server.py -v" f" --action {action}"
         )
@@ -775,9 +862,19 @@ class TODO:
         )
 
     def prompt_execute_gpt_code(self):
-        print(f"🤖 {t('gpt_code_manage')}")
+        print(f"🤖 {t('AI assistant tools for development!')}")
         choices = [
-            {"prompt_description": t("gpt_code_claude_commit")},
+            {"prompt_description": t("Configure Claude Code configurations")},
+            {
+                "prompt_description": t(
+                    "Add an automation with Claude in todo.py"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "RTK - CLI proxy to reduce LLM token consumption"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -787,56 +884,158 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self._setup_claude_commit()
+                self._prompt_claude_configs()
+            elif status == "2":
+                self._claude_add_automation()
+            elif status == "3":
+                self.prompt_execute_rtk()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
-    def _setup_claude_commit(self):
+    def _prompt_claude_configs(self):
+        print(f"🤖 {t('Deploy Claude Code commands!')}")
+        choices = [
+            {"prompt_description": t("Commit - OCA/Odoo commit command")},
+            {
+                "prompt_description": t(
+                    "Todo Add Command - Add a command to todo.py menu"
+                )
+            },
+            {"prompt_description": t("Show installed custom commands")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._setup_claude_command(
+                    "commit",
+                    "template_claude_commands_commit.md",
+                    personalize=True,
+                )
+            elif status == "2":
+                self._setup_claude_command(
+                    "todo_add_command",
+                    "template_claude_commands_todo_add_command.md",
+                )
+            elif status == "3":
+                self._list_claude_commands()
+            else:
+                print(t("Command not found !"))
+
+    def _list_claude_commands(self):
+        commands_dir = os.path.expanduser("~/.claude/commands")
+        if not os.path.isdir(commands_dir):
+            print(t("No custom commands found in ~/.claude/commands/"))
+            return
+        files = sorted(
+            f for f in os.listdir(commands_dir) if f.endswith(".md")
+        )
+        if not files:
+            print(t("No custom commands found in ~/.claude/commands/"))
+            return
+        print(t("Claude Code custom commands:"))
+        print("-" * 50)
+        for f in files:
+            filepath = os.path.join(commands_dir, f)
+            mtime = os.path.getmtime(filepath)
+            date_str = datetime.datetime.fromtimestamp(mtime).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+            name = f[:-3]  # remove .md
+            print(f"  /{name:<30} {date_str}")
+        print("-" * 50)
+        print(f"{t('Total:')}" f" {len(files)}")
+
+    def _setup_claude_command(
+        self, command_name, template_filename, personalize=False
+    ):
         dest_dir = os.path.expanduser("~/.claude/commands")
-        dest_file = os.path.join(dest_dir, "commit.md")
+        dest_file = os.path.join(dest_dir, f"{command_name}.md")
 
         if os.path.exists(dest_file):
-            print(t("gpt_code_commit_exists"))
-            return
-
-        name = input(t("gpt_code_enter_name")).strip()
-        email = input(t("gpt_code_enter_email")).strip()
+            print(f"{t('File already exists: ')}{dest_file}")
+            overwrite = input(
+                t("Do you want to overwrite the file? (y/Y): ")
+            ).strip()
+            if overwrite not in ("y", "Y"):
+                print(t("Nothing to do."))
+                return
 
         template_path = os.path.join(
             os.path.dirname(__file__),
             "..",
             "..",
             "conf",
-            "template_claude_commands_commit.md",
+            template_filename,
         )
         try:
             with open(template_path) as f:
                 content = f.read()
 
-            content = content.replace(
-                "Your Name <your@email.com>",
-                f"{name} <{email}>",
-            )
-            content = content.replace(
-                "Your Name ",
-                f"{name} ",
-            )
+            if personalize:
+                name = input(t("Enter your full name: ")).strip()
+                email = input(t("Enter your email: ")).strip()
+                content = content.replace(
+                    "Your Name <your@email.com>",
+                    f"{name} <{email}>",
+                )
+                content = content.replace(
+                    "Your Name ",
+                    f"{name} ",
+                )
 
             os.makedirs(dest_dir, exist_ok=True)
             with open(dest_file, "w") as f:
                 f.write(content)
 
-            print(t("gpt_code_commit_created"))
+            print(f"{t('File created successfully: ')}{dest_file}")
         except Exception as e:
-            print(f"{t('gpt_code_commit_error')}{e}")
+            print(f"{t('Error creating file: ')}{e}")
+
+    def _claude_add_automation(self):
+        description = input(t("Description of the command to add: ")).strip()
+        if not description:
+            return
+        command = input(t("Bash command to execute: ")).strip()
+        if not command:
+            return
+        section = (
+            input(
+                t("Menu section (git/code/config/network/process): ")
+            ).strip()
+            or "git"
+        )
+        section_key = f"{section}_from_makefile"
+        config_path = os.path.join(os.path.dirname(__file__), "todo.json")
+        try:
+            with open(config_path) as f:
+                config = json.load(f)
+            if section_key not in config:
+                config[section_key] = []
+            config[section_key].append(
+                {
+                    "prompt_description": description,
+                    "bash_command": command,
+                }
+            )
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+                f.write("\n")
+            print(t("Automation added successfully in todo.json!"))
+        except Exception as e:
+            print(f"{t('Error adding automation: ')}{e}")
 
     def prompt_execute_doc(self):
-        print(f"🤖 {t('doc_search')}")
+        print(f"🤖 {t('Looking for documentation?')}")
         choices = [
-            {"prompt_description": t("migration_module_coverage")},
-            {"prompt_description": t("what_change_between_version")},
-            {"prompt_description": t("oca_guidelines")},
-            {"prompt_description": t("oca_migration_odoo_19")},
+            {"prompt_description": t("Migration module coverage")},
+            {"prompt_description": t("What change between version")},
+            {"prompt_description": t("OCA guidelines")},
+            {"prompt_description": t("OCA migration Odoo 19 milestone")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -877,14 +1076,18 @@ class TODO:
             elif status == "4":
                 print("https://github.com/OCA/maintainer-tools/issues/658")
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def prompt_execute_database(self):
-        print(f"🤖 {t('db_modify')}")
+        print(f"🤖 {t('Make changes to databases!')}")
         choices = [
-            {"prompt_description": t("download_db_backup")},
-            {"prompt_description": t("restore_from_backup")},
-            {"prompt_description": t("create_backup")},
+            {
+                "prompt_description": t(
+                    "Download database to create backup (.zip)"
+                )
+            },
+            {"prompt_description": t("Restore from backup (.zip)")},
+            {"prompt_description": t("Create backup (.zip)")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -900,13 +1103,13 @@ class TODO:
             elif status == "3":
                 self.db_manager.create_backup_from_database()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def prompt_execute_process(self):
-        print(f"🤖 {t('process_manage')}")
+        print(f"🤖 {t('Manage execution processes!')}")
         choices = [
-            {"prompt_description": t("kill_process_port")},
-            {"prompt_description": t("kill_git_daemon")},
+            {"prompt_description": t("Kill Odoo process from actual port")},
+            {"prompt_description": t("Kill git daemon server process")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -920,23 +1123,139 @@ class TODO:
             elif status == "2":
                 self.process_kill_git_daemon()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def process_kill_git_daemon(self):
         self.execute.exec_command_live(
             "pkill -f 'git daemon'",
             source_erplibre=False,
         )
-        print(t("kill_git_daemon_done"))
+        print(t("Git daemon process killed."))
+
+    def prompt_execute_rtk(self):
+        print(
+            f"🤖 {t('Manage RTK (Rust Token Killer) for token optimization!')}"
+        )
+        choices = [
+            {"prompt_description": t("Install RTK")},
+            {"prompt_description": t("Check RTK version")},
+            {"prompt_description": t("Show cumulative token savings")},
+            {"prompt_description": t("Discover optimization opportunities")},
+            {"prompt_description": t("Initialize global auto-rewrite hook")},
+            {"prompt_description": t("Check RTK status")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.rtk_install()
+            elif status == "2":
+                self.rtk_check_version()
+            elif status == "3":
+                self.rtk_show_gain()
+            elif status == "4":
+                self.rtk_discover()
+            elif status == "5":
+                self.rtk_init_global()
+            elif status == "6":
+                self.rtk_check_status()
+            else:
+                print(t("Command not found !"))
+
+    def rtk_install(self):
+        print(f"🤖 {t('Installation method:')}")
+        choices = [
+            {"prompt_description": t("curl - Automatic install script")},
+            {"prompt_description": t("brew - Homebrew (macOS/Linux)")},
+            {
+                "prompt_description": t(
+                    "cargo - Build from source (Rust required)"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+        status = click.prompt(help_info)
+        print()
+        if status == "0":
+            return
+        elif status == "1":
+            self.execute.exec_command_live(
+                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
+                source_erplibre=False,
+            )
+        elif status == "2":
+            self.execute.exec_command_live(
+                "brew install rtk",
+                source_erplibre=False,
+            )
+        elif status == "3":
+            self.execute.exec_command_live(
+                "cargo install --git https://github.com/rtk-ai/rtk",
+                source_erplibre=False,
+            )
+        else:
+            print(t("Command not found !"))
+
+    def rtk_check_version(self):
+        self.execute.exec_command_live(
+            "rtk --version",
+            source_erplibre=False,
+        )
+
+    def rtk_show_gain(self):
+        self.execute.exec_command_live(
+            "rtk gain",
+            source_erplibre=False,
+        )
+
+    def rtk_discover(self):
+        self.execute.exec_command_live(
+            "rtk discover",
+            source_erplibre=False,
+        )
+
+    def rtk_init_global(self):
+        self.execute.exec_command_live(
+            "rtk init --global",
+            source_erplibre=False,
+        )
+
+    def rtk_check_status(self):
+        rtk_path = shutil.which("rtk")
+        if rtk_path is None:
+            print(t("RTK is not installed. Use option 1 to install it."))
+            return
+
+        result = self.execute.exec_command_live(
+            "rtk --version",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        if isinstance(result, tuple) and result[0] == 0:
+            version_output = " ".join(result[1]).strip()
+            print(f"{t('RTK is installed, version: ')}{version_output}")
+        else:
+            print(f"{t('RTK is installed, version: ')}?")
+
+        config_path = os.path.expanduser("~/.config/rtk/config.toml")
+        if os.path.exists(config_path):
+            print(t("Global auto-rewrite hook: active"))
+        else:
+            print(t("Global auto-rewrite hook: inactive"))
 
     def prompt_execute_config(self):
-        print(f"🤖 {t('config_manage')}")
+        print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
         choices = [
-            {"prompt_description": t("generate_all_config")},
-            {"prompt_description": t("generate_from_preconfig")},
-            {"prompt_description": t("generate_from_backup")},
-            {"prompt_description": t("generate_from_database")},
-            {"prompt_description": t("setup_queue_job_for_parallelism")},
+            {"prompt_description": t("Generate all configuration")},
+            {"prompt_description": t("Generate from pre-configuration")},
+            {"prompt_description": t("Generate from backup file")},
+            {"prompt_description": t("Generate from database")},
+            {"prompt_description": t("Setup queue job for parallelism")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -956,15 +1275,15 @@ class TODO:
             elif status == "5":
                 self.generate_config_queue_job()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def prompt_execute_network(self):
-        print(f"🤖 {t('network_tools')}")
+        print(f"🤖 {t('Network tools!')}")
         choices = [
-            {"prompt_description": t("ssh_port_forwarding")},
+            {"prompt_description": t("SSH port-forwarding")},
             {
                 "prompt_description": t(
-                    "network_performance_request_per_second"
+                    "Network performance request per second"
                 )
             },
         ]
@@ -980,7 +1299,7 @@ class TODO:
             elif status == "2":
                 self.generate_network_performance_test()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def generate_network_port_forwarding(self, add_arg=None):
         # ssh -L local_port:localhost:remote_port SSH_connection
@@ -1007,9 +1326,13 @@ class TODO:
         )
 
     def prompt_execute_security(self):
-        print(f"🤖 {t('security_audit')}")
+        print(f"🤖 {t('Dependency security audit!')}")
         choices = [
-            {"prompt_description": t("pip_audit_desc")},
+            {
+                "prompt_description": t(
+                    "pip-audit - Check vulnerabilities on Python environments"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1021,14 +1344,14 @@ class TODO:
             elif status == "1":
                 self.execute_pip_audit()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def prompt_execute_test(self):
-        print(f"🤖 {t('test_description')}")
+        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
         choices = [
-            {"prompt_description": t("test_run_module")},
-            {"prompt_description": t("test_run_module_coverage")},
-            {"prompt_description": t("test_run_unit_tests")},
+            {"prompt_description": t("Test a module")},
+            {"prompt_description": t("Test a module with code coverage")},
+            {"prompt_description": t("ERPLibre unit tests")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1044,25 +1367,29 @@ class TODO:
             elif status == "3":
                 self.execute_unit_tests()
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def execute_test_module(self, coverage=False):
         # Module name
-        module_name = input(t("test_enter_module_name")).strip()
+        module_name = input(t("Module name to test: ")).strip()
         if not module_name:
-            print(t("test_module_required"))
+            print(t("Module name is required!"))
             return
 
         # Database name
-        db_name = input(t("test_db_name")).strip()
+        db_name = input(
+            t("Temporary database name (default: test_todo_tmp): ")
+        ).strip()
         if not db_name:
             db_name = "test_todo_tmp"
 
         # Extra modules
-        extra_modules = input(t("test_install_extra_modules")).strip()
+        extra_modules = input(
+            t("Extra modules to install (comma-separated, empty for none): ")
+        ).strip()
 
         # Log level
-        log_level = input(t("test_log_level")).strip()
+        log_level = input(t("Log level (default: test): ")).strip()
         if not log_level:
             log_level = "test"
 
@@ -1072,7 +1399,7 @@ class TODO:
             modules_to_install += f",{extra_modules}"
 
         # Step 1: Create temp DB
-        print(f"\n--- {t('test_creating_db')} '{db_name}' ---")
+        print(f"\n--- {t('Creating temporary database')} '{db_name}' ---")
         cmd_restore = f"./script/database/db_restore.py --database {db_name}"
         self.execute.exec_command_live(
             cmd_restore,
@@ -1081,9 +1408,7 @@ class TODO:
         )
 
         # Step 2: Install modules
-        print(
-            f"\n--- {t('test_installing_modules')}: {modules_to_install} ---"
-        )
+        print(f"\n--- {t('Installing modules')}: {modules_to_install} ---")
         cmd_install = (
             f"./script/addons/install_addons.sh"
             f" {db_name} {modules_to_install}"
@@ -1095,7 +1420,7 @@ class TODO:
         )
 
         # Step 3: Run tests
-        print(f"\n--- {t('test_running')}: {module_name} ---")
+        print(f"\n--- {t('Running tests')}: {module_name} ---")
         cmd_test = (
             f"ODOO_MODE_TEST=true"
             f" ./run.sh"
@@ -1113,18 +1438,22 @@ class TODO:
         )
 
         if status_code == 0:
-            print(f"\n✅ {t('test_success')}")
+            print(f"\n✅ {t('Tests completed successfully!')}")
         else:
-            print(f"\n❌ {t('test_failed')} {status_code}")
+            print(f"\n❌ {t('Tests failed with return code')} {status_code}")
 
         # Step 4: Cleanup
         lang = get_lang()
-        keep_input = input(t("test_keep_db")).strip().lower()
+        keep_input = (
+            input(t("Keep the temporary database? (y/N): ")).strip().lower()
+        )
         keep = keep_input in (("o", "oui") if lang == "fr" else ("y", "yes"))
         if keep:
-            print(f"{t('test_db_kept')}: {db_name}")
+            print(f"{t('Database kept')}: {db_name}")
         else:
-            print(f"\n--- {t('test_cleaning_db')} '{db_name}' ---")
+            print(
+                f"\n--- {t('Cleaning up temporary database')} '{db_name}' ---"
+            )
             cmd_drop = f"./odoo_bin.sh db --drop --database {db_name}"
             self.execute.exec_command_live(
                 cmd_drop,
@@ -1133,7 +1462,7 @@ class TODO:
             )
 
     def execute_unit_tests(self):
-        print(f"\n--- {t('test_unit_running')} ---")
+        print(f"\n--- {t('Running unit tests')} ---")
         cmd = (
             ".venv.erplibre/bin/python -m unittest discover"
             " -s test -p 'test_*.py' -v"
@@ -1144,9 +1473,11 @@ class TODO:
             return_status_and_output=True,
         )
         if status_code == 0:
-            print(f"\n✅ {t('test_unit_success')}")
+            print(f"\n✅ {t('All unit tests passed')}")
         else:
-            print(f"\n❌ {t('test_unit_failed')}: {status_code}")
+            print(
+                f"\n❌ {t('Some unit tests failed, exit code')}: {status_code}"
+            )
 
     def execute_pip_audit(self):
         versions, installed_versions, odoo_installed_version = (
@@ -1169,9 +1500,9 @@ class TODO:
             key_s = str(key_i)
             label = f"{key_s}: {erplibre_version}"
             if odoo_version == odoo_installed_version:
-                label += f" - {t('current')}"
-            if version_info.get("default"):
-                label += f" - {t('default')}"
+                label += f" - {t('Current')}"
+            if version_info.get("Default"):
+                label += f" - {t('Default')}"
 
             environments[key_s] = {
                 "label": label,
@@ -1181,20 +1512,26 @@ class TODO:
             }
 
         if not environments:
-            print(t("no_env_installed"))
+            print(
+                t(
+                    "No installed environment found. Install an Odoo version first."
+                )
+            )
             return
 
         # Show selection menu
         str_input = (
-            f"💬 {t('choose_env_audit')}\n\t"
+            f"💬 {t('Choose an environment for the audit:')}\n\t"
             + "\n\t".join([v["label"] for v in environments.values()])
-            + f"\n\t0: {t('back')}"
-            + f"\n{t('selection')}"
+            + f"\n\t0: {t('Back')}"
+            + f"\n{t('Select: ')}"
         )
         env_input = ""
         while env_input not in environments and env_input != "0":
             if env_input:
-                print(f"{t('error_value')}" f" '{env_input}'")
+                print(
+                    f"{t('Error, cannot understand value')}" f" '{env_input}'"
+                )
             env_input = input(str_input).strip()
 
         if env_input == "0":
@@ -1205,12 +1542,12 @@ class TODO:
         req_path = selected["req_path"]
 
         if not os.path.isfile(req_path):
-            print(f"{t('dep_file_not_found')}{req_path}")
+            print(f"{t('Dependencies file not found: ')}{req_path}")
             return
 
         # TODO support bash from parameter if open gnome-terminal
         cmd = f"pip-audit -r {req_path} -l;bash"
-        print(f"{t('execution')}{cmd}")
+        print(f"{t('Execution: ')}{cmd}")
         self.execute.exec_command_live(
             cmd,
             source_erplibre=True,
@@ -1237,10 +1574,10 @@ class TODO:
 
     def generate_config_from_preconfiguration(self):
         choices = [
-            {"prompt_description": t("preconfig_base")},
-            {"prompt_description": t("preconfig_base_code_generator")},
-            {"prompt_description": t("preconfig_base_image_db")},
-            {"prompt_description": t("preconfig_all")},
+            {"prompt_description": t("base")},
+            {"prompt_description": t("base + code_generator")},
+            {"prompt_description": t("base + image_db")},
+            {"prompt_description": t("all")},
             # {"prompt_description": "base + migration"},
         ]
         help_info = self.fill_help_info(choices)
@@ -1269,11 +1606,11 @@ class TODO:
             #     str_group = f"--group {group}"
             #     self.generate_config(add_arg=str_group)
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def debug_ide(self):
         choices = [
-            {"prompt_description": t("debug_todo_py")},
+            {"prompt_description": t("Debug todo.py")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1288,7 +1625,7 @@ class TODO:
                     os.path.join(os.getcwd(), "script/todo/todo.py"),
                 )
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def generate_config_from_backup(self):
         file_name = self.db_manager.open_file_image_db()
@@ -1385,9 +1722,6 @@ class TODO:
             # # self.restart_script(e)
             try:
                 # TODO duplicate
-                import tkinter as tk
-                from tkinter import filedialog
-
                 import click
                 import humanize
                 import openai
@@ -1487,7 +1821,7 @@ class TODO:
         )
 
     def restart_script(self, last_error):
-        print(f"🤖 {t('reboot_todo')}")
+        print(f"🤖 {t('Reboot TODO ...')}")
         # os.execv(sys.executable, ['python'] + sys.argv)
         # TODO mettre check que le répertoire est créé, s'il existe, auto-loop à corriger
         if os.path.exists(VENV_ERPLIBRE) and not os.path.exists(
@@ -1655,13 +1989,13 @@ if __name__ == "__main__":
             todo.crash_diagnostic(CRASH_E)
         todo.run()
     except KeyboardInterrupt:
-        print(t("keyboard_interrupt"))
+        print(t("Keyboard interrupt"))
     finally:
         end_time = time.time()
         duration_sec = end_time - start_time
         if humanize:
             duration_delta = datetime.timedelta(seconds=duration_sec)
             humain_time = humanize.precisedelta(duration_delta)
-            print(f"\n{t('execution_time')} {humain_time}\n")
+            print(f"\n{t('TODO execution time')} {humain_time}\n")
         else:
-            print(f"\n{t('execution_time')} {duration_sec:.2f} sec.\n")
+            print(f"\n{t('TODO execution time')} {duration_sec:.2f} sec.\n")

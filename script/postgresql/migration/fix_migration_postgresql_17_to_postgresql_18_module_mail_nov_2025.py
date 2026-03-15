@@ -10,18 +10,20 @@ print("Running a script in the Odoo shell!")
 # ERROR: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
 # DÉTAIL : Key (channel_id)=(3) is not present in table "discuss_channel".
 
-env.cr.execute("""
+env.cr.execute(
+    """
     ALTER TABLE discuss_channel
     DROP CONSTRAINT discuss_channel_channel_type_not_null;
-""")
+"""
+)
 env.cr.commit()
 
-#env.cr.execute("SELECT to_regclass('public.discuss_channel');")
-#print("table:", env.cr.fetchone())
+# env.cr.execute("SELECT to_regclass('public.discuss_channel');")
+# print("table:", env.cr.fetchone())
 
-#print(
+# print(
 #    "model discuss.channel:",
 #    env["ir.model"].search([("model", "=", "discuss.channel")]),
-#)
+# )
 
 print("End fix migration with update mail postgresql 17 to postgresql 18.")

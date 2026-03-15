@@ -26,17 +26,10 @@ def get_pull_request_repo(
     parsed_url = parse(upstream_url)
 
     status, user = gh.user.get()
-    user_name = (
-        user["login"] if not organization_name else organization_name
-    )
-    status, lst_pull = (
-        gh.repos[user_name][parsed_url.repo].pulls.get()
-    )
+    user_name = user["login"] if not organization_name else organization_name
+    status, lst_pull = gh.repos[user_name][parsed_url.repo].pulls.get()
     if type(lst_pull) is dict:
-        print(
-            f"For url {upstream_url},"
-            f" got {lst_pull.get('message')}"
-        )
+        print(f"For url {upstream_url}," f" got {lst_pull.get('message')}")
         return False
     else:
         for pull in lst_pull:
@@ -53,26 +46,21 @@ def fork_repo(
     parsed_url = parse(upstream_url)
 
     status, user = gh.user.get()
-    user_name = (
-        user["login"] if not organization_name else organization_name
-    )
-    status, forked_repo = (
-        gh.repos[user_name][parsed_url.repo].get()
-    )
+    user_name = user["login"] if not organization_name else organization_name
+    status, forked_repo = gh.repos[user_name][parsed_url.repo].get()
     if status == 404:
-        status, upstream_repo = (
-            gh.repos[parsed_url.owner][parsed_url.repo].get()
-        )
+        status, upstream_repo = gh.repos[parsed_url.owner][
+            parsed_url.repo
+        ].get()
         if status == 404:
             print("Unable to find repo %s" % upstream_url)
             exit(1)
         args = {}
         if organization_name:
             args["organization"] = organization_name
-        status, forked_repo = (
-            gh.repos[parsed_url.owner][parsed_url.repo]
-            .forks.post(**args)
-        )
+        status, forked_repo = gh.repos[parsed_url.owner][
+            parsed_url.repo
+        ].forks.post(**args)
         if status == 404:
             print(
                 f"{Fore.RED}Error{Style.RESET_ALL} when forking"
@@ -82,23 +70,16 @@ def fork_repo(
         else:
             try:
                 print(
-                    "Forked %s to %s"
-                    % (upstream_url, forked_repo["html_url"])
+                    "Forked %s to %s" % (upstream_url, forked_repo["html_url"])
                 )
             except Exception as e:
                 print(e)
                 print(forked_repo)
                 print(upstream_url)
     elif status == 202:
-        print(
-            "Forked repo %s already exists"
-            % forked_repo["full_name"]
-        )
+        print("Forked repo %s already exists" % forked_repo["full_name"])
     elif status != 200:
-        print(
-            "Status not supported: %s - %s"
-            % (status, forked_repo)
-        )
+        print("Status not supported: %s - %s" % (status, forked_repo))
         exit(1)
 
 
@@ -110,9 +91,7 @@ def add_and_fetch_remote(
     """
     try:
         working_repo = Repo(repo_info.relative_path)
-        if repo_info.organization in [
-            a.name for a in working_repo.remotes
-        ]:
+        if repo_info.organization in [a.name for a in working_repo.remotes]:
             print(
                 f'Remote "{repo_info.organization}" already exist'
                 f" in {repo_info.relative_path}"
@@ -122,8 +101,7 @@ def add_and_fetch_remote(
         print(f"New repo {repo_info.relative_path}")
         if not root_repo:
             print(
-                "Missing git repository to root for repo"
-                f" {repo_info.path}"
+                "Missing git repository to root for repo" f" {repo_info.path}"
             )
             return
         if branch_name:
@@ -149,16 +127,14 @@ def add_and_fetch_remote(
     # Add remote
     upstream_remote = retry(
         wait_exponential_multiplier=1000, stop_max_delay=15000
-    )(working_repo.create_remote)(
-        repo_info.organization, repo_info.url_https
-    )
+    )(working_repo.create_remote)(repo_info.organization, repo_info.url_https)
     print(
         'Remote "%s" created for %s'
         % (repo_info.organization, repo_info.url_https)
     )
 
     # Fetch the remote
-    retry(
-        wait_exponential_multiplier=1000, stop_max_delay=15000
-    )(upstream_remote.fetch)()
+    retry(wait_exponential_multiplier=1000, stop_max_delay=15000)(
+        upstream_remote.fetch
+    )()
     print('Remote "%s" fetched' % repo_info.organization)
