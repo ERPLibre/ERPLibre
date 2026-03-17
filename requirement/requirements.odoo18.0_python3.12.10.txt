@@ -44,6 +44,9 @@ pdfminer.six==20260107
 # Optional PyDev
 pydevd-odoo
 
+# Mail check
+flanker
+
 # For fixing module ocr_data_retrieval check file ocr_data_retrieval/models/ocr_data_template.py
 #spacy==3.8.2
 
