@@ -47,6 +47,9 @@ pydevd-odoo
 # Mail check
 flanker
 
+# For optimal json
+orjson
+
 # For fixing module ocr_data_retrieval check file ocr_data_retrieval/models/ocr_data_template.py
 #spacy==3.8.2
 
