@@ -1,4 +1,8 @@
-# CLAUDE.md - ERPLibre Multi-Version Odoo Platform
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## ERPLibre Multi-Version Odoo Platform
 
 ## Projet
 
