@@ -44,6 +44,12 @@ pdfminer.six==20260107
 # Optional PyDev
 pydevd-odoo
 
+# Mail check
+flanker
+
+# For optimal json
+orjson
+
 # For fixing module ocr_data_retrieval check file ocr_data_retrieval/models/ocr_data_template.py
 #spacy==3.8.2
 
@@ -62,7 +68,7 @@ isort==7.0.0
 
 # Fix some OS
 cryptography==46.0.5
-pyopenssl==25.3.0
+pyopenssl==26.0.0
 # This will ignore pyopenssl from pysaml2==7.5.4
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 
