@@ -19,3 +19,7 @@ pymssql
 
 # Conflict with pdfminer.six
 pdfminer
+
+# TODO support rename
+mpl_toolkits
+# mpl_toolkits rename to matplotlib
