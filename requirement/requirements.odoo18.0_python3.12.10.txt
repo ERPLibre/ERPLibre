@@ -65,6 +65,7 @@ beautifulsoup4==4.13.5
 #pylint-odoo==9.3.22
 #pylint==3.3.9
 isort==7.0.0
+git+https://github.com/mathben/flanker.git@update_imghdr_python3
 
 # Fix some OS
 cryptography==46.0.5
