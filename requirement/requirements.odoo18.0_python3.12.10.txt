@@ -1,7 +1,7 @@
 # For OSX
 cython
 
-setuptools==80.10.2
+setuptools==82.0.0
 
 # Module voice_to_text
 #SpeechRecognition==3.10.0
