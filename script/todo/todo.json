@@ -56,6 +56,10 @@
         {
             "prompt_description_key": "Configure git local editor to vim",
             "bash_command": "git config --global core.editor \"vim\""
+        },
+        {
+            "prompt_description_key": "Generate git patch to /tmp",
+            "bash_command": "PATCH=\"/tmp/patch_$(date +%Y%m%d_%H%M%S).patch\"; git -C \"$(pwd)\" diff HEAD > \"$PATCH\" && printf \"\\n✓ Patch created: %s\\n\\n=== Guide to apply the patch ===\\n  Check compatibility : git apply --check %s\\n  Apply (git)         : git apply %s\\n  Apply (patch)       : patch -p1 < %s\\n  Revert (git)        : git apply -R %s\\n\" \"$PATCH\" \"$PATCH\" \"$PATCH\" \"$PATCH\" \"$PATCH\""
         }
     ]
 }

@@ -617,6 +617,10 @@ TRANSLATIONS = {
         "fr": "Configuration git local par vim",
         "en": "Configure git local editor to vim",
     },
+    "Generate git patch to /tmp": {
+        "fr": "Générer une patch git dans /tmp",
+        "en": "Generate git patch to /tmp",
+    },
     "Git editor configured to vim successfully!": {
         "fr": "Éditeur git configuré sur vim avec succès!",
         "en": "Git editor configured to vim successfully!",
