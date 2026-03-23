@@ -619,6 +619,7 @@ class TODO:
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
         choices = [
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
+            {"prompt_description": t("Configure sshfs")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -629,6 +630,8 @@ class TODO:
                 return False
             elif status == "1":
                 self._deploy_clone_erplibre()
+            elif status == "2":
+                self._configure_sshfs()
             else:
                 print(t("Command not found !"))
 
@@ -654,6 +657,110 @@ class TODO:
             print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
         except Exception as e:
             print(f"{t('Error cloning ERPLibre: ')}{e}")
+
+    def _configure_sshfs(self):
+        import getpass
+        import re
+        from datetime import datetime
+
+        print(f"\n{t('SSH address input method')}")
+        print(f"[1] {t('Manual entry')}")
+        print(f"[2] {t('From ~/.ssh/config')}")
+        choice = input(t("Your choice (1/2): ")).strip()
+
+        user = None
+        hostname = None
+        ssh_name = None
+
+        if choice == "2":
+            ssh_config_path = os.path.expanduser("~/.ssh/config")
+            hosts = []
+            if os.path.exists(ssh_config_path):
+                current_host = None
+                current_info = {}
+                with open(ssh_config_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.lower().startswith("host "):
+                            host_val = line.split(None, 1)[1].strip()
+                            if host_val != "*":
+                                if current_host:
+                                    hosts.append((current_host, current_info))
+                                current_host = host_val
+                                current_info = {}
+                        elif current_host:
+                            key = line.split(None, 1)
+                            if len(key) == 2:
+                                k = key[0].lower()
+                                v = key[1].strip()
+                                if k == "hostname":
+                                    current_info["hostname"] = v
+                                elif k == "user":
+                                    current_info["user"] = v
+                if current_host:
+                    hosts.append((current_host, current_info))
+
+            if not hosts:
+                print(t("No SSH hosts found in ~/.ssh/config"))
+                return
+
+            print()
+            for i, (host, info) in enumerate(hosts, 1):
+                hn = info.get("hostname", host)
+                u = info.get("user", "")
+                desc = host
+                if hn != host:
+                    desc += f" ({hn})"
+                if u:
+                    desc += f" [{u}]"
+                print(f"[{i}] {desc}")
+
+            sel = input(t("Select SSH host number: ")).strip()
+            try:
+                idx = int(sel) - 1
+                if idx < 0 or idx >= len(hosts):
+                    print(t("Invalid selection!"))
+                    return
+            except ValueError:
+                print(t("Invalid selection!"))
+                return
+
+            host_name, host_info = hosts[idx]
+            hostname = host_info.get("hostname", host_name)
+            user = host_info.get("user", getpass.getuser())
+            ssh_name = host_name
+            target = f"{host_name}:/"
+        else:
+            ssh_host = input(
+                t("SSH host (e.g.: user@192.168.1.100): ")
+            ).strip()
+            if not ssh_host:
+                print(t("SSH host is required!"))
+                return
+            if "@" in ssh_host:
+                user, hostname = ssh_host.split("@", 1)
+            else:
+                hostname = ssh_host
+                user = getpass.getuser()
+            ssh_name = hostname
+            target = f"{user}@{hostname}:/"
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", ssh_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        mount_point = f"/tmp/sshfs_{safe_name}_{timestamp}"
+        os.makedirs(mount_point, exist_ok=True)
+
+        cmd = f"sshfs {target} {mount_point}"
+        print(f"{t('Mounting sshfs on: ')}{mount_point}")
+        print(f"{t('Will execute:')} {cmd}")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            print(f"{t('Mounted on: ')}{mount_point}")
+            print(f"mount | grep sshfs")
+            print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
+            print(f"nautilus {mount_point}/home/{user}")
+        except Exception as e:
+            print(f"{t('Error mounting sshfs: ')}{e}")
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
