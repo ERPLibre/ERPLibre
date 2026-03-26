@@ -10,6 +10,7 @@ import shutil
 import sys
 import zipfile
 from uuid import uuid4
+from script.todo.version_manager import get_odoo_version
 
 import click
 import todo_file_browser
@@ -530,7 +531,7 @@ class TodoUpgrade:
 
         # print("What is your actual Odoo version?")
         lst_version, lst_version_installed, odoo_installed_version = (
-            self.todo.get_odoo_version()
+            get_odoo_version()
         )
 
         lst_odoo_version = [
@@ -1815,7 +1816,7 @@ class TodoUpgrade:
 
         # Expect odoo_version like 12.0
         lst_version, lst_version_installed, odoo_installed_version = (
-            self.todo.get_odoo_version()
+            get_odoo_version()
         )
         if odoo_installed_version != f"odoo{int_odoo_version}.0":
             print(
@@ -1838,7 +1839,7 @@ class TodoUpgrade:
         # if os.path.exists(venv_oca_path):
         #     return
         lst_version, lst_version_installed, odoo_installed_version = (
-            self.todo.get_odoo_version()
+            get_odoo_version()
         )
         extract_version = f"{next_version}.0"
         dct_erplibre_info = [
