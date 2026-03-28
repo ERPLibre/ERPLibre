@@ -28,6 +28,7 @@ class FileBrowser(urwid.WidgetWrap):
                 urwid.Button(".", on_press=self.select_directory)
             )
 
+        first_file_idx = None
         try:
             entries = os.listdir(self.current_path)
             entries.sort(key=lambda r: r.lower())
@@ -38,6 +39,8 @@ class FileBrowser(urwid.WidgetWrap):
                         urwid.Button(f"{entry}/", on_press=self.open_directory)
                     )
                 elif not self.open_dir:
+                    if first_file_idx is None:
+                        first_file_idx = len(self.list_walker)
                     self.list_walker.append(
                         urwid.Button(entry, on_press=self.select_file)
                     )
@@ -45,12 +48,25 @@ class FileBrowser(urwid.WidgetWrap):
             # Handle directory access errors
             self.list_walker.append(urwid.Text(f"Access Error: {e}"))
 
+        # Set focus: "." for dir selection, first file for file selection
+        if self.open_dir and len(self.list_walker) > 1:
+            self.list_walker.set_focus(1)  # Focus on "." (select current dir)
+        elif first_file_idx is not None:
+            self.list_walker.set_focus(first_file_idx)  # Focus on first file
+
+    def _update_header(self):
+        if hasattr(self, "_header_text"):
+            self._header_text.set_text(
+                ("header", f"Navigate: {self.current_path}")
+            )
+
     def go_up_directory(self, button):
         """Moves up one level in the directory hierarchy."""
         parent_path = os.path.dirname(self.current_path)
         if parent_path != self.current_path:
             self.current_path = parent_path
             self.refresh_list()
+            self._update_header()
 
     def open_directory(self, button):
         """Moves into a subdirectory."""
@@ -59,6 +75,7 @@ class FileBrowser(urwid.WidgetWrap):
         if os.path.isdir(new_path):
             self.current_path = new_path
             self.refresh_list()
+            self._update_header()
 
     def select_directory(self, button):
         """Selects a directory and calls the callback function."""
@@ -73,11 +90,17 @@ class FileBrowser(urwid.WidgetWrap):
         raise urwid.ExitMainLoop()
 
     def run_main_frame(self):
+        self._header_text = urwid.Text(
+            ("header", f"Navigate: {self.current_path}")
+        )
         main_frame = urwid.Frame(
             body=self,
-            header=urwid.Text(("header", f"Navigate: {self.current_path}")),
+            header=self._header_text,
             footer=urwid.Text(
-                ("footer", "Use arrow keys to navigate and Enter to select.")
+                (
+                    "footer",
+                    "Arrow keys: navigate | Enter/Space: select | q/Esc: cancel",
+                )
             ),
         )
 
@@ -90,7 +113,11 @@ class FileBrowser(urwid.WidgetWrap):
             ("bold", "bold", "black"),
         ]
 
-        loop = urwid.MainLoop(main_frame, palette)
+        def unhandled_input(key):
+            if key in ("q", "Q", "esc"):
+                raise urwid.ExitMainLoop()
+
+        loop = urwid.MainLoop(main_frame, palette, unhandled_input=unhandled_input)
         loop.run()
 
 
