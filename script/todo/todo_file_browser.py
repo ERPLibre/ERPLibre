@@ -61,14 +61,16 @@ class FileBrowser(urwid.WidgetWrap):
             self.refresh_list()
 
     def select_directory(self, button):
-        """Selects a file and calls the callback function."""
+        """Selects a directory and calls the callback function."""
         self.callback(self.current_path)
+        raise urwid.ExitMainLoop()
 
     def select_file(self, button):
         """Selects a file and calls the callback function."""
         filename = button.label
         selected_file_path = os.path.join(self.current_path, filename)
         self.callback(selected_file_path)
+        raise urwid.ExitMainLoop()
 
     def run_main_frame(self):
         main_frame = urwid.Frame(
