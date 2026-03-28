@@ -68,7 +68,7 @@ isort==7.0.0
 git+https://github.com/mathben/flanker.git@update_imghdr_python3
 
 # Fix some OS
-cryptography==46.0.5
+cryptography==46.0.6
 pyopenssl==26.0.0
 # This will ignore pyopenssl from pysaml2==7.5.4
 git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
