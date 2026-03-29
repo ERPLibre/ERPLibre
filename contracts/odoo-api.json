@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "API contract — erplibre_mobile ↔ Odoo JSON-RPC 2.0",
+  "version": "1.0",
+  "updated": "2026-03-29",
+  "base_url": "{odoo_url}",
+  "protocol": "JSON-RPC 2.0",
+  "content_type": "application/json",
+  "authentication": {
+    "method": "session_cookie",
+    "notes": "Standard Odoo session — no custom auth module required"
+  },
+  "endpoints": {
+    "auth.login": {
+      "description": "Authenticate and open a session",
+      "method": "POST",
+      "path": "/web/session/authenticate",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "call",
+        "params": {
+          "db": "{database_name}",
+          "login": "{username}",
+          "password": "{password}"
+        }
+      },
+      "response_fields": {
+        "uid": "integer — user ID, null if auth failed",
+        "session_id": "string — session cookie value"
+      },
+      "errors": {
+        "uid=false": "Wrong credentials"
+      },
+      "side_effects": "Sets session cookie — store in SecureStorage"
+    },
+
+    "auth.check": {
+      "description": "Verify session is still valid (ping)",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "jsonrpc": "2.0",
+        "method": "call",
+        "params": {
+          "model": "res.lang",
+          "method": "search_read",
+          "args": [],
+          "kwargs": { "domain": [], "fields": ["name"], "limit": 1 }
+        }
+      },
+      "errors": {
+        "session_expired": "HTTP 200 with error code 100 — trigger re-auth"
+      }
+    },
+
+    "tags.resolve": {
+      "description": "Find or prepare project tags by name",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.tags",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [["name", "in", ["tag1", "tag2"]]],
+            "fields": ["id", "name"]
+          }
+        }
+      },
+      "notes": "Compare returned names against mobile tags — create missing ones via tags.create"
+    },
+
+    "tags.create": {
+      "description": "Create a missing tag",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.tags",
+          "method": "create",
+          "args": [{ "name": "{tag_name}" }],
+          "kwargs": {}
+        }
+      },
+      "response": "integer — new tag ID"
+    },
+
+    "notes.pull": {
+      "description": "Pull todos modified since last sync",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [
+              ["project_id", "=", false],
+              ["write_date", ">", "{last_synced_at_iso}"]
+            ],
+            "fields": [
+              "id", "name", "description", "priority", "active",
+              "state", "tag_ids", "date_deadline",
+              "geo_task_point", "write_date", "attachment_ids"
+            ],
+            "limit": 100,
+            "offset": 0,
+            "order": "write_date asc"
+          }
+        }
+      },
+      "notes": "project_id=False = project_todo personal tasks. geo_task_point requires erplibre_mobile_todo installed."
+    },
+
+    "notes.poll": {
+      "description": "Lightweight poll — fetch only IDs and write_date to detect changes",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [
+              ["project_id", "=", false],
+              ["write_date", ">", "{last_synced_at_iso}"]
+            ],
+            "fields": ["id", "write_date"],
+            "limit": 200
+          }
+        }
+      }
+    },
+
+    "notes.create": {
+      "description": "Push a new note to Odoo — returns the Odoo ID to store locally",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "create",
+          "args": [
+            {
+              "name": "{note.title}",
+              "description": "{note.html_description}",
+              "project_id": false,
+              "priority": "1 if pinned else 0",
+              "active": "not note.archived",
+              "state": "done if note.done else 01_in_progress",
+              "tag_ids": [[6, 0, ["{tag_id_1}", "{tag_id_2}"]]],
+              "date_deadline": "{first_date_entry_iso or null}",
+              "geo_task_point": "{geojson_multipoint or null}"
+            }
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "integer — Odoo task ID → store as odoo_id in mobile SQLite",
+      "notes": "tag_ids uses Odoo ORM command 6 (replace all). geo_task_point is GeoJSON string."
+    },
+
+    "notes.update": {
+      "description": "Push changes to an existing note",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "project.task",
+          "method": "write",
+          "args": [
+            ["{note.odoo_id}"],
+            {
+              "name": "{note.title}",
+              "description": "{note.html_description}",
+              "priority": "1 if pinned else 0",
+              "active": "not note.archived",
+              "state": "done if note.done else 01_in_progress",
+              "tag_ids": [[6, 0, ["{tag_id_1}"]]],
+              "date_deadline": "{first_date_entry_iso or null}",
+              "geo_task_point": "{geojson_multipoint or null}"
+            }
+          ],
+          "kwargs": {}
+        }
+      },
+      "response": "true on success"
+    },
+
+    "attachments.list": {
+      "description": "List attachments for a set of tasks",
+      "method": "POST",
+      "path": "/web/dataset/call_kw",
+      "request": {
+        "params": {
+          "model": "ir.attachment",
+          "method": "search_read",
+          "args": [],
+          "kwargs": {
+            "domain": [
+              ["res_model", "=", "project.task"],
+              ["res_id", "in", ["{odoo_id_1}", "{odoo_id_2}"]]
+            ],
+            "fields": ["id", "name", "mimetype", "file_size", "create_date", "res_id"]
+          }
+        }
+      }
+    },
+
+    "attachments.upload": {
+      "description": "Upload a media file (audio, photo, video) as task attachment",
+      "method": "POST",
+      "path": "/web/binary/upload_attachment",
+      "content_type": "multipart/form-data",
+      "request_fields": {
+        "model": "project.task",
+        "id": "{note.odoo_id}",
+        "ufile": "<binary file content>"
+      },
+      "response_fields": {
+        "id": "integer — attachment ID",
+        "name": "string — filename"
+      },
+      "notes": "Upload only on WiFi option recommended for video files. Requires valid session cookie."
+    }
+  },
+
+  "re_auth_strategy": {
+    "trigger": "JSON-RPC error code 100 (session expired) or HTTP 401",
+    "steps": [
+      "1. Retrieve credentials from SecureStorage key 'odoo_sync_credentials_{app_url}'",
+      "2. Call auth.login with retrieved credentials",
+      "3. Store new session cookie in SecureStorage key 'odoo_sync_session_{app_url}'",
+      "4. Retry original request once",
+      "5. If still failing — set sync_status='error', notify user"
+    ]
+  },
+
+  "sync_status_values": {
+    "local": "Note exists only on device — never pushed",
+    "pending": "Modified since last sync — push needed",
+    "synced": "In sync with Odoo — write_date matches",
+    "conflict": "Both mobile and Odoo modified since last sync (v1: Odoo wins)",
+    "error": "Last sync attempt failed — show error to user"
+  },
+
+  "sqlite_columns_added": {
+    "table": "notes",
+    "migration": "2026032901",
+    "columns": {
+      "odoo_id": "INTEGER — Odoo project.task id, null if never pushed",
+      "odoo_url": "TEXT — Base URL of the Odoo instance used for sync",
+      "sync_status": "TEXT DEFAULT 'local' — see sync_status_values",
+      "last_synced_at": "TEXT — ISO 8601 datetime of last successful sync"
+    }
+  }
+}
