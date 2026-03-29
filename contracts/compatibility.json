@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Version compatibility matrix — ERPLibre platform ↔ erplibre_mobile app",
+  "updated": "2026-03-29",
+  "matrix": [
+    {
+      "mobile": "2026.03.29.01",
+      "erplibre": "1.6.0",
+      "odoo": "18.0",
+      "sync_api_version": "1.0",
+      "modules_required": [
+        "project",
+        "project_todo",
+        "base_geoengine",
+        "erplibre_mobile_todo"
+      ],
+      "breaking": false,
+      "notes": "Initial sync support — push/pull project.task (todos), media attachments, geolocation"
+    }
+  ],
+  "modules": {
+    "project_todo": {
+      "description": "Odoo built-in To-Do — project.task with project_id=False",
+      "auto_installed": true,
+      "source": "odoo/addons/project_todo"
+    },
+    "base_geoengine": {
+      "description": "OCA geospatial fields — GeoMultiPoint for geolocation entries",
+      "source": "odoo18.0/addons/OCA_geospatial/base_geoengine",
+      "version": "18.0.1.2.0",
+      "python_deps": ["shapely", "geojson"]
+    },
+    "erplibre_mobile_todo": {
+      "description": "ERPLibre companion module — adds geo_task_point (GeoMultiPoint) to project.task",
+      "source": "odoo18.0/addons/ERPLibre_erplibre_addons/erplibre_mobile_todo",
+      "depends": ["project_todo", "base_geoengine"],
+      "custom_fields_on_project_task": ["geo_task_point"]
+    }
+  }
+}
