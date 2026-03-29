@@ -137,6 +137,62 @@ TRANSLATIONS = {
         "fr": "Erreur lors du clonage d'ERPLibre : ",
         "en": "Error cloning ERPLibre: ",
     },
+    "Configure sshfs": {
+        "fr": "Configurer sshfs",
+        "en": "Configure sshfs",
+    },
+    "SSH address input method": {
+        "fr": "Méthode de saisie de l'adresse SSH",
+        "en": "SSH address input method",
+    },
+    "Manual entry": {
+        "fr": "Saisie manuelle",
+        "en": "Manual entry",
+    },
+    "From ~/.ssh/config": {
+        "fr": "Depuis ~/.ssh/config",
+        "en": "From ~/.ssh/config",
+    },
+    "Your choice (1/2): ": {
+        "fr": "Votre choix (1/2) : ",
+        "en": "Your choice (1/2): ",
+    },
+    "No SSH hosts found in ~/.ssh/config": {
+        "fr": "Aucun hôte SSH trouvé dans ~/.ssh/config",
+        "en": "No SSH hosts found in ~/.ssh/config",
+    },
+    "Select SSH host number: ": {
+        "fr": "Numéro de l'hôte SSH à sélectionner : ",
+        "en": "Select SSH host number: ",
+    },
+    "Invalid selection!": {
+        "fr": "Sélection invalide!",
+        "en": "Invalid selection!",
+    },
+    "SSH host (e.g.: user@192.168.1.100): ": {
+        "fr": "Hôte SSH (ex: user@192.168.1.100) : ",
+        "en": "SSH host (e.g.: user@192.168.1.100): ",
+    },
+    "SSH host is required!": {
+        "fr": "L'hôte SSH est requis!",
+        "en": "SSH host is required!",
+    },
+    "Mounting sshfs on: ": {
+        "fr": "Montage sshfs sur : ",
+        "en": "Mounting sshfs on: ",
+    },
+    "Mounted on: ": {
+        "fr": "Monté sur : ",
+        "en": "Mounted on: ",
+    },
+    "To unmount: ": {
+        "fr": "Pour démonter : ",
+        "en": "To unmount: ",
+    },
+    "Error mounting sshfs: ": {
+        "fr": "Erreur lors du montage sshfs : ",
+        "en": "Error mounting sshfs: ",
+    },
     # RTK (Rust Token Killer)
     "Manage RTK (Rust Token Killer) for token optimization!": {
         "fr": "Gérer RTK (Rust Token Killer) pour optimiser les tokens!",
@@ -616,6 +672,10 @@ TRANSLATIONS = {
     "Configure git local editor to vim": {
         "fr": "Configuration git local par vim",
         "en": "Configure git local editor to vim",
+    },
+    "Generate git patch to /tmp": {
+        "fr": "Générer une patch git dans /tmp",
+        "en": "Generate git patch to /tmp",
     },
     "Git editor configured to vim successfully!": {
         "fr": "Éditeur git configuré sur vim avec succès!",
