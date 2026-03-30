@@ -24,6 +24,7 @@ VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 ADDONS_PATH = os.path.join("addons")
+MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -144,6 +145,7 @@ class Update:
         self.data_version = None
         self.odoo_version = None
         self.python_version = None
+        self.mobile_active = False
         self.detected_version_erplibre = None
         self.new_version_erplibre = None
         self.new_version_odoo = None
@@ -188,10 +190,16 @@ class Update:
         with open(VERSION_POETRY_FILE) as txt:
             poetry_version = txt.read().strip()
 
+        # Detect mobile context
+        self.mobile_active = os.path.isdir(MOBILE_PATH)
+
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
         _logger.info(f"Poetry version: {poetry_version}")
+        _logger.info(
+            f"Mobile context: {'active (' + MOBILE_PATH + ')' if self.mobile_active else 'inactive'}"
+        )
         erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (
             self.odoo_version,
             self.python_version,
