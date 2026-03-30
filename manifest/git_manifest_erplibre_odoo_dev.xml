@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
+    <remote name="ERPLibre" fetch="https://github.com/ERPLibre/" />
+    <remote name="OCA" fetch="https://github.com/OCA/" />
+    <remote name="itpp-labs" fetch="https://github.com/itpp-labs/" />
+
     <project
         name="maintainer-tools.git"
         path="script/OCA_maintainer-tools"
