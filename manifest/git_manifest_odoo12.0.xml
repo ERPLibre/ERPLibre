@@ -27,13 +27,6 @@
     <remote name="ERPLibre_origin_tegin" fetch="https://github.com/ERPLibre/" />
 
     <project
-        name="OpenHRMS.git"
-        path="odoo12.0/addons/CybroOdoo_OpenHRMS"
-        remote="ERPLibre_origin_CybroOdoo"
-        revision="dev_12.0"
-        groups="addons,odoo12.0"
-    />
-    <project
         name="Property-Management_odoo.git"
         path="odoo12.0/addons/kinjal-sorathiya_Property-Management_odoo"
         remote="ERPLibre_origin_kinjal-sorathiya"

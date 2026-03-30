@@ -11,11 +11,4 @@
         clone-depth="10"
         groups="migration,odoo18.0"
     />
-    <project
-        name="documentation-user.git"
-        path="odoo18.0/odoo_documentation-user"
-        revision="18.0"
-        remote="odoo"
-        groups="odoo,odoo18.0"
-    />
 </manifest>

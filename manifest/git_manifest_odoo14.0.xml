@@ -30,13 +30,6 @@
     <remote name="tegin" fetch="https://github.com/tegin/" />
 
     <project
-        name="OpenHRMS.git"
-        path="odoo14.0/addons/CybroOdoo_OpenHRMS"
-        remote="CybroOdoo"
-        revision="14.0"
-        groups="addons,odoo14.0"
-    />
-    <project
         name="access-addons.git"
         path="odoo14.0/addons/itpp-labs_access-addons"
         remote="itpp-labs"

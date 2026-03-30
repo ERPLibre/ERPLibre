@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
+
+    <project
+        name="OpenHRMS.git"
+        path="odoo14.0/addons/CybroOdoo_OpenHRMS"
+        remote="CybroOdoo"
+        revision="14.0"
+        groups="extra,odoo14.0"
+    />
+</manifest>

@@ -409,6 +409,37 @@ class TODO:
             return
 
         cmd_intern = install_commands.get(odoo_version_input)[2]
+
+        # For numbered version selections, offer extra modules sub-menu
+        if odoo_version_input.isdigit():
+            extra_choices = {
+                "1": (
+                    "1",
+                    f"1: {t('Standard install (without extra modules)')}",
+                ),
+                "2": (
+                    "2",
+                    f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
+                ),
+                "0": ("0", f"0: {t('Back')}"),
+            }
+            extra_input = ""
+            while extra_input not in extra_choices:
+                if extra_input:
+                    print(
+                        f"{t('Error, cannot understand value')} '{extra_input}'"
+                    )
+                str_extra = (
+                    f"💬 {t('Install type:')}\n\t"
+                    + "\n\t".join([a[1] for a in extra_choices.values()])
+                    + f"\n{t('Select: ')}"
+                )
+                extra_input = input(str_extra).strip()
+            if extra_input == "0":
+                return
+            if extra_input == "2":
+                cmd_intern = cmd_intern + " --with_extra"
+
         print(f"{t('Will execute:')}\n{cmd_intern}")
 
         # TODO use external script to detect terminal to use on system
