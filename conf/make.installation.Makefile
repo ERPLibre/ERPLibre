@@ -113,6 +113,38 @@ switch_odoo_12_update:
 	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --switch --switch_update
 	./script/make.sh config_gen_all
 
+####################
+# INSTALL WITH EXTRA (CybroOdoo)
+####################
+
+.PHONY: install_odoo_18_with_extra
+install_odoo_18_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo18.0_python3.12.10 --install_dev --with_extra
+
+.PHONY: install_odoo_17_with_extra
+install_odoo_17_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo17.0_python3.10.18 --install_dev --with_extra
+
+.PHONY: install_odoo_16_with_extra
+install_odoo_16_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo16.0_python3.10.18 --install_dev --with_extra
+
+.PHONY: install_odoo_15_with_extra
+install_odoo_15_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo15.0_python3.8.20 --install_dev --with_extra
+
+.PHONY: install_odoo_14_with_extra
+install_odoo_14_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo14.0_python3.8.20 --install_dev --with_extra
+
+.PHONY: install_odoo_13_with_extra
+install_odoo_13_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo13.0_python3.7.17 --install_dev --with_extra
+
+.PHONY: install_odoo_12_with_extra
+install_odoo_12_with_extra:
+	./script/version/update_env_version.py --erplibre_version odoo12.0_python3.7.17 --install_dev --with_extra
+
 .PHONY: install_odoo_all_version
 install_odoo_all_version:
 	./script/make.sh install_odoo_18
