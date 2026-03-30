@@ -34,21 +34,6 @@
     <remote name="tegin" fetch="https://github.com/tegin/" />
 
     <project
-        name="OpenHRMS.git"
-        revision="18.0"
-        path="odoo18.0/addons/CybroOdoo_OpenHRMS"
-        remote="CybroOdoo"
-        groups="addons,odoo18.0"
-    />
-    <project
-        name="CybroAddons.git"
-        path="odoo18.0/addons/CybroOdoo_CybroAddons"
-        remote="ERPLibre_origin_CybroOdoo"
-        clone-depth="1"
-        revision="18.0_dev"
-        groups="addons,odoo18.0"
-    />
-    <project
         name="account-analytic.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_account-analytic"

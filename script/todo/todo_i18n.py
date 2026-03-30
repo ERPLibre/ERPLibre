@@ -367,6 +367,18 @@ TRANSLATIONS = {
         "fr": "Choisir une version :",
         "en": "Choose a version:",
     },
+    "Install type:": {
+        "fr": "Type d'installation :",
+        "en": "Install type:",
+    },
+    "Standard install (without extra modules)": {
+        "fr": "Installation standard (sans modules extra)",
+        "en": "Standard install (without extra modules)",
+    },
+    "Install with extra modules (CybroOdoo - large, slow)": {
+        "fr": "Installation avec modules extra (CybroOdoo - gros, lent)",
+        "en": "Install with extra modules (CybroOdoo - large, slow)",
+    },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
         "fr": "Test - Instance de base minimale",

@@ -15,6 +15,7 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.git.git_tool import GitTool
+from script.version.erplibre_state import get_version_extra
 
 _logger = logging.getLogger(__name__)
 
@@ -70,6 +71,14 @@ def get_config():
         help="Add mobile project manifest",
     )
     parser.add_argument(
+        "--with_extra",
+        action="store_true",
+        help=(
+            "Add extra modules manifest for current Odoo version"
+            " (e.g. CybroOdoo). Version read from .odoo-version."
+        ),
+    )
+    parser.add_argument(
         "--with_new_manifest",
         action="store_true",
         help="Will overwrite local manifest",
@@ -93,6 +102,8 @@ def main():
             config.with_OCA = True
         if os.path.isdir(MOBILE_PATH):
             config.with_mobile = True
+        if odoo_version and get_version_extra(odoo_version.strip()):
+            config.with_extra = True
 
     input_paths = config.input
     if not input_paths:
@@ -144,6 +155,15 @@ def main():
             append_file_path_manifest(
                 input_paths, DEFAULT_PATH_MANIFEST_MOBILE_CONF
             )
+        if config.with_extra and odoo_version:
+            path_extra = os.path.join(
+                "manifest",
+                f"git_manifest_extra_odoo{odoo_version.strip()}.xml",
+            )
+            if os.path.exists(path_extra):
+                input_paths.append(path_extra)
+            else:
+                print(f"WARNING: {path_extra} does not exist, skipping extra")
         if not config.with_mobile or not config.with_OCA:
             append_file_path_manifest(input_paths, DEFAULT_PATH_MANIFEST_CONF)
         append_file_path_manifest(

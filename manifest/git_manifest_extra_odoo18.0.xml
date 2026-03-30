@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<manifest>
+    <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
+    <remote name="ERPLibre_origin_CybroOdoo" fetch="https://github.com/ERPLibre/" />
+
+    <project
+        name="OpenHRMS.git"
+        revision="18.0"
+        path="odoo18.0/addons/CybroOdoo_OpenHRMS"
+        remote="CybroOdoo"
+        groups="extra,odoo18.0"
+    />
+    <project
+        name="CybroAddons.git"
+        path="odoo18.0/addons/CybroOdoo_CybroAddons"
+        remote="ERPLibre_origin_CybroOdoo"
+        clone-depth="1"
+        revision="18.0_dev"
+        groups="extra,odoo18.0"
+    />
+</manifest>
