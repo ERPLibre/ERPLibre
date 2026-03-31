@@ -1,5 +1,3 @@
-#!/usr/bin/env bash
-
 . ./env_var.sh
 EL_USER=${USER}
 EL_HOME=$PWD
@@ -17,14 +15,6 @@ FILE_INSTALLATION_VERSION=".repo/installed_odoo_version.txt"
 Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
-./script/generate_config.sh
-
-# Generate empty addons if missing
-path_addons_addons="./odoo${EL_ODOO_VERSION}/addons/addons"
-if [[ ! -d "${path_addons_addons}" ]]; then
-    mkdir -p "${path_addons_addons}"
-fi
-
 # example, 3.7.8 will be 3.7 into PYTHON_VERSION_MAJOR
 PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_ODOO_VERSION" | sed 's/\.[^\.]*$//')
 VENV_ERPLIBRE_PATH=$(cat "conf/python-erplibre-venv" | xargs)
@@ -32,71 +22,92 @@ VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
 POETRY_ODOO_PATH=${VENV_ERPLIBRE_PATH}/bin/poetry
 export WITH_POETRY_INSTALLATION=1
 
-if [[ ! -n "${DOCKER_BUILD}" ]]; then
-  # Install ERPLibre venv
-  echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
-  ./script/install/install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
-  # Install Odoo venv
-  echo -e "Install ${VENV_ODOO_PATH} with ${EL_PYTHON_ODOO_VERSION}"
-  ./script/install/install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
-else
-  mkdir .venv
-fi
+# EL_PHASE controls which steps to execute.  Used by install_locally_dev.sh
+# for parallel installation — do not set manually unless you know what you do.
+#   all    (default) – full install: setup + poetry phases
+#   setup             – prereqs only: venvs, pip-erplibre, git-repo
+#   poetry            – python packages: poetry install + post-install
+EL_PHASE=${EL_PHASE:-all}
 
-source ./${VENV_ERPLIBRE_PATH}/bin/activate
-echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
-pip install --upgrade pip
-pip install -r requirement/erplibre_require-ments.txt
+# ── Setup phase (venvs + pip-erplibre + git-repo) ────────────────────────────
+if [[ "${EL_PHASE}" != "poetry" ]]; then
+    ./script/generate_config.sh
 
-./script/install/install_git_repo.sh
-
-source ${VENV_ODOO_PATH}/bin/activate
-echo -e "Upgrade pip to ${VENV_ODOO_PATH}"
-pip install --upgrade pip
-
-echo -e "\n---- Installing poetry dependency ----"
-
-if [[ -z "${EL_POETRY_VERSION}" ]]; then
-    echo -e "${Red}Error${Color_Off} missing poetry version, please check file .poetry-version"
-    cat .poetry-version
-    ls -la
-    exit 1
-fi
-
-# Delete artifacts created by pip, cause error in next "poetry install"
-if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
-    echo -e "Install Poetry ${POETRY_ODOO_PATH}"
-    pip install poetry==${EL_POETRY_VERSION}
-    poetry --version
-    # Fix broken poetry by installing ignored dependence
-    #    poetry lock --no-update
-    # To fix keyring problem when installation is blocked, use
-    export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
-    if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
-      poetry install --no-root -vvv
+    # Generate empty addons if missing
+    path_addons_addons="./odoo${EL_ODOO_VERSION}/addons/addons"
+    if [[ ! -d "${path_addons_addons}" ]]; then
+        mkdir -p "${path_addons_addons}"
     fi
-    retVal=$?
-    if [[ $retVal -ne 0 ]]; then
-        echo "Poetry installation error with status ${retVal}"
+
+    if [[ ! -n "${DOCKER_BUILD}" ]]; then
+        # Install ERPLibre venv
+        echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
+        ./script/install/install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
+        # Install Odoo venv
+        echo -e "Install ${VENV_ODOO_PATH} with ${EL_PYTHON_ODOO_VERSION}"
+        ./script/install/install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
+    else
+        mkdir .venv
+    fi
+
+    source ./${VENV_ERPLIBRE_PATH}/bin/activate
+    echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
+    pip install --upgrade pip
+    pip install -r requirement/erplibre_require-ments.txt
+
+    ./script/install/install_git_repo.sh
+fi
+
+# ── Poetry phase (install python packages + post-install) ────────────────────
+if [[ "${EL_PHASE}" != "setup" ]]; then
+    source ${VENV_ODOO_PATH}/bin/activate
+    echo -e "Upgrade pip to ${VENV_ODOO_PATH}"
+    pip install --upgrade pip
+
+    echo -e "\n---- Installing poetry dependency ----"
+
+    if [[ -z "${EL_POETRY_VERSION}" ]]; then
+        echo -e "${Red}Error${Color_Off} missing poetry version, please check file .poetry-version"
+        cat .poetry-version
+        ls -la
         exit 1
     fi
-fi
 
-# Delete artifacts created by pip, cause error in next "poetry install"
-rm -rf artifacts
+    # Delete artifacts created by pip, cause error in next "poetry install"
+    if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
+        echo -e "Install Poetry ${POETRY_ODOO_PATH}"
+        pip install poetry==${EL_POETRY_VERSION}
+        poetry --version
+        # Fix broken poetry by installing ignored dependence
+        #    poetry lock --no-update
+        # To fix keyring problem when installation is blocked, use
+        export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+        if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
+            poetry install --no-root -vvv
+        fi
+        retVal=$?
+        if [[ $retVal -ne 0 ]]; then
+            echo "Poetry installation error with status ${retVal}"
+            exit 1
+        fi
+    fi
 
-# Link for dev tools into Odoo
-echo -e "\n---- Add link dependency in site-packages of Python ----"
-# TODO this link can break, the symbolic link is maybe not created
-ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
+    # Delete artifacts created by pip, cause error in next "poetry install"
+    rm -rf artifacts
 
-# Force to return to erplibre source
-source ./${VENV_ERPLIBRE_PATH}/bin/activate
+    # Link for dev tools into Odoo
+    echo -e "\n---- Add link dependency in site-packages of Python ----"
+    # TODO this link can break, the symbolic link is maybe not created
+    ln -fs "${EL_HOME_ODOO}/odoo" "${EL_HOME}/${VENV_ODOO_PATH}/lib/python${PYTHON_VERSION_MAJOR}/site-packages/"
 
-# Add trace of installation
-LINE_TO_ADD="odoo${EL_ODOO_VERSION}"
-mkdir -p "$(dirname "$FILE_INSTALLATION_VERSION")"
-touch "$FILE_INSTALLATION_VERSION"
-if ! grep -qxF "$LINE_TO_ADD" "$FILE_INSTALLATION_VERSION"; then
-    echo "$LINE_TO_ADD" >> "$FILE_INSTALLATION_VERSION"
+    # Force to return to erplibre source
+    source ./${VENV_ERPLIBRE_PATH}/bin/activate
+
+    # Add trace of installation
+    LINE_TO_ADD="odoo${EL_ODOO_VERSION}"
+    mkdir -p "$(dirname "$FILE_INSTALLATION_VERSION")"
+    touch "$FILE_INSTALLATION_VERSION"
+    if ! grep -qxF "$LINE_TO_ADD" "$FILE_INSTALLATION_VERSION"; then
+        echo "$LINE_TO_ADD" >> "$FILE_INSTALLATION_VERSION"
+    fi
 fi
