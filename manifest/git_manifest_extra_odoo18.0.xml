@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
+    <remote name="odoo" fetch="https://github.com/odoo/" />
     <remote name="CybroOdoo" fetch="https://github.com/CybroOdoo/" />
     <remote name="ERPLibre_origin_CybroOdoo" fetch="https://github.com/ERPLibre/" />
-
+    <remote name="ERPLibre_origin_odoo" fetch="https://github.com/ERPLibre/" />
     <project
         name="OpenHRMS.git"
         revision="18.0"
@@ -17,5 +18,19 @@
         clone-depth="1"
         revision="18.0_dev"
         groups="extra,odoo18.0"
+    />
+    <project
+        name="design-themes.git"
+        path="odoo18.0/addons/odoo_design-themes"
+        remote="ERPLibre_origin_odoo"
+        revision="18.0"
+        groups="addons,odoo18.0"
+    />
+    <project
+        name="documentation-user.git"
+        path="odoo18.0/odoo_documentation-user"
+        revision="18.0"
+        remote="odoo"
+        groups="odoo,odoo18.0"
     />
 </manifest>

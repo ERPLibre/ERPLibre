@@ -27,8 +27,6 @@ printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
-    printf "${EL_HOME_ODOO_PROJECT}/addons/CybroOdoo_CybroAddons," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME_ODOO_PROJECT}/addons/CybroOdoo_OpenHRMS," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/MathBenTech_development," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_account-analytic," >> "${EL_CONFIG_FILE}"
