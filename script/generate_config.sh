@@ -153,7 +153,6 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/dhongu_deltatech," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/muk-it_odoo-modules," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/novacode-nl_odoo-formio," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME_ODOO_PROJECT}/addons/odoo_design-themes," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/odoomates_odooapps," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/openeducat_openeducat_erp," >> "${EL_CONFIG_FILE}"
 fi
