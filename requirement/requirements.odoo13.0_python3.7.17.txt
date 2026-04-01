@@ -97,7 +97,7 @@ pygount==1.2.1
 josepy==1.14.0
 
 # asyncio
-aiohttp==3.8.6
+aiohttp==3.13.4
 aioshutil<1.2
 tqdm
 uvloop
