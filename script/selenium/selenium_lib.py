@@ -4,6 +4,7 @@
 
 import datetime
 import getpass
+import json
 import logging
 import os
 import random
@@ -79,10 +80,16 @@ class SeleniumLib(object):
         self.config_file = config_file.ConfigFile()
         self.kdbx = None
         self.video_recorder = None
-        if config.use_download_path_default:
-            self.default_download_dir_path = "/home/seluser/Downloads"
-        else:
-            self.default_download_dir_path = tempfile.mkdtemp()
+        self.default_copy_download_dir_path = None
+
+        date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        tmp_dir = tempfile.mkdtemp(
+            prefix=f"selenium_download_{date_str}_",
+            # dir="/tmp/test/",
+        )
+
+        self.default_download_dir_path = tmp_dir
+
         if self.config.video_suffix:
             self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
@@ -136,6 +143,7 @@ class SeleniumLib(object):
             "permissions.default.desktop-notification", 1
         )
         firefox_options.set_preference("browser.download.folderList", 2)
+        firefox_options.set_preference("browser.download.useDownloadDir", True)
         firefox_options.set_preference(
             "browser.download.manager.showWhenStarting", False
         )
@@ -145,8 +153,14 @@ class SeleniumLib(object):
             )
         firefox_options.set_preference(
             "browser.helperApps.neverAsk.saveToDisk",
-            "application/octet-stream,application/pdf,application/x-pdf",
+            "application/pdf,"
+            "application/x-pdf,"
+            "application/vnd.ms-excel,"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+            "text/csv,"
+            "application/octet-stream",
         )
+        # disable pdf viewer from firefox
         firefox_options.set_preference("pdfjs.disabled", True)
         firefox_services = None
         if self.config.firefox_binary_path:
@@ -172,6 +186,8 @@ class SeleniumLib(object):
         except Exception as e:
             print(f"ERROR when check user: {e}")
 
+        driver_url = f"{self.config.use_network}/wd/hub"
+
         try:
             if self.config.use_chrome_driver:
                 from selenium.webdriver.chrome.options import (
@@ -190,9 +206,10 @@ class SeleniumLib(object):
                     chrome_options.set_capability(
                         "se:name", "ERPLibre selenium"
                     )
+                    chrome_options.enable_downloads = True
                     self.driver = webdriver.Remote(
                         options=chrome_options,
-                        command_executor=self.config.use_network,
+                        command_executor=driver_url,
                     )
                 else:
                     from webdriver_manager.chrome import ChromeDriverManager
@@ -201,6 +218,7 @@ class SeleniumLib(object):
                         ChromeDriverManager().install(),
                         log_path="/tmp/chromedriver.log",
                     )
+                    chrome_options.enable_downloads = True
                     self.driver = webdriver.Chrome(
                         options=chrome_options,
                         # options=firefox_options,
@@ -289,9 +307,10 @@ class SeleniumLib(object):
                     firefox_options.set_capability(
                         "se:name", "ERPLibre selenium"
                     )
+                    firefox_options.enable_downloads = True
                     self.driver = webdriver.Remote(
                         options=firefox_options,
-                        command_executor=self.config.use_network,
+                        command_executor=driver_url,
                     )
                 else:
                     self.driver = webdriver.Firefox(
@@ -1631,14 +1650,14 @@ class SeleniumLib(object):
             header.text,
         )  # on retourne aussi le texte exact pour attendre le changement
 
-    def wait_is_invisible(self, by, value):
-        div_field = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.NAME, field_name))
-        )
-        wait = WebDriverWait(driver, 10)
-        wait.until(
-            EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
-        )
+    # def wait_is_invisible(self, by, value):
+    #     div_field = WebDriverWait(self.driver, 10).until(
+    #         EC.presence_of_element_located((By.NAME, field_name))
+    #     )
+    #     wait = WebDriverWait(driver, 10)
+    #     wait.until(
+    #         EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
+    #     )
 
     def select_date(self, driver, date_to_select):
         # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
@@ -1705,6 +1724,67 @@ class SeleniumLib(object):
 
         return day_btn
 
+    def get_init_list_file_unique(self):
+        # init_list_file = set(os.listdir(self.default_download_dir_path))
+        if self.config.use_network:
+            init_list_file = set(self.driver.get_downloadable_files())
+        else:
+            if os.path.isdir(self.default_download_dir_path):
+                init_list_file = set(
+                    os.listdir(self.default_download_dir_path)
+                )
+            else:
+                init_list_file = set()
+        return init_list_file
+
+    def download_file_unique(
+        self, init_list_file, lst_unique_file, dct_document, filename
+    ):
+        finish_download = False
+        fichiers = []
+        # 1 hour max
+        new_file_name = ""
+        max_time_to_wait = 60 * 60
+        i_wait = 0
+        while not finish_download:
+            if self.config.use_network:
+                fichiers = set(
+                    self.driver.get_downloadable_files()
+                ).difference(init_list_file)
+            else:
+                fichiers = set(
+                    os.listdir(self.default_download_dir_path)
+                ).difference(init_list_file)
+            diff_list_fichiers = list(fichiers.difference(lst_unique_file))
+            if diff_list_fichiers:
+                new_file_name = diff_list_fichiers[-1]
+                if not new_file_name.endswith(".part"):
+                    # finish_download = True
+                    break
+            i_wait += 1
+            if i_wait < max_time_to_wait:
+                time.sleep(1)
+            else:
+                return set()
+        lst_unique_file = fichiers
+        print(len(fichiers))
+        print(fichiers)
+        dct_document[filename] = os.path.join(
+            self.default_download_dir_path, new_file_name
+        )
+        if self.config.use_network:
+            self.driver.download_file(
+                new_file_name, target_directory=self.default_download_dir_path
+            )
+
+        return lst_unique_file
+
+    def print_download_file_unique(self, dct_document):
+        dct_output = {"document": dct_document}
+        print("=DATA=")
+        print(json.dumps(dct_output))
+        print("=ENDDATA=")
+
 
 def get_args(parser):
     args = parser.parse_args()
@@ -1753,7 +1833,7 @@ def fill_parser(parser):
     )
     group_browser.add_argument(
         "--use_network",
-        help="Specify the adress, example: http://localhost:4444",
+        help="Specify the address, example: http://localhost:4444",
     )
     group_browser.add_argument(
         "--use_download_path_default",
