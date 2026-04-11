@@ -722,6 +722,95 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout de l'automatisation : ",
         "en": "Error adding automation: ",
     },
+    # SSH Deploy section
+    "Deploy - Deploy ERPLibre via SSH": {
+        "fr": "Déploiement - Déployer ERPLibre via SSH",
+        "en": "Deploy - Deploy ERPLibre via SSH",
+    },
+    "SSH deployment tools!": {
+        "fr": "Outils de déploiement SSH!",
+        "en": "SSH deployment tools!",
+    },
+    "SSH - Check connection": {
+        "fr": "SSH - Vérifier la connexion",
+        "en": "SSH - Check connection",
+    },
+    "SSH - Sync files (rsync)": {
+        "fr": "SSH - Synchroniser les fichiers (rsync)",
+        "en": "SSH - Sync files (rsync)",
+    },
+    "SSH - Install ERPLibre": {
+        "fr": "SSH - Installer ERPLibre",
+        "en": "SSH - Install ERPLibre",
+    },
+    "SSH - Start Odoo": {
+        "fr": "SSH - Démarrer Odoo",
+        "en": "SSH - Start Odoo",
+    },
+    "SSH - Stop Odoo": {
+        "fr": "SSH - Arrêter Odoo",
+        "en": "SSH - Stop Odoo",
+    },
+    "SSH - Restart Odoo": {
+        "fr": "SSH - Redémarrer Odoo",
+        "en": "SSH - Restart Odoo",
+    },
+    "SSH - Service status": {
+        "fr": "SSH - Statut du service",
+        "en": "SSH - Service status",
+    },
+    "SSH - View logs": {
+        "fr": "SSH - Voir les logs",
+        "en": "SSH - View logs",
+    },
+    "SSH - Run make target": {
+        "fr": "SSH - Exécuter une cible make",
+        "en": "SSH - Run make target",
+    },
+    "SSH - Install systemd service": {
+        "fr": "SSH - Installer le service systemd",
+        "en": "SSH - Install systemd service",
+    },
+    "SSH - Configure nginx + SSL": {
+        "fr": "SSH - Configurer nginx + SSL",
+        "en": "SSH - Configure nginx + SSL",
+    },
+    "Remote host (user@hostname or hostname): ": {
+        "fr": "Hôte distant (user@hostname ou hostname) : ",
+        "en": "Remote host (user@hostname or hostname): ",
+    },
+    "SSH user (default: erplibre): ": {
+        "fr": "Utilisateur SSH (défaut: erplibre) : ",
+        "en": "SSH user (default: erplibre): ",
+    },
+    "SSH port (default: 22): ": {
+        "fr": "Port SSH (défaut: 22) : ",
+        "en": "SSH port (default: 22): ",
+    },
+    "SSH key path (default: ~/.ssh/id_rsa, empty for none): ": {
+        "fr": "Chemin de la clé SSH (défaut: ~/.ssh/id_rsa, vide pour aucune) : ",
+        "en": "SSH key path (default: ~/.ssh/id_rsa, empty for none): ",
+    },
+    "Remote path (default: ~/erplibre_deploy_2): ": {
+        "fr": "Chemin distant (défaut: ~/erplibre_deploy_2) : ",
+        "en": "Remote path (default: ~/erplibre_deploy_2): ",
+    },
+    "Make target to run remotely: ": {
+        "fr": "Cible make à exécuter à distance : ",
+        "en": "Make target to run remotely: ",
+    },
+    "Domain name (e.g.: example.com): ": {
+        "fr": "Nom de domaine (ex: example.com) : ",
+        "en": "Domain name (e.g.: example.com): ",
+    },
+    "Admin email for SSL certificate: ": {
+        "fr": "Email administrateur pour le certificat SSL : ",
+        "en": "Admin email for SSL certificate: ",
+    },
+    "SSH host is required!": {
+        "fr": "L'hôte SSH est requis!",
+        "en": "SSH host is required!",
+    },
     # Language selection
     "Choose language / Choisir la langue": {
         "fr": "Choisir la langue / Choose language",
