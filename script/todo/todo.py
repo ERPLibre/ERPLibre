@@ -651,6 +651,11 @@ class TODO:
         choices = [
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
             {"prompt_description": t("Configure sshfs")},
+            {
+                "prompt_description": t(
+                    "Deploy - Install NTFY notification server"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -663,6 +668,8 @@ class TODO:
                 self._deploy_clone_erplibre()
             elif status == "2":
                 self._configure_sshfs()
+            elif status == "3":
+                self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
 
@@ -688,6 +695,54 @@ class TODO:
             print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
         except Exception as e:
             print(f"{t('Error cloning ERPLibre: ')}{e}")
+
+    def _deploy_ntfy_server(self):
+        print(
+            f"\n{t('Deploy a local NTFY push notification server (Ubuntu/Arch)')}"
+        )
+        port = (
+            input(t("NTFY server port (default: 8080): ")).strip() or "8080"
+        )
+        import socket
+
+        hostname = socket.gethostname()
+        try:
+            local_ip = socket.gethostbyname(hostname)
+        except Exception:
+            local_ip = "127.0.0.1"
+
+        default_url = f"http://{local_ip}:{port}"
+        base_url = (
+            input(
+                f"{t('NTFY base URL')} (default: {default_url}): "
+            ).strip()
+            or default_url
+        )
+
+        script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "install",
+            "install_ntfy.sh",
+        )
+        script_path = os.path.realpath(script_path)
+
+        if not os.path.isfile(script_path):
+            print(f"{t('NTFY install script not found: ')}{script_path}")
+            return
+
+        print(f"\n{t('Installing NTFY server (requires sudo)...')}")
+        cmd = (
+            f"sudo NTFY_PORT={port}"
+            f" NTFY_BASE_URL={base_url}"
+            f" bash {script_path}"
+        )
+        print(f"{t('Will execute:')} {cmd}\n")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            print(f"\n{t('NTFY server installed and started successfully!')}")
+        except Exception as e:
+            print(f"{t('Error installing NTFY server: ')}{e}")
 
     def _configure_sshfs(self):
         import getpass

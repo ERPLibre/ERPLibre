@@ -816,6 +816,39 @@ TRANSLATIONS = {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
     },
+    # NTFY section
+    "Deploy - Install NTFY notification server": {
+        "fr": "Déployer - Installer le serveur de notifications NTFY",
+        "en": "Deploy - Install NTFY notification server",
+    },
+    "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
+        "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
+        "en": "Deploy a local NTFY push notification server (Ubuntu/Arch)",
+    },
+    "NTFY server port (default: 8080): ": {
+        "fr": "Port du serveur NTFY (défaut : 8080) : ",
+        "en": "NTFY server port (default: 8080): ",
+    },
+    "NTFY base URL": {
+        "fr": "URL de base NTFY",
+        "en": "NTFY base URL",
+    },
+    "Installing NTFY server (requires sudo)...": {
+        "fr": "Installation du serveur NTFY (sudo requis)...",
+        "en": "Installing NTFY server (requires sudo)...",
+    },
+    "NTFY server installed and started successfully!": {
+        "fr": "Serveur NTFY installé et démarré avec succès!",
+        "en": "NTFY server installed and started successfully!",
+    },
+    "Error installing NTFY server: ": {
+        "fr": "Erreur lors de l'installation du serveur NTFY : ",
+        "en": "Error installing NTFY server: ",
+    },
+    "NTFY install script not found: ": {
+        "fr": "Script d'installation NTFY introuvable : ",
+        "en": "NTFY install script not found: ",
+    },
 }
 
 
