@@ -47,6 +47,7 @@ endif
 -include ./conf/make.installation.Makefile
 -include ./conf/make.installation.poetry.Makefile
 -include ./conf/make.test.Makefile
+-include ./conf/make.ssh.Makefile
 -include ./conf/make.todo.Makefile
 
 # Include private Makefile
