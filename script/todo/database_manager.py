@@ -8,15 +8,16 @@ import logging
 import os
 import zipfile
 
-import click
-
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
 
 try:
+    import click
+
     from script.todo import todo_file_browser
 except Exception:
+    click = None
     todo_file_browser = None
 
 
