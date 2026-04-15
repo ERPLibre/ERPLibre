@@ -81,6 +81,8 @@ class Minesweeper:
         self.games_played = 0
         # Long press tracking
         self._key_down_time = {}
+        self._hold_threads = {}
+        self._hold_reached = set()
 
     def key_to_pos(self, key):
         return key % self.cols, key // self.cols
@@ -194,7 +196,9 @@ class Minesweeper:
 
     def toggle_flag(self, col, row):
         """Toggle flag on a hidden cell."""
-        if (col, row) in self.revealed or self.game_over:
+        if not self.game_active or self.game_over or self.first_click:
+            return
+        if (col, row) in self.revealed:
             return
         if (col, row) in self.flags:
             self.flags.discard((col, row))
@@ -211,11 +215,120 @@ class Minesweeper:
             self.games_played += 1
 
     def handle_key_down(self, key):
-        """Track key press time for long-press detection."""
+        """Track key press time and start hold animation."""
         self._key_down_time[key] = time.monotonic()
+        self._hold_reached.discard(key)
+
+        col, row = self.key_to_pos(key)
+
+        # Only animate on hidden cells during active game (not first click)
+        if (
+            self.game_active
+            and not self.game_over
+            and not self.first_click
+            and (col, row) not in self.revealed
+        ):
+            stop_event = threading.Event()
+            self._hold_threads[key] = stop_event
+            threading.Thread(
+                target=self._hold_animation,
+                args=(key, stop_event),
+                daemon=True,
+            ).start()
+
+    def _hold_animation(self, key, stop_event):
+        """Animate button fill during long press."""
+        STEPS = 12
+        step_time = LONG_PRESS_TIME / STEPS
+        fmt = self.deck.key_image_format()
+        w, h = fmt["size"]
+
+        for i in range(STEPS):
+            if stop_event.is_set():
+                return
+            time.sleep(step_time)
+            if stop_event.is_set():
+                return
+
+            # Draw progress bar filling from bottom
+            progress = (i + 1) / STEPS
+            img = Image.new("RGB", (w, h), COLOR_HIDDEN)
+            draw = ImageDraw.Draw(img)
+
+            # Yellow fill from bottom up
+            fill_h = int(h * progress)
+            bar_color = (
+                int(220 * progress),
+                int(180 * progress),
+                0,
+            )
+            draw.rectangle(
+                [0, h - fill_h, w, h], fill=bar_color
+            )
+
+            # Draw "?" text centered
+            try:
+                font = ImageFont.load_default(size=22)
+            except TypeError:
+                font = ImageFont.load_default()
+            text = "F" if progress > 0.7 else "?"
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            tx = (w - tw) // 2
+            ty = (h - th) // 2
+            draw.text(
+                (tx + 1, ty + 1), text, fill=(0, 0, 0), font=font
+            )
+            draw.text(
+                (tx, ty), text, fill=(255, 255, 255), font=font
+            )
+
+            native = PILHelper.to_native_key_format(self.deck, img)
+            try:
+                with self.deck:
+                    self.deck.set_key_image(key, native)
+            except TransportError:
+                return
+
+        # Threshold reached — flash confirmation
+        if not stop_event.is_set():
+            self._hold_reached.add(key)
+            for color in (COLOR_FLAG, COLOR_HIDDEN, COLOR_FLAG):
+                if stop_event.is_set():
+                    return
+                img = Image.new("RGB", (w, h), color)
+                draw = ImageDraw.Draw(img)
+                try:
+                    font = ImageFont.load_default(size=22)
+                except TypeError:
+                    font = ImageFont.load_default()
+                bbox = draw.textbbox((0, 0), "F", font=font)
+                tw = bbox[2] - bbox[0]
+                th = bbox[3] - bbox[1]
+                tx = (w - tw) // 2
+                ty = (h - th) // 2
+                draw.text(
+                    (tx + 1, ty + 1), "F", fill=(0, 0, 0), font=font
+                )
+                draw.text(
+                    (tx, ty), "F", fill=(255, 255, 255), font=font
+                )
+                native = PILHelper.to_native_key_format(self.deck, img)
+                try:
+                    with self.deck:
+                        self.deck.set_key_image(key, native)
+                except TransportError:
+                    return
+                time.sleep(0.12)
 
     def handle_key_up(self, key):
         """Handle key release — short press = reveal, long press = flag."""
+        # Stop hold animation
+        stop_event = self._hold_threads.pop(key, None)
+        if stop_event is not None:
+            stop_event.set()
+
         down_time = self._key_down_time.pop(key, None)
         if down_time is None:
             return
@@ -225,9 +338,11 @@ class Minesweeper:
             return
 
         col, row = self.key_to_pos(key)
+        reached = key in self._hold_reached
+        self._hold_reached.discard(key)
         elapsed = time.monotonic() - down_time
 
-        if elapsed >= LONG_PRESS_TIME:
+        if reached or elapsed >= LONG_PRESS_TIME:
             # Long press → flag
             self.toggle_flag(col, row)
         elif (col, row) in self.revealed:
