@@ -581,10 +581,7 @@ class MinesweeperVS:
                     set_key_image(deck, key, COLOR_HIDDEN, "")
             return
 
-        # Normal play
-        mines_left = len(self.mines) - len(self.found_by)
-        last_c = self.cols - 1
-
+        # Normal play — all cells are playable, no corner info
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
@@ -598,22 +595,6 @@ class MinesweeperVS:
                 count = self.counts.get(pos, 0)
                 color = NUM_COLORS.get(count, COLOR_SAFE_MISS)
                 set_key_image(deck, key, color, str(count) if count > 0 else "")
-            elif key == 0:
-                # Turn indicator
-                if is_my_turn:
-                    set_key_image(deck, key, COLOR_YOUR_TURN, "GO!")
-                else:
-                    set_key_image(deck, key, COLOR_WAIT, "WAIT")
-            elif (c, r) == (last_c, 0):
-                # Mines remaining
-                set_key_image(deck, key, COLOR_MINE, f"{mines_left}M")
-            elif key == self.total_keys - 1:
-                # My score
-                set_key_image(deck, key, COLOR_SCORE, f"S:{self.scores[deck_index]}")
-            elif (c, r) == (0, last_r):
-                # Opponent score
-                other = 1 - deck_index
-                set_key_image(deck, key, COLOR_SCORE, f"V:{self.scores[other]}")
             else:
                 if is_my_turn:
                     set_key_image(deck, key, COLOR_HIDDEN, "?")
