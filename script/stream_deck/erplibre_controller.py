@@ -39,18 +39,12 @@ KEY_SPACING_PADDING_PLUS = (int(36 * 2.7), int(36 * 1))
 KEY_SPACING_PADDING = (int(36), int(36))
 default_police = ""
 is_all_animation_test = False
+DISPLAY_MODES = ["Animation", "Big image", "Webcam"]
 BIG_IMAGE_TYPE = "Animation"
-# BIG_IMAGE_TYPE = "Big image"
-# BIG_IMAGE_TYPE = "Webcam"
 WEBCAM_TYPE = "local"
-# WEBCAM_TYPE = "by_ip"
 WEBCAM_IP_URL = "http://192.168.1.1:8080/shot.jpg"
-# is_feature = "uniselection"
 is_feature = "dynamic_smyles"
 feature_resize = "linear_from_start"
-
-
-# default_police = "arial.ttf"
 
 
 class StreamDeckController(object):
@@ -68,6 +62,8 @@ class StreamDeckController(object):
             {"x": 220 * 3, "y": 10},
         ]
         self.is_debug = False
+        self.current_mode = BIG_IMAGE_TYPE
+        self._mode_thread_stop = threading.Event()
         self.last_generated_img_byte_arr = None
         self.last_dial = None
         self.last_value = None
@@ -77,6 +73,7 @@ class StreamDeckController(object):
         self.lst_deck = []
         self.thread_webcam = None
         self.lst_deck_thread_webcam = set()
+        self.cam = None
 
         print("Found {} Stream Deck(s).\n".format(len(streamdecks)))
 
@@ -280,6 +277,163 @@ class StreamDeckController(object):
         self.run()
         # TODO move into except of try
         observer.stop()
+
+    def switch_mode(self, deck):
+        """Cycle display mode: Animation -> Big image -> Webcam -> Animation."""
+        self._mode_thread_stop.set()
+        time.sleep(0.3)
+        self._mode_thread_stop.clear()
+
+        # Stop webcam if running
+        if self.current_mode == "Webcam" and self.cam is not None:
+            try:
+                self.cam.release()
+            except Exception:
+                pass
+            self.cam = None
+        self.lst_deck_thread_webcam.discard(deck)
+
+        # Cycle to next mode
+        idx = DISPLAY_MODES.index(self.current_mode)
+        self.current_mode = DISPLAY_MODES[(idx + 1) % len(DISPLAY_MODES)]
+        print(f"Switched to mode: {self.current_mode}")
+
+        self._start_mode(deck)
+
+    def _start_mode(self, deck):
+        """Start the current display mode on a deck."""
+        if deck.DECK_TYPE == "Stream Deck +":
+            key_spacing = KEY_SPACING_PADDING_PLUS
+        else:
+            key_spacing = KEY_SPACING_PADDING
+
+        if self.current_mode == "Animation":
+            animations = [
+                self.create_animation_frames(deck, "Setting.gif"),
+                self.create_animation_frames(deck, "light-bulb-joypixels.gif"),
+            ]
+            key_images = dict()
+            for key in range(deck.key_count()):
+                key_images[key] = itertools.cycle(
+                    animations[key % len(animations)]
+                )
+                self.update_key_image(deck, key, False)
+            threading.Thread(
+                target=self._stoppable_animate_thread(
+                    deck, key_images
+                ),
+                args=[FRAMES_PER_SECOND],
+                daemon=True,
+            ).start()
+
+        elif self.current_mode == "Big image":
+            image = self.create_full_deck_sized_image(
+                deck, key_spacing, image_filename="Harold.jpg"
+            )
+            if image is None:
+                return
+            for k in range(deck.key_count()):
+                key_image = self.crop_key_image_from_deck_sized_image(
+                    deck, image, key_spacing, k
+                )
+                with deck:
+                    deck.set_key_image(k, key_image)
+
+        elif self.current_mode == "Webcam":
+            self.lst_deck_thread_webcam.add(deck)
+            if self.thread_webcam is None or not self.thread_webcam.is_alive():
+                self.thread_webcam = threading.Thread(
+                    target=self._stoppable_webcam_thread(),
+                    args=[FRAMES_PER_SECOND],
+                    daemon=True,
+                )
+                self.thread_webcam.start()
+
+    def _stoppable_animate_thread(self, deck, key_images):
+        """Animation thread that respects _mode_thread_stop."""
+        stop_event = self._mode_thread_stop
+
+        def inner(fps):
+            frame_time = Fraction(1, fps)
+            next_frame = Fraction(time.monotonic())
+            while deck.is_open() and not stop_event.is_set():
+                try:
+                    with deck:
+                        for key, frames in key_images.items():
+                            if not stop_event.is_set() and (
+                                key == deck.key_count() - 2
+                                or is_all_animation_test
+                            ):
+                                deck.set_key_image(key, next(frames))
+                except TransportError:
+                    break
+                next_frame += frame_time
+                sleep_interval = float(next_frame) - time.monotonic()
+                if sleep_interval > 0:
+                    time.sleep(sleep_interval)
+
+        return inner
+
+    def _stoppable_webcam_thread(self):
+        """Webcam thread that respects _mode_thread_stop."""
+        stop_event = self._mode_thread_stop
+
+        def inner(fps):
+            frame_time = Fraction(1, fps)
+            next_frame = Fraction(time.monotonic())
+
+            if WEBCAM_TYPE == "local":
+                self.cam = cv2.VideoCapture(0)
+                if not self.cam.isOpened():
+                    print("Cannot open webcam")
+                    return
+
+            while not stop_event.is_set():
+                pil_image = None
+                if WEBCAM_TYPE == "local" and self.cam is not None:
+                    ret, frame = self.cam.read()
+                    if ret:
+                        try:
+                            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            pil_image = Image.fromarray(rgb)
+                        except cv2.error:
+                            pass
+                elif WEBCAM_TYPE == "by_ip":
+                    try:
+                        resp = requests.get(WEBCAM_IP_URL, timeout=2)
+                        pil_image = Image.open(io.BytesIO(resp.content))
+                    except Exception:
+                        pass
+
+                if pil_image is not None:
+                    for deck in list(self.lst_deck_thread_webcam):
+                        if deck.DECK_TYPE == "Stream Deck +":
+                            ks = KEY_SPACING_PADDING_PLUS
+                        else:
+                            ks = KEY_SPACING_PADDING
+                        try:
+                            image = self.create_full_deck_sized_image(
+                                deck, ks, image_pil=pil_image
+                            )
+                            for k in range(deck.key_count()):
+                                key_img = self.crop_key_image_from_deck_sized_image(
+                                    deck, image, ks, k
+                                )
+                                with deck:
+                                    deck.set_key_image(k, key_img)
+                        except TransportError:
+                            break
+
+                next_frame += frame_time
+                sleep_interval = float(next_frame) - time.monotonic()
+                if sleep_interval > 0:
+                    time.sleep(sleep_interval)
+
+            if WEBCAM_TYPE == "local" and self.cam is not None:
+                self.cam.release()
+                self.cam = None
+
+        return inner
 
     def dial_change_callback(
         self,
@@ -859,10 +1013,8 @@ class StreamDeckController(object):
                 with deck:
                     deck.reset()
             elif key == 5:
-                # Debug enable
-                self.is_debug = not self.is_debug
-                # Force refresh
-                self.touchscreen_refresh_image(deck)
+                # Cycle display mode: Animation -> Big image -> Webcam
+                self.switch_mode(deck)
             elif key == 0:
                 subprocess.run(
                     "gnome-terminal -- bash -c './script/todo/source_todo.sh'",
