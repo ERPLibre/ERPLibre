@@ -764,17 +764,25 @@ class TODO:
                 .replace("_", " ")
                 .title()
             )
-            description = name
+            description = ""
             try:
                 with open(filepath) as f:
+                    in_doc = False
                     for line in f:
-                        if line.startswith('"""'):
-                            doc = line.strip().strip('"')
-                            if doc:
-                                description = doc
-                            break
+                        if not in_doc and line.startswith('"""'):
+                            in_doc = True
+                            continue
+                        if in_doc:
+                            stripped = line.strip()
+                            if stripped.startswith('"""'):
+                                break
+                            if stripped and not description:
+                                description = stripped
+                                break
             except Exception:
                 pass
+            if not description:
+                description = name
             games.append(
                 {
                     "name": name,
