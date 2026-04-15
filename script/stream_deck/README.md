@@ -246,6 +246,123 @@ Morpion classique sur une grille 3x3 centrée sur le deck.
 make streamdeck_tictactoe
 ```
 
+#### Wordle
+
+Devine un mot de 5 lettres. Rangée du bas = lettres (appuie pour cycler A-Z). Dernier bouton = soumettre. Vert = bonne lettre bonne place, jaune = bonne lettre mauvaise place, gris = absent. 6 essais.
+
+```bash
+make streamdeck_wordle
+```
+
+#### Checkers
+
+Dames simplifiées. Sélectionne une pièce puis appuie la destination. Déplacements diagonaux. Saute pour capturer.
+
+- **2 joueurs** : rouge vs bleu, chacun son deck
+
+```bash
+make streamdeck_checkers
+```
+
+#### Reversi / Othello
+
+Place des pièces pour retourner celles de l'adversaire. Le plus de pièces à la fin gagne.
+
+- **1 joueur** : vs IA (stratégie simple)
+- **2 joueurs** : noir vs blanc
+
+```bash
+make streamdeck_reversi
+```
+
+### Arcade (suite)
+
+#### Pac-Man
+
+Mange tous les points. Évite le fantôme! Appuie pour changer de direction. Le fantôme te chasse.
+
+```bash
+make streamdeck_pacman
+```
+
+#### Space Invaders
+
+Les aliens descendent. Tu es sur la rangée du bas. Appuie ta position pour tirer, appuie adjacent pour bouger.
+
+```bash
+make streamdeck_spaceinvaders
+```
+
+#### Frogger
+
+Traverse la route. Les voitures défilent. Saute de case en case pour atteindre le haut!
+
+```bash
+make streamdeck_frogger
+```
+
+#### Tetris
+
+Pièces tombent de droite à gauche (pivoté 90°). Rangée du haut = rotation, bas = drop, milieu = déplacer.
+
+```bash
+make streamdeck_tetris
+```
+
+#### Tower Defense
+
+Les ennemis traversent la rangée du milieu. Place des tours au-dessus/en-dessous pour les éliminer. Survie 5 vagues!
+
+```bash
+make streamdeck_towerdefense
+```
+
+### Mot / Devinette
+
+#### Hangman
+
+Chaque bouton = une lettre. Appuie pour deviner. 6 erreurs = game over.
+
+```bash
+make streamdeck_hangman
+```
+
+#### Number Guess
+
+Devine un nombre 1-100. Les boutons affichent des valeurs. Couleurs = chaud/froid. Moins d'essais = meilleur score.
+
+```bash
+make streamdeck_numberguess
+```
+
+#### Rock Paper Scissors
+
+3 boutons : pierre, papier, ciseaux. Best of 5.
+
+- **2 joueurs** : choix simultané, révélation!
+
+```bash
+make streamdeck_rps
+```
+
+### Puzzle (suite)
+
+#### Sudoku 3x3
+
+Grille 3x3 simplifiée centrée sur le deck. Appuie pour cycler les chiffres. Pas de répétitions en lignes/colonnes.
+
+```bash
+make streamdeck_sudoku
+```
+
+#### Maze Runner
+
+Labyrinthe généré aléatoirement. Navigue du coin haut-gauche au bas-droite. Appuie les cases adjacentes pour bouger.
+
+```bash
+make streamdeck_maze
+```
+
 ### Simulation
 
 #### Game of Life
@@ -258,7 +375,81 @@ Automate cellulaire de Conway. Les cellules vivent ou meurent selon leurs voisin
 make streamdeck_life
 ```
 
-## Récapitulatif des jeux
+#### Langton's Ant
+
+Automate cellulaire : une fourmi se déplace sur la grille. Sur blanc → tourne à droite + noir. Sur noir → tourne à gauche + blanc. Motifs émergents!
+
+```bash
+make streamdeck_langton
+```
+
+### Stream Deck + (dials + touchscreen)
+
+#### Safe Cracker
+
+Tourne les 4 dials pour deviner une combinaison 4 chiffres. Barres chaud/froid sur le touchscreen. Click = lock.
+
+```bash
+make streamdeck_safecracker
+```
+
+#### Slot Machine
+
+Click un dial pour spinner toutes les roues. Click chaque dial pour stopper sa roue. 3 identiques = jackpot!
+
+```bash
+make streamdeck_slots
+```
+
+#### Color Mixer
+
+3 dials = Rouge, Vert, Bleu. Mixe pour matcher la couleur cible affichée sur le touchscreen. Dial 4 = soumettre.
+
+```bash
+make streamdeck_colormixer
+```
+
+#### Pong+
+
+Pong sur le touchscreen 800x100px! Dial = paddle. Balle rebondit. 2 Stream Deck+ = 2 joueurs!
+
+```bash
+make streamdeck_pongplus
+```
+
+#### DJ Scratch
+
+Tourne les dials pour scratcher du vinyl. Waveforms animées sur le touchscreen. Click = changer de style (sine/square/saw/noise).
+
+```bash
+make streamdeck_djscratch
+```
+
+#### Fishing
+
+Click dial = lancer. Quand le poisson mord (touchscreen flash), tourne pour mouliner! Trop vite = la ligne casse.
+
+```bash
+make streamdeck_fishing
+```
+
+#### Piano
+
+Rangée du bas = touches de piano (C D E F G A B). Dial 1 = changer d'octave. Couleurs par note sur le touchscreen.
+
+```bash
+make streamdeck_piano
+```
+
+#### Thermometer
+
+Tourne le dial pour deviner la température secrète. Barre thermomètre sur le touchscreen avec gradient chaud/froid.
+
+```bash
+make streamdeck_thermometer
+```
+
+## Récapitulatif des jeux (42 titres)
 
 | Jeu | Commande | Type | Multi |
 |-----|----------|------|-------|
@@ -267,6 +458,11 @@ make streamdeck_life
 | Flappy Bird | `make streamdeck_flappy` | Arcade | - |
 | Pong | `make streamdeck_pong` | Arcade | 2P VS |
 | Bomberman | `make streamdeck_bomberman` | Arcade | 2P VS |
+| Pac-Man | `make streamdeck_pacman` | Arcade | - |
+| Space Invaders | `make streamdeck_spaceinvaders` | Arcade | - |
+| Frogger | `make streamdeck_frogger` | Arcade | - |
+| Tetris | `make streamdeck_tetris` | Arcade | - |
+| Tower Defense | `make streamdeck_towerdefense` | Arcade | - |
 | Whack-a-Mole | `make streamdeck_whackamole` | Réflexe | 2P VS |
 | Reaction Time | `make streamdeck_reaction` | Réflexe | 2P VS |
 | Simon Says | `make streamdeck_simon` | Mémoire | 2P VS |
@@ -277,10 +473,28 @@ make streamdeck_life
 | Taquin | `make streamdeck_taquin` | Puzzle | - |
 | Sokoban | `make streamdeck_sokoban` | Puzzle | - |
 | Flood Fill | `make streamdeck_floodfill` | Puzzle | 2P VS |
+| Sudoku 3x3 | `make streamdeck_sudoku` | Puzzle | - |
+| Maze Runner | `make streamdeck_maze` | Puzzle | - |
 | Battleship | `make streamdeck_battleship` | Stratégie | 2P VS |
 | Mastermind | `make streamdeck_mastermind` | Déduction | - |
 | Tic-Tac-Toe | `make streamdeck_tictactoe` | Stratégie | 2P VS |
+| Connect 4 | `make streamdeck_connect4` | Stratégie | 2P VS |
+| Checkers | `make streamdeck_checkers` | Stratégie | 2P VS |
+| Reversi | `make streamdeck_reversi` | Stratégie | 2P VS |
+| Wordle | `make streamdeck_wordle` | Mot | - |
+| Hangman | `make streamdeck_hangman` | Mot | - |
+| Number Guess | `make streamdeck_numberguess` | Devinette | - |
+| Rock Paper Scissors | `make streamdeck_rps` | Rapide | 2P VS |
 | Game of Life | `make streamdeck_life` | Simulation | - |
+| Langton's Ant | `make streamdeck_langton` | Simulation | - |
+| Safe Cracker | `make streamdeck_safecracker` | SD+ Puzzle | - |
+| Slot Machine | `make streamdeck_slots` | SD+ Arcade | - |
+| Color Mixer | `make streamdeck_colormixer` | SD+ Puzzle | - |
+| Pong+ | `make streamdeck_pongplus` | SD+ Arcade | 2P VS |
+| DJ Scratch | `make streamdeck_djscratch` | SD+ Musique | - |
+| Fishing | `make streamdeck_fishing` | SD+ Arcade | - |
+| Piano | `make streamdeck_piano` | SD+ Musique | - |
+| Thermometer | `make streamdeck_thermometer` | SD+ Devinette | - |
 
 ## Fichiers
 
@@ -293,7 +507,7 @@ script/stream_deck/
 ├── Assets/                    # Images et polices pour le contrôleur
 ├── erplibre_controller.py     # Contrôleur principal ERPLibre
 ├── keyboard_talk.py           # Automatisation clavier
-└── game_*.py                  # 19 jeux (voir tableau ci-dessus)
+└── game_*.py                  # 42 jeux (voir tableau ci-dessus)
 ```
 
 ## Licence

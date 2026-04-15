@@ -147,3 +147,31 @@ streamdeck_reversi:
 .PHONY: streamdeck_langton
 streamdeck_langton:
 	./script/stream_deck/game_langton.py
+
+.PHONY: streamdeck_piano
+streamdeck_piano:
+	./script/stream_deck/game_piano.py
+
+.PHONY: streamdeck_thermometer
+streamdeck_thermometer:
+	./script/stream_deck/game_thermometer.py
+
+.PHONY: streamdeck_wordle
+streamdeck_wordle:
+	./script/stream_deck/game_wordle.py
+
+.PHONY: streamdeck_sudoku
+streamdeck_sudoku:
+	./script/stream_deck/game_sudoku.py
+
+.PHONY: streamdeck_pacman
+streamdeck_pacman:
+	./script/stream_deck/game_pacman.py
+
+.PHONY: streamdeck_checkers
+streamdeck_checkers:
+	./script/stream_deck/game_checkers.py
+
+.PHONY: streamdeck_towerdefense
+streamdeck_towerdefense:
+	./script/stream_deck/game_towerdefense.py
