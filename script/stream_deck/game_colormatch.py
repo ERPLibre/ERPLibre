@@ -194,7 +194,10 @@ class ColorMatch:
                 elif (c, r) == (mid_c, last_r):
                     set_key(deck, key, COLOR_TITLE, "AGAIN")
                 else:
-                    set_key(deck, key, COLOR_WIN, "")
+                    if self.num_players == 2 and self.winner != deck_index and self.winner >= 0:
+                        set_key(deck, key, COLOR_LOSE, "")
+                    else:
+                        set_key(deck, key, COLOR_WIN, "")
             return
 
         my_revealed = set()
