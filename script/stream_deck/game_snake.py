@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Snake game for Elgato Stream Deck MK.2 (3 rows x 5 cols)."""
+"""Snake game for Elgato Stream Deck (adapts to any layout)."""
 
 import io
 import os
@@ -19,11 +19,6 @@ try:
 except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
-
-# Grid layout: 5 cols x 3 rows
-COLS = 5
-ROWS = 3
-TOTAL_KEYS = COLS * ROWS
 
 # Colors (RGBA)
 COLOR_EMPTY = (20, 20, 30)
@@ -47,21 +42,13 @@ BASE_SPEED = 0.5
 MIN_SPEED = 0.15
 
 
-def key_to_pos(key):
-    """Convert key index to (col, row)."""
-    return key % COLS, key // COLS
-
-
-def pos_to_key(col, row):
-    """Convert (col, row) to key index."""
-    if 0 <= col < COLS and 0 <= row < ROWS:
-        return row * COLS + col
-    return -1
-
-
 class SnakeGame:
     def __init__(self, deck):
         self.deck = deck
+        rows, cols = deck.key_layout()
+        self.cols = cols
+        self.rows = rows
+        self.total_keys = cols * rows
         self.lock = threading.Lock()
         self.running = True
         self.game_active = False
@@ -72,9 +59,19 @@ class SnakeGame:
         self.high_score = 0
         self.game_over = False
 
+    def key_to_pos(self, key):
+        """Convert key index to (col, row)."""
+        return key % self.cols, key // self.cols
+
+    def pos_to_key(self, col, row):
+        """Convert (col, row) to key index."""
+        if 0 <= col < self.cols and 0 <= row < self.rows:
+            return row * self.cols + col
+        return -1
+
     def reset(self):
         """Reset game state."""
-        center = (COLS // 2, ROWS // 2)
+        center = (self.cols // 2, self.rows // 2)
         self.snake = [center]
         self.direction = RIGHT
         self.score = 0
@@ -85,8 +82,8 @@ class SnakeGame:
     def _spawn_food(self):
         """Place food on a random empty cell."""
         empty = []
-        for r in range(ROWS):
-            for c in range(COLS):
+        for r in range(self.rows):
+            for c in range(self.cols):
                 if (c, r) not in self.snake:
                     empty.append((c, r))
         if empty:
@@ -107,8 +104,8 @@ class SnakeGame:
 
         # Wall collision — wrap around
         nx, ny = new_head
-        nx = nx % COLS
-        ny = ny % ROWS
+        nx = nx % self.cols
+        ny = ny % self.rows
         new_head = (nx, ny)
 
         # Self collision
@@ -139,7 +136,7 @@ class SnakeGame:
             self.reset()
             return
 
-        col, row = key_to_pos(key)
+        col, row = self.key_to_pos(key)
         head_x, head_y = self.snake[0]
 
         # Calculate direction toward pressed key
@@ -173,22 +170,24 @@ class SnakeGame:
 
     def render(self):
         """Render game state to deck."""
-        for r in range(ROWS):
-            for c in range(COLS):
-                key = pos_to_key(c, r)
+        mid_c = self.cols // 2
+        last_r = self.rows - 1
+        for r in range(self.rows):
+            for c in range(self.cols):
+                key = self.pos_to_key(c, r)
                 pos = (c, r)
 
                 if self.game_over and self.game_active:
                     if pos in self.snake:
                         color = COLOR_GAMEOVER
                         text = ""
-                    elif pos == (COLS // 2, 0):
+                    elif pos == (mid_c, 0):
                         color = COLOR_SCORE
                         text = "GAME"
-                    elif pos == (COLS // 2, 1):
+                    elif pos == (mid_c, last_r // 2 if last_r > 1 else 1):
                         color = COLOR_SCORE
                         text = f"{self.score}"
-                    elif pos == (COLS // 2, 2):
+                    elif pos == (mid_c, last_r):
                         color = COLOR_SCORE
                         text = "OVER"
                     else:
@@ -196,16 +195,16 @@ class SnakeGame:
                         text = ""
                 elif not self.game_active:
                     # Title screen
-                    if pos == (1, 0):
+                    if pos == (mid_c - 1, 0):
                         color = COLOR_HEAD
                         text = "SNAKE"
-                    elif pos == (2, 1):
+                    elif pos == (mid_c, last_r // 2 if last_r > 1 else 0):
                         color = COLOR_READY
                         text = "PRESS"
-                    elif pos == (3, 2):
+                    elif pos == (mid_c + 1, last_r):
                         color = COLOR_READY
                         text = "START"
-                    elif pos == (0, 2):
+                    elif pos == (0, last_r):
                         color = COLOR_SCORE
                         text = f"HI:{self.high_score}"
                     else:
@@ -290,8 +289,9 @@ def main():
     deck.reset()
     deck.set_brightness(80)
 
+    rows, cols = deck.key_layout()
     print(f"Playing Snake on {deck.deck_type()}")
-    print(f"Grid: {COLS}x{ROWS} ({deck.key_count()} keys)")
+    print(f"Grid: {cols}x{rows} ({deck.key_count()} keys)")
     print("Press any button to start. Ctrl+C to quit.")
 
     game = SnakeGame(deck)

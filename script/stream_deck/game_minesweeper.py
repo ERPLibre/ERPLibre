@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Minesweeper game for Elgato Stream Deck MK.2 (3 rows x 5 cols).
+"""Minesweeper game for Elgato Stream Deck (adapts to any layout).
 
 Controls:
   - Short press: reveal cell
@@ -10,6 +10,7 @@ Controls:
   - Press revealed number: chord (reveal neighbors if flags match)
 """
 
+import math
 import os
 import random
 import sys
@@ -25,10 +26,6 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-COLS = 5
-ROWS = 3
-TOTAL_KEYS = COLS * ROWS
-NUM_MINES = 4
 LONG_PRESS_TIME = 0.6
 
 # Colors
@@ -56,32 +53,20 @@ NUM_COLORS = {
 }
 
 
-def key_to_pos(key):
-    return key % COLS, key // COLS
-
-
-def pos_to_key(col, row):
-    if 0 <= col < COLS and 0 <= row < ROWS:
-        return row * COLS + col
-    return -1
-
-
-def neighbors(col, row):
-    """Return list of valid neighbor (col, row)."""
-    result = []
-    for dc in (-1, 0, 1):
-        for dr in (-1, 0, 1):
-            if dc == 0 and dr == 0:
-                continue
-            nc, nr = col + dc, row + dr
-            if 0 <= nc < COLS and 0 <= nr < ROWS:
-                result.append((nc, nr))
-    return result
+def calc_num_mines(cols, rows):
+    """Scale mine count to grid size (~25% density)."""
+    total = cols * rows
+    return max(1, round(total * 0.25))
 
 
 class Minesweeper:
     def __init__(self, deck):
         self.deck = deck
+        rows, cols = deck.key_layout()
+        self.cols = cols
+        self.rows = rows
+        self.total_keys = cols * rows
+        self.num_mines = calc_num_mines(cols, rows)
         self.lock = threading.Lock()
         self.running = True
         self.game_active = False
@@ -97,6 +82,26 @@ class Minesweeper:
         # Long press tracking
         self._key_down_time = {}
 
+    def key_to_pos(self, key):
+        return key % self.cols, key // self.cols
+
+    def pos_to_key(self, col, row):
+        if 0 <= col < self.cols and 0 <= row < self.rows:
+            return row * self.cols + col
+        return -1
+
+    def neighbors(self, col, row):
+        """Return list of valid neighbor (col, row)."""
+        result = []
+        for dc in (-1, 0, 1):
+            for dr in (-1, 0, 1):
+                if dc == 0 and dr == 0:
+                    continue
+                nc, nr = col + dc, row + dr
+                if 0 <= nc < self.cols and 0 <= nr < self.rows:
+                    result.append((nc, nr))
+        return result
+
     def reset(self):
         """Reset to new game (mines placed on first click)."""
         self.mines = set()
@@ -110,29 +115,29 @@ class Minesweeper:
 
     def _place_mines(self, safe_col, safe_row):
         """Place mines avoiding the first clicked cell and its neighbors."""
-        safe = set(neighbors(safe_col, safe_row))
+        safe = set(self.neighbors(safe_col, safe_row))
         safe.add((safe_col, safe_row))
 
         candidates = []
-        for r in range(ROWS):
-            for c in range(COLS):
+        for r in range(self.rows):
+            for c in range(self.cols):
                 if (c, r) not in safe:
                     candidates.append((c, r))
 
-        num = min(NUM_MINES, len(candidates))
+        num = min(self.num_mines, len(candidates))
         self.mines = set(random.sample(candidates, num))
         self._calc_counts()
 
     def _calc_counts(self):
         """Calculate neighbor mine counts for each cell."""
         self.counts = {}
-        for r in range(ROWS):
-            for c in range(COLS):
+        for r in range(self.rows):
+            for c in range(self.cols):
                 if (c, r) in self.mines:
                     self.counts[(c, r)] = -1
                 else:
                     count = sum(
-                        1 for nc, nr in neighbors(c, r)
+                        1 for nc, nr in self.neighbors(c, r)
                         if (nc, nr) in self.mines
                     )
                     self.counts[(c, r)] = count
@@ -165,7 +170,7 @@ class Minesweeper:
             self.revealed.add((c, r))
             self.flags.discard((c, r))
             if self.counts.get((c, r), 0) == 0:
-                for nc, nr in neighbors(c, r):
+                for nc, nr in self.neighbors(c, r):
                     if (nc, nr) not in self.revealed:
                         stack.append((nc, nr))
 
@@ -179,7 +184,7 @@ class Minesweeper:
         if count <= 0:
             return
 
-        nbrs = neighbors(col, row)
+        nbrs = self.neighbors(col, row)
         flag_count = sum(1 for nc, nr in nbrs if (nc, nr) in self.flags)
 
         if flag_count == count:
@@ -198,7 +203,7 @@ class Minesweeper:
 
     def _check_win(self):
         """Check if all non-mine cells are revealed."""
-        non_mines = TOTAL_KEYS - len(self.mines)
+        non_mines = self.total_keys - len(self.mines)
         if len(self.revealed) == non_mines:
             self.won = True
             self.game_over = True
@@ -219,7 +224,7 @@ class Minesweeper:
             self.reset()
             return
 
-        col, row = key_to_pos(key)
+        col, row = self.key_to_pos(key)
         elapsed = time.monotonic() - down_time
 
         if elapsed >= LONG_PRESS_TIME:
@@ -234,33 +239,36 @@ class Minesweeper:
 
     def render(self):
         """Render entire board to deck."""
-        for r in range(ROWS):
-            for c in range(COLS):
-                key = pos_to_key(c, r)
+        for r in range(self.rows):
+            for c in range(self.cols):
+                key = self.pos_to_key(c, r)
                 pos = (c, r)
                 self._render_cell(key, pos)
 
     def _render_cell(self, key, pos):
         """Render a single cell."""
         c, r = pos
+        mid_c = self.cols // 2
+        last_r = self.rows - 1
+        last_c = self.cols - 1
 
         if not self.game_active:
             # Title screen
-            if pos == (1, 0):
+            if pos == (mid_c - 1, 0):
                 self._set_key(key, COLOR_MINE, "MINE")
-            elif pos == (2, 0):
+            elif pos == (mid_c, 0):
                 self._set_key(key, COLOR_MINE, "SWEEP")
-            elif pos == (2, 1):
+            elif pos == (mid_c, last_r // 2 if last_r > 1 else 0):
                 self._set_key(key, COLOR_TITLE, "PRESS")
-            elif pos == (2, 2):
+            elif pos == (mid_c, last_r):
                 self._set_key(key, COLOR_TITLE, "START")
-            elif pos == (0, 2):
+            elif pos == (0, last_r):
                 self._set_key(
                     key, COLOR_REVEALED,
                     f"W:{self.games_won}" if self.games_played > 0 else ""
                 )
-            elif pos == (4, 2):
-                self._set_key(key, COLOR_REVEALED, f"{NUM_MINES}M")
+            elif pos == (last_c, last_r):
+                self._set_key(key, COLOR_REVEALED, f"{self.num_mines}M")
             else:
                 self._set_key(key, COLOR_HIDDEN, "")
             return
@@ -361,8 +369,10 @@ def main():
     deck.reset()
     deck.set_brightness(80)
 
+    rows, cols = deck.key_layout()
+    num_mines = calc_num_mines(cols, rows)
     print(f"Minesweeper on {deck.deck_type()}")
-    print(f"Grid: {COLS}x{ROWS}, {NUM_MINES} mines")
+    print(f"Grid: {cols}x{rows}, {num_mines} mines")
     print("Short press = reveal | Long press = flag")
     print("Press number = chord (auto-reveal if flags match)")
     print("Ctrl+C to quit.")
