@@ -90,11 +90,11 @@ class ColorMixer:
 
     def reset(self):
         self.target = (
-            random.randint(20, 235),
-            random.randint(20, 235),
-            random.randint(20, 235),
+            random.randint(4, 47) * 5,
+            random.randint(4, 47) * 5,
+            random.randint(4, 47) * 5,
         )
-        self.current = [128, 128, 128]
+        self.current = [125, 125, 125]
         self.won = False
         self.round += 1
         self.game_active = True
