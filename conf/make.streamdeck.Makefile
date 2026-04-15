@@ -33,3 +33,47 @@ streamdeck_reaction:
 .PHONY: streamdeck_breakout
 streamdeck_breakout:
 	./script/stream_deck/game_breakout.py
+
+.PHONY: streamdeck_2048
+streamdeck_2048:
+	./script/stream_deck/game_2048.py
+
+.PHONY: streamdeck_colormatch
+streamdeck_colormatch:
+	./script/stream_deck/game_colormatch.py
+
+.PHONY: streamdeck_life
+streamdeck_life:
+	./script/stream_deck/game_life.py
+
+.PHONY: streamdeck_taquin
+streamdeck_taquin:
+	./script/stream_deck/game_taquin.py
+
+.PHONY: streamdeck_mastermind
+streamdeck_mastermind:
+	./script/stream_deck/game_mastermind.py
+
+.PHONY: streamdeck_battleship
+streamdeck_battleship:
+	./script/stream_deck/game_battleship.py
+
+.PHONY: streamdeck_flappy
+streamdeck_flappy:
+	./script/stream_deck/game_flappy.py
+
+.PHONY: streamdeck_pong
+streamdeck_pong:
+	./script/stream_deck/game_pong.py
+
+.PHONY: streamdeck_sokoban
+streamdeck_sokoban:
+	./script/stream_deck/game_sokoban.py
+
+.PHONY: streamdeck_floodfill
+streamdeck_floodfill:
+	./script/stream_deck/game_floodfill.py
+
+.PHONY: streamdeck_bomberman
+streamdeck_bomberman:
+	./script/stream_deck/game_bomberman.py
