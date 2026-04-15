@@ -77,3 +77,7 @@ streamdeck_floodfill:
 .PHONY: streamdeck_bomberman
 streamdeck_bomberman:
 	./script/stream_deck/game_bomberman.py
+
+.PHONY: streamdeck_tictactoe
+streamdeck_tictactoe:
+	./script/stream_deck/game_tictactoe.py
