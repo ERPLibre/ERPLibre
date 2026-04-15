@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Pac-Man for Elgato Stream Deck (adapts to any layout).
+"""Pac-Man.
 
 Eat all dots. Avoid ghosts! Press adjacent buttons to move.
 Ghost chases you every other tick.

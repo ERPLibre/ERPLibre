@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Fishing game for Elgato Stream Deck + (dials + touchscreen).
+"""Fishing game (SD+ dials + touchscreen).
 
 Click dial to cast. When fish bites (touchscreen flash), turn dial to
 reel in! Too fast = line snaps. Too slow = fish escapes. Buttons show

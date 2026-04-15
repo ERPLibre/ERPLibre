@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Hangman for Elgato Stream Deck (adapts to any layout).
+"""Hangman.
 
 Each button = a letter. Press to guess. 6 wrong guesses = game over.
 Word shown on touchscreen (SD+) or top row buttons.

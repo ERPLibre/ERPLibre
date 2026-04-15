@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Rock Paper Scissors for Elgato Stream Deck (1P vs AI or 2P).
+"""Rock Paper Scissors — 1P vs AI or 2P.
 
 Press Rock, Paper, or Scissors button. Best of 5 rounds.
 2 decks: simultaneous reveal — both choose, then show result!

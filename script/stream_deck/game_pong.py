@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Pong for Elgato Stream Deck (1P vs AI or 2P with two decks).
+"""Pong — 1P vs AI or 2P.
 
 1 deck: left col = you, right col = AI.
 2 decks: each player controls their paddle on their own deck.

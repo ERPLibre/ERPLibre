@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Color Match (Memory) for Elgato Stream Deck (1P or 2P race).
+"""Color Match (Memory) — 1P or 2P race.
 
 1 deck: flip two cards, find pairs.
 2 decks: same board, each player flips on their own deck. First to

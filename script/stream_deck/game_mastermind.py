@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Mastermind for Elgato Stream Deck (adapts to any layout).
+"""Mastermind.
 
 Bottom row = your guess slots (cycle colors by pressing).
 Top-right = submit guess. Feedback shown on remaining keys.

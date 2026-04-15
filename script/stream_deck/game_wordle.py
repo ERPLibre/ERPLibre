@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Wordle for Elgato Stream Deck (adapts to any layout).
+"""Wordle.
 
 Guess a 5-letter word. Each button cycles through letters. Top row
 shows your current guess. Press last button to submit. Colors show

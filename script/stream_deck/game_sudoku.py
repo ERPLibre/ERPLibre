@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Sudoku 3x3 for Elgato Stream Deck (adapts to any layout).
+"""Sudoku 3x3.
 
 Simplified Sudoku on a 3x3 grid. Fill numbers 1-9 with no repeats
 in rows/columns. Press a cell to cycle its number.

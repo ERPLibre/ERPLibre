@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Slot Machine for Elgato Stream Deck + (dials + touchscreen).
+"""Slot Machine (SD+ dials + touchscreen).
 
 Each dial = one reel. Turn to spin, click to stop.
 Touchscreen shows spinning animation. Match symbols to win!

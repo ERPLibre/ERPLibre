@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Piano for Elgato Stream Deck + (dials + touchscreen).
+"""Piano (SD+ dials + touchscreen).
 
 Bottom row buttons = piano keys (white). Dials shift octave and volume.
 Touchscreen shows keyboard and current note. Visual-only (no audio).

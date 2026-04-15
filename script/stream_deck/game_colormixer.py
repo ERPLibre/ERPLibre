@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Color Mixer for Elgato Stream Deck + (dials + touchscreen).
+"""Color Mixer (SD+ dials + touchscreen).
 
 3 dials = Red, Green, Blue. Mix to match the target color!
 Touchscreen shows your color vs target. Click dial 4 to submit.

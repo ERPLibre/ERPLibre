@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Conway's Game of Life for Elgato Stream Deck (adapts to any layout).
+"""Conway's Game of Life.
 
 Press buttons to toggle cells. Press top-left to play/pause.
 Press top-right to randomize. Press bottom-right to clear.

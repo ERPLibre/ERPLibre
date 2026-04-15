@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Whack-a-Mole for Elgato Stream Deck (1P or 2P VS).
+"""Whack-a-Mole — 1P or 2P VS.
 
 1 deck: solo, hit moles for 30s.
 2 decks: moles appear on BOTH decks simultaneously. Each player

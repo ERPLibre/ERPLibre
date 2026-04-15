@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Safe Cracker for Elgato Stream Deck + (dials + touchscreen).
+"""Safe Cracker (SD+ dials + touchscreen).
 
 Turn the 4 dials to find the secret 4-digit combination.
 Each dial = one digit (0-9). Touchscreen shows hot/cold feedback.

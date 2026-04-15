@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Simon Says for Elgato Stream Deck (1P or 2P competitive).
+"""Simon Says — 1P or 2P.
 
 1 deck: classic Simon — memorize and repeat the sequence.
 2 decks: same sequence on both. First to make a mistake loses.

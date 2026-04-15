@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Reaction Time for Elgato Stream Deck (1P or 2P competitive).
+"""Reaction Time — 1P or 2P.
 
 1 deck: 5 rounds, hit the green button ASAP.
 2 decks: same target appears on both, fastest press wins each round.

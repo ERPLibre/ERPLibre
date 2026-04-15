@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Checkers (simplified) for Elgato Stream Deck (1P vs AI or 2P).
+"""Checkers (simplified) — 1P vs AI or 2P.
 
 Simplified checkers on the full grid. Press a piece to select it, then
 press destination to move. Diagonal moves only. Jump to capture.

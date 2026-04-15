@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Frogger for Elgato Stream Deck (adapts to any layout).
+"""Frogger.
 
 Frog starts at bottom. Cross lanes of traffic to reach the top!
 Press adjacent buttons to hop. Cars scroll left/right.

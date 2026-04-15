@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Tetris for Elgato Stream Deck (adapts to any layout, rotated 90).
+"""Tetris.
 
 Pieces fall from right to left. Press top row to rotate, bottom row to
 drop. Press middle rows to move piece up/down.

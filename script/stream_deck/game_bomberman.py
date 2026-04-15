@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Bomberman for Elgato Stream Deck (1P or 2P on same grid).
+"""Bomberman — 1P or 2P.
 
 1 deck: destroy all walls. Don't blow yourself up.
 2 decks: both players on same grid shown on both decks.

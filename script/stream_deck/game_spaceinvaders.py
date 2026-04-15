@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Space Invaders for Elgato Stream Deck (adapts to any layout).
+"""Space Invaders.
 
 Aliens advance from top. You're on the bottom row. Press your position
 to shoot, press adjacent to move. Destroy all aliens to win!

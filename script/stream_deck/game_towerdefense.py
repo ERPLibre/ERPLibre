@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Tower Defense for Elgato Stream Deck (adapts to any layout).
+"""Tower Defense.
 
 Enemies walk left to right across the middle row. Place towers on other
 rows to shoot them. Press to place/upgrade tower. Survive all waves!

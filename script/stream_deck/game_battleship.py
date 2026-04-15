@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Battleship for Elgato Stream Deck (1P solo or 2P with two decks).
+"""Battleship — 1P solo or 2P.
 
 1 deck: solo vs hidden ships.
 2 decks: each player's deck shows their attack grid. Ships are placed

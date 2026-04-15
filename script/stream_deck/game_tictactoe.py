@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Tic-Tac-Toe for Elgato Stream Deck.
+"""Tic-Tac-Toe.
 
 Single deck: 2 players alternate turns on same deck.
 Multi deck: each player has their own deck, plays are mirrored.

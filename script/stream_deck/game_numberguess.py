@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Number Guess for Elgato Stream Deck (adapts to any layout).
+"""Number Guess.
 
 Guess a number 1-100. Buttons show ranges. Press to narrow down.
 Hot/cold feedback. Fewer guesses = better score!

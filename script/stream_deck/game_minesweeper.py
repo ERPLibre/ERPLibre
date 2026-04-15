@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Minesweeper for Elgato Stream Deck (1P classic or 2P VS mine-hunter).
+"""Minesweeper — 1P classic or 2P VS.
 
 1 deck: classic minesweeper. Avoid mines, reveal all safe cells.
   - Short press = reveal, long press = flag, press number = chord.
@@ -609,7 +609,7 @@ class MinesweeperVS:
 def parse_args():
     import argparse
     parser = argparse.ArgumentParser(
-        description="Minesweeper for Elgato Stream Deck.",
+        description="Minesweeper —",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""\
 examples:

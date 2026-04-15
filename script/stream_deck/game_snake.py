@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Snake for Elgato Stream Deck (1P or 2P VS on same grid).
+"""Snake — 1P or 2P VS.
 
 1 deck: classic snake.
 2 decks: two snakes on same grid shown on both decks. Collision = death.

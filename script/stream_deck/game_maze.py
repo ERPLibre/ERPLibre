@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Maze Runner for Elgato Stream Deck (adapts to any layout).
+"""Maze Runner.
 
 Navigate the maze from top-left to bottom-right. Press adjacent
 buttons to move. Maze is randomly generated each game.

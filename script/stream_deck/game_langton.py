@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Langton's Ant for Elgato Stream Deck (adapts to any layout).
+"""Langton's Ant.
 
 Cellular automaton: an ant moves on a grid. On white, turn right and
 flip to black. On black, turn left and flip to white. Press play/pause.

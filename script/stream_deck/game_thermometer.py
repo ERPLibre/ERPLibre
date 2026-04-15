@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Thermometer guessing game for Elgato Stream Deck + (dials + touchscreen).
+"""Thermometer guessing game (SD+ dials + touchscreen).
 
 A secret temperature is hidden. Turn dial to adjust your guess.
 Touchscreen shows thermometer with hot/cold gradient. Click to submit.

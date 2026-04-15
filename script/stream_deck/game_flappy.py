@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Flappy Bird for Elgato Stream Deck (adapts to any layout, rotated 90°).
+"""Flappy Bird.
 
 Bird on left column, obstacles scroll from right. Press any key to flap up.
 """

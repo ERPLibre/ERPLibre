@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Flood Fill puzzle for Elgato Stream Deck (1P or 2P race).
+"""Flood Fill puzzle — 1P or 2P race.
 
 1 deck: fill the board from top-left in limited moves.
 2 decks: same starting board, each player plays independently.

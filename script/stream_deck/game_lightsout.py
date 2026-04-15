@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Lights Out puzzle for Elgato Stream Deck (1P or 2P coop).
+"""Lights Out puzzle — 1P or 2P coop.
 
 1 deck: toggle lights + neighbors, turn all off.
 2 decks: shared grid! Both players see and toggle the same board.

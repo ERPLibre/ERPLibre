@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Reversi/Othello for Elgato Stream Deck (1P vs AI or 2P).
+"""Reversi/Othello — 1P vs AI or 2P.
 
 Place pieces to flip opponent's. Most pieces at end wins.
 Uses the full grid as the board.

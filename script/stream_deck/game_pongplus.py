@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Pong+ for Elgato Stream Deck + (touchscreen game, dial paddles).
+"""Pong+ (SD+ touchscreen + dial paddles).
 
 Ball bounces on the 800x100 touchscreen. Dial 1 = left paddle,
 Dial 4 = right paddle (or AI). 2 Stream Deck+ = 2 players!

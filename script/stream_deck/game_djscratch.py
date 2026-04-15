@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""DJ Scratch for Elgato Stream Deck + (dials + touchscreen).
+"""DJ Scratch (SD+ dials + touchscreen).
 
 Turn dials to scratch virtual vinyl. Speed and direction shown on
 touchscreen as waveform. Click dial to switch track style. Buttons

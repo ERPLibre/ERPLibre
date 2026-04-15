@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Connect 4 for Elgato Stream Deck (1P vs AI or 2P with two decks).
+"""Connect 4 — 1P vs AI or 2P.
 
 Press top row to drop piece in that column. Get 4 in a row to win!
 Rotated: columns = rows of deck.

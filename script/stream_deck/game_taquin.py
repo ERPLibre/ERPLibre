@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Taquin (sliding puzzle) for Elgato Stream Deck (adapts to any layout).
+"""Taquin (sliding puzzle).
 
 Slide numbered tiles to order them. Press a tile adjacent to the empty
 space to move it.

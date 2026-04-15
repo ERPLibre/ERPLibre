@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Breakout game for Elgato Stream Deck (adapts to any layout).
+"""Breakout game.
 
 Rotated 90°: left columns = bricks, rightmost column = paddle, ball
 bounces horizontally. Press right column buttons to move paddle up/down.

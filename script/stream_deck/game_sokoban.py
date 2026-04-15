@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Sokoban for Elgato Stream Deck (adapts to any layout).
+"""Sokoban.
 
 Push boxes onto targets. Press adjacent buttons to move.
 """

@@ -2,7 +2,7 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""2048 game for Elgato Stream Deck (adapts to any layout).
+"""2048 game.
 
 Corner buttons = directions. Merge tiles to reach 2048!
 Top-left=Up, Top-right=Right, Bottom-left=Left, Bottom-right=Down.
