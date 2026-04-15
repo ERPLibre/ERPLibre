@@ -99,3 +99,51 @@ streamdeck_colormixer:
 .PHONY: streamdeck_pongplus
 streamdeck_pongplus:
 	./script/stream_deck/game_pongplus.py
+
+.PHONY: streamdeck_djscratch
+streamdeck_djscratch:
+	./script/stream_deck/game_djscratch.py
+
+.PHONY: streamdeck_fishing
+streamdeck_fishing:
+	./script/stream_deck/game_fishing.py
+
+.PHONY: streamdeck_maze
+streamdeck_maze:
+	./script/stream_deck/game_maze.py
+
+.PHONY: streamdeck_tetris
+streamdeck_tetris:
+	./script/stream_deck/game_tetris.py
+
+.PHONY: streamdeck_connect4
+streamdeck_connect4:
+	./script/stream_deck/game_connect4.py
+
+.PHONY: streamdeck_spaceinvaders
+streamdeck_spaceinvaders:
+	./script/stream_deck/game_spaceinvaders.py
+
+.PHONY: streamdeck_frogger
+streamdeck_frogger:
+	./script/stream_deck/game_frogger.py
+
+.PHONY: streamdeck_hangman
+streamdeck_hangman:
+	./script/stream_deck/game_hangman.py
+
+.PHONY: streamdeck_rps
+streamdeck_rps:
+	./script/stream_deck/game_rps.py
+
+.PHONY: streamdeck_numberguess
+streamdeck_numberguess:
+	./script/stream_deck/game_numberguess.py
+
+.PHONY: streamdeck_reversi
+streamdeck_reversi:
+	./script/stream_deck/game_reversi.py
+
+.PHONY: streamdeck_langton
+streamdeck_langton:
+	./script/stream_deck/game_langton.py
