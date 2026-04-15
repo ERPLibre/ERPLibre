@@ -2,7 +2,11 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Simon Says memory game for Elgato Stream Deck (adapts to any layout)."""
+"""Simon Says for Elgato Stream Deck (1P or 2P competitive).
+
+1 deck: classic Simon — memorize and repeat the sequence.
+2 decks: same sequence on both. First to make a mistake loses.
+"""
 
 import os
 import random
@@ -20,20 +24,15 @@ except ImportError as e:
     raise e
 
 COLORS = [
-    (220, 0, 0),
-    (0, 180, 0),
-    (0, 80, 220),
-    (220, 180, 0),
-    (180, 0, 180),
-    (0, 180, 180),
-    (220, 100, 0),
-    (100, 220, 0),
+    (220, 0, 0), (0, 180, 0), (0, 80, 220), (220, 180, 0),
+    (180, 0, 180), (0, 180, 180), (220, 100, 0), (100, 220, 0),
 ]
 COLOR_EMPTY = (20, 20, 30)
 COLOR_DIM = (40, 40, 50)
 COLOR_TITLE = (0, 80, 160)
 COLOR_SCORE = (40, 40, 80)
 COLOR_FAIL = (180, 0, 0)
+COLOR_WIN = (0, 200, 60)
 
 SHOW_TIME = 0.5
 PAUSE_TIME = 0.2
@@ -44,10 +43,34 @@ STATE_INPUT = "input"
 STATE_GAMEOVER = "gameover"
 
 
+def set_key(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        fs = 20 if len(text) <= 4 else 14
+        try:
+            font = ImageFont.load_default(size=fs)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
+        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
 class SimonGame:
-    def __init__(self, deck):
-        self.deck = deck
-        rows, cols = deck.key_layout()
+    def __init__(self, decks):
+        self.decks = decks
+        self.num_players = len(decks)
+        rows, cols = decks[0].key_layout()
         self.cols = cols
         self.rows = rows
         self.total_keys = cols * rows
@@ -55,210 +78,229 @@ class SimonGame:
         self.running = True
         self.state = STATE_IDLE
         self.sequence = []
-        self.input_pos = 0
+        # Per-player input tracking
+        self.input_pos = [0, 0]
+        self.player_alive = [True, True]
         self.score = 0
         self.high_score = 0
+        self.loser = -1  # deck_index of loser
         self.key_colors = {}
         self._assign_colors()
 
     def _assign_colors(self):
-        """Assign a color to each key."""
         for k in range(self.total_keys):
             self.key_colors[k] = COLORS[k % len(COLORS)]
 
     def reset(self):
         self.sequence = []
-        self.input_pos = 0
+        self.input_pos = [0, 0]
+        self.player_alive = [True, True]
         self.score = 0
+        self.loser = -1
         self.state = STATE_SHOWING
         self._add_to_sequence()
 
     def _add_to_sequence(self):
-        """Add one random key to the sequence and show it."""
         self.sequence.append(random.randint(0, self.total_keys - 1))
-        self.input_pos = 0
-        threading.Thread(
-            target=self._show_sequence, daemon=True
-        ).start()
+        self.input_pos = [0, 0]
+        if self.num_players == 2:
+            self.player_alive = [True, True]
+        threading.Thread(target=self._show_sequence, daemon=True).start()
 
     def _show_sequence(self):
-        """Flash the sequence on the deck."""
         with self.lock:
             self.state = STATE_SHOWING
-            self._render_all_dim()
+            for deck in self.decks:
+                self._render_dim(deck)
 
         time.sleep(0.5)
 
         for key in self.sequence:
             if not self.running:
                 return
-            with self.lock:
-                self._set_key(key, self.key_colors[key], "")
+            for deck in self.decks:
+                set_key(deck, key, self.key_colors[key], "")
             time.sleep(SHOW_TIME)
-            with self.lock:
-                self._set_key(key, COLOR_DIM, "")
+            for deck in self.decks:
+                set_key(deck, key, COLOR_DIM, "")
             time.sleep(PAUSE_TIME)
 
         with self.lock:
             self.state = STATE_INPUT
-            self._render_all_ready()
+            for i, deck in enumerate(self.decks):
+                self._render_ready(deck, i)
 
-    def handle_key(self, key):
-        if self.state == STATE_IDLE or self.state == STATE_GAMEOVER:
+    def handle_key(self, key, deck_index=0):
+        if self.state in (STATE_IDLE, STATE_GAMEOVER):
             self.reset()
             return
 
         if self.state != STATE_INPUT:
             return
 
-        expected = self.sequence[self.input_pos]
-        if key == expected:
-            self._set_key(key, self.key_colors[key], "")
-            self.input_pos += 1
+        if self.num_players == 2:
+            self._handle_2p(key, deck_index)
+        else:
+            self._handle_solo(key)
 
-            if self.input_pos >= len(self.sequence):
+    def _handle_solo(self, key):
+        expected = self.sequence[self.input_pos[0]]
+        if key == expected:
+            set_key(self.decks[0], key, self.key_colors[key], "")
+            self.input_pos[0] += 1
+            if self.input_pos[0] >= len(self.sequence):
                 self.score = len(self.sequence)
                 if self.score > self.high_score:
                     self.high_score = self.score
-                # Show success flash
-                threading.Thread(
-                    target=self._success_flash, daemon=True
-                ).start()
+                threading.Thread(target=self._success, daemon=True).start()
         else:
-            # Wrong key — game over
             self.score = len(self.sequence) - 1
             if self.score > self.high_score:
                 self.high_score = self.score
             self.state = STATE_GAMEOVER
-            self._render_gameover()
+            self._render_gameover_all()
 
-    def _success_flash(self):
-        """Brief green flash then add next."""
+    def _handle_2p(self, key, deck_index):
+        if not self.player_alive[deck_index]:
+            return
+
+        expected = self.sequence[self.input_pos[deck_index]]
+        if key == expected:
+            set_key(self.decks[deck_index], key, self.key_colors[key], "")
+            self.input_pos[deck_index] += 1
+            if self.input_pos[deck_index] >= len(self.sequence):
+                # This player finished the round
+                # Check if other player also finished or still going
+                other = 1 - deck_index
+                if self.input_pos[other] >= len(self.sequence) or not self.player_alive[other]:
+                    self.score = len(self.sequence)
+                    if self.score > self.high_score:
+                        self.high_score = self.score
+                    threading.Thread(target=self._success, daemon=True).start()
+        else:
+            # Wrong — this player loses
+            self.player_alive[deck_index] = False
+            self.loser = deck_index
+            self.score = len(self.sequence) - 1
+            if self.score > self.high_score:
+                self.high_score = self.score
+            self.state = STATE_GAMEOVER
+            self._render_gameover_all()
+
+    def _success(self):
         with self.lock:
-            for k in range(self.total_keys):
-                self._set_key(k, (0, 100, 0), "")
+            for deck in self.decks:
+                for k in range(self.total_keys):
+                    set_key(deck, k, (0, 100, 0), "")
         time.sleep(0.3)
         with self.lock:
             self._add_to_sequence()
 
-    def _render_all_dim(self):
+    def _render_dim(self, deck):
         mid_c = self.cols // 2
         for k in range(self.total_keys):
             r = k // self.cols
             c = k % self.cols
             if (c, r) == (mid_c, 0):
-                self._set_key(k, COLOR_SCORE, f"LV{len(self.sequence)}")
+                set_key(deck, k, COLOR_SCORE, f"LV{len(self.sequence)}")
             else:
-                self._set_key(k, COLOR_DIM, "")
+                set_key(deck, k, COLOR_DIM, "")
 
-    def _render_all_ready(self):
+    def _render_ready(self, deck, deck_index):
         for k in range(self.total_keys):
-            r, g, b = self.key_colors[k]
-            dim = (r // 3, g // 3, b // 3)
-            self._set_key(k, dim, "")
+            rc, g, b = self.key_colors[k]
+            set_key(deck, k, (rc // 3, g // 3, b // 3), "")
 
-    def _render_gameover(self):
+    def _render_gameover_all(self):
         mid_c = self.cols // 2
         last_r = self.rows - 1
-        for k in range(self.total_keys):
-            r = k // self.cols
-            c = k % self.cols
-            if (c, r) == (mid_c, 0):
-                self._set_key(k, COLOR_FAIL, f"LV{self.score}")
-            elif (c, r) == (mid_c, last_r):
-                self._set_key(k, COLOR_TITLE, "AGAIN")
-            elif (c, r) == (0, last_r):
-                self._set_key(k, COLOR_SCORE, f"HI:{self.high_score}")
-            else:
-                self._set_key(k, COLOR_FAIL if k == self.sequence[self.input_pos] else COLOR_EMPTY, "")
+        for i, deck in enumerate(self.decks):
+            for k in range(self.total_keys):
+                r = k // self.cols
+                c = k % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key(deck, k, COLOR_FAIL, f"LV{self.score}")
+                elif (c, r) == (mid_c, last_r):
+                    set_key(deck, k, COLOR_TITLE, "AGAIN")
+                elif (c, r) == (0, last_r):
+                    set_key(deck, k, COLOR_SCORE, f"HI:{self.high_score}")
+                elif self.num_players == 2 and (c, r) == (mid_c, last_r // 2 if last_r > 1 else 1):
+                    if self.loser == i:
+                        set_key(deck, k, COLOR_FAIL, "LOST")
+                    else:
+                        set_key(deck, k, COLOR_WIN, "WIN!")
+                else:
+                    set_key(deck, k, COLOR_EMPTY, "")
 
     def render_title(self):
         mid_c = self.cols // 2
         last_r = self.rows - 1
-        for k in range(self.total_keys):
-            r = k // self.cols
-            c = k % self.cols
-            if (c, r) == (mid_c, 0):
-                self._set_key(k, COLOR_TITLE, "SIMON")
-            elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
-                self._set_key(k, COLOR_TITLE, "PRESS")
-            elif (c, r) == (0, last_r):
-                self._set_key(
-                    k, COLOR_SCORE,
-                    f"HI:{self.high_score}" if self.high_score else ""
-                )
-            else:
-                r_c, g_c, b_c = self.key_colors[k]
-                self._set_key(k, (r_c // 5, g_c // 5, b_c // 5), "")
-
-    def _set_key(self, key, color, text=""):
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-        img = Image.new("RGB", (w, h), color)
-        if text:
-            draw = ImageDraw.Draw(img)
-            font_size = 20 if len(text) <= 4 else 14
-            try:
-                font = ImageFont.load_default(size=font_size)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            tx, ty = (w - tw) // 2, (h - th) // 2
-            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
-
-    def key_callback(self, deck, key, state):
-        if not state:
-            return
-        with self.lock:
-            self.handle_key(key)
+        for i, deck in enumerate(self.decks):
+            for k in range(self.total_keys):
+                r = k // self.cols
+                c = k % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key(deck, k, COLOR_TITLE, "SIMON")
+                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    if self.num_players == 2:
+                        set_key(deck, k, COLOR_SCORE, f"P{i + 1}")
+                    else:
+                        set_key(deck, k, COLOR_TITLE, "PRESS")
+                elif (c, r) == (0, last_r) and self.high_score:
+                    set_key(deck, k, COLOR_SCORE, f"HI:{self.high_score}")
+                else:
+                    rc, g, b = self.key_colors[k]
+                    set_key(deck, k, (rc // 5, g // 5, b // 5), "")
 
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    if not streamdecks:
-        print("No Stream Deck found.")
-        sys.exit(1)
-
-    deck = None
-    for d in streamdecks:
-        if d.is_visual():
-            deck = d
-            break
-
-    if deck is None:
+    visual = [d for d in streamdecks if d.is_visual()]
+    if not visual:
         print("No visual Stream Deck found.")
         sys.exit(1)
 
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
 
-    rows, cols = deck.key_layout()
-    print(f"Simon Says on {deck.deck_type()} ({cols}x{rows})")
+    decks = visual[:2] if len(visual) >= 2 else visual[:1]
+
+    if len(decks) == 2:
+        print(f"2-PLAYER SIMON! Same sequence, first mistake loses.")
+    else:
+        print(f"Simon Says on {decks[0].deck_type()}")
+
     print("Watch the sequence, repeat it! Ctrl+C to quit.")
 
-    game = SimonGame(deck)
+    game = SimonGame(decks)
     game.render_title()
-    deck.set_key_callback(game.key_callback)
+
+    for i, deck in enumerate(decks):
+        def make_cb(idx):
+            def cb(deck, key, state):
+                if not state:
+                    return
+                with game.lock:
+                    game.handle_key(key, deck_index=idx)
+            return cb
+        deck.set_key_callback(make_cb(i))
 
     try:
-        while deck.is_open():
+        while all(d.is_open() for d in decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
         game.running = False
-        with deck:
-            deck.reset()
-            deck.close()
+        for d in decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
         print(f"\nScore: {game.score} | High: {game.high_score}")
 
 

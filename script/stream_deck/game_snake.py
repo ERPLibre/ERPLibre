@@ -2,9 +2,13 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Snake game for Elgato Stream Deck (adapts to any layout)."""
+"""Snake for Elgato Stream Deck (1P or 2P VS on same grid).
 
-import io
+1 deck: classic snake.
+2 decks: two snakes on same grid shown on both decks. Collision = death.
+Press buttons to steer your snake toward that direction.
+"""
+
 import os
 import random
 import sys
@@ -20,299 +24,285 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-# Colors (RGBA)
 COLOR_EMPTY = (20, 20, 30)
-COLOR_SNAKE = (0, 180, 0)
-COLOR_HEAD = (0, 255, 80)
+COLOR_SNAKE1 = (0, 180, 0)
+COLOR_HEAD1 = (0, 255, 80)
+COLOR_SNAKE2 = (0, 80, 220)
+COLOR_HEAD2 = (80, 160, 255)
 COLOR_FOOD = (255, 30, 30)
 COLOR_GAMEOVER = (180, 0, 0)
 COLOR_SCORE = (40, 40, 80)
-COLOR_WALL = (60, 60, 60)
 COLOR_READY = (0, 80, 160)
-COLOR_WIN = (255, 215, 0)
+COLOR_WIN = (0, 200, 60)
+COLOR_LOSE = (200, 0, 0)
 
-# Directions
 UP = (0, -1)
 DOWN = (0, 1)
 LEFT = (-1, 0)
 RIGHT = (1, 0)
 
-# Game speed (seconds per tick, decreases with score)
 BASE_SPEED = 0.5
 MIN_SPEED = 0.15
 
 
+def set_key(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        fs = 18 if len(text) <= 4 else 12
+        try:
+            font = ImageFont.load_default(size=fs)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
+        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
 class SnakeGame:
-    def __init__(self, deck):
-        self.deck = deck
-        rows, cols = deck.key_layout()
+    def __init__(self, decks):
+        self.decks = decks
+        self.num_players = len(decks)
+        rows, cols = decks[0].key_layout()
         self.cols = cols
         self.rows = rows
         self.total_keys = cols * rows
         self.lock = threading.Lock()
         self.running = True
         self.game_active = False
-        self.snake = []
-        self.food = None
-        self.direction = RIGHT
-        self.score = 0
-        self.high_score = 0
         self.game_over = False
-
-    def key_to_pos(self, key):
-        """Convert key index to (col, row)."""
-        return key % self.cols, key // self.cols
-
-    def pos_to_key(self, col, row):
-        """Convert (col, row) to key index."""
-        if 0 <= col < self.cols and 0 <= row < self.rows:
-            return row * self.cols + col
-        return -1
+        self.snakes = [[], []]
+        self.directions = [RIGHT, LEFT]
+        self.scores = [0, 0]
+        self.food = None
+        self.loser = -1
 
     def reset(self):
-        """Reset game state."""
-        center = (self.cols // 2, self.rows // 2)
-        self.snake = [center]
-        self.direction = RIGHT
-        self.score = 0
+        mid_r = self.rows // 2
+        self.snakes[0] = [(1, mid_r)]
+        self.directions[0] = RIGHT
+        self.scores = [0, 0]
+        self.loser = -1
         self.game_over = False
         self.game_active = True
+
+        if self.num_players == 2:
+            self.snakes[1] = [(self.cols - 2, mid_r)]
+            self.directions[1] = LEFT
+        else:
+            self.snakes[1] = []
+
         self._spawn_food()
 
+    def _all_snake_cells(self):
+        return set(self.snakes[0]) | set(self.snakes[1])
+
     def _spawn_food(self):
-        """Place food on a random empty cell."""
-        empty = []
-        for r in range(self.rows):
-            for c in range(self.cols):
-                if (c, r) not in self.snake:
-                    empty.append((c, r))
-        if empty:
-            self.food = random.choice(empty)
-        else:
-            # Win condition — snake fills entire grid
-            self.food = None
-            self.game_over = True
+        occupied = self._all_snake_cells()
+        empty = [
+            (c, r) for r in range(self.rows) for c in range(self.cols)
+            if (c, r) not in occupied
+        ]
+        self.food = random.choice(empty) if empty else None
 
     def tick(self):
-        """Advance game by one step."""
         if not self.game_active or self.game_over:
             return
 
-        head_x, head_y = self.snake[0]
-        dx, dy = self.direction
-        new_head = (head_x + dx, head_y + dy)
+        active = [0] if self.num_players == 1 else [0, 1]
 
-        # Wall collision — wrap around
-        nx, ny = new_head
-        nx = nx % self.cols
-        ny = ny % self.rows
-        new_head = (nx, ny)
+        new_heads = {}
+        for p in active:
+            hx, hy = self.snakes[p][0]
+            dx, dy = self.directions[p]
+            new_heads[p] = ((hx + dx) % self.cols, (hy + dy) % self.rows)
 
-        # Self collision
-        if new_head in self.snake:
+        # Check collisions
+        for p in active:
+            nh = new_heads[p]
+            # Self collision
+            if nh in self.snakes[p]:
+                self.loser = p
+                self.game_over = True
+                return
+            # Other snake collision
+            other = 1 - p
+            if other in active and nh in self.snakes[other]:
+                self.loser = p
+                self.game_over = True
+                return
+
+        # Head-on collision (both move to same cell)
+        if self.num_players == 2 and new_heads[0] == new_heads[1]:
+            self.loser = -1  # Draw
             self.game_over = True
-            if self.score > self.high_score:
-                self.high_score = self.score
             return
 
-        self.snake.insert(0, new_head)
-
-        # Food collision
-        if new_head == self.food:
-            self.score += 1
-            self._spawn_food()
-        else:
-            self.snake.pop()
+        # Move snakes
+        for p in active:
+            self.snakes[p].insert(0, new_heads[p])
+            if new_heads[p] == self.food:
+                self.scores[p] += 1
+                self._spawn_food()
+            else:
+                self.snakes[p].pop()
 
     def get_speed(self):
-        """Current tick speed — faster as score increases."""
-        speed = BASE_SPEED - (self.score * 0.03)
-        return max(speed, MIN_SPEED)
+        total = sum(self.scores)
+        return max(MIN_SPEED, BASE_SPEED - total * 0.02)
 
-    def handle_key(self, key):
-        """Handle key press."""
+    def handle_key(self, key, deck_index=0):
         if self.game_over or not self.game_active:
-            # Any key restarts
             self.reset()
             return
 
-        col, row = self.key_to_pos(key)
-        head_x, head_y = self.snake[0]
+        p = 0 if self.num_players == 1 else deck_index
+        col = key % self.cols
+        row = key // self.cols
+        hx, hy = self.snakes[p][0]
 
-        # Calculate direction toward pressed key
-        dx = col - head_x
-        dy = row - head_y
-
-        # Normalize to single step, prefer axis with larger delta
+        dx = col - hx
+        dy = row - hy
         if abs(dx) >= abs(dy):
-            if dx > 0:
-                new_dir = RIGHT
-            elif dx < 0:
-                new_dir = LEFT
-            elif dy > 0:
-                new_dir = DOWN
-            else:
-                new_dir = UP
+            new_dir = RIGHT if dx > 0 else LEFT
         else:
-            if dy > 0:
-                new_dir = DOWN
-            elif dy < 0:
-                new_dir = UP
-            elif dx > 0:
-                new_dir = RIGHT
-            else:
-                new_dir = LEFT
+            new_dir = DOWN if dy > 0 else UP
 
-        # Prevent 180 degree turn (instant death)
-        cur_dx, cur_dy = self.direction
-        if (new_dir[0] + cur_dx, new_dir[1] + cur_dy) != (0, 0):
-            self.direction = new_dir
+        cur = self.directions[p]
+        if (new_dir[0] + cur[0], new_dir[1] + cur[1]) != (0, 0):
+            self.directions[p] = new_dir
 
-    def render(self):
-        """Render game state to deck."""
+    def render_all(self):
+        for i, deck in enumerate(self.decks):
+            self._render(deck, i)
+
+    def _render(self, deck, deck_index):
         mid_c = self.cols // 2
         last_r = self.rows - 1
-        for r in range(self.rows):
-            for c in range(self.cols):
-                key = self.pos_to_key(c, r)
-                pos = (c, r)
 
-                if self.game_over and self.game_active:
-                    if pos in self.snake:
-                        color = COLOR_GAMEOVER
-                        text = ""
-                    elif pos == (mid_c, 0):
-                        color = COLOR_SCORE
-                        text = "GAME"
-                    elif pos == (mid_c, last_r // 2 if last_r > 1 else 1):
-                        color = COLOR_SCORE
-                        text = f"{self.score}"
-                    elif pos == (mid_c, last_r):
-                        color = COLOR_SCORE
-                        text = "OVER"
+        if not self.game_active and not self.game_over:
+            for key in range(self.total_keys):
+                r = key // self.cols
+                c = key % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key(deck, key, COLOR_HEAD1 if deck_index == 0 else COLOR_HEAD2, "SNAKE")
+                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    if self.num_players == 2:
+                        set_key(deck, key, COLOR_SCORE, f"P{deck_index + 1}")
                     else:
-                        color = COLOR_EMPTY
-                        text = ""
-                elif not self.game_active:
-                    # Title screen
-                    if pos == (mid_c - 1, 0):
-                        color = COLOR_HEAD
-                        text = "SNAKE"
-                    elif pos == (mid_c, last_r // 2 if last_r > 1 else 0):
-                        color = COLOR_READY
-                        text = "PRESS"
-                    elif pos == (mid_c + 1, last_r):
-                        color = COLOR_READY
-                        text = "START"
-                    elif pos == (0, last_r):
-                        color = COLOR_SCORE
-                        text = f"HI:{self.high_score}"
-                    else:
-                        color = COLOR_EMPTY
-                        text = ""
-                elif pos == self.snake[0]:
-                    color = COLOR_HEAD
-                    text = str(self.score) if self.score > 0 else ""
-                elif pos in self.snake:
-                    color = COLOR_SNAKE
-                    text = ""
-                elif pos == self.food:
-                    color = COLOR_FOOD
-                    text = ""
+                        set_key(deck, key, COLOR_READY, "PRESS")
+                elif (c, r) == (mid_c, last_r):
+                    set_key(deck, key, COLOR_READY, "START")
                 else:
-                    color = COLOR_EMPTY
-                    text = ""
+                    set_key(deck, key, COLOR_EMPTY, "")
+            return
 
-                self._set_key(key, color, text)
+        if self.game_over:
+            for key in range(self.total_keys):
+                r = key // self.cols
+                c = key % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key(deck, key, COLOR_SCORE, f"{self.scores[0]}-{self.scores[1]}" if self.num_players == 2 else f"S:{self.scores[0]}")
+                elif self.num_players == 2 and (c, r) == (mid_c, last_r // 2 if last_r > 1 else 1):
+                    if self.loser < 0:
+                        set_key(deck, key, COLOR_SCORE, "DRAW")
+                    elif self.loser == deck_index:
+                        set_key(deck, key, COLOR_LOSE, "LOST")
+                    else:
+                        set_key(deck, key, COLOR_WIN, "WIN!")
+                elif (c, r) == (mid_c, last_r):
+                    set_key(deck, key, COLOR_READY, "AGAIN")
+                else:
+                    set_key(deck, key, COLOR_EMPTY, "")
+            return
 
-    def _set_key(self, key, color, text=""):
-        """Render a single key with color and optional text."""
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
+        for key in range(self.total_keys):
+            r = key // self.cols
+            c = key % self.cols
+            pos = (c, r)
 
-        img = Image.new("RGB", (w, h), color)
-
-        if text:
-            draw = ImageDraw.Draw(img)
-            try:
-                font = ImageFont.load_default(size=16)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            tx = (w - tw) // 2
-            ty = (h - th) // 2
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
+            if pos == self.food:
+                set_key(deck, key, COLOR_FOOD, "")
+            elif self.snakes[0] and pos == self.snakes[0][0]:
+                set_key(deck, key, COLOR_HEAD1, str(self.scores[0]) if self.scores[0] else "")
+            elif pos in self.snakes[0]:
+                set_key(deck, key, COLOR_SNAKE1, "")
+            elif self.num_players == 2 and self.snakes[1] and pos == self.snakes[1][0]:
+                set_key(deck, key, COLOR_HEAD2, str(self.scores[1]) if self.scores[1] else "")
+            elif self.num_players == 2 and pos in self.snakes[1]:
+                set_key(deck, key, COLOR_SNAKE2, "")
+            else:
+                set_key(deck, key, COLOR_EMPTY, "")
 
     def game_loop(self):
-        """Main game loop running in a thread."""
-        while self.running and self.deck.is_open():
+        while self.running and all(d.is_open() for d in self.decks):
             with self.lock:
                 self.tick()
-                self.render()
+                self.render_all()
             time.sleep(self.get_speed())
-
-    def key_callback(self, deck, key, state):
-        """Stream Deck key callback."""
-        if not state:
-            return
-        with self.lock:
-            self.handle_key(key)
-            self.render()
 
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    if not streamdecks:
-        print("No Stream Deck found.")
-        sys.exit(1)
-
-    deck = None
-    for d in streamdecks:
-        if d.is_visual():
-            deck = d
-            break
-
-    if deck is None:
+    visual = [d for d in streamdecks if d.is_visual()]
+    if not visual:
         print("No visual Stream Deck found.")
         sys.exit(1)
 
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
 
-    rows, cols = deck.key_layout()
-    print(f"Playing Snake on {deck.deck_type()}")
-    print(f"Grid: {cols}x{rows} ({deck.key_count()} keys)")
-    print("Press any button to start. Ctrl+C to quit.")
+    decks = visual[:2] if len(visual) >= 2 else visual[:1]
 
-    game = SnakeGame(deck)
-    game.render()
+    if len(decks) == 2:
+        print("2-PLAYER SNAKE! Green vs Blue. Collision = death!")
+    else:
+        print(f"Snake on {decks[0].deck_type()}")
 
-    deck.set_key_callback(game.key_callback)
+    print("Press any button to steer. Ctrl+C to quit.")
 
-    game_thread = threading.Thread(target=game.game_loop, daemon=True)
-    game_thread.start()
+    game = SnakeGame(decks)
+    game.render_all()
+
+    for i, deck in enumerate(decks):
+        def make_cb(idx):
+            def cb(deck, key, state):
+                if not state:
+                    return
+                with game.lock:
+                    game.handle_key(key, deck_index=idx)
+            return cb
+        deck.set_key_callback(make_cb(i))
+
+    t = threading.Thread(target=game.game_loop, daemon=True)
+    t.start()
 
     try:
-        while deck.is_open():
+        while all(d.is_open() for d in decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
         game.running = False
-        with deck:
-            deck.reset()
-            deck.close()
-        print(f"\nFinal score: {game.score} | High score: {game.high_score}")
+        for d in decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
+        print(f"\nScores: P1={game.scores[0]} P2={game.scores[1]}")
 
 
 if __name__ == "__main__":

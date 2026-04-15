@@ -2,10 +2,11 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Flood Fill puzzle for Elgato Stream Deck (adapts to any layout).
+"""Flood Fill puzzle for Elgato Stream Deck (1P or 2P race).
 
-The grid has random colors. Press a color button in the bottom row
-to flood-fill from top-left. Fill the entire board in limited moves!
+1 deck: fill the board from top-left in limited moves.
+2 decks: same starting board, each player plays independently.
+First to fill wins!
 """
 
 import os
@@ -24,12 +25,8 @@ except ImportError as e:
     raise e
 
 PALETTE = [
-    (220, 40, 40),
-    (0, 180, 0),
-    (0, 80, 220),
-    (220, 180, 0),
-    (180, 0, 180),
-    (0, 180, 180),
+    (220, 40, 40), (0, 180, 0), (0, 80, 220),
+    (220, 180, 0), (180, 0, 180), (0, 180, 180),
 ]
 COLOR_EMPTY = (20, 20, 30)
 COLOR_TITLE = (0, 80, 160)
@@ -38,218 +35,230 @@ COLOR_WIN = (0, 200, 60)
 COLOR_LOSE = (180, 0, 0)
 
 
+def set_key(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        fs = 20 if len(text) <= 4 else 12
+        try:
+            font = ImageFont.load_default(size=fs)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
+        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
 class FloodFill:
-    def __init__(self, deck):
-        self.deck = deck
-        rows, cols = deck.key_layout()
+    def __init__(self, decks):
+        self.decks = decks
+        self.num_players = len(decks)
+        rows, cols = decks[0].key_layout()
         self.cols = cols
         self.rows = rows
         self.total_keys = cols * rows
-        self.lock = threading.Lock()
-        # Game area = all rows except bottom (color picker)
         self.game_rows = rows - 1
         self.num_colors = min(len(PALETTE), cols)
-        self.max_moves = self.game_rows * self.cols
-        self.grid = []
-        self.moves = 0
+        self.lock = threading.Lock()
+        # Per-player grids
+        self.grids = [[], []]
+        self.moves = [0, 0]
+        self.max_moves = 0
         self.game_active = False
-        self.won = False
-        self.lost = False
-        self.best_moves = 0
+        self.winner = -1
 
     def reset(self):
         total_cells = self.game_rows * self.cols
         self.max_moves = total_cells + self.num_colors
-        self.grid = [
-            random.randint(0, self.num_colors - 1)
-            for _ in range(total_cells)
-        ]
-        self.moves = 0
-        self.won = False
-        self.lost = False
+        base_grid = [random.randint(0, self.num_colors - 1) for _ in range(total_cells)]
+        self.grids[0] = base_grid[:]
+        self.grids[1] = base_grid[:]
+        self.moves = [0, 0]
+        self.winner = -1
         self.game_active = True
 
-    def _flood(self, new_color):
-        """Flood fill from top-left with new color."""
-        old_color = self.grid[0]
+    def _flood(self, grid, new_color):
+        old_color = grid[0]
         if old_color == new_color:
             return
-
+        cols = self.cols
+        game_rows = self.game_rows
         stack = [0]
         visited = set()
         while stack:
             idx = stack.pop()
-            if idx in visited:
-                continue
-            if self.grid[idx] != old_color:
+            if idx in visited or grid[idx] != old_color:
                 continue
             visited.add(idx)
-            self.grid[idx] = new_color
-
-            c = idx % self.cols
-            r = idx // self.cols
+            grid[idx] = new_color
+            c = idx % cols
+            r = idx // cols
             if c > 0:
                 stack.append(idx - 1)
-            if c < self.cols - 1:
+            if c < cols - 1:
                 stack.append(idx + 1)
             if r > 0:
-                stack.append(idx - self.cols)
-            if r < self.game_rows - 1:
-                stack.append(idx + self.cols)
+                stack.append(idx - cols)
+            if r < game_rows - 1:
+                stack.append(idx + cols)
 
-        self.moves += 1
+    def _is_filled(self, grid):
+        return all(grid[i] == grid[0] for i in range(len(grid)))
 
-        # Check win
-        if all(self.grid[i] == self.grid[0] for i in range(len(self.grid))):
-            self.won = True
-            if self.best_moves == 0 or self.moves < self.best_moves:
-                self.best_moves = self.moves
-        elif self.moves >= self.max_moves:
-            self.lost = True
-
-    def handle_key(self, key):
-        if self.won or self.lost or not self.game_active:
+    def handle_key(self, key, deck_index=0):
+        if self.winner >= 0 or not self.game_active:
             self.reset()
-            self.render()
+            self.render_all()
             return
 
+        p = 0 if self.num_players == 1 else deck_index
         row = key // self.cols
         col = key % self.cols
 
-        # Bottom row = color picker
         if row == self.rows - 1 and col < self.num_colors:
-            self._flood(col)
-        # Click on grid = pick that color
+            color = col
         elif row < self.game_rows:
             idx = row * self.cols + col
-            if idx < len(self.grid):
-                self._flood(self.grid[idx])
+            if idx < len(self.grids[p]):
+                color = self.grids[p][idx]
+            else:
+                return
+        else:
+            return
 
-        self.render()
+        self._flood(self.grids[p], color)
+        self.moves[p] += 1
 
-    def render(self):
+        if self._is_filled(self.grids[p]):
+            self.winner = p
+        elif self.moves[p] >= self.max_moves:
+            if self.num_players == 1:
+                self.winner = -2  # Lost
+            # In 2P, other player can still play
+
+        self.render_all()
+
+    def render_all(self):
+        for i, deck in enumerate(self.decks):
+            self._render(deck, i)
+
+    def _render(self, deck, deck_index):
         mid_c = self.cols // 2
         last_r = self.rows - 1
+        p = 0 if self.num_players == 1 else deck_index
 
         if not self.game_active:
             for key in range(self.total_keys):
                 r = key // self.cols
                 c = key % self.cols
                 if (c, r) == (mid_c, 0):
-                    self._set_key(key, COLOR_TITLE, "FLOOD")
+                    set_key(deck, key, COLOR_TITLE, "FLOOD")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "START")
-                elif (c, r) == (0, last_r) and self.best_moves:
-                    self._set_key(key, COLOR_SCORE, f"B:{self.best_moves}")
+                    set_key(deck, key, COLOR_TITLE, "START")
+                elif self.num_players == 2 and (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    set_key(deck, key, COLOR_SCORE, f"P{deck_index + 1}")
                 elif r == last_r and c < self.num_colors:
-                    self._set_key(key, PALETTE[c], "")
+                    set_key(deck, key, PALETTE[c], "")
                 else:
-                    self._set_key(key, COLOR_EMPTY, "")
+                    set_key(deck, key, COLOR_EMPTY, "")
             return
 
-        if self.won:
+        if self.winner >= 0 or self.winner == -2:
             for key in range(self.total_keys):
                 r = key // self.cols
                 c = key % self.cols
                 if (c, r) == (mid_c, 0):
-                    self._set_key(key, COLOR_WIN, "WIN!")
+                    if self.winner == -2:
+                        set_key(deck, key, COLOR_LOSE, "LOST")
+                    elif self.num_players == 2:
+                        if self.winner == deck_index:
+                            set_key(deck, key, COLOR_WIN, "WIN!")
+                        else:
+                            set_key(deck, key, COLOR_LOSE, "LOSE")
+                    else:
+                        set_key(deck, key, COLOR_WIN, f"{self.moves[0]}mv")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "AGAIN")
+                    set_key(deck, key, COLOR_TITLE, "AGAIN")
                 else:
-                    self._set_key(key, COLOR_WIN, f"{self.moves}")
+                    set_key(deck, key, COLOR_EMPTY, "")
             return
 
-        if self.lost:
-            for key in range(self.total_keys):
-                r = key // self.cols
-                c = key % self.cols
-                if (c, r) == (mid_c, 0):
-                    self._set_key(key, COLOR_LOSE, "LOST")
-                elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "AGAIN")
-                else:
-                    self._set_key(key, COLOR_EMPTY, "")
-            return
-
-        # Game grid
+        grid = self.grids[p]
         for r in range(self.game_rows):
             for c in range(self.cols):
                 key = r * self.cols + c
                 idx = r * self.cols + c
-                if idx < len(self.grid):
-                    color_idx = self.grid[idx]
-                    self._set_key(key, PALETTE[color_idx], "")
+                if idx < len(grid):
+                    set_key(deck, key, PALETTE[grid[idx]], "")
 
-        # Bottom row: color picker + moves
         for c in range(self.cols):
             key = last_r * self.cols + c
             if c < self.num_colors:
-                self._set_key(key, PALETTE[c], "")
+                set_key(deck, key, PALETTE[c], "")
             elif c == self.cols - 1:
-                remaining = self.max_moves - self.moves
-                self._set_key(key, COLOR_SCORE, f"{remaining}")
+                remaining = self.max_moves - self.moves[p]
+                set_key(deck, key, COLOR_SCORE, f"{remaining}")
             else:
-                self._set_key(key, COLOR_EMPTY, "")
-
-    def _set_key(self, key, color, text=""):
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-        img = Image.new("RGB", (w, h), color)
-        if text:
-            draw = ImageDraw.Draw(img)
-            font_size = 20 if len(text) <= 4 else 12
-            try:
-                font = ImageFont.load_default(size=font_size)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            tx, ty = (w - tw) // 2, (h - th) // 2
-            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
-
-    def key_callback(self, deck, key, state):
-        if not state:
-            return
-        with self.lock:
-            self.handle_key(key)
+                set_key(deck, key, COLOR_EMPTY, "")
 
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    deck = next((d for d in streamdecks if d.is_visual()), None)
-    if not deck:
+    visual = [d for d in streamdecks if d.is_visual()]
+    if not visual:
         print("No visual Stream Deck found.")
         sys.exit(1)
 
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
 
-    rows, cols = deck.key_layout()
-    print(f"Flood Fill on {deck.deck_type()} ({cols}x{rows})")
-    print("Pick colors from bottom row. Fill entire board! Ctrl+C to quit.")
+    decks = visual[:2] if len(visual) >= 2 else visual[:1]
 
-    game = FloodFill(deck)
-    game.render()
-    deck.set_key_callback(game.key_callback)
+    if len(decks) == 2:
+        print("2-PLAYER FLOOD FILL! Same board, first to fill wins!")
+    else:
+        print(f"Flood Fill on {decks[0].deck_type()}")
+
+    print("Pick colors from bottom row. Ctrl+C to quit.")
+
+    game = FloodFill(decks)
+    game.render_all()
+
+    for i, deck in enumerate(decks):
+        def make_cb(idx):
+            def cb(deck, key, state):
+                if not state:
+                    return
+                with game.lock:
+                    game.handle_key(key, deck_index=idx)
+            return cb
+        deck.set_key_callback(make_cb(i))
 
     try:
-        while deck.is_open():
+        while all(d.is_open() for d in decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
-        with deck:
-            deck.reset()
-            deck.close()
-        print(f"\nMoves: {game.moves} | Best: {game.best_moves}")
+        for d in decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
+        print(f"\nMoves: P1={game.moves[0]} P2={game.moves[1]}")
 
 
 if __name__ == "__main__":

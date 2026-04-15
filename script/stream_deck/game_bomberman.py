@@ -2,10 +2,12 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Bomberman for Elgato Stream Deck (adapts to any layout).
+"""Bomberman for Elgato Stream Deck (1P or 2P on same grid).
 
-Move by pressing adjacent buttons. Double-press your position to
-place a bomb. Destroy all walls to win. Don't get caught in the blast!
+1 deck: destroy all walls. Don't blow yourself up.
+2 decks: both players on same grid shown on both decks.
+Press adjacent to move, press own position to place bomb.
+Last one alive wins!
 """
 
 import os
@@ -24,7 +26,8 @@ except ImportError as e:
     raise e
 
 COLOR_EMPTY = (40, 60, 40)
-COLOR_PLAYER = (0, 180, 255)
+COLOR_P1 = (0, 180, 255)
+COLOR_P2 = (255, 140, 0)
 COLOR_WALL = (120, 80, 40)
 COLOR_BOMB = (60, 60, 60)
 COLOR_EXPLOSION = (255, 100, 0)
@@ -37,63 +40,90 @@ BOMB_TIMER = 3.0
 EXPLOSION_DURATION = 0.5
 
 
+def set_key(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        fs = 22 if len(text) <= 2 else 14
+        try:
+            font = ImageFont.load_default(size=fs)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
+        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
 class Bomberman:
-    def __init__(self, deck):
-        self.deck = deck
-        rows, cols = deck.key_layout()
+    def __init__(self, decks):
+        self.decks = decks
+        self.num_players = len(decks)
+        rows, cols = decks[0].key_layout()
         self.cols = cols
         self.rows = rows
         self.total_keys = cols * rows
         self.lock = threading.Lock()
         self.running = True
-        self.player = (0, 0)
+        self.players = [(0, 0), (0, 0)]
+        self.alive = [True, True]
         self.walls = set()
         self.bombs = {}
         self.explosions = {}
         self.game_active = False
         self.game_over = False
-        self.won = False
-        self.score = 0
-        self.high_score = 0
+        self.winner = -1
+        self.scores = [0, 0]
 
     def reset(self):
-        self.player = (0, self.rows - 1)
+        self.players[0] = (0, self.rows - 1)
+        if self.num_players == 2:
+            self.players[1] = (self.cols - 1, 0)
+        self.alive = [True, True]
         self.walls = set()
         self.bombs = {}
         self.explosions = {}
         self.game_over = False
-        self.won = False
-        self.score = 0
+        self.winner = -1
         self.game_active = True
 
-        # Place walls randomly (~40% of grid, avoid player)
         for r in range(self.rows):
             for c in range(self.cols):
-                if (c, r) == self.player:
+                pos = (c, r)
+                # Keep start corners clear
+                if abs(c - 0) + abs(r - (self.rows - 1)) <= 1:
                     continue
-                # Keep neighbors of player clear
-                px, py = self.player
-                if abs(c - px) + abs(r - py) <= 1:
+                if self.num_players == 2 and abs(c - (self.cols - 1)) + abs(r - 0) <= 1:
                     continue
-                if random.random() < 0.4:
-                    self.walls.add((c, r))
+                if random.random() < 0.35:
+                    self.walls.add(pos)
 
-    def handle_key(self, key):
+    def handle_key(self, key, deck_index=0):
         if self.game_over or not self.game_active:
             self.reset()
             return
 
-        col = key % self.cols
-        row = key // self.cols
-        px, py = self.player
-
-        # Press own position = place bomb
-        if (col, row) == self.player:
-            if self.player not in self.bombs:
-                self.bombs[self.player] = time.monotonic()
+        p = 0 if self.num_players == 1 else deck_index
+        if not self.alive[p]:
             return
 
-        # Calculate direction
+        col = key % self.cols
+        row = key // self.cols
+        px, py = self.players[p]
+
+        if (col, row) == (px, py):
+            if (px, py) not in self.bombs:
+                self.bombs[(px, py)] = time.monotonic()
+            return
+
         dx = col - px
         dy = row - py
         if abs(dx) >= abs(dy):
@@ -106,7 +136,10 @@ class Bomberman:
         nx, ny = px + dx, py + dy
         if 0 <= nx < self.cols and 0 <= ny < self.rows:
             if (nx, ny) not in self.walls and (nx, ny) not in self.bombs:
-                self.player = (nx, ny)
+                # Don't walk into other player
+                other = 1 - p
+                if self.num_players == 1 or (nx, ny) != self.players[other]:
+                    self.players[p] = (nx, ny)
 
     def tick(self):
         if not self.game_active or self.game_over:
@@ -114,51 +147,56 @@ class Bomberman:
 
         now = time.monotonic()
 
-        # Check bomb timers
-        exploded = []
-        for pos, placed_time in list(self.bombs.items()):
-            if now - placed_time >= BOMB_TIMER:
-                exploded.append(pos)
-
+        exploded = [pos for pos, t in self.bombs.items() if now - t >= BOMB_TIMER]
         for pos in exploded:
             del self.bombs[pos]
             self._explode(pos, now)
 
-        # Clear old explosions
-        expired = [
-            pos for pos, t in self.explosions.items()
-            if now - t > EXPLOSION_DURATION
-        ]
+        expired = [pos for pos, t in self.explosions.items() if now - t > EXPLOSION_DURATION]
         for pos in expired:
             del self.explosions[pos]
 
-        # Check if player caught in explosion
-        if self.player in self.explosions:
-            self.game_over = True
-            if self.score > self.high_score:
-                self.high_score = self.score
+        # Check players in explosions
+        for p in range(self.num_players):
+            if self.alive[p] and self.players[p] in self.explosions:
+                self.alive[p] = False
 
-        # Check win
-        if not self.walls and not self.bombs and self.game_active:
-            self.won = True
-            self.game_over = True
-            if self.score > self.high_score:
-                self.high_score = self.score
+        alive_count = sum(1 for i in range(self.num_players) if self.alive[i])
+
+        if self.num_players == 2:
+            if alive_count <= 1:
+                self.game_over = True
+                if self.alive[0] and not self.alive[1]:
+                    self.winner = 0
+                    self.scores[0] += 1
+                elif self.alive[1] and not self.alive[0]:
+                    self.winner = 1
+                    self.scores[1] += 1
+                else:
+                    self.winner = -1
+        else:
+            if not self.alive[0]:
+                self.game_over = True
+                self.winner = -1
+            elif not self.walls and not self.bombs:
+                self.game_over = True
+                self.winner = 0
+                self.scores[0] += 1
 
     def _explode(self, pos, now):
-        """Create explosion at pos and in 4 directions."""
         cx, cy = pos
         self.explosions[pos] = now
-
         for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
             nx, ny = cx + dx, cy + dy
             if 0 <= nx < self.cols and 0 <= ny < self.rows:
                 self.explosions[(nx, ny)] = now
-                if (nx, ny) in self.walls:
-                    self.walls.discard((nx, ny))
-                    self.score += 1
+                self.walls.discard((nx, ny))
 
-    def render(self):
+    def render_all(self):
+        for i, deck in enumerate(self.decks):
+            self._render(deck, i)
+
+    def _render(self, deck, deck_index):
         mid_c = self.cols // 2
         last_r = self.rows - 1
         now = time.monotonic()
@@ -168,13 +206,15 @@ class Bomberman:
                 r = key // self.cols
                 c = key % self.cols
                 if (c, r) == (mid_c, 0):
-                    self._set_key(key, COLOR_EXPLOSION, "BOMB")
+                    set_key(deck, key, COLOR_EXPLOSION, "BOMB")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "START")
-                elif (c, r) == (0, last_r) and self.high_score:
-                    self._set_key(key, COLOR_SCORE, f"HI:{self.high_score}")
+                    set_key(deck, key, COLOR_TITLE, "START")
+                elif self.num_players == 2 and (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    set_key(deck, key, COLOR_P1 if deck_index == 0 else COLOR_P2, f"P{deck_index + 1}")
+                elif (c, r) == (0, last_r) and sum(self.scores) > 0:
+                    set_key(deck, key, COLOR_SCORE, f"{self.scores[0]}-{self.scores[1]}")
                 else:
-                    self._set_key(key, COLOR_EMPTY, "")
+                    set_key(deck, key, COLOR_EMPTY, "")
             return
 
         if self.game_over:
@@ -182,15 +222,19 @@ class Bomberman:
                 r = key // self.cols
                 c = key % self.cols
                 if (c, r) == (mid_c, 0):
-                    color = COLOR_WIN if self.won else COLOR_DEAD
-                    text = "WIN!" if self.won else "DEAD"
-                    self._set_key(key, color, text)
-                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 1):
-                    self._set_key(key, COLOR_SCORE, f"S:{self.score}")
+                    if self.num_players == 2:
+                        if self.winner == deck_index:
+                            set_key(deck, key, COLOR_WIN, "WIN!")
+                        elif self.winner < 0:
+                            set_key(deck, key, COLOR_SCORE, "DRAW")
+                        else:
+                            set_key(deck, key, COLOR_DEAD, "DEAD")
+                    else:
+                        set_key(deck, key, COLOR_WIN if self.winner == 0 else COLOR_DEAD, "WIN!" if self.winner == 0 else "DEAD")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "AGAIN")
+                    set_key(deck, key, COLOR_TITLE, "AGAIN")
                 else:
-                    self._set_key(key, COLOR_EMPTY, "")
+                    set_key(deck, key, COLOR_EMPTY, "")
             return
 
         for key in range(self.total_keys):
@@ -199,89 +243,79 @@ class Bomberman:
             pos = (c, r)
 
             if pos in self.explosions:
-                self._set_key(key, COLOR_EXPLOSION, "")
-            elif pos == self.player:
-                self._set_key(key, COLOR_PLAYER, "@")
+                set_key(deck, key, COLOR_EXPLOSION, "")
+            elif self.alive[0] and pos == self.players[0]:
+                set_key(deck, key, COLOR_P1, "P1")
+            elif self.num_players == 2 and self.alive[1] and pos == self.players[1]:
+                set_key(deck, key, COLOR_P2, "P2")
             elif pos in self.bombs:
                 remaining = max(0, BOMB_TIMER - (now - self.bombs[pos]))
-                self._set_key(key, COLOR_BOMB, f"{remaining:.0f}")
+                set_key(deck, key, COLOR_BOMB, f"{remaining:.0f}")
             elif pos in self.walls:
-                self._set_key(key, COLOR_WALL, "#")
-            elif key == self.total_keys - 1:
-                self._set_key(key, COLOR_SCORE, str(self.score))
+                set_key(deck, key, COLOR_WALL, "#")
             else:
-                self._set_key(key, COLOR_EMPTY, "")
+                set_key(deck, key, COLOR_EMPTY, "")
 
     def game_loop(self):
-        while self.running and self.deck.is_open():
+        while self.running and all(d.is_open() for d in self.decks):
             with self.lock:
                 self.tick()
-                self.render()
+                self.render_all()
             time.sleep(0.2)
-
-    def _set_key(self, key, color, text=""):
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-        img = Image.new("RGB", (w, h), color)
-        if text:
-            draw = ImageDraw.Draw(img)
-            font_size = 22 if len(text) <= 2 else 14
-            try:
-                font = ImageFont.load_default(size=font_size)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            tx, ty = (w - tw) // 2, (h - th) // 2
-            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
-
-    def key_callback(self, deck, key, state):
-        if not state:
-            return
-        with self.lock:
-            self.handle_key(key)
 
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    deck = next((d for d in streamdecks if d.is_visual()), None)
-    if not deck:
+    visual = [d for d in streamdecks if d.is_visual()]
+    if not visual:
         print("No visual Stream Deck found.")
         sys.exit(1)
 
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
 
-    rows, cols = deck.key_layout()
-    print(f"Bomberman on {deck.deck_type()} ({cols}x{rows})")
+    decks = visual[:2] if len(visual) >= 2 else visual[:1]
+
+    if len(decks) == 2:
+        print("2-PLAYER BOMBERMAN! P1=blue P2=orange. Last alive wins!")
+    else:
+        print(f"Bomberman on {decks[0].deck_type()}")
+
     print("Move=press adjacent. Double-press=bomb. Ctrl+C to quit.")
 
-    game = Bomberman(deck)
-    game.render()
-    deck.set_key_callback(game.key_callback)
+    game = Bomberman(decks)
+    game.render_all()
 
-    game_thread = threading.Thread(target=game.game_loop, daemon=True)
-    game_thread.start()
+    for i, deck in enumerate(decks):
+        def make_cb(idx):
+            def cb(deck, key, state):
+                if not state:
+                    return
+                with game.lock:
+                    game.handle_key(key, deck_index=idx)
+            return cb
+        deck.set_key_callback(make_cb(i))
+
+    t = threading.Thread(target=game.game_loop, daemon=True)
+    t.start()
 
     try:
-        while deck.is_open():
+        while all(d.is_open() for d in decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
         game.running = False
-        with deck:
-            deck.reset()
-            deck.close()
-        print(f"\nScore: {game.score} | High: {game.high_score}")
+        for d in decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
+        print(f"\nScores: P1={game.scores[0]} P2={game.scores[1]}")
 
 
 if __name__ == "__main__":
