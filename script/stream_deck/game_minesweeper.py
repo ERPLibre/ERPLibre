@@ -438,6 +438,21 @@ class MinesweeperVS:
                         if (nc, nr) in self.mines
                     )
 
+    def _flood_reveal(self, col, row):
+        """Flood-fill reveal from (col, row), stop at numbered cells."""
+        stack = [(col, row)]
+        while stack:
+            c, r = stack.pop()
+            if (c, r) in self.clicked:
+                continue
+            if (c, r) in self.mines:
+                continue
+            self.clicked.add((c, r))
+            if self.counts.get((c, r), 0) == 0:
+                for nc, nr in self.neighbors(c, r):
+                    if (nc, nr) not in self.clicked:
+                        stack.append((nc, nr))
+
     def reset(self):
         # Place mines randomly (no safe-first-click in VS)
         all_cells = [(c, r) for r in range(self.rows) for c in range(self.cols)]
@@ -478,10 +493,9 @@ class MinesweeperVS:
         if pos in self.clicked:
             return
 
-        self.clicked.add(pos)
-
         if pos in self.mines:
             # Found a mine! Score + keep turn
+            self.clicked.add(pos)
             self.found_by[pos] = deck_index
             self.scores[deck_index] += 1
 
@@ -496,7 +510,8 @@ class MinesweeperVS:
                 else:
                     self.winner = -1
         else:
-            # Safe cell — turn passes
+            # Safe cell — flood fill then pass turn
+            self._flood_reveal(col, row)
             self.current_player = 1 - self.current_player
 
         self.render_all()
@@ -610,7 +625,36 @@ class MinesweeperVS:
 # Main
 # ──────────────────────────────────────────────────────────────
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Minesweeper for Elgato Stream Deck.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""\
+examples:
+  %(prog)s                  # auto-detect mode, default mines
+  %(prog)s -m 6             # 6 mines
+  %(prog)s -v               # show game parameters and exit
+  %(prog)s -m 3 -v          # show parameters with 3 mines
+""",
+    )
+    parser.add_argument(
+        "-m", "--mines",
+        type=int,
+        default=None,
+        help="number of mines (default: auto ~25%% solo, ~35%% VS)",
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="show game parameters and exit",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
     streamdecks = DeviceManager().enumerate()
     visual = [d for d in streamdecks if d.is_visual()]
 
@@ -618,15 +662,62 @@ def main():
         print("No visual Stream Deck found.")
         sys.exit(1)
 
+    # Try to open decks; for -v we handle failure gracefully
+    opened = []
     for d in visual:
-        d.open()
-        d.reset()
-        d.set_brightness(80)
+        try:
+            d.open()
+            d.reset()
+            d.set_brightness(80)
+            opened.append(d)
+        except TransportError:
+            if not args.verbose:
+                print(f"Error opening {d.id()}. Check udev rules.")
 
-    if len(visual) >= 2:
-        decks = visual[:2]
+    if not opened and not args.verbose:
+        print("Could not open any Stream Deck.")
+        sys.exit(1)
+
+    is_multi = len(opened) >= 2
+    decks = opened[:2] if is_multi else opened[:1]
+
+    if decks:
         rows, cols = decks[0].key_layout()
-        num_mines = calc_num_mines(cols, rows, multiplayer=True)
+    else:
+        # Fallback for -v without accessible deck
+        rows, cols = 3, 5
+    total = cols * rows
+
+    # Calculate mine count
+    if args.mines is not None:
+        num_mines = max(1, min(args.mines, total - 1))
+    else:
+        num_mines = calc_num_mines(cols, rows, multiplayer=is_multi)
+
+    if args.verbose:
+        print("=== Minesweeper Parameters ===")
+        print(f"  Mode:          {'VS Mine Hunter (2P)' if is_multi else 'Classic (1P)'}")
+        print(f"  Deck(s):       {', '.join(d.deck_type() for d in decks)}")
+        print(f"  Grid:          {cols}x{rows} ({total} cells)")
+        print(f"  Mines:         {num_mines} ({num_mines / total * 100:.0f}% density)")
+        print(f"  Safe cells:    {total - num_mines}")
+        if not is_multi:
+            print(f"  Long press:    {LONG_PRESS_TIME}s (flag threshold)")
+        print(f"  Default mines: {calc_num_mines(cols, rows, multiplayer=is_multi)} (auto)")
+        print(f"  Min mines:     1")
+        print(f"  Max mines:     {total - 1}")
+        if not decks:
+            print(f"  (deck not accessible, using default 5x3 layout)")
+        for d in decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
+        sys.exit(0)
+
+    if is_multi:
         print(f"2-PLAYER MINE HUNTER!")
         print(f"  P1: {decks[0].deck_type()} | P2: {decks[1].deck_type()}")
         print(f"  Grid: {cols}x{rows}, {num_mines} mines")
@@ -634,6 +725,7 @@ def main():
         print("  Most mines found wins!")
 
         game = MinesweeperVS(decks)
+        game.num_mines = num_mines
         game.reset()
         game.render_all()
 
@@ -673,15 +765,14 @@ def main():
             print(f"\nScore: P1={game.scores[0]} P2={game.scores[1]}")
 
     else:
-        deck = visual[0]
-        rows, cols = deck.key_layout()
-        num_mines = calc_num_mines(cols, rows)
+        deck = decks[0]
         print(f"Minesweeper on {deck.deck_type()}")
         print(f"Grid: {cols}x{rows}, {num_mines} mines")
         print("Short press = reveal | Long press = flag")
         print("Press number = chord. Ctrl+C to quit.")
 
         game = MinesweeperSolo(deck)
+        game.num_mines = num_mines
         game.render()
         deck.set_key_callback(game.key_callback)
 
