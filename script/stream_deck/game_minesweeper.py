@@ -2,12 +2,15 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Minesweeper game for Elgato Stream Deck (adapts to any layout).
+"""Minesweeper for Elgato Stream Deck (1P classic or 2P VS mine-hunter).
 
-Controls:
-  - Short press: reveal cell
-  - Long press (hold >0.6s): toggle flag
-  - Press revealed number: chord (reveal neighbors if flags match)
+1 deck: classic minesweeper. Avoid mines, reveal all safe cells.
+  - Short press = reveal, long press = flag, press number = chord.
+
+2 decks: VS MINE HUNTER! Same hidden minefield on both decks.
+  - Goal: FIND mines! Click a mine = +1 point, keep your turn.
+  - Click a safe cell = turn passes to opponent.
+  - Player with most mines found wins!
 """
 
 import math
@@ -30,16 +33,22 @@ LONG_PRESS_TIME = 0.6
 
 # Colors
 COLOR_HIDDEN = (60, 60, 80)
-COLOR_HIDDEN_HOVER = (80, 80, 100)
 COLOR_FLAG = (220, 180, 0)
 COLOR_MINE = (220, 0, 0)
 COLOR_MINE_HIT = (255, 0, 0)
 COLOR_REVEALED = (30, 30, 40)
-COLOR_EMPTY_REVEALED = (20, 20, 30)
 COLOR_WIN = (0, 180, 60)
+COLOR_LOSE = (200, 0, 0)
 COLOR_TITLE = (0, 80, 160)
+COLOR_SCORE = (40, 40, 80)
+COLOR_P1 = (0, 180, 100)
+COLOR_P2 = (100, 0, 220)
+COLOR_YOUR_TURN = (0, 120, 60)
+COLOR_WAIT = (60, 60, 60)
+COLOR_FOUND_MINE = (255, 160, 0)
+COLOR_SAFE_MISS = (80, 80, 100)
+COLOR_DRAW = (120, 120, 0)
 
-# Number colors (1-8)
 NUM_COLORS = {
     0: (60, 60, 70),
     1: (80, 80, 255),
@@ -53,13 +62,109 @@ NUM_COLORS = {
 }
 
 
-def calc_num_mines(cols, rows):
-    """Scale mine count to grid size (~25% density)."""
+def calc_num_mines(cols, rows, multiplayer=False):
+    """Scale mine count to grid size."""
     total = cols * rows
+    if multiplayer:
+        # More mines in VS mode for more action (~35%)
+        return max(2, round(total * 0.35))
     return max(1, round(total * 0.25))
 
 
-class Minesweeper:
+def set_key_image(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        font_size = 22 if len(text) <= 2 else (16 if len(text) <= 4 else 11)
+        try:
+            font = ImageFont.load_default(size=font_size)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        tx = (w - tw) // 2
+        ty = (h - th) // 2
+        draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
+        draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
+def hold_animation(deck, key, stop_event):
+    """Animate button fill during long press (solo mode only)."""
+    STEPS = 12
+    step_time = LONG_PRESS_TIME / STEPS
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+
+    for i in range(STEPS):
+        if stop_event.is_set():
+            return
+        time.sleep(step_time)
+        if stop_event.is_set():
+            return
+
+        progress = (i + 1) / STEPS
+        img = Image.new("RGB", (w, h), COLOR_HIDDEN)
+        draw = ImageDraw.Draw(img)
+        fill_h = int(h * progress)
+        bar_color = (int(220 * progress), int(180 * progress), 0)
+        draw.rectangle([0, h - fill_h, w, h], fill=bar_color)
+
+        try:
+            font = ImageFont.load_default(size=22)
+        except TypeError:
+            font = ImageFont.load_default()
+        text = "F" if progress > 0.7 else "?"
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        tx, ty = (w - tw) // 2, (h - th) // 2
+        draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
+        draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
+
+        native = PILHelper.to_native_key_format(deck, img)
+        try:
+            with deck:
+                deck.set_key_image(key, native)
+        except TransportError:
+            return
+
+    if not stop_event.is_set():
+        for color in (COLOR_FLAG, COLOR_HIDDEN, COLOR_FLAG):
+            if stop_event.is_set():
+                return
+            img = Image.new("RGB", (w, h), color)
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.load_default(size=22)
+            except TypeError:
+                font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), "F", font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            tx, ty = (w - tw) // 2, (h - th) // 2
+            draw.text((tx + 1, ty + 1), "F", fill=(0, 0, 0), font=font)
+            draw.text((tx, ty), "F", fill=(255, 255, 255), font=font)
+            native = PILHelper.to_native_key_format(deck, img)
+            try:
+                with deck:
+                    deck.set_key_image(key, native)
+            except TransportError:
+                return
+            time.sleep(0.12)
+
+
+# ──────────────────────────────────────────────────────────────
+# SOLO (classic minesweeper)
+# ──────────────────────────────────────────────────────────────
+
+class MinesweeperSolo:
     def __init__(self, deck):
         self.deck = deck
         rows, cols = deck.key_layout()
@@ -68,7 +173,6 @@ class Minesweeper:
         self.total_keys = cols * rows
         self.num_mines = calc_num_mines(cols, rows)
         self.lock = threading.Lock()
-        self.running = True
         self.game_active = False
         self.first_click = True
         self.mines = set()
@@ -79,7 +183,6 @@ class Minesweeper:
         self.won = False
         self.games_won = 0
         self.games_played = 0
-        # Long press tracking
         self._key_down_time = {}
         self._hold_threads = {}
         self._hold_reached = set()
@@ -93,7 +196,6 @@ class Minesweeper:
         return -1
 
     def neighbors(self, col, row):
-        """Return list of valid neighbor (col, row)."""
         result = []
         for dc in (-1, 0, 1):
             for dr in (-1, 0, 1):
@@ -105,7 +207,6 @@ class Minesweeper:
         return result
 
     def reset(self):
-        """Reset to new game (mines placed on first click)."""
         self.mines = set()
         self.revealed = set()
         self.flags = set()
@@ -116,54 +217,40 @@ class Minesweeper:
         self.game_active = True
 
     def _place_mines(self, safe_col, safe_row):
-        """Place mines avoiding the first clicked cell and its neighbors."""
         safe = set(self.neighbors(safe_col, safe_row))
         safe.add((safe_col, safe_row))
-
-        candidates = []
-        for r in range(self.rows):
-            for c in range(self.cols):
-                if (c, r) not in safe:
-                    candidates.append((c, r))
-
+        candidates = [
+            (c, r) for r in range(self.rows) for c in range(self.cols)
+            if (c, r) not in safe
+        ]
         num = min(self.num_mines, len(candidates))
         self.mines = set(random.sample(candidates, num))
         self._calc_counts()
 
     def _calc_counts(self):
-        """Calculate neighbor mine counts for each cell."""
         self.counts = {}
         for r in range(self.rows):
             for c in range(self.cols):
                 if (c, r) in self.mines:
                     self.counts[(c, r)] = -1
                 else:
-                    count = sum(
+                    self.counts[(c, r)] = sum(
                         1 for nc, nr in self.neighbors(c, r)
                         if (nc, nr) in self.mines
                     )
-                    self.counts[(c, r)] = count
 
     def reveal(self, col, row):
-        """Reveal a cell. Flood-fill if count is 0."""
-        if (col, row) in self.revealed or (col, row) in self.flags:
+        if (col, row) in self.revealed or (col, row) in self.flags or self.game_over:
             return
-        if self.game_over:
-            return
-
         if self.first_click:
             self._place_mines(col, row)
             self.first_click = False
-
         if (col, row) in self.mines:
             self.game_over = True
             self.won = False
             self.games_played += 1
-            # Reveal all mines
             self.revealed.update(self.mines)
             return
-
-        # Flood fill
         stack = [(col, row)]
         while stack:
             c, r = stack.pop()
@@ -175,27 +262,26 @@ class Minesweeper:
                 for nc, nr in self.neighbors(c, r):
                     if (nc, nr) not in self.revealed:
                         stack.append((nc, nr))
-
-        self._check_win()
+        non_mines = self.total_keys - len(self.mines)
+        if len(self.revealed) == non_mines:
+            self.won = True
+            self.game_over = True
+            self.games_won += 1
+            self.games_played += 1
 
     def chord(self, col, row):
-        """Chord: if flagged neighbors match count, reveal remaining."""
         if (col, row) not in self.revealed:
             return
         count = self.counts.get((col, row), 0)
         if count <= 0:
             return
-
         nbrs = self.neighbors(col, row)
-        flag_count = sum(1 for nc, nr in nbrs if (nc, nr) in self.flags)
-
-        if flag_count == count:
+        if sum(1 for nc, nr in nbrs if (nc, nr) in self.flags) == count:
             for nc, nr in nbrs:
                 if (nc, nr) not in self.flags and (nc, nr) not in self.revealed:
                     self.reveal(nc, nr)
 
     def toggle_flag(self, col, row):
-        """Toggle flag on a hidden cell."""
         if not self.game_active or self.game_over or self.first_click:
             return
         if (col, row) in self.revealed:
@@ -205,257 +291,97 @@ class Minesweeper:
         else:
             self.flags.add((col, row))
 
-    def _check_win(self):
-        """Check if all non-mine cells are revealed."""
-        non_mines = self.total_keys - len(self.mines)
-        if len(self.revealed) == non_mines:
-            self.won = True
-            self.game_over = True
-            self.games_won += 1
-            self.games_played += 1
-
     def handle_key_down(self, key):
-        """Track key press time and start hold animation."""
         self._key_down_time[key] = time.monotonic()
         self._hold_reached.discard(key)
-
         col, row = self.key_to_pos(key)
-
-        # Only animate on hidden cells during active game (not first click)
         if (
-            self.game_active
-            and not self.game_over
+            self.game_active and not self.game_over
             and not self.first_click
             and (col, row) not in self.revealed
         ):
             stop_event = threading.Event()
             self._hold_threads[key] = stop_event
             threading.Thread(
-                target=self._hold_animation,
-                args=(key, stop_event),
+                target=hold_animation,
+                args=(self.deck, key, stop_event),
                 daemon=True,
             ).start()
 
-    def _hold_animation(self, key, stop_event):
-        """Animate button fill during long press."""
-        STEPS = 12
-        step_time = LONG_PRESS_TIME / STEPS
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-
-        for i in range(STEPS):
-            if stop_event.is_set():
-                return
-            time.sleep(step_time)
-            if stop_event.is_set():
-                return
-
-            # Draw progress bar filling from bottom
-            progress = (i + 1) / STEPS
-            img = Image.new("RGB", (w, h), COLOR_HIDDEN)
-            draw = ImageDraw.Draw(img)
-
-            # Yellow fill from bottom up
-            fill_h = int(h * progress)
-            bar_color = (
-                int(220 * progress),
-                int(180 * progress),
-                0,
-            )
-            draw.rectangle(
-                [0, h - fill_h, w, h], fill=bar_color
-            )
-
-            # Draw "?" text centered
-            try:
-                font = ImageFont.load_default(size=22)
-            except TypeError:
-                font = ImageFont.load_default()
-            text = "F" if progress > 0.7 else "?"
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            tx = (w - tw) // 2
-            ty = (h - th) // 2
-            draw.text(
-                (tx + 1, ty + 1), text, fill=(0, 0, 0), font=font
-            )
-            draw.text(
-                (tx, ty), text, fill=(255, 255, 255), font=font
-            )
-
-            native = PILHelper.to_native_key_format(self.deck, img)
-            try:
-                with self.deck:
-                    self.deck.set_key_image(key, native)
-            except TransportError:
-                return
-
-        # Threshold reached — flash confirmation
-        if not stop_event.is_set():
-            self._hold_reached.add(key)
-            for color in (COLOR_FLAG, COLOR_HIDDEN, COLOR_FLAG):
-                if stop_event.is_set():
-                    return
-                img = Image.new("RGB", (w, h), color)
-                draw = ImageDraw.Draw(img)
-                try:
-                    font = ImageFont.load_default(size=22)
-                except TypeError:
-                    font = ImageFont.load_default()
-                bbox = draw.textbbox((0, 0), "F", font=font)
-                tw = bbox[2] - bbox[0]
-                th = bbox[3] - bbox[1]
-                tx = (w - tw) // 2
-                ty = (h - th) // 2
-                draw.text(
-                    (tx + 1, ty + 1), "F", fill=(0, 0, 0), font=font
-                )
-                draw.text(
-                    (tx, ty), "F", fill=(255, 255, 255), font=font
-                )
-                native = PILHelper.to_native_key_format(self.deck, img)
-                try:
-                    with self.deck:
-                        self.deck.set_key_image(key, native)
-                except TransportError:
-                    return
-                time.sleep(0.12)
-
     def handle_key_up(self, key):
-        """Handle key release — short press = reveal, long press = flag."""
-        # Stop hold animation
         stop_event = self._hold_threads.pop(key, None)
         if stop_event is not None:
             stop_event.set()
-
         down_time = self._key_down_time.pop(key, None)
         if down_time is None:
             return
-
         if self.game_over or not self.game_active:
             self.reset()
             return
-
         col, row = self.key_to_pos(key)
         reached = key in self._hold_reached
         self._hold_reached.discard(key)
         elapsed = time.monotonic() - down_time
-
         if reached or elapsed >= LONG_PRESS_TIME:
-            # Long press → flag
             self.toggle_flag(col, row)
         elif (col, row) in self.revealed:
-            # Press on revealed number → chord
             self.chord(col, row)
         else:
-            # Short press → reveal
             self.reveal(col, row)
 
     def render(self):
-        """Render entire board to deck."""
+        mid_c = self.cols // 2
+        last_r = self.rows - 1
+        last_c = self.cols - 1
         for r in range(self.rows):
             for c in range(self.cols):
                 key = self.pos_to_key(c, r)
                 pos = (c, r)
-                self._render_cell(key, pos)
-
-    def _render_cell(self, key, pos):
-        """Render a single cell."""
-        c, r = pos
-        mid_c = self.cols // 2
-        last_r = self.rows - 1
-        last_c = self.cols - 1
-
-        if not self.game_active:
-            # Title screen
-            if pos == (mid_c - 1, 0):
-                self._set_key(key, COLOR_MINE, "MINE")
-            elif pos == (mid_c, 0):
-                self._set_key(key, COLOR_MINE, "SWEEP")
-            elif pos == (mid_c, last_r // 2 if last_r > 1 else 0):
-                self._set_key(key, COLOR_TITLE, "PRESS")
-            elif pos == (mid_c, last_r):
-                self._set_key(key, COLOR_TITLE, "START")
-            elif pos == (0, last_r):
-                self._set_key(
-                    key, COLOR_REVEALED,
-                    f"W:{self.games_won}" if self.games_played > 0 else ""
-                )
-            elif pos == (last_c, last_r):
-                self._set_key(key, COLOR_REVEALED, f"{self.num_mines}M")
-            else:
-                self._set_key(key, COLOR_HIDDEN, "")
-            return
-
-        if self.game_over and self.won:
-            if pos in self.mines:
-                self._set_key(key, COLOR_WIN, "F")
-            elif pos in self.revealed:
-                count = self.counts.get(pos, 0)
-                color = NUM_COLORS.get(count, COLOR_REVEALED)
-                self._set_key(key, color, str(count) if count > 0 else "")
-            else:
-                self._set_key(key, COLOR_WIN, "WIN")
-            return
-
-        if self.game_over and not self.won:
-            if pos in self.mines:
-                self._set_key(key, COLOR_MINE_HIT, "*")
-            elif pos in self.flags:
-                # Wrong flag
-                self._set_key(key, (180, 100, 0), "X")
-            elif pos in self.revealed:
-                count = self.counts.get(pos, 0)
-                color = NUM_COLORS.get(count, COLOR_REVEALED)
-                self._set_key(key, color, str(count) if count > 0 else "")
-            else:
-                self._set_key(key, COLOR_REVEALED, "")
-            return
-
-        # Normal play
-        if pos in self.flags:
-            self._set_key(key, COLOR_FLAG, "F")
-        elif pos in self.revealed:
-            count = self.counts.get(pos, 0)
-            color = NUM_COLORS.get(count, COLOR_REVEALED)
-            self._set_key(key, color, str(count) if count > 0 else "")
-        else:
-            self._set_key(key, COLOR_HIDDEN, "?")
-
-    def _set_key(self, key, color, text=""):
-        """Render a single key with color and text."""
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-
-        img = Image.new("RGB", (w, h), color)
-
-        if text:
-            draw = ImageDraw.Draw(img)
-            font_size = 22 if len(text) <= 2 else 14
-            try:
-                font = ImageFont.load_default(size=font_size)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            tx = (w - tw) // 2
-            ty = (h - th) // 2
-
-            # Shadow for readability
-            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
+                if not self.game_active:
+                    if pos == (mid_c - 1, 0):
+                        set_key_image(self.deck, key, COLOR_MINE, "MINE")
+                    elif pos == (mid_c, 0):
+                        set_key_image(self.deck, key, COLOR_MINE, "SWEEP")
+                    elif pos == (mid_c, last_r // 2 if last_r > 1 else 0):
+                        set_key_image(self.deck, key, COLOR_TITLE, "PRESS")
+                    elif pos == (mid_c, last_r):
+                        set_key_image(self.deck, key, COLOR_TITLE, "START")
+                    elif pos == (0, last_r) and self.games_played > 0:
+                        set_key_image(self.deck, key, COLOR_REVEALED, f"W:{self.games_won}")
+                    elif pos == (last_c, last_r):
+                        set_key_image(self.deck, key, COLOR_REVEALED, f"{self.num_mines}M")
+                    else:
+                        set_key_image(self.deck, key, COLOR_HIDDEN, "")
+                elif self.game_over and self.won:
+                    if pos in self.mines:
+                        set_key_image(self.deck, key, COLOR_WIN, "F")
+                    elif pos in self.revealed:
+                        count = self.counts.get(pos, 0)
+                        color = NUM_COLORS.get(count, COLOR_REVEALED)
+                        set_key_image(self.deck, key, color, str(count) if count > 0 else "")
+                    else:
+                        set_key_image(self.deck, key, COLOR_WIN, "WIN")
+                elif self.game_over:
+                    if pos in self.mines:
+                        set_key_image(self.deck, key, COLOR_MINE_HIT, "*")
+                    elif pos in self.flags:
+                        set_key_image(self.deck, key, (180, 100, 0), "X")
+                    elif pos in self.revealed:
+                        count = self.counts.get(pos, 0)
+                        color = NUM_COLORS.get(count, COLOR_REVEALED)
+                        set_key_image(self.deck, key, color, str(count) if count > 0 else "")
+                    else:
+                        set_key_image(self.deck, key, COLOR_REVEALED, "")
+                elif pos in self.flags:
+                    set_key_image(self.deck, key, COLOR_FLAG, "F")
+                elif pos in self.revealed:
+                    count = self.counts.get(pos, 0)
+                    color = NUM_COLORS.get(count, COLOR_REVEALED)
+                    set_key_image(self.deck, key, color, str(count) if count > 0 else "")
+                else:
+                    set_key_image(self.deck, key, COLOR_HIDDEN, "?")
 
     def key_callback(self, deck, key, state):
-        """Stream Deck key callback."""
         with self.lock:
             if state:
                 self.handle_key_down(key)
@@ -464,49 +390,311 @@ class Minesweeper:
                 self.render()
 
 
+# ──────────────────────────────────────────────────────────────
+# VS (mine hunter — find bombs to score!)
+# ──────────────────────────────────────────────────────────────
+
+class MinesweeperVS:
+    """2-player VS: find mines to score. Safe cell = pass turn."""
+
+    def __init__(self, decks):
+        self.decks = decks
+        rows, cols = decks[0].key_layout()
+        self.cols = cols
+        self.rows = rows
+        self.total_keys = cols * rows
+        self.num_mines = calc_num_mines(cols, rows, multiplayer=True)
+        self.lock = threading.Lock()
+        self.mines = set()
+        self.clicked = set()
+        self.found_by = {}  # key -> player_index who found it
+        self.scores = [0, 0]
+        self.current_player = 0
+        self.game_active = False
+        self.game_over = False
+        self.winner = -1
+        self._cooldown_until = 0
+
+    def neighbors(self, col, row):
+        result = []
+        for dc in (-1, 0, 1):
+            for dr in (-1, 0, 1):
+                if dc == 0 and dr == 0:
+                    continue
+                nc, nr = col + dc, row + dr
+                if 0 <= nc < self.cols and 0 <= nr < self.rows:
+                    result.append((nc, nr))
+        return result
+
+    def _calc_counts(self):
+        self.counts = {}
+        for r in range(self.rows):
+            for c in range(self.cols):
+                if (c, r) in self.mines:
+                    self.counts[(c, r)] = -1
+                else:
+                    self.counts[(c, r)] = sum(
+                        1 for nc, nr in self.neighbors(c, r)
+                        if (nc, nr) in self.mines
+                    )
+
+    def reset(self):
+        # Place mines randomly (no safe-first-click in VS)
+        all_cells = [(c, r) for r in range(self.rows) for c in range(self.cols)]
+        self.mines = set(random.sample(all_cells, min(self.num_mines, len(all_cells))))
+        self._calc_counts()
+        self.clicked = set()
+        self.found_by = {}
+        self.scores = [0, 0]
+        self.current_player = 0
+        self.game_over = False
+        self.winner = -1
+        self.game_active = True
+        self._cooldown_until = 0
+
+    def handle_key(self, key, deck_index):
+        now = time.monotonic()
+
+        if self.game_over:
+            if now < self._cooldown_until:
+                return
+            self.reset()
+            self.render_all()
+            return
+
+        if not self.game_active:
+            self.reset()
+            self.render_all()
+            return
+
+        # Only current player can click
+        if deck_index != self.current_player:
+            return
+
+        col = key % self.cols
+        row = key // self.cols
+        pos = (col, row)
+
+        if pos in self.clicked:
+            return
+
+        self.clicked.add(pos)
+
+        if pos in self.mines:
+            # Found a mine! Score + keep turn
+            self.found_by[pos] = deck_index
+            self.scores[deck_index] += 1
+
+            # Check if all mines found
+            if len(self.found_by) >= len(self.mines):
+                self.game_over = True
+                self._cooldown_until = now + 3.0
+                if self.scores[0] > self.scores[1]:
+                    self.winner = 0
+                elif self.scores[1] > self.scores[0]:
+                    self.winner = 1
+                else:
+                    self.winner = -1
+        else:
+            # Safe cell — turn passes
+            self.current_player = 1 - self.current_player
+
+        self.render_all()
+
+    def render_all(self):
+        for i, deck in enumerate(self.decks):
+            self._render(deck, i)
+
+    def _render(self, deck, deck_index):
+        mid_c = self.cols // 2
+        last_r = self.rows - 1
+        is_my_turn = self.current_player == deck_index
+
+        if not self.game_active and not self.game_over:
+            for key in range(self.total_keys):
+                r = key // self.cols
+                c = key % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key_image(deck, key, COLOR_MINE, "HUNT")
+                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    color = COLOR_P1 if deck_index == 0 else COLOR_P2
+                    set_key_image(deck, key, color, f"P{deck_index + 1}")
+                elif (c, r) == (mid_c, last_r):
+                    set_key_image(deck, key, COLOR_TITLE, "START")
+                elif (c, r) == (self.cols - 1, last_r):
+                    set_key_image(deck, key, COLOR_SCORE, f"{self.num_mines}M")
+                else:
+                    set_key_image(deck, key, COLOR_HIDDEN, "")
+            return
+
+        if self.game_over:
+            now = time.monotonic()
+            remaining = max(0, self._cooldown_until - now)
+            can_restart = remaining <= 0
+
+            for key in range(self.total_keys):
+                r = key // self.cols
+                c = key % self.cols
+                pos = (c, r)
+
+                if (c, r) == (mid_c, 0):
+                    set_key_image(deck, key, COLOR_SCORE, f"{self.scores[0]}-{self.scores[1]}")
+                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 1):
+                    if self.winner == deck_index:
+                        set_key_image(deck, key, COLOR_WIN, "WIN!")
+                    elif self.winner < 0:
+                        set_key_image(deck, key, COLOR_DRAW, "DRAW")
+                    else:
+                        set_key_image(deck, key, COLOR_LOSE, "LOSE")
+                elif (c, r) == (mid_c, last_r):
+                    if can_restart:
+                        set_key_image(deck, key, COLOR_TITLE, "AGAIN")
+                    else:
+                        set_key_image(deck, key, COLOR_WAIT, f"{remaining:.0f}s")
+                elif pos in self.found_by:
+                    finder = self.found_by[pos]
+                    color = COLOR_P1 if finder == 0 else COLOR_P2
+                    set_key_image(deck, key, color, "*")
+                elif pos in self.mines:
+                    # Unfound mine
+                    set_key_image(deck, key, COLOR_MINE, "*")
+                elif pos in self.clicked:
+                    count = self.counts.get(pos, 0)
+                    color = NUM_COLORS.get(count, COLOR_SAFE_MISS)
+                    set_key_image(deck, key, color, str(count) if count > 0 else "")
+                else:
+                    set_key_image(deck, key, COLOR_HIDDEN, "")
+            return
+
+        # Normal play
+        mines_left = len(self.mines) - len(self.found_by)
+        last_c = self.cols - 1
+
+        for key in range(self.total_keys):
+            r = key // self.cols
+            c = key % self.cols
+            pos = (c, r)
+
+            if pos in self.found_by:
+                finder = self.found_by[pos]
+                color = COLOR_P1 if finder == 0 else COLOR_P2
+                set_key_image(deck, key, color, "*")
+            elif pos in self.clicked:
+                count = self.counts.get(pos, 0)
+                color = NUM_COLORS.get(count, COLOR_SAFE_MISS)
+                set_key_image(deck, key, color, str(count) if count > 0 else "")
+            elif key == 0:
+                # Turn indicator
+                if is_my_turn:
+                    set_key_image(deck, key, COLOR_YOUR_TURN, "GO!")
+                else:
+                    set_key_image(deck, key, COLOR_WAIT, "WAIT")
+            elif (c, r) == (last_c, 0):
+                # Mines remaining
+                set_key_image(deck, key, COLOR_MINE, f"{mines_left}M")
+            elif key == self.total_keys - 1:
+                # My score
+                set_key_image(deck, key, COLOR_SCORE, f"S:{self.scores[deck_index]}")
+            elif (c, r) == (0, last_r):
+                # Opponent score
+                other = 1 - deck_index
+                set_key_image(deck, key, COLOR_SCORE, f"V:{self.scores[other]}")
+            else:
+                if is_my_turn:
+                    set_key_image(deck, key, COLOR_HIDDEN, "?")
+                else:
+                    set_key_image(deck, key, COLOR_WAIT, "")
+
+
+# ──────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────
+
 def main():
     streamdecks = DeviceManager().enumerate()
-    if not streamdecks:
-        print("No Stream Deck found.")
-        sys.exit(1)
+    visual = [d for d in streamdecks if d.is_visual()]
 
-    deck = None
-    for d in streamdecks:
-        if d.is_visual():
-            deck = d
-            break
-
-    if deck is None:
+    if not visual:
         print("No visual Stream Deck found.")
         sys.exit(1)
 
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
 
-    rows, cols = deck.key_layout()
-    num_mines = calc_num_mines(cols, rows)
-    print(f"Minesweeper on {deck.deck_type()}")
-    print(f"Grid: {cols}x{rows}, {num_mines} mines")
-    print("Short press = reveal | Long press = flag")
-    print("Press number = chord (auto-reveal if flags match)")
-    print("Ctrl+C to quit.")
+    if len(visual) >= 2:
+        decks = visual[:2]
+        rows, cols = decks[0].key_layout()
+        num_mines = calc_num_mines(cols, rows, multiplayer=True)
+        print(f"2-PLAYER MINE HUNTER!")
+        print(f"  P1: {decks[0].deck_type()} | P2: {decks[1].deck_type()}")
+        print(f"  Grid: {cols}x{rows}, {num_mines} mines")
+        print("  Find mines = +1 + keep turn. Safe cell = pass.")
+        print("  Most mines found wins!")
 
-    game = Minesweeper(deck)
-    game.render()
+        game = MinesweeperVS(decks)
+        game.reset()
+        game.render_all()
 
-    deck.set_key_callback(game.key_callback)
+        for i, deck in enumerate(decks):
+            def make_cb(idx):
+                def cb(deck, key, state):
+                    if not state:
+                        return
+                    with game.lock:
+                        game.handle_key(key, deck_index=idx)
+                return cb
+            deck.set_key_callback(make_cb(i))
 
-    try:
-        while deck.is_open():
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        with deck:
-            deck.reset()
-            deck.close()
-        print(f"\nGames: {game.games_played} | Won: {game.games_won}")
+        # Render loop for cooldown
+        def render_loop():
+            while all(d.is_open() for d in decks):
+                if game.game_over:
+                    with game.lock:
+                        game.render_all()
+                time.sleep(0.5)
+
+        threading.Thread(target=render_loop, daemon=True).start()
+
+        try:
+            while all(d.is_open() for d in decks):
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            for d in decks:
+                try:
+                    with d:
+                        d.reset()
+                        d.close()
+                except Exception:
+                    pass
+            print(f"\nScore: P1={game.scores[0]} P2={game.scores[1]}")
+
+    else:
+        deck = visual[0]
+        rows, cols = deck.key_layout()
+        num_mines = calc_num_mines(cols, rows)
+        print(f"Minesweeper on {deck.deck_type()}")
+        print(f"Grid: {cols}x{rows}, {num_mines} mines")
+        print("Short press = reveal | Long press = flag")
+        print("Press number = chord. Ctrl+C to quit.")
+
+        game = MinesweeperSolo(deck)
+        game.render()
+        deck.set_key_callback(game.key_callback)
+
+        try:
+            while deck.is_open():
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            with deck:
+                deck.reset()
+                deck.close()
+            print(f"\nGames: {game.games_played} | Won: {game.games_won}")
 
 
 if __name__ == "__main__":
