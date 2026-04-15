@@ -41,12 +41,15 @@ class WhackAMole:
         self.lock = threading.Lock()
         self.running = True
         self.game_active = False
+        self.game_over = False
+        self.game_over_time = 0
         self.score = 0
         self.misses = 0
         self.high_score = 0
         self.moles = set()
         self.time_left = 0
         self._flash = {}
+        self._cooldown = 3.0
 
     def pos_to_key(self, col, row):
         if 0 <= col < self.cols and 0 <= row < self.rows:
@@ -82,6 +85,9 @@ class WhackAMole:
                 self.time_left -= 0.1
                 if self.time_left <= 0:
                     self.game_active = False
+                    self.game_over = True
+                    self.game_over_time = time.monotonic()
+                    self.moles.clear()
                     if self.score > self.high_score:
                         self.high_score = self.score
 
@@ -109,6 +115,16 @@ class WhackAMole:
             time.sleep(0.1)
 
     def handle_key(self, key):
+        if self.game_over:
+            elapsed = time.monotonic() - self.game_over_time
+            if elapsed < self._cooldown:
+                # Ignore — still showing score
+                return
+            self.game_over = False
+            self.reset()
+            self.render()
+            return
+
         if not self.game_active:
             self.reset()
             self.render()
@@ -129,16 +145,25 @@ class WhackAMole:
             r = key // self.cols
             c = key % self.cols
 
-            if not self.game_active and self.time_left <= 0 and (
-                self.score > 0 or self.misses > 0
-            ):
-                # Game over screen
+            if self.game_over:
+                # Game over screen with cooldown
+                elapsed = now - self.game_over_time
+                remaining = max(0, self._cooldown - elapsed)
+                can_restart = remaining <= 0
+
                 if (c, r) == (mid_c, 0):
                     self._set_key(key, COLOR_SCORE, f"S:{self.score}")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "AGAIN")
+                    if can_restart:
+                        self._set_key(key, COLOR_TITLE, "AGAIN")
+                    else:
+                        self._set_key(
+                            key, COLOR_EMPTY, f"{remaining:.0f}s"
+                        )
                 elif (c, r) == (0, 0):
                     self._set_key(key, COLOR_SCORE, f"HI:{self.high_score}")
+                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
+                    self._set_key(key, COLOR_SCORE, f"M:{self.misses}")
                 else:
                     self._set_key(key, COLOR_EMPTY, "")
             elif not self.game_active:
