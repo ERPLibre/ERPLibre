@@ -209,6 +209,7 @@ class TODO:
 [13] {t("Test - Test an Odoo module")}
 [14] {t("Update - Update all developed staging source code")}
 [15] {t("Deploy - Deploy ERPLibre locally")}
+[16] {t("Games - Stream Deck games")}
 [0] {t("Back")}
 """
         while True:
@@ -274,6 +275,10 @@ class TODO:
                     return
             elif status == "15":
                 status = self.prompt_execute_deploy()
+                if status is not False:
+                    return
+            elif status == "16":
+                status = self.prompt_execute_streamdeck_games()
                 if status is not False:
                     return
             else:
@@ -705,6 +710,79 @@ class TODO:
                 self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
+
+    def prompt_execute_streamdeck_games(self):
+        print(f"🎮 {t('Stream Deck games! Choose a game to play.')}")
+        games = self._scan_streamdeck_games()
+        if not games:
+            print(t("No Stream Deck games found."))
+            return False
+
+        choices = [
+            {"prompt_description": g["description"]}
+            for g in games
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            try:
+                idx = int(status) - 1
+                if 0 <= idx < len(games):
+                    game = games[idx]
+                    print(
+                        f"{t('Launching game:')} {game['name']}"
+                    )
+                    self.execute.exec_command_live(
+                        game["path"],
+                        source_erplibre=False,
+                    )
+                else:
+                    print(t("Command not found !"))
+            except ValueError:
+                print(t("Command not found !"))
+
+    def _scan_streamdeck_games(self):
+        """Scan game_*.py files and extract descriptions."""
+        import glob
+
+        game_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "stream_deck",
+        )
+        pattern = os.path.join(game_dir, "game_*.py")
+        games = []
+
+        for filepath in sorted(glob.glob(pattern)):
+            name = (
+                os.path.basename(filepath)
+                .replace("game_", "")
+                .replace(".py", "")
+                .replace("_", " ")
+                .title()
+            )
+            description = name
+            try:
+                with open(filepath) as f:
+                    for line in f:
+                        if line.startswith('"""'):
+                            doc = line.strip().strip('"')
+                            if doc:
+                                description = doc
+                            break
+            except Exception:
+                pass
+            games.append(
+                {
+                    "name": name,
+                    "description": f"{name} — {description}",
+                    "path": filepath,
+                }
+            )
+        return games
 
     def _deploy_clone_erplibre(self):
         default_path = os.path.expanduser("~/erplibre")

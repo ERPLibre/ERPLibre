@@ -104,6 +104,23 @@ TRANSLATIONS = {
         "fr": "Langue - Changer la langue / Change language",
         "en": "Language - Change language / Changer la langue",
     },
+    # Stream Deck Games section
+    "Games - Stream Deck games": {
+        "fr": "Jeux - Jeux sur Stream Deck",
+        "en": "Games - Stream Deck games",
+    },
+    "Stream Deck games! Choose a game to play.": {
+        "fr": "Jeux Stream Deck! Choisis un jeu.",
+        "en": "Stream Deck games! Choose a game to play.",
+    },
+    "No Stream Deck games found.": {
+        "fr": "Aucun jeu Stream Deck trouvé.",
+        "en": "No Stream Deck games found.",
+    },
+    "Launching game:": {
+        "fr": "Lancement du jeu :",
+        "en": "Launching game:",
+    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "Déploiement - Déployer ERPLibre localement",
