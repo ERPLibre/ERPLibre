@@ -4,8 +4,8 @@
 
 """Breakout game for Elgato Stream Deck (adapts to any layout).
 
-Top row(s) = bricks, bottom row = paddle, ball bounces.
-Press bottom row buttons to move paddle.
+Rotated 90°: left columns = bricks, rightmost column = paddle, ball
+bounces horizontally. Press right column buttons to move paddle up/down.
 """
 
 import os
@@ -39,7 +39,7 @@ BRICK_COLORS = [
     (160, 0, 160),
 ]
 
-TICK_SPEED = 0.4
+TICK_SPEED = 0.6
 
 
 class Breakout:
@@ -56,10 +56,10 @@ class Breakout:
         self.won = False
         self.score = 0
         self.high_score = 0
-        # Brick rows = all except last 2 (ball zone + paddle)
-        self.brick_rows = max(1, self.rows - 2)
+        # Brick columns = ~half the grid, leave room for ball + paddle
+        self.brick_cols = max(1, (self.cols - 1) // 2)
         self.bricks = set()
-        self.paddle_col = cols // 2
+        self.paddle_row = rows // 2
         self.ball_col = 0
         self.ball_row = 0
         self.ball_dx = 1
@@ -67,15 +67,15 @@ class Breakout:
 
     def reset(self):
         self.bricks = set()
-        for r in range(self.brick_rows):
-            for c in range(self.cols):
+        for c in range(self.brick_cols):
+            for r in range(self.rows):
                 self.bricks.add((c, r))
 
-        self.paddle_col = self.cols // 2
-        self.ball_col = self.cols // 2
-        self.ball_row = self.rows - 2
-        self.ball_dx = random.choice([-1, 1])
-        self.ball_dy = -1
+        self.paddle_row = self.rows // 2
+        self.ball_col = self.cols - 2
+        self.ball_row = self.rows // 2
+        self.ball_dx = -1
+        self.ball_dy = random.choice([-1, 1])
         self.score = 0
         self.game_over = False
         self.won = False
@@ -88,35 +88,35 @@ class Breakout:
         new_col = self.ball_col + self.ball_dx
         new_row = self.ball_row + self.ball_dy
 
-        # Wall bounce (left/right)
-        if new_col < 0:
-            new_col = 0
-            self.ball_dx = 1
-        elif new_col >= self.cols:
-            new_col = self.cols - 1
-            self.ball_dx = -1
-
-        # Ceiling bounce
+        # Wall bounce (top/bottom)
         if new_row < 0:
             new_row = 0
             self.ball_dy = 1
+        elif new_row >= self.rows:
+            new_row = self.rows - 1
+            self.ball_dy = -1
 
-        # Paddle bounce
-        if new_row >= self.rows - 1:
-            if new_col == self.paddle_col:
-                new_row = self.rows - 2
-                self.ball_dy = -1
-                # Angle based on paddle hit position
+        # Left wall bounce
+        if new_col < 0:
+            new_col = 0
+            self.ball_dx = 1
+
+        # Paddle bounce (right column)
+        last_col = self.cols - 1
+        if new_col >= last_col:
+            if new_row == self.paddle_row:
+                new_col = last_col - 1
+                self.ball_dx = -1
             elif (
-                new_col == self.paddle_col - 1
-                or new_col == self.paddle_col + 1
+                new_row == self.paddle_row - 1
+                or new_row == self.paddle_row + 1
             ):
-                new_row = self.rows - 2
-                self.ball_dy = -1
-                if new_col < self.paddle_col:
-                    self.ball_dx = -1
+                new_col = last_col - 1
+                self.ball_dx = -1
+                if new_row < self.paddle_row:
+                    self.ball_dy = -1
                 else:
-                    self.ball_dx = 1
+                    self.ball_dy = 1
             else:
                 # Miss — game over
                 self.game_over = True
@@ -128,8 +128,8 @@ class Breakout:
         if (new_col, new_row) in self.bricks:
             self.bricks.discard((new_col, new_row))
             self.score += 1
-            self.ball_dy = -self.ball_dy
-            new_row = self.ball_row  # Stay in place
+            self.ball_dx = -self.ball_dx
+            new_col = self.ball_col
 
             if not self.bricks:
                 self.won = True
@@ -150,16 +150,19 @@ class Breakout:
         col = key % self.cols
         row = key // self.cols
 
-        # Bottom row = move paddle
-        if row == self.rows - 1:
-            self.paddle_col = col
-        elif col < self.paddle_col:
-            self.paddle_col = max(0, self.paddle_col - 1)
-        elif col > self.paddle_col:
-            self.paddle_col = min(self.cols - 1, self.paddle_col + 1)
+        # Right column = move paddle directly
+        last_col = self.cols - 1
+        if col == last_col:
+            self.paddle_row = row
+        elif row < self.paddle_row:
+            self.paddle_row = max(0, self.paddle_row - 1)
+        elif row > self.paddle_row:
+            self.paddle_row = min(self.rows - 1, self.paddle_row + 1)
 
     def render(self):
         mid_c = self.cols // 2
+        mid_r = self.rows // 2
+        last_c = self.cols - 1
         last_r = self.rows - 1
 
         if not self.game_active:
@@ -172,10 +175,10 @@ class Breakout:
                     self._set_key(key, COLOR_TITLE, "START")
                 elif (c, r) == (0, last_r) and self.high_score:
                     self._set_key(key, COLOR_SCORE, f"HI:{self.high_score}")
-                elif r < self.brick_rows:
+                elif c < self.brick_cols:
                     self._set_key(
                         key,
-                        BRICK_COLORS[r % len(BRICK_COLORS)],
+                        BRICK_COLORS[c % len(BRICK_COLORS)],
                         ""
                     )
                 else:
@@ -190,7 +193,7 @@ class Breakout:
                     color = COLOR_WIN if self.won else COLOR_GAMEOVER
                     text = "WIN!" if self.won else "OVER"
                     self._set_key(key, color, text)
-                elif (c, r) == (mid_c, last_r // 2 if last_r > 1 else 1):
+                elif (c, r) == (mid_c, mid_r):
                     self._set_key(key, COLOR_SCORE, f"S:{self.score}")
                 elif (c, r) == (mid_c, last_r):
                     self._set_key(key, COLOR_TITLE, "AGAIN")
@@ -204,15 +207,15 @@ class Breakout:
 
             if c == self.ball_col and r == self.ball_row:
                 self._set_key(key, COLOR_BALL, "")
-            elif r == last_r and c == self.paddle_col:
-                self._set_key(key, COLOR_PADDLE, "=")
+            elif c == last_c and r == self.paddle_row:
+                self._set_key(key, COLOR_PADDLE, "||")
             elif (c, r) in self.bricks:
                 self._set_key(
                     key,
-                    BRICK_COLORS[r % len(BRICK_COLORS)],
+                    BRICK_COLORS[c % len(BRICK_COLORS)],
                     ""
                 )
-            elif key == 0:
+            elif c == last_c and r == 0:
                 self._set_key(key, COLOR_SCORE, str(self.score))
             else:
                 self._set_key(key, COLOR_EMPTY, "")
@@ -276,7 +279,7 @@ def main():
 
     rows, cols = deck.key_layout()
     print(f"Breakout on {deck.deck_type()} ({cols}x{rows})")
-    print("Bottom row = paddle. Press to move! Ctrl+C to quit.")
+    print("Right column = paddle. Press to move! Ctrl+C to quit.")
 
     game = Breakout(deck)
     game.render()
