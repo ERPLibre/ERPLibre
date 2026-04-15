@@ -81,3 +81,21 @@ streamdeck_bomberman:
 .PHONY: streamdeck_tictactoe
 streamdeck_tictactoe:
 	./script/stream_deck/game_tictactoe.py
+
+# Stream Deck + games (dials + touchscreen)
+
+.PHONY: streamdeck_safecracker
+streamdeck_safecracker:
+	./script/stream_deck/game_safecracker.py
+
+.PHONY: streamdeck_slots
+streamdeck_slots:
+	./script/stream_deck/game_slots.py
+
+.PHONY: streamdeck_colormixer
+streamdeck_colormixer:
+	./script/stream_deck/game_colormixer.py
+
+.PHONY: streamdeck_pongplus
+streamdeck_pongplus:
+	./script/stream_deck/game_pongplus.py
