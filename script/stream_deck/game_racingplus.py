@@ -132,24 +132,33 @@ class RacingPlus:
                 self.high_score = self.score
             return
 
-        # Scroll obstacles
-        new_obs = []
-        for ox, ow in self.obstacles:
-            new_obs.append((ox, ow))
-        self.obstacles = [(ox, ow) for ox, ow in new_obs]
+        # Move obstacles down
+        speed = 3 + self.score // 50
+        self.obstacles = [
+            (ox, oy + speed) for ox, oy in self.obstacles
+        ]
 
-        # Spawn obstacle
-        if random.random() < 0.05 + self.score * 0.001:
-            ox = random.randint(left_wall + 20, right_wall - 20)
-            self.obstacles.append((ox, 10))
+        # Check obstacle collision (near car at bottom)
+        car_y = self.sh - 15
+        for ox, oy in self.obstacles:
+            if abs(oy - car_y) < 12 and abs(ox - self.car_x) < 12:
+                self.game_over = True
+                if self.score > self.high_score:
+                    self.high_score = self.score
+                return
 
-        # Move obstacles down (we render them at fixed positions scrolling)
-        self.road_offset += 2
+        # Remove off-screen obstacles
+        self.obstacles = [
+            (ox, oy) for ox, oy in self.obstacles if oy < self.sh + 10
+        ]
+
+        # Spawn new obstacle at top
+        if random.random() < 0.08 + self.score * 0.001:
+            ox = random.randint(left_wall + 15, right_wall - 15)
+            self.obstacles.append((ox, -10))
+
+        self.road_offset += speed
         self.score += 1
-
-        # Remove old obstacles (simplified: just keep last 5)
-        if len(self.obstacles) > 5:
-            self.obstacles = self.obstacles[-5:]
 
     def render(self):
         self._render_keys()
@@ -216,8 +225,10 @@ class RacingPlus:
         draw.rectangle([right, 0, right + 3, h], fill=(200, 200, 200))
 
         # Obstacles
-        for ox, ow in self.obstacles:
-            draw.rectangle([ox - 5, h // 2 - 5, ox + 5, h // 2 + 5], fill=(220, 40, 40))
+        for ox, oy in self.obstacles:
+            iy = int(oy)
+            if -10 <= iy <= h + 10:
+                draw.rectangle([ox - 6, iy - 6, ox + 6, iy + 6], fill=(220, 40, 40))
 
         # Car
         cx = int(self.car_x)
