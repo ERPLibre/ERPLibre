@@ -262,8 +262,13 @@ class MinesweeperSolo:
                 for nc, nr in self.neighbors(c, r):
                     if (nc, nr) not in self.revealed:
                         stack.append((nc, nr))
+        # Win if all non-mine cells revealed OR all mines flagged
         non_mines = self.total_keys - len(self.mines)
-        if len(self.revealed) == non_mines:
+        all_revealed = len(self.revealed) == non_mines
+        all_flagged = (
+            self.flags == self.mines and len(self.flags) == len(self.mines)
+        )
+        if all_revealed or all_flagged:
             self.won = True
             self.game_over = True
             self.games_won += 1
@@ -290,6 +295,15 @@ class MinesweeperSolo:
             self.flags.discard((col, row))
         else:
             self.flags.add((col, row))
+        # Check win: all mines flagged correctly
+        if (
+            self.flags == self.mines
+            and len(self.flags) == len(self.mines)
+        ):
+            self.won = True
+            self.game_over = True
+            self.games_won += 1
+            self.games_played += 1
 
     def handle_key_down(self, key):
         self._key_down_time[key] = time.monotonic()
