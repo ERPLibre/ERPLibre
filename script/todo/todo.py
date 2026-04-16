@@ -764,23 +764,29 @@ class TODO:
                 .replace("_", " ")
                 .title()
             )
-            description = ""
-            try:
-                with open(filepath) as f:
-                    in_doc = False
-                    for line in f:
-                        if not in_doc and line.startswith('"""'):
-                            in_doc = True
-                            continue
-                        if in_doc:
-                            stripped = line.strip()
-                            if stripped.startswith('"""'):
-                                break
-                            if stripped and not description:
-                                description = stripped
-                                break
-            except Exception:
-                pass
+            # Try i18n key first, fallback to docstring
+            game_key = os.path.basename(filepath).replace(".py", "")
+            i18n_desc = t(game_key)
+            if i18n_desc != game_key:
+                description = i18n_desc
+            else:
+                description = ""
+                try:
+                    with open(filepath) as f:
+                        in_doc = False
+                        for line in f:
+                            if not in_doc and line.startswith('"""'):
+                                in_doc = True
+                                continue
+                            if in_doc:
+                                stripped = line.strip()
+                                if stripped.startswith('"""'):
+                                    break
+                                if stripped and not description:
+                                    description = stripped
+                                    break
+                except Exception:
+                    pass
             if not description:
                 description = name
             games.append(

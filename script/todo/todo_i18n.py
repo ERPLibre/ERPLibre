@@ -121,6 +121,175 @@ TRANSLATIONS = {
         "fr": "Lancement du jeu :",
         "en": "Launching game:",
     },
+    # Stream Deck game descriptions (42 games)
+    "game_2048": {
+        "en": "Merge tiles to reach 2048! Corner buttons = directions.",
+        "fr": "Fusionne les tuiles pour atteindre 2048! Coins = directions.",
+    },
+    "game_battleship": {
+        "en": "Find hidden ships! Hit = keep turn. 1P solo or 2P.",
+        "fr": "Trouve les bateaux cachés! Touché = garde ton tour. 1P ou 2P.",
+    },
+    "game_bomberman": {
+        "en": "Place bombs, destroy walls, survive! 1P or 2P.",
+        "fr": "Pose des bombes, détruis les murs, survie! 1P ou 2P.",
+    },
+    "game_breakout": {
+        "en": "Break bricks with a bouncing ball. Paddle on right column.",
+        "fr": "Casse les briques avec une balle. Paddle à droite.",
+    },
+    "game_checkers": {
+        "en": "Simplified checkers. Jump to capture! 1P vs AI or 2P.",
+        "fr": "Dames simplifiées. Saute pour capturer! 1P vs IA ou 2P.",
+    },
+    "game_colormatch": {
+        "en": "Flip cards, find matching pairs! 1P or 2P race.",
+        "fr": "Retourne les cartes, trouve les paires! 1P ou 2P course.",
+    },
+    "game_colormixer": {
+        "en": "Mix RGB with 3 dials to match target color. SD+.",
+        "fr": "Mixe RVB avec 3 dials pour matcher la couleur cible. SD+.",
+    },
+    "game_connect4": {
+        "en": "Drop pieces, get 4 in a row! 1P vs AI or 2P.",
+        "fr": "Lâche des pièces, aligne-en 4! 1P vs IA ou 2P.",
+    },
+    "game_djscratch": {
+        "en": "Scratch vinyl with dials. Waveforms on touchscreen. SD+.",
+        "fr": "Scratche du vinyl avec les dials. Waveforms sur écran. SD+.",
+    },
+    "game_fishing": {
+        "en": "Cast, wait for bite, reel in! Don't snap the line. SD+.",
+        "fr": "Lance, attends la touche, mouline! Ne casse pas la ligne. SD+.",
+    },
+    "game_flappy": {
+        "en": "Press any button to flap up. Avoid obstacles!",
+        "fr": "Appuie pour monter. Évite les obstacles!",
+    },
+    "game_floodfill": {
+        "en": "Pick colors to flood-fill from corner. Fill the grid! 1P or 2P.",
+        "fr": "Choisis des couleurs pour remplir depuis le coin. 1P ou 2P.",
+    },
+    "game_frogger": {
+        "en": "Cross traffic lanes to reach the top! Hop between cars.",
+        "fr": "Traverse la route pour atteindre le haut! Saute entre les voitures.",
+    },
+    "game_hangman": {
+        "en": "Guess the word, one letter at a time. 6 wrong = game over.",
+        "fr": "Devine le mot, une lettre à la fois. 6 erreurs = perdu.",
+    },
+    "game_langton": {
+        "en": "Langton's Ant automaton. Watch emergent patterns!",
+        "fr": "Automate de Langton. Observe les motifs émergents!",
+    },
+    "game_life": {
+        "en": "Conway's Game of Life. Toggle cells, play/pause.",
+        "fr": "Jeu de la Vie de Conway. Toggle les cellules, play/pause.",
+    },
+    "game_lightsout": {
+        "en": "Toggle button + neighbors. Turn all off! 1P or 2P coop.",
+        "fr": "Toggle bouton + voisins. Éteins tout! 1P ou 2P coop.",
+    },
+    "game_mastermind": {
+        "en": "Guess the secret color code. Feedback after each try.",
+        "fr": "Devine le code couleur secret. Feedback après chaque essai.",
+    },
+    "game_maze": {
+        "en": "Navigate a random maze from top-left to bottom-right.",
+        "fr": "Navigue un labyrinthe aléatoire du coin haut-gauche au bas-droite.",
+    },
+    "game_minesweeper": {
+        "en": "Classic minesweeper (1P) or mine hunter VS (2P).",
+        "fr": "Démineur classique (1P) ou chasseur de mines VS (2P).",
+    },
+    "game_numberguess": {
+        "en": "Guess 1-100 with hot/cold colors. Fewer tries = better!",
+        "fr": "Devine 1-100 avec couleurs chaud/froid. Moins d'essais = mieux!",
+    },
+    "game_pacman": {
+        "en": "Eat all dots, avoid the ghost! Press to steer.",
+        "fr": "Mange tous les points, évite le fantôme! Appuie pour diriger.",
+    },
+    "game_piano": {
+        "en": "Play piano keys on bottom row. Dial = octave. SD+.",
+        "fr": "Joue du piano sur la rangée du bas. Dial = octave. SD+.",
+    },
+    "game_pong": {
+        "en": "Classic Pong. 1P vs AI or 2P with two decks.",
+        "fr": "Pong classique. 1P vs IA ou 2P avec deux decks.",
+    },
+    "game_pongplus": {
+        "en": "Pong on touchscreen! Dial = paddle. 2P with two SD+.",
+        "fr": "Pong sur écran tactile! Dial = paddle. 2P avec deux SD+.",
+    },
+    "game_reaction": {
+        "en": "Hit the green button ASAP! 5 rounds. 1P or 2P.",
+        "fr": "Tape le bouton vert vite! 5 rounds. 1P ou 2P.",
+    },
+    "game_reversi": {
+        "en": "Place pieces to flip opponent's. Most pieces wins! 1P or 2P.",
+        "fr": "Place des pièces pour retourner celles de l'adversaire. 1P ou 2P.",
+    },
+    "game_rps": {
+        "en": "Rock Paper Scissors! Best of 5. 1P vs AI or 2P.",
+        "fr": "Pierre Papier Ciseaux! Best of 5. 1P vs IA ou 2P.",
+    },
+    "game_safecracker": {
+        "en": "Turn 4 dials to guess the combo. Hot/cold hints. SD+.",
+        "fr": "Tourne 4 dials pour deviner la combo. Indices chaud/froid. SD+.",
+    },
+    "game_simon": {
+        "en": "Memorize and repeat the light sequence! 1P or 2P.",
+        "fr": "Mémorise et reproduis la séquence lumineuse! 1P ou 2P.",
+    },
+    "game_slots": {
+        "en": "Spin reels with dials, stop to match symbols! SD+.",
+        "fr": "Tourne les roues avec les dials, stoppe pour matcher! SD+.",
+    },
+    "game_snake": {
+        "en": "Classic snake. Eat, grow, don't crash! 1P or 2P VS.",
+        "fr": "Snake classique. Mange, grandit, crash pas! 1P ou 2P VS.",
+    },
+    "game_sokoban": {
+        "en": "Push boxes onto targets. Think before you move!",
+        "fr": "Pousse les boîtes sur les cibles. Réfléchis avant de bouger!",
+    },
+    "game_spaceinvaders": {
+        "en": "Shoot aliens before they reach the bottom!",
+        "fr": "Tire sur les aliens avant qu'ils atteignent le bas!",
+    },
+    "game_sudoku": {
+        "en": "Fill the 3x3 grid. No repeats in rows/columns!",
+        "fr": "Remplis la grille 3x3. Pas de répétitions en lignes/colonnes!",
+    },
+    "game_taquin": {
+        "en": "Slide tiles to order them 1 to N. Classic puzzle!",
+        "fr": "Glisse les tuiles pour les ordonner 1 à N. Classique!",
+    },
+    "game_tetris": {
+        "en": "Pieces fall from right. Rotate, move, drop!",
+        "fr": "Les pièces tombent de la droite. Rotation, déplace, drop!",
+    },
+    "game_thermometer": {
+        "en": "Guess the secret temperature with dial. Hot/cold bar. SD+.",
+        "fr": "Devine la température secrète avec le dial. Barre chaud/froid. SD+.",
+    },
+    "game_tictactoe": {
+        "en": "Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.",
+        "fr": "Morpion sur grille 3x3. 1P hot seat ou 2P.",
+    },
+    "game_towerdefense": {
+        "en": "Place towers to stop enemies crossing! Survive 5 waves.",
+        "fr": "Place des tours pour bloquer les ennemis! Survie 5 vagues.",
+    },
+    "game_whackamole": {
+        "en": "Hit moles before they vanish! 30s. 1P or 2P VS.",
+        "fr": "Tape les taupes avant qu'elles disparaissent! 30s. 1P ou 2P VS.",
+    },
+    "game_wordle": {
+        "en": "Guess a 5-letter word. Green/yellow/grey hints. 6 tries.",
+        "fr": "Devine un mot de 5 lettres. Indices vert/jaune/gris. 6 essais.",
+    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "Déploiement - Déployer ERPLibre localement",
