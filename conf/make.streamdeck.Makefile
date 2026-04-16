@@ -175,3 +175,15 @@ streamdeck_checkers:
 .PHONY: streamdeck_towerdefense
 streamdeck_towerdefense:
 	./script/stream_deck/game_towerdefense.py
+
+.PHONY: streamdeck_racer
+streamdeck_racer:
+	./script/stream_deck/game_racer.py
+
+.PHONY: streamdeck_dragrace
+streamdeck_dragrace:
+	./script/stream_deck/game_dragrace.py
+
+.PHONY: streamdeck_racingplus
+streamdeck_racingplus:
+	./script/stream_deck/game_racingplus.py

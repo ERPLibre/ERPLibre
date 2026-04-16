@@ -736,10 +736,13 @@ class TODO:
                     print(
                         f"{t('Launching game:')} {game['name']}"
                     )
-                    self.execute.exec_command_live(
-                        game["path"],
-                        source_erplibre=False,
-                    )
+                    try:
+                        self.execute.exec_command_live(
+                            game["path"],
+                            source_erplibre=False,
+                        )
+                    except KeyboardInterrupt:
+                        print()
                 else:
                     print(t("Command not found !"))
             except ValueError:

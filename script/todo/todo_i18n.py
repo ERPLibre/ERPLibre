@@ -290,6 +290,18 @@ TRANSLATIONS = {
         "en": "Guess a 5-letter word. Green/yellow/grey hints. 6 tries.",
         "fr": "Devine un mot de 5 lettres. Indices vert/jaune/gris. 6 essais.",
     },
+    "game_racer": {
+        "en": "Dodge obstacles on a scrolling road! Speed increases.",
+        "fr": "Esquive les obstacles sur une route qui défile! Vitesse croissante.",
+    },
+    "game_dragrace": {
+        "en": "Shift gears at the right RPM! Too early or late = slow. 1P or 2P.",
+        "fr": "Passe les vitesses au bon régime! Trop tôt ou tard = lent. 1P ou 2P.",
+    },
+    "game_racingplus": {
+        "en": "Top-down race on touchscreen! Dial = steering. Avoid walls. SD+.",
+        "fr": "Course vue de haut sur écran tactile! Dial = volant. Évite les murs. SD+.",
+    },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
         "fr": "Déploiement - Déployer ERPLibre localement",
