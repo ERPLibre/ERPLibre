@@ -4,8 +4,8 @@
 
 """Racing+ (SD+ dials + touchscreen).
 
-Top-down race on touchscreen! Dial = steering left/right. Track scrolls
-down. Avoid walls and obstacles. Speed increases over time.
+Side-scrolling race on touchscreen! Dial = steer up/down. Obstacles
+scroll from right to left. Avoid walls and obstacles. Speed increases.
 """
 
 import io
@@ -78,7 +78,7 @@ class RacingPlus:
         self.running = True
         self.sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
         self.sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
-        self.car_x = self.sw // 2
+        self.car_y = self.sh // 2
         self.obstacles = []
         self.score = 0
         self.high_score = 0
@@ -88,7 +88,7 @@ class RacingPlus:
         self.road_offset = 0
 
     def reset(self):
-        self.car_x = self.sw // 2
+        self.car_y = self.sh // 2
         self.obstacles = []
         self.score = 0
         self.game_over = False
@@ -114,34 +114,34 @@ class RacingPlus:
         if not self.game_active or self.game_over:
             return
 
-        # Steering
-        self.car_x += self.steer
-        self.car_x = max(20, min(self.sw - 20, self.car_x))
+        # Steering (up/down)
+        self.car_y += self.steer
+        self.car_y = max(10, min(self.sh - 10, self.car_y))
         self.steer = int(self.steer * 0.7)
 
-        # Road boundaries (narrowing)
-        road_width = max(100, 300 - self.score * 2)
-        road_center = self.sw // 2
-        left_wall = road_center - road_width // 2
-        right_wall = road_center + road_width // 2
+        # Road boundaries (narrowing, top/bottom walls)
+        road_height = max(40, self.sh - 10 - self.score // 5)
+        road_center = self.sh // 2
+        top_wall = road_center - road_height // 2
+        bottom_wall = road_center + road_height // 2
 
         # Wall collision
-        if self.car_x < left_wall + 10 or self.car_x > right_wall - 10:
+        if self.car_y < top_wall + 6 or self.car_y > bottom_wall - 6:
             self.game_over = True
             if self.score > self.high_score:
                 self.high_score = self.score
             return
 
-        # Move obstacles down
-        speed = 3 + self.score // 50
+        # Move obstacles left
+        speed = 4 + self.score // 40
         self.obstacles = [
-            (ox, oy + speed) for ox, oy in self.obstacles
+            (ox - speed, oy) for ox, oy in self.obstacles
         ]
 
-        # Check obstacle collision (near car at bottom)
-        car_y = self.sh - 15
+        # Check obstacle collision (near car on left side)
+        car_x = 30
         for ox, oy in self.obstacles:
-            if abs(oy - car_y) < 12 and abs(ox - self.car_x) < 12:
+            if abs(ox - car_x) < 12 and abs(oy - self.car_y) < 10:
                 self.game_over = True
                 if self.score > self.high_score:
                     self.high_score = self.score
@@ -149,13 +149,13 @@ class RacingPlus:
 
         # Remove off-screen obstacles
         self.obstacles = [
-            (ox, oy) for ox, oy in self.obstacles if oy < self.sh + 10
+            (ox, oy) for ox, oy in self.obstacles if ox > -10
         ]
 
-        # Spawn new obstacle at top
+        # Spawn new obstacle on right
         if random.random() < 0.08 + self.score * 0.001:
-            ox = random.randint(left_wall + 15, right_wall - 15)
-            self.obstacles.append((ox, -10))
+            oy = random.randint(top_wall + 10, bottom_wall - 10)
+            self.obstacles.append((self.sw + 10, oy))
 
         self.road_offset += speed
         self.score += 1
@@ -207,33 +207,36 @@ class RacingPlus:
             set_screen(self.deck, img)
             return
 
-        # Road
-        road_width = max(100, 300 - self.score * 2)
-        road_center = w // 2
-        left = road_center - road_width // 2
-        right = road_center + road_width // 2
+        # Road (horizontal)
+        road_height = max(40, h - 10 - self.score // 5)
+        road_center = h // 2
+        top = road_center - road_height // 2
+        bottom = road_center + road_height // 2
 
-        draw.rectangle([left, 0, right, h], fill=(60, 60, 70))
+        draw.rectangle([0, top, w, bottom], fill=(60, 60, 70))
 
-        # Road markings
-        for y in range(0, h, 20):
-            yy = (y + self.road_offset * 3) % h
-            draw.rectangle([w // 2 - 1, yy, w // 2 + 1, yy + 10], fill=(200, 200, 200))
+        # Road markings (horizontal dashes scrolling left)
+        for x in range(0, w, 30):
+            xx = (x - self.road_offset * 2) % w
+            draw.rectangle([xx, h // 2 - 1, xx + 15, h // 2 + 1], fill=(200, 200, 200))
 
-        # Left/right walls
-        draw.rectangle([left - 3, 0, left, h], fill=(200, 200, 200))
-        draw.rectangle([right, 0, right + 3, h], fill=(200, 200, 200))
+        # Top/bottom walls
+        draw.rectangle([0, top - 3, w, top], fill=(200, 200, 200))
+        draw.rectangle([0, bottom, w, bottom + 3], fill=(200, 200, 200))
 
         # Obstacles
         for ox, oy in self.obstacles:
+            ix = int(ox)
             iy = int(oy)
-            if -10 <= iy <= h + 10:
-                draw.rectangle([ox - 6, iy - 6, ox + 6, iy + 6], fill=(220, 40, 40))
+            if -10 <= ix <= w + 10:
+                draw.rectangle([ix - 6, iy - 6, ix + 6, iy + 6], fill=(220, 40, 40))
 
-        # Car
-        cx = int(self.car_x)
-        draw.rectangle([cx - 6, h - 20, cx + 6, h - 5], fill=(0, 200, 255))
-        draw.rectangle([cx - 4, h - 18, cx + 4, h - 7], fill=(0, 150, 200))
+        # Car (on left side)
+        cy = int(self.car_y)
+        draw.rectangle([20, cy - 5, 38, cy + 5], fill=(0, 200, 255))
+        draw.rectangle([22, cy - 3, 36, cy + 3], fill=(0, 150, 200))
+        # Nose
+        draw.polygon([(38, cy - 4), (44, cy), (38, cy + 4)], fill=(0, 200, 255))
 
         if self.game_over:
             draw.text((w // 2 - 30, h // 2 - 8), "CRASH!", fill=(255, 0, 0), font=font)
@@ -258,7 +261,7 @@ def main():
     deck.reset()
     deck.set_brightness(80)
     print(f"Racing+ on {deck.deck_type()}")
-    print("Turn dial to steer. Avoid walls! Speed increases.")
+    print("Turn dial to steer up/down. Avoid walls and obstacles!")
     game = RacingPlus(deck)
     game.render()
     deck.set_dial_callback(lambda d, dial, evt, val: (game.lock.acquire(), game.handle_dial(dial, evt, val), game.lock.release()))

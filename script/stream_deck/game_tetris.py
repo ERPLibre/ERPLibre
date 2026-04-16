@@ -4,10 +4,11 @@
 
 """Tetris.
 
-Pieces fall from right to left. Press top row to rotate, bottom row to
-drop. Press middle rows to move piece up/down.
+Pieces fall from right to left. On SD+: game plays on touchscreen
+with dials for controls. Otherwise: buttons are the grid.
 """
 
+import io
 import os
 import random
 import sys
@@ -17,6 +18,7 @@ import time
 try:
     from PIL import Image, ImageDraw, ImageFont
     from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.Devices.StreamDeck import DialEventType
     from StreamDeck.ImageHelpers import PILHelper
     from StreamDeck.Transport.Transport import TransportError
 except ImportError as e:
@@ -28,21 +30,27 @@ PIECES = {
     "O": [(0, 0), (1, 0), (0, 1), (1, 1)],
     "T": [(0, 0), (1, 0), (2, 0), (1, 1)],
     "L": [(0, 0), (1, 0), (2, 0), (2, 1)],
+    "J": [(0, 0), (1, 0), (2, 0), (0, 1)],
     "S": [(1, 0), (2, 0), (0, 1), (1, 1)],
+    "Z": [(0, 0), (1, 0), (1, 1), (2, 1)],
 }
 PIECE_COLORS = {
     "I": (0, 220, 220),
     "O": (220, 220, 0),
     "T": (160, 0, 220),
     "L": (220, 140, 0),
+    "J": (0, 80, 220),
     "S": (0, 220, 0),
+    "Z": (220, 0, 0),
 }
 COLOR_EMPTY = (20, 20, 30)
 COLOR_FROZEN = (100, 100, 120)
 COLOR_TITLE = (0, 80, 160)
 COLOR_SCORE = (40, 40, 80)
+COLOR_GRID_BG = (30, 30, 40)
 
-TICK_SPEED = 0.6
+TICK_SPEED = 0.5
+CELL_SIZE = 10  # For touchscreen mode
 
 
 def set_key(deck, key, color, text=""):
@@ -68,14 +76,43 @@ def set_key(deck, key, color, text=""):
         pass
 
 
+def set_screen(deck, img):
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    try:
+        with deck:
+            w = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
+            h = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
+            if deck.DECK_TOUCH:
+                deck.set_touchscreen_image(buf.getvalue(), 0, 0, w, h)
+            else:
+                deck.set_screen_image(buf.getvalue())
+    except (TransportError, AttributeError):
+        pass
+
+
 class Tetris:
-    def __init__(self, deck):
+    def __init__(self, deck, use_screen=False):
         self.deck = deck
         rows, cols = deck.key_layout()
-        self.cols = cols
-        self.rows = rows
+        self.btn_cols = cols
+        self.btn_rows = rows
+        self.use_screen = use_screen
         self.lock = threading.Lock()
         self.running = True
+
+        if use_screen:
+            self.sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
+            self.sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
+            # Grid sized to fit touchscreen: right to left
+            self.rows = self.sh // CELL_SIZE
+            self.cols = self.sw // CELL_SIZE
+        else:
+            self.cols = cols
+            self.rows = rows
+            self.sw = 0
+            self.sh = 0
+
         self.grid = {}
         self.piece = None
         self.piece_type = None
@@ -94,7 +131,7 @@ class Tetris:
     def _new_piece(self):
         self.piece_type = random.choice(list(PIECES.keys()))
         self.piece = PIECES[self.piece_type][:]
-        self.piece_pos = (self.cols - 2, self.rows // 2 - 1)
+        self.piece_pos = (self.cols - 3, self.rows // 2 - 1)
         if self._collides(self.piece_pos):
             self.game_over = True
 
@@ -118,7 +155,7 @@ class Tetris:
         self._new_piece()
 
     def _clear_columns(self):
-        """Clear full columns (rotated tetris: columns instead of rows)."""
+        """Clear full columns (pieces fall left, clear left columns)."""
         cleared = 0
         c = 0
         while c < self.cols:
@@ -126,8 +163,6 @@ class Tetris:
                 cleared += 1
                 for r in range(self.rows):
                     del self.grid[(c, r)]
-                # Shift all columns right of this one to the left... wait, in our rotated version
-                # pieces fall left, so we shift columns to the right
                 new_grid = {}
                 for (gc, gr), color in self.grid.items():
                     if gc > c:
@@ -152,44 +187,128 @@ class Tetris:
         rotated = [(-dy, dx) for dx, dy in self.piece]
         min_x = min(x for x, y in rotated)
         min_y = min(y for x, y in rotated)
-        self.piece = [(x - min_x, y - min_y) for x, y in rotated]
+        new_piece = [(x - min_x, y - min_y) for x, y in rotated]
+        old_piece = self.piece
+        self.piece = new_piece
         if self._collides(self.piece_pos):
-            self.piece = PIECES[self.piece_type][:]
+            self.piece = old_piece
+
+    def move_up(self):
+        new_pos = (self.piece_pos[0], self.piece_pos[1] - 1)
+        if not self._collides(new_pos):
+            self.piece_pos = new_pos
+
+    def move_down(self):
+        new_pos = (self.piece_pos[0], self.piece_pos[1] + 1)
+        if not self._collides(new_pos):
+            self.piece_pos = new_pos
+
+    def hard_drop(self):
+        while not self._collides((self.piece_pos[0] - 1, self.piece_pos[1])):
+            self.piece_pos = (self.piece_pos[0] - 1, self.piece_pos[1])
+        self._freeze()
 
     def handle_key(self, key):
         if self.game_over or not self.game_active:
             self.reset()
             return
 
-        col = key % self.cols
-        row = key // self.cols
-
-        if row == 0:
-            self._rotate()
-        elif row == self.rows - 1:
-            # Hard drop left
-            while not self._collides((self.piece_pos[0] - 1, self.piece_pos[1])):
-                self.piece_pos = (self.piece_pos[0] - 1, self.piece_pos[1])
-            self._freeze()
-        else:
-            # Move up/down
-            if row < self.rows // 2:
-                new_pos = (self.piece_pos[0], self.piece_pos[1] - 1)
+        if self.use_screen:
+            # Buttons: top-left=rotate, top-right=drop, bottom=up/down
+            row = key // self.btn_cols
+            col = key % self.btn_cols
+            if row == 0 and col == 0:
+                self._rotate()
+            elif row == 0 and col == self.btn_cols - 1:
+                self.hard_drop()
+            elif col < self.btn_cols // 2:
+                self.move_up()
             else:
-                new_pos = (self.piece_pos[0], self.piece_pos[1] + 1)
-            if not self._collides(new_pos):
-                self.piece_pos = new_pos
+                self.move_down()
+        else:
+            row = key // self.btn_cols
+            if row == 0:
+                self._rotate()
+            elif row == self.btn_rows - 1:
+                self.hard_drop()
+            elif row < self.btn_rows // 2:
+                self.move_up()
+            else:
+                self.move_down()
+
+    def handle_dial(self, dial, event, value):
+        if not self.game_active or self.game_over:
+            if event == DialEventType.PUSH and value:
+                self.reset()
+            return
+        if event == DialEventType.TURN:
+            if dial == 0:
+                # Move up/down
+                if value < 0:
+                    self.move_up()
+                else:
+                    self.move_down()
+            elif dial == 1:
+                self._rotate()
+        elif event == DialEventType.PUSH and value:
+            if dial == 0 or dial == 1:
+                self._rotate()
+            elif dial >= 2:
+                self.hard_drop()
 
     def render(self):
-        mid_c = self.cols // 2
-        last_r = self.rows - 1
+        self._render_keys()
+        if self.use_screen:
+            self._render_screen()
+
+    def _render_keys(self):
+        mid_c = self.btn_cols // 2
+        last_r = self.btn_rows - 1
+
+        if self.use_screen:
+            # Control buttons only
+            for key in range(self.btn_cols * self.btn_rows):
+                r = key // self.btn_cols
+                c = key % self.btn_cols
+
+                if not self.game_active:
+                    if (c, r) == (mid_c, 0):
+                        set_key(self.deck, key, COLOR_TITLE, "TETR")
+                    elif (c, r) == (mid_c, last_r):
+                        set_key(self.deck, key, COLOR_TITLE, "START")
+                    else:
+                        set_key(self.deck, key, COLOR_EMPTY, "")
+                elif self.game_over:
+                    if (c, r) == (mid_c, 0):
+                        set_key(self.deck, key, (200, 0, 0), f"S:{self.score}")
+                    elif (c, r) == (mid_c, last_r):
+                        set_key(self.deck, key, COLOR_TITLE, "AGAIN")
+                    else:
+                        set_key(self.deck, key, COLOR_EMPTY, "")
+                else:
+                    if r == 0 and c == 0:
+                        set_key(self.deck, key, (100, 0, 200), "ROT")
+                    elif r == 0 and c == self.btn_cols - 1:
+                        set_key(self.deck, key, (200, 100, 0), "DROP")
+                    elif r == 0 and c == mid_c:
+                        set_key(self.deck, key, COLOR_SCORE, str(self.score))
+                    elif r == last_r and c < mid_c:
+                        set_key(self.deck, key, (0, 80, 120), "UP")
+                    elif r == last_r and c >= mid_c:
+                        set_key(self.deck, key, (0, 120, 80), "DOWN")
+                    else:
+                        pc = PIECE_COLORS.get(self.piece_type, (100, 100, 100))
+                        set_key(self.deck, key, (pc[0] // 4, pc[1] // 4, pc[2] // 4), "")
+            return
+
+        # Button grid mode (no touchscreen)
         active_cells = set(self._get_cells()) if self.piece and not self.game_over else set()
         piece_color = PIECE_COLORS.get(self.piece_type, (200, 200, 200))
 
         if not self.game_active:
-            for key in range(self.cols * self.rows):
-                r = key // self.cols
-                c = key % self.cols
+            for key in range(self.btn_cols * self.btn_rows):
+                r = key // self.btn_cols
+                c = key % self.btn_cols
                 if (c, r) == (mid_c, 0):
                     set_key(self.deck, key, COLOR_TITLE, "TETR")
                 elif (c, r) == (mid_c, last_r):
@@ -199,9 +318,9 @@ class Tetris:
             return
 
         if self.game_over:
-            for key in range(self.cols * self.rows):
-                r = key // self.cols
-                c = key % self.cols
+            for key in range(self.btn_cols * self.btn_rows):
+                r = key // self.btn_cols
+                c = key % self.btn_cols
                 if (c, r) == (mid_c, 0):
                     set_key(self.deck, key, (200, 0, 0), f"S:{self.score}")
                 elif (c, r) == (mid_c, last_r):
@@ -210,9 +329,9 @@ class Tetris:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
 
-        for key in range(self.cols * self.rows):
-            r = key // self.cols
-            c = key % self.cols
+        for key in range(self.btn_cols * self.btn_rows):
+            r = key // self.btn_cols
+            c = key % self.btn_cols
             if (c, r) in active_cells:
                 set_key(self.deck, key, piece_color, "")
             elif (c, r) in self.grid:
@@ -221,6 +340,65 @@ class Tetris:
                 set_key(self.deck, key, COLOR_SCORE, str(self.score))
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_screen(self):
+        w, h = self.sw, self.sh
+        img = Image.new("RGB", (w, h), (10, 10, 15))
+        draw = ImageDraw.Draw(img)
+
+        try:
+            font = ImageFont.load_default(size=14)
+        except TypeError:
+            font = ImageFont.load_default()
+
+        if not self.game_active and not self.game_over:
+            draw.text((w // 2 - 30, h // 2 - 7), "TETRIS", fill=(0, 220, 220), font=font)
+            set_screen(self.deck, img)
+            return
+
+        cs = CELL_SIZE
+        active_cells = set(self._get_cells()) if self.piece and not self.game_over else set()
+        piece_color = PIECE_COLORS.get(self.piece_type, (200, 200, 200))
+
+        # Draw grid
+        for (gx, gy), color in self.grid.items():
+            x = gx * cs
+            y = gy * cs
+            draw.rectangle([x + 1, y + 1, x + cs - 1, y + cs - 1], fill=color)
+
+        # Draw active piece
+        for cx, cy in active_cells:
+            x = cx * cs
+            y = cy * cs
+            draw.rectangle([x + 1, y + 1, x + cs - 1, y + cs - 1], fill=piece_color)
+
+        # Draw ghost (drop preview)
+        ghost_pos = self.piece_pos
+        while not self._collides((ghost_pos[0] - 1, ghost_pos[1])):
+            ghost_pos = (ghost_pos[0] - 1, ghost_pos[1])
+        if ghost_pos != self.piece_pos:
+            for dx, dy in self.piece:
+                gx, gy = ghost_pos[0] + dx, ghost_pos[1] + dy
+                x = gx * cs
+                y = gy * cs
+                draw.rectangle(
+                    [x + 2, y + 2, x + cs - 2, y + cs - 2],
+                    outline=(piece_color[0] // 3, piece_color[1] // 3, piece_color[2] // 3),
+                )
+
+        # Grid lines
+        for gx in range(0, w, cs):
+            draw.line([(gx, 0), (gx, h)], fill=(25, 25, 35))
+        for gy in range(0, h, cs):
+            draw.line([(0, gy), (w, gy)], fill=(25, 25, 35))
+
+        # Score
+        draw.text((w - 50, 2), f"S:{self.score}", fill=(200, 200, 200), font=font)
+
+        if self.game_over:
+            draw.text((w // 2 - 25, h // 2 - 7), "GAME OVER", fill=(255, 0, 0), font=font)
+
+        set_screen(self.deck, img)
 
     def game_loop(self):
         while self.running and self.deck.is_open():
@@ -239,12 +417,40 @@ def main():
     deck.open()
     deck.reset()
     deck.set_brightness(80)
+
+    has_screen = deck.DIAL_COUNT and deck.DIAL_COUNT > 0
+    use_screen = has_screen
+
     rows, cols = deck.key_layout()
-    print(f"Tetris on {deck.deck_type()} ({cols}x{rows})")
-    print("Top row=rotate. Bottom=drop. Middle=move up/down.")
-    game = Tetris(deck)
+    if use_screen:
+        sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
+        sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
+        grid_cols = sw // CELL_SIZE
+        grid_rows = sh // CELL_SIZE
+        print(f"Tetris on {deck.deck_type()} TOUCHSCREEN ({grid_cols}x{grid_rows})")
+        print("Dial 1=move up/down, Dial 2=rotate, Dial 3-4=drop")
+        print("Buttons: TL=rotate, TR=drop, bottom=up/down")
+    else:
+        print(f"Tetris on {deck.deck_type()} ({cols}x{rows})")
+        print("Top row=rotate. Bottom=drop. Middle=move up/down.")
+
+    game = Tetris(deck, use_screen=use_screen)
     game.render()
-    deck.set_key_callback(lambda d, k, s: (s and game.lock.acquire(), s and game.handle_key(k), s and game.lock.release()) if s else None)
+
+    def key_cb(d, k, s):
+        if not s:
+            return
+        with game.lock:
+            game.handle_key(k)
+
+    deck.set_key_callback(key_cb)
+
+    if has_screen:
+        def dial_cb(d, dial, evt, val):
+            with game.lock:
+                game.handle_dial(dial, evt, val)
+        deck.set_dial_callback(dial_cb)
+
     t = threading.Thread(target=game.game_loop, daemon=True)
     t.start()
     try:
