@@ -131,7 +131,12 @@ class Tetris:
     def _new_piece(self):
         self.piece_type = random.choice(list(PIECES.keys()))
         self.piece = PIECES[self.piece_type][:]
-        self.piece_pos = (self.cols - 3, self.rows // 2 - 1)
+        # Ensure piece fits within grid at spawn
+        max_dx = max(dx for dx, dy in self.piece)
+        max_dy = max(dy for dy, dx in self.piece)
+        spawn_x = self.cols - 1 - max_dx
+        spawn_y = max(0, min(self.rows // 2 - 1, self.rows - 1 - max_dy))
+        self.piece_pos = (spawn_x, spawn_y)
         if self._collides(self.piece_pos):
             self.game_over = True
 
