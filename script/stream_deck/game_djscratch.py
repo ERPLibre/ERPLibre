@@ -155,17 +155,29 @@ class DJScratch:
         # Sampler state (deck 2)
         self.record_mode = False
         self.waiting_assign = -1  # key on sampler waiting for note
-        self.sampler_map = {}  # key -> (style, freq) tuple
+        self.sampler_map = {}  # key -> (style, freq) or "wav:path" tuple
         self.sampler_playing = set()
+        self.mic_recording = False
+        self.mic_process = None
+        self.mic_start_time = 0
+        self.save_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "save"
+        )
+        os.makedirs(self.save_dir, exist_ok=True)
         if sampler_deck:
             sr, sc = sampler_deck.key_layout()
             self.sampler_cols = sc
             self.sampler_rows = sr
             self.sampler_total = sc * sr
+            # Layout: row 0 col 0 = REC, row 1 col 0 = MIC
+            self.key_rec = 0
+            self.key_mic = self.sampler_cols  # first key of row 1
         else:
             self.sampler_cols = 0
             self.sampler_rows = 0
             self.sampler_total = 0
+            self.key_rec = 0
+            self.key_mic = 0
 
     def handle_dial(self, dial, event, value):
         if dial >= 4:
@@ -227,6 +239,10 @@ class DJScratch:
         wav_data = samples_to_wav(samples)
         play_wav_bytes(wav_data)
 
+    def _is_control_key(self, key):
+        """Check if key is REC or MIC control."""
+        return key == self.key_rec or key == self.key_mic
+
     def _handle_sampler_key(self, key, state):
         """Handle key press on the sampler (deck 2)."""
         if not state:
@@ -234,8 +250,10 @@ class DJScratch:
             self._render_sampler()
             return
 
-        # Button 0 = toggle record mode
-        if key == 0:
+        # Button REC (row 0, col 0) = toggle record mode
+        if key == self.key_rec:
+            if self.mic_recording:
+                self._stop_mic()
             if self.record_mode:
                 self.record_mode = False
                 self.waiting_assign = -1
@@ -243,38 +261,132 @@ class DJScratch:
             else:
                 self.record_mode = True
                 self.waiting_assign = -1
-                print("Record mode ON - press a sampler button to assign")
+                print("Record mode ON - press a button to assign")
+            self._render_sampler()
+            return
+
+        # Button MIC (row 1, col 0) = mic record (only in record mode)
+        if key == self.key_mic:
+            if not self.record_mode:
+                return
+            if self.waiting_assign < 0:
+                print("Select a button first, then press MIC")
+                return
+            if self.mic_recording:
+                self._stop_mic()
+            else:
+                self._start_mic()
             self._render_sampler()
             return
 
         if self.record_mode:
+            # Stop any active mic recording if switching target
+            if self.mic_recording:
+                self._stop_mic()
             # Select this button for assignment
+            if self._is_control_key(key):
+                return
             self.waiting_assign = key
             print(
-                f"Sampler key {key} selected - now press a sound button "
-                f"(0-3) on deck 1 to assign"
+                f"Sampler key {key} selected - press sound 0-3 on deck 1 "
+                f"or MIC to record"
             )
             self._render_sampler()
         else:
             # Play assigned sound
             if key in self.sampler_map:
-                style, freq = self.sampler_map[key]
+                mapping = self.sampler_map[key]
                 self.sampler_playing.add(key)
                 self._render_sampler()
                 threading.Thread(
-                    target=self._play_sampler_sound,
-                    args=(key, style, freq),
+                    target=self._play_sampler_mapping,
+                    args=(key, mapping),
                     daemon=True,
                 ).start()
 
-    def _play_sampler_sound(self, key, style, freq):
-        """Play a sampler sound and update display."""
-        self._play_sound(style, freq)
+    def _start_mic(self):
+        """Start recording from microphone via arecord."""
+        if self.waiting_assign < 0:
+            return
+        timestamp = int(time.time())
+        self.mic_wav_path = os.path.join(
+            self.save_dir, f"rec_{self.waiting_assign}_{timestamp}.wav"
+        )
+        try:
+            self.mic_process = subprocess.Popen(
+                [
+                    "arecord",
+                    "-f", "S16_LE",
+                    "-r", "22050",
+                    "-c", "1",
+                    "-q",
+                    self.mic_wav_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.mic_recording = True
+            self.mic_start_time = time.monotonic()
+            print(f"MIC recording started: {self.mic_wav_path}")
+        except FileNotFoundError:
+            print("arecord not found - cannot record from mic")
+
+    def _stop_mic(self):
+        """Stop mic recording and assign to waiting button."""
+        if not self.mic_recording or not self.mic_process:
+            return
+        self.mic_process.terminate()
+        try:
+            self.mic_process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.mic_process.kill()
+        self.mic_recording = False
+        duration = time.monotonic() - self.mic_start_time
+        self.mic_process = None
+
+        if self.waiting_assign >= 0 and os.path.isfile(self.mic_wav_path):
+            dur_str = f"{duration:.1f}s"
+            self.sampler_map[self.waiting_assign] = (
+                "wav", self.mic_wav_path, dur_str
+            )
+            print(
+                f"MIC assigned to key {self.waiting_assign}: "
+                f"{dur_str} ({self.mic_wav_path})"
+            )
+            self.waiting_assign = -1
+        self._render_sampler()
+
+    def _play_sampler_mapping(self, key, mapping):
+        """Play a sampler mapping (tone or wav file)."""
+        if mapping[0] == "wav":
+            self._play_wav_file(mapping[1])
+        else:
+            style, freq = mapping[0], mapping[1]
+            self._play_sound(style, freq)
         self.sampler_playing.discard(key)
         self._render_sampler()
 
+    def _play_wav_file(self, path):
+        """Play a WAV file directly on speaker."""
+        if not os.path.isfile(path):
+            return
+        for cmd in [
+            ["aplay", "-q", path],
+            ["pw-play", path],
+        ]:
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                proc.wait()
+                return
+            except FileNotFoundError:
+                continue
+
     def _render_sampler(self):
-        """Render the sampler deck (deck 2)."""
+        """Render the sampler deck (deck 2). Adapts to any layout."""
         if not self.sampler_deck:
             return
         deck = self.sampler_deck
@@ -282,33 +394,60 @@ class DJScratch:
             r = key // self.sampler_cols
             c = key % self.sampler_cols
 
-            if key == 0:
-                # Record button
+            # REC button (row 0, col 0)
+            if key == self.key_rec:
                 if self.record_mode:
                     set_key(deck, key, (220, 0, 0), "REC")
                 else:
                     set_key(deck, key, (80, 0, 0), "REC")
-            elif key == self.waiting_assign:
-                # Waiting for note assignment - blink
-                set_key(deck, key, (220, 180, 0), "?")
-            elif key in self.sampler_map:
-                style, freq = self.sampler_map[key]
-                color = STYLE_COLORS[style]
-                if key in self.sampler_playing:
-                    # Playing - full brightness
-                    set_key(deck, key, color, f"{int(freq)}")
-                else:
-                    # Assigned - dim
-                    dim = (color[0] // 3, color[1] // 3, color[2] // 3)
-                    set_key(
-                        deck, key, dim,
-                        STYLES[style][:3],
-                    )
-            else:
+                continue
+
+            # MIC button (row 1, col 0) - only visible in record mode
+            if key == self.key_mic:
                 if self.record_mode:
-                    set_key(deck, key, (30, 30, 40), "+")
+                    if self.mic_recording:
+                        elapsed = time.monotonic() - self.mic_start_time
+                        set_key(deck, key, (255, 40, 40), f"{elapsed:.0f}s")
+                    elif self.waiting_assign >= 0:
+                        set_key(deck, key, (180, 0, 180), "MIC")
+                    else:
+                        set_key(deck, key, (60, 0, 60), "MIC")
                 else:
                     set_key(deck, key, (20, 20, 30), "")
+                continue
+
+            # Waiting for assignment
+            if key == self.waiting_assign:
+                set_key(deck, key, (220, 180, 0), "?")
+                continue
+
+            # Assigned key
+            if key in self.sampler_map:
+                mapping = self.sampler_map[key]
+                if mapping[0] == "wav":
+                    # Mic recording
+                    dur_str = mapping[2]
+                    if key in self.sampler_playing:
+                        set_key(deck, key, (255, 40, 40), dur_str)
+                    else:
+                        set_key(deck, key, (80, 20, 20), dur_str)
+                else:
+                    # Tone
+                    style = mapping[0]
+                    freq = mapping[1]
+                    color = STYLE_COLORS[style]
+                    if key in self.sampler_playing:
+                        set_key(deck, key, color, f"{int(freq)}")
+                    else:
+                        dim = (color[0] // 3, color[1] // 3, color[2] // 3)
+                        set_key(deck, key, dim, STYLES[style][:3])
+                continue
+
+            # Empty slot
+            if self.record_mode and not self._is_control_key(key):
+                set_key(deck, key, (30, 30, 40), "+")
+            else:
+                set_key(deck, key, (20, 20, 30), "")
 
     def _wave(self, style, x, phase):
         t = x * 0.05 + phase
