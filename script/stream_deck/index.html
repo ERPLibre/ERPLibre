@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERPLibre Stream Deck Games</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0a12;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+header {
+  text-align: center;
+  padding: 40px 20px 20px;
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+  border-bottom: 1px solid #21262d;
+}
+header h1 {
+  font-size: 2.2em;
+  background: linear-gradient(90deg, #00d4ff, #7b61ff, #ff6b6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+header p { color: #8b949e; font-size: 1.1em; }
+.stats {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 15px;
+  flex-wrap: wrap;
+}
+.stat {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 0.9em;
+}
+.stat strong { color: #58a6ff; }
+.filters {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 6px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.2s;
+}
+.filter-btn:hover, .filter-btn.active {
+  background: #1f6feb;
+  color: white;
+  border-color: #1f6feb;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  padding: 0 30px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.card {
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: default;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  border-color: #30363d;
+}
+.card-icon {
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.card-icon canvas { border-radius: 0; }
+.card-body { padding: 16px; }
+.card-body h3 {
+  font-size: 1.1em;
+  margin-bottom: 6px;
+  color: #f0f6fc;
+}
+.card-body p {
+  font-size: 0.85em;
+  color: #8b949e;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.tag-arcade { background: #1a3a2a; color: #3fb950; }
+.tag-puzzle { background: #1a2a3a; color: #58a6ff; }
+.tag-strategy { background: #3a2a1a; color: #d29922; }
+.tag-reflex { background: #3a1a2a; color: #f778ba; }
+.tag-memory { background: #2a1a3a; color: #bc8cff; }
+.tag-sim { background: #1a3a3a; color: #39d4d4; }
+.tag-word { background: #2a2a1a; color: #e3b341; }
+.tag-sdplus { background: #2a1a1a; color: #ff7b72; }
+.tag-multi { background: #1a1a2a; color: #79c0ff; }
+.tag-race { background: #3a2a2a; color: #ff9b6b; }
+.cmd {
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 0.75em;
+  color: #7ee787;
+  background: #0d1117;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 6px;
+}
+footer {
+  text-align: center;
+  padding: 30px;
+  color: #484f58;
+  border-top: 1px solid #21262d;
+}
+footer a { color: #58a6ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ERPLibre Stream Deck Games</h1>
+  <p>45 games for Elgato Stream Deck &mdash; arcade, puzzle, strategy & more</p>
+  <div class="stats">
+    <div class="stat"><strong>45</strong> games</div>
+    <div class="stat"><strong>15</strong> multiplayer</div>
+    <div class="stat"><strong>11</strong> SD+ touchscreen</div>
+    <div class="stat"><strong>3</strong> racing</div>
+  </div>
+</header>
+
+<div class="filters">
+  <button class="filter-btn active" data-filter="all">All</button>
+  <button class="filter-btn" data-filter="arcade">Arcade</button>
+  <button class="filter-btn" data-filter="puzzle">Puzzle</button>
+  <button class="filter-btn" data-filter="strategy">Strategy</button>
+  <button class="filter-btn" data-filter="reflex">Reflex</button>
+  <button class="filter-btn" data-filter="memory">Memory</button>
+  <button class="filter-btn" data-filter="word">Word</button>
+  <button class="filter-btn" data-filter="race">Racing</button>
+  <button class="filter-btn" data-filter="sim">Simulation</button>
+  <button class="filter-btn" data-filter="sdplus">SD+</button>
+  <button class="filter-btn" data-filter="multi">Multiplayer</button>
+</div>
+
+<div class="grid" id="games"></div>
+
+<footer>
+  <p>AGPL-3.0 &mdash; <a href="http://www.technolibre.ca">TechnoLibre</a> &mdash; <a href="https://github.com/ERPLibre/erplibre">ERPLibre</a></p>
+</footer>
+
+<script>
+const games = [
+  {id:"snake", name:"Snake", cat:"arcade", multi:true, sdp:false, desc:"Classic snake. Eat, grow, don't crash! 1P or 2P VS.", icon:"snake"},
+  {id:"breakout", name:"Breakout", cat:"arcade", multi:false, sdp:false, desc:"Break bricks with a bouncing ball. Paddle on right column.", icon:"breakout"},
+  {id:"flappy", name:"Flappy Bird", cat:"arcade", multi:false, sdp:false, desc:"Press any button to flap up. Avoid obstacles!", icon:"flappy"},
+  {id:"pong", name:"Pong", cat:"arcade", multi:true, sdp:false, desc:"Classic Pong. 1P vs AI or 2P with two decks.", icon:"pong"},
+  {id:"bomberman", name:"Bomberman", cat:"arcade", multi:true, sdp:false, desc:"Place bombs, destroy walls, survive! 1P or 2P.", icon:"bomberman"},
+  {id:"pacman", name:"Pac-Man", cat:"arcade", multi:false, sdp:false, desc:"Eat all dots, avoid the ghost! Press to steer.", icon:"pacman"},
+  {id:"spaceinvaders", name:"Space Invaders", cat:"arcade", multi:false, sdp:false, desc:"Shoot aliens before they reach the bottom!", icon:"invaders"},
+  {id:"frogger", name:"Frogger", cat:"arcade", multi:false, sdp:false, desc:"Cross traffic lanes to reach the top!", icon:"frogger"},
+  {id:"tetris", name:"Tetris", cat:"arcade", multi:false, sdp:true, desc:"Pieces fall from right to left. SD+ touchscreen mode!", icon:"tetris"},
+  {id:"towerdefense", name:"Tower Defense", cat:"arcade", multi:false, sdp:false, desc:"Place towers to stop enemies crossing! Survive 5 waves.", icon:"tower"},
+  {id:"racer", name:"Top-Down Racer", cat:"race", multi:false, sdp:false, desc:"Dodge obstacles on a scrolling road! Speed increases.", icon:"racer"},
+  {id:"dragrace", name:"Drag Race", cat:"race", multi:true, sdp:false, desc:"Shift gears at the right RPM! 1P or 2P.", icon:"drag"},
+  {id:"racingplus", name:"Racing+", cat:"race", multi:false, sdp:true, desc:"Side-scrolling race on touchscreen! Dial = steering.", icon:"racing"},
+  {id:"whackamole", name:"Whack-a-Mole", cat:"reflex", multi:true, sdp:false, desc:"Hit moles before they vanish! 30s. 1P or 2P VS.", icon:"mole"},
+  {id:"reaction", name:"Reaction Time", cat:"reflex", multi:true, sdp:false, desc:"Hit the green button ASAP! 5 rounds. 1P or 2P.", icon:"reaction"},
+  {id:"simon", name:"Simon Says", cat:"memory", multi:true, sdp:false, desc:"Memorize and repeat the light sequence! 1P or 2P.", icon:"simon"},
+  {id:"colormatch", name:"Color Match", cat:"memory", multi:true, sdp:false, desc:"Flip cards, find matching pairs! 1P or 2P race.", icon:"match"},
+  {id:"minesweeper", name:"Minesweeper", cat:"puzzle", multi:true, sdp:false, desc:"Classic minesweeper (1P) or mine hunter VS (2P).", icon:"mine"},
+  {id:"lightsout", name:"Lights Out", cat:"puzzle", multi:true, sdp:false, desc:"Toggle button + neighbors. Turn all off! Coop.", icon:"lights"},
+  {id:"2048", name:"2048", cat:"puzzle", multi:false, sdp:false, desc:"Merge tiles to reach 2048! Corner buttons = directions.", icon:"n2048"},
+  {id:"taquin", name:"Taquin", cat:"puzzle", multi:false, sdp:false, desc:"Slide tiles to order them 1 to N. Classic puzzle!", icon:"taquin"},
+  {id:"sokoban", name:"Sokoban", cat:"puzzle", multi:false, sdp:false, desc:"Push boxes onto targets. Think before you move!", icon:"sokoban"},
+  {id:"floodfill", name:"Flood Fill", cat:"puzzle", multi:true, sdp:false, desc:"Pick colors to flood-fill. Fill the grid! 1P or 2P.", icon:"flood"},
+  {id:"sudoku", name:"Sudoku 3x3", cat:"puzzle", multi:false, sdp:false, desc:"Fill the 3x3 grid. No repeats in rows/columns!", icon:"sudoku"},
+  {id:"maze", name:"Maze Runner", cat:"puzzle", multi:false, sdp:false, desc:"Navigate a random maze from top-left to bottom-right.", icon:"maze"},
+  {id:"battleship", name:"Battleship", cat:"strategy", multi:true, sdp:false, desc:"Find hidden ships! Hit = keep turn. 1P or 2P.", icon:"ship"},
+  {id:"mastermind", name:"Mastermind", cat:"strategy", multi:false, sdp:false, desc:"Guess the secret color code. Feedback after each try.", icon:"master"},
+  {id:"tictactoe", name:"Tic-Tac-Toe", cat:"strategy", multi:true, sdp:false, desc:"Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.", icon:"ttt"},
+  {id:"connect4", name:"Connect 4", cat:"strategy", multi:true, sdp:false, desc:"Drop pieces, get 4 in a row! 1P vs AI or 2P.", icon:"c4"},
+  {id:"checkers", name:"Checkers", cat:"strategy", multi:true, sdp:false, desc:"Simplified checkers. Jump to capture! 1P or 2P.", icon:"checkers"},
+  {id:"reversi", name:"Reversi", cat:"strategy", multi:true, sdp:false, desc:"Place pieces to flip opponent's. Most pieces wins!", icon:"reversi"},
+  {id:"wordle", name:"Wordle", cat:"word", multi:false, sdp:false, desc:"Guess a 5-letter word. Green/yellow/grey hints. 6 tries.", icon:"wordle"},
+  {id:"hangman", name:"Hangman", cat:"word", multi:false, sdp:false, desc:"Guess the word, one letter at a time. 6 wrong = over.", icon:"hangman"},
+  {id:"numberguess", name:"Number Guess", cat:"word", multi:false, sdp:false, desc:"Guess 1-100 with hot/cold colors. Fewer tries = better!", icon:"number"},
+  {id:"rps", name:"Rock Paper Scissors", cat:"reflex", multi:true, sdp:false, desc:"Rock Paper Scissors! Best of 5. 1P or 2P.", icon:"rps"},
+  {id:"life", name:"Game of Life", cat:"sim", multi:false, sdp:false, desc:"Conway's Game of Life. Toggle cells, play/pause.", icon:"life"},
+  {id:"langton", name:"Langton's Ant", cat:"sim", multi:false, sdp:false, desc:"Langton's Ant automaton. Watch emergent patterns!", icon:"ant"},
+  {id:"safecracker", name:"Safe Cracker", cat:"puzzle", multi:false, sdp:true, desc:"Turn 4 dials to guess the combo. Hot/cold hints.", icon:"safe"},
+  {id:"slots", name:"Slot Machine", cat:"arcade", multi:false, sdp:true, desc:"Spin reels with dials, stop to match symbols!", icon:"slots"},
+  {id:"colormixer", name:"Color Mixer", cat:"puzzle", multi:false, sdp:true, desc:"Mix RGB with 3 dials to match target color.", icon:"mixer"},
+  {id:"pongplus", name:"Pong+", cat:"arcade", multi:true, sdp:true, desc:"Pong on touchscreen! Dial = paddle. 2P with two SD+.", icon:"pongp"},
+  {id:"djscratch", name:"DJ Scratch", cat:"sim", multi:false, sdp:true, desc:"Scratch vinyl with dials. Waveforms on touchscreen.", icon:"dj"},
+  {id:"fishing", name:"Fishing", cat:"arcade", multi:false, sdp:true, desc:"Cast, wait for bite, reel in! Don't snap the line.", icon:"fish"},
+  {id:"piano", name:"Piano", cat:"sim", multi:false, sdp:true, desc:"Play piano keys on bottom row. Dial = octave.", icon:"piano"},
+  {id:"thermometer", name:"Thermometer", cat:"puzzle", multi:false, sdp:true, desc:"Guess the secret temperature. Hot/cold bar on screen.", icon:"thermo"},
+];
+
+const catColors = {
+  arcade:"#3fb950", puzzle:"#58a6ff", strategy:"#d29922", reflex:"#f778ba",
+  memory:"#bc8cff", sim:"#39d4d4", word:"#e3b341", race:"#ff9b6b"
+};
+
+const iconDrawers = {
+  snake(ctx,w,h){ctx.fillStyle="#0b0";for(let i=0;i<6;i++)ctx.fillRect(30+i*20,h/2-5+Math.sin(i)*15,16,10);ctx.fillStyle="#f33";ctx.fillRect(w-40,30,12,12)},
+  breakout(ctx,w,h){for(let r=0;r<3;r++)for(let c=0;c<4;c++){ctx.fillStyle=["#e33","#ea0","#0b0","#06d"][c];ctx.fillRect(10+c*35,15+r*22,30,18)}ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(180,h/2,6,0,7);ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(w-20,h/2-15,8,30)},
+  flappy(ctx,w,h){ctx.fillStyle="#fe0";ctx.fillRect(50,h/2-8,18,16);ctx.fillStyle="#0a0";ctx.fillRect(130,0,25,h/2-20);ctx.fillRect(130,h/2+20,25,h)},
+  pong(ctx,w,h){ctx.fillStyle="#fff";ctx.fillRect(15,h/2-15,6,30);ctx.fillRect(w-21,h/2-15,6,30);ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(w/2,h/2,6,0,7);ctx.fill()},
+  bomberman(ctx,w,h){ctx.fillStyle="#0bf";ctx.fillRect(w/2-8,h/2-8,16,16);ctx.fillStyle="#444";ctx.beginPath();ctx.arc(80,50,12,0,7);ctx.fill();ctx.fillStyle="#f60";for(let i=0;i<3;i++)ctx.fillRect(60+i*50,20+i*30,20,20)},
+  pacman(ctx,w,h){ctx.fillStyle="#fe0";ctx.beginPath();ctx.arc(60,h/2,20,0.3,5.9);ctx.lineTo(60,h/2);ctx.fill();ctx.fillStyle="#f00";ctx.beginPath();ctx.arc(180,h/2,15,0,7);ctx.fill();for(let i=0;i<5;i++){ctx.fillStyle="#446";ctx.beginPath();ctx.arc(100+i*20,h/2,3,0,7);ctx.fill()}},
+  invaders(ctx,w,h){ctx.fillStyle="#0d0";for(let r=0;r<2;r++)for(let c=0;c<5;c++)ctx.fillRect(40+c*40,20+r*25,20,15);ctx.fillStyle="#0df";ctx.fillRect(w/2-8,h-25,16,12);ctx.fillStyle="#ff0";ctx.fillRect(w/2-1,h-45,3,18)},
+  frogger(ctx,w,h){ctx.fillStyle="#0d0";ctx.fillRect(w/2-8,h-25,16,16);ctx.fillStyle="#d33";for(let i=0;i<3;i++)ctx.fillRect(20+i*80,h/2-8,40,16)},
+  tetris(ctx,w,h){const c=["#0dd","#dd0","#a0d","#d80","#0d0","#d00"];for(let i=0;i<6;i++){ctx.fillStyle=c[i];ctx.fillRect(10+i*12,h-30-i*15,10,10+i*15)}ctx.fillStyle="#d80";ctx.fillRect(w/2,h/2-10,10,10);ctx.fillRect(w/2+10,h/2-10,10,10);ctx.fillRect(w/2+20,h/2-10,10,10);ctx.fillRect(w/2+20,h/2,10,10)},
+  tower(ctx,w,h){ctx.fillStyle="#555";ctx.fillRect(0,h/2-5,w,10);ctx.fillStyle="#08c";ctx.fillRect(50,h/2-25,16,20);ctx.fillRect(150,h/2+5,16,20);ctx.fillStyle="#d33";ctx.fillRect(w-50,h/2-5,14,10)},
+  racer(ctx,w,h){ctx.fillStyle="#333";ctx.fillRect(0,20,w,h-40);ctx.fillStyle="#0cf";ctx.fillRect(30,h/2-8,20,16);ctx.fillStyle="#d33";ctx.fillRect(150,30,16,16);ctx.fillRect(200,h-50,16,16)},
+  drag(ctx,w,h){ctx.fillStyle="#333";ctx.fillRect(0,h/2-20,w,40);for(let i=0;i<5;i++){const g=i/4;ctx.fillStyle=`rgb(${55+g*200},${200-g*150},0)`;ctx.fillRect(20+i*50,h-30,40,15)}ctx.fillStyle="#0cf";ctx.fillRect(30,h/2-10,25,20)},
+  racing(ctx,w,h){ctx.fillStyle="#444";ctx.fillRect(0,25,w,h-50);ctx.fillStyle="#aaa";for(let x=0;x<w;x+=30)ctx.fillRect(x,h/2-1,15,2);ctx.fillStyle="#0cf";ctx.fillRect(20,h/2-5,24,10);ctx.fillStyle="#d33";ctx.fillRect(180,40,12,12)},
+  mole(ctx,w,h){ctx.fillStyle="#b84";for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(50+i*75,h/2,18,0,7);ctx.fill()}ctx.fillStyle="#0d0";ctx.font="20px sans-serif";ctx.fillText("+1",160,40)},
+  reaction(ctx,w,h){ctx.fillStyle="#0d0";ctx.beginPath();ctx.arc(w/2,h/2,30,0,7);ctx.fill();ctx.fillStyle="#fff";ctx.font="bold 18px sans-serif";ctx.fillText("GO!",w/2-18,h/2+6)},
+  simon(ctx,w,h){const c=["#d00","#0b0","#00d","#dd0"];for(let i=0;i<4;i++){ctx.fillStyle=c[i];ctx.fillRect(30+i*55,h/2-20,45,40)}},
+  match(ctx,w,h){const c=["#d33","#0b0","#06d","#d90","#d33","#0b0"];for(let i=0;i<6;i++){ctx.fillStyle=i<3?"#336":c[i];ctx.fillRect(15+i*40,h/2-25,35,50);if(i>=3){ctx.fillStyle="#fff";ctx.font="16px sans-serif";ctx.fillText("?",27+i*40,h/2+5)}}},
+  mine(ctx,w,h){ctx.fillStyle="#446";for(let r=0;r<3;r++)for(let c=0;c<5;c++)ctx.fillRect(20+c*45,15+r*35,40,30);ctx.fillStyle="#d00";ctx.beginPath();ctx.arc(65,50,8,0,7);ctx.fill();ctx.fillStyle="#dc0";ctx.font="bold 14px sans-serif";ctx.fillText("F",150,45)},
+  lights(ctx,w,h){for(let r=0;r<3;r++)for(let c=0;c<5;c++){ctx.fillStyle=(r+c)%2?"#dc0":"#222";ctx.fillRect(15+c*45,10+r*40,40,35)}},
+  n2048(ctx,w,h){const vals=[2,4,8,16];const cols=["#eee4da","#ede0c8","#f2b179","#f59563"];for(let i=0;i<4;i++){ctx.fillStyle=cols[i];ctx.fillRect(20+i*55,h/2-20,48,40);ctx.fillStyle="#776";ctx.font="bold 16px sans-serif";ctx.fillText(vals[i],32+i*55,h/2+6)}},
+  taquin(ctx,w,h){for(let r=0;r<3;r++)for(let c=0;c<3;c++){if(r==2&&c==2)continue;ctx.fillStyle=`hsl(${(r*3+c)*40},60%,50%)`;ctx.fillRect(50+c*50,10+r*40,45,35);ctx.fillStyle="#fff";ctx.font="bold 16px sans-serif";ctx.fillText(r*3+c+1,65+c*50,35+r*40)}},
+  sokoban(ctx,w,h){ctx.fillStyle="#b84";ctx.fillRect(w/2-10,h/2-10,20,20);ctx.fillStyle="#d00";ctx.fillRect(w/2+30,h/2+30,12,12);ctx.fillStyle="#0bf";ctx.fillRect(60,h/2-8,16,16);ctx.font="14px sans-serif";ctx.fillStyle="#fff";ctx.fillText("@",62,h/2+5)},
+  flood(ctx,w,h){const c=["#d33","#0b0","#06d","#dd0","#b0b"];for(let r=0;r<3;r++)for(let c2=0;c2<5;c2++){ctx.fillStyle=c[(r+c2)%5];ctx.fillRect(20+c2*45,15+r*35,40,30)}},
+  sudoku(ctx,w,h){ctx.strokeStyle="#558";ctx.lineWidth=2;for(let i=0;i<=3;i++){ctx.beginPath();ctx.moveTo(60+i*50,15);ctx.lineTo(60+i*50,h-15);ctx.stroke();ctx.beginPath();ctx.moveTo(60,15+i*35);ctx.lineTo(210,15+i*35);ctx.stroke()}ctx.fillStyle="#58f";ctx.font="bold 20px sans-serif";ctx.fillText("1",77,45);ctx.fillText("3",177,80)},
+  maze(ctx,w,h){ctx.fillStyle="#445";for(let i=0;i<8;i++)ctx.fillRect(20+i*28,10+((i*17)%80),24,20);ctx.fillStyle="#0cf";ctx.fillRect(20,h-25,12,12);ctx.fillStyle="#0d0";ctx.fillRect(w-35,10,12,12)},
+  ship(ctx,w,h){ctx.fillStyle="#028";ctx.fillRect(0,0,w,h);for(let r=0;r<3;r++)for(let c=0;c<5;c++){ctx.fillStyle="#036";ctx.fillRect(15+c*45,10+r*40,40,35)}ctx.fillStyle="#d33";ctx.font="16px sans-serif";ctx.fillText("X",55,45);ctx.fillStyle="#668";ctx.fillText("o",145,85)},
+  master(ctx,w,h){const c=["#d33","#0b0","#06d","#dd0"];for(let i=0;i<4;i++){ctx.fillStyle=c[i];ctx.beginPath();ctx.arc(50+i*50,h-30,12,0,7);ctx.fill()}ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(100,30,6,0,7);ctx.fill();ctx.fillStyle="#da0";ctx.beginPath();ctx.arc(130,30,6,0,7);ctx.fill()},
+  ttt(ctx,w,h){ctx.strokeStyle="#556";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(100,15);ctx.lineTo(100,h-15);ctx.moveTo(160,15);ctx.lineTo(160,h-15);ctx.moveTo(50,45);ctx.lineTo(210,45);ctx.moveTo(50,90);ctx.lineTo(210,90);ctx.stroke();ctx.fillStyle="#d44";ctx.font="bold 24px sans-serif";ctx.fillText("X",115,80);ctx.fillStyle="#48f";ctx.fillText("O",165,40)},
+  c4(ctx,w,h){ctx.fillStyle="#009";ctx.fillRect(30,10,w-60,h-20);for(let r=0;r<3;r++)for(let c=0;c<5;c++){ctx.fillStyle=r==2&&c<2?"#d33":r==1&&c==2?"#dd0":"#003";ctx.beginPath();ctx.arc(55+c*38,30+r*35,12,0,7);ctx.fill()}},
+  checkers(ctx,w,h){for(let r=0;r<4;r++)for(let c=0;c<5;c++){ctx.fillStyle=(r+c)%2?"#432":"#ba8";ctx.fillRect(20+c*42,r*35,42,35)}ctx.fillStyle="#d33";ctx.beginPath();ctx.arc(83,17,10,0,7);ctx.fill();ctx.fillStyle="#33d";ctx.beginPath();ctx.arc(167,122,10,0,7);ctx.fill()},
+  reversi(ctx,w,h){ctx.fillStyle="#060";ctx.fillRect(30,10,200,h-20);ctx.fillStyle="#111";ctx.beginPath();ctx.arc(100,55,14,0,7);ctx.fill();ctx.fillStyle="#eee";ctx.beginPath();ctx.arc(140,75,14,0,7);ctx.fill();ctx.fillStyle="#111";ctx.beginPath();ctx.arc(140,55,14,0,7);ctx.fill();ctx.fillStyle="#eee";ctx.beginPath();ctx.arc(100,75,14,0,7);ctx.fill()},
+  wordle(ctx,w,h){const w2=["C","R","A","N","E"];const c2=["#0a0","#aa0","#444","#0a0","#444"];for(let i=0;i<5;i++){ctx.fillStyle=c2[i];ctx.fillRect(25+i*45,h/2-18,40,36);ctx.fillStyle="#fff";ctx.font="bold 20px sans-serif";ctx.fillText(w2[i],37+i*45,h/2+8)}},
+  hangman(ctx,w,h){ctx.strokeStyle="#888";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(60,h-15);ctx.lineTo(60,20);ctx.lineTo(120,20);ctx.lineTo(120,35);ctx.stroke();ctx.fillStyle="#fff";ctx.font="20px sans-serif";ctx.fillText("_ _ _ _",100,h-20)},
+  number(ctx,w,h){ctx.fillStyle="#06d";ctx.fillRect(20,h/2-15,60,30);ctx.fillStyle="#0aa";ctx.fillRect(90,h/2-15,60,30);ctx.fillStyle="#da0";ctx.fillRect(160,h/2-15,60,30);ctx.fillStyle="#fff";ctx.font="bold 16px sans-serif";ctx.fillText("25",35,h/2+6);ctx.fillText("50",105,h/2+6);ctx.fillText("75",175,h/2+6)},
+  rps(ctx,w,h){ctx.fillStyle="#888";ctx.beginPath();ctx.arc(50,h/2,22,0,7);ctx.fill();ctx.fillStyle="#ddd";ctx.fillRect(110,h/2-22,44,44);ctx.fillStyle="#d44";ctx.beginPath();ctx.moveTo(200,h/2-22);ctx.lineTo(222,h/2);ctx.lineTo(200,h/2+22);ctx.closePath();ctx.fill()},
+  life(ctx,w,h){ctx.fillStyle="#0d4";for(const[x,y]of[[80,30],[100,30],[100,50],[120,50],[100,70]]){ctx.fillRect(x,y,16,16)}},
+  ant(ctx,w,h){for(let i=0;i<8;i++){ctx.fillStyle="#222";ctx.fillRect(60+i*20,40+(i%3)*20,18,18)}ctx.fillStyle="#f00";ctx.fillRect(140,60,12,12)},
+  safe(ctx,w,h){ctx.fillStyle="#445";ctx.fillRect(50,15,w-100,h-30);ctx.strokeStyle="#888";ctx.lineWidth=3;ctx.beginPath();ctx.arc(w/2,h/2,25,0,7);ctx.stroke();for(let i=0;i<4;i++){ctx.fillStyle=["#06d","#0a0","#da0","#d33"][i];ctx.fillRect(70+i*40,h-25,30,12)}},
+  slots(ctx,w,h){ctx.fillStyle="#333";ctx.fillRect(30,15,w-60,h-30);const s=["7","$","X","7"];const c=["#f00","#0d0","#00d","#f00"];for(let i=0;i<4;i++){ctx.fillStyle=c[i];ctx.font="bold 28px sans-serif";ctx.fillText(s[i],55+i*50,h/2+10)}},
+  mixer(ctx,w,h){ctx.fillStyle="#d33";ctx.fillRect(40,20,50,h-40);ctx.fillStyle="#0b0";ctx.fillRect(100,20,50,h-40);ctx.fillStyle="#33d";ctx.fillRect(160,20,50,h-40);ctx.fillStyle="#a8a";ctx.beginPath();ctx.arc(w/2,h/2,8,0,7);ctx.fill()},
+  pongp(ctx,w,h){ctx.fillStyle="#333";ctx.fillRect(0,0,w,h);ctx.fillStyle="#fff";ctx.fillRect(10,h/2-12,4,24);ctx.fillRect(w-14,h/2-12,4,24);ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(w/2,h/2,5,0,7);ctx.fill();ctx.strokeStyle="#333";ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(w/2,0);ctx.lineTo(w/2,h);ctx.stroke()},
+  dj(ctx,w,h){ctx.fillStyle="#222";ctx.beginPath();ctx.arc(w/2,h/2,40,0,7);ctx.fill();ctx.strokeStyle="#0cf";ctx.lineWidth=2;for(let x=0;x<w;x+=3){const y=h/2+Math.sin(x*0.1)*20;ctx.beginPath();ctx.moveTo(x,h/2);ctx.lineTo(x,y);ctx.stroke()}},
+  fish(ctx,w,h){ctx.fillStyle="#048";ctx.fillRect(0,0,w,h);ctx.fillStyle="#08f";for(let x=0;x<w;x+=4){ctx.fillRect(x,h-8+Math.sin(x*0.1)*3,3,2)}ctx.fillStyle="#f80";ctx.beginPath();ctx.moveTo(150,h/2);ctx.lineTo(170,h/2-10);ctx.lineTo(170,h/2+10);ctx.closePath();ctx.fill();ctx.fillRect(130,h/2-5,20,10)},
+  piano(ctx,w,h){for(let i=0;i<7;i++){ctx.fillStyle="#eee";ctx.fillRect(20+i*32,30,28,h-45);ctx.strokeStyle="#999";ctx.strokeRect(20+i*32,30,28,h-45)}for(let i of[0,1,3,4,5]){ctx.fillStyle="#222";ctx.fillRect(40+i*32,30,18,h-70)}},
+  thermo(ctx,w,h){ctx.fillStyle="#d33";ctx.fillRect(w/2-4,20,8,h-40);ctx.fillStyle="#d33";ctx.beginPath();ctx.arc(w/2,h-20,10,0,7);ctx.fill();ctx.strokeStyle="#888";ctx.lineWidth=1;for(let y=25;y<h-30;y+=10){ctx.beginPath();ctx.moveTo(w/2+6,y);ctx.lineTo(w/2+12,y);ctx.stroke()}},
+};
+
+function drawIcon(canvas, iconId) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const drawer = iconDrawers[iconId];
+  if (drawer) drawer(ctx, w, h);
+}
+
+const grid = document.getElementById('games');
+const catTags = {arcade:"tag-arcade",puzzle:"tag-puzzle",strategy:"tag-strategy",reflex:"tag-reflex",memory:"tag-memory",sim:"tag-sim",word:"tag-word",race:"tag-race"};
+
+games.forEach(g => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.cat = g.cat;
+  card.dataset.multi = g.multi;
+  card.dataset.sdp = g.sdp;
+
+  const iconDiv = document.createElement('div');
+  iconDiv.className = 'card-icon';
+  const canvas = document.createElement('canvas');
+  canvas.width = 260;
+  canvas.height = 140;
+  iconDiv.appendChild(canvas);
+  card.appendChild(iconDiv);
+
+  let tags = `<span class="tag ${catTags[g.cat]||'tag-arcade'}">${g.cat}</span>`;
+  if (g.multi) tags += '<span class="tag tag-multi">multiplayer</span>';
+  if (g.sdp) tags += '<span class="tag tag-sdplus">SD+</span>';
+
+  card.innerHTML += `
+    <div class="card-body">
+      <h3>${g.name}</h3>
+      <p>${g.desc}</p>
+      <div class="tags">${tags}</div>
+      <code class="cmd">make streamdeck_${g.id}</code>
+    </div>`;
+  card.prepend(iconDiv);
+  grid.appendChild(card);
+  drawIcon(canvas, g.icon);
+});
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const f = btn.dataset.filter;
+    document.querySelectorAll('.card').forEach(card => {
+      if (f === 'all') card.style.display = '';
+      else if (f === 'multi') card.style.display = card.dataset.multi === 'true' ? '' : 'none';
+      else if (f === 'sdplus') card.style.display = card.dataset.sdp === 'true' ? '' : 'none';
+      else card.style.display = card.dataset.cat === f ? '' : 'none';
+    });
+  });
+});
+</script>
+</body>
+</html>
