@@ -136,8 +136,9 @@ def set_screen(deck, img):
 
 
 class DJScratch:
-    def __init__(self, deck):
+    def __init__(self, deck, sampler_deck=None):
         self.deck = deck
+        self.sampler_deck = sampler_deck
         rows, cols = deck.key_layout()
         self.cols = cols
         self.rows = rows
@@ -151,6 +152,20 @@ class DJScratch:
         self.playing = [False] * 4
         self.sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
         self.sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
+        # Sampler state (deck 2)
+        self.record_mode = False
+        self.waiting_assign = -1  # key on sampler waiting for note
+        self.sampler_map = {}  # key -> (style, freq) tuple
+        self.sampler_playing = set()
+        if sampler_deck:
+            sr, sc = sampler_deck.key_layout()
+            self.sampler_cols = sc
+            self.sampler_rows = sr
+            self.sampler_total = sc * sr
+        else:
+            self.sampler_cols = 0
+            self.sampler_rows = 0
+            self.sampler_total = 0
 
     def handle_dial(self, dial, event, value):
         if dial >= 4:
@@ -164,12 +179,31 @@ class DJScratch:
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
 
-    def handle_key(self, key, state):
+    def handle_key(self, key, state, deck_index=0):
+        if deck_index == 1:
+            self._handle_sampler_key(key, state)
+            return
+
         col = key % self.cols
         row = key // self.cols
         last_r = self.rows - 1
 
         if row == last_r and col < 4:
+            # If sampler is waiting for a note assignment, assign it
+            if self.waiting_assign >= 0 and state:
+                self.sampler_map[self.waiting_assign] = (
+                    self.styles[col],
+                    self.freqs[col],
+                )
+                print(
+                    f"Assigned channel {col} "
+                    f"({STYLES[self.styles[col]]} {int(self.freqs[col])}Hz) "
+                    f"to sampler key {self.waiting_assign}"
+                )
+                self.waiting_assign = -1
+                self._render_sampler()
+                return
+
             if state:
                 self.playing[col] = True
                 # Play tone in background thread
@@ -185,9 +219,96 @@ class DJScratch:
         """Generate and play a tone for the given channel."""
         style = self.styles[channel]
         freq = self.freqs[channel]
+        self._play_sound(style, freq)
+
+    def _play_sound(self, style, freq):
+        """Generate and play a specific tone."""
         samples = generate_tone(style, freq)
         wav_data = samples_to_wav(samples)
         play_wav_bytes(wav_data)
+
+    def _handle_sampler_key(self, key, state):
+        """Handle key press on the sampler (deck 2)."""
+        if not state:
+            self.sampler_playing.discard(key)
+            self._render_sampler()
+            return
+
+        # Button 0 = toggle record mode
+        if key == 0:
+            if self.record_mode:
+                self.record_mode = False
+                self.waiting_assign = -1
+                print("Record mode OFF")
+            else:
+                self.record_mode = True
+                self.waiting_assign = -1
+                print("Record mode ON - press a sampler button to assign")
+            self._render_sampler()
+            return
+
+        if self.record_mode:
+            # Select this button for assignment
+            self.waiting_assign = key
+            print(
+                f"Sampler key {key} selected - now press a sound button "
+                f"(0-3) on deck 1 to assign"
+            )
+            self._render_sampler()
+        else:
+            # Play assigned sound
+            if key in self.sampler_map:
+                style, freq = self.sampler_map[key]
+                self.sampler_playing.add(key)
+                self._render_sampler()
+                threading.Thread(
+                    target=self._play_sampler_sound,
+                    args=(key, style, freq),
+                    daemon=True,
+                ).start()
+
+    def _play_sampler_sound(self, key, style, freq):
+        """Play a sampler sound and update display."""
+        self._play_sound(style, freq)
+        self.sampler_playing.discard(key)
+        self._render_sampler()
+
+    def _render_sampler(self):
+        """Render the sampler deck (deck 2)."""
+        if not self.sampler_deck:
+            return
+        deck = self.sampler_deck
+        for key in range(self.sampler_total):
+            r = key // self.sampler_cols
+            c = key % self.sampler_cols
+
+            if key == 0:
+                # Record button
+                if self.record_mode:
+                    set_key(deck, key, (220, 0, 0), "REC")
+                else:
+                    set_key(deck, key, (80, 0, 0), "REC")
+            elif key == self.waiting_assign:
+                # Waiting for note assignment - blink
+                set_key(deck, key, (220, 180, 0), "?")
+            elif key in self.sampler_map:
+                style, freq = self.sampler_map[key]
+                color = STYLE_COLORS[style]
+                if key in self.sampler_playing:
+                    # Playing - full brightness
+                    set_key(deck, key, color, f"{int(freq)}")
+                else:
+                    # Assigned - dim
+                    dim = (color[0] // 3, color[1] // 3, color[2] // 3)
+                    set_key(
+                        deck, key, dim,
+                        STYLES[style][:3],
+                    )
+            else:
+                if self.record_mode:
+                    set_key(deck, key, (30, 30, 40), "+")
+                else:
+                    set_key(deck, key, (20, 20, 30), "")
 
     def _wave(self, style, x, phase):
         t = x * 0.05 + phase
@@ -292,27 +413,44 @@ class DJScratch:
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    deck = next(
-        (
-            d
-            for d in streamdecks
-            if d.is_visual() and d.DIAL_COUNT and d.DIAL_COUNT > 0
-        ),
-        None,
+    visual = [d for d in streamdecks if d.is_visual()]
+
+    # Find SD+ (with dials) as main deck
+    main_deck = next(
+        (d for d in visual if d.DIAL_COUNT and d.DIAL_COUNT > 0), None
     )
-    if not deck:
+    if not main_deck:
         print("No Stream Deck + found.")
         sys.exit(1)
-    deck.open()
-    deck.reset()
-    deck.set_brightness(80)
-    print(f"DJ Scratch on {deck.deck_type()}")
+
+    # Find second deck as sampler (any visual deck)
+    sampler_deck = None
+    for d in visual:
+        if d is not main_deck:
+            sampler_deck = d
+            break
+
+    for d in visual:
+        d.open()
+        d.reset()
+        d.set_brightness(80)
+
+    print(f"DJ Scratch on {main_deck.deck_type()}")
     print("Turn dials to scratch + change frequency.")
     print("Click dial to change waveform (Sine/Square/Saw/Noise).")
     print("Press bottom buttons 0-3 to PLAY the tone!")
 
-    game = DJScratch(deck)
+    if sampler_deck:
+        sr, sc = sampler_deck.key_layout()
+        print(f"\nSAMPLER: {sampler_deck.deck_type()} ({sc}x{sr})")
+        print("  Button 0 = toggle RECORD mode")
+        print("  Record mode: press sampler button, then press sound 0-3")
+        print("  Play mode: press assigned button to play sound")
+
+    game = DJScratch(main_deck, sampler_deck=sampler_deck)
     game.render()
+    if sampler_deck:
+        game._render_sampler()
 
     def dial_cb(d, dial, evt, val):
         with game.lock:
@@ -320,23 +458,35 @@ def main():
 
     def key_cb(d, k, s):
         with game.lock:
-            game.handle_key(k, s)
+            game.handle_key(k, s, deck_index=0)
 
-    deck.set_dial_callback(dial_cb)
-    deck.set_key_callback(key_cb)
+    main_deck.set_dial_callback(dial_cb)
+    main_deck.set_key_callback(key_cb)
+
+    if sampler_deck:
+        def sampler_key_cb(d, k, s):
+            with game.lock:
+                game.handle_key(k, s, deck_index=1)
+        sampler_deck.set_key_callback(sampler_key_cb)
 
     t = threading.Thread(target=game.loop, daemon=True)
     t.start()
+
+    all_decks = [main_deck] + ([sampler_deck] if sampler_deck else [])
     try:
-        while deck.is_open():
+        while all(d.is_open() for d in all_decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
         game.running = False
-        with deck:
-            deck.reset()
-            deck.close()
+        for d in all_decks:
+            try:
+                with d:
+                    d.reset()
+                    d.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
