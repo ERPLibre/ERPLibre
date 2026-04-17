@@ -187,3 +187,7 @@ streamdeck_dragrace:
 .PHONY: streamdeck_racingplus
 streamdeck_racingplus:
 	./script/stream_deck/game_racingplus.py
+
+.PHONY: streamdeck_gallery
+streamdeck_gallery:
+	./script/stream_deck/gallery_server.py

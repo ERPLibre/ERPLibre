@@ -77,12 +77,45 @@ header p { color: #8b949e; font-size: 1.1em; }
   border-radius: 12px;
   overflow: hidden;
   transition: transform 0.2s, box-shadow 0.2s;
-  cursor: default;
+  cursor: pointer;
 }
 .card:hover {
   transform: translateY(-4px);
   box-shadow: 0 8px 30px rgba(0,0,0,0.4);
   border-color: #30363d;
+}
+.card:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.play-btn {
+  display: inline-block;
+  background: #238636;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+.play-btn:hover { background: #2ea043; }
+.launch-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #238636;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1em;
+  font-weight: 600;
+  z-index: 100;
+  display: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 .card-icon {
   height: 140px;
@@ -169,6 +202,7 @@ footer a { color: #58a6ff; text-decoration: none; }
 </div>
 
 <div class="grid" id="games"></div>
+<div class="launch-toast" id="toast"></div>
 
 <footer>
   <p>AGPL-3.0 &mdash; <a href="http://www.technolibre.ca">TechnoLibre</a> &mdash; <a href="https://github.com/ERPLibre/erplibre">ERPLibre</a></p>
@@ -312,10 +346,50 @@ games.forEach(g => {
       <p>${g.desc}</p>
       <div class="tags">${tags}</div>
       <code class="cmd">make streamdeck_${g.id}</code>
+      <br><button class="play-btn" data-game="${g.id}">&#9654; Play</button>
     </div>`;
   card.prepend(iconDiv);
   grid.appendChild(card);
   drawIcon(canvas, g.icon);
+});
+
+// Launch game via local server
+function launchGame(gameId) {
+  const toast = document.getElementById('toast');
+  toast.textContent = 'Launching ' + gameId + '...';
+  toast.style.display = 'block';
+
+  fetch('/launch/' + gameId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        toast.textContent = gameId + ' started in terminal!';
+        toast.style.background = '#238636';
+      } else {
+        toast.textContent = data.error || 'Launch failed';
+        toast.style.background = '#d33';
+      }
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    })
+    .catch(function() {
+      toast.textContent = 'Run: python3 script/stream_deck/gallery_server.py';
+      toast.style.background = '#d29922';
+      setTimeout(function() { toast.style.display = 'none'; }, 5000);
+    });
+}
+
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.play-btn');
+  if (btn) {
+    e.stopPropagation();
+    launchGame(btn.dataset.game);
+    return;
+  }
+  var card = e.target.closest('.card');
+  if (card) {
+    var playBtn = card.querySelector('.play-btn');
+    if (playBtn) launchGame(playBtn.dataset.game);
+  }
 });
 
 document.querySelectorAll('.filter-btn').forEach(btn => {
