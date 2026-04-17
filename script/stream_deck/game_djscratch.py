@@ -58,7 +58,7 @@ MODE_LABELS = {
 def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RATE):
     """Generate raw PCM samples for a tone with volume in dB."""
     n_samples = int(rate * duration)
-    linear_vol = min(2.0, 10 ** (volume_db / 20.0)) * VOLUME
+    linear_vol = min(32.0, 10 ** (volume_db / 20.0)) * VOLUME
     samples = []
     for i in range(n_samples):
         t = i / rate
@@ -169,7 +169,7 @@ class DJScratch:
         self.styles = [0, 1, 2, 3]
         self.phase = [0.0] * 4
         self.freqs = list(BASE_FREQS)
-        self.volumes_db = [0.0, 0.0, 0.0, 0.0]  # dB (-40 to +6)
+        self.volumes_db = [0.0, 0.0, 0.0, 0.0]  # dB (-40 to +30)
         self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]  # pitch multiplier
         self.ring_freqs = [0.0, 0.0, 0.0, 0.0]  # ring mod Hz (0=off)
         self.tremolo_rates = [0.0, 0.0, 0.0, 0.0]  # tremolo Hz (0=off)
@@ -231,7 +231,7 @@ class DJScratch:
                 )
             elif mode == "vol":
                 self.volumes_db[dial] = max(
-                    -40, min(6, self.volumes_db[dial] + value)
+                    -40, min(30, self.volumes_db[dial] + value)
                 )
             elif mode == "pitch":
                 self.pitch_ratios[dial] = max(
@@ -424,7 +424,7 @@ class DJScratch:
         pitch = params.get("pitch", 1.0)
         ring_freq = params.get("ring", 0)
         trem_rate = params.get("tremolo", 0)
-        linear_vol = min(2.0, 10 ** (vol_db / 20.0))
+        linear_vol = min(32.0, 10 ** (vol_db / 20.0))
 
         # 1. Pitch shift (resample)
         if abs(pitch - 1.0) > 0.05:
