@@ -602,24 +602,43 @@ class DJScratch:
         self.mic_process = None
 
         if self.waiting_assign >= 0 and os.path.isfile(self.mic_wav_path):
-            vol_db = getattr(self, "mic_rec_volume_db", 0.0)
-            rec_freq = getattr(self, "mic_rec_freq", BASE_FREQS[0])
-            rec_mode = getattr(self, "mic_rec_mode", "freq")
+            params = getattr(self, "mic_rec_params", {})
 
-            # Apply effects to recorded WAV
-            self._apply_effects_to_wav(
-                self.mic_wav_path, vol_db, rec_freq, rec_mode
-            )
+            # Apply ALL effects to recorded WAV
+            try:
+                with wave.open(self.mic_wav_path, "rb") as wf:
+                    wp = wf.getparams()
+                    raw = wf.readframes(wf.getnframes())
+                    n = wf.getnframes()
+                samples = list(struct.unpack(f"<{n}h", raw))
+                samples = self._apply_effects_chain(samples, params)
+                with wave.open(self.mic_wav_path, "wb") as wf:
+                    wf.setparams(wp)
+                    wf.writeframes(
+                        struct.pack(f"<{len(samples)}h", *samples)
+                    )
+            except Exception as e:
+                print(f"Effect apply failed: {e}")
 
             dur_str = f"{duration:.1f}s"
-            mode_label = MODE_LABELS.get(rec_mode, rec_mode)
+            # Build compact effect summary
+            fx = []
+            if abs(params.get("vol_db", 0)) > 0.5:
+                fx.append(f"{params['vol_db']:+.0f}dB")
+            if abs(params.get("pitch", 1.0) - 1.0) > 0.05:
+                fx.append(f"x{params['pitch']:.1f}")
+            if params.get("ring", 0) > 0 and params.get("ring", 200) != 200:
+                fx.append(f"R{int(params['ring'])}")
+            if params.get("tremolo", 0) > 0 and params.get("tremolo", 5) != 5:
+                fx.append(f"T{int(params['tremolo'])}")
+            fx_str = " ".join(fx) if fx else "0dB"
+
             self.sampler_map[self.waiting_assign] = (
-                "wav", self.mic_wav_path, dur_str, vol_db, rec_mode, rec_freq
+                "wav", self.mic_wav_path, dur_str, params
             )
             print(
                 f"MIC assigned to key {self.waiting_assign}: "
-                f"{dur_str} {vol_db:+.0f}dB {mode_label} "
-                f"{int(rec_freq)}Hz ({self.mic_wav_path})"
+                f"{dur_str} [{fx_str}] ({self.mic_wav_path})"
             )
             self.waiting_assign = -1
         self._render_sampler()
@@ -777,24 +796,27 @@ class DJScratch:
             if key in self.sampler_map:
                 mapping = self.sampler_map[key]
                 if mapping[0] == "wav":
-                    # Mic recording: show dur + effect info
+                    # Mic recording: show dur + all effects
                     dur_str = mapping[2] if len(mapping) > 2 else "?"
-                    vol_db = mapping[3] if len(mapping) > 3 else 0.0
-                    rec_mode = mapping[4] if len(mapping) > 4 else "freq"
-                    rec_freq = mapping[5] if len(mapping) > 5 else 0
-                    fx = MODE_LABELS.get(rec_mode, "")
-                    if rec_mode == "pitch" and rec_freq > 0:
-                        ratio = rec_freq / BASE_FREQS[0]
-                        fx = f"x{ratio:.1f}"
-                    elif rec_mode == "ring":
-                        fx = f"R{int(rec_freq)}"
-                    elif rec_mode == "tremolo":
-                        fx = f"T{int(rec_freq // 10)}"
-                    elif rec_mode == "vol":
-                        fx = f"{vol_db:+.0f}dB"
+                    params = mapping[3] if len(mapping) > 3 else {}
+                    if isinstance(params, dict):
+                        fx = []
+                        v = params.get("vol_db", 0)
+                        if abs(v) > 0.5:
+                            fx.append(f"{v:+.0f}")
+                        p = params.get("pitch", 1.0)
+                        if abs(p - 1.0) > 0.05:
+                            fx.append(f"x{p:.1f}")
+                        r = params.get("ring", 0)
+                        if r > 0 and r != 200:
+                            fx.append(f"R{int(r)}")
+                        t = params.get("tremolo", 0)
+                        if t > 0 and t != 5:
+                            fx.append(f"T{int(t)}")
+                        fx_str = " ".join(fx) if fx else "0dB"
                     else:
-                        fx = f"{vol_db:+.0f}dB"
-                    label = f"{dur_str} {fx}"
+                        fx_str = f"{params:+.0f}dB" if isinstance(params, (int, float)) else ""
+                    label = f"{dur_str} {fx_str}"
                     if key in self.sampler_playing:
                         set_key(deck, key, (255, 40, 40), label)
                     else:
