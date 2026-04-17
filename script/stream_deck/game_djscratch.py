@@ -6,16 +6,19 @@
 
 Turn dials to scratch virtual vinyl. Speed and direction shown on
 touchscreen as waveform. Click dial to switch track style. Buttons
-show BPM and effects.
+play tones matching the waveform. Press button 0-3 to hear the sound!
 """
 
 import io
 import math
 import os
 import random
+import struct
+import subprocess
 import sys
 import threading
 import time
+import wave
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -29,6 +32,69 @@ except ImportError as e:
 
 STYLES = ["Sine", "Square", "Saw", "Noise"]
 STYLE_COLORS = [(0, 200, 255), (255, 100, 0), (0, 255, 100), (255, 0, 200)]
+BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
+SAMPLE_RATE = 22050
+DURATION = 0.3
+VOLUME = 0.5
+
+
+def generate_tone(style, freq, duration=DURATION, rate=SAMPLE_RATE):
+    """Generate raw PCM samples for a tone."""
+    n_samples = int(rate * duration)
+    samples = []
+    for i in range(n_samples):
+        t = i / rate
+        if style == 0:  # Sine
+            val = math.sin(2 * math.pi * freq * t)
+        elif style == 1:  # Square
+            val = 1.0 if math.sin(2 * math.pi * freq * t) > 0 else -1.0
+        elif style == 2:  # Saw
+            val = 2.0 * (freq * t % 1.0) - 1.0
+        else:  # Noise
+            val = random.uniform(-1, 1)
+        # Envelope (fade in/out)
+        env = 1.0
+        fade = int(n_samples * 0.1)
+        if i < fade:
+            env = i / fade
+        elif i > n_samples - fade:
+            env = (n_samples - i) / fade
+        samples.append(int(val * env * VOLUME * 32767))
+    return samples
+
+
+def samples_to_wav(samples, rate=SAMPLE_RATE):
+    """Convert samples to WAV bytes."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(
+            struct.pack(f"<{len(samples)}h", *samples)
+        )
+    return buf.getvalue()
+
+
+def play_wav_bytes(wav_bytes):
+    """Play WAV bytes directly on laptop speaker via aplay or pw-play."""
+    for cmd in [
+        ["aplay", "-q", "-"],
+        ["pw-play", "-"],
+        ["paplay", "--raw", "--format=s16le", "--rate=22050", "--channels=1"],
+    ]:
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            proc.communicate(input=wav_bytes)
+            return True
+        except FileNotFoundError:
+            continue
+    return False
 
 
 def set_key(deck, key, color, text=""):
@@ -79,8 +145,10 @@ class DJScratch:
         self.running = True
         self.num_dials = min(deck.DIAL_COUNT or 4, 4)
         self.speeds = [0.0] * 4
-        self.styles = [0] * 4
+        self.styles = [0, 1, 2, 3]
         self.phase = [0.0] * 4
+        self.freqs = list(BASE_FREQS)
+        self.playing = [False] * 4
         self.sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
         self.sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
 
@@ -89,8 +157,37 @@ class DJScratch:
             return
         if event == DialEventType.TURN:
             self.speeds[dial] = value * 2.0
+            # Adjust frequency with dial turn
+            self.freqs[dial] = max(
+                80, min(2000, self.freqs[dial] + value * 20)
+            )
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
+
+    def handle_key(self, key, state):
+        col = key % self.cols
+        row = key // self.cols
+        last_r = self.rows - 1
+
+        if row == last_r and col < 4:
+            if state:
+                self.playing[col] = True
+                # Play tone in background thread
+                threading.Thread(
+                    target=self._play_tone,
+                    args=(col,),
+                    daemon=True,
+                ).start()
+            else:
+                self.playing[col] = False
+
+    def _play_tone(self, channel):
+        """Generate and play a tone for the given channel."""
+        style = self.styles[channel]
+        freq = self.freqs[channel]
+        samples = generate_tone(style, freq)
+        wav_data = samples_to_wav(samples)
+        play_wav_bytes(wav_data)
 
     def _wave(self, style, x, phase):
         t = x * 0.05 + phase
@@ -119,13 +216,21 @@ class DJScratch:
             c = key % self.cols
             if r == last_r and c < 4:
                 style = self.styles[c]
-                spd = abs(self.speeds[c])
-                bright = min(255, int(spd * 30))
-                color = tuple(min(255, v * bright // 255) for v in STYLE_COLORS[style])
-                set_key(self.deck, key, color, STYLES[style][:3])
+                freq_hz = int(self.freqs[c])
+                if self.playing[c]:
+                    color = STYLE_COLORS[style]
+                    text = f"{freq_hz}"
+                else:
+                    bright = min(255, int(abs(self.speeds[c]) * 30))
+                    color = tuple(
+                        min(255, v * max(40, bright) // 255)
+                        for v in STYLE_COLORS[style]
+                    )
+                    text = STYLES[style][:3]
+                set_key(self.deck, key, color, text)
             elif r == 0 and c < 4:
-                spd = self.speeds[c]
-                set_key(self.deck, key, (40, 40, 80), f"{spd:+.0f}")
+                freq_hz = int(self.freqs[c])
+                set_key(self.deck, key, (40, 40, 80), f"{freq_hz}")
             else:
                 set_key(self.deck, key, (20, 20, 30), "")
 
@@ -137,16 +242,44 @@ class DJScratch:
         for d in range(4):
             x_off = d * section
             color = STYLE_COLORS[self.styles[d]]
+            if self.playing[d]:
+                color = (
+                    min(255, color[0] + 60),
+                    min(255, color[1] + 60),
+                    min(255, color[2] + 60),
+                )
             amp = min(mid_y - 5, int(abs(self.speeds[d]) * 5) + 10)
+            if self.playing[d]:
+                amp = mid_y - 5
             prev_y = mid_y
             for x in range(section - 4):
                 val = self._wave(self.styles[d], x, self.phase[d])
                 y = mid_y - int(val * amp)
                 y = max(2, min(self.sh - 2, y))
-                draw.line([(x_off + x, prev_y), (x_off + x + 1, y)], fill=color, width=1)
+                draw.line(
+                    [(x_off + x, prev_y), (x_off + x + 1, y)],
+                    fill=color,
+                    width=2 if self.playing[d] else 1,
+                )
                 prev_y = y
             if d < 3:
-                draw.line([(x_off + section - 2, 0), (x_off + section - 2, self.sh)], fill=(40, 40, 40))
+                draw.line(
+                    [(x_off + section - 2, 0), (x_off + section - 2, self.sh)],
+                    fill=(40, 40, 40),
+                )
+
+            # Frequency label
+            try:
+                font_sm = ImageFont.load_default(size=10)
+            except TypeError:
+                font_sm = ImageFont.load_default()
+            draw.text(
+                (x_off + 3, 2),
+                f"{int(self.freqs[d])}Hz",
+                fill=(150, 150, 150),
+                font=font_sm,
+            )
+
         set_screen(self.deck, img)
 
     def loop(self):
@@ -159,7 +292,14 @@ class DJScratch:
 
 def main():
     streamdecks = DeviceManager().enumerate()
-    deck = next((d for d in streamdecks if d.is_visual() and d.DIAL_COUNT and d.DIAL_COUNT > 0), None)
+    deck = next(
+        (
+            d
+            for d in streamdecks
+            if d.is_visual() and d.DIAL_COUNT and d.DIAL_COUNT > 0
+        ),
+        None,
+    )
     if not deck:
         print("No Stream Deck + found.")
         sys.exit(1)
@@ -167,11 +307,24 @@ def main():
     deck.reset()
     deck.set_brightness(80)
     print(f"DJ Scratch on {deck.deck_type()}")
-    print("Turn dials to scratch. Click to change waveform.")
+    print("Turn dials to scratch + change frequency.")
+    print("Click dial to change waveform (Sine/Square/Saw/Noise).")
+    print("Press bottom buttons 0-3 to PLAY the tone!")
+
     game = DJScratch(deck)
     game.render()
-    deck.set_dial_callback(lambda d, dial, evt, val: (game.lock.acquire(), game.handle_dial(dial, evt, val), game.lock.release()))
-    deck.set_key_callback(lambda d, k, s: None)
+
+    def dial_cb(d, dial, evt, val):
+        with game.lock:
+            game.handle_dial(dial, evt, val)
+
+    def key_cb(d, k, s):
+        with game.lock:
+            game.handle_key(k, s)
+
+    deck.set_dial_callback(dial_cb)
+    deck.set_key_callback(key_cb)
+
     t = threading.Thread(target=game.loop, daemon=True)
     t.start()
     try:
