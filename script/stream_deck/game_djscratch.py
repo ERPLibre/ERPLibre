@@ -170,6 +170,9 @@ class DJScratch:
         self.phase = [0.0] * 4
         self.freqs = list(BASE_FREQS)
         self.volumes_db = [0.0, 0.0, 0.0, 0.0]  # dB (-40 to +6)
+        self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]  # pitch multiplier
+        self.ring_freqs = [200.0, 200.0, 200.0, 200.0]  # ring mod Hz
+        self.tremolo_rates = [5.0, 5.0, 5.0, 5.0]  # tremolo Hz
         # Per-channel dial mode (independent)
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         self.playing = [False] * 4
@@ -183,6 +186,12 @@ class DJScratch:
         self.mic_recording = False
         self.mic_process = None
         self.mic_start_time = 0
+        # Sample recording (SAM button)
+        self.sam_recording = False
+        self.sam_process = None
+        self.sam_start_time = 0
+        # Per-channel sample WAV (used by Mic style on deck 1)
+        self.channel_samples = {}  # channel_idx -> wav_path
         self.save_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "save"
         )
@@ -192,15 +201,17 @@ class DJScratch:
             self.sampler_cols = sc
             self.sampler_rows = sr
             self.sampler_total = sc * sr
-            # Layout: row 0 col 0 = REC, row 1 col 0 = MIC
+            # Layout col 0: row 0 = REC, row 1 = MIC, row 2 = SAM
             self.key_rec = 0
-            self.key_mic = self.sampler_cols  # first key of row 1
+            self.key_mic = self.sampler_cols
+            self.key_sam = self.sampler_cols * 2 if sr > 2 else -1
         else:
             self.sampler_cols = 0
             self.sampler_rows = 0
             self.sampler_total = 0
             self.key_rec = 0
             self.key_mic = 0
+            self.key_sam = -1
 
     def _db_to_linear(self, db):
         """Convert dB to linear volume (0.0 to ~2.0)."""
@@ -220,10 +231,17 @@ class DJScratch:
                 self.volumes_db[dial] = max(
                     -40, min(6, self.volumes_db[dial] + value)
                 )
-            # pitch/ring/tremolo: freq changes the effect parameter
-            elif mode in ("pitch", "ring", "tremolo"):
-                self.freqs[dial] = max(
-                    20, min(4000, self.freqs[dial] + value * 10)
+            elif mode == "pitch":
+                self.pitch_ratios[dial] = max(
+                    0.25, min(4.0, self.pitch_ratios[dial] + value * 0.1)
+                )
+            elif mode == "ring":
+                self.ring_freqs[dial] = max(
+                    20, min(2000, self.ring_freqs[dial] + value * 10)
+                )
+            elif mode == "tremolo":
+                self.tremolo_rates[dial] = max(
+                    1, min(50, self.tremolo_rates[dial] + value)
                 )
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
@@ -279,19 +297,85 @@ class DJScratch:
             "style": self.styles[channel],
             "freq": self.freqs[channel],
             "vol_db": self.volumes_db[channel],
+            "pitch": self.pitch_ratios[channel],
+            "ring": self.ring_freqs[channel],
+            "tremolo": self.tremolo_rates[channel],
             "mode": self.dial_modes[channel],
         }
 
     def _play_tone(self, channel):
         """Generate and play a tone for the given channel."""
         p = self._get_channel_params(channel)
-        if p["style"] == 4:  # Mic passthrough
-            self._play_mic_passthrough(p["vol_db"], p["freq"], p["mode"])
+        if p["style"] == 4:  # Mic passthrough with all effects
+            self._play_mic_passthrough_full(p)
         else:
             self._play_sound(p["style"], p["freq"], p["vol_db"])
 
+    def _play_mic_passthrough_full(self, params):
+        """Play sample or mic with ALL effects applied."""
+        mic_ch = self._find_mic_channel()
+
+        # Use pre-recorded sample if available
+        source_path = None
+        if mic_ch >= 0 and mic_ch in self.channel_samples:
+            p = self.channel_samples[mic_ch]
+            if os.path.isfile(p):
+                source_path = p
+
+        if not source_path:
+            # Capture live from mic
+            source_path = os.path.join(self.save_dir, "_mic_live.wav")
+            try:
+                proc = subprocess.Popen(
+                    [
+                        "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                        "-c", "1", "-d", str(int(DURATION * 2)),
+                        "-q", source_path,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                proc.wait()
+            except FileNotFoundError:
+                return
+
+        if not os.path.isfile(source_path):
+            return
+
+        try:
+            with wave.open(source_path, "rb") as wf:
+                raw = wf.readframes(wf.getnframes())
+                n = wf.getnframes()
+            samples = list(struct.unpack(f"<{n}h", raw))
+            samples = self._apply_effects_chain(samples, params)
+            wav_data = samples_to_wav(samples)
+            play_wav_bytes(wav_data)
+        except Exception:
+            self._play_wav_file(source_path)
+
     def _play_mic_passthrough(self, volume_db=0.0, freq=261.63, mode="freq"):
-        """Capture mic and play back with effects applied."""
+        """Play sample (if exists) or capture mic, with effects applied."""
+        mic_ch = self._find_mic_channel()
+
+        # Use pre-recorded sample if available
+        if mic_ch >= 0 and mic_ch in self.channel_samples:
+            sample_path = self.channel_samples[mic_ch]
+            if os.path.isfile(sample_path):
+                try:
+                    with wave.open(sample_path, "rb") as wf:
+                        raw = wf.readframes(wf.getnframes())
+                        n = wf.getnframes()
+                    samples = list(struct.unpack(f"<{n}h", raw))
+                    samples = self._apply_effects(
+                        samples, volume_db, freq, mode
+                    )
+                    wav_data = samples_to_wav(samples)
+                    play_wav_bytes(wav_data)
+                    return
+                except Exception:
+                    pass
+
+        # Fallback: capture live from mic
         tmp_path = os.path.join(self.save_dir, "_mic_passthrough.wav")
         try:
             proc = subprocess.Popen(
@@ -322,16 +406,29 @@ class DJScratch:
             self._play_wav_file(tmp_path)
 
     def _apply_effects(self, samples, volume_db, freq, mode):
-        """Apply volume + effect to samples based on mode."""
-        linear_vol = min(2.0, 10 ** (volume_db / 20.0))
-        n = len(samples)
-        result = []
+        """Legacy: apply single effect. Delegates to full chain."""
+        params = {
+            "vol_db": volume_db,
+            "pitch": freq / BASE_FREQS[0] if mode == "pitch" else 1.0,
+            "ring": freq if mode == "ring" else 0,
+            "tremolo": max(1, freq / 10) if mode == "tremolo" else 0,
+        }
+        return self._apply_effects_chain(samples, params)
 
-        # Pitch shift: resample by ratio (freq / base_freq)
-        if mode == "pitch":
-            ratio = freq / BASE_FREQS[0]  # relative to C4
-            ratio = max(0.25, min(4.0, ratio))
+    def _apply_effects_chain(self, samples, params):
+        """Apply ALL effects in chain: pitch → ring → tremolo → volume."""
+        n = len(samples)
+        vol_db = params.get("vol_db", 0.0)
+        pitch = params.get("pitch", 1.0)
+        ring_freq = params.get("ring", 0)
+        trem_rate = params.get("tremolo", 0)
+        linear_vol = min(2.0, 10 ** (vol_db / 20.0))
+
+        # 1. Pitch shift (resample)
+        if abs(pitch - 1.0) > 0.05:
+            ratio = max(0.25, min(4.0, pitch))
             new_len = int(n / ratio)
+            pitched = []
             for i in range(new_len):
                 src = i * ratio
                 idx = int(src)
@@ -339,33 +436,29 @@ class DJScratch:
                     break
                 frac = src - idx
                 val = samples[idx] * (1 - frac) + samples[idx + 1] * frac
-                result.append(int(val * linear_vol))
-            # Pad or trim
-            while len(result) < n:
-                result.append(0)
-            result = result[:n]
+                pitched.append(int(val))
+            while len(pitched) < n:
+                pitched.append(0)
+            samples = pitched[:n]
 
-        # Ring modulation: multiply by sine at freq
-        elif mode == "ring":
-            for i in range(n):
-                t = i / SAMPLE_RATE
-                mod = math.sin(2 * math.pi * freq * t)
-                result.append(int(samples[i] * mod * linear_vol))
+        result = []
+        for i in range(len(samples)):
+            val = float(samples[i])
+            t = i / SAMPLE_RATE
 
-        # Tremolo: modulate volume with sine at freq
-        elif mode == "tremolo":
-            trem_rate = max(1, min(50, freq / 10))
-            for i in range(n):
-                t = i / SAMPLE_RATE
-                mod = 0.5 + 0.5 * math.sin(2 * math.pi * trem_rate * t)
-                result.append(int(samples[i] * mod * linear_vol))
+            # 2. Ring modulation
+            if ring_freq > 0:
+                val *= math.sin(2 * math.pi * ring_freq * t)
 
-        # Vol or freq mode: just apply volume
-        else:
-            for s in samples:
-                result.append(int(s * linear_vol))
+            # 3. Tremolo
+            if trem_rate > 0:
+                val *= 0.5 + 0.5 * math.sin(2 * math.pi * trem_rate * t)
 
-        # Clamp
+            # 4. Volume
+            val *= linear_vol
+
+            result.append(int(val))
+
         return [max(-32767, min(32767, s)) for s in result]
 
     def _play_sound(self, style, freq, volume_db=0.0):
@@ -375,8 +468,8 @@ class DJScratch:
         play_wav_bytes(wav_data)
 
     def _is_control_key(self, key):
-        """Check if key is REC or MIC control."""
-        return key == self.key_rec or key == self.key_mic
+        """Check if key is REC, MIC or SAM control."""
+        return key in (self.key_rec, self.key_mic, self.key_sam)
 
     def _handle_sampler_key(self, key, state):
         """Handle key press on the sampler (deck 2)."""
@@ -411,6 +504,17 @@ class DJScratch:
                 self._stop_mic()
             else:
                 self._start_mic()
+            self._render_sampler()
+            return
+
+        # Button SAM (row 2, col 0) = record a sample for Mic passthrough
+        if key == self.key_sam and self.key_sam >= 0:
+            if not self.record_mode:
+                return
+            if self.sam_recording:
+                self._stop_sam()
+            else:
+                self._start_sam()
             self._render_sampler()
             return
 
@@ -454,16 +558,14 @@ class DJScratch:
         self.mic_wav_path = os.path.join(
             self.save_dir, f"rec_{self.waiting_assign}_{timestamp}.wav"
         )
-        # Capture mic channel params at record start
+        # Capture ALL mic channel params at record start
         mic_ch = self._find_mic_channel()
         if mic_ch >= 0:
-            self.mic_rec_volume_db = self.volumes_db[mic_ch]
-            self.mic_rec_freq = self.freqs[mic_ch]
-            self.mic_rec_mode = self.dial_modes[mic_ch]
+            self.mic_rec_params = self._get_channel_params(mic_ch)
         else:
-            self.mic_rec_volume_db = 0.0
-            self.mic_rec_freq = BASE_FREQS[0]
-            self.mic_rec_mode = "freq"
+            self.mic_rec_params = {
+                "vol_db": 0.0, "pitch": 1.0, "ring": 0, "tremolo": 0,
+            }
         try:
             self.mic_process = subprocess.Popen(
                 [
@@ -539,6 +641,54 @@ class DJScratch:
         except Exception as e:
             print(f"Effect apply failed: {e}")
 
+    def _start_sam(self):
+        """Start recording a sample for Mic passthrough on deck 1."""
+        mic_ch = self._find_mic_channel()
+        if mic_ch < 0:
+            print("Set a channel to Mic style first on deck 1")
+            return
+        timestamp = int(time.time())
+        self.sam_wav_path = os.path.join(
+            self.save_dir, f"sample_ch{mic_ch}_{timestamp}.wav"
+        )
+        self.sam_target_channel = mic_ch
+        try:
+            self.sam_process = subprocess.Popen(
+                [
+                    "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                    "-c", "1", "-q", self.sam_wav_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.sam_recording = True
+            self.sam_start_time = time.monotonic()
+            print(f"SAM recording for channel {mic_ch}: {self.sam_wav_path}")
+        except FileNotFoundError:
+            print("arecord not found")
+
+    def _stop_sam(self):
+        """Stop sample recording and assign to mic channel."""
+        if not self.sam_recording or not self.sam_process:
+            return
+        self.sam_process.terminate()
+        try:
+            self.sam_process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            self.sam_process.kill()
+        self.sam_recording = False
+        duration = time.monotonic() - self.sam_start_time
+        self.sam_process = None
+        ch = getattr(self, "sam_target_channel", -1)
+        path = getattr(self, "sam_wav_path", "")
+        if ch >= 0 and os.path.isfile(path):
+            self.channel_samples[ch] = path
+            print(
+                f"Sample assigned to Mic channel {ch}: "
+                f"{duration:.1f}s ({path})"
+            )
+        self._render_sampler()
+
     def _play_sampler_mapping(self, key, mapping):
         """Play a sampler mapping (tone or wav file)."""
         if mapping[0] == "wav":
@@ -597,6 +747,23 @@ class DJScratch:
                         set_key(deck, key, (180, 0, 180), "MIC")
                     else:
                         set_key(deck, key, (60, 0, 60), "MIC")
+                else:
+                    set_key(deck, key, (20, 20, 30), "")
+                continue
+
+            # SAM button (row 2, col 0) - record sample for Mic channel
+            if key == self.key_sam and self.key_sam >= 0:
+                if self.record_mode:
+                    if self.sam_recording:
+                        elapsed = time.monotonic() - self.sam_start_time
+                        set_key(deck, key, (255, 80, 0), f"{elapsed:.0f}s")
+                    else:
+                        mic_ch = self._find_mic_channel()
+                        has_sample = mic_ch >= 0 and mic_ch in self.channel_samples
+                        if has_sample:
+                            set_key(deck, key, (100, 60, 0), "SAM*")
+                        else:
+                            set_key(deck, key, (80, 40, 0), "SAM")
                 else:
                     set_key(deck, key, (20, 20, 30), "")
                 continue
@@ -703,21 +870,38 @@ class DJScratch:
                         for v in STYLE_COLORS[style]
                     )
 
-                # Line 2: show value based on active mode
+                # Line 2: show value of the ACTIVE mode (dial controls this)
+                pitch_r = self.pitch_ratios[c]
+                ring_f = int(self.ring_freqs[c])
+                trem_r = int(self.tremolo_rates[c])
+
                 if mode == "vol":
                     line2 = f"{vol_db:+.0f}dB"
                 elif mode == "pitch":
-                    ratio = freq_hz / BASE_FREQS[0]
-                    line2 = f"x{ratio:.1f}"
+                    line2 = f"x{pitch_r:.1f}"
                 elif mode == "ring":
-                    line2 = f"R:{freq_hz}Hz"
+                    line2 = f"R:{ring_f}Hz"
                 elif mode == "tremolo":
-                    rate = max(1, freq_hz // 10)
-                    line2 = f"T:{rate}Hz"
+                    line2 = f"T:{trem_r}Hz"
                 else:
                     line2 = f"{freq_hz}Hz"
 
-                self._set_key_2lines(key, color, style_name, line2)
+                # Build compact summary of non-default effects
+                fx_parts = []
+                if abs(vol_db) > 0.5:
+                    fx_parts.append(f"{vol_db:+.0f}")
+                if abs(pitch_r - 1.0) > 0.05:
+                    fx_parts.append(f"x{pitch_r:.1f}")
+                if ring_f > 0 and ring_f != 200:
+                    fx_parts.append(f"R{ring_f}")
+                if trem_r > 0 and trem_r != 5:
+                    fx_parts.append(f"T{trem_r}")
+                fx_summary = " ".join(fx_parts)
+
+                if fx_summary:
+                    self._set_key_2lines(key, color, style_name, f"{line2} {fx_summary}")
+                else:
+                    self._set_key_2lines(key, color, style_name, line2)
                 continue
 
             set_key(self.deck, key, (20, 20, 30), "")
