@@ -30,17 +30,35 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-STYLES = ["Sine", "Square", "Saw", "Noise"]
-STYLE_COLORS = [(0, 200, 255), (255, 100, 0), (0, 255, 100), (255, 0, 200)]
+STYLES = ["Sine", "Square", "Saw", "Noise", "Mic"]
+STYLE_COLORS = [
+    (0, 200, 255), (255, 100, 0), (0, 255, 100), (255, 0, 200), (255, 40, 80),
+]
 BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
 DURATION = 0.3
 VOLUME = 0.5
+DIAL_MODES = ["freq", "vol", "pitch", "ring", "tremolo"]
+MODE_COLORS = {
+    "freq": (0, 60, 120),
+    "vol": (120, 60, 0),
+    "pitch": (0, 120, 60),
+    "ring": (120, 0, 120),
+    "tremolo": (60, 120, 0),
+}
+MODE_LABELS = {
+    "freq": "FREQ",
+    "vol": "VOL",
+    "pitch": "PTCH",
+    "ring": "RING",
+    "tremolo": "TREM",
+}
 
 
-def generate_tone(style, freq, duration=DURATION, rate=SAMPLE_RATE):
-    """Generate raw PCM samples for a tone."""
+def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RATE):
+    """Generate raw PCM samples for a tone with volume in dB."""
     n_samples = int(rate * duration)
+    linear_vol = min(2.0, 10 ** (volume_db / 20.0)) * VOLUME
     samples = []
     for i in range(n_samples):
         t = i / rate
@@ -59,7 +77,9 @@ def generate_tone(style, freq, duration=DURATION, rate=SAMPLE_RATE):
             env = i / fade
         elif i > n_samples - fade:
             env = (n_samples - i) / fade
-        samples.append(int(val * env * VOLUME * 32767))
+        sample = int(val * env * linear_vol * 32767)
+        sample = max(-32767, min(32767, sample))
+        samples.append(sample)
     return samples
 
 
@@ -149,6 +169,9 @@ class DJScratch:
         self.styles = [0, 1, 2, 3]
         self.phase = [0.0] * 4
         self.freqs = list(BASE_FREQS)
+        self.volumes_db = [0.0, 0.0, 0.0, 0.0]  # dB (-40 to +6)
+        # Per-channel dial mode (independent)
+        self.dial_modes = ["freq", "freq", "freq", "freq"]
         self.playing = [False] * 4
         self.sw = deck.TOUCHSCREEN_PIXEL_WIDTH or deck.SCREEN_PIXEL_WIDTH or 800
         self.sh = deck.TOUCHSCREEN_PIXEL_HEIGHT or deck.SCREEN_PIXEL_HEIGHT or 100
@@ -179,15 +202,29 @@ class DJScratch:
             self.key_rec = 0
             self.key_mic = 0
 
+    def _db_to_linear(self, db):
+        """Convert dB to linear volume (0.0 to ~2.0)."""
+        return 10 ** (db / 20.0)
+
     def handle_dial(self, dial, event, value):
         if dial >= 4:
             return
         if event == DialEventType.TURN:
             self.speeds[dial] = value * 2.0
-            # Adjust frequency with dial turn
-            self.freqs[dial] = max(
-                80, min(2000, self.freqs[dial] + value * 20)
-            )
+            mode = self.dial_modes[dial]
+            if mode == "freq":
+                self.freqs[dial] = max(
+                    80, min(2000, self.freqs[dial] + value * 20)
+                )
+            elif mode == "vol":
+                self.volumes_db[dial] = max(
+                    -40, min(6, self.volumes_db[dial] + value)
+                )
+            # pitch/ring/tremolo: freq changes the effect parameter
+            elif mode in ("pitch", "ring", "tremolo"):
+                self.freqs[dial] = max(
+                    20, min(4000, self.freqs[dial] + value * 10)
+                )
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
 
@@ -200,16 +237,26 @@ class DJScratch:
         row = key // self.cols
         last_r = self.rows - 1
 
+        # Top row = cycle mode per channel (independent)
+        if row == 0 and col < 4 and state:
+            cur = self.dial_modes[col]
+            idx = DIAL_MODES.index(cur)
+            self.dial_modes[col] = DIAL_MODES[(idx + 1) % len(DIAL_MODES)]
+            return
+
+        # Bottom row = sound buttons
         if row == last_r and col < 4:
-            # If sampler is waiting for a note assignment, assign it
+            # If sampler is waiting for a note assignment, assign with volume
             if self.waiting_assign >= 0 and state:
                 self.sampler_map[self.waiting_assign] = (
                     self.styles[col],
                     self.freqs[col],
+                    self.volumes_db[col],
                 )
                 print(
                     f"Assigned channel {col} "
-                    f"({STYLES[self.styles[col]]} {int(self.freqs[col])}Hz) "
+                    f"({STYLES[self.styles[col]]} {int(self.freqs[col])}Hz "
+                    f"{self.volumes_db[col]:+.0f}dB) "
                     f"to sampler key {self.waiting_assign}"
                 )
                 self.waiting_assign = -1
@@ -218,7 +265,6 @@ class DJScratch:
 
             if state:
                 self.playing[col] = True
-                # Play tone in background thread
                 threading.Thread(
                     target=self._play_tone,
                     args=(col,),
@@ -227,15 +273,104 @@ class DJScratch:
             else:
                 self.playing[col] = False
 
+    def _get_channel_params(self, channel):
+        """Get all params for a channel."""
+        return {
+            "style": self.styles[channel],
+            "freq": self.freqs[channel],
+            "vol_db": self.volumes_db[channel],
+            "mode": self.dial_modes[channel],
+        }
+
     def _play_tone(self, channel):
         """Generate and play a tone for the given channel."""
-        style = self.styles[channel]
-        freq = self.freqs[channel]
-        self._play_sound(style, freq)
+        p = self._get_channel_params(channel)
+        if p["style"] == 4:  # Mic passthrough
+            self._play_mic_passthrough(p["vol_db"], p["freq"], p["mode"])
+        else:
+            self._play_sound(p["style"], p["freq"], p["vol_db"])
 
-    def _play_sound(self, style, freq):
+    def _play_mic_passthrough(self, volume_db=0.0, freq=261.63, mode="freq"):
+        """Capture mic and play back with effects applied."""
+        tmp_path = os.path.join(self.save_dir, "_mic_passthrough.wav")
+        try:
+            proc = subprocess.Popen(
+                [
+                    "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                    "-c", "1", "-d", str(int(DURATION * 2)),
+                    "-q", tmp_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            proc.wait()
+        except FileNotFoundError:
+            return
+
+        if not os.path.isfile(tmp_path):
+            return
+
+        try:
+            with wave.open(tmp_path, "rb") as wf:
+                raw = wf.readframes(wf.getnframes())
+                n = wf.getnframes()
+            samples = list(struct.unpack(f"<{n}h", raw))
+            samples = self._apply_effects(samples, volume_db, freq, mode)
+            wav_data = samples_to_wav(samples)
+            play_wav_bytes(wav_data)
+        except Exception:
+            self._play_wav_file(tmp_path)
+
+    def _apply_effects(self, samples, volume_db, freq, mode):
+        """Apply volume + effect to samples based on mode."""
+        linear_vol = min(2.0, 10 ** (volume_db / 20.0))
+        n = len(samples)
+        result = []
+
+        # Pitch shift: resample by ratio (freq / base_freq)
+        if mode == "pitch":
+            ratio = freq / BASE_FREQS[0]  # relative to C4
+            ratio = max(0.25, min(4.0, ratio))
+            new_len = int(n / ratio)
+            for i in range(new_len):
+                src = i * ratio
+                idx = int(src)
+                if idx >= n - 1:
+                    break
+                frac = src - idx
+                val = samples[idx] * (1 - frac) + samples[idx + 1] * frac
+                result.append(int(val * linear_vol))
+            # Pad or trim
+            while len(result) < n:
+                result.append(0)
+            result = result[:n]
+
+        # Ring modulation: multiply by sine at freq
+        elif mode == "ring":
+            for i in range(n):
+                t = i / SAMPLE_RATE
+                mod = math.sin(2 * math.pi * freq * t)
+                result.append(int(samples[i] * mod * linear_vol))
+
+        # Tremolo: modulate volume with sine at freq
+        elif mode == "tremolo":
+            trem_rate = max(1, min(50, freq / 10))
+            for i in range(n):
+                t = i / SAMPLE_RATE
+                mod = 0.5 + 0.5 * math.sin(2 * math.pi * trem_rate * t)
+                result.append(int(samples[i] * mod * linear_vol))
+
+        # Vol or freq mode: just apply volume
+        else:
+            for s in samples:
+                result.append(int(s * linear_vol))
+
+        # Clamp
+        return [max(-32767, min(32767, s)) for s in result]
+
+    def _play_sound(self, style, freq, volume_db=0.0):
         """Generate and play a specific tone."""
-        samples = generate_tone(style, freq)
+        samples = generate_tone(style, freq, volume_db=volume_db)
         wav_data = samples_to_wav(samples)
         play_wav_bytes(wav_data)
 
@@ -304,6 +439,13 @@ class DJScratch:
                     daemon=True,
                 ).start()
 
+    def _find_mic_channel(self):
+        """Find which channel is set to Mic style, or -1."""
+        for i in range(4):
+            if self.styles[i] == 4:
+                return i
+        return -1
+
     def _start_mic(self):
         """Start recording from microphone via arecord."""
         if self.waiting_assign < 0:
@@ -312,12 +454,22 @@ class DJScratch:
         self.mic_wav_path = os.path.join(
             self.save_dir, f"rec_{self.waiting_assign}_{timestamp}.wav"
         )
+        # Capture mic channel params at record start
+        mic_ch = self._find_mic_channel()
+        if mic_ch >= 0:
+            self.mic_rec_volume_db = self.volumes_db[mic_ch]
+            self.mic_rec_freq = self.freqs[mic_ch]
+            self.mic_rec_mode = self.dial_modes[mic_ch]
+        else:
+            self.mic_rec_volume_db = 0.0
+            self.mic_rec_freq = BASE_FREQS[0]
+            self.mic_rec_mode = "freq"
         try:
             self.mic_process = subprocess.Popen(
                 [
                     "arecord",
                     "-f", "S16_LE",
-                    "-r", "22050",
+                    "-r", str(SAMPLE_RATE),
                     "-c", "1",
                     "-q",
                     self.mic_wav_path,
@@ -327,12 +479,15 @@ class DJScratch:
             )
             self.mic_recording = True
             self.mic_start_time = time.monotonic()
-            print(f"MIC recording started: {self.mic_wav_path}")
+            print(
+                f"MIC recording started: {self.mic_wav_path} "
+                f"(vol={self.mic_rec_volume_db:+.0f}dB)"
+            )
         except FileNotFoundError:
             print("arecord not found - cannot record from mic")
 
     def _stop_mic(self):
-        """Stop mic recording and assign to waiting button."""
+        """Stop mic recording, apply volume, assign to button."""
         if not self.mic_recording or not self.mic_process:
             return
         self.mic_process.terminate()
@@ -345,24 +500,54 @@ class DJScratch:
         self.mic_process = None
 
         if self.waiting_assign >= 0 and os.path.isfile(self.mic_wav_path):
+            vol_db = getattr(self, "mic_rec_volume_db", 0.0)
+            rec_freq = getattr(self, "mic_rec_freq", BASE_FREQS[0])
+            rec_mode = getattr(self, "mic_rec_mode", "freq")
+
+            # Apply effects to recorded WAV
+            self._apply_effects_to_wav(
+                self.mic_wav_path, vol_db, rec_freq, rec_mode
+            )
+
             dur_str = f"{duration:.1f}s"
+            mode_label = MODE_LABELS.get(rec_mode, rec_mode)
             self.sampler_map[self.waiting_assign] = (
-                "wav", self.mic_wav_path, dur_str
+                "wav", self.mic_wav_path, dur_str, vol_db, rec_mode, rec_freq
             )
             print(
                 f"MIC assigned to key {self.waiting_assign}: "
-                f"{dur_str} ({self.mic_wav_path})"
+                f"{dur_str} {vol_db:+.0f}dB {mode_label} "
+                f"{int(rec_freq)}Hz ({self.mic_wav_path})"
             )
             self.waiting_assign = -1
         self._render_sampler()
+
+    def _apply_effects_to_wav(self, path, volume_db, freq, mode):
+        """Apply volume + effects to a WAV file in-place."""
+        try:
+            with wave.open(path, "rb") as wf:
+                params = wf.getparams()
+                raw = wf.readframes(wf.getnframes())
+                n = wf.getnframes()
+            samples = list(struct.unpack(f"<{n}h", raw))
+            adjusted = self._apply_effects(samples, volume_db, freq, mode)
+            with wave.open(path, "wb") as wf:
+                wf.setparams(params)
+                wf.writeframes(
+                    struct.pack(f"<{len(adjusted)}h", *adjusted)
+                )
+        except Exception as e:
+            print(f"Effect apply failed: {e}")
 
     def _play_sampler_mapping(self, key, mapping):
         """Play a sampler mapping (tone or wav file)."""
         if mapping[0] == "wav":
             self._play_wav_file(mapping[1])
         else:
-            style, freq = mapping[0], mapping[1]
-            self._play_sound(style, freq)
+            style = mapping[0]
+            freq = mapping[1]
+            vol_db = mapping[2] if len(mapping) > 2 else 0.0
+            self._play_sound(style, freq, vol_db)
         self.sampler_playing.discard(key)
         self._render_sampler()
 
@@ -425,22 +610,40 @@ class DJScratch:
             if key in self.sampler_map:
                 mapping = self.sampler_map[key]
                 if mapping[0] == "wav":
-                    # Mic recording
-                    dur_str = mapping[2]
-                    if key in self.sampler_playing:
-                        set_key(deck, key, (255, 40, 40), dur_str)
+                    # Mic recording: show dur + effect info
+                    dur_str = mapping[2] if len(mapping) > 2 else "?"
+                    vol_db = mapping[3] if len(mapping) > 3 else 0.0
+                    rec_mode = mapping[4] if len(mapping) > 4 else "freq"
+                    rec_freq = mapping[5] if len(mapping) > 5 else 0
+                    fx = MODE_LABELS.get(rec_mode, "")
+                    if rec_mode == "pitch" and rec_freq > 0:
+                        ratio = rec_freq / BASE_FREQS[0]
+                        fx = f"x{ratio:.1f}"
+                    elif rec_mode == "ring":
+                        fx = f"R{int(rec_freq)}"
+                    elif rec_mode == "tremolo":
+                        fx = f"T{int(rec_freq // 10)}"
+                    elif rec_mode == "vol":
+                        fx = f"{vol_db:+.0f}dB"
                     else:
-                        set_key(deck, key, (80, 20, 20), dur_str)
+                        fx = f"{vol_db:+.0f}dB"
+                    label = f"{dur_str} {fx}"
+                    if key in self.sampler_playing:
+                        set_key(deck, key, (255, 40, 40), label)
+                    else:
+                        set_key(deck, key, (80, 20, 20), label)
                 else:
-                    # Tone
+                    # Tone (style, freq, vol_db)
                     style = mapping[0]
                     freq = mapping[1]
+                    vol_db = mapping[2] if len(mapping) > 2 else 0.0
                     color = STYLE_COLORS[style]
                     if key in self.sampler_playing:
                         set_key(deck, key, color, f"{int(freq)}")
                     else:
                         dim = (color[0] // 3, color[1] // 3, color[2] // 3)
-                        set_key(deck, key, dim, STYLES[style][:3])
+                        label = f"{STYLES[style][:2]}{vol_db:+.0f}"
+                        set_key(deck, key, dim, label)
                 continue
 
             # Empty slot
@@ -474,25 +677,84 @@ class DJScratch:
         for key in range(self.cols * self.rows):
             r = key // self.cols
             c = key % self.cols
+
+            # Top row: mode indicator per channel (independent)
+            if r == 0 and c < 4:
+                mode = self.dial_modes[c]
+                color = MODE_COLORS.get(mode, (60, 60, 60))
+                label = MODE_LABELS.get(mode, mode)
+                set_key(self.deck, key, color, label)
+                continue
+
+            # Bottom row: sound buttons (style + params on 2 lines)
             if r == last_r and c < 4:
                 style = self.styles[c]
                 freq_hz = int(self.freqs[c])
+                vol_db = self.volumes_db[c]
+                mode = self.dial_modes[c]
+                style_name = STYLES[style][:3]
+
                 if self.playing[c]:
                     color = STYLE_COLORS[style]
-                    text = f"{freq_hz}"
                 else:
                     bright = min(255, int(abs(self.speeds[c]) * 30))
                     color = tuple(
                         min(255, v * max(40, bright) // 255)
                         for v in STYLE_COLORS[style]
                     )
-                    text = STYLES[style][:3]
-                set_key(self.deck, key, color, text)
-            elif r == 0 and c < 4:
-                freq_hz = int(self.freqs[c])
-                set_key(self.deck, key, (40, 40, 80), f"{freq_hz}")
-            else:
-                set_key(self.deck, key, (20, 20, 30), "")
+
+                # Line 2: show value based on active mode
+                if mode == "vol":
+                    line2 = f"{vol_db:+.0f}dB"
+                elif mode == "pitch":
+                    ratio = freq_hz / BASE_FREQS[0]
+                    line2 = f"x{ratio:.1f}"
+                elif mode == "ring":
+                    line2 = f"R:{freq_hz}Hz"
+                elif mode == "tremolo":
+                    rate = max(1, freq_hz // 10)
+                    line2 = f"T:{rate}Hz"
+                else:
+                    line2 = f"{freq_hz}Hz"
+
+                self._set_key_2lines(key, color, style_name, line2)
+                continue
+
+            set_key(self.deck, key, (20, 20, 30), "")
+
+    def _set_key_2lines(self, key, color, line1, line2):
+        """Render a key with 2 lines of text."""
+        fmt = self.deck.key_image_format()
+        w, h = fmt["size"]
+        img = Image.new("RGB", (w, h), color)
+        draw = ImageDraw.Draw(img)
+        try:
+            font_top = ImageFont.load_default(size=14)
+            font_bot = ImageFont.load_default(size=10)
+        except TypeError:
+            font_top = ImageFont.load_default()
+            font_bot = font_top
+
+        # Line 1 (top, bigger)
+        bbox1 = draw.textbbox((0, 0), line1, font=font_top)
+        tw1 = bbox1[2] - bbox1[0]
+        tx1 = (w - tw1) // 2
+        draw.text((tx1 + 1, h // 4 - 6), line1, fill=(0, 0, 0), font=font_top)
+        draw.text((tx1, h // 4 - 7), line1, fill=(255, 255, 255), font=font_top)
+
+        # Line 2 (bottom, smaller)
+        bbox2 = draw.textbbox((0, 0), line2, font=font_bot)
+        tw2 = bbox2[2] - bbox2[0]
+        tx2 = (w - tw2) // 2
+        draw.text((tx2 + 1, h * 3 // 4 - 6), line2, fill=(0, 0, 0), font=font_bot)
+        draw.text((tx2, h * 3 // 4 - 7), line2, fill=(200, 200, 200), font=font_bot)
+
+        native = PILHelper.to_native_key_format(self.deck, img)
+        try:
+            with self.deck:
+                self.deck.set_key_image(key, native)
+        except TransportError:
+            pass
 
     def _render_screen(self):
         img = Image.new("RGB", (self.sw, self.sh), (0, 0, 0))
