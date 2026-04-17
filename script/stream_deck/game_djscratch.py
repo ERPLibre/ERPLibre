@@ -171,8 +171,8 @@ class DJScratch:
         self.freqs = list(BASE_FREQS)
         self.volumes_db = [0.0, 0.0, 0.0, 0.0]  # dB (-40 to +6)
         self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]  # pitch multiplier
-        self.ring_freqs = [200.0, 200.0, 200.0, 200.0]  # ring mod Hz
-        self.tremolo_rates = [5.0, 5.0, 5.0, 5.0]  # tremolo Hz
+        self.ring_freqs = [0.0, 0.0, 0.0, 0.0]  # ring mod Hz (0=off)
+        self.tremolo_rates = [0.0, 0.0, 0.0, 0.0]  # tremolo Hz (0=off)
         # Per-channel dial mode (independent)
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         self.playing = [False] * 4
@@ -205,6 +205,7 @@ class DJScratch:
             self.key_rec = 0
             self.key_mic = self.sampler_cols
             self.key_sam = self.sampler_cols * 2 if sr > 2 else -1
+            self.key_rst = self.sampler_cols * 3 if sr > 3 else -1
         else:
             self.sampler_cols = 0
             self.sampler_rows = 0
@@ -212,6 +213,7 @@ class DJScratch:
             self.key_rec = 0
             self.key_mic = 0
             self.key_sam = -1
+            self.key_rst = -1
 
     def _db_to_linear(self, db):
         """Convert dB to linear volume (0.0 to ~2.0)."""
@@ -237,11 +239,11 @@ class DJScratch:
                 )
             elif mode == "ring":
                 self.ring_freqs[dial] = max(
-                    20, min(2000, self.ring_freqs[dial] + value * 10)
+                    0, min(2000, self.ring_freqs[dial] + value * 10)
                 )
             elif mode == "tremolo":
                 self.tremolo_rates[dial] = max(
-                    1, min(50, self.tremolo_rates[dial] + value)
+                    0, min(50, self.tremolo_rates[dial] + value)
                 )
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
@@ -468,8 +470,8 @@ class DJScratch:
         play_wav_bytes(wav_data)
 
     def _is_control_key(self, key):
-        """Check if key is REC, MIC or SAM control."""
-        return key in (self.key_rec, self.key_mic, self.key_sam)
+        """Check if key is REC, MIC, SAM or RST control."""
+        return key in (self.key_rec, self.key_mic, self.key_sam, self.key_rst)
 
     def _handle_sampler_key(self, key, state):
         """Handle key press on the sampler (deck 2)."""
@@ -518,6 +520,12 @@ class DJScratch:
             self._render_sampler()
             return
 
+        # Button RST (row 3, col 0) = reset all effects to defaults
+        if key == self.key_rst and self.key_rst >= 0:
+            self._reset_all_effects()
+            self._render_sampler()
+            return
+
         if self.record_mode:
             # Stop any active mic recording if switching target
             if self.mic_recording:
@@ -542,6 +550,16 @@ class DJScratch:
                     args=(key, mapping),
                     daemon=True,
                 ).start()
+
+    def _reset_all_effects(self):
+        """Reset all channel effects to default values."""
+        self.freqs = list(BASE_FREQS)
+        self.volumes_db = [0.0, 0.0, 0.0, 0.0]
+        self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]
+        self.ring_freqs = [200.0, 200.0, 200.0, 200.0]
+        self.tremolo_rates = [5.0, 5.0, 5.0, 5.0]
+        self.dial_modes = ["freq", "freq", "freq", "freq"]
+        print("All effects reset to defaults")
 
     def _find_mic_channel(self):
         """Find which channel is set to Mic style, or -1."""
@@ -627,9 +645,9 @@ class DJScratch:
                 fx.append(f"{params['vol_db']:+.0f}dB")
             if abs(params.get("pitch", 1.0) - 1.0) > 0.05:
                 fx.append(f"x{params['pitch']:.1f}")
-            if params.get("ring", 0) > 0 and params.get("ring", 200) != 200:
+            if params.get("ring", 0) > 0:
                 fx.append(f"R{int(params['ring'])}")
-            if params.get("tremolo", 0) > 0 and params.get("tremolo", 5) != 5:
+            if params.get("tremolo", 0) > 0:
                 fx.append(f"T{int(params['tremolo'])}")
             fx_str = " ".join(fx) if fx else "0dB"
 
@@ -787,6 +805,11 @@ class DJScratch:
                     set_key(deck, key, (20, 20, 30), "")
                 continue
 
+            # RST button (row 3, col 0) = reset all effects
+            if key == self.key_rst and self.key_rst >= 0:
+                set_key(deck, key, (60, 60, 60), "RST")
+                continue
+
             # Waiting for assignment
             if key == self.waiting_assign:
                 set_key(deck, key, (220, 180, 0), "?")
@@ -808,10 +831,10 @@ class DJScratch:
                         if abs(p - 1.0) > 0.05:
                             fx.append(f"x{p:.1f}")
                         r = params.get("ring", 0)
-                        if r > 0 and r != 200:
+                        if r > 0:
                             fx.append(f"R{int(r)}")
                         t = params.get("tremolo", 0)
-                        if t > 0 and t != 5:
+                        if t > 0:
                             fx.append(f"T{int(t)}")
                         fx_str = " ".join(fx) if fx else "0dB"
                     else:
@@ -902,9 +925,9 @@ class DJScratch:
                 elif mode == "pitch":
                     line2 = f"x{pitch_r:.1f}"
                 elif mode == "ring":
-                    line2 = f"R:{ring_f}Hz"
+                    line2 = f"R:{ring_f}Hz" if ring_f > 0 else "OFF"
                 elif mode == "tremolo":
-                    line2 = f"T:{trem_r}Hz"
+                    line2 = f"T:{trem_r}Hz" if trem_r > 0 else "OFF"
                 else:
                     line2 = f"{freq_hz}Hz"
 
@@ -914,9 +937,9 @@ class DJScratch:
                     fx_parts.append(f"{vol_db:+.0f}")
                 if abs(pitch_r - 1.0) > 0.05:
                     fx_parts.append(f"x{pitch_r:.1f}")
-                if ring_f > 0 and ring_f != 200:
+                if ring_f > 0:
                     fx_parts.append(f"R{ring_f}")
-                if trem_r > 0 and trem_r != 5:
+                if trem_r > 0:
                     fx_parts.append(f"T{trem_r}")
                 fx_summary = " ".join(fx_parts)
 
