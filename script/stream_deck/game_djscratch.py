@@ -228,6 +228,13 @@ class DJScratch:
             self.key_mic = self.sampler_cols
             self.key_sam = self.sampler_cols * 2 if sr > 2 else -1
             self.key_rst = self.sampler_cols * 3 if sr > 3 else -1
+            # Row 3 extra buttons (col 1-5)
+            r3 = self.sampler_cols * 3
+            self.key_loop = r3 + 1 if sr > 3 and sc > 1 else -1
+            self.key_seq = r3 + 2 if sr > 3 and sc > 2 else -1
+            self.key_met = r3 + 3 if sr > 3 and sc > 3 else -1
+            self.key_mix = r3 + 4 if sr > 3 and sc > 4 else -1
+            self.key_exp = r3 + 5 if sr > 3 and sc > 5 else -1
         else:
             self.sampler_cols = 0
             self.sampler_rows = 0
@@ -236,6 +243,30 @@ class DJScratch:
             self.key_mic = 0
             self.key_sam = -1
             self.key_rst = -1
+            self.key_loop = -1
+            self.key_seq = -1
+            self.key_met = -1
+            self.key_mix = -1
+            self.key_exp = -1
+        # Looper state
+        self.loop_state = "off"  # off, rec, play, overdub
+        self.loop_buffer = []
+        self.loop_thread = None
+        # Sequencer state
+        self.seq_on = False
+        self.seq_bpm = 120
+        self.seq_steps = 8
+        self.seq_pattern = [[] for _ in range(8)]  # step -> list of channel indices
+        self.seq_pos = 0
+        self.seq_thread = None
+        # Metronome state
+        self.metro_on = False
+        self.metro_bpm = 120
+        self.metro_thread = None
+        # Export state
+        self.exporting = False
+        self.export_buffer = []
+        self.export_start = 0
 
     def _db_to_linear(self, db):
         """Convert dB to linear volume (0.0 to ~2.0)."""
@@ -244,6 +275,16 @@ class DJScratch:
     def handle_dial(self, dial, event, value):
         if dial >= 4:
             return
+        # Dial 3 controls BPM when metronome or sequencer active
+        if dial == 3 and event == DialEventType.TURN:
+            if self.metro_on:
+                self.metro_bpm = max(40, min(300, self.metro_bpm + value * 2))
+                self.seq_bpm = self.metro_bpm
+                return
+            elif self.seq_on:
+                self.seq_bpm = max(40, min(300, self.seq_bpm + value * 2))
+                self.metro_bpm = self.seq_bpm
+                return
         if event == DialEventType.TURN:
             self.speeds[dial] = value * 2.0
             mode = self.dial_modes[dial]
@@ -586,8 +627,12 @@ class DJScratch:
         play_wav_bytes(wav_data)
 
     def _is_control_key(self, key):
-        """Check if key is REC, MIC, SAM or RST control."""
-        return key in (self.key_rec, self.key_mic, self.key_sam, self.key_rst)
+        """Check if key is a control button."""
+        return key in (
+            self.key_rec, self.key_mic, self.key_sam, self.key_rst,
+            self.key_loop, self.key_seq, self.key_met, self.key_mix,
+            self.key_exp,
+        )
 
     def _handle_sampler_key(self, key, state):
         """Handle key press on the sampler (deck 2)."""
@@ -642,6 +687,36 @@ class DJScratch:
             self._render_sampler()
             return
 
+        # LOOP button
+        if key == self.key_loop and self.key_loop >= 0:
+            self._toggle_looper()
+            self._render_sampler()
+            return
+
+        # SEQ button
+        if key == self.key_seq and self.key_seq >= 0:
+            self._toggle_sequencer()
+            self._render_sampler()
+            return
+
+        # MET button (metronome)
+        if key == self.key_met and self.key_met >= 0:
+            self._toggle_metronome()
+            self._render_sampler()
+            return
+
+        # MIX button
+        if key == self.key_mix and self.key_mix >= 0:
+            threading.Thread(target=self._do_mixdown, daemon=True).start()
+            self._render_sampler()
+            return
+
+        # EXP button (export)
+        if key == self.key_exp and self.key_exp >= 0:
+            self._toggle_export()
+            self._render_sampler()
+            return
+
         if self.record_mode:
             # Stop any active mic recording if switching target
             if self.mic_recording:
@@ -682,6 +757,252 @@ class DJScratch:
         self.reverse_on = [0, 0, 0, 0]
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         print("All effects reset to defaults")
+
+    # ── LOOPER ─────────────────────────────────────
+
+    def _toggle_looper(self):
+        """Cycle looper: off → rec → play → overdub → off."""
+        if self.loop_state == "off":
+            self.loop_state = "rec"
+            self.loop_buffer = []
+            print("Looper: RECORDING")
+            # Start capturing mic
+            self._loop_rec_path = os.path.join(
+                self.save_dir, "_loop_rec.wav"
+            )
+            try:
+                self._loop_proc = subprocess.Popen(
+                    [
+                        "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                        "-c", "1", "-q", self._loop_rec_path,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                self.loop_state = "off"
+        elif self.loop_state == "rec":
+            # Stop recording, start playback loop
+            if hasattr(self, "_loop_proc") and self._loop_proc:
+                self._loop_proc.terminate()
+                try:
+                    self._loop_proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._loop_proc.kill()
+            # Load recorded buffer
+            try:
+                with wave.open(self._loop_rec_path, "rb") as wf:
+                    raw = wf.readframes(wf.getnframes())
+                    n = wf.getnframes()
+                self.loop_buffer = list(struct.unpack(f"<{n}h", raw))
+            except Exception:
+                self.loop_buffer = []
+            if self.loop_buffer:
+                self.loop_state = "play"
+                print(f"Looper: PLAYING ({len(self.loop_buffer)} samples)")
+                self._start_loop_playback()
+            else:
+                self.loop_state = "off"
+        elif self.loop_state == "play":
+            self.loop_state = "overdub"
+            print("Looper: OVERDUB (recording on top)")
+            # Start another mic capture for overdub
+            self._loop_overdub_path = os.path.join(
+                self.save_dir, "_loop_overdub.wav"
+            )
+            try:
+                self._loop_od_proc = subprocess.Popen(
+                    [
+                        "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                        "-c", "1", "-q", self._loop_overdub_path,
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                pass
+        elif self.loop_state == "overdub":
+            # Stop overdub, mix into loop buffer
+            if hasattr(self, "_loop_od_proc") and self._loop_od_proc:
+                self._loop_od_proc.terminate()
+                try:
+                    self._loop_od_proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self._loop_od_proc.kill()
+            try:
+                with wave.open(self._loop_overdub_path, "rb") as wf:
+                    raw = wf.readframes(wf.getnframes())
+                    n = wf.getnframes()
+                overdub = list(struct.unpack(f"<{n}h", raw))
+                # Mix overdub into loop buffer
+                for i in range(min(len(self.loop_buffer), len(overdub))):
+                    self.loop_buffer[i] = max(
+                        -32767,
+                        min(32767, self.loop_buffer[i] + overdub[i]),
+                    )
+            except Exception:
+                pass
+            self.loop_state = "play"
+            print("Looper: back to PLAY with overdub mixed")
+
+    def _start_loop_playback(self):
+        """Play loop buffer in a repeating thread."""
+        if self.loop_thread and self.loop_thread.is_alive():
+            return
+
+        def _loop_play():
+            while self.loop_state in ("play", "overdub") and self.running:
+                if self.loop_buffer:
+                    wav_data = samples_to_wav(self.loop_buffer)
+                    play_wav_bytes(wav_data)
+                else:
+                    time.sleep(0.1)
+
+        self.loop_thread = threading.Thread(target=_loop_play, daemon=True)
+        self.loop_thread.start()
+
+    def _stop_looper(self):
+        """Stop looper completely."""
+        self.loop_state = "off"
+        self.loop_buffer = []
+        for attr in ("_loop_proc", "_loop_od_proc"):
+            proc = getattr(self, attr, None)
+            if proc:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+
+    # ── SEQUENCER ─────────────────────────────────
+
+    def _toggle_sequencer(self):
+        """Toggle step sequencer on/off."""
+        if self.seq_on:
+            self.seq_on = False
+            print("Sequencer: OFF")
+        else:
+            self.seq_on = True
+            self.seq_pos = 0
+            # Build default pattern from sampler assignments
+            self._build_seq_pattern()
+            print(f"Sequencer: ON ({self.seq_bpm} BPM, {self.seq_steps} steps)")
+            if not self.seq_thread or not self.seq_thread.is_alive():
+                self.seq_thread = threading.Thread(
+                    target=self._seq_loop, daemon=True
+                )
+                self.seq_thread.start()
+
+    def _build_seq_pattern(self):
+        """Auto-fill sequencer pattern from sampler button assignments."""
+        self.seq_pattern = [[] for _ in range(self.seq_steps)]
+        assigned_keys = sorted(self.sampler_map.keys())
+        for step_idx, key in enumerate(assigned_keys):
+            if step_idx < self.seq_steps:
+                self.seq_pattern[step_idx].append(key)
+
+    def _seq_loop(self):
+        """Sequencer playback loop."""
+        while self.seq_on and self.running:
+            step_dur = 60.0 / self.seq_bpm
+            step = self.seq_pattern[self.seq_pos % self.seq_steps]
+            # Play all sounds in this step
+            for key in step:
+                if key in self.sampler_map:
+                    mapping = self.sampler_map[key]
+                    threading.Thread(
+                        target=self._play_sampler_mapping,
+                        args=(key, mapping),
+                        daemon=True,
+                    ).start()
+            self.seq_pos = (self.seq_pos + 1) % self.seq_steps
+            time.sleep(step_dur)
+
+    # ── METRONOME ─────────────────────────────────
+
+    def _toggle_metronome(self):
+        """Toggle metronome click on/off."""
+        if self.metro_on:
+            self.metro_on = False
+            print("Metronome: OFF")
+        else:
+            self.metro_on = True
+            print(f"Metronome: ON ({self.metro_bpm} BPM)")
+            if not self.metro_thread or not self.metro_thread.is_alive():
+                self.metro_thread = threading.Thread(
+                    target=self._metro_loop, daemon=True
+                )
+                self.metro_thread.start()
+
+    def _metro_loop(self):
+        """Metronome click loop."""
+        while self.metro_on and self.running:
+            beat_dur = 60.0 / self.metro_bpm
+            # Generate a short click (high freq, very short)
+            click_samples = generate_tone(
+                1, 1000, volume_db=0, duration=0.02
+            )
+            wav_data = samples_to_wav(click_samples)
+            play_wav_bytes(wav_data)
+            time.sleep(beat_dur)
+
+    # ── MIXDOWN ───────────────────────────────────
+
+    def _do_mixdown(self):
+        """Play all 4 channels simultaneously."""
+        print("Mix: playing all channels...")
+        threads = []
+        for ch in range(4):
+            t = threading.Thread(
+                target=self._play_tone, args=(ch,), daemon=True
+            )
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
+        print("Mix: done")
+
+    # ── EXPORT ────────────────────────────────────
+
+    def _toggle_export(self):
+        """Toggle export recording."""
+        if self.exporting:
+            self._stop_export()
+        else:
+            self._start_export()
+
+    def _start_export(self):
+        """Start recording system audio output to WAV."""
+        timestamp = int(time.time())
+        self.export_path = os.path.join(
+            self.save_dir, f"export_{timestamp}.wav"
+        )
+        try:
+            # Record from default audio monitor (mic captures speaker)
+            self._export_proc = subprocess.Popen(
+                [
+                    "arecord", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
+                    "-c", "1", "-q", self.export_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.exporting = True
+            self.export_start = time.monotonic()
+            print(f"Export: recording to {self.export_path}")
+        except FileNotFoundError:
+            print("Export: arecord not found")
+
+    def _stop_export(self):
+        """Stop export recording."""
+        if hasattr(self, "_export_proc") and self._export_proc:
+            self._export_proc.terminate()
+            try:
+                self._export_proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._export_proc.kill()
+        self.exporting = False
+        duration = time.monotonic() - self.export_start
+        print(f"Export: saved {duration:.1f}s to {self.export_path}")
 
     def save_state(self):
         """Save current DJ state to JSON."""
@@ -1001,9 +1322,54 @@ class DJScratch:
                     set_key(deck, key, (20, 20, 30), "")
                 continue
 
-            # RST button (row 3, col 0) = reset all effects
+            # RST button (row 3, col 0)
             if key == self.key_rst and self.key_rst >= 0:
                 set_key(deck, key, (60, 60, 60), "RST")
+                continue
+
+            # LOOP button
+            if key == self.key_loop and self.key_loop >= 0:
+                colors = {
+                    "off": (40, 40, 40), "rec": (220, 0, 0),
+                    "play": (0, 180, 0), "overdub": (220, 120, 0),
+                }
+                labels = {
+                    "off": "LOOP", "rec": "REC.",
+                    "play": "PLAY", "overdub": "ODUB",
+                }
+                set_key(deck, key, colors.get(self.loop_state, (40, 40, 40)),
+                        labels.get(self.loop_state, "LOOP"))
+                continue
+
+            # SEQ button
+            if key == self.key_seq and self.key_seq >= 0:
+                if self.seq_on:
+                    step = self.seq_pos % self.seq_steps
+                    set_key(deck, key, (0, 120, 120), f"S:{step + 1}")
+                else:
+                    set_key(deck, key, (0, 50, 50), "SEQ")
+                continue
+
+            # MET button (metronome)
+            if key == self.key_met and self.key_met >= 0:
+                if self.metro_on:
+                    set_key(deck, key, (180, 180, 0), f"{self.metro_bpm}")
+                else:
+                    set_key(deck, key, (60, 60, 0), "MET")
+                continue
+
+            # MIX button
+            if key == self.key_mix and self.key_mix >= 0:
+                set_key(deck, key, (80, 0, 120), "MIX")
+                continue
+
+            # EXP button
+            if key == self.key_exp and self.key_exp >= 0:
+                if self.exporting:
+                    dur = time.monotonic() - self.export_start
+                    set_key(deck, key, (220, 0, 0), f"{dur:.0f}s")
+                else:
+                    set_key(deck, key, (0, 60, 40), "EXP")
                 continue
 
             # Waiting for assignment
@@ -1337,6 +1703,11 @@ def main():
         pass
     finally:
         game.running = False
+        game.metro_on = False
+        game.seq_on = False
+        game._stop_looper()
+        if game.exporting:
+            game._stop_export()
         game.save_state()
         for d in all_decks:
             try:
