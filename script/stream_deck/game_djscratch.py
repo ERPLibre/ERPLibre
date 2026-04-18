@@ -31,16 +31,29 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-STYLES = ["Sine", "Square", "Saw", "Noise", "Mic", "Piano", "Guitar", "Drum"]
+STYLES = [
+    "Sine", "Square", "Saw", "Noise", "Mic",      # 0-4: basic
+    "Piano", "Guitar", "Drum",                      # 5-7: existing
+    "Trumpet", "Trombone", "Violin", "Organ",       # 8-11: brass/strings
+    "Flute", "Bass", "Cello", "Harmonica",          # 12-15: more instruments
+]
 STYLE_COLORS = [
-    (0, 200, 255),   # Sine - cyan
-    (255, 100, 0),   # Square - orange
-    (0, 255, 100),   # Saw - green
-    (255, 0, 200),   # Noise - pink
-    (255, 40, 80),   # Mic - red
-    (255, 255, 100),  # Piano - yellow
-    (180, 120, 60),  # Guitar - brown
-    (200, 80, 200),  # Drum - purple
+    (0, 200, 255),    # 0  Sine - cyan
+    (255, 100, 0),    # 1  Square - orange
+    (0, 255, 100),    # 2  Saw - green
+    (255, 0, 200),    # 3  Noise - pink
+    (255, 40, 80),    # 4  Mic - red
+    (255, 255, 100),  # 5  Piano - yellow
+    (180, 120, 60),   # 6  Guitar - brown
+    (200, 80, 200),   # 7  Drum - purple
+    (220, 180, 0),    # 8  Trumpet - gold
+    (180, 140, 0),    # 9  Trombone - dark gold
+    (160, 80, 40),    # 10 Violin - wood
+    (100, 100, 200),  # 11 Organ - blue-grey
+    (200, 220, 255),  # 12 Flute - light blue
+    (80, 40, 120),    # 13 Bass - deep purple
+    (140, 60, 40),    # 14 Cello - dark wood
+    (120, 200, 120),  # 15 Harmonica - mint
 ]
 BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
@@ -76,6 +89,169 @@ MODE_LABELS = {
     "stutter": "STUT",
     "reverse": "REV",
 }
+# Available dial modes per style (index matches STYLES list)
+# Synths: freq + vol only. Mic/samples: all effects. Instruments: freq + vol + echo/reverb.
+STYLE_MODES = {
+    0: ["freq", "vol"],                                    # Sine
+    1: ["freq", "vol"],                                    # Square
+    2: ["freq", "vol"],                                    # Saw
+    3: ["vol"],                                            # Noise (no freq)
+    4: ["vol", "pitch", "ring", "tremolo", "reverb",       # Mic
+        "echo", "bitcrush", "distort", "stutter", "reverse"],
+    5: ["freq", "vol", "reverb", "echo"],                  # Piano
+    6: ["freq", "vol", "reverb", "echo", "distort"],       # Guitar
+    7: ["freq", "vol", "reverb", "echo", "bitcrush"],      # Drum
+    8: ["freq", "vol", "reverb", "echo"],                  # Trumpet
+    9: ["freq", "vol", "reverb", "echo"],                  # Trombone
+    10: ["freq", "vol", "reverb", "echo", "tremolo"],      # Violin
+    11: ["freq", "vol", "reverb", "echo", "tremolo"],      # Organ
+    12: ["freq", "vol", "reverb", "echo"],                 # Flute
+    13: ["freq", "vol", "reverb", "echo", "distort"],      # Bass
+    14: ["freq", "vol", "reverb", "echo", "tremolo"],      # Cello
+    15: ["freq", "vol", "reverb", "echo"],                 # Harmonica
+}
+
+
+def _synth_harmonics(freq, duration, rate, harmonics, vibrato_hz=0, vibrato_depth=0):
+    """Generic additive synthesis with optional vibrato."""
+    n = int(rate * duration)
+    samples = []
+    for i in range(n):
+        t = i / rate
+        # Vibrato modulates frequency
+        f = freq
+        if vibrato_hz > 0:
+            f += vibrato_depth * math.sin(2 * math.pi * vibrato_hz * t)
+        val = 0.0
+        for harm_mult, amp, decay in harmonics:
+            h_freq = f * harm_mult
+            if h_freq > rate / 2:
+                continue
+            env = math.exp(-decay * t) if decay > 0 else 1.0
+            val += amp * env * math.sin(2 * math.pi * h_freq * t)
+        samples.append(val)
+    # Normalize peak to 1.0
+    peak = max(abs(s) for s in samples) if samples else 1.0
+    if peak > 0:
+        samples = [s / peak for s in samples]
+    return samples
+
+
+def _generate_trumpet(freq, duration, rate):
+    """Trumpet: bright, strong odd harmonics, slight vibrato."""
+    return _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 2.0),
+        (2.0, 0.8, 2.5),
+        (3.0, 0.6, 3.0),
+        (4.0, 0.4, 3.5),
+        (5.0, 0.3, 4.0),
+        (6.0, 0.2, 4.5),
+        (7.0, 0.15, 5.0),
+        (8.0, 0.1, 5.5),
+    ], vibrato_hz=5, vibrato_depth=3)
+
+
+def _generate_trombone(freq, duration, rate):
+    """Trombone: warm, strong low harmonics, slower attack."""
+    n = int(rate * duration)
+    raw = _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 1.5),
+        (2.0, 0.7, 2.0),
+        (3.0, 0.5, 2.5),
+        (4.0, 0.3, 3.0),
+        (5.0, 0.15, 3.5),
+        (6.0, 0.08, 4.0),
+    ], vibrato_hz=4, vibrato_depth=2)
+    # Slow attack
+    attack = int(n * 0.08)
+    for i in range(min(attack, len(raw))):
+        raw[i] *= i / attack
+    return raw
+
+
+def _generate_violin(freq, duration, rate):
+    """Violin: rich harmonics with bow vibrato."""
+    return _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 1.0),
+        (2.0, 0.9, 1.2),
+        (3.0, 0.7, 1.5),
+        (4.0, 0.5, 2.0),
+        (5.0, 0.35, 2.5),
+        (6.0, 0.25, 3.0),
+        (7.0, 0.15, 3.5),
+        (8.0, 0.1, 4.0),
+    ], vibrato_hz=6, vibrato_depth=4)
+
+
+def _generate_organ(freq, duration, rate):
+    """Organ: sustained, no decay, classic drawbar harmonics."""
+    return _synth_harmonics(freq, duration, rate, [
+        (0.5, 0.3, 0),   # sub-octave
+        (1.0, 1.0, 0),   # fundamental (no decay)
+        (1.5, 0.5, 0),   # quint
+        (2.0, 0.8, 0),   # 2nd
+        (3.0, 0.4, 0),   # 3rd
+        (4.0, 0.6, 0),   # 4th
+        (5.0, 0.2, 0),   # 5th
+        (6.0, 0.3, 0),   # 6th
+        (8.0, 0.15, 0),  # 8th
+    ])
+
+
+def _generate_flute(freq, duration, rate):
+    """Flute: nearly pure sine with breathy noise and vibrato."""
+    n = int(rate * duration)
+    samples = _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 1.0),
+        (2.0, 0.1, 2.0),
+        (3.0, 0.03, 3.0),
+    ], vibrato_hz=5, vibrato_depth=2)
+    # Add breath noise
+    for i in range(len(samples)):
+        breath = random.uniform(-1, 1) * 0.05 * math.exp(-3.0 * i / n)
+        samples[i] = samples[i] * 0.95 + breath
+    return samples
+
+
+def _generate_bass(freq, duration, rate):
+    """Electric bass: deep fundamental, quick decay upper harmonics."""
+    return _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 2.0),
+        (2.0, 0.5, 4.0),
+        (3.0, 0.25, 6.0),
+        (4.0, 0.1, 8.0),
+    ])
+
+
+def _generate_cello(freq, duration, rate):
+    """Cello: rich warm bowed string, slower vibrato than violin."""
+    return _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 0.8),
+        (2.0, 0.8, 1.0),
+        (3.0, 0.6, 1.5),
+        (4.0, 0.4, 2.0),
+        (5.0, 0.3, 2.5),
+        (6.0, 0.2, 3.0),
+        (7.0, 0.1, 3.5),
+    ], vibrato_hz=5, vibrato_depth=3)
+
+
+def _generate_harmonica(freq, duration, rate):
+    """Harmonica: reedy, strong odd harmonics with tremolo."""
+    n = int(rate * duration)
+    samples = _synth_harmonics(freq, duration, rate, [
+        (1.0, 1.0, 1.5),
+        (2.0, 0.3, 2.0),
+        (3.0, 0.7, 2.5),
+        (4.0, 0.15, 3.0),
+        (5.0, 0.5, 3.5),
+        (7.0, 0.2, 4.0),
+    ])
+    # Built-in tremolo
+    for i in range(len(samples)):
+        t = i / rate
+        samples[i] *= 0.7 + 0.3 * math.sin(2 * math.pi * 7 * t)
+    return samples
 
 
 def _generate_piano(freq, duration, rate):
@@ -165,6 +341,24 @@ def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RAT
         ]
     elif style == 7:  # Drum
         raw = _generate_drum(freq, duration, rate)
+        return [
+            max(-32767, min(32767, int(s * linear_vol * 32767)))
+            for s in raw
+        ]
+
+    # Instruments 8-15
+    generators = {
+        8: _generate_trumpet,
+        9: _generate_trombone,
+        10: _generate_violin,
+        11: _generate_organ,
+        12: _generate_flute,
+        13: _generate_bass,
+        14: _generate_cello,
+        15: _generate_harmonica,
+    }
+    if style in generators:
+        raw = generators[style](freq, duration, rate)
         return [
             max(-32767, min(32767, int(s * linear_vol * 32767)))
             for s in raw
@@ -427,6 +621,11 @@ class DJScratch:
                 self.reverse_on[dial] = 1 - self.reverse_on[dial]
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
+            # Reset dial mode to first available for new style
+            new_style = self.styles[dial]
+            avail = STYLE_MODES.get(new_style, DIAL_MODES)
+            if self.dial_modes[dial] not in avail:
+                self.dial_modes[dial] = avail[0]
 
     def handle_key(self, key, state, deck_index=0):
         if deck_index == 1:
@@ -437,11 +636,16 @@ class DJScratch:
         row = key // self.cols
         last_r = self.rows - 1
 
-        # Top row = cycle mode per channel (independent)
+        # Top row = cycle mode per channel (filtered by style)
         if row == 0 and col < 4 and state:
+            style = self.styles[col]
+            avail = STYLE_MODES.get(style, DIAL_MODES)
             cur = self.dial_modes[col]
-            idx = DIAL_MODES.index(cur)
-            self.dial_modes[col] = DIAL_MODES[(idx + 1) % len(DIAL_MODES)]
+            if cur in avail:
+                idx = avail.index(cur)
+                self.dial_modes[col] = avail[(idx + 1) % len(avail)]
+            else:
+                self.dial_modes[col] = avail[0]
             return
 
         # Bottom row = sound buttons
@@ -1547,11 +1751,17 @@ class DJScratch:
             r = key // self.cols
             c = key % self.cols
 
-            # Top row: mode indicator per channel (independent)
+            # Top row: mode indicator per channel (filtered by style)
             if r == 0 and c < 4:
                 mode = self.dial_modes[c]
+                style = self.styles[c]
+                avail = STYLE_MODES.get(style, DIAL_MODES)
                 color = MODE_COLORS.get(mode, (60, 60, 60))
                 label = MODE_LABELS.get(mode, mode)
+                # Show position in available modes
+                if len(avail) > 1:
+                    pos = avail.index(mode) + 1 if mode in avail else 1
+                    label = f"{label}{pos}/{len(avail)}"
                 set_key(self.deck, key, color, label)
                 continue
 
