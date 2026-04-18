@@ -102,6 +102,20 @@ header p { color: #8b949e; font-size: 1.1em; }
   transition: background 0.2s;
 }
 .play-btn:hover { background: #2ea043; }
+.clear-btn {
+  display: inline-block;
+  background: #6e2d2d;
+  color: #ff7b72;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.8em;
+  cursor: pointer;
+  margin-top: 8px;
+  margin-left: 6px;
+  transition: background 0.2s;
+}
+.clear-btn:hover { background: #8b3a3a; }
 .launch-toast {
   position: fixed;
   bottom: 30px;
@@ -269,7 +283,7 @@ const games = [
   {id:"slots", name:"Slot Machine", cat:"arcade", multi:false, sdp:true, desc:"Spin reels with dials, stop to match symbols!", icon:"slots"},
   {id:"colormixer", name:"Color Mixer", cat:"puzzle", multi:false, sdp:true, desc:"Mix RGB with 3 dials to match target color.", icon:"mixer"},
   {id:"pongplus", name:"Pong+", cat:"arcade", multi:true, sdp:true, desc:"Pong on touchscreen! Dial = paddle. 2P with two SD+.", icon:"pongp"},
-  {id:"djscratch", name:"DJ Scratch", cat:"sim", multi:false, sdp:true, desc:"Scratch vinyl with dials. Waveforms on touchscreen.", icon:"dj"},
+  {id:"djscratch", name:"DJ Scratch", cat:"sim", multi:false, sdp:true, desc:"Scratch vinyl with dials. Waveforms on touchscreen.", icon:"dj", saves:true},
   {id:"fishing", name:"Fishing", cat:"arcade", multi:false, sdp:true, desc:"Cast, wait for bite, reel in! Don't snap the line.", icon:"fish"},
   {id:"piano", name:"Piano", cat:"sim", multi:false, sdp:true, desc:"Play piano keys on bottom row. Dial = octave.", icon:"piano"},
   {id:"thermometer", name:"Thermometer", cat:"puzzle", multi:false, sdp:true, desc:"Guess the secret temperature. Hot/cold bar on screen.", icon:"thermo"},
@@ -360,13 +374,18 @@ games.forEach(g => {
   if (g.multi) tags += '<span class="tag tag-multi">multiplayer</span>';
   if (g.sdp) tags += '<span class="tag tag-sdplus">SD+</span>';
 
+  var clearBtn = '';
+  if (g.saves) {
+    clearBtn = ' <button class="clear-btn" data-game="' + g.id + '" title="Clear saved data">&#128465;</button>';
+  }
+
   card.innerHTML += `
     <div class="card-body">
       <h3>${g.name}</h3>
       <p>${g.desc}</p>
       <div class="tags">${tags}</div>
       <code class="cmd">make streamdeck_${g.id}</code>
-      <br><button class="play-btn" data-game="${g.id}">&#9654; Play</button>
+      <br><button class="play-btn" data-game="${g.id}">&#9654; Play</button>${clearBtn}
     </div>`;
   card.prepend(iconDiv);
   grid.appendChild(card);
@@ -399,6 +418,12 @@ function launchGame(gameId) {
 }
 
 document.addEventListener('click', function(e) {
+  var clearBtn = e.target.closest('.clear-btn');
+  if (clearBtn) {
+    e.stopPropagation();
+    clearGameData(clearBtn.dataset.game);
+    return;
+  }
   var btn = e.target.closest('.play-btn');
   if (btn) {
     e.stopPropagation();
@@ -411,6 +436,31 @@ document.addEventListener('click', function(e) {
     if (playBtn) launchGame(playBtn.dataset.game);
   }
 });
+
+function clearGameData(gameId) {
+  var toast = document.getElementById('toast');
+  toast.textContent = 'Clearing ' + gameId + ' data...';
+  toast.style.display = 'block';
+  toast.style.background = '#d29922';
+
+  fetch('/api/saves/clear-game/' + gameId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        toast.textContent = gameId + ': ' + data.deleted_count + ' files deleted';
+        toast.style.background = '#238636';
+      } else {
+        toast.textContent = data.error || 'Failed';
+        toast.style.background = '#d33';
+      }
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    })
+    .catch(function() {
+      toast.textContent = 'Server not running';
+      toast.style.background = '#d33';
+      setTimeout(function() { toast.style.display = 'none'; }, 3000);
+    });
+}
 
 // Combined filter: category + text search
 var activeFilter = 'all';

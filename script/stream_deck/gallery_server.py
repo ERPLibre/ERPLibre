@@ -68,6 +68,10 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
             filename = self.path.split("/api/saves/delete/")[1].strip("/")
             self._delete_save(filename)
             return
+        if self.path.startswith("/api/saves/clear-game/"):
+            game_id = self.path.split("/api/saves/clear-game/")[1].strip("/")
+            self._clear_game_saves(game_id)
+            return
         if self.path == "/api/saves/clear-all":
             self._clear_all_saves()
             return
@@ -117,6 +121,35 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
             self._json_response({"ok": True, "deleted": filename})
         else:
             self._json_response({"error": "File not found"}, 404)
+
+    def _match_game(self, filename, game_id):
+        """Check if a save file belongs to a game."""
+        patterns = {
+            "djscratch": [
+                "djscratch", "rec_", "sample_", "_mic",
+            ],
+        }
+        pats = patterns.get(game_id, [game_id])
+        for p in pats:
+            if p in filename:
+                return True
+        return False
+
+    def _clear_game_saves(self, game_id):
+        """Delete all save files for a specific game."""
+        save_dir = os.path.join(SCRIPT_DIR, "save")
+        count = 0
+        if os.path.isdir(save_dir):
+            for f in os.listdir(save_dir):
+                if f.startswith("."):
+                    continue
+                if self._match_game(f, game_id):
+                    path = os.path.join(save_dir, f)
+                    if os.path.isfile(path):
+                        os.remove(path)
+                        count += 1
+        print(f"Cleared {count} files for game: {game_id}")
+        self._json_response({"ok": True, "deleted_count": count, "game": game_id})
 
     def _clear_all_saves(self):
         """Delete all save files."""
