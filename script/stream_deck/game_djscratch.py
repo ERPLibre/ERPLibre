@@ -199,30 +199,51 @@ def _generate_trombone(freq, duration, rate):
 
 
 def _generate_violin(freq, duration, rate):
-    """Violin: bowed string with bow pressure variation + rich harmonics."""
+    """Violin: bowed sawtooth with stick-slip, body resonance, vibrato."""
     n = int(rate * duration)
     samples = []
+    # Violin body resonances (Hz, gain) — simulates wood cavity
+    body_res = [(280, 1.4), (460, 1.2), (700, 0.9), (1100, 0.7)]
+    # Pre-compute phase accumulators for smooth frequency modulation
+    phase = 0.0
     for i in range(n):
         t = i / rate
-        env = _adsr(i, n, rate, attack=0.04, decay=0.02, sustain=0.9, release=0.06)
-        # Bow vibrato (delayed, irregular)
-        vib = 4 * math.sin(2 * math.pi * 5.8 * t + 0.3 * math.sin(2 * math.pi * 0.5 * t))
-        vib *= min(1, t / 0.1)
+        # Slow attack envelope (bow draw), long sustain, gentle release
+        env = _adsr(i, n, rate, attack=0.08, decay=0.04, sustain=0.88,
+                     release=0.1)
+        # Vibrato: delayed onset, ~5.5 Hz, slightly irregular
+        vib_depth = 0.006 * freq  # ~1% pitch deviation
+        vib_onset = min(1.0, max(0.0, (t - 0.12) / 0.08))
+        vib = (vib_depth * vib_onset
+               * math.sin(2 * math.pi * 5.5 * t
+                          + 0.4 * math.sin(2 * math.pi * 0.7 * t)))
         f = freq + vib
-        # Bowed string: strong odd and even harmonics
-        val = 0
-        for h in range(1, 12):
+        # Accumulate phase for glitch-free frequency modulation
+        phase += f / rate
+        ph = phase % 1.0
+        # Bowed sawtooth via Fourier (1/h rolloff = stick-slip bow)
+        val = 0.0
+        for h in range(1, 18):
             hf = f * h
-            if hf > rate / 2:
+            if hf > rate * 0.45:
                 break
-            # Odd harmonics slightly stronger (bow characteristic)
-            amp = (0.75 ** h) * (1.1 if h % 2 == 1 else 0.9)
-            # Each harmonic has slightly different attack
-            h_attack = min(1, t / (0.02 + h * 0.005))
-            val += amp * h_attack * math.sin(2 * math.pi * hf * t)
-        # Bow noise (rosin scratch)
-        bow_noise = random.uniform(-1, 1) * 0.02 * env
-        val = (val + bow_noise) * env
+            # 1/h gives sawtooth; slight odd-harmonic boost
+            amp = (1.0 / h) * (1.05 if h % 2 == 1 else 0.95)
+            # Higher harmonics arrive slightly later (bow bite)
+            h_onset = min(1.0, t / (0.01 + h * 0.008))
+            val += amp * h_onset * math.sin(2 * math.pi * h * phase)
+        # Bow stick-slip noise (rosin scratch, stronger during attack)
+        scratch_amt = 0.04 * max(0.3, 1.0 - t / 0.15)
+        val += random.uniform(-1, 1) * scratch_amt
+        # Bow pressure flutter (low-freq amplitude modulation)
+        flutter = 1.0 + 0.03 * math.sin(2 * math.pi * 3.2 * t)
+        val *= flutter
+        # Body resonance: boost frequencies near violin cavity modes
+        for res_f, res_g in body_res:
+            # Simple resonance approximation via modulated gain
+            proximity = 1.0 / (1.0 + ((freq - res_f) / 120.0) ** 2)
+            val *= 1.0 + (res_g - 1.0) * proximity * 0.3
+        val *= env
         samples.append(val)
     peak = max(abs(s) for s in samples) or 1
     return [s / peak for s in samples]
