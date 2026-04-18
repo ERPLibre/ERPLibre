@@ -39,13 +39,22 @@ BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
 DURATION = 0.3
 VOLUME = 0.5
-DIAL_MODES = ["freq", "vol", "pitch", "ring", "tremolo"]
+DIAL_MODES = [
+    "freq", "vol", "pitch", "ring", "tremolo",
+    "reverb", "echo", "bitcrush", "distort", "stutter", "reverse",
+]
 MODE_COLORS = {
     "freq": (0, 60, 120),
     "vol": (120, 60, 0),
     "pitch": (0, 120, 60),
     "ring": (120, 0, 120),
     "tremolo": (60, 120, 0),
+    "reverb": (60, 60, 120),
+    "echo": (0, 100, 100),
+    "bitcrush": (100, 50, 0),
+    "distort": (120, 20, 20),
+    "stutter": (80, 0, 80),
+    "reverse": (40, 80, 40),
 }
 MODE_LABELS = {
     "freq": "FREQ",
@@ -53,6 +62,12 @@ MODE_LABELS = {
     "pitch": "PTCH",
     "ring": "RING",
     "tremolo": "TREM",
+    "reverb": "VERB",
+    "echo": "ECHO",
+    "bitcrush": "CRSH",
+    "distort": "DIST",
+    "stutter": "STUT",
+    "reverse": "REV",
 }
 
 
@@ -174,6 +189,12 @@ class DJScratch:
         self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]  # pitch multiplier
         self.ring_freqs = [0.0, 0.0, 0.0, 0.0]  # ring mod Hz (0=off)
         self.tremolo_rates = [0.0, 0.0, 0.0, 0.0]  # tremolo Hz (0=off)
+        self.reverb_amt = [0.0, 0.0, 0.0, 0.0]  # 0-100 (0=off)
+        self.echo_delay = [0.0, 0.0, 0.0, 0.0]  # ms (0=off)
+        self.bitcrush_bits = [16.0, 16.0, 16.0, 16.0]  # bits (16=off, lower=more crush)
+        self.distort_amt = [0.0, 0.0, 0.0, 0.0]  # 0-100 (0=off)
+        self.stutter_rate = [0.0, 0.0, 0.0, 0.0]  # Hz (0=off)
+        self.reverse_on = [0, 0, 0, 0]  # 0=off, 1=on
         # Per-channel dial mode (independent)
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         self.playing = [False] * 4
@@ -246,6 +267,28 @@ class DJScratch:
                 self.tremolo_rates[dial] = max(
                     0, min(50, self.tremolo_rates[dial] + value)
                 )
+            elif mode == "reverb":
+                self.reverb_amt[dial] = max(
+                    0, min(100, self.reverb_amt[dial] + value * 5)
+                )
+            elif mode == "echo":
+                self.echo_delay[dial] = max(
+                    0, min(500, self.echo_delay[dial] + value * 10)
+                )
+            elif mode == "bitcrush":
+                self.bitcrush_bits[dial] = max(
+                    1, min(16, self.bitcrush_bits[dial] + value)
+                )
+            elif mode == "distort":
+                self.distort_amt[dial] = max(
+                    0, min(100, self.distort_amt[dial] + value * 5)
+                )
+            elif mode == "stutter":
+                self.stutter_rate[dial] = max(
+                    0, min(30, self.stutter_rate[dial] + value)
+                )
+            elif mode == "reverse":
+                self.reverse_on[dial] = 1 - self.reverse_on[dial]
         elif event == DialEventType.PUSH and value:
             self.styles[dial] = (self.styles[dial] + 1) % len(STYLES)
 
@@ -303,6 +346,12 @@ class DJScratch:
             "pitch": self.pitch_ratios[channel],
             "ring": self.ring_freqs[channel],
             "tremolo": self.tremolo_rates[channel],
+            "reverb": self.reverb_amt[channel],
+            "echo": self.echo_delay[channel],
+            "bitcrush": self.bitcrush_bits[channel],
+            "distort": self.distort_amt[channel],
+            "stutter": self.stutter_rate[channel],
+            "reverse": self.reverse_on[channel],
             "mode": self.dial_modes[channel],
         }
 
@@ -419,15 +468,28 @@ class DJScratch:
         return self._apply_effects_chain(samples, params)
 
     def _apply_effects_chain(self, samples, params):
-        """Apply ALL effects in chain: pitch → ring → tremolo → volume."""
+        """Apply ALL effects in chain."""
         n = len(samples)
+        if n == 0:
+            return samples
+
         vol_db = params.get("vol_db", 0.0)
         pitch = params.get("pitch", 1.0)
         ring_freq = params.get("ring", 0)
         trem_rate = params.get("tremolo", 0)
+        reverb = params.get("reverb", 0)
+        echo_ms = params.get("echo", 0)
+        crush_bits = params.get("bitcrush", 16)
+        distort = params.get("distort", 0)
+        stutter_hz = params.get("stutter", 0)
+        do_reverse = params.get("reverse", 0)
         linear_vol = min(32.0, 10 ** (vol_db / 20.0))
 
-        # 1. Pitch shift (resample)
+        # 1. Reverse
+        if do_reverse:
+            samples = samples[::-1]
+
+        # 2. Pitch shift (resample)
         if abs(pitch - 1.0) > 0.05:
             ratio = max(0.25, min(4.0, pitch))
             new_len = int(n / ratio)
@@ -443,24 +505,77 @@ class DJScratch:
             while len(pitched) < n:
                 pitched.append(0)
             samples = pitched[:n]
+            n = len(samples)
 
+        # 3. Stutter (loop micro-segments)
+        if stutter_hz > 0:
+            chunk = max(1, int(SAMPLE_RATE / stutter_hz))
+            stuttered = []
+            i = 0
+            while len(stuttered) < n:
+                seg = samples[i:i + chunk]
+                if not seg:
+                    break
+                # Repeat the chunk to fill
+                stuttered.extend(seg)
+                i += chunk
+            samples = stuttered[:n]
+
+        # 4. Per-sample effects
         result = []
-        for i in range(len(samples)):
+        for i in range(n):
             val = float(samples[i])
             t = i / SAMPLE_RATE
 
-            # 2. Ring modulation
+            # Ring modulation
             if ring_freq > 0:
                 val *= math.sin(2 * math.pi * ring_freq * t)
 
-            # 3. Tremolo
+            # Tremolo
             if trem_rate > 0:
                 val *= 0.5 + 0.5 * math.sin(2 * math.pi * trem_rate * t)
 
-            # 4. Volume
-            val *= linear_vol
+            # Distortion (tanh soft clip)
+            if distort > 0:
+                gain = 1.0 + distort * 0.5
+                val = math.tanh(val * gain / 32767.0) * 32767.0
 
+            # Bitcrush (reduce bit depth)
+            if crush_bits < 16:
+                levels = max(2, 2 ** int(crush_bits))
+                step = 65535.0 / levels
+                val = int(val / step) * step
+
+            # Volume
+            val *= linear_vol
             result.append(int(val))
+
+        # 5. Echo (mix delayed copy)
+        if echo_ms > 0:
+            delay_samples = int(echo_ms * SAMPLE_RATE / 1000)
+            if delay_samples > 0 and delay_samples < n:
+                decay = 0.5
+                for reps in range(3):
+                    offset = delay_samples * (reps + 1)
+                    atten = decay ** (reps + 1)
+                    for i in range(n):
+                        src = i - offset
+                        if 0 <= src < n:
+                            result[i] += int(result[src] * atten)
+
+        # 6. Reverb (simple comb filter)
+        if reverb > 0:
+            mix = reverb / 100.0
+            delays = [int(d * SAMPLE_RATE / 1000) for d in [23, 37, 53, 71]]
+            rev = [0.0] * n
+            for d in delays:
+                if d >= n:
+                    continue
+                decay = 0.3 * mix
+                for i in range(d, n):
+                    rev[i] += result[i - d] * decay
+            for i in range(n):
+                result[i] = int(result[i] * (1 - mix * 0.5) + rev[i])
 
         return [max(-32767, min(32767, s)) for s in result]
 
@@ -557,8 +672,14 @@ class DJScratch:
         self.freqs = list(BASE_FREQS)
         self.volumes_db = [0.0, 0.0, 0.0, 0.0]
         self.pitch_ratios = [1.0, 1.0, 1.0, 1.0]
-        self.ring_freqs = [200.0, 200.0, 200.0, 200.0]
-        self.tremolo_rates = [5.0, 5.0, 5.0, 5.0]
+        self.ring_freqs = [0.0, 0.0, 0.0, 0.0]
+        self.tremolo_rates = [0.0, 0.0, 0.0, 0.0]
+        self.reverb_amt = [0.0, 0.0, 0.0, 0.0]
+        self.echo_delay = [0.0, 0.0, 0.0, 0.0]
+        self.bitcrush_bits = [16.0, 16.0, 16.0, 16.0]
+        self.distort_amt = [0.0, 0.0, 0.0, 0.0]
+        self.stutter_rate = [0.0, 0.0, 0.0, 0.0]
+        self.reverse_on = [0, 0, 0, 0]
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         print("All effects reset to defaults")
 
@@ -571,6 +692,12 @@ class DJScratch:
             "pitch_ratios": self.pitch_ratios,
             "ring_freqs": self.ring_freqs,
             "tremolo_rates": self.tremolo_rates,
+            "reverb_amt": self.reverb_amt,
+            "echo_delay": self.echo_delay,
+            "bitcrush_bits": self.bitcrush_bits,
+            "distort_amt": self.distort_amt,
+            "stutter_rate": self.stutter_rate,
+            "reverse_on": self.reverse_on,
             "dial_modes": self.dial_modes,
             "channel_samples": self.channel_samples,
             "sampler_map": {},
@@ -603,6 +730,12 @@ class DJScratch:
             self.pitch_ratios = state.get("pitch_ratios", self.pitch_ratios)
             self.ring_freqs = state.get("ring_freqs", self.ring_freqs)
             self.tremolo_rates = state.get("tremolo_rates", self.tremolo_rates)
+            self.reverb_amt = state.get("reverb_amt", self.reverb_amt)
+            self.echo_delay = state.get("echo_delay", self.echo_delay)
+            self.bitcrush_bits = state.get("bitcrush_bits", self.bitcrush_bits)
+            self.distort_amt = state.get("distort_amt", self.distort_amt)
+            self.stutter_rate = state.get("stutter_rate", self.stutter_rate)
+            self.reverse_on = state.get("reverse_on", self.reverse_on)
             self.dial_modes = state.get("dial_modes", self.dial_modes)
             self.channel_samples = {
                 int(k): v
@@ -991,6 +1124,23 @@ class DJScratch:
                     line2 = f"R:{ring_f}Hz" if ring_f > 0 else "OFF"
                 elif mode == "tremolo":
                     line2 = f"T:{trem_r}Hz" if trem_r > 0 else "OFF"
+                elif mode == "reverb":
+                    rv = int(self.reverb_amt[c])
+                    line2 = f"RV:{rv}%" if rv > 0 else "OFF"
+                elif mode == "echo":
+                    ec = int(self.echo_delay[c])
+                    line2 = f"EC:{ec}ms" if ec > 0 else "OFF"
+                elif mode == "bitcrush":
+                    bc = int(self.bitcrush_bits[c])
+                    line2 = f"CR:{bc}bit" if bc < 16 else "OFF"
+                elif mode == "distort":
+                    dt = int(self.distort_amt[c])
+                    line2 = f"DT:{dt}%" if dt > 0 else "OFF"
+                elif mode == "stutter":
+                    st = int(self.stutter_rate[c])
+                    line2 = f"ST:{st}Hz" if st > 0 else "OFF"
+                elif mode == "reverse":
+                    line2 = "ON" if self.reverse_on[c] else "OFF"
                 else:
                     line2 = f"{freq_hz}Hz"
 
@@ -1004,6 +1154,18 @@ class DJScratch:
                     fx_parts.append(f"R{ring_f}")
                 if trem_r > 0:
                     fx_parts.append(f"T{trem_r}")
+                if self.reverb_amt[c] > 0:
+                    fx_parts.append("RV")
+                if self.echo_delay[c] > 0:
+                    fx_parts.append("EC")
+                if self.bitcrush_bits[c] < 16:
+                    fx_parts.append("CR")
+                if self.distort_amt[c] > 0:
+                    fx_parts.append("DT")
+                if self.stutter_rate[c] > 0:
+                    fx_parts.append("ST")
+                if self.reverse_on[c]:
+                    fx_parts.append("RV")
                 fx_summary = " ".join(fx_parts)
 
                 if fx_summary:
