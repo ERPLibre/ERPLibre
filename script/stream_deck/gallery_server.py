@@ -61,16 +61,82 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         if self.path == "/stop":
             self._stop_game()
             return
+        if self.path == "/api/saves":
+            self._list_saves()
+            return
+        if self.path.startswith("/api/saves/delete/"):
+            filename = self.path.split("/api/saves/delete/")[1].strip("/")
+            self._delete_save(filename)
+            return
+        if self.path == "/api/saves/clear-all":
+            self._clear_all_saves()
+            return
         super().do_GET()
+
+    def _json_response(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def _list_saves(self):
+        """List all saved files in save/ directory."""
+        save_dir = os.path.join(SCRIPT_DIR, "save")
+        files = []
+        if os.path.isdir(save_dir):
+            for f in sorted(os.listdir(save_dir)):
+                if f.startswith("."):
+                    continue
+                path = os.path.join(save_dir, f)
+                size = os.path.getsize(path)
+                mtime = os.path.getmtime(path)
+                ftype = "json" if f.endswith(".json") else "wav" if f.endswith(".wav") else "other"
+                game = "djscratch" if "djscratch" in f or f.startswith("rec_") or f.startswith("sample_") or f.startswith("_mic") else "unknown"
+                files.append({
+                    "name": f,
+                    "size": size,
+                    "mtime": mtime,
+                    "type": ftype,
+                    "game": game,
+                })
+        total_size = sum(f["size"] for f in files)
+        self._json_response({
+            "files": files,
+            "count": len(files),
+            "total_size": total_size,
+        })
+
+    def _delete_save(self, filename):
+        """Delete a specific save file."""
+        save_dir = os.path.join(SCRIPT_DIR, "save")
+        path = os.path.join(save_dir, os.path.basename(filename))
+        if os.path.isfile(path) and not filename.startswith("."):
+            os.remove(path)
+            print(f"Deleted: {path}")
+            self._json_response({"ok": True, "deleted": filename})
+        else:
+            self._json_response({"error": "File not found"}, 404)
+
+    def _clear_all_saves(self):
+        """Delete all save files."""
+        save_dir = os.path.join(SCRIPT_DIR, "save")
+        count = 0
+        if os.path.isdir(save_dir):
+            for f in os.listdir(save_dir):
+                if f.startswith("."):
+                    continue
+                path = os.path.join(save_dir, f)
+                if os.path.isfile(path):
+                    os.remove(path)
+                    count += 1
+        print(f"Cleared {count} save files")
+        self._json_response({"ok": True, "deleted_count": count})
 
     def _stop_game(self):
         """Stop the current game."""
         _kill_current_game()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps({"ok": True}).encode())
+        self._json_response({"ok": True})
 
     def _launch_game(self, game_id):
         global _current_game_proc

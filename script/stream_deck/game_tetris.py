@@ -213,23 +213,52 @@ class Tetris:
             self.piece_pos = (self.piece_pos[0] - 1, self.piece_pos[1])
         self._freeze()
 
+    def _resize_grid(self, delta):
+        """Expand or shrink grid height. +1 = taller, -1 = shorter."""
+        new_rows = self.rows + delta
+        if new_rows < 4 or (self.use_screen and new_rows > self.sh // CELL_SIZE):
+            return
+        if not self.use_screen and new_rows > 20:
+            return
+
+        # Remove blocks that fall outside new bounds
+        if delta < 0:
+            self.grid = {
+                (gx, gy): c for (gx, gy), c in self.grid.items()
+                if gy < new_rows
+            }
+
+        old_rows = self.rows
+        self.rows = new_rows
+
+        # Adjust piece position if out of bounds
+        if self.piece:
+            max_dy = max(dy for _, dy in self.piece)
+            if self.piece_pos[1] + max_dy >= self.rows:
+                self.piece_pos = (self.piece_pos[0], self.rows - 1 - max_dy)
+
     def handle_key(self, key):
         if self.game_over or not self.game_active:
             self.reset()
             return
 
         if self.use_screen:
-            # Buttons: top-left=rotate, top-right=drop, bottom=up/down
             row = key // self.btn_cols
             col = key % self.btn_cols
+            mid_c = self.btn_cols // 2
+            last_r = self.btn_rows - 1
             if row == 0 and col == 0:
                 self._rotate()
             elif row == 0 and col == self.btn_cols - 1:
                 self.hard_drop()
-            elif col < self.btn_cols // 2:
+            elif row == last_r and col == 0:
                 self.move_up()
-            else:
+            elif row == last_r and col == self.btn_cols - 1:
                 self.move_down()
+            elif row == last_r and col == 1:
+                self._resize_grid(1)
+            elif row == last_r and col == mid_c:
+                self._resize_grid(-1)
         else:
             row = key // self.btn_cols
             if row == 0:
@@ -297,10 +326,14 @@ class Tetris:
                         set_key(self.deck, key, (200, 100, 0), "DROP")
                     elif r == 0 and c == mid_c:
                         set_key(self.deck, key, COLOR_SCORE, str(self.score))
-                    elif r == last_r and c < mid_c:
+                    elif r == last_r and c == 0:
                         set_key(self.deck, key, (0, 80, 120), "UP")
-                    elif r == last_r and c >= mid_c:
+                    elif r == last_r and c == self.btn_cols - 1:
                         set_key(self.deck, key, (0, 120, 80), "DOWN")
+                    elif r == last_r and c == 1:
+                        set_key(self.deck, key, (0, 60, 80), "H+")
+                    elif r == last_r and c == mid_c:
+                        set_key(self.deck, key, (80, 60, 0), "H-")
                     else:
                         pc = PIECE_COLORS.get(self.piece_type, (100, 100, 100))
                         set_key(self.deck, key, (pc[0] // 4, pc[1] // 4, pc[2] // 4), "")

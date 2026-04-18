@@ -10,6 +10,7 @@ play tones matching the waveform. Press button 0-3 to hear the sound!
 """
 
 import io
+import json
 import math
 import os
 import random
@@ -561,6 +562,67 @@ class DJScratch:
         self.dial_modes = ["freq", "freq", "freq", "freq"]
         print("All effects reset to defaults")
 
+    def save_state(self):
+        """Save current DJ state to JSON."""
+        state = {
+            "styles": self.styles,
+            "freqs": self.freqs,
+            "volumes_db": self.volumes_db,
+            "pitch_ratios": self.pitch_ratios,
+            "ring_freqs": self.ring_freqs,
+            "tremolo_rates": self.tremolo_rates,
+            "dial_modes": self.dial_modes,
+            "channel_samples": self.channel_samples,
+            "sampler_map": {},
+        }
+        # Serialize sampler_map (tuples to lists)
+        for k, v in self.sampler_map.items():
+            if v[0] == "wav":
+                state["sampler_map"][str(k)] = list(v)
+            else:
+                state["sampler_map"][str(k)] = list(v)
+        save_path = os.path.join(self.save_dir, "djscratch_state.json")
+        try:
+            with open(save_path, "w") as f:
+                json.dump(state, f, indent=2, default=str)
+            print(f"State saved to {save_path}")
+        except Exception as e:
+            print(f"Save failed: {e}")
+
+    def load_state(self):
+        """Load DJ state from JSON if exists."""
+        save_path = os.path.join(self.save_dir, "djscratch_state.json")
+        if not os.path.isfile(save_path):
+            return False
+        try:
+            with open(save_path) as f:
+                state = json.load(f)
+            self.styles = state.get("styles", self.styles)
+            self.freqs = state.get("freqs", self.freqs)
+            self.volumes_db = state.get("volumes_db", self.volumes_db)
+            self.pitch_ratios = state.get("pitch_ratios", self.pitch_ratios)
+            self.ring_freqs = state.get("ring_freqs", self.ring_freqs)
+            self.tremolo_rates = state.get("tremolo_rates", self.tremolo_rates)
+            self.dial_modes = state.get("dial_modes", self.dial_modes)
+            self.channel_samples = {
+                int(k): v
+                for k, v in state.get("channel_samples", {}).items()
+            }
+            # Restore sampler map
+            self.sampler_map = {}
+            for k, v in state.get("sampler_map", {}).items():
+                if v and v[0] == "wav":
+                    # Check WAV file still exists
+                    if len(v) > 1 and os.path.isfile(v[1]):
+                        self.sampler_map[int(k)] = tuple(v)
+                elif v:
+                    self.sampler_map[int(k)] = tuple(v)
+            print(f"State loaded from {save_path}")
+            return True
+        except Exception as e:
+            print(f"Load failed: {e}")
+            return False
+
     def _find_mic_channel(self):
         """Find which channel is set to Mic style, or -1."""
         for i in range(4):
@@ -599,9 +661,10 @@ class DJScratch:
             )
             self.mic_recording = True
             self.mic_start_time = time.monotonic()
+            vol = self.mic_rec_params.get("vol_db", 0)
             print(
                 f"MIC recording started: {self.mic_wav_path} "
-                f"(vol={self.mic_rec_volume_db:+.0f}dB)"
+                f"(vol={vol:+.0f}dB)"
             )
         except FileNotFoundError:
             print("arecord not found - cannot record from mic")
@@ -1078,6 +1141,8 @@ def main():
         print("  Play mode: press assigned button to play sound")
 
     game = DJScratch(main_deck, sampler_deck=sampler_deck)
+    if game.load_state():
+        print("Previous session restored!")
     game.render()
     if sampler_deck:
         game._render_sampler()
@@ -1110,6 +1175,7 @@ def main():
         pass
     finally:
         game.running = False
+        game.save_state()
         for d in all_decks:
             try:
                 with d:

@@ -180,7 +180,7 @@ footer a { color: #58a6ff; text-decoration: none; }
   <h1>ERPLibre Stream Deck Games</h1>
   <p>45 games for Elgato Stream Deck &mdash; arcade, puzzle, strategy & more</p>
   <div class="stats">
-    <div class="stat"><strong>45</strong> games</div>
+    <div class="stat"><strong id="count">45</strong> games</div>
     <div class="stat"><strong>15</strong> multiplayer</div>
     <div class="stat"><strong>11</strong> SD+ touchscreen</div>
     <div class="stat"><strong>3</strong> racing</div>
@@ -188,6 +188,11 @@ footer a { color: #58a6ff; text-decoration: none; }
 </header>
 
 <div class="filters">
+  <input type="text" id="search" placeholder="Search games..." style="
+    background:#161b22; border:1px solid #30363d; color:#e0e0e0;
+    padding:8px 16px; border-radius:20px; font-size:0.9em; width:220px;
+    outline:none; margin-right:10px;
+  ">
   <button class="filter-btn active" data-filter="all">All</button>
   <button class="filter-btn" data-filter="arcade">Arcade</button>
   <button class="filter-btn" data-filter="puzzle">Puzzle</button>
@@ -204,8 +209,21 @@ footer a { color: #58a6ff; text-decoration: none; }
 <div class="grid" id="games"></div>
 <div class="launch-toast" id="toast"></div>
 
+<div id="saves-panel" style="display:none; max-width:800px; margin:20px auto; padding:0 30px;">
+  <h2 style="color:#f0f6fc; margin-bottom:15px;">
+    Saved Data
+    <button onclick="loadSaves()" style="background:#1f6feb;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8em;margin-left:10px;">Refresh</button>
+    <button onclick="clearAllSaves()" style="background:#d33;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.8em;margin-left:5px;">Clear All</button>
+  </h2>
+  <div id="saves-info" style="color:#8b949e;margin-bottom:10px;"></div>
+  <div id="saves-list"></div>
+</div>
+
 <footer>
-  <p>AGPL-3.0 &mdash; <a href="http://www.technolibre.ca">TechnoLibre</a> &mdash; <a href="https://github.com/ERPLibre/erplibre">ERPLibre</a></p>
+  <p>
+    <a href="#" onclick="toggleSaves(); return false;" style="color:#58a6ff;text-decoration:none;">Manage Saved Data</a>
+    &mdash; AGPL-3.0 &mdash; <a href="http://www.technolibre.ca">TechnoLibre</a> &mdash; <a href="https://github.com/ERPLibre/erplibre">ERPLibre</a>
+  </p>
 </footer>
 
 <script>
@@ -255,7 +273,7 @@ const games = [
   {id:"fishing", name:"Fishing", cat:"arcade", multi:false, sdp:true, desc:"Cast, wait for bite, reel in! Don't snap the line.", icon:"fish"},
   {id:"piano", name:"Piano", cat:"sim", multi:false, sdp:true, desc:"Play piano keys on bottom row. Dial = octave.", icon:"piano"},
   {id:"thermometer", name:"Thermometer", cat:"puzzle", multi:false, sdp:true, desc:"Guess the secret temperature. Hot/cold bar on screen.", icon:"thermo"},
-];
+].sort(function(a, b) { return a.name.localeCompare(b.name); });
 
 const catColors = {
   arcade:"#3fb950", puzzle:"#58a6ff", strategy:"#d29922", reflex:"#f778ba",
@@ -327,6 +345,8 @@ games.forEach(g => {
   card.dataset.cat = g.cat;
   card.dataset.multi = g.multi;
   card.dataset.sdp = g.sdp;
+  card.dataset.name = g.name.toLowerCase();
+  card.dataset.desc = g.desc.toLowerCase();
 
   const iconDiv = document.createElement('div');
   iconDiv.className = 'card-icon';
@@ -392,19 +412,157 @@ document.addEventListener('click', function(e) {
   }
 });
 
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+// Combined filter: category + text search
+var activeFilter = 'all';
+var searchText = '';
+
+function applyFilters() {
+  document.querySelectorAll('.card').forEach(function(card) {
+    var matchCat = true;
+    var matchSearch = true;
+
+    // Category filter
+    if (activeFilter === 'multi') matchCat = card.dataset.multi === 'true';
+    else if (activeFilter === 'sdplus') matchCat = card.dataset.sdp === 'true';
+    else if (activeFilter !== 'all') matchCat = card.dataset.cat === activeFilter;
+
+    // Text search
+    if (searchText) {
+      var name = (card.dataset.name || '').toLowerCase();
+      var desc = (card.dataset.desc || '').toLowerCase();
+      var cat = (card.dataset.cat || '').toLowerCase();
+      matchSearch = name.indexOf(searchText) >= 0
+        || desc.indexOf(searchText) >= 0
+        || cat.indexOf(searchText) >= 0;
+    }
+
+    card.style.display = (matchCat && matchSearch) ? '' : 'none';
+  });
+
+  // Update count
+  var visible = document.querySelectorAll('.card:not([style*="display: none"])').length;
+  var counter = document.getElementById('count');
+  if (counter) counter.textContent = visible;
+}
+
+document.querySelectorAll('.filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
     btn.classList.add('active');
-    const f = btn.dataset.filter;
-    document.querySelectorAll('.card').forEach(card => {
-      if (f === 'all') card.style.display = '';
-      else if (f === 'multi') card.style.display = card.dataset.multi === 'true' ? '' : 'none';
-      else if (f === 'sdplus') card.style.display = card.dataset.sdp === 'true' ? '' : 'none';
-      else card.style.display = card.dataset.cat === f ? '' : 'none';
-    });
+    activeFilter = btn.dataset.filter;
+    applyFilters();
   });
 });
+
+document.getElementById('search').addEventListener('input', function(e) {
+  searchText = e.target.value.toLowerCase().trim();
+  applyFilters();
+});
+
+// Saves management
+function toggleSaves() {
+  var panel = document.getElementById('saves-panel');
+  if (panel.style.display === 'none') {
+    panel.style.display = 'block';
+    loadSaves();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function loadSaves() {
+  fetch('/api/saves')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var info = document.getElementById('saves-info');
+      info.textContent = data.count + ' files, ' + formatSize(data.total_size) + ' total';
+
+      var list = document.getElementById('saves-list');
+      list.textContent = '';
+
+      var games = {};
+      data.files.forEach(function(f) {
+        if (!games[f.game]) games[f.game] = [];
+        games[f.game].push(f);
+      });
+
+      Object.keys(games).sort().forEach(function(game) {
+        var section = document.createElement('div');
+        section.style.cssText = 'margin-bottom:15px;';
+
+        var header = document.createElement('div');
+        header.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:8px;';
+        var title = document.createElement('strong');
+        title.style.color = '#f0f6fc';
+        title.textContent = game;
+        header.appendChild(title);
+
+        var clearBtn = document.createElement('button');
+        clearBtn.textContent = 'Clear ' + game;
+        clearBtn.style.cssText = 'background:#6e3;color:#000;border:none;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75em;';
+        clearBtn.onclick = function() { clearGameSaves(game, games[game]); };
+        header.appendChild(clearBtn);
+        section.appendChild(header);
+
+        games[game].forEach(function(f) {
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid #21262d;font-size:0.85em;';
+
+          var typeColor = f.type === 'json' ? '#58a6ff' : f.type === 'wav' ? '#f778ba' : '#8b949e';
+          var badge = document.createElement('span');
+          badge.textContent = f.type;
+          badge.style.cssText = 'background:' + typeColor + '22;color:' + typeColor + ';padding:1px 6px;border-radius:3px;font-size:0.8em;';
+          row.appendChild(badge);
+
+          var name = document.createElement('span');
+          name.textContent = f.name;
+          name.style.cssText = 'color:#e0e0e0;flex:1;font-family:monospace;';
+          row.appendChild(name);
+
+          var size = document.createElement('span');
+          size.textContent = formatSize(f.size);
+          size.style.color = '#8b949e';
+          row.appendChild(size);
+
+          var del = document.createElement('button');
+          del.textContent = 'X';
+          del.style.cssText = 'background:#d33;color:white;border:none;padding:1px 6px;border-radius:3px;cursor:pointer;font-size:0.8em;';
+          del.onclick = function() { deleteSave(f.name); };
+          row.appendChild(del);
+
+          section.appendChild(row);
+        });
+        list.appendChild(section);
+      });
+    })
+    .catch(function() {
+      document.getElementById('saves-info').textContent = 'Server not running';
+    });
+}
+
+function deleteSave(filename) {
+  fetch('/api/saves/delete/' + filename)
+    .then(function() { loadSaves(); });
+}
+
+function clearGameSaves(game, files) {
+  var promises = files.map(function(f) {
+    return fetch('/api/saves/delete/' + f.name);
+  });
+  Promise.all(promises).then(function() { loadSaves(); });
+}
+
+function clearAllSaves() {
+  if (!confirm('Delete ALL saved data? This cannot be undone.')) return;
+  fetch('/api/saves/clear-all')
+    .then(function() { loadSaves(); });
+}
 </script>
 </body>
 </html>

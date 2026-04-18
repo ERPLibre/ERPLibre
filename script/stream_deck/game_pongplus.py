@@ -96,6 +96,7 @@ class PongPlus:
         self.p2_score = 0
         self.game_active = False
         self.game_over = False
+        self.ball_speed = 3  # base speed (1-8)
 
     def reset(self):
         self.p1_y = self.screen_h // 2
@@ -109,8 +110,9 @@ class PongPlus:
     def _reset_ball(self):
         self.ball_x = self.screen_w // 2
         self.ball_y = self.screen_h // 2
-        self.ball_dx = random.choice([-3, 3])
-        self.ball_dy = random.choice([-2, 2])
+        s = self.ball_speed
+        self.ball_dx = random.choice([-s, s])
+        self.ball_dy = random.choice([-(s - 1) or -1, (s - 1) or 1])
 
     def handle_dial(self, dial, event, value, deck_index=0):
         if not self.game_active or self.game_over:
@@ -230,6 +232,12 @@ class PongPlus:
                 else:
                     if (c, r) == (mid_c, 0):
                         set_key(deck, key, (40, 40, 80), f"{self.p1_score}-{self.p2_score}")
+                    elif (c, r) == (0, 0):
+                        set_key(deck, key, (0, 100, 0), "SPD+")
+                    elif (c, r) == (self.cols - 1, last_r):
+                        set_key(deck, key, (100, 0, 0), "SPD-")
+                    elif (c, r) == (self.cols - 1, 0):
+                        set_key(deck, key, (40, 40, 80), f"x{self.ball_speed}")
                     else:
                         set_key(deck, key, (20, 20, 30), "")
 
@@ -340,10 +348,28 @@ def main():
 
         def make_key_cb(idx):
             def cb(d, key, state):
-                if state:
-                    with game.lock:
-                        if game.game_over or not game.game_active:
-                            game.reset()
+                if not state:
+                    return
+                with game.lock:
+                    if game.game_over or not game.game_active:
+                        game.reset()
+                        return
+                    row = key // game.cols
+                    col = key % game.cols
+                    last_r = game.rows - 1
+                    # SPD+ (top-left)
+                    if col == 0 and row == 0:
+                        game.ball_speed = min(8, game.ball_speed + 1)
+                        # Scale current ball velocity
+                        if game.ball_dx != 0:
+                            sign_x = 1 if game.ball_dx > 0 else -1
+                            game.ball_dx = sign_x * game.ball_speed
+                    # SPD- (bottom-right)
+                    elif col == game.cols - 1 and row == last_r:
+                        game.ball_speed = max(1, game.ball_speed - 1)
+                        if game.ball_dx != 0:
+                            sign_x = 1 if game.ball_dx > 0 else -1
+                            game.ball_dx = sign_x * game.ball_speed
             return cb
 
         deck.set_dial_callback(make_dial_cb(i))
