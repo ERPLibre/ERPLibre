@@ -31,9 +31,16 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-STYLES = ["Sine", "Square", "Saw", "Noise", "Mic"]
+STYLES = ["Sine", "Square", "Saw", "Noise", "Mic", "Piano", "Guitar", "Drum"]
 STYLE_COLORS = [
-    (0, 200, 255), (255, 100, 0), (0, 255, 100), (255, 0, 200), (255, 40, 80),
+    (0, 200, 255),   # Sine - cyan
+    (255, 100, 0),   # Square - orange
+    (0, 255, 100),   # Saw - green
+    (255, 0, 200),   # Noise - pink
+    (255, 40, 80),   # Mic - red
+    (255, 255, 100),  # Piano - yellow
+    (180, 120, 60),  # Guitar - brown
+    (200, 80, 200),  # Drum - purple
 ]
 BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
@@ -71,10 +78,98 @@ MODE_LABELS = {
 }
 
 
+def _generate_piano(freq, duration, rate):
+    """Piano synthesis: harmonics with exponential decay per partial."""
+    n_samples = int(rate * duration)
+    # Piano has strong fundamental + decaying harmonics
+    harmonics = [
+        (1.0, 1.0, 3.0),    # fundamental, amplitude, decay rate
+        (2.0, 0.5, 4.0),    # 2nd harmonic
+        (3.0, 0.25, 5.0),   # 3rd
+        (4.0, 0.15, 6.0),   # 4th
+        (5.0, 0.08, 7.0),   # 5th
+        (6.0, 0.04, 8.0),   # 6th
+    ]
+    samples = []
+    for i in range(n_samples):
+        t = i / rate
+        val = 0.0
+        for harm_mult, amp, decay in harmonics:
+            h_freq = freq * harm_mult
+            if h_freq > rate / 2:
+                continue  # skip above Nyquist
+            env = math.exp(-decay * t)
+            val += amp * env * math.sin(2 * math.pi * h_freq * t)
+        # Normalize
+        samples.append(val / 2.0)
+    return samples
+
+
+def _generate_guitar(freq, duration, rate):
+    """Karplus-Strong plucked string synthesis."""
+    n_samples = int(rate * duration)
+    # Initialize delay line with noise
+    delay_len = max(2, int(rate / freq))
+    buf = [random.uniform(-1, 1) for _ in range(delay_len)]
+    samples = []
+    idx = 0
+    for i in range(n_samples):
+        val = buf[idx]
+        # Average with next sample (low-pass filter = string damping)
+        next_idx = (idx + 1) % delay_len
+        buf[idx] = (buf[idx] + buf[next_idx]) * 0.498
+        idx = next_idx
+        # Decay envelope
+        decay = math.exp(-2.0 * i / n_samples)
+        samples.append(val * decay)
+    return samples
+
+
+def _generate_drum(freq, duration, rate):
+    """Drum synthesis: noise burst with pitch envelope."""
+    n_samples = int(rate * duration)
+    samples = []
+    for i in range(n_samples):
+        t = i / rate
+        progress = i / n_samples
+        # Pitch drops quickly from freq to freq/4
+        current_freq = freq * (1.0 - progress * 0.75)
+        # Mix sine (body) + noise (attack)
+        body = math.sin(2 * math.pi * current_freq * t)
+        noise = random.uniform(-1, 1)
+        # Noise fades fast, body fades slower
+        noise_env = math.exp(-20.0 * progress)
+        body_env = math.exp(-5.0 * progress)
+        val = body * body_env * 0.7 + noise * noise_env * 0.3
+        samples.append(val)
+    return samples
+
+
 def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RATE):
     """Generate raw PCM samples for a tone with volume in dB."""
     n_samples = int(rate * duration)
     linear_vol = min(32.0, 10 ** (volume_db / 20.0)) * VOLUME
+
+    # Instruments with custom synthesis
+    if style == 5:  # Piano
+        raw = _generate_piano(freq, duration, rate)
+        return [
+            max(-32767, min(32767, int(s * linear_vol * 32767)))
+            for s in raw
+        ]
+    elif style == 6:  # Guitar
+        raw = _generate_guitar(freq, duration, rate)
+        return [
+            max(-32767, min(32767, int(s * linear_vol * 32767)))
+            for s in raw
+        ]
+    elif style == 7:  # Drum
+        raw = _generate_drum(freq, duration, rate)
+        return [
+            max(-32767, min(32767, int(s * linear_vol * 32767)))
+            for s in raw
+        ]
+
     samples = []
     for i in range(n_samples):
         t = i / rate
