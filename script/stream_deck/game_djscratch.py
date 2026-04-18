@@ -112,146 +112,268 @@ STYLE_MODES = {
 }
 
 
-def _synth_harmonics(freq, duration, rate, harmonics, vibrato_hz=0, vibrato_depth=0):
-    """Generic additive synthesis with optional vibrato."""
+def _adsr(i, n, rate, attack=0.01, decay=0.1, sustain=0.7, release=0.05):
+    """ADSR envelope generator. Times in seconds."""
+    t = i / rate
+    dur = n / rate
+    a_end = attack
+    d_end = attack + decay
+    r_start = dur - release
+    if t < a_end:
+        return t / attack if attack > 0 else 1.0
+    elif t < d_end:
+        return 1.0 - (1.0 - sustain) * (t - a_end) / decay
+    elif t < r_start:
+        return sustain
+    else:
+        return sustain * max(0, (dur - t) / release)
+
+
+def _formant_filter(val, freq, formant_freqs, formant_bw, t):
+    """Simple formant resonance by boosting near formant frequencies."""
+    boost = 0.0
+    for ff, bw in zip(formant_freqs, formant_bw):
+        # Resonance peak
+        dist = abs(freq - ff) / bw
+        if dist < 3:
+            boost += math.exp(-0.5 * dist * dist) * 0.3
+    return val * (1.0 + boost)
+
+
+def _generate_trumpet(freq, duration, rate):
+    """Trumpet: FM synthesis + formants + ADSR + vibrato."""
+    n = int(rate * duration)
+    samples = []
+    # Brass formants around 1200Hz and 2500Hz
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.03, decay=0.05, sustain=0.85, release=0.04)
+        # Vibrato (delayed onset)
+        vib = 0
+        if t > 0.05:
+            vib = 3 * math.sin(2 * math.pi * 5.5 * t) * min(1, (t - 0.05) / 0.1)
+        f = freq + vib
+        # FM synthesis: carrier + modulator
+        mod_idx = 2.0 * env  # modulation index decreases with envelope
+        mod = math.sin(2 * math.pi * f * t)
+        carrier = math.sin(2 * math.pi * f * t + mod_idx * mod)
+        # Add harmonics
+        val = carrier * 0.6
+        for h in range(2, 9):
+            hf = f * h
+            if hf > rate / 2:
+                break
+            h_env = env * (0.8 ** h)
+            val += h_env * 0.3 * math.sin(2 * math.pi * hf * t)
+        val *= env
+        # Formant coloring
+        val = _formant_filter(val, freq, [1200, 2500], [300, 400], t)
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
+def _generate_trombone(freq, duration, rate):
+    """Trombone: warm FM + slow attack + lower formants."""
     n = int(rate * duration)
     samples = []
     for i in range(n):
         t = i / rate
-        # Vibrato modulates frequency
-        f = freq
-        if vibrato_hz > 0:
-            f += vibrato_depth * math.sin(2 * math.pi * vibrato_hz * t)
-        val = 0.0
-        for harm_mult, amp, decay in harmonics:
-            h_freq = f * harm_mult
-            if h_freq > rate / 2:
-                continue
-            env = math.exp(-decay * t) if decay > 0 else 1.0
-            val += amp * env * math.sin(2 * math.pi * h_freq * t)
+        env = _adsr(i, n, rate, attack=0.06, decay=0.08, sustain=0.8, release=0.05)
+        vib = 2 * math.sin(2 * math.pi * 4 * t) * min(1, t / 0.15)
+        f = freq + vib
+        # FM with lower mod ratio for warmth
+        mod = math.sin(2 * math.pi * f * 0.5 * t)
+        carrier = math.sin(2 * math.pi * f * t + 1.5 * env * mod)
+        val = carrier * 0.7
+        for h in range(2, 7):
+            hf = f * h
+            if hf > rate / 2:
+                break
+            val += (0.7 ** h) * env * 0.25 * math.sin(2 * math.pi * hf * t)
+        val *= env
+        val = _formant_filter(val, freq, [600, 1800], [250, 350], t)
         samples.append(val)
-    # Normalize peak to 1.0
-    peak = max(abs(s) for s in samples) if samples else 1.0
-    if peak > 0:
-        samples = [s / peak for s in samples]
-    return samples
-
-
-def _generate_trumpet(freq, duration, rate):
-    """Trumpet: bright, strong odd harmonics, slight vibrato."""
-    return _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 2.0),
-        (2.0, 0.8, 2.5),
-        (3.0, 0.6, 3.0),
-        (4.0, 0.4, 3.5),
-        (5.0, 0.3, 4.0),
-        (6.0, 0.2, 4.5),
-        (7.0, 0.15, 5.0),
-        (8.0, 0.1, 5.5),
-    ], vibrato_hz=5, vibrato_depth=3)
-
-
-def _generate_trombone(freq, duration, rate):
-    """Trombone: warm, strong low harmonics, slower attack."""
-    n = int(rate * duration)
-    raw = _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 1.5),
-        (2.0, 0.7, 2.0),
-        (3.0, 0.5, 2.5),
-        (4.0, 0.3, 3.0),
-        (5.0, 0.15, 3.5),
-        (6.0, 0.08, 4.0),
-    ], vibrato_hz=4, vibrato_depth=2)
-    # Slow attack
-    attack = int(n * 0.08)
-    for i in range(min(attack, len(raw))):
-        raw[i] *= i / attack
-    return raw
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_violin(freq, duration, rate):
-    """Violin: rich harmonics with bow vibrato."""
-    return _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 1.0),
-        (2.0, 0.9, 1.2),
-        (3.0, 0.7, 1.5),
-        (4.0, 0.5, 2.0),
-        (5.0, 0.35, 2.5),
-        (6.0, 0.25, 3.0),
-        (7.0, 0.15, 3.5),
-        (8.0, 0.1, 4.0),
-    ], vibrato_hz=6, vibrato_depth=4)
+    """Violin: bowed string with bow pressure variation + rich harmonics."""
+    n = int(rate * duration)
+    samples = []
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.04, decay=0.02, sustain=0.9, release=0.06)
+        # Bow vibrato (delayed, irregular)
+        vib = 4 * math.sin(2 * math.pi * 5.8 * t + 0.3 * math.sin(2 * math.pi * 0.5 * t))
+        vib *= min(1, t / 0.1)
+        f = freq + vib
+        # Bowed string: strong odd and even harmonics
+        val = 0
+        for h in range(1, 12):
+            hf = f * h
+            if hf > rate / 2:
+                break
+            # Odd harmonics slightly stronger (bow characteristic)
+            amp = (0.75 ** h) * (1.1 if h % 2 == 1 else 0.9)
+            # Each harmonic has slightly different attack
+            h_attack = min(1, t / (0.02 + h * 0.005))
+            val += amp * h_attack * math.sin(2 * math.pi * hf * t)
+        # Bow noise (rosin scratch)
+        bow_noise = random.uniform(-1, 1) * 0.02 * env
+        val = (val + bow_noise) * env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_organ(freq, duration, rate):
-    """Organ: sustained, no decay, classic drawbar harmonics."""
-    return _synth_harmonics(freq, duration, rate, [
-        (0.5, 0.3, 0),   # sub-octave
-        (1.0, 1.0, 0),   # fundamental (no decay)
-        (1.5, 0.5, 0),   # quint
-        (2.0, 0.8, 0),   # 2nd
-        (3.0, 0.4, 0),   # 3rd
-        (4.0, 0.6, 0),   # 4th
-        (5.0, 0.2, 0),   # 5th
-        (6.0, 0.3, 0),   # 6th
-        (8.0, 0.15, 0),  # 8th
-    ])
+    """Organ: Hammond drawbar simulation with rotary Leslie effect."""
+    n = int(rate * duration)
+    # Hammond drawbar settings (feet: 16,5⅓,8,4,2⅔,2,1⅗,1⅓,1)
+    drawbars = [
+        (0.5, 0.6),   # 16'  sub-octave
+        (1.5, 0.4),   # 5⅓' quint
+        (1.0, 1.0),   # 8'   fundamental
+        (2.0, 0.8),   # 4'
+        (3.0, 0.5),   # 2⅔'
+        (4.0, 0.7),   # 2'
+        (5.0, 0.3),   # 1⅗'
+        (6.0, 0.4),   # 1⅓'
+        (8.0, 0.2),   # 1'
+    ]
+    samples = []
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.005, decay=0.01, sustain=1.0, release=0.02)
+        val = 0
+        for mult, amp in drawbars:
+            hf = freq * mult
+            if hf > rate / 2:
+                continue
+            val += amp * math.sin(2 * math.pi * hf * t)
+        # Leslie rotary speaker effect (AM + slight FM)
+        leslie_rate = 6.0
+        leslie_am = 0.15 * math.sin(2 * math.pi * leslie_rate * t)
+        leslie_fm = 0.5 * math.sin(2 * math.pi * leslie_rate * t + 1.5)
+        val *= (1.0 + leslie_am) * env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_flute(freq, duration, rate):
-    """Flute: nearly pure sine with breathy noise and vibrato."""
+    """Flute: breathy air noise + nearly pure tone + overblowing."""
     n = int(rate * duration)
-    samples = _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 1.0),
-        (2.0, 0.1, 2.0),
-        (3.0, 0.03, 3.0),
-    ], vibrato_hz=5, vibrato_depth=2)
-    # Add breath noise
-    for i in range(len(samples)):
-        breath = random.uniform(-1, 1) * 0.05 * math.exp(-3.0 * i / n)
-        samples[i] = samples[i] * 0.95 + breath
-    return samples
+    samples = []
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.03, decay=0.02, sustain=0.85, release=0.04)
+        # Delayed vibrato
+        vib = 2 * math.sin(2 * math.pi * 5 * t) * min(1, max(0, (t - 0.08) / 0.1))
+        f = freq + vib
+        # Nearly pure sine with tiny 2nd harmonic
+        val = math.sin(2 * math.pi * f * t)
+        val += 0.08 * math.sin(2 * math.pi * f * 2 * t)
+        val += 0.02 * math.sin(2 * math.pi * f * 3 * t)
+        val *= env
+        # Breathy noise (filtered, stronger at attack)
+        breath_env = 0.04 + 0.12 * math.exp(-8.0 * t)
+        breath = random.uniform(-1, 1) * breath_env
+        # Filter breath to be near the playing frequency
+        val += breath * 0.3
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_bass(freq, duration, rate):
-    """Electric bass: deep fundamental, quick decay upper harmonics."""
-    return _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 2.0),
-        (2.0, 0.5, 4.0),
-        (3.0, 0.25, 6.0),
-        (4.0, 0.1, 8.0),
-    ])
+    """Electric bass: pluck transient + deep fundamental + string buzz."""
+    n = int(rate * duration)
+    # Karplus-Strong base for realistic pluck
+    delay_len = max(2, int(rate / freq))
+    buf = [random.uniform(-1, 1) for _ in range(delay_len)]
+    ks_samples = []
+    idx = 0
+    for i in range(n):
+        val = buf[idx]
+        next_idx = (idx + 1) % delay_len
+        # Heavier damping for bass (lower cutoff)
+        buf[idx] = (buf[idx] + buf[next_idx]) * 0.499
+        idx = next_idx
+        ks_samples.append(val)
+    samples = []
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.002, decay=0.15, sustain=0.4, release=0.08)
+        # Strong fundamental sine for body
+        body = math.sin(2 * math.pi * freq * t) * 0.6
+        # Pluck from KS
+        pluck = ks_samples[i] * 0.4 * math.exp(-3.0 * t)
+        # Transient click
+        click = random.uniform(-1, 1) * math.exp(-80.0 * t) * 0.3
+        val = (body + pluck + click) * env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_cello(freq, duration, rate):
-    """Cello: rich warm bowed string, slower vibrato than violin."""
-    return _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 0.8),
-        (2.0, 0.8, 1.0),
-        (3.0, 0.6, 1.5),
-        (4.0, 0.4, 2.0),
-        (5.0, 0.3, 2.5),
-        (6.0, 0.2, 3.0),
-        (7.0, 0.1, 3.5),
-    ], vibrato_hz=5, vibrato_depth=3)
+    """Cello: bowed string lower register, warm + rich."""
+    n = int(rate * duration)
+    samples = []
+    for i in range(n):
+        t = i / rate
+        env = _adsr(i, n, rate, attack=0.06, decay=0.03, sustain=0.9, release=0.08)
+        # Slow vibrato
+        vib = 3 * math.sin(2 * math.pi * 4.5 * t) * min(1, t / 0.15)
+        f = freq + vib
+        # Rich bowed harmonics with slight inharmonicity
+        val = 0
+        for h in range(1, 10):
+            hf = f * h * (1.0 + 0.0003 * h * h)  # slight inharmonicity
+            if hf > rate / 2:
+                break
+            amp = (0.7 ** h) * (1.15 if h % 2 == 1 else 0.85)
+            h_att = min(1, t / (0.03 + h * 0.008))
+            val += amp * h_att * math.sin(2 * math.pi * hf * t)
+        # Bow scratch texture
+        val += random.uniform(-1, 1) * 0.015 * env
+        val *= env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_harmonica(freq, duration, rate):
-    """Harmonica: reedy, strong odd harmonics with tremolo."""
+    """Harmonica: reed vibration + air column resonance + natural tremolo."""
     n = int(rate * duration)
-    samples = _synth_harmonics(freq, duration, rate, [
-        (1.0, 1.0, 1.5),
-        (2.0, 0.3, 2.0),
-        (3.0, 0.7, 2.5),
-        (4.0, 0.15, 3.0),
-        (5.0, 0.5, 3.5),
-        (7.0, 0.2, 4.0),
-    ])
-    # Built-in tremolo
-    for i in range(len(samples)):
+    samples = []
+    for i in range(n):
         t = i / rate
-        samples[i] *= 0.7 + 0.3 * math.sin(2 * math.pi * 7 * t)
-    return samples
+        env = _adsr(i, n, rate, attack=0.02, decay=0.03, sustain=0.8, release=0.03)
+        f = freq
+        # Reed vibration: strong odd harmonics (like clarinet)
+        val = 0
+        for h in range(1, 10):
+            hf = f * h
+            if hf > rate / 2:
+                break
+            # Odd harmonics much stronger
+            if h % 2 == 1:
+                amp = 0.7 ** ((h - 1) / 2)
+            else:
+                amp = 0.15 * (0.7 ** (h / 2))
+            val += amp * math.sin(2 * math.pi * hf * t)
+        # Natural tremolo from breathing
+        trem = 0.7 + 0.3 * math.sin(2 * math.pi * 7 * t + 0.5 * math.sin(2 * math.pi * 0.3 * t))
+        # Air noise
+        air = random.uniform(-1, 1) * 0.03
+        val = (val * trem + air) * env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
 
 
 def _generate_piano(freq, duration, rate):
