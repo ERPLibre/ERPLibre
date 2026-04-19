@@ -6,7 +6,7 @@
 
 Standard deck: buttons control paddle, bricks on left, paddle on right.
 SD+: game renders on touchscreen (800x100), dial moves paddle, buttons
-for start/speed. Rotated 90°: bricks left, paddle right.
+for start/speed. Items drop from broken bricks (50% chance).
 """
 
 import io
@@ -45,8 +45,31 @@ BRICK_COLORS = [
     (200, 80, 120),
 ]
 
-TICK_SPEED = 0.08  # SD+ touchscreen tick (faster = smoother)
-TICK_SPEED_BUTTONS = 0.6  # Button-grid tick (slower, coarser)
+# Item types and their colors
+ITEM_LIFE = "life"       # +1 vie
+ITEM_MULTIBALL = "multi"  # +1 balle
+ITEM_SLOW = "slow"       # ralentir balles
+ITEM_DESTROY = "destroy"  # détruire bloc au hasard
+ITEM_AMMO = "ammo"       # +3 munitions
+
+ITEM_COLORS = {
+    ITEM_LIFE: (255, 80, 180),     # pink
+    ITEM_MULTIBALL: (0, 255, 255),  # cyan
+    ITEM_SLOW: (100, 200, 255),    # light blue
+    ITEM_DESTROY: (255, 60, 60),   # red
+    ITEM_AMMO: (255, 180, 0),      # orange
+}
+ITEM_LABELS = {
+    ITEM_LIFE: "+V",
+    ITEM_MULTIBALL: "+B",
+    ITEM_SLOW: "SL",
+    ITEM_DESTROY: "X!",
+    ITEM_AMMO: "+A",
+}
+ITEM_TYPES = [ITEM_LIFE, ITEM_MULTIBALL, ITEM_SLOW, ITEM_DESTROY, ITEM_AMMO]
+
+TICK_SPEED = 0.08
+TICK_SPEED_BUTTONS = 0.6
 
 
 def set_key(deck, key, color, text=""):
@@ -111,12 +134,13 @@ class Breakout:
         self.score = 0
         self.high_score = 0
         self.ball_speed = 5
-        self.ball_waiting = True  # ball stuck on paddle until launch
-        self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
+        self.ball_waiting = True
+        self.bullets = []
         self.ammo = 5
         self.max_ammo = 10
+        self.lives = 1
+        self.items = []  # falling items: [x, y, type] or [col, row, type]
 
-        # Detect SD+ (has dials + touchscreen)
         self.is_sdplus = bool(
             getattr(deck, "DIAL_COUNT", 0) and deck.DIAL_COUNT > 0
         )
@@ -130,7 +154,6 @@ class Breakout:
                 deck.TOUCHSCREEN_PIXEL_HEIGHT
                 or deck.SCREEN_PIXEL_HEIGHT or 100
             )
-            # Touchscreen game field — continuous coordinates
             self.brick_zone_w = self.screen_w * 3 // 4
             self.brick_cols = 30
             self.brick_rows = 4
@@ -139,21 +162,16 @@ class Breakout:
             self.paddle_x = self.screen_w - 15
             self.paddle_h = 25
             self.paddle_y = self.screen_h // 2
-            self.ball_x = float(self.screen_w // 2)
-            self.ball_y = float(self.screen_h // 2)
             self.ball_r = 4
-            self.ball_dx = -3.0
-            self.ball_dy = 2.0
             self.bricks = set()
+            # Multiple balls: list of [x, y, dx, dy]
+            self.balls = []
         else:
-            # Button grid mode
             self.brick_cols_grid = max(1, self.cols - 2)
             self.bricks = set()
             self.paddle_row = rows // 2
-            self.ball_col = 0
-            self.ball_row = 0
-            self.ball_dx = 1
-            self.ball_dy = 1
+            # Multiple balls: list of [col, row, dx, dy]
+            self.balls = []
 
     def reset(self):
         self.score = 0
@@ -164,6 +182,8 @@ class Breakout:
         self.ball_speed = 5
         self.bullets = []
         self.ammo = self.max_ammo
+        self.lives = 1
+        self.items = []
 
         if self.is_sdplus:
             self.bricks = set()
@@ -171,38 +191,33 @@ class Breakout:
                 for r in range(self.brick_rows):
                     self.bricks.add((c, r))
             self.paddle_y = self.screen_h // 2
-            # Ball on paddle, not moving
-            self.ball_x = float(self.paddle_x - self.ball_r - 2)
-            self.ball_y = float(self.paddle_y)
-            self.ball_dx = 0.0
-            self.ball_dy = 0.0
+            self.balls = [[
+                float(self.paddle_x - self.ball_r - 2),
+                float(self.paddle_y), 0.0, 0.0,
+            ]]
         else:
             self.bricks = set()
             for c in range(self.brick_cols_grid):
                 for r in range(self.rows):
                     self.bricks.add((c, r))
             self.paddle_row = self.rows // 2
-            # Ball on paddle, not moving
-            self.ball_col = self.cols - 2
-            self.ball_row = self.paddle_row
-            self.ball_dx = 0
-            self.ball_dy = 0
+            self.balls = [[self.cols - 2, self.paddle_row, 0, 0]]
 
     def _launch_ball(self):
-        """Launch ball from paddle."""
         if not self.ball_waiting:
             return
         self.ball_waiting = False
         if self.is_sdplus:
             s = self.ball_speed
-            self.ball_dx = float(-s)
-            self.ball_dy = float(random.choice([-1, 1]) * (s * 0.6))
+            for b in self.balls:
+                b[2] = float(-s)
+                b[3] = float(random.choice([-1, 1]) * (s * 0.6))
         else:
-            self.ball_dx = -1
-            self.ball_dy = random.choice([-1, 1])
+            for b in self.balls:
+                b[2] = -1
+                b[3] = random.choice([-1, 1])
 
     def _fire(self):
-        """Fire a bullet from the paddle."""
         if self.ammo <= 0 or not self.game_active or self.game_over:
             return
         self.ammo -= 1
@@ -212,15 +227,95 @@ class Breakout:
         else:
             self.bullets.append([self.cols - 2, self.paddle_row])
 
+    # ── ITEMS ─────────────────────────────────────
+
+    def _maybe_spawn_item(self, x, y):
+        """50% chance to spawn an item at brick position."""
+        if random.random() < 0.5:
+            item_type = random.choice(ITEM_TYPES)
+            self.items.append([float(x), float(y), item_type])
+
+    def _maybe_spawn_item_grid(self, col, row):
+        """50% chance to spawn item (button grid)."""
+        if random.random() < 0.5:
+            item_type = random.choice(ITEM_TYPES)
+            self.items.append([col, row, item_type])
+
+    def _apply_item(self, item_type):
+        """Apply collected item effect."""
+        if item_type == ITEM_LIFE:
+            self.lives += 1
+        elif item_type == ITEM_MULTIBALL:
+            self._add_extra_ball()
+        elif item_type == ITEM_SLOW:
+            self.ball_speed = max(2, self.ball_speed - 3)
+            # Slow all current balls
+            for b in self.balls:
+                if b[2] != 0:
+                    sign_x = -1 if b[2] < 0 else 1
+                    b[2] = float(sign_x * self.ball_speed)
+        elif item_type == ITEM_DESTROY:
+            if self.bricks:
+                brick = random.choice(list(self.bricks))
+                self.bricks.discard(brick)
+                self.score += 1
+                if not self.bricks:
+                    self._check_win()
+        elif item_type == ITEM_AMMO:
+            self.ammo = min(self.max_ammo, self.ammo + 3)
+
+    def _add_extra_ball(self):
+        """Add a new ball from paddle position."""
+        if self.is_sdplus:
+            s = self.ball_speed
+            self.balls.append([
+                float(self.paddle_x - self.ball_r - 2),
+                float(self.paddle_y),
+                float(-s),
+                float(random.choice([-1, 1]) * (s * 0.6)),
+            ])
+        else:
+            self.balls.append([
+                self.cols - 2, self.paddle_row,
+                -1, random.choice([-1, 1]),
+            ])
+
+    def _check_win(self):
+        if not self.bricks:
+            self.won = True
+            self.game_over = True
+            if self.score > self.high_score:
+                self.high_score = self.score
+
+    def _lose_ball(self):
+        """Called when all balls are lost."""
+        self.lives -= 1
+        if self.lives <= 0:
+            self.game_over = True
+            if self.score > self.high_score:
+                self.high_score = self.score
+        else:
+            # Respawn a ball on paddle
+            self.ball_waiting = True
+            if self.is_sdplus:
+                self.balls = [[
+                    float(self.paddle_x - self.ball_r - 2),
+                    float(self.paddle_y), 0.0, 0.0,
+                ]]
+            else:
+                self.balls = [[
+                    self.cols - 2, self.paddle_row, 0, 0,
+                ]]
+
+    # ── BULLETS ───────────────────────────────────
+
     def _tick_bullets_sdplus(self):
-        """Move bullets left, check brick collision (SD+)."""
         bullet_speed = 6.0
         alive = []
         for bx, by in self.bullets:
             bx -= bullet_speed
             if bx < 0:
                 continue
-            # Check brick hit
             if bx < self.brick_zone_w:
                 bc = int(bx / self.brick_w)
                 br = int(by / self.brick_h)
@@ -229,17 +324,15 @@ class Breakout:
                 if (bc, br) in self.bricks:
                     self.bricks.discard((bc, br))
                     self.score += 1
-                    if not self.bricks:
-                        self.won = True
-                        self.game_over = True
-                        if self.score > self.high_score:
-                            self.high_score = self.score
-                    continue  # bullet consumed
+                    cx = bc * self.brick_w + self.brick_w // 2
+                    cy = br * self.brick_h + self.brick_h // 2
+                    self._maybe_spawn_item(cx, cy)
+                    self._check_win()
+                    continue
             alive.append([bx, by])
         self.bullets = alive
 
     def _tick_bullets_grid(self):
-        """Move bullets left, check brick collision (button grid)."""
         alive = []
         for bc, br in self.bullets:
             bc -= 1
@@ -248,162 +341,210 @@ class Breakout:
             if (bc, br) in self.bricks:
                 self.bricks.discard((bc, br))
                 self.score += 1
-                if not self.bricks:
-                    self.won = True
-                    self.game_over = True
-                    if self.score > self.high_score:
-                        self.high_score = self.score
-                continue  # bullet consumed
+                self._maybe_spawn_item_grid(bc, br)
+                self._check_win()
+                continue
             alive.append([bc, br])
         self.bullets = alive
 
-    # ── TOUCHSCREEN (SD+) TICK ────────────────────
+    # ── ITEMS TICK ────────────────────────────────
+
+    def _tick_items_sdplus(self):
+        """Move items rightward toward paddle."""
+        item_speed = 2.5
+        alive = []
+        half_p = self.paddle_h // 2
+        for ix, iy, itype in self.items:
+            ix += item_speed
+            # Check paddle catch
+            if ix >= self.paddle_x - 5:
+                if abs(iy - self.paddle_y) <= half_p + 6:
+                    self._apply_item(itype)
+                    continue  # caught
+                if ix > self.screen_w:
+                    continue  # missed, off screen
+            alive.append([ix, iy, itype])
+        self.items = alive
+
+    def _tick_items_grid(self):
+        """Move items rightward toward paddle (button grid)."""
+        alive = []
+        for ic, ir, itype in self.items:
+            ic += 1
+            last_col = self.cols - 1
+            if ic >= last_col:
+                if abs(ir - self.paddle_row) <= 1:
+                    self._apply_item(itype)
+                    continue  # caught
+                if ic > last_col:
+                    continue  # missed
+            alive.append([ic, ir, itype])
+        self.items = alive
+
+    # ── SD+ TICK ──────────────────────────────────
 
     def tick_sdplus(self):
         if not self.game_active or self.game_over:
             return
-        # Ball follows paddle while waiting
         if self.ball_waiting:
-            self.ball_x = float(self.paddle_x - self.ball_r - 2)
-            self.ball_y = float(self.paddle_y)
+            self.balls[0][0] = float(self.paddle_x - self.ball_r - 2)
+            self.balls[0][1] = float(self.paddle_y)
+            self._tick_items_sdplus()
             return
-        # Tick bullets
+
         self._tick_bullets_sdplus()
+        self._tick_items_sdplus()
         if self.game_over:
             return
 
-        nx = self.ball_x + self.ball_dx
-        ny = self.ball_y + self.ball_dy
+        lost_balls = []
+        for i, ball in enumerate(self.balls):
+            bx, by, bdx, bdy = ball
+            nx = bx + bdx
+            ny = by + bdy
 
-        # Top/bottom walls
-        if ny - self.ball_r < 0:
-            ny = float(self.ball_r)
-            self.ball_dy = abs(self.ball_dy)
-        elif ny + self.ball_r >= self.screen_h:
-            ny = float(self.screen_h - self.ball_r - 1)
-            self.ball_dy = -abs(self.ball_dy)
+            # Top/bottom walls
+            if ny - self.ball_r < 0:
+                ny = float(self.ball_r)
+                bdy = abs(bdy)
+            elif ny + self.ball_r >= self.screen_h:
+                ny = float(self.screen_h - self.ball_r - 1)
+                bdy = -abs(bdy)
 
-        # Left wall
-        if nx - self.ball_r < 0:
-            nx = float(self.ball_r)
-            self.ball_dx = abs(self.ball_dx)
+            # Left wall
+            if nx - self.ball_r < 0:
+                nx = float(self.ball_r)
+                bdx = abs(bdx)
 
-        # Paddle (right side)
-        if nx + self.ball_r >= self.paddle_x:
-            half_p = self.paddle_h // 2
-            if abs(ny - self.paddle_y) <= half_p + self.ball_r:
-                nx = float(self.paddle_x - self.ball_r - 1)
-                # Speed up on each paddle hit
-                self.ball_speed = min(12, self.ball_speed + 1)
-                self.ball_dx = float(-self.ball_speed)
-                offset = (ny - self.paddle_y) / half_p
-                self.ball_dy = offset * self.ball_speed
-                # Reload ammo on paddle hit
-                self.ammo = min(self.max_ammo, self.ammo + 1)
-            else:
-                self.game_over = True
-                if self.score > self.high_score:
-                    self.high_score = self.score
-                return
+            # Paddle
+            if nx + self.ball_r >= self.paddle_x:
+                half_p = self.paddle_h // 2
+                if abs(ny - self.paddle_y) <= half_p + self.ball_r:
+                    nx = float(self.paddle_x - self.ball_r - 1)
+                    self.ball_speed = min(12, self.ball_speed + 1)
+                    bdx = float(-self.ball_speed)
+                    offset = (ny - self.paddle_y) / half_p
+                    bdy = offset * self.ball_speed
+                    self.ammo = min(self.max_ammo, self.ammo + 1)
+                else:
+                    lost_balls.append(i)
+                    continue
 
-        # Brick collision — check all bricks the ball overlaps
-        if nx < self.brick_zone_w + self.ball_r:
-            hit = False
-            # Check all cells the ball touches
-            for ox in range(-self.ball_r, self.ball_r + 1, self.ball_r):
-                for oy in range(-self.ball_r, self.ball_r + 1, self.ball_r):
-                    px = nx + ox
-                    py = ny + oy
-                    if px < 0 or py < 0:
-                        continue
-                    bc = int(px / self.brick_w)
-                    br = int(py / self.brick_h)
-                    if 0 <= bc < self.brick_cols and 0 <= br < self.brick_rows:
-                        if (bc, br) in self.bricks:
-                            self.bricks.discard((bc, br))
-                            self.score += 1
-                            hit = True
-            if hit:
-                self.ball_dx = abs(self.ball_dx)
-                if not self.bricks:
-                    self.won = True
-                    self.game_over = True
-                    if self.score > self.high_score:
-                        self.high_score = self.score
-                    return
+            # Brick collision
+            if nx < self.brick_zone_w + self.ball_r:
+                hit = False
+                for ox in range(-self.ball_r, self.ball_r + 1, self.ball_r):
+                    for oy in range(-self.ball_r, self.ball_r + 1,
+                                    self.ball_r):
+                        px = nx + ox
+                        py = ny + oy
+                        if px < 0 or py < 0:
+                            continue
+                        bc = int(px / self.brick_w)
+                        br = int(py / self.brick_h)
+                        if (0 <= bc < self.brick_cols
+                                and 0 <= br < self.brick_rows):
+                            if (bc, br) in self.bricks:
+                                self.bricks.discard((bc, br))
+                                self.score += 1
+                                cx = bc * self.brick_w + self.brick_w // 2
+                                cy = br * self.brick_h + self.brick_h // 2
+                                self._maybe_spawn_item(cx, cy)
+                                hit = True
+                if hit:
+                    bdx = abs(bdx)
+                    self._check_win()
+                    if self.game_over:
+                        return
 
-        self.ball_x = nx
-        self.ball_y = ny
+            ball[0] = nx
+            ball[1] = ny
+            ball[2] = bdx
+            ball[3] = bdy
+
+        # Remove lost balls (reverse order)
+        for i in sorted(lost_balls, reverse=True):
+            self.balls.pop(i)
+
+        if not self.balls:
+            self._lose_ball()
 
     # ── BUTTON GRID TICK ──────────────────────────
 
     def tick_buttons(self):
         if not self.game_active or self.game_over:
             return
-        # Ball follows paddle while waiting
         if self.ball_waiting:
-            self.ball_col = self.cols - 2
-            self.ball_row = self.paddle_row
+            self.balls[0][0] = self.cols - 2
+            self.balls[0][1] = self.paddle_row
+            self._tick_items_grid()
             return
-        # Tick bullets
+
         self._tick_bullets_grid()
+        self._tick_items_grid()
         if self.game_over:
             return
 
-        new_col = self.ball_col + self.ball_dx
-        new_row = self.ball_row + self.ball_dy
+        lost_balls = []
+        for i, ball in enumerate(self.balls):
+            bc, br, bdx, bdy = ball
+            nc = bc + bdx
+            nr = br + bdy
 
-        if new_row < 0:
-            new_row = 0
-            self.ball_dy = 1
-        elif new_row >= self.rows:
-            new_row = self.rows - 1
-            self.ball_dy = -1
+            if nr < 0:
+                nr = 0
+                bdy = 1
+            elif nr >= self.rows:
+                nr = self.rows - 1
+                bdy = -1
 
-        if new_col < 0:
-            new_col = 0
-            self.ball_dx = 1
+            if nc < 0:
+                nc = 0
+                bdx = 1
 
-        last_col = self.cols - 1
-        if new_col >= last_col:
-            if abs(new_row - self.paddle_row) <= 1:
-                new_col = last_col - 1
-                self.ball_dx = -1
-                if new_row < self.paddle_row:
-                    self.ball_dy = -1
-                elif new_row > self.paddle_row:
-                    self.ball_dy = 1
-                # Speed up + reload ammo on paddle hit
-                self.ball_speed = min(12, self.ball_speed + 1)
-                self.ammo = min(self.max_ammo, self.ammo + 1)
-            else:
-                self.game_over = True
-                if self.score > self.high_score:
-                    self.high_score = self.score
-                return
+            last_col = self.cols - 1
+            if nc >= last_col:
+                if abs(nr - self.paddle_row) <= 1:
+                    nc = last_col - 1
+                    bdx = -1
+                    if nr < self.paddle_row:
+                        bdy = -1
+                    elif nr > self.paddle_row:
+                        bdy = 1
+                    self.ball_speed = min(12, self.ball_speed + 1)
+                    self.ammo = min(self.max_ammo, self.ammo + 1)
+                else:
+                    lost_balls.append(i)
+                    continue
 
-        # Check brick at ball position and adjacent cells
-        hit = False
-        for dc in range(0, 2):
-            for dr in [-1, 0, 1]:
-                cc = new_col - dc
-                cr = new_row + dr
-                if (cc, cr) in self.bricks:
-                    self.bricks.discard((cc, cr))
-                    self.score += 1
-                    hit = True
-        if hit:
-            self.ball_dx = -self.ball_dx
-            new_col = self.ball_col
-            if not self.bricks:
-                self.won = True
-                self.game_over = True
-                if self.score > self.high_score:
-                    self.high_score = self.score
-                return
+            # Brick collision
+            hit = False
+            for dc in range(0, 2):
+                for dr in [-1, 0, 1]:
+                    cc = nc - dc
+                    cr = nr + dr
+                    if (cc, cr) in self.bricks:
+                        self.bricks.discard((cc, cr))
+                        self.score += 1
+                        self._maybe_spawn_item_grid(cc, cr)
+                        hit = True
+            if hit:
+                bdx = -bdx
+                nc = bc
+                self._check_win()
+                if self.game_over:
+                    return
 
-        self.ball_col = new_col
-        self.ball_row = new_row
+            ball[0] = nc
+            ball[1] = nr
+            ball[2] = bdx
+            ball[3] = bdy
+
+        for i in sorted(lost_balls, reverse=True):
+            self.balls.pop(i)
+
+        if not self.balls:
+            self._lose_ball()
 
     # ── INPUT ─────────────────────────────────────
 
@@ -471,20 +612,18 @@ class Breakout:
             self._render_buttons()
 
     def _render_screen(self):
-        """Render game on SD+ touchscreen."""
         sw, sh = self.screen_w, self.screen_h
         img = Image.new("RGB", (sw, sh), (10, 10, 20))
         draw = ImageDraw.Draw(img)
 
         if not self.game_active:
-            # Title screen
             try:
                 font = ImageFont.load_default(size=20)
                 sfont = ImageFont.load_default(size=14)
             except TypeError:
                 font = sfont = ImageFont.load_default()
-            draw.text((sw // 2 - 60, 10), "BREAKOUT", fill=(255, 255, 255),
-                      font=font)
+            draw.text((sw // 2 - 60, 10), "BREAKOUT",
+                      fill=(255, 255, 255), font=font)
             draw.text((sw // 2 - 70, 50), "Press dial to start",
                       fill=(150, 150, 200), font=sfont)
             if self.high_score:
@@ -500,8 +639,8 @@ class Breakout:
             except TypeError:
                 font = sfont = ImageFont.load_default()
             if self.won:
-                draw.text((sw // 2 - 30, 15), "WIN!", fill=(0, 255, 100),
-                          font=font)
+                draw.text((sw // 2 - 30, 15), "WIN!",
+                          fill=(0, 255, 100), font=font)
             else:
                 draw.text((sw // 2 - 45, 15), "GAME OVER",
                           fill=(255, 60, 60), font=font)
@@ -512,7 +651,7 @@ class Breakout:
             set_screen(self.deck, img)
             return
 
-        # Draw bricks
+        # Bricks
         for (bc, br) in self.bricks:
             x1 = bc * self.brick_w + 1
             y1 = br * self.brick_h + 1
@@ -521,7 +660,13 @@ class Breakout:
             color = BRICK_COLORS[br % len(BRICK_COLORS)]
             draw.rectangle([x1, y1, x2, y2], fill=color)
 
-        # Draw paddle
+        # Items
+        for ix, iy, itype in self.items:
+            c = ITEM_COLORS.get(itype, (255, 255, 255))
+            draw.rectangle([int(ix) - 4, int(iy) - 4,
+                            int(ix) + 4, int(iy) + 4], fill=c)
+
+        # Paddle
         half_p = self.paddle_h // 2
         px = self.paddle_x
         draw.rectangle(
@@ -530,36 +675,43 @@ class Breakout:
             fill=COLOR_PADDLE,
         )
 
-        # Draw bullets
+        # Bullets
         for bx, by in self.bullets:
-            ix, iy = int(bx), int(by)
-            draw.rectangle([ix - 3, iy - 1, ix + 3, iy + 1],
+            draw.rectangle([int(bx) - 3, int(by) - 1,
+                            int(bx) + 3, int(by) + 1],
                            fill=COLOR_BULLET)
 
-        # Draw ball
-        bx, by = int(self.ball_x), int(self.ball_y)
+        # Balls
         r = self.ball_r
-        draw.ellipse([bx - r, by - r, bx + r, by + r], fill=COLOR_BALL)
+        for ball in self.balls:
+            bx, by = int(ball[0]), int(ball[1])
+            draw.ellipse([bx - r, by - r, bx + r, by + r],
+                         fill=COLOR_BALL)
 
-        # Ammo indicator (small dots near paddle)
-        for a in range(self.ammo):
-            ay = self.paddle_y - self.paddle_h // 2 - 5 - a * 6
-            draw.ellipse([self.paddle_x + 2, ay - 2,
-                          self.paddle_x + 6, ay + 2],
+        # Ammo dots
+        for a in range(min(self.ammo, 10)):
+            ay = self.paddle_y - half_p - 5 - a * 6
+            draw.ellipse([px + 2, ay - 2, px + 6, ay + 2],
                          fill=COLOR_BULLET)
 
-        # Score
+        # Lives dots (below paddle)
+        for v in range(self.lives):
+            vy = self.paddle_y + half_p + 5 + v * 6
+            draw.ellipse([px + 2, vy - 2, px + 6, vy + 2],
+                         fill=ITEM_COLORS[ITEM_LIFE])
+
+        # Score + lives text
         try:
             sfont = ImageFont.load_default(size=12)
         except TypeError:
             sfont = ImageFont.load_default()
-        draw.text((sw - 45, 2), f"{self.score}", fill=(200, 200, 200),
-                  font=sfont)
+        draw.text((sw - 60, 2),
+                  f"{self.score} V:{self.lives}",
+                  fill=(200, 200, 200), font=sfont)
 
         set_screen(self.deck, img)
 
     def _render_keys_sdplus(self):
-        """Render SD+ buttons (speed, fire, score info)."""
         for key in range(self.total_keys):
             c = key % self.cols
             if c == 0:
@@ -570,20 +722,20 @@ class Breakout:
                 set_key(self.deck, key, COLOR_SCORE,
                         f"S:{self.score}")
             elif c == 2:
-                # Fire button with ammo count
-                if self.ammo > 0:
+                if self.ball_waiting:
+                    set_key(self.deck, key, COLOR_BALL, "GO!")
+                elif self.ammo > 0:
                     set_key(self.deck, key, COLOR_BULLET,
                             f"F:{self.ammo}")
                 else:
                     set_key(self.deck, key, (40, 20, 0), "F:0")
             elif c == 3:
-                set_key(self.deck, key, (40, 40, 60),
-                        f"v{self.ball_speed}")
+                set_key(self.deck, key, ITEM_COLORS[ITEM_LIFE],
+                        f"V:{self.lives}")
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
     def _render_buttons(self):
-        """Render on standard button grid (non-SD+)."""
         mid_c = self.cols // 2
         mid_r = self.rows // 2
         last_c = self.cols - 1
@@ -601,10 +753,8 @@ class Breakout:
                     set_key(self.deck, key, COLOR_SCORE,
                             f"HI:{self.high_score}")
                 elif c < self.brick_cols_grid:
-                    set_key(
-                        self.deck, key,
-                        BRICK_COLORS[c % len(BRICK_COLORS)], "",
-                    )
+                    set_key(self.deck, key,
+                            BRICK_COLORS[c % len(BRICK_COLORS)], "")
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
@@ -626,24 +776,36 @@ class Breakout:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
 
+        # Build lookup sets for fast rendering
+        ball_pos = set()
+        for b in self.balls:
+            ball_pos.add((int(b[0]), int(b[1])))
+        bullet_pos = set()
+        for blt in self.bullets:
+            bullet_pos.add((int(blt[0]), int(blt[1])))
+        item_map = {}
+        for ic, ir, itype in self.items:
+            item_map[(int(ic), int(ir))] = itype
+
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
-            bullet_here = any(
-                int(bc) == c and int(br) == r for bc, br in self.bullets
-            )
-            if c == self.ball_col and r == self.ball_row:
+
+            if (c, r) in ball_pos:
                 set_key(self.deck, key, COLOR_BALL, "")
-            elif bullet_here:
+            elif (c, r) in bullet_pos:
                 set_key(self.deck, key, COLOR_BULLET, ">")
+            elif (c, r) in item_map:
+                itype = item_map[(c, r)]
+                set_key(self.deck, key,
+                        ITEM_COLORS.get(itype, (255, 255, 255)),
+                        ITEM_LABELS.get(itype, "?"))
             elif c == last_c and r == self.paddle_row:
-                label = f"||{self.ammo}" if self.ammo > 0 else "||"
+                label = f"V{self.lives}"
                 set_key(self.deck, key, COLOR_PADDLE, label)
             elif (c, r) in self.bricks:
-                set_key(
-                    self.deck, key,
-                    BRICK_COLORS[c % len(BRICK_COLORS)], "",
-                )
+                set_key(self.deck, key,
+                        BRICK_COLORS[c % len(BRICK_COLORS)], "")
             elif c == last_c and r == 0:
                 set_key(self.deck, key, COLOR_SCORE, str(self.score))
             else:
@@ -668,7 +830,6 @@ def main():
         sys.exit(1)
 
     deck = None
-    # Prefer SD+ if available
     for d in streamdecks:
         if d.is_visual():
             if getattr(d, "DIAL_COUNT", 0) and d.DIAL_COUNT > 0:
@@ -695,7 +856,7 @@ def main():
     print(f"Breakout on {deck.deck_type()} ({cols}x{rows})")
     if is_sdplus:
         print("SD+ mode: turn dial to move paddle, press dial to start")
-        print("Buttons: SPD-/SPD+ to change ball speed")
+        print("Items drop from bricks — catch them with paddle!")
     else:
         print("Right column = paddle. Press to move! Ctrl+C to quit.")
 
