@@ -107,6 +107,8 @@ class Pong:
         self.lock = threading.Lock()
         self.running = True
         self.is_sdplus = is_sdplus
+        self.in_menu = True
+        self.mode = None  # "ai" or "2p"
         self.game_active = False
         self.game_over = False
         self.p1_score = 0
@@ -261,8 +263,50 @@ class Pong:
 
     # ── INPUT ─────────────────────────────────────
 
+    def _handle_menu_key(self, key, deck_index=0):
+        """Handle key press in mode selection menu."""
+        if deck_index != 0:
+            return
+        if self.is_sdplus:
+            col = key % self.cols
+            # Button 2 (idx 1) = vs AI, button 3 (idx 2) = 2P
+            if col == 1:
+                self.mode = "ai"
+            elif col == 2:
+                self.mode = "2p"
+            else:
+                return
+        else:
+            col = key % self.cols
+            row = key // self.cols
+            mid_c = self.cols // 2
+            mid_r = self.rows // 2
+            if (col, row) == (mid_c, mid_r - 1):
+                self.mode = "ai"
+            elif (col, row) == (mid_c, mid_r):
+                self.mode = "2p"
+            else:
+                return
+        self.in_menu = False
+        if self.mode == "ai":
+            self.num_players = 1
+        else:
+            self.num_players = len(self.decks)
+        self.reset()
+        self.render()
+
     def handle_key(self, key, deck_index=0):
-        if self.game_over or not self.game_active:
+        if self.in_menu:
+            self._handle_menu_key(key, deck_index)
+            return
+
+        if self.game_over:
+            self.in_menu = True
+            self.game_active = False
+            self.render()
+            return
+
+        if not self.game_active:
             self.reset()
             return
 
@@ -300,7 +344,13 @@ class Pong:
         if not self.is_sdplus:
             return
         if event == DialEventType.PUSH and value:
-            if self.game_over or not self.game_active:
+            if self.in_menu:
+                return
+            if self.game_over:
+                self.in_menu = True
+                self.game_active = False
+                self.render()
+            elif not self.game_active:
                 self.reset()
             return
         if event == DialEventType.TURN:
@@ -339,27 +389,65 @@ class Pong:
     # ── RENDER ────────────────────────────────────
 
     def render(self):
+        if self.in_menu:
+            if self.is_sdplus:
+                self._render_menu_screen()
+                self._render_menu_keys_sdplus()
+            else:
+                self._render_menu_buttons()
+            return
         if self.is_sdplus:
             self._render_screen()
             self._render_keys_sdplus()
         else:
             self._render_buttons()
 
+    def _render_menu_screen(self):
+        w, h = self.screen_w, self.screen_h
+        img = Image.new("RGB", (w, h), (0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.load_default(size=24)
+            sfont = ImageFont.load_default(size=14)
+        except TypeError:
+            font = sfont = ImageFont.load_default()
+        draw.text((w // 2 - 40, 10), "PONG", fill=COLOR_BALL, font=font)
+        draw.text((w // 2 - 60, 55), "Choose mode on buttons",
+                  fill=(150, 150, 200), font=sfont)
+        for deck in self.decks:
+            set_screen(deck, img)
+
+    def _render_menu_keys_sdplus(self):
+        for i, deck in enumerate(self.decks):
+            for key in range(self.total_keys):
+                c = key % self.cols
+                if c == 1:
+                    set_key(deck, key, (80, 180, 255), "vsAI")
+                elif c == 2:
+                    set_key(deck, key, (180, 120, 255), "2P")
+                else:
+                    set_key(deck, key, COLOR_EMPTY, "")
+
+    def _render_menu_buttons(self):
+        mid_c = self.cols // 2
+        mid_r = self.rows // 2
+        for i, deck in enumerate(self.decks):
+            for key in range(self.total_keys):
+                r = key // self.cols
+                c = key % self.cols
+                if (c, r) == (mid_c, 0):
+                    set_key(deck, key, COLOR_TITLE, "PONG")
+                elif (c, r) == (mid_c, mid_r - 1):
+                    set_key(deck, key, (80, 180, 255), "vsAI")
+                elif (c, r) == (mid_c, mid_r):
+                    set_key(deck, key, (180, 120, 255), "2P")
+                else:
+                    set_key(deck, key, COLOR_EMPTY, "")
+
     def _render_screen(self):
         w, h = self.screen_w, self.screen_h
         img = Image.new("RGB", (w, h), (0, 0, 0))
         draw = ImageDraw.Draw(img)
-
-        if not self.game_active and not self.game_over:
-            try:
-                font = ImageFont.load_default(size=24)
-            except TypeError:
-                font = ImageFont.load_default()
-            draw.text((w // 2 - 40, h // 2 - 12), "PONG",
-                      fill=COLOR_BALL, font=font)
-            for deck in self.decks:
-                set_screen(deck, img)
-            return
 
         # Center line
         for y in range(0, h, 8):
@@ -415,16 +503,7 @@ class Pong:
             for key in range(self.total_keys):
                 r = key // self.cols
                 c = key % self.cols
-                if not self.game_active and not self.game_over:
-                    if (c, r) == (mid_c, 0):
-                        set_key(deck, key, COLOR_TITLE, "PONG")
-                    elif (c, r) == (mid_c, last_r):
-                        set_key(deck, key, COLOR_TITLE, "START")
-                    elif self.num_players == 2 and (c, r) == (0, 0):
-                        set_key(deck, key, COLOR_SCORE, f"P{i + 1}")
-                    else:
-                        set_key(deck, key, COLOR_EMPTY, "")
-                elif self.game_over:
+                if self.game_over:
                     p1_won = self.p1_score >= WINNING_SCORE
                     if self.num_players == 2:
                         i_won = (i == 0 and p1_won) or (i == 1 and not p1_won)
@@ -461,20 +540,6 @@ class Pong:
         last_r = self.rows - 1
 
         for i, deck in enumerate(self.decks):
-            if not self.game_active:
-                for key in range(self.total_keys):
-                    r = key // self.cols
-                    c = key % self.cols
-                    if (c, r) == (mid_c, 0):
-                        set_key(deck, key, COLOR_TITLE, "PONG")
-                    elif (c, r) == (mid_c, last_r):
-                        set_key(deck, key, COLOR_TITLE, "START")
-                    elif self.num_players == 2 and (c, r) == (mid_c, last_r // 2 if last_r > 1 else 0):
-                        set_key(deck, key, COLOR_PADDLE, f"P{i + 1}")
-                    else:
-                        set_key(deck, key, COLOR_EMPTY, "")
-                continue
-
             if self.game_over:
                 p1_won = self.p1_score >= WINNING_SCORE
                 if self.num_players == 2:
