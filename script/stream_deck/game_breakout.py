@@ -130,8 +130,8 @@ class Breakout:
                 or deck.SCREEN_PIXEL_HEIGHT or 100
             )
             # Touchscreen game field — continuous coordinates
-            self.brick_zone_w = self.screen_w * 2 // 5
-            self.brick_cols = 12
+            self.brick_zone_w = self.screen_w // 2
+            self.brick_cols = 20
             self.brick_rows = 8
             self.brick_w = self.brick_zone_w // self.brick_cols
             self.brick_h = self.screen_h // self.brick_rows
