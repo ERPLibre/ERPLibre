@@ -2,13 +2,12 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Connect 4 — 1P vs AI or 2P.
+"""Connect 4 — choose AI or 2 players at start.
 
+Supports 2P on same deck or on two decks if both connected.
 Press top row to drop piece in that column. Get 4 in a row to win!
-Rotated: columns = rows of deck.
 """
 
-import os
 import random
 import sys
 import threading
@@ -28,8 +27,11 @@ COLOR_P1 = (220, 40, 40)
 COLOR_P2 = (220, 220, 0)
 COLOR_WIN = (0, 200, 60)
 COLOR_TITLE = (0, 80, 160)
-COLOR_SCORE = (40, 40, 80)
 COLOR_BOARD = (0, 0, 50)
+COLOR_AI = (80, 180, 255)
+COLOR_2P = (180, 120, 255)
+COLOR_2P_DUAL = (120, 255, 180)
+COLOR_DIM = (30, 30, 50)
 
 
 def set_key(deck, key, color, text=""):
@@ -38,15 +40,21 @@ def set_key(deck, key, color, text=""):
     img = Image.new("RGB", (w, h), color)
     if text:
         draw = ImageDraw.Draw(img)
-        fs = 22 if len(text) <= 2 else 14
+        fs = 22 if len(text) <= 2 else 14 if len(text) <= 5 else 11
         try:
             font = ImageFont.load_default(size=fs)
         except TypeError:
             font = ImageFont.load_default()
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
-        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+        draw.text(
+            ((w - tw) // 2 + 1, (h - th) // 2 + 1),
+            text, fill=(0, 0, 0), font=font,
+        )
+        draw.text(
+            ((w - tw) // 2, (h - th) // 2),
+            text, fill=(255, 255, 255), font=font,
+        )
     native = PILHelper.to_native_key_format(deck, img)
     try:
         with deck:
@@ -55,14 +63,32 @@ def set_key(deck, key, color, text=""):
         pass
 
 
+# Game modes
+MODE_AI = "ai"
+MODE_2P_SAME = "2p_same"
+MODE_2P_DUAL = "2p_dual"
+
+
 class Connect4:
-    def __init__(self, decks):
-        self.decks = decks
-        self.num_players = len(decks)
-        rows, cols = decks[0].key_layout()
+    def __init__(self, all_decks):
+        self.all_decks = all_decks
+        self.deck1 = all_decks[0]
+        self.deck2 = all_decks[1] if len(all_decks) >= 2 else None
+        rows, cols = self.deck1.key_layout()
         self.cols = cols
         self.rows = rows
         self.lock = threading.Lock()
+        self.running = True
+        # Menu state
+        self.in_menu = True
+        self.mode = None
+        # Menu button positions
+        mid_c = self.cols // 2
+        mid_r = self.rows // 2
+        self.btn_ai = (mid_c, mid_r - 1)
+        self.btn_2p = (mid_c, mid_r)
+        self.btn_2p_dual = (mid_c, mid_r + 1)
+        # Game state
         self.board = [[0] * self.rows for _ in range(self.cols)]
         self.current = 1
         self.game_active = False
@@ -96,7 +122,8 @@ class Connect4:
                     cells = [(c, r)]
                     for i in range(1, 4):
                         nc, nr = c + dc * i, r + dr * i
-                        if 0 <= nc < self.cols and 0 <= nr < self.rows and self.board[nc][nr] == p:
+                        if (0 <= nc < self.cols and 0 <= nr < self.rows
+                                and self.board[nc][nr] == p):
                             cells.append((nc, nr))
                         else:
                             break
@@ -110,51 +137,102 @@ class Connect4:
             self.game_over = True
 
     def _ai_move(self):
-        # Simple AI: check for winning move, then block, then random
-        for col in range(self.cols):
-            for r in range(self.rows - 1, -1, -1):
-                if self.board[col][r] == 0:
-                    self.board[col][r] = 2
-                    self._check_win()
-                    if self.winner == 2:
+        # Check for winning move, then block, then center-biased random
+        for player in [2, 1]:
+            for col in range(self.cols):
+                for r in range(self.rows - 1, -1, -1):
+                    if self.board[col][r] == 0:
+                        self.board[col][r] = player
+                        self._check_win()
+                        won = self.winner == player
                         self.board[col][r] = 0
                         self.winner = 0
                         self.game_over = False
                         self.win_cells = []
-                        return col
-                    self.board[col][r] = 0
-                    self.winner = 0
-                    self.game_over = False
-                    self.win_cells = []
-                    break
-        for col in range(self.cols):
-            for r in range(self.rows - 1, -1, -1):
-                if self.board[col][r] == 0:
-                    self.board[col][r] = 1
-                    self._check_win()
-                    if self.winner == 1:
-                        self.board[col][r] = 0
-                        self.winner = 0
-                        self.game_over = False
-                        self.win_cells = []
-                        return col
-                    self.board[col][r] = 0
-                    self.winner = 0
-                    self.game_over = False
-                    self.win_cells = []
-                    break
+                        if won:
+                            return col
+                        break
         avail = [c for c in range(self.cols) if self.board[c][0] == 0]
-        return random.choice(avail) if avail else 0
+        if not avail:
+            return 0
+        # Prefer center columns
+        center = self.cols // 2
+        avail.sort(key=lambda c: abs(c - center))
+        # Pick from top 3 center-most with randomness
+        top = avail[:max(1, len(avail) // 2)]
+        return random.choice(top)
+
+    # ── MENU ──────────────────────────────────────
+
+    def render_menu(self):
+        """Show mode selection on deck 1 (and waiting screen on deck 2)."""
+        for key in range(self.cols * self.rows):
+            c = key % self.cols
+            r = key // self.cols
+            if (c, r) == (self.cols // 2, 0):
+                set_key(self.deck1, key, COLOR_TITLE, "C4")
+            elif (c, r) == self.btn_ai:
+                set_key(self.deck1, key, COLOR_AI, "vs AI")
+            elif (c, r) == self.btn_2p:
+                set_key(self.deck1, key, COLOR_2P, "2P")
+            elif (c, r) == self.btn_2p_dual and self.deck2:
+                set_key(self.deck1, key, COLOR_2P_DUAL, "2Px2")
+            else:
+                set_key(self.deck1, key, COLOR_DIM, "")
+        if self.deck2:
+            for key in range(self.cols * self.rows):
+                c = key % self.cols
+                r = key // self.cols
+                if (c, r) == (self.cols // 2, self.rows // 2):
+                    set_key(self.deck2, key, COLOR_TITLE, "C4")
+                else:
+                    set_key(self.deck2, key, COLOR_DIM, "")
+
+    def handle_menu_key(self, key, deck_index):
+        """Handle key press in menu."""
+        if deck_index != 0:
+            return
+        c = key % self.cols
+        r = key // self.cols
+        if (c, r) == self.btn_ai:
+            self.mode = MODE_AI
+        elif (c, r) == self.btn_2p:
+            self.mode = MODE_2P_SAME
+        elif (c, r) == self.btn_2p_dual and self.deck2:
+            self.mode = MODE_2P_DUAL
+        else:
+            return
+        self.in_menu = False
+        self.reset()
+        print(f"Mode: {self.mode}")
+        self.render_all()
+
+    # ── GAME ──────────────────────────────────────
 
     def handle_key(self, key, deck_index=0):
-        if self.game_over or not self.game_active:
+        if self.in_menu:
+            self.handle_menu_key(key, deck_index)
+            return
+
+        if self.game_over:
+            # Any key → back to menu
+            self.in_menu = True
+            self.game_active = False
+            self.render_menu()
+            return
+
+        if not self.game_active:
             self.reset()
             self.render_all()
             return
 
-        if self.num_players == 2:
+        # Enforce turn order
+        if self.mode == MODE_2P_DUAL:
             expected = 0 if self.current == 1 else 1
             if deck_index != expected:
+                return
+        elif self.mode == MODE_AI:
+            if deck_index != 0:
                 return
 
         col = key % self.cols
@@ -165,7 +243,9 @@ class Connect4:
         self._check_win()
         if not self.game_over:
             self.current = 3 - self.current
-            if self.num_players == 1 and self.current == 2:
+            if self.mode == MODE_AI and self.current == 2:
+                self.render_all()
+                time.sleep(0.3)
                 ai_col = self._ai_move()
                 self._drop(ai_col)
                 self._check_win()
@@ -175,26 +255,17 @@ class Connect4:
         self.render_all()
 
     def render_all(self):
-        for i, deck in enumerate(self.decks):
-            self._render(deck, i)
+        if self.mode == MODE_2P_DUAL and self.deck2:
+            self._render(self.deck1, 0)
+            self._render(self.deck2, 1)
+        else:
+            self._render(self.deck1, 0)
+            if self.deck2:
+                self._render_mirror(self.deck2)
 
     def _render(self, deck, deck_index):
         mid_c = self.cols // 2
         last_r = self.rows - 1
-
-        if not self.game_active:
-            for key in range(self.cols * self.rows):
-                r = key // self.cols
-                c = key % self.cols
-                if (c, r) == (mid_c, 0):
-                    set_key(deck, key, COLOR_TITLE, "C4")
-                elif (c, r) == (mid_c, last_r):
-                    set_key(deck, key, COLOR_TITLE, "START")
-                elif self.num_players == 2 and (c, r) == (0, 0):
-                    set_key(deck, key, COLOR_P1 if deck_index == 0 else COLOR_P2, f"P{deck_index + 1}")
-                else:
-                    set_key(deck, key, COLOR_BOARD, "")
-            return
 
         for key in range(self.cols * self.rows):
             r = key // self.cols
@@ -207,8 +278,41 @@ class Connect4:
                 set_key(deck, key, COLOR_P1, "")
             elif val == 2:
                 set_key(deck, key, COLOR_P2, "")
-            elif self.game_over and (c, r) == (mid_c, last_r):
-                set_key(deck, key, COLOR_TITLE, "AGAIN")
+            elif self.game_over:
+                if (c, r) == (mid_c, last_r):
+                    w = self.winner
+                    label = f"P{w}!" if w else "TIE"
+                    set_key(deck, key, COLOR_TITLE, label)
+                elif (c, r) == (mid_c, last_r - 1):
+                    set_key(
+                        deck, key, COLOR_TITLE,
+                        f"{self.scores[0]}-{self.scores[1]}",
+                    )
+                else:
+                    set_key(deck, key, COLOR_BOARD, "")
+            else:
+                # Show turn indicator on top row
+                if r == 0 and c == mid_c:
+                    color = COLOR_P1 if self.current == 1 else COLOR_P2
+                    label = f"P{self.current}"
+                    if self.mode == MODE_2P_DUAL:
+                        label = f"P{deck_index + 1}" if self.current == deck_index + 1 else ""
+                    set_key(deck, key, color if self.current == deck_index + 1 or self.mode != MODE_2P_DUAL else COLOR_DIM, label)
+                else:
+                    set_key(deck, key, COLOR_BOARD, "")
+
+    def _render_mirror(self, deck):
+        """Render board on deck2 as spectator (same view, no controls)."""
+        for key in range(self.cols * self.rows):
+            r = key // self.cols
+            c = key % self.cols
+            val = self.board[c][r]
+            if self.game_over and (c, r) in self.win_cells:
+                set_key(deck, key, COLOR_WIN, "")
+            elif val == 1:
+                set_key(deck, key, COLOR_P1, "")
+            elif val == 2:
+                set_key(deck, key, COLOR_P2, "")
             else:
                 set_key(deck, key, COLOR_BOARD, "")
 
@@ -223,15 +327,16 @@ def main():
         d.open()
         d.reset()
         d.set_brightness(80)
-    decks = visual[:2] if len(visual) >= 2 else visual[:1]
-    if len(decks) == 2:
-        print("2-PLAYER Connect 4! Red vs Yellow.")
-    else:
-        print(f"Connect 4 vs AI on {decks[0].deck_type()}")
-    print("Press any column to drop your piece!")
-    game = Connect4(decks)
-    game.render_all()
-    for i, deck in enumerate(decks):
+
+    all_decks = visual[:2] if len(visual) >= 2 else visual[:1]
+    n = len(all_decks)
+    print(f"Connect 4 — {n} deck(s) detected")
+    print("Choose mode on Stream Deck buttons!")
+
+    game = Connect4(all_decks)
+    game.render_menu()
+
+    for i, deck in enumerate(all_decks):
         def make_cb(idx):
             def cb(d, k, s):
                 if not s:
@@ -240,13 +345,14 @@ def main():
                     game.handle_key(k, idx)
             return cb
         deck.set_key_callback(make_cb(i))
+
     try:
-        while all(d.is_open() for d in decks):
+        while game.running and all(d.is_open() for d in all_decks):
             time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
-        for d in decks:
+        for d in all_decks:
             try:
                 with d:
                     d.reset()
