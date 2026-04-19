@@ -2,13 +2,14 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Breakout game.
+"""Breakout game with SD+ touchscreen support.
 
-Rotated 90°: left columns = bricks, rightmost column = paddle, ball
-bounces horizontally. Press right column buttons to move paddle up/down.
+Standard deck: buttons control paddle, bricks on left, paddle on right.
+SD+: game renders on touchscreen (800x100), dial moves paddle, buttons
+for start/speed. Rotated 90°: bricks left, paddle right.
 """
 
-import os
+import io
 import random
 import sys
 import threading
@@ -17,6 +18,7 @@ import time
 try:
     from PIL import Image, ImageDraw, ImageFont
     from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.Devices.StreamDeck import DialEventType
     from StreamDeck.ImageHelpers import PILHelper
     from StreamDeck.Transport.Transport import TransportError
 except ImportError as e:
@@ -37,9 +39,60 @@ BRICK_COLORS = [
     (0, 180, 0),
     (0, 100, 220),
     (160, 0, 160),
+    (220, 180, 0),
+    (0, 180, 180),
+    (200, 80, 120),
 ]
 
-TICK_SPEED = 0.6
+TICK_SPEED = 0.08  # SD+ touchscreen tick (faster = smoother)
+TICK_SPEED_BUTTONS = 0.6  # Button-grid tick (slower, coarser)
+
+
+def set_key(deck, key, color, text=""):
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    img = Image.new("RGB", (w, h), color)
+    if text:
+        draw = ImageDraw.Draw(img)
+        fs = 22 if len(text) <= 3 else 14 if len(text) <= 5 else 11
+        try:
+            font = ImageFont.load_default(size=fs)
+        except TypeError:
+            font = ImageFont.load_default()
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        draw.text(
+            ((w - tw) // 2 + 1, (h - th) // 2 + 1),
+            text, fill=(0, 0, 0), font=font,
+        )
+        draw.text(
+            ((w - tw) // 2, (h - th) // 2),
+            text, fill=(255, 255, 255), font=font,
+        )
+    native = PILHelper.to_native_key_format(deck, img)
+    try:
+        with deck:
+            deck.set_key_image(key, native)
+    except TransportError:
+        pass
+
+
+def set_screen(deck, img):
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes = img_bytes.getvalue()
+    try:
+        with deck:
+            w = (deck.TOUCHSCREEN_PIXEL_WIDTH
+                 or deck.SCREEN_PIXEL_WIDTH or 800)
+            h = (deck.TOUCHSCREEN_PIXEL_HEIGHT
+                 or deck.SCREEN_PIXEL_HEIGHT or 100)
+            if deck.DECK_TOUCH:
+                deck.set_touchscreen_image(img_bytes, 0, 0, w, h)
+            else:
+                deck.set_screen_image(img_bytes)
+    except (TransportError, AttributeError):
+        pass
 
 
 class Breakout:
@@ -56,39 +109,140 @@ class Breakout:
         self.won = False
         self.score = 0
         self.high_score = 0
-        # Brick columns = ~half the grid, leave room for ball + paddle
-        self.brick_cols = max(1, (self.cols - 1) // 2)
-        self.bricks = set()
-        self.paddle_row = rows // 2
-        self.ball_col = 0
-        self.ball_row = 0
-        self.ball_dx = 1
-        self.ball_dy = 1
+        self.ball_speed = 3
+
+        # Detect SD+ (has dials + touchscreen)
+        self.is_sdplus = bool(
+            getattr(deck, "DIAL_COUNT", 0) and deck.DIAL_COUNT > 0
+        )
+
+        if self.is_sdplus:
+            self.screen_w = (
+                deck.TOUCHSCREEN_PIXEL_WIDTH
+                or deck.SCREEN_PIXEL_WIDTH or 800
+            )
+            self.screen_h = (
+                deck.TOUCHSCREEN_PIXEL_HEIGHT
+                or deck.SCREEN_PIXEL_HEIGHT or 100
+            )
+            # Touchscreen game field — continuous coordinates
+            self.brick_zone_w = self.screen_w // 3
+            self.brick_cols = 8
+            self.brick_rows = 5
+            self.brick_w = self.brick_zone_w // self.brick_cols
+            self.brick_h = self.screen_h // self.brick_rows
+            self.paddle_x = self.screen_w - 15
+            self.paddle_h = 25
+            self.paddle_y = self.screen_h // 2
+            self.ball_x = float(self.screen_w // 2)
+            self.ball_y = float(self.screen_h // 2)
+            self.ball_r = 4
+            self.ball_dx = -3.0
+            self.ball_dy = 2.0
+            self.bricks = set()
+        else:
+            # Button grid mode
+            self.brick_cols_grid = max(1, (self.cols - 1) // 2)
+            self.bricks = set()
+            self.paddle_row = rows // 2
+            self.ball_col = 0
+            self.ball_row = 0
+            self.ball_dx = 1
+            self.ball_dy = 1
 
     def reset(self):
-        self.bricks = set()
-        for c in range(self.brick_cols):
-            for r in range(self.rows):
-                self.bricks.add((c, r))
-
-        self.paddle_row = self.rows // 2
-        self.ball_col = self.cols - 2
-        self.ball_row = self.rows // 2
-        self.ball_dx = -1
-        self.ball_dy = random.choice([-1, 1])
         self.score = 0
         self.game_over = False
         self.won = False
         self.game_active = True
 
-    def tick(self):
+        if self.is_sdplus:
+            self.bricks = set()
+            for c in range(self.brick_cols):
+                for r in range(self.brick_rows):
+                    self.bricks.add((c, r))
+            self.paddle_y = self.screen_h // 2
+            self.ball_x = float(self.screen_w * 2 // 3)
+            self.ball_y = float(self.screen_h // 2)
+            s = self.ball_speed
+            self.ball_dx = float(-s)
+            self.ball_dy = float(random.choice([-1, 1]) * (s - 1))
+        else:
+            self.bricks = set()
+            for c in range(self.brick_cols_grid):
+                for r in range(self.rows):
+                    self.bricks.add((c, r))
+            self.paddle_row = self.rows // 2
+            self.ball_col = self.cols - 2
+            self.ball_row = self.rows // 2
+            self.ball_dx = -1
+            self.ball_dy = random.choice([-1, 1])
+
+    # ── TOUCHSCREEN (SD+) TICK ────────────────────
+
+    def tick_sdplus(self):
         if not self.game_active or self.game_over:
             return
+        nx = self.ball_x + self.ball_dx
+        ny = self.ball_y + self.ball_dy
 
+        # Top/bottom walls
+        if ny - self.ball_r < 0:
+            ny = float(self.ball_r)
+            self.ball_dy = abs(self.ball_dy)
+        elif ny + self.ball_r >= self.screen_h:
+            ny = float(self.screen_h - self.ball_r - 1)
+            self.ball_dy = -abs(self.ball_dy)
+
+        # Left wall
+        if nx - self.ball_r < 0:
+            nx = float(self.ball_r)
+            self.ball_dx = abs(self.ball_dx)
+
+        # Paddle (right side)
+        if nx + self.ball_r >= self.paddle_x:
+            half_p = self.paddle_h // 2
+            if abs(ny - self.paddle_y) <= half_p + self.ball_r:
+                nx = float(self.paddle_x - self.ball_r - 1)
+                self.ball_dx = -abs(self.ball_dx)
+                # Angle based on hit position
+                offset = (ny - self.paddle_y) / half_p
+                self.ball_dy = offset * self.ball_speed
+            else:
+                # Miss
+                self.game_over = True
+                if self.score > self.high_score:
+                    self.high_score = self.score
+                return
+
+        # Brick collision
+        if nx < self.brick_zone_w and self.ball_dx < 0:
+            bc = int(nx / self.brick_w)
+            br = int(ny / self.brick_h)
+            bc = max(0, min(bc, self.brick_cols - 1))
+            br = max(0, min(br, self.brick_rows - 1))
+            if (bc, br) in self.bricks:
+                self.bricks.discard((bc, br))
+                self.score += 1
+                self.ball_dx = abs(self.ball_dx)
+                if not self.bricks:
+                    self.won = True
+                    self.game_over = True
+                    if self.score > self.high_score:
+                        self.high_score = self.score
+                    return
+
+        self.ball_x = nx
+        self.ball_y = ny
+
+    # ── BUTTON GRID TICK ──────────────────────────
+
+    def tick_buttons(self):
+        if not self.game_active or self.game_over:
+            return
         new_col = self.ball_col + self.ball_dx
         new_row = self.ball_row + self.ball_dy
 
-        # Wall bounce (top/bottom)
         if new_row < 0:
             new_row = 0
             self.ball_dy = 1
@@ -96,41 +250,30 @@ class Breakout:
             new_row = self.rows - 1
             self.ball_dy = -1
 
-        # Left wall bounce
         if new_col < 0:
             new_col = 0
             self.ball_dx = 1
 
-        # Paddle bounce (right column)
         last_col = self.cols - 1
         if new_col >= last_col:
-            if new_row == self.paddle_row:
-                new_col = last_col - 1
-                self.ball_dx = -1
-            elif (
-                new_row == self.paddle_row - 1
-                or new_row == self.paddle_row + 1
-            ):
+            if abs(new_row - self.paddle_row) <= 1:
                 new_col = last_col - 1
                 self.ball_dx = -1
                 if new_row < self.paddle_row:
                     self.ball_dy = -1
-                else:
+                elif new_row > self.paddle_row:
                     self.ball_dy = 1
             else:
-                # Miss — game over
                 self.game_over = True
                 if self.score > self.high_score:
                     self.high_score = self.score
                 return
 
-        # Brick collision
         if (new_col, new_row) in self.bricks:
             self.bricks.discard((new_col, new_row))
             self.score += 1
             self.ball_dx = -self.ball_dx
             new_col = self.ball_col
-
             if not self.bricks:
                 self.won = True
                 self.game_over = True
@@ -141,25 +284,155 @@ class Breakout:
         self.ball_col = new_col
         self.ball_row = new_row
 
+    # ── INPUT ─────────────────────────────────────
+
     def handle_key(self, key):
         if self.game_over or not self.game_active:
             self.reset()
             self.render()
             return
 
-        col = key % self.cols
-        row = key // self.cols
+        if self.is_sdplus:
+            # SD+ buttons: 0=start/restart handled above
+            # Use buttons for speed control
+            col = key % self.cols
+            if col == 0:
+                self.ball_speed = max(1, self.ball_speed - 1)
+                print(f"Speed: {self.ball_speed}")
+            elif col == self.cols - 1:
+                self.ball_speed = min(8, self.ball_speed + 1)
+                print(f"Speed: {self.ball_speed}")
+        else:
+            col = key % self.cols
+            row = key // self.cols
+            last_col = self.cols - 1
+            if col == last_col:
+                self.paddle_row = row
+            elif row < self.paddle_row:
+                self.paddle_row = max(0, self.paddle_row - 1)
+            elif row > self.paddle_row:
+                self.paddle_row = min(self.rows - 1, self.paddle_row + 1)
 
-        # Right column = move paddle directly
-        last_col = self.cols - 1
-        if col == last_col:
-            self.paddle_row = row
-        elif row < self.paddle_row:
-            self.paddle_row = max(0, self.paddle_row - 1)
-        elif row > self.paddle_row:
-            self.paddle_row = min(self.rows - 1, self.paddle_row + 1)
+    def handle_dial(self, dial, event, value):
+        if not self.is_sdplus:
+            return
+        if event == DialEventType.PUSH and value:
+            if self.game_over or not self.game_active:
+                self.reset()
+                self.render()
+            return
+        if event == DialEventType.TURN:
+            if not self.game_active or self.game_over:
+                return
+            half_p = self.paddle_h // 2
+            self.paddle_y = max(
+                half_p,
+                min(self.screen_h - half_p, self.paddle_y + value * 4),
+            )
+
+    # ── RENDER ────────────────────────────────────
 
     def render(self):
+        if self.is_sdplus:
+            self._render_screen()
+            self._render_keys_sdplus()
+        else:
+            self._render_buttons()
+
+    def _render_screen(self):
+        """Render game on SD+ touchscreen."""
+        sw, sh = self.screen_w, self.screen_h
+        img = Image.new("RGB", (sw, sh), (10, 10, 20))
+        draw = ImageDraw.Draw(img)
+
+        if not self.game_active:
+            # Title screen
+            try:
+                font = ImageFont.load_default(size=20)
+                sfont = ImageFont.load_default(size=14)
+            except TypeError:
+                font = sfont = ImageFont.load_default()
+            draw.text((sw // 2 - 60, 10), "BREAKOUT", fill=(255, 255, 255),
+                      font=font)
+            draw.text((sw // 2 - 70, 50), "Press dial to start",
+                      fill=(150, 150, 200), font=sfont)
+            if self.high_score:
+                draw.text((sw // 2 - 40, 75), f"HI: {self.high_score}",
+                          fill=(200, 200, 100), font=sfont)
+            set_screen(self.deck, img)
+            return
+
+        if self.game_over:
+            try:
+                font = ImageFont.load_default(size=22)
+                sfont = ImageFont.load_default(size=14)
+            except TypeError:
+                font = sfont = ImageFont.load_default()
+            if self.won:
+                draw.text((sw // 2 - 30, 15), "WIN!", fill=(0, 255, 100),
+                          font=font)
+            else:
+                draw.text((sw // 2 - 45, 15), "GAME OVER",
+                          fill=(255, 60, 60), font=font)
+            draw.text((sw // 2 - 40, 55), f"Score: {self.score}",
+                      fill=(255, 255, 255), font=sfont)
+            draw.text((sw // 2 - 50, 75), "Press dial to retry",
+                      fill=(150, 150, 200), font=sfont)
+            set_screen(self.deck, img)
+            return
+
+        # Draw bricks
+        for (bc, br) in self.bricks:
+            x1 = bc * self.brick_w + 1
+            y1 = br * self.brick_h + 1
+            x2 = x1 + self.brick_w - 2
+            y2 = y1 + self.brick_h - 2
+            color = BRICK_COLORS[br % len(BRICK_COLORS)]
+            draw.rectangle([x1, y1, x2, y2], fill=color)
+
+        # Draw paddle
+        half_p = self.paddle_h // 2
+        px = self.paddle_x
+        draw.rectangle(
+            [px, self.paddle_y - half_p, px + 10,
+             self.paddle_y + half_p],
+            fill=COLOR_PADDLE,
+        )
+
+        # Draw ball
+        bx, by = int(self.ball_x), int(self.ball_y)
+        r = self.ball_r
+        draw.ellipse([bx - r, by - r, bx + r, by + r], fill=COLOR_BALL)
+
+        # Score
+        try:
+            sfont = ImageFont.load_default(size=12)
+        except TypeError:
+            sfont = ImageFont.load_default()
+        draw.text((sw - 45, 2), f"{self.score}", fill=(200, 200, 200),
+                  font=sfont)
+
+        set_screen(self.deck, img)
+
+    def _render_keys_sdplus(self):
+        """Render SD+ buttons (speed, score info)."""
+        for key in range(self.total_keys):
+            c = key % self.cols
+            if c == 0:
+                set_key(self.deck, key, (60, 60, 100), "SPD-")
+            elif c == self.cols - 1:
+                set_key(self.deck, key, (60, 60, 100), "SPD+")
+            elif c == 1:
+                set_key(self.deck, key, COLOR_SCORE,
+                        f"S:{self.score}")
+            elif c == 2:
+                set_key(self.deck, key, (40, 40, 60),
+                        f"v{self.ball_speed}")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_buttons(self):
+        """Render on standard button grid (non-SD+)."""
         mid_c = self.cols // 2
         mid_r = self.rows // 2
         last_c = self.cols - 1
@@ -170,19 +443,19 @@ class Breakout:
                 r = key // self.cols
                 c = key % self.cols
                 if (c, r) == (mid_c, 0):
-                    self._set_key(key, COLOR_TITLE, "BREAK")
+                    set_key(self.deck, key, COLOR_TITLE, "BREAK")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "START")
+                    set_key(self.deck, key, COLOR_TITLE, "START")
                 elif (c, r) == (0, last_r) and self.high_score:
-                    self._set_key(key, COLOR_SCORE, f"HI:{self.high_score}")
-                elif c < self.brick_cols:
-                    self._set_key(
-                        key,
-                        BRICK_COLORS[c % len(BRICK_COLORS)],
-                        ""
+                    set_key(self.deck, key, COLOR_SCORE,
+                            f"HI:{self.high_score}")
+                elif c < self.brick_cols_grid:
+                    set_key(
+                        self.deck, key,
+                        BRICK_COLORS[c % len(BRICK_COLORS)], "",
                     )
                 else:
-                    self._set_key(key, COLOR_EMPTY, "")
+                    set_key(self.deck, key, COLOR_EMPTY, "")
             return
 
         if self.game_over:
@@ -192,69 +465,43 @@ class Breakout:
                 if (c, r) == (mid_c, 0):
                     color = COLOR_WIN if self.won else COLOR_GAMEOVER
                     text = "WIN!" if self.won else "OVER"
-                    self._set_key(key, color, text)
+                    set_key(self.deck, key, color, text)
                 elif (c, r) == (mid_c, mid_r):
-                    self._set_key(key, COLOR_SCORE, f"S:{self.score}")
+                    set_key(self.deck, key, COLOR_SCORE,
+                            f"S:{self.score}")
                 elif (c, r) == (mid_c, last_r):
-                    self._set_key(key, COLOR_TITLE, "AGAIN")
+                    set_key(self.deck, key, COLOR_TITLE, "AGAIN")
                 else:
-                    self._set_key(key, COLOR_EMPTY, "")
+                    set_key(self.deck, key, COLOR_EMPTY, "")
             return
 
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
-
             if c == self.ball_col and r == self.ball_row:
-                self._set_key(key, COLOR_BALL, "")
+                set_key(self.deck, key, COLOR_BALL, "")
             elif c == last_c and r == self.paddle_row:
-                self._set_key(key, COLOR_PADDLE, "||")
+                set_key(self.deck, key, COLOR_PADDLE, "||")
             elif (c, r) in self.bricks:
-                self._set_key(
-                    key,
-                    BRICK_COLORS[c % len(BRICK_COLORS)],
-                    ""
+                set_key(
+                    self.deck, key,
+                    BRICK_COLORS[c % len(BRICK_COLORS)], "",
                 )
             elif c == last_c and r == 0:
-                self._set_key(key, COLOR_SCORE, str(self.score))
+                set_key(self.deck, key, COLOR_SCORE, str(self.score))
             else:
-                self._set_key(key, COLOR_EMPTY, "")
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    # ── GAME LOOP ─────────────────────────────────
 
     def game_loop(self):
+        tick_fn = self.tick_sdplus if self.is_sdplus else self.tick_buttons
+        speed = TICK_SPEED if self.is_sdplus else TICK_SPEED_BUTTONS
         while self.running and self.deck.is_open():
             with self.lock:
-                self.tick()
+                tick_fn()
                 self.render()
-            time.sleep(TICK_SPEED)
-
-    def _set_key(self, key, color, text=""):
-        fmt = self.deck.key_image_format()
-        w, h = fmt["size"]
-        img = Image.new("RGB", (w, h), color)
-        if text:
-            draw = ImageDraw.Draw(img)
-            font_size = 22 if len(text) <= 3 else 14
-            try:
-                font = ImageFont.load_default(size=font_size)
-            except TypeError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), text, font=font)
-            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-            tx, ty = (w - tw) // 2, (h - th) // 2
-            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
-            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
-        native = PILHelper.to_native_key_format(self.deck, img)
-        try:
-            with self.deck:
-                self.deck.set_key_image(key, native)
-        except TransportError:
-            pass
-
-    def key_callback(self, deck, key, state):
-        if not state:
-            return
-        with self.lock:
-            self.handle_key(key)
+            time.sleep(speed)
 
 
 def main():
@@ -264,10 +511,17 @@ def main():
         sys.exit(1)
 
     deck = None
+    # Prefer SD+ if available
     for d in streamdecks:
         if d.is_visual():
-            deck = d
-            break
+            if getattr(d, "DIAL_COUNT", 0) and d.DIAL_COUNT > 0:
+                deck = d
+                break
+    if deck is None:
+        for d in streamdecks:
+            if d.is_visual():
+                deck = d
+                break
 
     if deck is None:
         print("No visual Stream Deck found.")
@@ -278,12 +532,32 @@ def main():
     deck.set_brightness(80)
 
     rows, cols = deck.key_layout()
+    is_sdplus = bool(
+        getattr(deck, "DIAL_COUNT", 0) and deck.DIAL_COUNT > 0
+    )
     print(f"Breakout on {deck.deck_type()} ({cols}x{rows})")
-    print("Right column = paddle. Press to move! Ctrl+C to quit.")
+    if is_sdplus:
+        print("SD+ mode: turn dial to move paddle, press dial to start")
+        print("Buttons: SPD-/SPD+ to change ball speed")
+    else:
+        print("Right column = paddle. Press to move! Ctrl+C to quit.")
 
     game = Breakout(deck)
     game.render()
-    deck.set_key_callback(game.key_callback)
+
+    def key_cb(d, k, s):
+        if not s:
+            return
+        with game.lock:
+            game.handle_key(k)
+
+    deck.set_key_callback(key_cb)
+
+    if is_sdplus:
+        def dial_cb(d, dial, evt, val):
+            with game.lock:
+                game.handle_dial(dial, evt, val)
+        deck.set_dial_callback(dial_cb)
 
     game_thread = threading.Thread(target=game.game_loop, daemon=True)
     game_thread.start()
