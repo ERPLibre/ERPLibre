@@ -1098,7 +1098,7 @@ class DJScratch:
         """Handle key press on the sampler (deck 2)."""
         if not state:
             self.sampler_playing.discard(key)
-            self._render_sampler()
+            self._render_sampler_key(self.sampler_deck, key)
             return
 
         # Button REC (row 0, col 0) = toggle record mode
@@ -1195,19 +1195,24 @@ class DJScratch:
             if key in self.sampler_map:
                 mapping = self.sampler_map[key]
                 self.sampler_playing.add(key)
-                self._render_sampler()
+                # Launch sound FIRST (before slow render)
                 threading.Thread(
                     target=self._play_sampler_mapping,
                     args=(key, mapping),
                     daemon=True,
                 ).start()
+                # Update only this key (fast, not full render)
+                self._render_sampler_key(self.sampler_deck, key)
 
     def _handle_extra_key(self, key, state, deck_offset):
         """Handle key press on an extra deck (pure sampler extension)."""
         virtual_key = deck_offset + key
         if not state:
             self.sampler_playing.discard(virtual_key)
-            self._render_extra_decks()
+            for ed, off, er, ec, et in self.extra_deck_info:
+                if off <= virtual_key < off + et:
+                    self._render_extra_key(ed, key, virtual_key)
+                    break
             return
         if self.record_mode:
             self.waiting_assign = virtual_key
@@ -1221,12 +1226,37 @@ class DJScratch:
             if virtual_key in self.sampler_map:
                 mapping = self.sampler_map[virtual_key]
                 self.sampler_playing.add(virtual_key)
-                self._render_extra_decks()
+                # Launch sound FIRST, then update only this key
                 threading.Thread(
                     target=self._play_sampler_mapping,
                     args=(virtual_key, mapping),
                     daemon=True,
                 ).start()
+                # Find which extra deck this key belongs to
+                for ed, off, er, ec, et in self.extra_deck_info:
+                    if off <= virtual_key < off + et:
+                        self._render_extra_key(ed, key, virtual_key)
+                        break
+
+    def _render_extra_key(self, deck, phys_key, virtual_key):
+        """Render a single key on an extra deck."""
+        if virtual_key == self.waiting_assign:
+            set_key(deck, phys_key, (220, 180, 0), "?")
+        elif virtual_key in self.sampler_map:
+            mapping = self.sampler_map[virtual_key]
+            if virtual_key in self.sampler_playing:
+                color = (0, 220, 0)
+            else:
+                color = (0, 60, 120)
+            if mapping[0] == "wav":
+                dur_str = mapping[2] if len(mapping) > 2 else "?"
+                label = f"M{dur_str}"
+            else:
+                name = STYLES[mapping[0]] if mapping[0] < len(STYLES) else "?"
+                label = f"{name[:3]}"
+            set_key(deck, phys_key, color, label)
+        else:
+            set_key(deck, phys_key, (15, 15, 25), f"{virtual_key}")
 
     def _render_extra_decks(self):
         """Render all extra decks (pure sampler buttons)."""
@@ -1762,7 +1792,14 @@ class DJScratch:
             vol_db = mapping[2] if len(mapping) > 2 else 0.0
             self._play_sound(style, freq, vol_db)
         self.sampler_playing.discard(key)
-        self._render_sampler()
+        # Update only the key that stopped playing (not full render)
+        if key < self.sampler_total and self.sampler_deck:
+            self._render_sampler_key(self.sampler_deck, key)
+        else:
+            for ed, off, er, ec, et in self.extra_deck_info:
+                if off <= key < off + et:
+                    self._render_extra_key(ed, key - off, key)
+                    break
 
     def _play_wav_file(self, path):
         """Play a WAV file on speaker. Prefers pw-play for mixing."""
@@ -1782,6 +1819,31 @@ class DJScratch:
                 return
             except FileNotFoundError:
                 continue
+
+    def _render_sampler_key(self, deck, key):
+        """Render a single sampler key (fast path for playback)."""
+        if key in self.sampler_map:
+            mapping = self.sampler_map[key]
+            if mapping[0] == "wav":
+                dur_str = mapping[2] if len(mapping) > 2 else "?"
+                if key in self.sampler_playing:
+                    set_key(deck, key, (255, 40, 40), f"M{dur_str}")
+                else:
+                    set_key(deck, key, (80, 20, 20), f"M{dur_str}")
+            else:
+                style = mapping[0]
+                color = STYLE_COLORS[style]
+                if key in self.sampler_playing:
+                    set_key(deck, key, color, f"{int(mapping[1])}")
+                else:
+                    dim = (color[0] // 3, color[1] // 3, color[2] // 3)
+                    label = f"{STYLES[style][:2]}{mapping[2]:+.0f}" if len(mapping) > 2 else STYLES[style][:3]
+                    set_key(deck, key, dim, label)
+        else:
+            if self.record_mode:
+                set_key(deck, key, (30, 30, 40), "+")
+            else:
+                set_key(deck, key, (20, 20, 30), "")
 
     def _render_sampler(self):
         """Render the sampler deck (deck 2). Adapts to any layout."""
