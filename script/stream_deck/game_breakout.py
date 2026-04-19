@@ -111,6 +111,7 @@ class Breakout:
         self.score = 0
         self.high_score = 0
         self.ball_speed = 5
+        self.ball_waiting = True  # ball stuck on paddle until launch
         self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
         self.ammo = 5
         self.max_ammo = 10
@@ -159,6 +160,8 @@ class Breakout:
         self.game_over = False
         self.won = False
         self.game_active = True
+        self.ball_waiting = True
+        self.ball_speed = 5
         self.bullets = []
         self.ammo = self.max_ammo
 
@@ -168,19 +171,33 @@ class Breakout:
                 for r in range(self.brick_rows):
                     self.bricks.add((c, r))
             self.paddle_y = self.screen_h // 2
-            self.ball_x = float(self.screen_w * 2 // 3)
-            self.ball_y = float(self.screen_h // 2)
-            s = self.ball_speed
-            self.ball_dx = float(-s)
-            self.ball_dy = float(random.choice([-1, 1]) * (s - 1))
+            # Ball on paddle, not moving
+            self.ball_x = float(self.paddle_x - self.ball_r - 2)
+            self.ball_y = float(self.paddle_y)
+            self.ball_dx = 0.0
+            self.ball_dy = 0.0
         else:
             self.bricks = set()
             for c in range(self.brick_cols_grid):
                 for r in range(self.rows):
                     self.bricks.add((c, r))
             self.paddle_row = self.rows // 2
+            # Ball on paddle, not moving
             self.ball_col = self.cols - 2
-            self.ball_row = self.rows // 2
+            self.ball_row = self.paddle_row
+            self.ball_dx = 0
+            self.ball_dy = 0
+
+    def _launch_ball(self):
+        """Launch ball from paddle."""
+        if not self.ball_waiting:
+            return
+        self.ball_waiting = False
+        if self.is_sdplus:
+            s = self.ball_speed
+            self.ball_dx = float(-s)
+            self.ball_dy = float(random.choice([-1, 1]) * (s * 0.6))
+        else:
             self.ball_dx = -1
             self.ball_dy = random.choice([-1, 1])
 
@@ -245,6 +262,11 @@ class Breakout:
     def tick_sdplus(self):
         if not self.game_active or self.game_over:
             return
+        # Ball follows paddle while waiting
+        if self.ball_waiting:
+            self.ball_x = float(self.paddle_x - self.ball_r - 2)
+            self.ball_y = float(self.paddle_y)
+            return
         # Tick bullets
         self._tick_bullets_sdplus()
         if self.game_over:
@@ -271,7 +293,9 @@ class Breakout:
             half_p = self.paddle_h // 2
             if abs(ny - self.paddle_y) <= half_p + self.ball_r:
                 nx = float(self.paddle_x - self.ball_r - 1)
-                self.ball_dx = -abs(self.ball_dx)
+                # Speed up on each paddle hit
+                self.ball_speed = min(12, self.ball_speed + 1)
+                self.ball_dx = float(-self.ball_speed)
                 offset = (ny - self.paddle_y) / half_p
                 self.ball_dy = offset * self.ball_speed
                 # Reload ammo on paddle hit
@@ -316,6 +340,11 @@ class Breakout:
     def tick_buttons(self):
         if not self.game_active or self.game_over:
             return
+        # Ball follows paddle while waiting
+        if self.ball_waiting:
+            self.ball_col = self.cols - 2
+            self.ball_row = self.paddle_row
+            return
         # Tick bullets
         self._tick_bullets_grid()
         if self.game_over:
@@ -344,7 +373,8 @@ class Breakout:
                     self.ball_dy = -1
                 elif new_row > self.paddle_row:
                     self.ball_dy = 1
-                # Reload ammo on paddle hit
+                # Speed up + reload ammo on paddle hit
+                self.ball_speed = min(12, self.ball_speed + 1)
                 self.ammo = min(self.max_ammo, self.ammo + 1)
             else:
                 self.game_over = True
@@ -388,16 +418,20 @@ class Breakout:
             if col == 0:
                 self.ball_speed = max(1, self.ball_speed - 1)
             elif col == self.cols - 1:
-                self.ball_speed = min(8, self.ball_speed + 1)
+                self.ball_speed = min(12, self.ball_speed + 1)
             elif col == 2:
-                self._fire()
+                if self.ball_waiting:
+                    self._launch_ball()
+                else:
+                    self._fire()
         else:
             col = key % self.cols
             row = key // self.cols
             last_col = self.cols - 1
             if col == last_col:
-                # Pressing paddle position = fire
-                if row == self.paddle_row:
+                if self.ball_waiting:
+                    self._launch_ball()
+                elif row == self.paddle_row:
                     self._fire()
                 else:
                     self.paddle_row = row
@@ -413,6 +447,8 @@ class Breakout:
             if self.game_over or not self.game_active:
                 self.reset()
                 self.render()
+            elif self.ball_waiting:
+                self._launch_ball()
             else:
                 self._fire()
             return
