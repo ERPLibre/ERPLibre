@@ -40,9 +40,10 @@ COLOR_MY_SHIP = (0, 100, 80)
 COLOR_MY_HIT = (180, 0, 0)
 
 
-def place_ships(cols, rows):
+def place_ships(cols, rows, exclude_col=None):
     """Place ships scaled to grid size, return set of key indices."""
-    total = cols * rows
+    play_cols = cols if exclude_col is None else cols - 1
+    total = play_cols * rows
     if total <= 6:
         sizes = [2]
     elif total <= 10:
@@ -60,11 +61,11 @@ def place_ships(cols, rows):
         for _ in range(200):
             horizontal = random.choice([True, False])
             if horizontal:
-                c = random.randint(0, cols - size)
+                c = random.randint(0, play_cols - size)
                 r = random.randint(0, rows - 1)
                 cells = [(c + i, r) for i in range(size)]
             else:
-                c = random.randint(0, cols - 1)
+                c = random.randint(0, play_cols - 1)
                 r = random.randint(0, rows - size)
                 cells = [(c, r + i) for i in range(size)]
 
@@ -104,11 +105,12 @@ def set_key_image(deck, key, color, text=""):
 class PlayerBoard:
     """One player's state."""
 
-    def __init__(self, cols, rows):
+    def __init__(self, cols, rows, exclude_col=None):
         self.cols = cols
         self.rows = rows
         self.total_keys = cols * rows
-        self.ships, self.ship_groups = place_ships(cols, rows)
+        self.ships, self.ship_groups = place_ships(
+            cols, rows, exclude_col=exclude_col)
         self.hits_received = set()
         self.misses_received = set()
         self.attacks_hit = set()
@@ -157,12 +159,14 @@ class BattleshipMulti:
 
     def reset(self):
         if self.num_players == 2:
+            # Exclude last column (UI: GO/WAIT, score)
             self.boards = [
-                PlayerBoard(self.cols, self.rows),
-                PlayerBoard(self.cols, self.rows),
+                PlayerBoard(self.cols, self.rows,
+                            exclude_col=self.cols - 1),
+                PlayerBoard(self.cols, self.rows,
+                            exclude_col=self.cols - 1),
             ]
         else:
-            # Solo: player attacks board[0]
             self.boards = [PlayerBoard(self.cols, self.rows)]
 
         self.current_player = 0
