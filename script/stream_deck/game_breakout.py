@@ -32,6 +32,7 @@ COLOR_TITLE = (0, 80, 160)
 COLOR_SCORE = (40, 40, 80)
 COLOR_WIN = (0, 200, 60)
 COLOR_GAMEOVER = (180, 0, 0)
+COLOR_BULLET = (255, 120, 0)
 
 BRICK_COLORS = [
     (220, 40, 40),
@@ -110,6 +111,9 @@ class Breakout:
         self.score = 0
         self.high_score = 0
         self.ball_speed = 3
+        self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
+        self.ammo = 3
+        self.max_ammo = 3
 
         # Detect SD+ (has dials + touchscreen)
         self.is_sdplus = bool(
@@ -155,6 +159,8 @@ class Breakout:
         self.game_over = False
         self.won = False
         self.game_active = True
+        self.bullets = []
+        self.ammo = self.max_ammo
 
         if self.is_sdplus:
             self.bricks = set()
@@ -178,11 +184,72 @@ class Breakout:
             self.ball_dx = -1
             self.ball_dy = random.choice([-1, 1])
 
+    def _fire(self):
+        """Fire a bullet from the paddle."""
+        if self.ammo <= 0 or not self.game_active or self.game_over:
+            return
+        self.ammo -= 1
+        if self.is_sdplus:
+            self.bullets.append([float(self.paddle_x - 5),
+                                 float(self.paddle_y)])
+        else:
+            self.bullets.append([self.cols - 2, self.paddle_row])
+
+    def _tick_bullets_sdplus(self):
+        """Move bullets left, check brick collision (SD+)."""
+        bullet_speed = 6.0
+        alive = []
+        for bx, by in self.bullets:
+            bx -= bullet_speed
+            if bx < 0:
+                continue
+            # Check brick hit
+            if bx < self.brick_zone_w:
+                bc = int(bx / self.brick_w)
+                br = int(by / self.brick_h)
+                bc = max(0, min(bc, self.brick_cols - 1))
+                br = max(0, min(br, self.brick_rows - 1))
+                if (bc, br) in self.bricks:
+                    self.bricks.discard((bc, br))
+                    self.score += 1
+                    if not self.bricks:
+                        self.won = True
+                        self.game_over = True
+                        if self.score > self.high_score:
+                            self.high_score = self.score
+                    continue  # bullet consumed
+            alive.append([bx, by])
+        self.bullets = alive
+
+    def _tick_bullets_grid(self):
+        """Move bullets left, check brick collision (button grid)."""
+        alive = []
+        for bc, br in self.bullets:
+            bc -= 1
+            if bc < 0:
+                continue
+            if (bc, br) in self.bricks:
+                self.bricks.discard((bc, br))
+                self.score += 1
+                if not self.bricks:
+                    self.won = True
+                    self.game_over = True
+                    if self.score > self.high_score:
+                        self.high_score = self.score
+                continue  # bullet consumed
+            alive.append([bc, br])
+        self.bullets = alive
+
     # ── TOUCHSCREEN (SD+) TICK ────────────────────
 
     def tick_sdplus(self):
         if not self.game_active or self.game_over:
             return
+        # Tick bullets
+        self._tick_bullets_sdplus()
+        if self.game_over:
+            return
+
         nx = self.ball_x + self.ball_dx
         ny = self.ball_y + self.ball_dy
 
@@ -205,11 +272,11 @@ class Breakout:
             if abs(ny - self.paddle_y) <= half_p + self.ball_r:
                 nx = float(self.paddle_x - self.ball_r - 1)
                 self.ball_dx = -abs(self.ball_dx)
-                # Angle based on hit position
                 offset = (ny - self.paddle_y) / half_p
                 self.ball_dy = offset * self.ball_speed
+                # Reload ammo on paddle hit
+                self.ammo = min(self.max_ammo, self.ammo + 1)
             else:
-                # Miss
                 self.game_over = True
                 if self.score > self.high_score:
                     self.high_score = self.score
@@ -240,6 +307,11 @@ class Breakout:
     def tick_buttons(self):
         if not self.game_active or self.game_over:
             return
+        # Tick bullets
+        self._tick_bullets_grid()
+        if self.game_over:
+            return
+
         new_col = self.ball_col + self.ball_dx
         new_row = self.ball_row + self.ball_dy
 
@@ -263,6 +335,8 @@ class Breakout:
                     self.ball_dy = -1
                 elif new_row > self.paddle_row:
                     self.ball_dy = 1
+                # Reload ammo on paddle hit
+                self.ammo = min(self.max_ammo, self.ammo + 1)
             else:
                 self.game_over = True
                 if self.score > self.high_score:
@@ -293,21 +367,23 @@ class Breakout:
             return
 
         if self.is_sdplus:
-            # SD+ buttons: 0=start/restart handled above
-            # Use buttons for speed control
             col = key % self.cols
             if col == 0:
                 self.ball_speed = max(1, self.ball_speed - 1)
-                print(f"Speed: {self.ball_speed}")
             elif col == self.cols - 1:
                 self.ball_speed = min(8, self.ball_speed + 1)
-                print(f"Speed: {self.ball_speed}")
+            elif col == 2:
+                self._fire()
         else:
             col = key % self.cols
             row = key // self.cols
             last_col = self.cols - 1
             if col == last_col:
-                self.paddle_row = row
+                # Pressing paddle position = fire
+                if row == self.paddle_row:
+                    self._fire()
+                else:
+                    self.paddle_row = row
             elif row < self.paddle_row:
                 self.paddle_row = max(0, self.paddle_row - 1)
             elif row > self.paddle_row:
@@ -320,6 +396,8 @@ class Breakout:
             if self.game_over or not self.game_active:
                 self.reset()
                 self.render()
+            else:
+                self._fire()
             return
         if event == DialEventType.TURN:
             if not self.game_active or self.game_over:
@@ -399,10 +477,23 @@ class Breakout:
             fill=COLOR_PADDLE,
         )
 
+        # Draw bullets
+        for bx, by in self.bullets:
+            ix, iy = int(bx), int(by)
+            draw.rectangle([ix - 3, iy - 1, ix + 3, iy + 1],
+                           fill=COLOR_BULLET)
+
         # Draw ball
         bx, by = int(self.ball_x), int(self.ball_y)
         r = self.ball_r
         draw.ellipse([bx - r, by - r, bx + r, by + r], fill=COLOR_BALL)
+
+        # Ammo indicator (small dots near paddle)
+        for a in range(self.ammo):
+            ay = self.paddle_y - self.paddle_h // 2 - 5 - a * 6
+            draw.ellipse([self.paddle_x + 2, ay - 2,
+                          self.paddle_x + 6, ay + 2],
+                         fill=COLOR_BULLET)
 
         # Score
         try:
@@ -415,7 +506,7 @@ class Breakout:
         set_screen(self.deck, img)
 
     def _render_keys_sdplus(self):
-        """Render SD+ buttons (speed, score info)."""
+        """Render SD+ buttons (speed, fire, score info)."""
         for key in range(self.total_keys):
             c = key % self.cols
             if c == 0:
@@ -426,6 +517,13 @@ class Breakout:
                 set_key(self.deck, key, COLOR_SCORE,
                         f"S:{self.score}")
             elif c == 2:
+                # Fire button with ammo count
+                if self.ammo > 0:
+                    set_key(self.deck, key, COLOR_BULLET,
+                            f"F:{self.ammo}")
+                else:
+                    set_key(self.deck, key, (40, 20, 0), "F:0")
+            elif c == 3:
                 set_key(self.deck, key, (40, 40, 60),
                         f"v{self.ball_speed}")
             else:
@@ -478,10 +576,16 @@ class Breakout:
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
+            bullet_here = any(
+                int(bc) == c and int(br) == r for bc, br in self.bullets
+            )
             if c == self.ball_col and r == self.ball_row:
                 set_key(self.deck, key, COLOR_BALL, "")
+            elif bullet_here:
+                set_key(self.deck, key, COLOR_BULLET, ">")
             elif c == last_c and r == self.paddle_row:
-                set_key(self.deck, key, COLOR_PADDLE, "||")
+                label = f"||{self.ammo}" if self.ammo > 0 else "||"
+                set_key(self.deck, key, COLOR_PADDLE, label)
             elif (c, r) in self.bricks:
                 set_key(
                     self.deck, key,
