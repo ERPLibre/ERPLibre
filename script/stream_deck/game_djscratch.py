@@ -1098,7 +1098,10 @@ class DJScratch:
         """Handle key press on the sampler (deck 2)."""
         if not state:
             self.sampler_playing.discard(key)
-            self._render_sampler_key(self.sampler_deck, key)
+            if self._is_control_key(key):
+                self._render_sampler()
+            else:
+                self._render_sampler_key(self.sampler_deck, key)
             return
 
         # Button REC (row 0, col 0) = toggle record mode
