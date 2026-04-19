@@ -182,8 +182,15 @@ class Checkers:
 
         self.render_all()
 
+    def _has_moves(self, player):
+        """Check if a player has any legal move."""
+        for (c, r), v in self.board.items():
+            if v == player and self._get_moves(c, r):
+                return True
+        return False
+
     def _end_turn(self):
-        """Check win and switch player."""
+        """Check win/stalemate and switch player."""
         p1 = any(v == 1 for v in self.board.values())
         p2 = any(v == 2 for v in self.board.values())
         if not p2:
@@ -194,6 +201,11 @@ class Checkers:
             self.game_over = True
         else:
             self.current = 3 - self.current
+            # No moves = lose
+            if not self._has_moves(self.current):
+                self.winner = 3 - self.current
+                self.game_over = True
+                return
             if not self.game_over and self.num_players == 1 and self.current == 2:
                 self._ai_move()
 
