@@ -282,15 +282,24 @@ class Breakout:
                     self.high_score = self.score
                 return
 
-        # Brick collision
-        if nx < self.brick_zone_w and self.ball_dx < 0:
-            bc = int(nx / self.brick_w)
-            br = int(ny / self.brick_h)
-            bc = max(0, min(bc, self.brick_cols - 1))
-            br = max(0, min(br, self.brick_rows - 1))
-            if (bc, br) in self.bricks:
-                self.bricks.discard((bc, br))
-                self.score += 1
+        # Brick collision — check all bricks the ball overlaps
+        if nx < self.brick_zone_w + self.ball_r:
+            hit = False
+            # Check all cells the ball touches
+            for ox in range(-self.ball_r, self.ball_r + 1, self.ball_r):
+                for oy in range(-self.ball_r, self.ball_r + 1, self.ball_r):
+                    px = nx + ox
+                    py = ny + oy
+                    if px < 0 or py < 0:
+                        continue
+                    bc = int(px / self.brick_w)
+                    br = int(py / self.brick_h)
+                    if 0 <= bc < self.brick_cols and 0 <= br < self.brick_rows:
+                        if (bc, br) in self.bricks:
+                            self.bricks.discard((bc, br))
+                            self.score += 1
+                            hit = True
+            if hit:
                 self.ball_dx = abs(self.ball_dx)
                 if not self.bricks:
                     self.won = True
@@ -343,9 +352,17 @@ class Breakout:
                     self.high_score = self.score
                 return
 
-        if (new_col, new_row) in self.bricks:
-            self.bricks.discard((new_col, new_row))
-            self.score += 1
+        # Check brick at ball position and adjacent cells
+        hit = False
+        for dc in range(0, 2):
+            for dr in [-1, 0, 1]:
+                cc = new_col - dc
+                cr = new_row + dr
+                if (cc, cr) in self.bricks:
+                    self.bricks.discard((cc, cr))
+                    self.score += 1
+                    hit = True
+        if hit:
             self.ball_dx = -self.ball_dx
             new_col = self.ball_col
             if not self.bricks:
