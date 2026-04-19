@@ -288,10 +288,7 @@ class Pong:
             else:
                 return
         self.in_menu = False
-        if self.mode == "ai":
-            self.num_players = 1
-        else:
-            self.num_players = len(self.decks)
+        self.num_players = 1 if self.mode == "ai" else 2
         self.reset()
         self.render()
 
@@ -326,13 +323,22 @@ class Pong:
                     self.ball_dx = sign_x * self.ball_speed
         else:
             row = key // self.cols
+            col = key % self.cols
+            last_col = self.cols - 1
             if self.num_players == 2:
-                if deck_index == 0:
-                    self.p1_row = row
+                if len(self.decks) >= 2:
+                    # 2 decks: each deck controls its player
+                    if deck_index == 0:
+                        self.p1_row = row
+                    else:
+                        self.p2_row = row
                 else:
-                    self.p2_row = row
+                    # 1 deck: left col = P1, right col = P2
+                    if col == 0:
+                        self.p1_row = row
+                    elif col == last_col:
+                        self.p2_row = row
             else:
-                col = key % self.cols
                 if col == 0:
                     self.p1_row = row
                 elif row < self.p1_row:
@@ -358,11 +364,19 @@ class Pong:
                 return
             half = PADDLE_H // 2
             if self.num_players == 2:
-                if deck_index == 0:
+                # 2 decks: deck_index differentiates
+                # 1 deck: dial 0-1 = P1, dial 2-3 = P2
+                is_p1 = (deck_index == 0 and dial <= 1) or (
+                    len(self.decks) == 1 and dial <= 1
+                )
+                is_p2 = (deck_index == 1) or (
+                    len(self.decks) == 1 and dial >= 2
+                )
+                if is_p1:
                     self.p1_y = max(half, min(
                         self.screen_h - half,
                         self.p1_y + value * PADDLE_SPEED))
-                else:
+                elif is_p2:
                     self.p2_y = max(half, min(
                         self.screen_h - half,
                         self.p2_y + value * PADDLE_SPEED))
@@ -376,13 +390,21 @@ class Pong:
         if not self.is_sdplus or not self.game_active:
             return
         y = value.get("y", self.screen_h // 2)
+        x = value.get("x", self.screen_w // 2)
         half = PADDLE_H // 2
         y = max(half, min(self.screen_h - half, y))
         if self.num_players == 2:
-            if deck_index == 0:
-                self.p1_y = y
+            if len(self.decks) >= 2:
+                if deck_index == 0:
+                    self.p1_y = y
+                else:
+                    self.p2_y = y
             else:
-                self.p2_y = y
+                # Same deck: left half = P1, right half = P2
+                if x < self.screen_w // 2:
+                    self.p1_y = y
+                else:
+                    self.p2_y = y
         else:
             self.p1_y = y
 
