@@ -112,8 +112,8 @@ class Breakout:
         self.high_score = 0
         self.ball_speed = 3
         self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
-        self.ammo = 3
-        self.max_ammo = 3
+        self.ammo = 5
+        self.max_ammo = 5
 
         # Detect SD+ (has dials + touchscreen)
         self.is_sdplus = bool(
@@ -130,9 +130,9 @@ class Breakout:
                 or deck.SCREEN_PIXEL_HEIGHT or 100
             )
             # Touchscreen game field — continuous coordinates
-            self.brick_zone_w = self.screen_w // 3
-            self.brick_cols = 8
-            self.brick_rows = 5
+            self.brick_zone_w = self.screen_w * 2 // 5
+            self.brick_cols = 12
+            self.brick_rows = 8
             self.brick_w = self.brick_zone_w // self.brick_cols
             self.brick_h = self.screen_h // self.brick_rows
             self.paddle_x = self.screen_w - 15
@@ -146,7 +146,7 @@ class Breakout:
             self.bricks = set()
         else:
             # Button grid mode
-            self.brick_cols_grid = max(1, (self.cols - 1) // 2)
+            self.brick_cols_grid = max(1, self.cols - 2)
             self.bricks = set()
             self.paddle_row = rows // 2
             self.ball_col = 0
