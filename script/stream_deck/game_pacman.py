@@ -35,6 +35,11 @@ COLOR_TITLE = (0, 80, 160)
 COLOR_WIN = (0, 200, 60)
 COLOR_DEAD = (200, 0, 0)
 COLOR_SCORE = (40, 40, 80)
+COLOR_POWER = (255, 180, 255)
+COLOR_VULN = (60, 60, 255)
+
+POWER_DURATION = 50  # ticks of vulnerability
+GHOST_FROZEN_TICKS = 83  # ~10s at 0.12s/tick
 
 TICK_SPEED_BUTTONS = 0.5
 TICK_SPEED_SCREEN = 0.12
@@ -115,7 +120,10 @@ class PacMan:
 
         self.pac = (0, 0)
         self.ghosts = []
+        self.ghost_spawns = []
+        self.ghost_frozen = []  # ticks remaining frozen at spawn
         self.dots = set()
+        self.power_pellets = set()
         self.walls = set()
         self.score = 0
         self.high_score = 0
@@ -125,14 +133,21 @@ class PacMan:
         self.direction = (1, 0)
         self.next_dir = (1, 0)
         self.tick_count = 0
+        self.vuln_timer = 0  # ticks remaining for vulnerability
 
     def reset(self):
         self.pac = (1, self.rows - 2)
         num_ghosts = 2 if self.is_sdplus else 1
         self.ghosts = []
+        self.ghost_spawns = []
+        self.ghost_frozen = []
         for i in range(num_ghosts):
-            self.ghosts.append((self.cols - 2 - i, 1))
+            pos = (self.cols - 2 - i, 1)
+            self.ghosts.append(pos)
+            self.ghost_spawns.append(pos)
+            self.ghost_frozen.append(0)
         self.dots = set()
+        self.power_pellets = set()
         self.walls = set()
         self.score = 0
         self.game_over = False
@@ -140,6 +155,7 @@ class PacMan:
         self.direction = (1, 0)
         self.next_dir = (1, 0)
         self.tick_count = 0
+        self.vuln_timer = 0
         self.game_active = True
         # Build maze
         for r in range(self.rows):
@@ -147,18 +163,34 @@ class PacMan:
                 pos = (c, r)
                 if pos == self.pac or pos in self.ghosts:
                     continue
-                # Border walls
                 if r == 0 or r == self.rows - 1 or c == 0 or c == self.cols - 1:
                     self.walls.add(pos)
                 elif random.random() < 0.12:
                     self.walls.add(pos)
                 else:
                     self.dots.add(pos)
+        # Place 5 power pellets at equal distance across the map
+        all_dots = sorted(self.dots)
+        if len(all_dots) >= 5:
+            step = len(all_dots) // 6
+            for i in range(1, 6):
+                pellet = all_dots[i * step]
+                self.dots.discard(pellet)
+                self.power_pellets.add(pellet)
 
     def tick(self):
         if not self.game_active or self.game_over:
             return
         self.tick_count += 1
+
+        # Vulnerability timer
+        if self.vuln_timer > 0:
+            self.vuln_timer -= 1
+
+        # Frozen ghost timers
+        for gi in range(len(self.ghost_frozen)):
+            if self.ghost_frozen[gi] > 0:
+                self.ghost_frozen[gi] -= 1
 
         # Try next_dir first, fall back to current direction
         dx, dy = self.next_dir
@@ -174,14 +206,22 @@ class PacMan:
             if (nx, ny) not in self.walls:
                 self.pac = (nx, ny)
 
+        # Eat dot
         if self.pac in self.dots:
             self.dots.discard(self.pac)
             self.score += 1
 
-        # Ghosts chase every 2 ticks (or every tick on SD+)
-        ghost_freq = 2 if not self.is_sdplus else 2
-        if self.tick_count % ghost_freq == 0:
+        # Eat power pellet
+        if self.pac in self.power_pellets:
+            self.power_pellets.discard(self.pac)
+            self.score += 5
+            self.vuln_timer = POWER_DURATION
+
+        # Ghost movement (every 2 ticks, skip frozen ghosts)
+        if self.tick_count % 2 == 0:
             for gi in range(len(self.ghosts)):
+                if self.ghost_frozen[gi] > 0:
+                    continue
                 gx, gy = self.ghosts[gi]
                 best = None
                 best_dist = float("inf")
@@ -193,17 +233,36 @@ class PacMan:
                     if (ngx, ngy) in self.walls:
                         continue
                     dist = abs(ngx - self.pac[0]) + abs(ngy - self.pac[1])
-                    if dist < best_dist:
-                        best_dist = dist
-                        best = (ngx, ngy)
+                    if self.vuln_timer > 0:
+                        # Flee from pac-man when vulnerable
+                        if dist > best_dist or best is None:
+                            best_dist = dist
+                            best = (ngx, ngy)
+                    else:
+                        if dist < best_dist:
+                            best_dist = dist
+                            best = (ngx, ngy)
                 if best:
                     self.ghosts[gi] = best
 
-        if self.pac in self.ghosts:
-            self.game_over = True
-            if self.score > self.high_score:
-                self.high_score = self.score
-        elif not self.dots:
+        # Check pac-ghost collision
+        for gi in range(len(self.ghosts)):
+            if self.ghost_frozen[gi] > 0:
+                continue
+            if self.pac == self.ghosts[gi]:
+                if self.vuln_timer > 0:
+                    # Eat ghost — send to spawn, freeze
+                    self.ghosts[gi] = self.ghost_spawns[gi]
+                    self.ghost_frozen[gi] = GHOST_FROZEN_TICKS
+                    self.score += 10
+                else:
+                    self.game_over = True
+                    if self.score > self.high_score:
+                        self.high_score = self.score
+                    return
+
+        # Win check: all dots AND power pellets eaten
+        if not self.dots and not self.power_pellets:
             self.won = True
             self.game_over = True
             if self.score > self.high_score:
@@ -318,11 +377,31 @@ class PacMan:
             draw.ellipse([x - 2, y - 2, x + 2, y + 2],
                          fill=(200, 200, 255))
 
+        # Draw power pellets (larger, pulsing)
+        pulse = 4 if self.tick_count % 4 < 2 else 3
+        for (c, r) in self.power_pellets:
+            x, y = c * cs + cs // 2, r * cs + cs // 2
+            draw.ellipse([x - pulse, y - pulse, x + pulse, y + pulse],
+                         fill=COLOR_POWER)
+
         # Draw ghosts
         ghost_colors = [COLOR_GHOST, COLOR_GHOST2]
         for gi, (gc, gr) in enumerate(self.ghosts):
+            if self.ghost_frozen[gi] > 0:
+                # Frozen at spawn: dim, small
+                gx, gy = gc * cs + cs // 4, gr * cs + cs // 4
+                draw.ellipse([gx, gy, gx + cs // 2, gy + cs // 2],
+                             fill=(40, 40, 60))
+                continue
             gx, gy = gc * cs, gr * cs
-            color = ghost_colors[gi % len(ghost_colors)]
+            if self.vuln_timer > 0:
+                # Vulnerable: blue, flashing near end
+                if self.vuln_timer < 15 and self.tick_count % 2 == 0:
+                    color = (255, 255, 255)
+                else:
+                    color = COLOR_VULN
+            else:
+                color = ghost_colors[gi % len(ghost_colors)]
             # Ghost body (rounded top, flat bottom)
             draw.rectangle([gx + 2, gy + cs // 3, gx + cs - 2,
                             gy + cs - 1], fill=color)
@@ -423,16 +502,30 @@ class PacMan:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
 
+        # Build ghost position set with index
+        ghost_map = {}
+        for gi, gpos in enumerate(self.ghosts):
+            if self.ghost_frozen[gi] <= 0:
+                ghost_map[gpos] = gi
+
         for key in range(self.cols * self.rows):
             r = key // self.cols
             c = key % self.cols
             pos = (c, r)
             if pos == self.pac:
                 set_key(self.deck, key, COLOR_PAC, "C")
-            elif pos in self.ghosts:
-                set_key(self.deck, key, COLOR_GHOST, "G")
+            elif pos in ghost_map:
+                if self.vuln_timer > 0:
+                    color = COLOR_VULN
+                    if self.vuln_timer < 15 and self.tick_count % 2 == 0:
+                        color = (255, 255, 255)
+                    set_key(self.deck, key, color, "G")
+                else:
+                    set_key(self.deck, key, COLOR_GHOST, "G")
             elif pos in self.walls:
                 set_key(self.deck, key, COLOR_WALL, "")
+            elif pos in self.power_pellets:
+                set_key(self.deck, key, COLOR_POWER, "O")
             elif pos in self.dots:
                 set_key(self.deck, key, COLOR_DOT, ".")
             elif key == self.cols * self.rows - 1:
