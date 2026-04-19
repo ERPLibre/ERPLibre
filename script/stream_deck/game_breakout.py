@@ -110,7 +110,7 @@ class Breakout:
         self.won = False
         self.score = 0
         self.high_score = 0
-        self.ball_speed = 3
+        self.ball_speed = 5
         self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
         self.ammo = 5
         self.max_ammo = 10
