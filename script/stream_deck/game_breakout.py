@@ -113,7 +113,7 @@ class Breakout:
         self.ball_speed = 3
         self.bullets = []  # list of (x, y) for SD+ or (col, row) for grid
         self.ammo = 5
-        self.max_ammo = 5
+        self.max_ammo = 10
 
         # Detect SD+ (has dials + touchscreen)
         self.is_sdplus = bool(
