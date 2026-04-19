@@ -110,14 +110,15 @@ class PlayerBoard:
         self.total_keys = cols * rows
         self.ships, self.ship_groups = place_ships(cols, rows)
         self.hits_received = set()
+        self.misses_received = set()
         self.attacks_hit = set()
         self.attacks_miss = set()
         self.sunk_ships = set()
 
     def receive_attack(self, key):
         """Return 'hit', 'miss', or 'sunk'."""
-        if key in self.hits_received or key in self.attacks_miss:
-            return None  # Already attacked
+        if key in self.hits_received or key in self.misses_received:
+            return None  # Already attacked here
 
         if key in self.ships:
             self.hits_received.add(key)
@@ -127,6 +128,7 @@ class PlayerBoard:
                     self.sunk_ships |= group
                     return "sunk"
             return "hit"
+        self.misses_received.add(key)
         return "miss"
 
     def all_sunk(self):
