@@ -8,6 +8,7 @@ Each button = a letter. Press to guess. 6 wrong guesses = game over.
 Word shown on touchscreen (SD+) or top row buttons.
 """
 
+import argparse
 import os
 import random
 import sys
@@ -23,10 +24,19 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
-WORDS = [
+WORDS_FR = [
+    "MAISON", "SOLEIL", "LIVRE", "ARBRE", "CHIEN", "FLEUR",
+    "ECOLE", "JARDIN", "NUAGE", "VILLE", "TERRE", "POMME",
+    "ROUGE", "BLANC", "TABLE", "CHAISE", "PORTE", "LAMPE",
+    "PLAGE", "FORET", "LUNDI", "NUIT", "TEMPS", "REINE",
+    "AVION", "MONDE", "PIANO", "BRISE", "NEIGE", "TIGRE",
+    "OCEAN", "SUCRE", "PERLE", "COEUR", "LAINE", "GESTE",
+]
+WORDS_EN = [
     "PYTHON", "LINUX", "ODOO", "CODE", "GAME", "DECK", "STREAM",
     "PIXEL", "BYTE", "DATA", "CLOUD", "STACK", "QUERY", "DEBUG",
-    "FLASK", "REACT", "RUST", "SWIFT", "JAVA", "RUBY", "PERL",
+    "FLASK", "REACT", "RUST", "SWIFT", "JAVA", "RUBY", "PEARL",
+    "HOUSE", "TABLE", "CHAIR", "LIGHT", "BEACH", "TIGER", "SUGAR",
 ]
 COLOR_EMPTY = (40, 40, 50)
 COLOR_CORRECT = (0, 160, 0)
@@ -104,8 +114,9 @@ def set_key_hangman(deck, key, wrong):
 
 
 class Hangman:
-    def __init__(self, deck):
+    def __init__(self, deck, words=None):
         self.deck = deck
+        self.words = words or WORDS_FR
         rows, cols = deck.key_layout()
         self.cols = cols
         self.rows = rows
@@ -142,7 +153,7 @@ class Hangman:
             self.hangman_key = extra_start + remaining - 1
 
     def reset(self):
-        self.word = random.choice(WORDS)
+        self.word = random.choice(self.words)
         self.guessed = set()
         self.wrong = 0
         self.won = False
@@ -280,6 +291,14 @@ class Hangman:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Hangman on Stream Deck")
+    parser.add_argument(
+        "-l", "--lang", choices=["fr", "en"], default="fr",
+        help="Language for words (default: fr)",
+    )
+    args = parser.parse_args()
+    words = WORDS_FR if args.lang == "fr" else WORDS_EN
+
     streamdecks = DeviceManager().enumerate()
     deck = next((d for d in streamdecks if d.is_visual()), None)
     if not deck:
@@ -288,9 +307,10 @@ def main():
     deck.open()
     deck.reset()
     deck.set_brightness(80)
-    print(f"Hangman on {deck.deck_type()}")
+    lang_label = "Français" if args.lang == "fr" else "English"
+    print(f"Hangman on {deck.deck_type()} ({lang_label})")
     print(f"Each button = a letter. {MAX_WRONG} wrong = game over.")
-    game = Hangman(deck)
+    game = Hangman(deck, words=words)
     game.render()
     deck.set_key_callback(game.key_callback)
     try:
