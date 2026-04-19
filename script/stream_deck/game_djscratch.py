@@ -199,50 +199,50 @@ def _generate_trombone(freq, duration, rate):
 
 
 def _generate_violin(freq, duration, rate):
-    """Violin: bowed sawtooth with stick-slip, body resonance, vibrato."""
+    """Violin: warm bowed string with wood body filtering."""
     n = int(rate * duration)
     samples = []
-    # Violin body resonances (Hz, gain) — simulates wood cavity
-    body_res = [(280, 1.4), (460, 1.2), (700, 0.9), (1100, 0.7)]
-    # Pre-compute phase accumulators for smooth frequency modulation
     phase = 0.0
+    # Simple IIR low-pass state for body warmth
+    lp_state = 0.0
+    # Cutoff adapts to pitch — higher notes brighter but still warm
+    lp_alpha = min(0.9, 2800.0 / rate)
     for i in range(n):
         t = i / rate
-        # Slow attack envelope (bow draw), long sustain, gentle release
-        env = _adsr(i, n, rate, attack=0.08, decay=0.04, sustain=0.88,
-                     release=0.1)
-        # Vibrato: delayed onset, ~5.5 Hz, slightly irregular
-        vib_depth = 0.006 * freq  # ~1% pitch deviation
-        vib_onset = min(1.0, max(0.0, (t - 0.12) / 0.08))
-        vib = (vib_depth * vib_onset
-               * math.sin(2 * math.pi * 5.5 * t
-                          + 0.4 * math.sin(2 * math.pi * 0.7 * t)))
+        # Slow, expressive bow attack — violin bow takes time to grip
+        env = _adsr(i, n, rate, attack=0.12, decay=0.06, sustain=0.85,
+                     release=0.12)
+        # Vibrato: delayed, slow onset, gentle ~5 Hz
+        vib_onset = min(1.0, max(0.0, (t - 0.15) / 0.1))
+        vib = (0.004 * freq * vib_onset
+               * math.sin(2 * math.pi * 5.0 * t
+                          + 0.3 * math.sin(2 * math.pi * 0.6 * t)))
         f = freq + vib
-        # Accumulate phase for glitch-free frequency modulation
         phase += f / rate
-        ph = phase % 1.0
-        # Bowed sawtooth via Fourier (1/h rolloff = stick-slip bow)
+        # Bowed sawtooth with steep rolloff (1/h^1.4) — wood body
+        # absorbs upper harmonics much more than brass bell
         val = 0.0
-        for h in range(1, 18):
+        for h in range(1, 14):
             hf = f * h
-            if hf > rate * 0.45:
+            if hf > rate * 0.42:
                 break
-            # 1/h gives sawtooth; slight odd-harmonic boost
-            amp = (1.0 / h) * (1.05 if h % 2 == 1 else 0.95)
-            # Higher harmonics arrive slightly later (bow bite)
-            h_onset = min(1.0, t / (0.01 + h * 0.008))
+            # 1/h^1.4 = warmer than sawtooth, even harmonics boosted
+            # (opposite of trumpet which boosts odd)
+            amp = 1.0 / (h ** 1.4)
+            if h % 2 == 0:
+                amp *= 1.15  # even harmonics stronger = warm
+            # Gradual harmonic build — bow engages string slowly
+            h_onset = min(1.0, t / (0.03 + h * 0.012))
             val += amp * h_onset * math.sin(2 * math.pi * h * phase)
-        # Bow stick-slip noise (rosin scratch, stronger during attack)
-        scratch_amt = 0.04 * max(0.3, 1.0 - t / 0.15)
-        val += random.uniform(-1, 1) * scratch_amt
-        # Bow pressure flutter (low-freq amplitude modulation)
-        flutter = 1.0 + 0.03 * math.sin(2 * math.pi * 3.2 * t)
+        # Gentle bow pressure variation (NOT scratch/buzz)
+        flutter = 1.0 + 0.015 * math.sin(2 * math.pi * 2.8 * t)
         val *= flutter
-        # Body resonance: boost frequencies near violin cavity modes
-        for res_f, res_g in body_res:
-            # Simple resonance approximation via modulated gain
-            proximity = 1.0 / (1.0 + ((freq - res_f) / 120.0) ** 2)
-            val *= 1.0 + (res_g - 1.0) * proximity * 0.3
+        # Low-pass filter: simulates violin body + bridge damping
+        # This is the key difference from trumpet — kills brightness
+        lp_state += lp_alpha * (val - lp_state)
+        val = lp_state
+        # Subtle body warmth: very gentle random variation
+        val += random.uniform(-1, 1) * 0.008 * env
         val *= env
         samples.append(val)
     peak = max(abs(s) for s in samples) or 1
