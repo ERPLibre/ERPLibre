@@ -135,8 +135,8 @@ TRANSLATIONS = {
         "fr": "Pose des bombes, détruis les murs, survie! 1P ou 2P.",
     },
     "game_breakout": {
-        "en": "Break bricks with a bouncing ball. Paddle on right column.",
-        "fr": "Casse les briques avec une balle. Paddle à droite.",
+        "en": "Break bricks! SD+ touchscreen, items, multi-ball, ammo.",
+        "fr": "Casse les briques! Écran tactile SD+, items, multi-balle.",
     },
     "game_checkers": {
         "en": "Simplified checkers. Jump to capture! 1P vs AI or 2P.",
@@ -207,8 +207,8 @@ TRANSLATIONS = {
         "fr": "Devine 1-100 avec couleurs chaud/froid. Moins d'essais = mieux!",
     },
     "game_pacman": {
-        "en": "Eat all dots, avoid the ghost! Press to steer.",
-        "fr": "Mange tous les points, évite le fantôme! Appuie pour diriger.",
+        "en": "Eat dots, power pellets, eat ghosts! SD+ touchscreen.",
+        "fr": "Mange les points, power pellets, mange les fantômes! SD+.",
     },
     "game_piano": {
         "en": "Play piano keys on bottom row. Dial = octave. SD+.",
