@@ -312,7 +312,7 @@ class Pong:
             row = key // self.cols
             last_r = self.rows - 1
             if col == 0 and row == 0:
-                self.ball_speed = min(8, self.ball_speed + 1)
+                self.ball_speed = min(20, self.ball_speed + 1)
                 if self.ball_dx != 0:
                     sign_x = 1 if self.ball_dx > 0 else -1
                     self.ball_dx = sign_x * self.ball_speed
