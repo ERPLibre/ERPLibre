@@ -30,6 +30,28 @@ CARD_COLORS = [
     (255, 100, 100), (100, 255, 100), (100, 100, 255), (255, 200, 0),
     (200, 0, 100), (0, 200, 100), (100, 0, 200), (200, 100, 0),
 ]
+
+# Groups of similar colors (indices into CARD_COLORS)
+# Colors in same group look alike — each gets a unique shape
+SIMILAR_GROUPS = [
+    [0, 8, 12],     # reds: red, light red, dark pink
+    [1, 7, 9, 13],  # greens: green, yellow-green, light green, teal-green
+    [2, 10, 14],    # blues: blue, light blue, purple-blue
+    [3, 11],         # yellows: yellow, gold
+    [4, 14],         # purples: purple, dark purple
+    [5, 13],         # cyans: cyan, teal
+    [6, 15],         # oranges: orange, dark orange
+]
+
+SHAPES = ["circle", "square", "triangle", "star", "diamond"]
+
+# Build color→shape mapping: similar colors get different shapes
+COLOR_SHAPES = {}
+for group in SIMILAR_GROUPS:
+    for i, ci in enumerate(group):
+        if ci not in COLOR_SHAPES:
+            COLOR_SHAPES[ci] = SHAPES[i % len(SHAPES)]
+
 COLOR_HIDDEN = (50, 50, 65)
 COLOR_EMPTY = (20, 20, 30)
 COLOR_TITLE = (0, 80, 160)
@@ -38,12 +60,41 @@ COLOR_WIN = (0, 200, 60)
 COLOR_LOSE = (200, 0, 0)
 
 
-def set_key(deck, key, color, text=""):
+def _draw_shape(draw, shape, cx, cy, size, fill):
+    """Draw a shape centered at (cx, cy)."""
+    s = size
+    if shape == "circle":
+        draw.ellipse([cx - s, cy - s, cx + s, cy + s], fill=fill)
+    elif shape == "square":
+        draw.rectangle([cx - s, cy - s, cx + s, cy + s], fill=fill)
+    elif shape == "triangle":
+        draw.polygon([(cx, cy - s), (cx - s, cy + s), (cx + s, cy + s)],
+                     fill=fill)
+    elif shape == "star":
+        import math
+        pts = []
+        for i in range(10):
+            a = math.pi / 2 + i * math.pi / 5
+            r = s if i % 2 == 0 else s * 0.4
+            pts.append((cx + r * math.cos(a), cy - r * math.sin(a)))
+        draw.polygon(pts, fill=fill)
+    elif shape == "diamond":
+        draw.polygon([(cx, cy - s), (cx + s, cy), (cx, cy + s),
+                      (cx - s, cy)], fill=fill)
+
+
+def set_key(deck, key, color, text="", shape=None):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
     img = Image.new("RGB", (w, h), color)
+    draw = ImageDraw.Draw(img)
+    if shape:
+        # Draw shape in contrasting color (white with dark outline)
+        cx, cy = w // 2, h // 2
+        sz = min(w, h) // 5
+        _draw_shape(draw, shape, cx, cy, sz + 1, (0, 0, 0))
+        _draw_shape(draw, shape, cx, cy, sz, (255, 255, 255))
     if text:
-        draw = ImageDraw.Draw(img)
         fs = 22 if len(text) <= 3 else 14
         try:
             font = ImageFont.load_default(size=fs)
@@ -51,8 +102,10 @@ def set_key(deck, key, color, text=""):
             font = ImageFont.load_default()
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text, fill=(0, 0, 0), font=font)
-        draw.text(((w - tw) // 2, (h - th) // 2), text, fill=(255, 255, 255), font=font)
+        draw.text(((w - tw) // 2 + 1, (h - th) // 2 + 1), text,
+                  fill=(0, 0, 0), font=font)
+        draw.text(((w - tw) // 2, (h - th) // 2), text,
+                  fill=(255, 255, 255), font=font)
     native = PILHelper.to_native_key_format(deck, img)
     try:
         with deck:
@@ -212,10 +265,13 @@ class ColorMatch:
             elif key in self.matched:
                 ci = self.cards[key] % len(CARD_COLORS)
                 rc, g, b = CARD_COLORS[ci]
-                set_key(deck, key, (rc // 3, g // 3, b // 3), "")
+                shape = COLOR_SHAPES.get(ci)
+                set_key(deck, key, (rc // 3, g // 3, b // 3), "",
+                        shape=shape)
             elif key in my_revealed:
                 ci = self.cards[key] % len(CARD_COLORS)
-                set_key(deck, key, CARD_COLORS[ci], "")
+                shape = COLOR_SHAPES.get(ci)
+                set_key(deck, key, CARD_COLORS[ci], "", shape=shape)
             else:
                 set_key(deck, key, COLOR_HIDDEN, "?")
 
