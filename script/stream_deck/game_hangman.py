@@ -9,6 +9,7 @@ Word shown on touchscreen (SD+) or top row buttons.
 """
 
 import argparse
+import io
 import os
 import random
 import sys
@@ -18,6 +19,7 @@ import time
 try:
     from PIL import Image, ImageDraw, ImageFont
     from StreamDeck.DeviceManager import DeviceManager
+    from StreamDeck.Devices.StreamDeck import DialEventType
     from StreamDeck.ImageHelpers import PILHelper
     from StreamDeck.Transport.Transport import TransportError
 except ImportError as e:
@@ -28,7 +30,7 @@ GAME_META = {
     "name": "Hangman",
     "category": "word",
     "multiplayer": False,
-    "sdplus": False,
+    "sdplus": True,
     "description": "Guess the word, one letter at a time. 6 wrong = over.",
     "icon": "hangman"
 }
@@ -122,6 +124,27 @@ def set_key_hangman(deck, key, wrong):
         pass
 
 
+def set_screen(deck, img):
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    img_bytes = img_bytes.getvalue()
+    try:
+        with deck:
+            w = (deck.TOUCHSCREEN_PIXEL_WIDTH
+                 or deck.SCREEN_PIXEL_WIDTH or 800)
+            h = (deck.TOUCHSCREEN_PIXEL_HEIGHT
+                 or deck.SCREEN_PIXEL_HEIGHT or 100)
+            if deck.DECK_TOUCH:
+                deck.set_touchscreen_image(img_bytes, 0, 0, w, h)
+            else:
+                deck.set_screen_image(img_bytes)
+    except (TransportError, AttributeError):
+        pass
+
+
+ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
 class Hangman:
     def __init__(self, deck, words=None):
         self.deck = deck
@@ -138,6 +161,19 @@ class Hangman:
         self.won = False
         self.game_over = False
         self.wins = 0
+        self.is_sdplus = bool(
+            getattr(deck, "DIAL_COUNT", 0) and deck.DIAL_COUNT > 0
+        )
+        if self.is_sdplus:
+            self.screen_w = (
+                deck.TOUCHSCREEN_PIXEL_WIDTH
+                or deck.SCREEN_PIXEL_WIDTH or 800
+            )
+            self.screen_h = (
+                deck.TOUCHSCREEN_PIXEL_HEIGHT
+                or deck.SCREEN_PIXEL_HEIGHT or 100
+            )
+            self.cursor = 0  # index in ALPHA
         # Map keys to letters
         self.letters = []
         self._assign_letters()
@@ -175,22 +211,24 @@ class Hangman:
             self.render()
             return
 
+        if self.is_sdplus:
+            # Buttons show letters around cursor — press to guess
+            c = key % self.cols
+            offset = c - self.cols // 2
+            idx = (self.cursor + offset) % 26
+            letter = ALPHA[idx]
+            self._guess_letter(letter)
+            self._advance_cursor()
+            self.render()
+            return
+
         if key not in self.letters:
             return
         letter = self.letters[key]
         if letter in self.guessed:
             return
 
-        self.guessed.add(letter)
-        if letter not in self.word:
-            self.wrong += 1
-            if self.wrong >= MAX_WRONG:
-                self.game_over = True
-        elif all(c in self.guessed for c in self.word):
-            self.won = True
-            self.game_over = True
-            self.wins += 1
-
+        self._guess_letter(letter)
         self.render()
 
     def _get_word_chunks(self, word=None):
@@ -214,6 +252,11 @@ class Hangman:
         return chunks
 
     def render(self):
+        if self.is_sdplus:
+            self._render_sdplus_screen()
+            self._render_sdplus_keys()
+            return
+
         mid_c = self.cols // 2
         last_r = self.rows - 1
 
@@ -292,6 +335,164 @@ class Hangman:
             else:
                 set_key(self.deck, key, COLOR_UNUSED, letter)
 
+    def _guess_letter(self, letter):
+        """Guess a letter, return True if valid guess."""
+        if letter in self.guessed:
+            return False
+        self.guessed.add(letter)
+        if letter not in self.word:
+            self.wrong += 1
+            if self.wrong >= MAX_WRONG:
+                self.game_over = True
+        elif all(c in self.guessed for c in self.word):
+            self.won = True
+            self.game_over = True
+            self.wins += 1
+        return True
+
+    def handle_dial(self, dial, event, value):
+        if not self.is_sdplus:
+            return
+        if event == DialEventType.PUSH and value:
+            if self.game_over or not self.game_active:
+                self.reset()
+                self.render()
+                return
+            # Select current letter
+            letter = ALPHA[self.cursor]
+            self._guess_letter(letter)
+            # Advance cursor to next unguessed
+            self._advance_cursor()
+            self.render()
+            return
+        if event == DialEventType.TURN:
+            if not self.game_active or self.game_over:
+                return
+            # Navigate letters
+            self.cursor = (self.cursor + value) % 26
+            # Skip guessed letters
+            for _ in range(26):
+                if ALPHA[self.cursor] not in self.guessed:
+                    break
+                self.cursor = (self.cursor + (1 if value > 0 else -1)) % 26
+            self.render()
+
+    def _advance_cursor(self):
+        """Move cursor to next unguessed letter."""
+        for _ in range(26):
+            self.cursor = (self.cursor + 1) % 26
+            if ALPHA[self.cursor] not in self.guessed:
+                return
+
+    def _render_sdplus_screen(self):
+        """Render hangman on SD+ touchscreen."""
+        sw, sh = self.screen_w, self.screen_h
+        img = Image.new("RGB", (sw, sh), (15, 15, 25))
+        draw = ImageDraw.Draw(img)
+        try:
+            font = ImageFont.load_default(size=18)
+            sfont = ImageFont.load_default(size=12)
+            bfont = ImageFont.load_default(size=24)
+        except TypeError:
+            font = sfont = bfont = ImageFont.load_default()
+
+        if not self.game_active:
+            draw.text((sw // 2 - 55, 15), "HANGMAN",
+                      fill=(255, 255, 255), font=bfont)
+            draw.text((sw // 2 - 60, 55), "Press dial to start",
+                      fill=(150, 150, 200), font=sfont)
+            if self.wins:
+                draw.text((sw // 2 - 30, 75), f"Wins: {self.wins}",
+                          fill=(200, 200, 100), font=sfont)
+            set_screen(self.deck, img)
+            return
+
+        # Draw gallows + man (left side)
+        gx, gy = 40, sh - 8
+        draw.line([(gx - 20, gy), (gx + 20, gy)],
+                  fill=(150, 150, 150), width=2)
+        draw.line([(gx, gy), (gx, 10)], fill=(150, 150, 150), width=2)
+        draw.line([(gx, 10), (gx + 35, 10)],
+                  fill=(150, 150, 150), width=2)
+        draw.line([(gx + 35, 10), (gx + 35, 20)],
+                  fill=(150, 150, 150), width=2)
+        cx = gx + 35
+        color = (255, 255, 255)
+        if self.wrong >= 1:
+            draw.ellipse([cx - 8, 20, cx + 8, 36], outline=color, width=2)
+        if self.wrong >= 2:
+            draw.line([(cx, 36), (cx, 60)], fill=color, width=2)
+        if self.wrong >= 3:
+            draw.line([(cx, 42), (cx - 14, 54)], fill=color, width=2)
+        if self.wrong >= 4:
+            draw.line([(cx, 42), (cx + 14, 54)], fill=color, width=2)
+        if self.wrong >= 5:
+            draw.line([(cx, 60), (cx - 12, 78)], fill=color, width=2)
+        if self.wrong >= 6:
+            draw.line([(cx, 60), (cx + 12, 78)], fill=color, width=2)
+
+        # Word display (center)
+        display = " ".join(
+            c if c in self.guessed else "_" for c in self.word
+        )
+        if self.game_over and not self.won:
+            display = " ".join(self.word)
+        word_color = (0, 255, 100) if self.won else (255, 60, 60) if self.game_over else (255, 255, 255)
+        draw.text((120, 15), display, fill=word_color, font=bfont)
+
+        if self.game_over:
+            label = "WIN!" if self.won else "GAME OVER"
+            lc = (0, 255, 100) if self.won else (255, 60, 60)
+            draw.text((120, 50), label, fill=lc, font=font)
+            draw.text((120, 72), "Press dial to retry",
+                      fill=(150, 150, 200), font=sfont)
+            set_screen(self.deck, img)
+            return
+
+        # Letter selector (bottom area)
+        # Show alphabet with cursor
+        x_start = 120
+        for i, ch in enumerate(ALPHA):
+            x = x_start + (i % 13) * 22
+            y = 52 + (i // 13) * 20
+            if ch in self.guessed:
+                if ch in self.word:
+                    c = (0, 120, 0)
+                else:
+                    c = (120, 0, 0)
+            elif i == self.cursor:
+                c = (255, 255, 0)
+            else:
+                c = (100, 100, 120)
+            draw.text((x, y), ch, fill=c, font=sfont)
+
+        # Lives remaining
+        draw.text((sw - 50, 5), f"{MAX_WRONG - self.wrong}",
+                  fill=(200, 200, 200), font=font)
+
+        set_screen(self.deck, img)
+
+    def _render_sdplus_keys(self):
+        """Render SD+ buttons with nearby letters."""
+        for key in range(self.total_keys):
+            c = key % self.cols
+            if not self.game_active or self.game_over:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+                continue
+            # Show letters around cursor on buttons
+            offset = c - self.cols // 2
+            idx = (self.cursor + offset) % 26
+            letter = ALPHA[idx]
+            if letter in self.guessed:
+                if letter in self.word:
+                    set_key(self.deck, key, COLOR_CORRECT, letter)
+                else:
+                    set_key(self.deck, key, COLOR_WRONG, letter)
+            elif idx == self.cursor:
+                set_key(self.deck, key, (255, 200, 0), letter)
+            else:
+                set_key(self.deck, key, COLOR_UNUSED, letter)
+
     def key_callback(self, deck, key, state):
         if not state:
             return
@@ -309,19 +510,38 @@ def main():
     words = WORDS_FR if args.lang == "fr" else WORDS_EN
 
     streamdecks = DeviceManager().enumerate()
-    deck = next((d for d in streamdecks if d.is_visual()), None)
+    # Prefer SD+
+    deck = None
+    for d in streamdecks:
+        if d.is_visual():
+            if getattr(d, "DIAL_COUNT", 0) and d.DIAL_COUNT > 0:
+                deck = d
+                break
+    if deck is None:
+        deck = next((d for d in streamdecks if d.is_visual()), None)
     if not deck:
         print("No visual Stream Deck found.")
         sys.exit(1)
     deck.open()
     deck.reset()
     deck.set_brightness(80)
+    is_sdplus = bool(
+        getattr(deck, "DIAL_COUNT", 0) and deck.DIAL_COUNT > 0
+    )
     lang_label = "Français" if args.lang == "fr" else "English"
     print(f"Hangman on {deck.deck_type()} ({lang_label})")
-    print(f"Each button = a letter. {MAX_WRONG} wrong = game over.")
+    if is_sdplus:
+        print("SD+ mode: turn dial to select letter, press to guess")
+    else:
+        print(f"Each button = a letter. {MAX_WRONG} wrong = game over.")
     game = Hangman(deck, words=words)
     game.render()
     deck.set_key_callback(game.key_callback)
+    if is_sdplus:
+        def dial_cb(d, dial, evt, val):
+            with game.lock:
+                game.handle_dial(dial, evt, val)
+        deck.set_dial_callback(dial_cb)
     try:
         while deck.is_open():
             time.sleep(0.5)
