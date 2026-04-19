@@ -132,7 +132,7 @@ class Breakout:
             # Touchscreen game field — continuous coordinates
             self.brick_zone_w = self.screen_w // 2
             self.brick_cols = 20
-            self.brick_rows = 8
+            self.brick_rows = 4
             self.brick_w = self.brick_zone_w // self.brick_cols
             self.brick_h = self.screen_h // self.brick_rows
             self.paddle_x = self.screen_w - 15
