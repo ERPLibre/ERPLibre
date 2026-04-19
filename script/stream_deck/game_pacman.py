@@ -169,6 +169,8 @@ class PacMan:
                     self.walls.add(pos)
                 else:
                     self.dots.add(pos)
+        # Ensure all open cells are reachable from pac-man
+        self._ensure_connected()
         # Place 5 power pellets at equal distance across the map
         all_dots = sorted(self.dots)
         if len(all_dots) >= 5:
@@ -177,6 +179,70 @@ class PacMan:
                 pellet = all_dots[i * step]
                 self.dots.discard(pellet)
                 self.power_pellets.add(pellet)
+
+    def _flood_fill(self, start):
+        """Return set of all cells reachable from start."""
+        visited = set()
+        queue = [start]
+        while queue:
+            pos = queue.pop()
+            if pos in visited:
+                continue
+            visited.add(pos)
+            c, r = pos
+            for dc, dr in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
+                nc, nr = c + dc, r + dr
+                npos = (nc, nr)
+                if (0 <= nc < self.cols and 0 <= nr < self.rows
+                        and npos not in self.walls and npos not in visited):
+                    queue.append(npos)
+        return visited
+
+    def _ensure_connected(self):
+        """Remove walls to connect all open cells to pac-man."""
+        reachable = self._flood_fill(self.pac)
+        # Find all open cells (dots + pac + ghosts)
+        all_open = self.dots | {self.pac} | set(self.ghosts)
+        unreachable = all_open - reachable
+        if not unreachable:
+            return
+        # For each unreachable cell, carve a path toward reachable area
+        for target in list(unreachable):
+            if target in reachable:
+                continue
+            # BFS from target through walls toward reachable area
+            visited = set()
+            queue = [(target, [])]
+            found = False
+            while queue and not found:
+                pos, path = queue.pop(0)
+                if pos in visited:
+                    continue
+                visited.add(pos)
+                c, r = pos
+                for dc, dr in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
+                    nc, nr = c + dc, r + dr
+                    npos = (nc, nr)
+                    if not (0 <= nc < self.cols and 0 <= nr < self.rows):
+                        continue
+                    if npos in visited:
+                        continue
+                    # Don't break border walls
+                    if (nr == 0 or nr == self.rows - 1
+                            or nc == 0 or nc == self.cols - 1):
+                        continue
+                    if npos in reachable:
+                        # Found path — remove walls along it
+                        for wp in path:
+                            if wp in self.walls:
+                                self.walls.discard(wp)
+                                self.dots.add(wp)
+                        found = True
+                        break
+                    new_path = path + ([npos] if npos in self.walls else [])
+                    queue.append((npos, new_path))
+            # Refresh reachable set after carving
+            reachable = self._flood_fill(self.pac)
 
     def tick(self):
         if not self.game_active or self.game_over:
