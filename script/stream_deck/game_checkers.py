@@ -68,6 +68,7 @@ class Checkers:
         self.board = {}
         self.current = 1
         self.selected = None
+        self._chain_active = False
         self.game_active = False
         self.game_over = False
         self.winner = 0
@@ -84,6 +85,7 @@ class Checkers:
                         self.board[(c, r)] = 1
         self.current = 1
         self.selected = None
+        self._chain_active = False
         self.game_over = False
         self.winner = 0
         self.game_active = True
@@ -115,6 +117,23 @@ class Checkers:
                         moves.append((jc, jr, (nc, nr)))
         return moves
 
+    def _get_captures(self, c, r):
+        """Get only capture moves from position (for chain jumps)."""
+        player = self.board.get((c, r), 0)
+        if player == 0:
+            return []
+        caps = []
+        all_dirs = [(-1, -1), (1, -1), (-1, 1), (1, 1)]
+        for dc, dr in all_dirs:
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < self.cols and 0 <= nr < self.rows:
+                if self.board.get((nc, nr)) == 3 - player:
+                    jc, jr = nc + dc, nr + dr
+                    if (0 <= jc < self.cols and 0 <= jr < self.rows
+                            and (jc, jr) not in self.board):
+                        caps.append((jc, jr, (nc, nr)))
+        return caps
+
     def handle_key(self, key, deck_index=0):
         if self.game_over or not self.game_active:
             self.reset()
@@ -134,48 +153,84 @@ class Checkers:
                 if self._get_moves(col, row):
                     self.selected = (col, row)
         else:
-            moves = self._get_moves(*self.selected)
-            target = next((m for m in moves if m[0] == col and m[1] == row), None)
+            # During a chain, only captures are allowed
+            if self._chain_active:
+                moves = self._get_captures(*self.selected)
+            else:
+                moves = self._get_moves(*self.selected)
+            target = next(
+                (m for m in moves if m[0] == col and m[1] == row), None
+            )
             if target:
                 tc, tr, captured = target
                 self.board[(tc, tr)] = self.current
                 del self.board[self.selected]
                 if captured:
                     del self.board[captured]
-                self.selected = None
-                # Check win
-                p1 = any(v == 1 for v in self.board.values())
-                p2 = any(v == 2 for v in self.board.values())
-                if not p2:
-                    self.winner = 1
-                    self.game_over = True
-                elif not p1:
-                    self.winner = 2
-                    self.game_over = True
+                # Check chain capture
+                if captured and self._get_captures(tc, tr):
+                    self.selected = (tc, tr)
+                    self._chain_active = True
                 else:
-                    self.current = 3 - self.current
-                    # AI
-                    if not self.game_over and self.num_players == 1 and self.current == 2:
-                        self._ai_move()
-            elif self.board.get((col, row)) == self.current:
+                    self.selected = None
+                    self._chain_active = False
+                    self._end_turn()
+            elif not self._chain_active and self.board.get((col, row)) == self.current:
                 self.selected = (col, row) if self._get_moves(col, row) else None
-            else:
+            elif not self._chain_active:
                 self.selected = None
 
         self.render_all()
 
+    def _end_turn(self):
+        """Check win and switch player."""
+        p1 = any(v == 1 for v in self.board.values())
+        p2 = any(v == 2 for v in self.board.values())
+        if not p2:
+            self.winner = 1
+            self.game_over = True
+        elif not p1:
+            self.winner = 2
+            self.game_over = True
+        else:
+            self.current = 3 - self.current
+            if not self.game_over and self.num_players == 1 and self.current == 2:
+                self._ai_move()
+
     def _ai_move(self):
         pieces = [(c, r) for (c, r), v in self.board.items() if v == 2]
         random.shuffle(pieces)
+        # Prefer captures
+        best = None
         for c, r in pieces:
-            moves = self._get_moves(c, r)
-            if moves:
-                m = random.choice(moves)
+            caps = self._get_captures(c, r)
+            if caps:
+                best = (c, r, random.choice(caps))
+                break
+        if best is None:
+            for c, r in pieces:
+                moves = self._get_moves(c, r)
+                if moves:
+                    best = (c, r, random.choice(moves))
+                    break
+        if best:
+            c, r, m = best
+            self.board[(m[0], m[1])] = 2
+            del self.board[(c, r)]
+            if m[2]:
+                del self.board[m[2]]
+            # Chain captures
+            pos = (m[0], m[1])
+            while m[2]:
+                caps = self._get_captures(*pos)
+                if not caps:
+                    break
+                m = random.choice(caps)
                 self.board[(m[0], m[1])] = 2
-                del self.board[(c, r)]
+                del self.board[pos]
                 if m[2]:
                     del self.board[m[2]]
-                break
+                pos = (m[0], m[1])
         p1 = any(v == 1 for v in self.board.values())
         if not p1:
             self.winner = 2
