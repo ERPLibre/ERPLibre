@@ -215,12 +215,8 @@ TRANSLATIONS = {
         "fr": "Joue du piano sur la rangée du bas. Dial = octave. SD+.",
     },
     "game_pong": {
-        "en": "Classic Pong. 1P vs AI or 2P with two decks.",
-        "fr": "Pong classique. 1P vs IA ou 2P avec deux decks.",
-    },
-    "game_pongplus": {
-        "en": "Pong on touchscreen! Dial = paddle. 2P with two SD+.",
-        "fr": "Pong sur écran tactile! Dial = paddle. 2P avec deux SD+.",
+        "en": "Pong with SD+ touchscreen support. 1P vs AI or 2P.",
+        "fr": "Pong avec support écran tactile SD+. 1P vs IA ou 2P.",
     },
     "game_reaction": {
         "en": "Hit the green button ASAP! 5 rounds. 1P or 2P.",

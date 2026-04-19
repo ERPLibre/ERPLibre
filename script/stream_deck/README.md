@@ -414,7 +414,7 @@ make streamdeck_colormixer
 Pong sur le touchscreen 800x100px! Dial = paddle. Balle rebondit. 2 Stream Deck+ = 2 joueurs!
 
 ```bash
-make streamdeck_pongplus
+make streamdeck_pong
 ```
 
 #### DJ Scratch
@@ -456,7 +456,7 @@ make streamdeck_thermometer
 | Snake | `make streamdeck_snake` | Arcade | 2P VS |
 | Breakout | `make streamdeck_breakout` | Arcade | - |
 | Flappy Bird | `make streamdeck_flappy` | Arcade | - |
-| Pong | `make streamdeck_pong` | Arcade | 2P VS |
+| Pong | `make streamdeck_pong` | Arcade / SD+ | 2P VS |
 | Bomberman | `make streamdeck_bomberman` | Arcade | 2P VS |
 | Pac-Man | `make streamdeck_pacman` | Arcade | - |
 | Space Invaders | `make streamdeck_spaceinvaders` | Arcade | - |
@@ -490,7 +490,6 @@ make streamdeck_thermometer
 | Safe Cracker | `make streamdeck_safecracker` | SD+ Puzzle | - |
 | Slot Machine | `make streamdeck_slots` | SD+ Arcade | - |
 | Color Mixer | `make streamdeck_colormixer` | SD+ Puzzle | - |
-| Pong+ | `make streamdeck_pongplus` | SD+ Arcade | 2P VS |
 | DJ Scratch | `make streamdeck_djscratch` | SD+ Musique | - |
 | Fishing | `make streamdeck_fishing` | SD+ Arcade | - |
 | Piano | `make streamdeck_piano` | SD+ Musique | - |

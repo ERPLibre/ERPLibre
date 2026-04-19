@@ -96,10 +96,6 @@ streamdeck_slots:
 streamdeck_colormixer:
 	./script/stream_deck/game_colormixer.py
 
-.PHONY: streamdeck_pongplus
-streamdeck_pongplus:
-	./script/stream_deck/game_pongplus.py
-
 .PHONY: streamdeck_djscratch
 streamdeck_djscratch:
 	./script/stream_deck/game_djscratch.py
