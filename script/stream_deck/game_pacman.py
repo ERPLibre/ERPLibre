@@ -218,15 +218,14 @@ class PacMan:
             return
 
         if self.is_sdplus:
-            col = key % self.btn_cols
-            if col == 0:
-                self.next_dir = (0, -1)  # up
-            elif col == 1:
-                self.next_dir = (0, 1)   # down
-            elif col == 2:
-                self.next_dir = (-1, 0)  # left
-            elif col == 3:
-                self.next_dir = (1, 0)   # right
+            if key == 1:
+                self.next_dir = (0, -1)   # up (button 2)
+            elif key == 4:
+                self.next_dir = (-1, 0)   # left (button 5)
+            elif key == 5:
+                self.next_dir = (0, 1)    # down (button 6)
+            elif key == 6:
+                self.next_dir = (1, 0)    # right (button 7)
         else:
             col = key % self.cols
             row = key // self.cols
@@ -376,16 +375,18 @@ class PacMan:
 
     def _render_keys_sdplus(self):
         total = self.btn_cols * self.btn_rows
+        labels = {
+            1: "UP", 4: "LEFT", 5: "DOWN", 6: "RGHT",
+        }
         for key in range(total):
-            c = key % self.btn_cols
-            if c == 0:
-                set_key(self.deck, key, (40, 40, 80), "UP")
-            elif c == 1:
-                set_key(self.deck, key, (40, 40, 80), "DOWN")
-            elif c == 2:
-                set_key(self.deck, key, (40, 40, 80), "LEFT")
-            elif c == 3:
-                set_key(self.deck, key, (40, 40, 80), "RGHT")
+            if key in labels:
+                set_key(self.deck, key, (40, 40, 80), labels[key])
+            elif key == 0:
+                set_key(self.deck, key, COLOR_SCORE,
+                        f"S:{self.score}")
+            elif key == 7:
+                set_key(self.deck, key, COLOR_SCORE,
+                        f"{len(self.dots)}")
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
