@@ -4,15 +4,19 @@
 
 """Piano (SD+ dials + touchscreen).
 
-Bottom row buttons = piano keys (white). Dials shift octave and volume.
-Touchscreen shows keyboard and current note. Visual-only (no audio).
+Bottom row buttons = piano keys (white). Dials shift octave.
+Touchscreen shows keyboard and current note. Audio via pw-play.
 """
 
 import io
+import math
 import os
+import struct
+import subprocess
 import sys
 import threading
 import time
+import wave
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -42,6 +46,62 @@ COLOR_EMPTY = (20, 20, 30)
 COLOR_KEY_WHITE = (220, 220, 220)
 COLOR_KEY_PRESSED = (100, 200, 255)
 COLOR_TITLE = (0, 80, 160)
+
+SAMPLE_RATE = 22050
+DURATION = 0.4
+
+# Note frequencies: C1 to B8
+_NOTE_FREQ = {}
+for _oct in range(1, 9):
+    for _i, _n in enumerate(NOTES):
+        # A4 = 440 Hz, semitone offsets from A
+        _semi = {"C": -9, "D": -7, "E": -5, "F": -4,
+                 "G": -2, "A": 0, "B": 2}[_n]
+        _NOTE_FREQ[f"{_n}{_oct}"] = 440.0 * (2 ** ((_oct - 4) + _semi / 12.0))
+
+
+def _generate_piano_tone(freq, duration=DURATION, rate=SAMPLE_RATE):
+    """Piano-like tone: decaying harmonics with ADSR."""
+    n = int(rate * duration)
+    samples = []
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Fast attack, exponential decay (piano hammer)
+        env = math.exp(-4.0 * progress) * min(1.0, t / 0.005)
+        val = 0.0
+        for h in range(1, 8):
+            hf = freq * h
+            if hf > rate * 0.45:
+                break
+            # Piano: harmonics decay faster for higher partials
+            amp = (1.0 / (h ** 1.5)) * math.exp(-h * 2.0 * progress)
+            val += amp * math.sin(2 * math.pi * hf * t)
+        val *= env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [int(max(-32767, min(32767, s / peak * 28000))) for s in samples]
+
+
+def _play_samples(samples, rate=SAMPLE_RATE):
+    """Play int16 samples via pw-play or aplay."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(struct.pack(f"<{len(samples)}h", *samples))
+    wav_bytes = buf.getvalue()
+    for cmd in [["pw-play", "-"], ["aplay", "-q", "-"]]:
+        try:
+            proc = subprocess.Popen(
+                cmd, stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            proc.communicate(input=wav_bytes)
+            return
+        except FileNotFoundError:
+            continue
 
 
 def set_key(deck, key, color, text=""):
@@ -113,9 +173,19 @@ class Piano:
                 self.last_note = f"{note}{self.octave}"
                 self.last_press_time = time.monotonic()
                 self.pressed.add(col)
+                # Play sound in background thread
+                freq = _NOTE_FREQ.get(self.last_note, 440.0)
+                threading.Thread(
+                    target=self._play_note, args=(freq,), daemon=True,
+                ).start()
             else:
                 self.pressed.discard(col)
         self.render()
+
+    def _play_note(self, freq):
+        """Generate and play a piano note."""
+        samples = _generate_piano_tone(freq)
+        _play_samples(samples)
 
     def render(self):
         self._render_keys()
