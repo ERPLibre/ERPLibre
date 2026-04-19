@@ -604,9 +604,10 @@ def set_screen(deck, img):
 
 
 class DJScratch:
-    def __init__(self, deck, sampler_deck=None):
+    def __init__(self, deck, sampler_deck=None, extra_decks=None):
         self.deck = deck
         self.sampler_deck = sampler_deck
+        self.extra_decks = extra_decks or []
         rows, cols = deck.key_layout()
         self.cols = cols
         self.rows = rows
@@ -680,6 +681,16 @@ class DJScratch:
             self.key_met = -1
             self.key_mix = -1
             self.key_exp = -1
+        # Extra decks: pure sampler extension (no control buttons)
+        # Virtual key = sampler_total + cumulative offset + physical key
+        self.extra_deck_info = []  # (deck, offset, rows, cols, total)
+        offset = self.sampler_total
+        for ed in self.extra_decks:
+            er, ec = ed.key_layout()
+            et = er * ec
+            self.extra_deck_info.append((ed, offset, er, ec, et))
+            offset += et
+        self.sampler_total_all = offset  # total keys across all samplers
         # Looper state
         self.loop_state = "off"  # off, rec, play, overdub
         self.loop_buffer = []
@@ -773,6 +784,13 @@ class DJScratch:
     def handle_key(self, key, state, deck_index=0):
         if deck_index == 1:
             self._handle_sampler_key(key, state)
+            return
+        if deck_index >= 2:
+            # Extra deck — find offset
+            ei = deck_index - 2
+            if ei < len(self.extra_deck_info):
+                offset = self.extra_deck_info[ei][1]
+                self._handle_extra_key(key, state, offset)
             return
 
         col = key % self.cols
@@ -1183,6 +1201,55 @@ class DJScratch:
                     args=(key, mapping),
                     daemon=True,
                 ).start()
+
+    def _handle_extra_key(self, key, state, deck_offset):
+        """Handle key press on an extra deck (pure sampler extension)."""
+        virtual_key = deck_offset + key
+        if not state:
+            self.sampler_playing.discard(virtual_key)
+            self._render_extra_decks()
+            return
+        if self.record_mode:
+            self.waiting_assign = virtual_key
+            print(
+                f"Extra sampler key {virtual_key} selected - "
+                f"press sound 0-3 on deck 1 or MIC to record"
+            )
+            self._render_sampler()
+            self._render_extra_decks()
+        else:
+            if virtual_key in self.sampler_map:
+                mapping = self.sampler_map[virtual_key]
+                self.sampler_playing.add(virtual_key)
+                self._render_extra_decks()
+                threading.Thread(
+                    target=self._play_sampler_mapping,
+                    args=(virtual_key, mapping),
+                    daemon=True,
+                ).start()
+
+    def _render_extra_decks(self):
+        """Render all extra decks (pure sampler buttons)."""
+        for ed, offset, er, ec, et in self.extra_deck_info:
+            for key in range(et):
+                virtual_key = offset + key
+                if virtual_key == self.waiting_assign:
+                    set_key(ed, key, (220, 180, 0), "?")
+                elif virtual_key in self.sampler_map:
+                    mapping = self.sampler_map[virtual_key]
+                    if virtual_key in self.sampler_playing:
+                        color = (0, 220, 0)
+                    else:
+                        color = (0, 60, 120)
+                    if mapping[0] == "wav":
+                        dur_str = mapping[2] if len(mapping) > 2 else "?"
+                        label = f"M{dur_str}"
+                    else:
+                        name = STYLES[mapping[0]] if mapping[0] < len(STYLES) else "?"
+                        label = f"{name[:3]}"
+                    set_key(ed, key, color, label)
+                else:
+                    set_key(ed, key, (15, 15, 25), f"{virtual_key}")
 
     def _reset_all_effects(self):
         """Reset all channel effects to default values."""
@@ -1867,6 +1934,8 @@ class DJScratch:
                 set_key(deck, key, (30, 30, 40), "+")
             else:
                 set_key(deck, key, (20, 20, 30), "")
+        # Also refresh extra decks
+        self._render_extra_decks()
 
     def _wave(self, style, x, phase):
         t = x * 0.05 + phase
@@ -2092,12 +2161,15 @@ def main():
         print("No Stream Deck + found.")
         sys.exit(1)
 
-    # Find second deck as sampler (any visual deck)
+    # Find second deck as sampler, rest as extra sampler extensions
     sampler_deck = None
+    extra_decks = []
     for d in visual:
         if d is not main_deck:
-            sampler_deck = d
-            break
+            if sampler_deck is None:
+                sampler_deck = d
+            else:
+                extra_decks.append(d)
 
     for d in visual:
         d.open()
@@ -2116,7 +2188,13 @@ def main():
         print("  Record mode: press sampler button, then press sound 0-3")
         print("  Play mode: press assigned button to play sound")
 
-    game = DJScratch(main_deck, sampler_deck=sampler_deck)
+    for i, ed in enumerate(extra_decks):
+        er, ec = ed.key_layout()
+        print(f"\nEXTRA SAMPLER {i + 1}: {ed.deck_type()} ({ec}x{er})")
+        print("  Extended memory bank — all buttons are sampler slots")
+
+    game = DJScratch(main_deck, sampler_deck=sampler_deck,
+                     extra_decks=extra_decks)
     if game.load_state():
         print("Previous session restored!")
     game.render()
@@ -2140,10 +2218,26 @@ def main():
                 game.handle_key(k, s, deck_index=1)
         sampler_deck.set_key_callback(sampler_key_cb)
 
+    for i, ed in enumerate(extra_decks):
+        di = i + 2  # deck_index 2, 3, 4...
+        def make_extra_cb(deck_idx):
+            def extra_key_cb(d, k, s):
+                with game.lock:
+                    game.handle_key(k, s, deck_index=deck_idx)
+            return extra_key_cb
+        ed.set_key_callback(make_extra_cb(di))
+
     t = threading.Thread(target=game.loop, daemon=True)
     t.start()
 
-    all_decks = [main_deck] + ([sampler_deck] if sampler_deck else [])
+    # Initial render of extra decks
+    game._render_extra_decks()
+
+    all_decks = (
+        [main_deck]
+        + ([sampler_deck] if sampler_deck else [])
+        + extra_decks
+    )
     try:
         while all(d.is_open() for d in all_decks):
             time.sleep(0.5)
