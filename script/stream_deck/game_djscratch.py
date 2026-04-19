@@ -120,7 +120,7 @@ STYLE_MODES = {
     17: ["freq", "vol", "reverb", "echo"],                 # Duck
     18: ["freq", "vol", "reverb", "echo"],                 # Cow
     19: ["freq", "vol", "reverb", "echo"],                 # Tambour
-    20: ["vol", "reverb", "echo", "bitcrush"],             # Cymbal (no freq)
+    20: ["freq", "vol", "reverb", "echo", "bitcrush"],      # Cymbal
 }
 
 
@@ -633,9 +633,8 @@ def _generate_cymbal(freq, duration, rate):
     """Cymbal: dense metallic noise with inharmonic partials."""
     n = int(rate * duration)
     samples = []
-    # Cymbal has inharmonic frequencies — not related to input freq
-    # Use many close-but-not-harmonic sine waves = metallic shimmer
-    base = 800.0
+    # Inharmonic partials scaled from input frequency
+    base = max(200, freq * 1.5)
     # Inharmonic ratios (typical of circular metal plates)
     ratios = [1.0, 1.47, 1.83, 2.24, 2.67, 3.15, 3.58, 4.11,
               4.78, 5.23, 5.91, 6.47, 7.12, 7.83]
