@@ -25,6 +25,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Racing+",
+    "category": "race",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Side-scrolling race on touchscreen! Dial = steering.",
+    "icon": "racing"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_TITLE = (0, 80, 160)
 COLOR_SCORE = (40, 40, 80)
@@ -279,6 +288,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score} | High: {game.high_score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

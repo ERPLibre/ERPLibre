@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Lights Out",
+    "category": "puzzle",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Toggle button + neighbors. Turn all off! Coop.",
+    "icon": "lights"
+}
+
 COLOR_ON = (220, 200, 0)
 COLOR_OFF = (20, 20, 30)
 COLOR_WIN = (0, 200, 60)
@@ -209,6 +218,13 @@ def main():
             except Exception:
                 pass
         print(f"\nGames won: {game.games_won} | Best: {game.best_moves}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

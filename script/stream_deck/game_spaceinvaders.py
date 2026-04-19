@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Space Invaders",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Shoot aliens before they reach the bottom!",
+    "icon": "invaders"
+}
+
 COLOR_EMPTY = (0, 0, 20)
 COLOR_PLAYER = (0, 200, 255)
 COLOR_ALIEN = (0, 220, 0)
@@ -225,6 +234,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

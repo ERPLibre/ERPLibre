@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Pac-Man",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Eat dots, power pellets, eat ghosts! SD+ touchscreen.",
+    "icon": "pacman"
+}
+
 COLOR_EMPTY = (0, 0, 20)
 COLOR_PAC = (255, 255, 0)
 COLOR_GHOST = (255, 0, 0)
@@ -679,6 +688,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score} | High: {game.high_score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

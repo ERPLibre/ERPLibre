@@ -12,6 +12,7 @@ Usage: python3 gallery_server.py
 Then open http://localhost:8042
 """
 
+import glob
 import http.server
 import json
 import os
@@ -23,6 +24,40 @@ import webbrowser
 PORT = 8042
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ERPLIBRE_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+# Game metadata cache (populated at startup)
+_game_cache = []
+
+
+def _scan_games():
+    """Scan all game_*.py files and collect metadata via --meta."""
+    games = []
+    for filepath in sorted(glob.glob(os.path.join(SCRIPT_DIR, "game_*.py"))):
+        game_id = os.path.basename(filepath).replace("game_", "").replace(
+            ".py", ""
+        )
+        try:
+            result = subprocess.run(
+                [sys.executable, filepath, "--meta"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                meta = json.loads(result.stdout.strip())
+                meta["id"] = game_id
+                # Check if game has save files
+                save_dir = os.path.join(SCRIPT_DIR, "save")
+                if os.path.isdir(save_dir):
+                    has_saves = any(
+                        game_id in f for f in os.listdir(save_dir)
+                    )
+                    if has_saves:
+                        meta["saves"] = True
+                games.append(meta)
+            else:
+                print(f"  WARN: {game_id} --meta failed: {result.stderr[:80]}")
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+            print(f"  WARN: {game_id}: {e}")
+    return games
 
 # Track the current game process
 _current_game_proc = None
@@ -54,6 +89,9 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=SCRIPT_DIR, **kwargs)
 
     def do_GET(self):
+        if self.path == "/api/games":
+            self._json_response(_game_cache)
+            return
         if self.path.startswith("/launch/"):
             game_id = self.path.split("/launch/")[1].strip("/")
             self._launch_game(game_id)
@@ -233,6 +271,11 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
+    global _game_cache
+    print("Scanning games...")
+    _game_cache = _scan_games()
+    print(f"Found {len(_game_cache)} games")
+
     handler = GameHandler
     with http.server.HTTPServer(("", PORT), handler) as httpd:
         url = f"http://localhost:{PORT}"

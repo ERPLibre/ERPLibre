@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Rock Paper Scissors",
+    "category": "reflex",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Rock Paper Scissors! Best of 5. 1P or 2P.",
+    "icon": "rps"
+}
+
 CHOICES = ["ROCK", "PAPER", "SCIS"]
 CHOICE_COLORS = [(120, 120, 120), (200, 200, 200), (200, 50, 50)]
 COLOR_EMPTY = (20, 20, 30)
@@ -260,6 +269,13 @@ def main():
             except Exception:
                 pass
         print(f"\nScore: {game.p1_score}-{game.p2_score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

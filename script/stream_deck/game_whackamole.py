@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Whack-a-Mole",
+    "category": "reflex",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Hit moles before they vanish! 30s. 1P or 2P VS.",
+    "icon": "mole"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_MOLE = (180, 120, 40)
 COLOR_HIT = (0, 220, 0)
@@ -259,6 +268,13 @@ def main():
             except Exception:
                 pass
         print(f"\nScores: P1={game.scores[0]} P2={game.scores[1]}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

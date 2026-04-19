@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Maze Runner",
+    "category": "puzzle",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Navigate a random maze from top-left to bottom-right.",
+    "icon": "maze"
+}
+
 COLOR_WALL = (40, 40, 50)
 COLOR_PATH = (80, 80, 100)
 COLOR_PLAYER = (0, 200, 255)
@@ -220,6 +229,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nMoves: {game.moves} | Best: {game.best}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

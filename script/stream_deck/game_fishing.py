@@ -26,6 +26,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Fishing",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Cast, wait for bite, reel in! Don't snap the line.",
+    "icon": "fish"
+}
+
 FISH = [("Trout", 1), ("Bass", 2), ("Salmon", 3), ("Tuna", 5), ("Shark", 10)]
 STATE_IDLE = "idle"
 STATE_CAST = "cast"
@@ -255,6 +264,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nCatches: {game.catches} | Score: {game.score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

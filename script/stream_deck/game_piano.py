@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Piano",
+    "category": "sim",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Play piano keys on bottom row. Dial = octave.",
+    "icon": "piano"
+}
+
 NOTES = ["C", "D", "E", "F", "G", "A", "B"]
 NOTE_COLORS = {
     "C": (255, 80, 80), "D": (255, 160, 0), "E": (255, 255, 0),
@@ -188,6 +197,13 @@ def main():
         with deck:
             deck.reset()
             deck.close()
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

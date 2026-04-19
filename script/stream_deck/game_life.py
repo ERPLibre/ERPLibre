@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Game of Life",
+    "category": "sim",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Conway's Game of Life. Toggle cells, play/pause.",
+    "icon": "life"
+}
+
 COLOR_ALIVE = (0, 220, 80)
 COLOR_DEAD = (20, 20, 30)
 COLOR_PLAY = (0, 160, 0)
@@ -182,6 +191,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nGenerations: {game.generation}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

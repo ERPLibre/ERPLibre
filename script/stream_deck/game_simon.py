@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Simon Says",
+    "category": "memory",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Memorize and repeat the light sequence! 1P or 2P.",
+    "icon": "simon"
+}
+
 COLORS = [
     (220, 0, 0), (0, 180, 0), (0, 80, 220), (220, 180, 0),
     (180, 0, 180), (0, 180, 180), (220, 100, 0), (100, 220, 0),
@@ -302,6 +311,13 @@ def main():
             except Exception:
                 pass
         print(f"\nScore: {game.score} | High: {game.high_score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

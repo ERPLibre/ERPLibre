@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Frogger",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Cross traffic lanes to reach the top!",
+    "icon": "frogger"
+}
+
 COLOR_EMPTY = (40, 60, 40)
 COLOR_FROG = (0, 220, 0)
 COLOR_CAR = (200, 40, 40)
@@ -202,6 +211,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

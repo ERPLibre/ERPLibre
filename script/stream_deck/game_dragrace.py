@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Drag Race",
+    "category": "race",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Shift gears at the right RPM! 1P or 2P.",
+    "icon": "drag"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_LOW = (0, 80, 0)
 COLOR_MID = (120, 180, 0)
@@ -306,6 +315,13 @@ def main():
             except Exception:
                 pass
         print(f"\nBest time: {game.best_time:.1f}s")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

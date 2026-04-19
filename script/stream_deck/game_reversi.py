@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Reversi",
+    "category": "strategy",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Place pieces to flip opponent's. Most pieces wins!",
+    "icon": "reversi"
+}
+
 COLOR_EMPTY = (0, 80, 40)
 COLOR_P1 = (20, 20, 20)
 COLOR_P2 = (240, 240, 240)
@@ -240,6 +249,13 @@ def main():
                     d.close()
             except Exception:
                 pass
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

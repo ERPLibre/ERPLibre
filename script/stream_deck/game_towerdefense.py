@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Tower Defense",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Place towers to stop enemies crossing! Survive 5 waves.",
+    "icon": "tower"
+}
+
 COLOR_EMPTY = (20, 30, 20)
 COLOR_PATH = (60, 50, 40)
 COLOR_TOWER = (0, 120, 200)
@@ -247,6 +256,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score} | Wave: {game.wave}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

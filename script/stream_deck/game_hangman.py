@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Hangman",
+    "category": "word",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Guess the word, one letter at a time. 6 wrong = over.",
+    "icon": "hangman"
+}
+
 WORDS_FR = [
     "MAISON", "SOLEIL", "LIVRE", "ARBRE", "CHIEN", "FLEUR",
     "ECOLE", "JARDIN", "NUAGE", "VILLE", "TERRE", "POMME",
@@ -323,6 +332,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nWins: {game.wins}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

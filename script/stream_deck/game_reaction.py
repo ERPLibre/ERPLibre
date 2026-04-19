@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Reaction Time",
+    "category": "reflex",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Hit the green button ASAP! 5 rounds. 1P or 2P.",
+    "icon": "reaction"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_WAIT = (180, 120, 0)
 COLOR_GO = (0, 220, 0)
@@ -289,6 +298,13 @@ def main():
                     d.close()
             except Exception:
                 pass
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

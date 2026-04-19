@@ -25,6 +25,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Thermometer",
+    "category": "puzzle",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Guess the secret temperature. Hot/cold bar on screen.",
+    "icon": "thermo"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_TITLE = (0, 80, 160)
 COLOR_WIN = (0, 200, 60)
@@ -230,6 +239,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nBest: {game.best} attempts")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

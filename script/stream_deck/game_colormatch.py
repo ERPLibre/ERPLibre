@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Color Match",
+    "category": "memory",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Flip cards, find matching pairs! 1P or 2P race.",
+    "icon": "match"
+}
+
 CARD_COLORS = [
     (220, 40, 40), (0, 180, 0), (0, 80, 220), (220, 180, 0),
     (180, 0, 180), (0, 180, 180), (220, 100, 0), (100, 220, 0),
@@ -324,6 +333,13 @@ def main():
             except Exception:
                 pass
         print(f"\nScores: P1={game.scores[0]} P2={game.scores[1]}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

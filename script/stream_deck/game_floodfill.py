@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Flood Fill",
+    "category": "puzzle",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Pick colors to flood-fill. Fill the grid! 1P or 2P.",
+    "icon": "flood"
+}
+
 PALETTE = [
     (220, 40, 40), (0, 180, 0), (0, 80, 220),
     (220, 180, 0), (180, 0, 180), (0, 180, 180),
@@ -259,6 +268,13 @@ def main():
             except Exception:
                 pass
         print(f"\nMoves: P1={game.moves[0]} P2={game.moves[1]}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

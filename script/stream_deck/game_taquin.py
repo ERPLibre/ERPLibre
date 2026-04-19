@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Taquin",
+    "category": "puzzle",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Slide tiles to order them 1 to N. Classic puzzle!",
+    "icon": "taquin"
+}
+
 TILE_COLORS = [
     (70, 130, 180), (60, 179, 113), (218, 165, 32), (205, 92, 92),
     (147, 112, 219), (0, 139, 139), (210, 105, 30), (128, 128, 0),
@@ -209,6 +218,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nMoves: {game.moves} | Best: {game.best_moves}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Tic-Tac-Toe",
+    "category": "strategy",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.",
+    "icon": "ttt"
+}
+
 COLOR_EMPTY = (20, 20, 25)
 COLOR_BOARD = (60, 70, 90)
 COLOR_X = (220, 50, 50)
@@ -342,6 +351,13 @@ def main():
             except Exception:
                 pass
         print(f"\nScore: X={game.score_x} O={game.score_o}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

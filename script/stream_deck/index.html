@@ -241,52 +241,23 @@ footer a { color: #58a6ff; text-decoration: none; }
 </footer>
 
 <script>
-const games = [
-  {id:"snake", name:"Snake", cat:"arcade", multi:true, sdp:false, desc:"Classic snake. Eat, grow, don't crash! 1P or 2P VS.", icon:"snake"},
-  {id:"breakout", name:"Breakout", cat:"arcade", multi:false, sdp:true, desc:"Break bricks! SD+ touchscreen, items, multi-ball, ammo.", icon:"breakout"},
-  {id:"flappy", name:"Flappy Bird", cat:"arcade", multi:false, sdp:false, desc:"Press any button to flap up. Avoid obstacles!", icon:"flappy"},
-  {id:"pong", name:"Pong", cat:"arcade", multi:true, sdp:true, desc:"Pong with SD+ touchscreen support. 1P vs AI or 2P.", icon:"pong"},
-  {id:"bomberman", name:"Bomberman", cat:"arcade", multi:true, sdp:false, desc:"Place bombs, destroy walls, survive! 1P or 2P.", icon:"bomberman"},
-  {id:"pacman", name:"Pac-Man", cat:"arcade", multi:false, sdp:true, desc:"Eat dots, power pellets, eat ghosts! SD+ touchscreen.", icon:"pacman"},
-  {id:"spaceinvaders", name:"Space Invaders", cat:"arcade", multi:false, sdp:false, desc:"Shoot aliens before they reach the bottom!", icon:"invaders"},
-  {id:"frogger", name:"Frogger", cat:"arcade", multi:false, sdp:false, desc:"Cross traffic lanes to reach the top!", icon:"frogger"},
-  {id:"tetris", name:"Tetris", cat:"arcade", multi:false, sdp:true, desc:"Pieces fall from right to left. SD+ touchscreen mode!", icon:"tetris"},
-  {id:"towerdefense", name:"Tower Defense", cat:"arcade", multi:false, sdp:false, desc:"Place towers to stop enemies crossing! Survive 5 waves.", icon:"tower"},
-  {id:"racer", name:"Top-Down Racer", cat:"race", multi:false, sdp:false, desc:"Dodge obstacles on a scrolling road! Speed increases.", icon:"racer"},
-  {id:"dragrace", name:"Drag Race", cat:"race", multi:true, sdp:false, desc:"Shift gears at the right RPM! 1P or 2P.", icon:"drag"},
-  {id:"racingplus", name:"Racing+", cat:"race", multi:false, sdp:true, desc:"Side-scrolling race on touchscreen! Dial = steering.", icon:"racing"},
-  {id:"whackamole", name:"Whack-a-Mole", cat:"reflex", multi:true, sdp:false, desc:"Hit moles before they vanish! 30s. 1P or 2P VS.", icon:"mole"},
-  {id:"reaction", name:"Reaction Time", cat:"reflex", multi:true, sdp:false, desc:"Hit the green button ASAP! 5 rounds. 1P or 2P.", icon:"reaction"},
-  {id:"simon", name:"Simon Says", cat:"memory", multi:true, sdp:false, desc:"Memorize and repeat the light sequence! 1P or 2P.", icon:"simon"},
-  {id:"colormatch", name:"Color Match", cat:"memory", multi:true, sdp:false, desc:"Flip cards, find matching pairs! 1P or 2P race.", icon:"match"},
-  {id:"minesweeper", name:"Minesweeper", cat:"puzzle", multi:true, sdp:false, desc:"Classic minesweeper (1P) or mine hunter VS (2P).", icon:"mine"},
-  {id:"lightsout", name:"Lights Out", cat:"puzzle", multi:true, sdp:false, desc:"Toggle button + neighbors. Turn all off! Coop.", icon:"lights"},
-  {id:"2048", name:"2048", cat:"puzzle", multi:false, sdp:false, desc:"Merge tiles to reach 2048! Corner buttons = directions.", icon:"n2048"},
-  {id:"taquin", name:"Taquin", cat:"puzzle", multi:false, sdp:false, desc:"Slide tiles to order them 1 to N. Classic puzzle!", icon:"taquin"},
-  {id:"sokoban", name:"Sokoban", cat:"puzzle", multi:false, sdp:false, desc:"Push boxes onto targets. Think before you move!", icon:"sokoban"},
-  {id:"floodfill", name:"Flood Fill", cat:"puzzle", multi:true, sdp:false, desc:"Pick colors to flood-fill. Fill the grid! 1P or 2P.", icon:"flood"},
-  {id:"sudoku", name:"Sudoku 3x3", cat:"puzzle", multi:false, sdp:false, desc:"Fill the 3x3 grid. No repeats in rows/columns!", icon:"sudoku"},
-  {id:"maze", name:"Maze Runner", cat:"puzzle", multi:false, sdp:false, desc:"Navigate a random maze from top-left to bottom-right.", icon:"maze"},
-  {id:"battleship", name:"Battleship", cat:"strategy", multi:true, sdp:false, desc:"Find hidden ships! Hit = keep turn. 1P or 2P.", icon:"ship"},
-  {id:"mastermind", name:"Mastermind", cat:"strategy", multi:false, sdp:false, desc:"Guess the secret color code. Feedback after each try.", icon:"master"},
-  {id:"tictactoe", name:"Tic-Tac-Toe", cat:"strategy", multi:true, sdp:false, desc:"Tic-Tac-Toe on 3x3 grid. 1P hot seat or 2P.", icon:"ttt"},
-  {id:"connect4", name:"Connect 4", cat:"strategy", multi:true, sdp:false, desc:"Drop pieces, get 4 in a row! 1P vs AI or 2P.", icon:"c4"},
-  {id:"checkers", name:"Checkers", cat:"strategy", multi:true, sdp:false, desc:"Simplified checkers. Jump to capture! 1P or 2P.", icon:"checkers"},
-  {id:"reversi", name:"Reversi", cat:"strategy", multi:true, sdp:false, desc:"Place pieces to flip opponent's. Most pieces wins!", icon:"reversi"},
-  {id:"wordle", name:"Wordle", cat:"word", multi:false, sdp:false, desc:"Guess a 5-letter word. Green/yellow/grey hints. 6 tries.", icon:"wordle"},
-  {id:"hangman", name:"Hangman", cat:"word", multi:false, sdp:false, desc:"Guess the word, one letter at a time. 6 wrong = over.", icon:"hangman"},
-  {id:"numberguess", name:"Number Guess", cat:"word", multi:false, sdp:false, desc:"Guess 1-100 with hot/cold colors. Fewer tries = better!", icon:"number"},
-  {id:"rps", name:"Rock Paper Scissors", cat:"reflex", multi:true, sdp:false, desc:"Rock Paper Scissors! Best of 5. 1P or 2P.", icon:"rps"},
-  {id:"life", name:"Game of Life", cat:"sim", multi:false, sdp:false, desc:"Conway's Game of Life. Toggle cells, play/pause.", icon:"life"},
-  {id:"langton", name:"Langton's Ant", cat:"sim", multi:false, sdp:false, desc:"Langton's Ant automaton. Watch emergent patterns!", icon:"ant"},
-  {id:"safecracker", name:"Safe Cracker", cat:"puzzle", multi:false, sdp:true, desc:"Turn 4 dials to guess the combo. Hot/cold hints.", icon:"safe"},
-  {id:"slots", name:"Slot Machine", cat:"arcade", multi:false, sdp:true, desc:"Spin reels with dials, stop to match symbols!", icon:"slots"},
-  {id:"colormixer", name:"Color Mixer", cat:"puzzle", multi:false, sdp:true, desc:"Mix RGB with 3 dials to match target color.", icon:"mixer"},
-  {id:"djscratch", name:"DJ Scratch", cat:"sim", multi:false, sdp:true, desc:"Scratch vinyl with dials. Waveforms on touchscreen.", icon:"dj", saves:true},
-  {id:"fishing", name:"Fishing", cat:"arcade", multi:false, sdp:true, desc:"Cast, wait for bite, reel in! Don't snap the line.", icon:"fish"},
-  {id:"piano", name:"Piano", cat:"sim", multi:false, sdp:true, desc:"Play piano keys on bottom row. Dial = octave.", icon:"piano"},
-  {id:"thermometer", name:"Thermometer", cat:"puzzle", multi:false, sdp:true, desc:"Guess the secret temperature. Hot/cold bar on screen.", icon:"thermo"},
-].sort(function(a, b) { return a.name.localeCompare(b.name); });
+let games = [];
+
+async function loadGames() {
+  try {
+    const resp = await fetch("/api/games");
+    const data = await resp.json();
+    games = data.map(g => ({
+      id: g.id, name: g.name, cat: g.category,
+      multi: g.multiplayer, sdp: g.sdplus,
+      desc: g.description, icon: g.icon,
+      saves: g.saves || false,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    console.error("Failed to load games:", e);
+    games = [];
+  }
+}
 
 const catColors = {
   arcade:"#3fb950", puzzle:"#58a6ff", strategy:"#d29922", reflex:"#f778ba",
@@ -352,6 +323,8 @@ function drawIcon(canvas, iconId) {
 const grid = document.getElementById('games');
 const catTags = {arcade:"tag-arcade",puzzle:"tag-puzzle",strategy:"tag-strategy",reflex:"tag-reflex",memory:"tag-memory",sim:"tag-sim",word:"tag-word",race:"tag-race"};
 
+function renderGames() {
+grid.innerHTML = '';
 games.forEach(g => {
   const card = document.createElement('div');
   card.className = 'card';
@@ -390,6 +363,10 @@ games.forEach(g => {
   grid.appendChild(card);
   drawIcon(canvas, g.icon);
 });
+document.getElementById('count').textContent = games.length;
+}
+
+loadGames().then(renderGames);
 
 // Launch game via local server
 function launchGame(gameId) {

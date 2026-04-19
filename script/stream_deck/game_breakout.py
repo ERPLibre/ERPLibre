@@ -25,6 +25,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Breakout",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Break bricks! SD+ touchscreen, items, multi-ball, ammo.",
+    "icon": "breakout"
+}
+
 COLOR_EMPTY = (20, 20, 30)
 COLOR_PADDLE = (200, 200, 200)
 COLOR_BALL = (255, 255, 0)
@@ -891,6 +900,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nScore: {game.score} | High: {game.high_score}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

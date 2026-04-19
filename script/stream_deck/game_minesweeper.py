@@ -29,6 +29,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Minesweeper",
+    "category": "puzzle",
+    "multiplayer": True,
+    "sdplus": False,
+    "description": "Classic minesweeper (1P) or mine hunter VS (2P).",
+    "icon": "mine"
+}
+
 LONG_PRESS_TIME = 0.6
 
 # Colors
@@ -781,6 +790,13 @@ def main():
                 deck.reset()
                 deck.close()
             print(f"\nGames: {game.games_played} | Won: {game.games_won}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

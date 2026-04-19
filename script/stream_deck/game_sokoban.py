@@ -22,6 +22,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Sokoban",
+    "category": "puzzle",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Push boxes onto targets. Think before you move!",
+    "icon": "sokoban"
+}
+
 COLOR_EMPTY = (40, 40, 50)
 COLOR_PLAYER = (0, 180, 255)
 COLOR_BOX = (180, 120, 40)
@@ -253,6 +262,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nMoves: {game.moves} | Best: {game.best_moves}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

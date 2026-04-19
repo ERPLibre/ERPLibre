@@ -26,6 +26,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Safe Cracker",
+    "category": "puzzle",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Turn 4 dials to guess the combo. Hot/cold hints.",
+    "icon": "safe"
+}
+
 COLOR_LOCKED = (0, 180, 0)
 COLOR_UNLOCKED = (60, 60, 80)
 COLOR_TITLE = (0, 80, 160)
@@ -301,6 +310,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nAttempts: {game.attempts} | Best: {game.best}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

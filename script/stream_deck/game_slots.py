@@ -25,6 +25,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Slot Machine",
+    "category": "arcade",
+    "multiplayer": False,
+    "sdplus": True,
+    "description": "Spin reels with dials, stop to match symbols!",
+    "icon": "slots"
+}
+
 SYMBOLS = ["7", "BAR", "X", "O", "$", "#", "W"]
 SYMBOL_COLORS = {
     "7": (255, 0, 0),
@@ -322,6 +331,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nCredits: {game.credits}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

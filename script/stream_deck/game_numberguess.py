@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Number Guess",
+    "category": "word",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Guess 1-100 with hot/cold colors. Fewer tries = better!",
+    "icon": "number"
+}
+
 COLOR_COLD = (0, 80, 200)
 COLOR_COOL = (0, 160, 160)
 COLOR_WARM = (200, 180, 0)
@@ -200,6 +209,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nBest: {game.best} guesses")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,15 @@ except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
 
+GAME_META = {
+    "name": "Langton's Ant",
+    "category": "sim",
+    "multiplayer": False,
+    "sdplus": False,
+    "description": "Langton's Ant automaton. Watch emergent patterns!",
+    "icon": "ant"
+}
+
 COLOR_WHITE = (200, 200, 200)
 COLOR_BLACK = (20, 20, 30)
 COLOR_ANT = (255, 0, 0)
@@ -155,6 +164,13 @@ def main():
             deck.reset()
             deck.close()
         print(f"\nSteps: {game.steps}")
+
+
+
+if len(sys.argv) > 1 and sys.argv[1] == "--meta":
+    import json as _json
+    print(_json.dumps(GAME_META))
+    sys.exit(0)
 
 
 if __name__ == "__main__":
