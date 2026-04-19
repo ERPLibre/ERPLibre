@@ -545,11 +545,11 @@ def samples_to_wav(samples, rate=SAMPLE_RATE):
 
 
 def play_wav_bytes(wav_bytes):
-    """Play WAV bytes directly on laptop speaker via aplay or pw-play."""
+    """Play WAV bytes on speaker. Prefers pw-play for concurrent mixing."""
     for cmd in [
-        ["aplay", "-q", "-"],
         ["pw-play", "-"],
         ["paplay", "--raw", "--format=s16le", "--rate=22050", "--channels=1"],
+        ["aplay", "-q", "-"],
     ]:
         try:
             proc = subprocess.Popen(
@@ -1765,12 +1765,12 @@ class DJScratch:
         self._render_sampler()
 
     def _play_wav_file(self, path):
-        """Play a WAV file directly on speaker."""
+        """Play a WAV file on speaker. Prefers pw-play for mixing."""
         if not os.path.isfile(path):
             return
         for cmd in [
-            ["aplay", "-q", path],
             ["pw-play", path],
+            ["aplay", "-q", path],
         ]:
             try:
                 proc = subprocess.Popen(
