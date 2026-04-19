@@ -93,13 +93,23 @@ class Checkers:
         if player == 0:
             return []
         moves = []
-        dirs = [(-1, -1), (1, -1)] if player == 1 else [(-1, 1), (1, 1)]
-        for dc, dr in dirs:
+        fwd = [(-1, -1), (1, -1)] if player == 1 else [(-1, 1), (1, 1)]
+        bwd = [(-1, 1), (1, 1)] if player == 1 else [(-1, -1), (1, -1)]
+        # Forward: move or capture
+        for dc, dr in fwd:
             nc, nr = c + dc, r + dr
             if 0 <= nc < self.cols and 0 <= nr < self.rows:
                 if (nc, nr) not in self.board:
                     moves.append((nc, nr, None))
                 elif self.board.get((nc, nr)) == 3 - player:
+                    jc, jr = nc + dc, nr + dr
+                    if 0 <= jc < self.cols and 0 <= jr < self.rows and (jc, jr) not in self.board:
+                        moves.append((jc, jr, (nc, nr)))
+        # Backward: capture only (no simple move)
+        for dc, dr in bwd:
+            nc, nr = c + dc, r + dr
+            if 0 <= nc < self.cols and 0 <= nr < self.rows:
+                if self.board.get((nc, nr)) == 3 - player:
                     jc, jr = nc + dc, nr + dr
                     if 0 <= jc < self.cols and 0 <= jr < self.rows and (jc, jr) not in self.board:
                         moves.append((jc, jr, (nc, nr)))
