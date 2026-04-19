@@ -267,49 +267,89 @@ class Connect4:
         mid_c = self.cols // 2
         last_r = self.rows - 1
 
+        if self.game_over:
+            self._render_game_over(deck)
+            return
+
         for key in range(self.cols * self.rows):
             r = key // self.cols
             c = key % self.cols
             val = self.board[c][r]
 
-            if self.game_over and (c, r) in self.win_cells:
-                set_key(deck, key, COLOR_WIN, "")
-            elif val == 1:
+            if val == 1:
                 set_key(deck, key, COLOR_P1, "")
             elif val == 2:
                 set_key(deck, key, COLOR_P2, "")
-            elif self.game_over:
-                if (c, r) == (mid_c, last_r):
-                    w = self.winner
-                    label = f"P{w}!" if w else "TIE"
-                    set_key(deck, key, COLOR_TITLE, label)
-                elif (c, r) == (mid_c, last_r - 1):
+            elif r == 0 and c == mid_c:
+                # Turn indicator
+                color = COLOR_P1 if self.current == 1 else COLOR_P2
+                label = f"P{self.current}"
+                if self.mode == MODE_2P_DUAL:
+                    is_my_turn = self.current == deck_index + 1
+                    label = f"P{deck_index + 1}" if is_my_turn else ""
+                    color = color if is_my_turn else COLOR_DIM
+                set_key(deck, key, color, label)
+            else:
+                set_key(deck, key, COLOR_BOARD, "")
+
+    def _render_game_over(self, deck):
+        """Render game over screen with winner clearly visible."""
+        mid_c = self.cols // 2
+        mid_r = self.rows // 2
+        w = self.winner
+        if w:
+            win_color = COLOR_P1 if w == 1 else COLOR_P2
+        else:
+            win_color = COLOR_TITLE
+
+        for key in range(self.cols * self.rows):
+            r = key // self.cols
+            c = key % self.cols
+            val = self.board[c][r]
+
+            # Winning 4 cells flash bright
+            if (c, r) in self.win_cells:
+                set_key(deck, key, COLOR_WIN, "WIN")
+            # Winner banner row (middle row)
+            elif r == mid_r:
+                if c == mid_c - 1:
+                    label = f"P{w}" if w else "TIE"
+                    set_key(deck, key, win_color, label)
+                elif c == mid_c:
+                    label = "WIN!" if w else "DRAW"
+                    set_key(deck, key, win_color, label)
+                elif c == mid_c + 1:
                     set_key(
                         deck, key, COLOR_TITLE,
                         f"{self.scores[0]}-{self.scores[1]}",
                     )
                 else:
-                    set_key(deck, key, COLOR_BOARD, "")
+                    # Dim the pieces
+                    if val == 1:
+                        set_key(deck, key, (80, 15, 15), "")
+                    elif val == 2:
+                        set_key(deck, key, (80, 80, 0), "")
+                    else:
+                        set_key(deck, key, COLOR_DIM, "")
             else:
-                # Show turn indicator on top row
-                if r == 0 and c == mid_c:
-                    color = COLOR_P1 if self.current == 1 else COLOR_P2
-                    label = f"P{self.current}"
-                    if self.mode == MODE_2P_DUAL:
-                        label = f"P{deck_index + 1}" if self.current == deck_index + 1 else ""
-                    set_key(deck, key, color if self.current == deck_index + 1 or self.mode != MODE_2P_DUAL else COLOR_DIM, label)
+                # Dim existing pieces, dark board
+                if val == 1:
+                    set_key(deck, key, (80, 15, 15), "")
+                elif val == 2:
+                    set_key(deck, key, (80, 80, 0), "")
                 else:
-                    set_key(deck, key, COLOR_BOARD, "")
+                    set_key(deck, key, COLOR_DIM, "")
 
     def _render_mirror(self, deck):
-        """Render board on deck2 as spectator (same view, no controls)."""
+        """Render board on deck2 as spectator (same view)."""
+        if self.game_over:
+            self._render_game_over(deck)
+            return
         for key in range(self.cols * self.rows):
             r = key // self.cols
             c = key % self.cols
             val = self.board[c][r]
-            if self.game_over and (c, r) in self.win_cells:
-                set_key(deck, key, COLOR_WIN, "")
-            elif val == 1:
+            if val == 1:
                 set_key(deck, key, COLOR_P1, "")
             elif val == 2:
                 set_key(deck, key, COLOR_P2, "")
