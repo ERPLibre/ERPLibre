@@ -36,6 +36,7 @@ STYLES = [
     "Piano", "Guitar", "Drum",                      # 5-7: existing
     "Trumpet", "Trombone", "Violin", "Organ",       # 8-11: brass/strings
     "Flute", "Bass", "Cello", "Harmonica",          # 12-15: more instruments
+    "Pig", "Duck", "Cow",                            # 16-18: animals
 ]
 STYLE_COLORS = [
     (0, 200, 255),    # 0  Sine - cyan
@@ -54,6 +55,9 @@ STYLE_COLORS = [
     (80, 40, 120),    # 13 Bass - deep purple
     (140, 60, 40),    # 14 Cello - dark wood
     (120, 200, 120),  # 15 Harmonica - mint
+    (255, 150, 180),  # 16 Pig - pink
+    (255, 220, 50),   # 17 Duck - yellow-orange
+    (200, 200, 200),  # 18 Cow - white-grey
 ]
 BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
@@ -109,6 +113,9 @@ STYLE_MODES = {
     13: ["freq", "vol", "reverb", "echo", "distort"],      # Bass
     14: ["freq", "vol", "reverb", "echo", "tremolo"],      # Cello
     15: ["freq", "vol", "reverb", "echo"],                 # Harmonica
+    16: ["freq", "vol", "reverb", "echo"],                 # Pig
+    17: ["freq", "vol", "reverb", "echo"],                 # Duck
+    18: ["freq", "vol", "reverb", "echo"],                 # Cow
 }
 
 
@@ -464,6 +471,121 @@ def _generate_drum(freq, duration, rate):
     return samples
 
 
+def _generate_pig(freq, duration, rate):
+    """Pig oink: nasal grunt with pitch wobble and snort bursts."""
+    n = int(rate * duration)
+    samples = []
+    # Pig oink is ~200-400 Hz with nasal formants
+    base_f = max(150, min(400, freq * 0.6))
+    phase = 0.0
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Envelope: quick attack, sustain, quick drop
+        env = _adsr(i, n, rate, attack=0.02, decay=0.05, sustain=0.7,
+                     release=0.08)
+        # Pitch wobble (pig oinks have irregular pitch)
+        wobble = base_f * 0.08 * math.sin(2 * math.pi * 8 * t)
+        # Occasional pitch jumps (grunt character)
+        grunt = base_f * 0.15 * math.sin(2 * math.pi * 3 * t)
+        f = base_f + wobble + grunt
+        phase += f / rate
+        # Nasal sound: strong odd harmonics, weak even (like nose cavity)
+        val = 0.0
+        for h in range(1, 10):
+            hf = f * h
+            if hf > rate * 0.4:
+                break
+            amp = (1.0 / (h ** 1.2)) * (1.3 if h % 2 == 1 else 0.5)
+            val += amp * math.sin(2 * math.pi * h * phase)
+        # Nasal formant boost around 600-900 Hz
+        val = _formant_filter(val, base_f, [700, 1200], [200, 300], t)
+        # Snort noise bursts
+        snort = random.uniform(-1, 1) * 0.15
+        snort *= max(0, math.sin(2 * math.pi * 4 * t))  # pulsed
+        val = (val + snort) * env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
+def _generate_duck(freq, duration, rate):
+    """Duck quack: short nasal squawk with fast pitch drop."""
+    n = int(rate * duration)
+    samples = []
+    # Duck quack is ~300-800 Hz, drops quickly
+    base_f = max(300, min(800, freq))
+    phase = 0.0
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Sharp attack, quick decay — quack is short and punchy
+        env = _adsr(i, n, rate, attack=0.005, decay=0.08, sustain=0.5,
+                     release=0.06)
+        # Pitch drops during quack (characteristic of duck sound)
+        pitch_drop = 1.0 - 0.3 * progress
+        # Vibrato (duck quack has a buzzy tremor)
+        vib = 0.02 * base_f * math.sin(2 * math.pi * 25 * t)
+        f = base_f * pitch_drop + vib
+        phase += f / rate
+        # Buzzy nasal tone: lots of odd harmonics (nasal cavity)
+        val = 0.0
+        for h in range(1, 15):
+            hf = f * h
+            if hf > rate * 0.4:
+                break
+            # Very strong odd harmonics = buzzy nasal quality
+            amp = (1.0 / (h ** 0.8)) * (1.4 if h % 2 == 1 else 0.4)
+            val += amp * math.sin(2 * math.pi * h * phase)
+        # Nasal resonance at 1800-2500 Hz (duck bill cavity)
+        val = _formant_filter(val, base_f, [1800, 2500], [400, 500], t)
+        # Slight noise (air through bill)
+        val += random.uniform(-1, 1) * 0.06 * env
+        val *= env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
+def _generate_cow(freq, duration, rate):
+    """Cow moo: deep droning tone with slow pitch rise then fall."""
+    n = int(rate * duration)
+    samples = []
+    # Cow moo is deep: ~80-200 Hz
+    base_f = max(80, min(200, freq * 0.3))
+    phase = 0.0
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Slow attack, long sustain (moo is drawn out)
+        env = _adsr(i, n, rate, attack=0.1, decay=0.05, sustain=0.9,
+                     release=0.15)
+        # Pitch contour: rises then falls (classic moo shape)
+        pitch_curve = math.sin(math.pi * progress)  # 0→1→0
+        f = base_f * (1.0 + 0.15 * pitch_curve)
+        # Slow vibrato (cow vocal cords)
+        f += 0.01 * base_f * math.sin(2 * math.pi * 3 * t)
+        phase += f / rate
+        # Rich harmonics with body resonance (large chest cavity)
+        val = 0.0
+        for h in range(1, 12):
+            hf = f * h
+            if hf > rate * 0.4:
+                break
+            # Both even and odd harmonics, warm rolloff
+            amp = 1.0 / (h ** 1.3)
+            val += amp * math.sin(2 * math.pi * h * phase)
+        # Chest/throat resonance at low formants
+        val = _formant_filter(val, base_f, [300, 600, 1200],
+                              [150, 200, 300], t)
+        # Breathy quality
+        val += random.uniform(-1, 1) * 0.03 * env
+        val *= env
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
 def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RATE):
     """Generate raw PCM samples for a tone with volume in dB."""
     n_samples = int(rate * duration)
@@ -499,6 +621,9 @@ def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RAT
         13: _generate_bass,
         14: _generate_cello,
         15: _generate_harmonica,
+        16: _generate_pig,
+        17: _generate_duck,
+        18: _generate_cow,
     }
     if style in generators:
         raw = generators[style](freq, duration, rate)
