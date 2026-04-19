@@ -37,6 +37,7 @@ STYLES = [
     "Trumpet", "Trombone", "Violin", "Organ",       # 8-11: brass/strings
     "Flute", "Bass", "Cello", "Harmonica",          # 12-15: more instruments
     "Pig", "Duck", "Cow",                            # 16-18: animals
+    "Tambour", "Cymbal",                               # 19-20: percussion
 ]
 STYLE_COLORS = [
     (0, 200, 255),    # 0  Sine - cyan
@@ -58,6 +59,8 @@ STYLE_COLORS = [
     (255, 150, 180),  # 16 Pig - pink
     (255, 220, 50),   # 17 Duck - yellow-orange
     (200, 200, 200),  # 18 Cow - white-grey
+    (180, 100, 50),   # 19 Tambour - warm brown
+    (220, 220, 100),  # 20 Cymbal - brass yellow
 ]
 BASE_FREQS = [261.63, 329.63, 392.00, 523.25]  # C4, E4, G4, C5
 SAMPLE_RATE = 22050
@@ -116,6 +119,8 @@ STYLE_MODES = {
     16: ["freq", "vol", "reverb", "echo"],                 # Pig
     17: ["freq", "vol", "reverb", "echo"],                 # Duck
     18: ["freq", "vol", "reverb", "echo"],                 # Cow
+    19: ["freq", "vol", "reverb", "echo"],                 # Tambour
+    20: ["vol", "reverb", "echo", "bitcrush"],             # Cymbal (no freq)
 }
 
 
@@ -586,6 +591,81 @@ def _generate_cow(freq, duration, rate):
     return [s / peak for s in samples]
 
 
+def _generate_tambour(freq, duration, rate):
+    """Tambour (snare drum): membrane tone + snare rattle + rim ring."""
+    n = int(rate * duration)
+    samples = []
+    # Membrane fundamental ~150-300 Hz
+    base_f = max(100, min(300, freq * 0.5))
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Fast decay — drum hit is percussive
+        body_env = math.exp(-12.0 * progress)
+        # Membrane body: low tone with pitch drop on impact
+        f = base_f * (1.0 + 0.4 * math.exp(-30 * progress))
+        body = 0.0
+        for h in range(1, 5):
+            # Drum membrane modes aren't harmonic (ratios ~1, 1.59, 2.14)
+            mode_ratios = [1.0, 1.59, 2.14, 2.65]
+            hf = f * mode_ratios[h - 1]
+            if hf > rate * 0.4:
+                break
+            amp = 1.0 / (h ** 1.5)
+            body += amp * math.sin(2 * math.pi * hf * t)
+        body *= body_env
+        # Snare rattle: filtered noise, decays a bit slower
+        snare_env = math.exp(-8.0 * progress)
+        snare = random.uniform(-1, 1) * snare_env * 0.6
+        # High-pass effect on snare (snare wires are bright)
+        snare *= min(1.0, t * 200)  # removes DC pop
+        # Rim ring: high metallic ping on attack
+        rim_f = base_f * 4.5
+        rim_env = math.exp(-25.0 * progress)
+        rim = math.sin(2 * math.pi * rim_f * t) * rim_env * 0.15
+        val = body * 0.5 + snare + rim
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
+def _generate_cymbal(freq, duration, rate):
+    """Cymbal: dense metallic noise with inharmonic partials."""
+    n = int(rate * duration)
+    samples = []
+    # Cymbal has inharmonic frequencies — not related to input freq
+    # Use many close-but-not-harmonic sine waves = metallic shimmer
+    base = 800.0
+    # Inharmonic ratios (typical of circular metal plates)
+    ratios = [1.0, 1.47, 1.83, 2.24, 2.67, 3.15, 3.58, 4.11,
+              4.78, 5.23, 5.91, 6.47, 7.12, 7.83]
+    # Random phase offsets for each partial (unique per hit)
+    phases = [random.uniform(0, 2 * math.pi) for _ in ratios]
+    for i in range(n):
+        t = i / rate
+        progress = i / n
+        # Attack envelope: instant hit, long shimmer decay
+        # High partials decay faster than low ones
+        val = 0.0
+        for j, (r, ph) in enumerate(zip(ratios, phases)):
+            hf = base * r
+            if hf > rate * 0.45:
+                break
+            # Higher partials decay faster (shimmer fades to wash)
+            decay_rate = 6.0 + j * 1.5
+            amp = math.exp(-decay_rate * progress) / (1 + j * 0.3)
+            val += amp * math.sin(2 * math.pi * hf * t + ph)
+        # Broadband noise (initial crash)
+        crash_env = math.exp(-20.0 * progress)
+        val += random.uniform(-1, 1) * crash_env * 0.4
+        # Gentle swell at start (stick contact)
+        attack = min(1.0, t * 500)
+        val *= attack
+        samples.append(val)
+    peak = max(abs(s) for s in samples) or 1
+    return [s / peak for s in samples]
+
+
 def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RATE):
     """Generate raw PCM samples for a tone with volume in dB."""
     n_samples = int(rate * duration)
@@ -624,6 +704,8 @@ def generate_tone(style, freq, volume_db=0.0, duration=DURATION, rate=SAMPLE_RAT
         16: _generate_pig,
         17: _generate_duck,
         18: _generate_cow,
+        19: _generate_tambour,
+        20: _generate_cymbal,
     }
     if style in generators:
         raw = generators[style](freq, duration, rate)
