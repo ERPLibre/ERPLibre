@@ -104,9 +104,11 @@ streamdeck_djscratch:
 streamdeck_tiler:
 	./script/stream_deck/game_tiler.py
 
-STREAMDECK_TILER_EXT_UUID := streamdeck-tiler@technolibre.ca
-STREAMDECK_TILER_EXT_SRC  := script/stream_deck/gnome-extension
-STREAMDECK_TILER_EXT_DST  := $(HOME)/.local/share/gnome-shell/extensions/$(STREAMDECK_TILER_EXT_UUID)
+STREAMDECK_TILER_EXT_UUID       := streamdeck-tiler@technolibre.ca
+STREAMDECK_TILER_EXT_SRC        := script/stream_deck/gnome-extension
+STREAMDECK_TILER_EXT_BASE_DIR   := $(HOME)/.local/share/gnome-shell/extensions
+STREAMDECK_TILER_EXT_DST        := $(STREAMDECK_TILER_EXT_BASE_DIR)/$(STREAMDECK_TILER_EXT_UUID)
+STREAMDECK_TILER_EXT_TMP_PREFIX := streamdeck-tiler-reload-
 
 .PHONY: streamdeck_tiler_install_extension
 streamdeck_tiler_install_extension:
@@ -114,7 +116,9 @@ streamdeck_tiler_install_extension:
 	@cp "$(STREAMDECK_TILER_EXT_SRC)/extension.js" "$(STREAMDECK_TILER_EXT_DST)/"
 	@cp "$(STREAMDECK_TILER_EXT_SRC)/metadata.json" "$(STREAMDECK_TILER_EXT_DST)/"
 	@echo "Installed to $(STREAMDECK_TILER_EXT_DST)"
-	@echo "Next: log out / log in, then: make streamdeck_tiler_enable_extension"
+	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
+	@echo "X11:     press Alt+F2, type r, Enter."
+	@echo "Then:    make streamdeck_tiler_enable_extension"
 
 .PHONY: streamdeck_tiler_enable_extension
 streamdeck_tiler_enable_extension:
@@ -126,6 +130,53 @@ streamdeck_tiler_uninstall_extension:
 	-@gnome-extensions disable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
 	@rm -rf "$(STREAMDECK_TILER_EXT_DST)"
 	@echo "Removed $(STREAMDECK_TILER_EXT_DST) (log out/in to fully unload)"
+
+STREAMDECK_TILER_DBUS_DEST    := org.gnome.Shell
+STREAMDECK_TILER_DBUS_PATH    := /org/gnome/Shell/Extensions/StreamDeckTiler
+STREAMDECK_TILER_DBUS_IFACE   := org.gnome.Shell.Extensions.StreamDeckTiler
+
+# Hot-reload via the extension's own D-Bus HotReload method (UUID-rename
+# trick performed from inside the shell JS context, where
+# Main.extensionManager.createExtensionObject + loadExtension are
+# accessible). Requires the extension's updated code to already be running
+# — on first install, re-login once before using this target.
+.PHONY: streamdeck_tiler_reload
+streamdeck_tiler_reload: streamdeck_tiler_install_extension
+	@out=$$(gdbus call --session \
+		--dest "$(STREAMDECK_TILER_DBUS_DEST)" \
+		--object-path "$(STREAMDECK_TILER_DBUS_PATH)" \
+		--method "$(STREAMDECK_TILER_DBUS_IFACE).HotReload" 2>&1); \
+	echo "$$out"; \
+	case "$$out" in \
+		"('',)"|*UnknownMethod*|*error*|*Erreur*) \
+			echo ""; \
+			echo "HotReload unavailable or returned empty."; \
+			echo "First install requires one re-login to register the method."; \
+			exit 1 ;; \
+	esac; \
+	echo "Hot-reloaded. Run streamdeck_tiler_reload_clean (optionally after"; \
+	echo "re-login) to restore the main UUID."
+
+.PHONY: streamdeck_tiler_reload_clean
+streamdeck_tiler_reload_clean:
+	@# Best-effort call to HotExit (works only if a temp instance is running)
+	-@gdbus call --session \
+		--dest "$(STREAMDECK_TILER_DBUS_DEST)" \
+		--object-path "$(STREAMDECK_TILER_DBUS_PATH)" \
+		--method "$(STREAMDECK_TILER_DBUS_IFACE).HotExit" 2>/dev/null || true
+	@sleep 1
+	@# Fallback: purge any leftover temp dirs on disk + re-enable main UUID
+	@for d in "$(STREAMDECK_TILER_EXT_BASE_DIR)"/$(STREAMDECK_TILER_EXT_TMP_PREFIX)*@technolibre.ca; do \
+		[ -d "$$d" ] || continue; \
+		uuid=$$(basename "$$d"); \
+		gnome-extensions disable "$$uuid" 2>/dev/null || true; \
+		rm -rf "$$d"; \
+		echo "Removed $$uuid"; \
+	done
+	@gnome-extensions enable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
+	@echo "Re-enabled $(STREAMDECK_TILER_EXT_UUID)."
+	@echo "Before re-login: main UUID runs cached (old) code."
+	@echo "After re-login:  main UUID loads the latest installed source."
 
 .PHONY: streamdeck_fishing
 streamdeck_fishing:

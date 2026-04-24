@@ -23,6 +23,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
+const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
+const RELOAD_UUID_PREFIX = 'streamdeck-tiler-reload-';
+const EXTENSION_TYPE_PER_USER = 2;
 
 const IFACE_XML = `
 <node>
@@ -57,6 +60,12 @@ const IFACE_XML = `
     </method>
     <method name="AddTrackerTimer">
       <arg type="s" direction="out" name="id"/>
+    </method>
+    <method name="HotReload">
+      <arg type="s" direction="out" name="newUuid"/>
+    </method>
+    <method name="HotExit">
+      <arg type="b" direction="out" name="success"/>
     </method>
   </interface>
 </node>`;
@@ -255,5 +264,130 @@ export default class StreamDeckTilerExtension extends Extension {
             if (found) return found;
         }
         return null;
+    }
+
+    // ---------- Hot-reload (UUID-rename trick) ----------
+    //
+    // GJS caches ESM modules for the life of the shell process, so editing
+    // extension.js normally requires a full shell restart. Work around by
+    // duplicating the extension directory under a fresh UUID — new path =
+    // new module-cache key = fresh import. Inspired by
+    // https://codeberg.org/som/ExtensionReloader.
+
+    _extensionsDir() {
+        return `${GLib.get_home_dir()}/.local/share/gnome-shell/extensions`;
+    }
+
+    _removeExtensionByUuid(uuid) {
+        try {
+            Main.extensionManager.disableExtension?.(uuid);
+        } catch (e) {}
+        const ext = Main.extensionManager.lookup?.(uuid);
+        if (ext) {
+            try {
+                Main.extensionManager.unloadExtension?.(ext);
+            } catch (e) {}
+        }
+        const dir = `${this._extensionsDir()}/${uuid}`;
+        GLib.spawn_command_line_sync(`rm -rf "${dir}"`);
+    }
+
+    _listTempUuids(includeSelf) {
+        const out = [];
+        const dir = Gio.File.new_for_path(this._extensionsDir());
+        let enumerator;
+        try {
+            enumerator = dir.enumerate_children(
+                'standard::name',
+                Gio.FileQueryInfoFlags.NONE,
+                null
+            );
+        } catch (e) {
+            return out;
+        }
+        let info;
+        while ((info = enumerator.next_file(null)) !== null) {
+            const name = info.get_name();
+            if (!name.startsWith(RELOAD_UUID_PREFIX)) continue;
+            if (!includeSelf && name === this.uuid) continue;
+            out.push(name);
+        }
+        enumerator.close(null);
+        return out;
+    }
+
+    _patchMetadataUuid(dir, newUuid) {
+        const path = `${dir}/metadata.json`;
+        const [ok, contents] = GLib.file_get_contents(path);
+        if (!ok) throw new Error(`cannot read ${path}`);
+        const text = new TextDecoder().decode(contents);
+        const patched = text.replace(
+            /"uuid"\s*:\s*"[^"]+"/,
+            `"uuid": "${newUuid}"`
+        );
+        GLib.file_set_contents(path, patched);
+    }
+
+    async HotReload() {
+        try {
+            // Purge leftover temps from previous reloads (except self)
+            for (const uuid of this._listTempUuids(false)) {
+                this._removeExtensionByUuid(uuid);
+            }
+
+            const ts = Math.floor(GLib.get_real_time() / 1000);
+            const newUuid = `${RELOAD_UUID_PREFIX}${ts}@technolibre.ca`;
+            const srcDir = `${this._extensionsDir()}/${MAIN_UUID}`;
+            const newDir = `${this._extensionsDir()}/${newUuid}`;
+
+            const [cpOk] = GLib.spawn_command_line_sync(
+                `cp -r "${srcDir}" "${newDir}"`
+            );
+            if (!cpOk) throw new Error('cp failed');
+
+            this._patchMetadataUuid(newDir, newUuid);
+
+            const createObj =
+                Main.extensionManager.createExtensionObject ||
+                Main.extensionManager._createExtensionObject;
+            const loadExt =
+                Main.extensionManager.loadExtension ||
+                Main.extensionManager._loadExtension;
+            if (!createObj || !loadExt) {
+                throw new Error('extensionManager API not found');
+            }
+
+            const dirFile = Gio.File.new_for_path(newDir);
+            const newExt = createObj.call(
+                Main.extensionManager, newUuid, dirFile, EXTENSION_TYPE_PER_USER
+            );
+            await loadExt.call(Main.extensionManager, newExt);
+
+            Main.extensionManager.disableExtension?.(this.uuid);
+            Main.extensionManager.enableExtension(newUuid);
+
+            console.log(`[StreamDeckTiler] HotReload → ${newUuid}`);
+            return newUuid;
+        } catch (e) {
+            console.log(`[StreamDeckTiler] HotReload failed: ${e.message}`);
+            return '';
+        }
+    }
+
+    HotExit() {
+        // Defer the teardown so the D-Bus reply is sent before we disable.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            try {
+                for (const uuid of this._listTempUuids(true)) {
+                    this._removeExtensionByUuid(uuid);
+                }
+                Main.extensionManager.enableExtension?.(MAIN_UUID);
+                console.log('[StreamDeckTiler] HotExit completed');
+            } catch (e) {
+                console.log(`[StreamDeckTiler] HotExit failed: ${e.message}`);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+        return true;
     }
 }

@@ -29,6 +29,13 @@ Works on Wayland and X11, GNOME Shell 45–48.
     the new timer with the name entry focused and empty so the keyboard
     can type the name. Returns the new timer id, or empty string on
     failure.
+  - `HotReload() -> newUuid` — copy the extension directory under a
+    timestamped temp UUID, load it via `Main.extensionManager`, and
+    swap the enabled instance so the new source code runs without a
+    session re-login. Returns the new temp UUID, or empty string on
+    failure. See "Hot reload" below.
+  - `HotExit() -> success` — disable + remove all temp reload instances
+    and re-enable the main UUID. Complements `HotReload`.
 
 ## Install
 
@@ -36,13 +43,61 @@ UUID: `streamdeck-tiler@technolibre.ca`
 
 ### Option A — Makefile (from repo root)
 
+First install and after every edit to `extension.js`:
+
 ```bash
 make streamdeck_tiler_install_extension
-# log out / log in
+# Wayland: log out / log in
+# X11:     Alt+F2, r, Enter
 make streamdeck_tiler_enable_extension
 ```
 
 Uninstall: `make streamdeck_tiler_uninstall_extension`
+
+> Why re-login?
+> GNOME Shell 45+ caches imported ES modules for the lifetime of the
+> session. `gnome-extensions disable && enable` calls
+> `disable()`/`enable()` on the already-loaded module — it does **not**
+> re-read `extension.js`. The old `org.gnome.Shell.Extensions.ReloadExtension`
+> D-Bus method is deprecated on GNOME 45+ and returns `NotSupported`. On
+> Wayland a full shell restart means a session re-login; X11 can use
+> `Alt+F2` → `r`. See **Hot reload** below for a dev-loop workaround.
+
+## Hot reload (dev loop)
+
+After the first install + re-login, subsequent edits to `extension.js`
+can be loaded without a new re-login via the extension's `HotReload`
+D-Bus method. The method duplicates the extension directory under a
+fresh UUID (e.g. `streamdeck-tiler-reload-<ts>@technolibre.ca`) so the
+GJS module-cache key changes — the new UUID triggers a genuine ESM
+re-import. The technique is adapted from
+[ExtensionReloader](https://codeberg.org/som/ExtensionReloader).
+
+```bash
+# Edit extension.js
+make streamdeck_tiler_reload         # hot-reload, no re-login
+# Edit again, reload again (previous temp is auto-purged)
+make streamdeck_tiler_reload
+# When done, restore the main UUID as the running instance:
+make streamdeck_tiler_reload_clean
+```
+
+Important limits:
+
+- **First use requires one re-login.** The `HotReload` method itself
+  only becomes available after the shell has loaded this version of
+  `extension.js`. If `streamdeck_tiler_reload` reports
+  `UnknownMethod: HotReload`, log out and back in once, then retry.
+- After `streamdeck_tiler_reload_clean`, the main UUID runs the **cached
+  (old)** source code until the next re-login — because its ES module
+  is still in memory. Edits made during the dev loop are picked up the
+  next time the shell starts fresh.
+- Each reload leaves a `streamdeck-tiler-reload-*@technolibre.ca`
+  directory on disk until cleaned up. `_reload_clean` removes them.
+- For a fully isolated dev environment (no temp UUIDs in the main
+  session), use a nested shell:
+  `dbus-run-session -- gnome-shell --nested --wayland`
+  (GNOME 48 and older) or `--devkit --wayland` (GNOME 49+).
 
 ### Option B — manual
 
@@ -116,6 +171,24 @@ gdbus call --session \
   --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
   --method org.gnome.Shell.Extensions.StreamDeckTiler.AddTrackerTimer
+```
+
+Hot-reload the extension (returns the new temp UUID):
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
+  --method org.gnome.Shell.Extensions.StreamDeckTiler.HotReload
+```
+
+Tear down the reload state:
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
+  --method org.gnome.Shell.Extensions.StreamDeckTiler.HotExit
 ```
 
 ## Uninstall
