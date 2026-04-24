@@ -55,6 +55,13 @@ COLOR_CONFIRM = (0, 180, 40)
 COLOR_CANCEL = (180, 0, 0)
 COLOR_EXPORT = (0, 120, 140)
 COLOR_DEV_RELOAD = (160, 40, 120)
+COLOR_SOUND_TITLE = (100, 60, 180)
+COLOR_VOL = (40, 120, 200)
+COLOR_MIC = (150, 100, 50)
+COLOR_MUTE_ON = (200, 0, 0)
+COLOR_MUTE_OFF = (0, 180, 40)
+
+VOL_STEP_PCT = 5
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -63,6 +70,10 @@ MODE_IDLE = "idle"
 MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
 MODE_TIMER_RESET_CONFIRM = "timer_reset_confirm"
+MODE_SOUND = "sound"
+
+WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
+WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
 
 DBUS_DEST = "org.gnome.Shell"
 DBUS_PATH = "/org/gnome/Shell/Extensions/StreamDeckTiler"
@@ -218,6 +229,57 @@ def _reset_all_tracker_timers():
         return False
 
 
+def _wpctl_available():
+    return shutil.which("wpctl") is not None
+
+
+def _wpctl_get(target):
+    """Return (volume_percent, muted) for target or (None, None) on error."""
+    try:
+        r = subprocess.run(
+            ["wpctl", "get-volume", target],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode != 0:
+            return None, None
+        # Format: "Volume: 0.50" or "Volume: 0.50 [MUTED]"
+        parts = r.stdout.strip().split()
+        if len(parts) < 2:
+            return None, None
+        vol = float(parts[1])
+        muted = len(parts) > 2 and "MUTED" in parts[2]
+        return int(round(vol * 100)), muted
+    except Exception as e:
+        print(f"wpctl get error: {e}")
+        return None, None
+
+
+def _wpctl_volume_delta(target, delta_pct):
+    sign = "+" if delta_pct > 0 else "-"
+    try:
+        r = subprocess.run(
+            ["wpctl", "set-volume", "--limit", "1.5",
+             target, f"{abs(delta_pct)}%{sign}"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return r.returncode == 0
+    except Exception as e:
+        print(f"wpctl set-volume error: {e}")
+        return False
+
+
+def _wpctl_mute_toggle(target):
+    try:
+        r = subprocess.run(
+            ["wpctl", "set-mute", target, "toggle"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return r.returncode == 0
+    except Exception as e:
+        print(f"wpctl set-mute error: {e}")
+        return False
+
+
 def _hot_reload_extension():
     """Call the extension's HotReload D-Bus method. Returns True on success."""
     try:
@@ -342,11 +404,17 @@ class Tiler:
         self._compute_idle_buttons()
 
     def _compute_idle_buttons(self):
-        """Pick keys for the TILE, TIMER and DEV RELOAD entry buttons."""
+        """Pick keys for the TILE, TIMER, DEV RELOAD and SOUND entry buttons."""
         mid_c = self.cols // 2
         mid_r = self.rows // 2
         dev_reload_pos = None
-        if self.cols >= 3:
+        sound_pos = None
+        if self.cols >= 5:
+            tile_pos = (mid_c - 1, mid_r)
+            timer_pos = (mid_c, mid_r)
+            dev_reload_pos = (mid_c + 1, mid_r)
+            sound_pos = (mid_c + 2, mid_r)
+        elif self.cols >= 3:
             tile_pos = (mid_c - 1, mid_r)
             timer_pos = (mid_c, mid_r)
             dev_reload_pos = (mid_c + 1, mid_r)
@@ -363,10 +431,30 @@ class Tiler:
             timer_pos = (0, 0)  # single-key deck: TILE only
         self.tile_key = tile_pos[1] * self.cols + tile_pos[0]
         self.timer_key = timer_pos[1] * self.cols + timer_pos[0]
-        if dev_reload_pos:
-            self.dev_reload_key = dev_reload_pos[1] * self.cols + dev_reload_pos[0]
-        else:
-            self.dev_reload_key = -1
+        self.dev_reload_key = (
+            dev_reload_pos[1] * self.cols + dev_reload_pos[0]
+            if dev_reload_pos else -1
+        )
+        self.sound_key = (
+            sound_pos[1] * self.cols + sound_pos[0]
+            if sound_pos else -1
+        )
+        self._compute_sound_buttons()
+
+    def _compute_sound_buttons(self):
+        """Layout for sound mode. Requires >= 4 cols and >= 3 rows."""
+        if self.cols < 4 or self.rows < 3:
+            self.sound_keys = None
+            return
+        self.sound_keys = {
+            "back": 0,
+            "vol_down": self.cols + 1,
+            "vol_up": self.cols + 2,
+            "out_mute": self.cols + 3,
+            "mic_down": 2 * self.cols + 1,
+            "mic_up": 2 * self.cols + 2,
+            "mic_mute": 2 * self.cols + 3,
+        }
 
     # ---------- Key handling ----------
 
@@ -386,12 +474,18 @@ class Tiler:
             self._handle_timer_list_key(key)
         elif self.mode == MODE_TIMER_RESET_CONFIRM:
             self._handle_timer_reset_confirm_key(key)
+        elif self.mode == MODE_SOUND:
+            self._handle_sound_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
             ok = _hot_reload_extension()
             self.last_result = "ok" if ok else "err"
             self.result_time = time.monotonic()
+            self.render()
+            return
+        if key == self.sound_key and self.sound_key >= 0:
+            self.mode = MODE_SOUND
             self.render()
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
@@ -471,6 +565,33 @@ class Tiler:
             self.result_time = time.monotonic()
             self.render()
 
+    def _handle_sound_key(self, key):
+        sk = self.sound_keys
+        if not sk:
+            # Unsupported deck size: any key returns to idle
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == sk["back"]:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == sk["vol_down"]:
+            _wpctl_volume_delta(WPCTL_SINK, -VOL_STEP_PCT)
+        elif key == sk["vol_up"]:
+            _wpctl_volume_delta(WPCTL_SINK, VOL_STEP_PCT)
+        elif key == sk["out_mute"]:
+            _wpctl_mute_toggle(WPCTL_SINK)
+        elif key == sk["mic_down"]:
+            _wpctl_volume_delta(WPCTL_SOURCE, -VOL_STEP_PCT)
+        elif key == sk["mic_up"]:
+            _wpctl_volume_delta(WPCTL_SOURCE, VOL_STEP_PCT)
+        elif key == sk["mic_mute"]:
+            _wpctl_mute_toggle(WPCTL_SOURCE)
+        else:
+            return
+        self.render()
+
     def _handle_timer_reset_confirm_key(self, key):
         if key == 0:
             # Cancel
@@ -542,6 +663,8 @@ class Tiler:
             self._render_timer_list()
         elif self.mode == MODE_TIMER_RESET_CONFIRM:
             self._render_timer_reset_confirm()
+        elif self.mode == MODE_SOUND:
+            self._render_sound()
 
     def _render_idle(self):
         for key in range(self.total_keys):
@@ -551,8 +674,50 @@ class Tiler:
                 set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER")
             elif key == self.dev_reload_key and self.dev_reload_key >= 0:
                 set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD")
+            elif key == self.sound_key and self.sound_key >= 0:
+                set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_sound(self):
+        sk = self.sound_keys
+        if not sk:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+
+        out_vol, out_muted = _wpctl_get(WPCTL_SINK)
+        mic_vol, mic_muted = _wpctl_get(WPCTL_SOURCE)
+
+        labels = {
+            sk["back"]: (COLOR_BACK, "BACK"),
+            sk["vol_down"]: (COLOR_VOL, f"VOL\n-{VOL_STEP_PCT}%"),
+            sk["vol_up"]: (COLOR_VOL, f"VOL\n+{VOL_STEP_PCT}%"),
+            sk["mic_down"]: (COLOR_MIC, f"MIC\n-{VOL_STEP_PCT}%"),
+            sk["mic_up"]: (COLOR_MIC, f"MIC\n+{VOL_STEP_PCT}%"),
+        }
+        if out_muted:
+            labels[sk["out_mute"]] = (COLOR_MUTE_ON, "OUT\nMUTE")
+        else:
+            out_lbl = f"OUT\n{out_vol}%" if out_vol is not None else "OUT"
+            labels[sk["out_mute"]] = (COLOR_MUTE_OFF, out_lbl)
+        if mic_muted:
+            labels[sk["mic_mute"]] = (COLOR_MUTE_ON, "MIC\nMUTE")
+        else:
+            mic_lbl = f"MIC\n{mic_vol}%" if mic_vol is not None else "MIC"
+            labels[sk["mic_mute"]] = (COLOR_MUTE_OFF, mic_lbl)
+
+        for key in range(self.total_keys):
+            if key in labels:
+                color, label = labels[key]
+                set_key(self.deck, key, color, label)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
