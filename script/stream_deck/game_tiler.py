@@ -12,7 +12,10 @@ Press TIMER to list timers from the tracker@aliakseiz.github.com
 extension and start/stop them.
 """
 
+import csv
 import json
+import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -50,6 +53,7 @@ COLOR_NEW = (140, 80, 160)
 COLOR_RESET = (180, 100, 0)
 COLOR_CONFIRM = (0, 180, 40)
 COLOR_CANCEL = (180, 0, 0)
+COLOR_EXPORT = (0, 120, 140)
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -213,6 +217,52 @@ def _reset_all_tracker_timers():
         return False
 
 
+def _ask_save_path():
+    """Prompt the user for a file path via zenity. Returns '' if cancelled."""
+    if not shutil.which("zenity"):
+        print("zenity not installed — cannot open file dialog.")
+        return ""
+    try:
+        result = subprocess.run(
+            [
+                "zenity", "--file-selection", "--save",
+                "--confirm-overwrite",
+                "--file-filter=CSV files | *.csv",
+                "--filename=timers.csv",
+            ],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode != 0:
+            return ""  # cancelled
+        path = result.stdout.strip()
+        if path and not path.lower().endswith(".csv"):
+            path += ".csv"
+        return path
+    except Exception as e:
+        print(f"File dialog error: {e}")
+        return ""
+
+
+def _export_timers_csv(path, timers):
+    """Write the given timers list to a CSV at path. Returns True on success."""
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["name", "seconds", "time"])
+            for t in timers:
+                name = t.get("name") or ""
+                elapsed = int(t.get("elapsed") or 0)
+                hh = elapsed // 3600
+                mm = (elapsed % 3600) // 60
+                ss = elapsed % 60
+                writer.writerow([name, elapsed, f"{hh:02d}:{mm:02d}:{ss:02d}"])
+        return True
+    except Exception as e:
+        print(f"CSV write error: {e}")
+        return False
+
+
 def set_key(deck, key, color, text=""):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
@@ -345,7 +395,7 @@ class Tiler:
         self.render()
 
     def _handle_timer_list_key(self, key):
-        # Layout: 0 = BACK, total-3 = NEW, total-2 = RESET, total-1 = REFRESH
+        # Layout: 0=BACK, total-4=EXPORT, total-3=NEW, total-2=RESET, total-1=RFSH
         if key == 0:
             self.mode = MODE_IDLE
             self.render()
@@ -367,6 +417,9 @@ class Tiler:
                 self.last_result = "err"
                 self.result_time = time.monotonic()
                 self.render()
+            return
+        if key == self.total_keys - 4:
+            self._handle_export()
             return
         timer_id = self.timer_key_map.get(key)
         if not timer_id:
@@ -405,12 +458,25 @@ class Tiler:
         self._refresh_timers()
         self.render()
 
+    def _handle_export(self):
+        # zenity blocks; freshen list before opening dialog for accurate export
+        self._refresh_timers()
+        path = _ask_save_path()
+        if not path:
+            # User cancelled — no flash, stay on list
+            self.render()
+            return
+        ok = _export_timers_csv(path, self.timers)
+        self.last_result = "ok" if ok else "err"
+        self.result_time = time.monotonic()
+        self.render()
+
     def _refresh_timers(self):
         self.timers = _list_tracker_timers()
         self.timer_key_map = {}
-        # Keys for timers: 1 .. total-4
-        # (skip BACK=0, NEW=total-3, RESET=total-2, REFRESH=total-1)
-        usable = list(range(1, self.total_keys - 3))
+        # Keys for timers: 1 .. total-5
+        # (skip BACK=0, EXPORT=total-4, NEW=total-3, RESET=total-2, RFSH=total-1)
+        usable = list(range(1, self.total_keys - 4))
         for idx, timer in enumerate(self.timers):
             if idx >= len(usable):
                 break
@@ -478,6 +544,9 @@ class Tiler:
                 continue
             if key == self.total_keys - 3:
                 set_key(self.deck, key, COLOR_NEW, "NEW")
+                continue
+            if key == self.total_keys - 4:
+                set_key(self.deck, key, COLOR_EXPORT, "EXPT\nCSV")
                 continue
             timer_id = self.timer_key_map.get(key)
             if not timer_id:
