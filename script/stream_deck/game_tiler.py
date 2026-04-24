@@ -69,6 +69,10 @@ COLOR_LOAD_EMPTY = (60, 60, 60)
 COLOR_A11Y_TITLE = (180, 160, 60)
 COLOR_FONT_STEP = (140, 110, 60)
 COLOR_FONT_RESET = (80, 60, 160)
+COLOR_BT_TITLE = (0, 100, 200)
+COLOR_BT_ON = (0, 150, 220)
+COLOR_BT_OFF = (60, 60, 60)
+COLOR_BT_NA = (100, 40, 40)
 
 VOL_STEP_PCT = 5
 
@@ -95,6 +99,7 @@ MODE_SOUND = "sound"
 MODE_LAYOUT = "layout"
 MODE_LAYOUT_DELETE_CONFIRM = "layout_delete_confirm"
 MODE_A11Y = "a11y"
+MODE_BLUETOOTH = "bluetooth"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -251,6 +256,59 @@ def _reset_all_tracker_timers():
     except Exception as e:
         print(f"Timer reset error: {e}")
         return False
+
+
+def _bt_powered():
+    """Return True/False/None. None = unable to determine."""
+    if shutil.which("bluetoothctl"):
+        try:
+            r = subprocess.run(
+                ["bluetoothctl", "show"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0:
+                for line in r.stdout.splitlines():
+                    if line.strip().startswith("Powered:"):
+                        return line.split(":", 1)[1].strip() == "yes"
+        except Exception as e:
+            print(f"bluetoothctl show error: {e}")
+    if shutil.which("rfkill"):
+        try:
+            r = subprocess.run(
+                ["rfkill", "list", "bluetooth"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                for line in r.stdout.splitlines():
+                    if line.strip().startswith("Soft blocked:"):
+                        return line.split(":", 1)[1].strip() == "no"
+        except Exception as e:
+            print(f"rfkill list error: {e}")
+    return None
+
+
+def _bt_set_power(on):
+    """Toggle bluetooth power. Returns True on success."""
+    if shutil.which("bluetoothctl"):
+        try:
+            r = subprocess.run(
+                ["bluetoothctl", "power", "on" if on else "off"],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                return True
+        except Exception as e:
+            print(f"bluetoothctl power error: {e}")
+    if shutil.which("rfkill"):
+        try:
+            r = subprocess.run(
+                ["rfkill", "unblock" if on else "block", "bluetooth"],
+                capture_output=True, text=True, timeout=3,
+            )
+            return r.returncode == 0
+        except Exception as e:
+            print(f"rfkill error: {e}")
+    return False
 
 
 def _wpctl_available():
@@ -559,7 +617,10 @@ class Tiler:
     def _compute_idle_buttons(self):
         """Idle menu: TILE, TIMER, DEV RELOAD, SOUND, LAYOUT left-aligned
         on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
-        order = ["tile", "timer", "dev_reload", "sound", "layout", "a11y"]
+        order = [
+            "tile", "timer", "dev_reload", "sound", "layout", "a11y",
+            "bluetooth",
+        ]
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
 
@@ -576,6 +637,17 @@ class Tiler:
         self._compute_sound_buttons()
         self._compute_layout_buttons()
         self._compute_a11y_buttons()
+        self._compute_bluetooth_buttons()
+
+    def _compute_bluetooth_buttons(self):
+        """BLUETOOTH mode keys. Requires >= 2 cols and >= 2 rows."""
+        if self.cols < 2 or self.rows < 2:
+            self.bluetooth_keys = None
+            return
+        self.bluetooth_keys = {
+            "back": 0,
+            "toggle": self.cols + 1,
+        }
 
     def _compute_a11y_buttons(self):
         """A11Y mode keys. Requires >= 4 cols and >= 2 rows."""
@@ -646,6 +718,8 @@ class Tiler:
             self._handle_layout_delete_confirm_key(key)
         elif self.mode == MODE_A11Y:
             self._handle_a11y_key(key)
+        elif self.mode == MODE_BLUETOOTH:
+            self._handle_bluetooth_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -664,6 +738,10 @@ class Tiler:
             return
         if key == self.a11y_key and self.a11y_key >= 0:
             self.mode = MODE_A11Y
+            self.render()
+            return
+        if key == self.bluetooth_key and self.bluetooth_key >= 0:
+            self.mode = MODE_BLUETOOTH
             self.render()
             return
         if key in self.layout_shortcut_keys:
@@ -799,6 +877,26 @@ class Tiler:
             return
         # Other keys ignored (force explicit choice)
 
+    def _handle_bluetooth_key(self, key):
+        bk = self.bluetooth_keys
+        if not bk:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == bk["back"]:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == bk["toggle"]:
+            current = _bt_powered()
+            if current is None:
+                self.last_result = "err"
+                self.result_time = time.monotonic()
+                self.render()
+                return
+            _bt_set_power(not current)
+            self.render()
+
     def _handle_a11y_key(self, key):
         ak = self.a11y_keys
         if not ak:
@@ -925,6 +1023,8 @@ class Tiler:
             self._render_layout_delete_confirm()
         elif self.mode == MODE_A11Y:
             self._render_a11y()
+        elif self.mode == MODE_BLUETOOTH:
+            self._render_bluetooth()
 
     def _render_idle(self):
         shortcut_slots = {}
@@ -946,6 +1046,8 @@ class Tiler:
                 set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT")
             elif key == self.a11y_key and self.a11y_key >= 0:
                 set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y")
+            elif key == self.bluetooth_key and self.bluetooth_key >= 0:
+                set_key(self.deck, key, COLOR_BT_TITLE, "BT")
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
@@ -1008,6 +1110,35 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
             elif key == mid_key:
                 set_key(self.deck, key, COLOR_EMPTY, f"DEL\n{slot}?")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_bluetooth(self):
+        bk = self.bluetooth_keys
+        if not bk:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+        powered = _bt_powered()
+        if powered is None:
+            toggle_color, toggle_label = COLOR_BT_NA, "BT\nN/A"
+        elif powered:
+            toggle_color, toggle_label = COLOR_BT_ON, "BT\nON"
+        else:
+            toggle_color, toggle_label = COLOR_BT_OFF, "BT\nOFF"
+        assignments = {
+            bk["back"]: (COLOR_BACK, "BACK"),
+            bk["toggle"]: (toggle_color, toggle_label),
+        }
+        for key in range(self.total_keys):
+            if key in assignments:
+                color, label = assignments[key]
+                set_key(self.deck, key, color, label)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
