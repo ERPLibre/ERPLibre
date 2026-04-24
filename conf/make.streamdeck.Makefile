@@ -104,6 +104,29 @@ streamdeck_djscratch:
 streamdeck_tiler:
 	./script/stream_deck/game_tiler.py
 
+STREAMDECK_TILER_EXT_UUID := streamdeck-tiler@technolibre.ca
+STREAMDECK_TILER_EXT_SRC  := script/stream_deck/gnome-extension
+STREAMDECK_TILER_EXT_DST  := $(HOME)/.local/share/gnome-shell/extensions/$(STREAMDECK_TILER_EXT_UUID)
+
+.PHONY: streamdeck_tiler_install_extension
+streamdeck_tiler_install_extension:
+	@mkdir -p "$(STREAMDECK_TILER_EXT_DST)"
+	@cp "$(STREAMDECK_TILER_EXT_SRC)/extension.js" "$(STREAMDECK_TILER_EXT_DST)/"
+	@cp "$(STREAMDECK_TILER_EXT_SRC)/metadata.json" "$(STREAMDECK_TILER_EXT_DST)/"
+	@echo "Installed to $(STREAMDECK_TILER_EXT_DST)"
+	@echo "Next: log out / log in, then: make streamdeck_tiler_enable_extension"
+
+.PHONY: streamdeck_tiler_enable_extension
+streamdeck_tiler_enable_extension:
+	@gnome-extensions enable "$(STREAMDECK_TILER_EXT_UUID)"
+	@gnome-extensions info "$(STREAMDECK_TILER_EXT_UUID)" | grep -iE 'Activ|Enabled'
+
+.PHONY: streamdeck_tiler_uninstall_extension
+streamdeck_tiler_uninstall_extension:
+	-@gnome-extensions disable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
+	@rm -rf "$(STREAMDECK_TILER_EXT_DST)"
+	@echo "Removed $(STREAMDECK_TILER_EXT_DST) (log out/in to fully unload)"
+
 .PHONY: streamdeck_fishing
 streamdeck_fishing:
 	./script/stream_deck/game_fishing.py
