@@ -67,6 +67,9 @@ const IFACE_XML = `
     <method name="HotExit">
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="ResetAllTrackerTimers">
+      <arg type="b" direction="out" name="success"/>
+    </method>
   </interface>
 </node>`;
 
@@ -253,6 +256,23 @@ export default class StreamDeckTilerExtension extends Extension {
             console.log(`[StreamDeckTiler] editTimer focus failed: ${e.message}`);
         }
         return newTimer.id;
+    }
+
+    /**
+     * Reset all tracker timers' elapsed time to 0. Running timers stay
+     * running with fresh lastUpdateTime. Delegates to tracker's own
+     * _resetAllTimers() which handles UI labels and persistence.
+     */
+    ResetAllTrackerTimers() {
+        const ind = this._getTrackerIndicator();
+        if (!ind || typeof ind._resetAllTimers !== 'function') return false;
+        try {
+            ind._resetAllTimers();
+            return true;
+        } catch (e) {
+            console.log(`[StreamDeckTiler] resetAll failed: ${e.message}`);
+            return false;
+        }
     }
 
     _findByStyleClass(actor, className) {

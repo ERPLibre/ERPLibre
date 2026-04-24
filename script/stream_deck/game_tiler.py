@@ -47,6 +47,9 @@ COLOR_TIMER_PAUSED = (50, 70, 110)
 COLOR_BACK = (60, 60, 60)
 COLOR_REFRESH = (80, 80, 110)
 COLOR_NEW = (140, 80, 160)
+COLOR_RESET = (180, 100, 0)
+COLOR_CONFIRM = (0, 180, 40)
+COLOR_CANCEL = (180, 0, 0)
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -54,6 +57,7 @@ COLOR_ERR = (200, 0, 0)
 MODE_IDLE = "idle"
 MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
+MODE_TIMER_RESET_CONFIRM = "timer_reset_confirm"
 
 DBUS_DEST = "org.gnome.Shell"
 DBUS_PATH = "/org/gnome/Shell/Extensions/StreamDeckTiler"
@@ -188,6 +192,27 @@ def _add_tracker_timer():
         return ""
 
 
+def _reset_all_tracker_timers():
+    """Call the extension to reset every tracker timer to 0 elapsed."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ResetAllTrackerTimers",
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode == 0 and "true" in result.stdout.lower():
+            return True
+        print(f"Timer reset dbus: {result.stdout} {result.stderr}")
+        return False
+    except Exception as e:
+        print(f"Timer reset error: {e}")
+        return False
+
+
 def set_key(deck, key, color, text=""):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
@@ -277,6 +302,8 @@ class Tiler:
             self._handle_tiling_key(key)
         elif self.mode == MODE_TIMER_LIST:
             self._handle_timer_list_key(key)
+        elif self.mode == MODE_TIMER_RESET_CONFIRM:
+            self._handle_timer_reset_confirm_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.timer_key and self.timer_key != self.tile_key:
@@ -318,7 +345,7 @@ class Tiler:
         self.render()
 
     def _handle_timer_list_key(self, key):
-        # Layout: 0 = BACK, total-2 = NEW, total-1 = REFRESH
+        # Layout: 0 = BACK, total-3 = NEW, total-2 = RESET, total-1 = REFRESH
         if key == 0:
             self.mode = MODE_IDLE
             self.render()
@@ -328,6 +355,10 @@ class Tiler:
             self.render()
             return
         if key == self.total_keys - 2:
+            self.mode = MODE_TIMER_RESET_CONFIRM
+            self.render()
+            return
+        if key == self.total_keys - 3:
             new_id = _add_tracker_timer()
             if new_id:
                 self._refresh_timers()
@@ -349,6 +380,26 @@ class Tiler:
             self.result_time = time.monotonic()
             self.render()
 
+    def _handle_timer_reset_confirm_key(self, key):
+        if key == 0:
+            # Cancel
+            self.mode = MODE_TIMER_LIST
+            self.render()
+            return
+        if key == self.total_keys - 1:
+            # Confirm
+            ok = _reset_all_tracker_timers()
+            self.mode = MODE_TIMER_LIST
+            if ok:
+                self._refresh_timers()
+                self.last_result = "ok"
+            else:
+                self.last_result = "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        # Other keys: ignore (force explicit choice)
+
     def _enter_timer_mode(self):
         self.mode = MODE_TIMER_LIST
         self._refresh_timers()
@@ -357,8 +408,9 @@ class Tiler:
     def _refresh_timers(self):
         self.timers = _list_tracker_timers()
         self.timer_key_map = {}
-        # Keys for timers: 1 .. total-3 (skip BACK=0, NEW=total-2, REFRESH=last)
-        usable = list(range(1, self.total_keys - 2))
+        # Keys for timers: 1 .. total-4
+        # (skip BACK=0, NEW=total-3, RESET=total-2, REFRESH=total-1)
+        usable = list(range(1, self.total_keys - 3))
         for idx, timer in enumerate(self.timers):
             if idx >= len(usable):
                 break
@@ -384,6 +436,8 @@ class Tiler:
             self._render_tiling()
         elif self.mode == MODE_TIMER_LIST:
             self._render_timer_list()
+        elif self.mode == MODE_TIMER_RESET_CONFIRM:
+            self._render_timer_reset_confirm()
 
     def _render_idle(self):
         for key in range(self.total_keys):
@@ -420,6 +474,9 @@ class Tiler:
                 set_key(self.deck, key, COLOR_REFRESH, "RFSH")
                 continue
             if key == self.total_keys - 2:
+                set_key(self.deck, key, COLOR_RESET, "RESET\nALL")
+                continue
+            if key == self.total_keys - 3:
                 set_key(self.deck, key, COLOR_NEW, "NEW")
                 continue
             timer_id = self.timer_key_map.get(key)
@@ -442,6 +499,24 @@ class Tiler:
             )
             label = _label_for_timer(timer)
             set_key(self.deck, key, color, label)
+
+    def _render_timer_reset_confirm(self):
+        # Layout: key 0 = CANCEL (red), last key = CONFIRM (green)
+        # Center row shows "RESET ALL?" hint split across 2 cells if possible
+        mid_key = self.total_keys // 2
+        for key in range(self.total_keys):
+            if key == 0:
+                set_key(self.deck, key, COLOR_CANCEL, "CANCEL")
+            elif key == self.total_keys - 1:
+                set_key(self.deck, key, COLOR_CONFIRM, "OK")
+            elif key == mid_key - 1 and self.cols >= 3:
+                set_key(self.deck, key, COLOR_EMPTY, "RESET")
+            elif key == mid_key and self.cols >= 3:
+                set_key(self.deck, key, COLOR_EMPTY, "ALL?")
+            elif key == mid_key:
+                set_key(self.deck, key, COLOR_EMPTY, "RESET\nALL?")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
 
     def loop(self):
         """Refresh loop: clear result flash + refresh timer list."""
