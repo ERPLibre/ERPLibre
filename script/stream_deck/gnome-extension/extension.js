@@ -17,9 +17,12 @@
  */
 
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+
+const TRACKER_UUID = 'tracker@aliakseiz.github.com';
 
 const IFACE_XML = `
 <node>
@@ -44,6 +47,16 @@ const IFACE_XML = `
       <arg type="i" direction="in" name="gridRows"/>
       <arg type="i" direction="out" name="cellW"/>
       <arg type="i" direction="out" name="cellH"/>
+    </method>
+    <method name="ListTrackerTimers">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ToggleTrackerTimer">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="b" direction="out" name="success"/>
+    </method>
+    <method name="AddTrackerTimer">
+      <arg type="s" direction="out" name="id"/>
     </method>
   </interface>
 </node>`;
@@ -118,5 +131,129 @@ export default class StreamDeckTilerExtension extends Extension {
         const mon = global.display.get_primary_monitor();
         const wa = Main.layoutManager.getWorkAreaForMonitor(mon);
         return [Math.round(wa.width / gridCols), Math.round(wa.height / gridRows)];
+    }
+
+    /**
+     * Reach into the tracker@aliakseiz.github.com extension's in-memory state.
+     * Tracker has no public API — this touches private fields and may break
+     * on tracker updates. Returns null if the extension is not enabled.
+     */
+    _getTrackerIndicator() {
+        try {
+            const ext = Main.extensionManager.lookup(TRACKER_UUID);
+            if (!ext || !ext.stateObj) return null;
+            return ext.stateObj._indicator ?? null;
+        } catch (e) {
+            console.log(`[StreamDeckTiler] tracker lookup failed: ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * List timers managed by the tracker extension.
+     * Returns a JSON string: [{id, name, running, elapsed}, ...]
+     */
+    ListTrackerTimers() {
+        const ind = this._getTrackerIndicator();
+        if (!ind || !Array.isArray(ind._timers)) return '[]';
+        const out = ind._timers.map(t => ({
+            id: t.id,
+            name: t.name ?? '',
+            running: !!t.running,
+            elapsed: Math.round(t.timeElapsed || 0),
+        }));
+        return JSON.stringify(out);
+    }
+
+    /**
+     * Toggle a tracker timer's running state by id.
+     * Replicates tracker's internal play/pause logic (extension.js
+     * line ~661 toggleTimerState) and updates its UI icon if present.
+     */
+    ToggleTrackerTimer(id) {
+        const ind = this._getTrackerIndicator();
+        if (!ind || !Array.isArray(ind._timers)) return false;
+        const timer = ind._timers.find(t => t.id === id);
+        if (!timer) return false;
+
+        const now = GLib.get_real_time();
+        if (timer.running) {
+            const elapsed = (now - timer.lastUpdateTime) / 1000000;
+            timer.timeElapsed = (timer.timeElapsed || 0) + elapsed;
+            timer.running = false;
+            timer.lastUpdateTime = null;
+            timer.autoResume = false;
+        } else {
+            timer.running = true;
+            timer.lastUpdateTime = now;
+        }
+
+        const uiElements = ind._timerUIElements?.get?.(timer.id);
+        if (uiElements?.playPauseIcon) {
+            uiElements.playPauseIcon.icon_name = timer.running
+                ? 'media-playback-pause-symbolic'
+                : 'media-playback-start-symbolic';
+        }
+        if (uiElements?.mainRow) {
+            if (timer.running) {
+                uiElements.mainRow.remove_style_class_name('timer-paused');
+            } else {
+                uiElements.mainRow.add_style_class_name('timer-paused');
+            }
+        }
+
+        try {
+            ind._saveTimers?.();
+        } catch (e) {
+            console.log(`[StreamDeckTiler] saveTimers failed: ${e.message}`);
+        }
+        return true;
+    }
+
+    /**
+     * Create a new tracker timer, open tracker's panel menu, and enter
+     * edit mode on the new timer so the keyboard can type its name.
+     * Returns the new timer id, or '' on failure.
+     */
+    AddTrackerTimer() {
+        const ind = this._getTrackerIndicator();
+        if (!ind || typeof ind._addNewTimer !== 'function') return '';
+
+        const beforeIds = new Set((ind._timers || []).map(t => t.id));
+        try {
+            ind._addNewTimer();
+        } catch (e) {
+            console.log(`[StreamDeckTiler] addNewTimer failed: ${e.message}`);
+            return '';
+        }
+        const newTimer = (ind._timers || []).find(t => !beforeIds.has(t.id));
+        if (!newTimer) return '';
+
+        try {
+            ind.menu?.open?.();
+            ind._editTimer?.(newTimer);
+            const ui = ind._timerUIElements?.get?.(newTimer.id);
+            const entry = ui?.mainRow
+                ? this._findByStyleClass(ui.mainRow, 'name-entry')
+                : null;
+            if (entry) {
+                entry.set_text('');
+                entry.grab_key_focus?.();
+            }
+        } catch (e) {
+            console.log(`[StreamDeckTiler] editTimer focus failed: ${e.message}`);
+        }
+        return newTimer.id;
+    }
+
+    _findByStyleClass(actor, className) {
+        if (!actor) return null;
+        if (actor.has_style_class_name?.(className)) return actor;
+        const kids = actor.get_children?.() || [];
+        for (const c of kids) {
+            const found = this._findByStyleClass(c, className);
+            if (found) return found;
+        }
+        return null;
     }
 }

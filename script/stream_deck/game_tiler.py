@@ -4,11 +4,15 @@
 
 """Window Tiler — tile windows via Stream Deck.
 
-Press a button to enter tiling mode. Grid appears on the deck.
+Press TILE to enter tiling mode. Grid appears on the deck.
 Press first corner, then second corner. The focused window is
 tiled to that region via D-Bus (streamdeck-tiler gnome extension).
+
+Press TIMER to list timers from the tracker@aliakseiz.github.com
+extension and start/stop them.
 """
 
+import json
 import subprocess
 import sys
 import threading
@@ -37,9 +41,19 @@ COLOR_GRID = (40, 60, 100)
 COLOR_SELECTED = (0, 180, 255)
 COLOR_PREVIEW = (0, 120, 60)
 COLOR_TITLE = (0, 80, 160)
+COLOR_TIMER_TITLE = (120, 60, 0)
+COLOR_TIMER_RUNNING = (0, 160, 40)
+COLOR_TIMER_PAUSED = (50, 70, 110)
+COLOR_BACK = (60, 60, 60)
+COLOR_REFRESH = (80, 80, 110)
+COLOR_NEW = (140, 80, 160)
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
+
+MODE_IDLE = "idle"
+MODE_TILING = "tiling"
+MODE_TIMER_LIST = "timer_list"
 
 DBUS_DEST = "org.gnome.Shell"
 DBUS_PATH = "/org/gnome/Shell/Extensions/StreamDeckTiler"
@@ -85,6 +99,95 @@ def _check_dbus_available():
         return False
 
 
+def _parse_gdbus_string_tuple(output):
+    """Extract the string from gdbus output of form ('...',).
+
+    GVariant single-quoted strings only need to escape backslash and
+    single quote. Double quotes (from JSON content) pass through.
+    """
+    s = output.strip()
+    if not (s.startswith("('") and s.endswith("',)")):
+        return None
+    inner = s[2:-3]
+    # Unescape \\ and \' — placeholder avoids double substitution
+    return (
+        inner.replace("\\\\", "\x00")
+        .replace("\\'", "'")
+        .replace("\x00", "\\")
+    )
+
+
+def _list_tracker_timers():
+    """Call the extension to list tracker timers. Returns list of dicts."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ListTrackerTimers",
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            print(f"Timer list dbus: {result.stderr}")
+            return []
+        payload = _parse_gdbus_string_tuple(result.stdout)
+        if not payload:
+            return []
+        return json.loads(payload)
+    except Exception as e:
+        print(f"Timer list error: {e}")
+        return []
+
+
+def _toggle_tracker_timer(timer_id):
+    """Call the extension to toggle a tracker timer by id."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ToggleTrackerTimer",
+                timer_id,
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode == 0 and "true" in result.stdout.lower():
+            return True
+        print(f"Timer toggle dbus: {result.stdout} {result.stderr}")
+        return False
+    except Exception as e:
+        print(f"Timer toggle error: {e}")
+        return False
+
+
+def _add_tracker_timer():
+    """Call the extension to add a new tracker timer and open edit mode.
+
+    Returns the new timer id on success, empty string on failure.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.AddTrackerTimer",
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            print(f"Timer add dbus: {result.stderr}")
+            return ""
+        payload = _parse_gdbus_string_tuple(result.stdout)
+        return payload or ""
+    except Exception as e:
+        print(f"Timer add error: {e}")
+        return ""
+
+
 def set_key(deck, key, color, text=""):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
@@ -127,53 +230,141 @@ class Tiler:
         self.grid_cols = cols
         self.grid_rows = rows
         # State
-        self.tiling = False
+        self.mode = MODE_IDLE
         self.corner1 = None  # (col, row)
         self.corner2 = None
         self.last_result = None  # "ok" or "err"
         self.result_time = 0
         self.dbus_ok = _check_dbus_available()
+        # Timer state
+        self.timers = []  # list of dicts from _list_tracker_timers
+        # Map: key index -> timer id (for timer list mode)
+        self.timer_key_map = {}
+        # Idle entry points
+        self._compute_idle_buttons()
+
+    def _compute_idle_buttons(self):
+        """Pick keys for the TILE and TIMER entry buttons."""
+        mid_c = self.cols // 2
+        mid_r = self.rows // 2
+        if self.cols >= 2:
+            tile_pos = (max(mid_c - 1, 0), mid_r)
+            timer_pos = (mid_c, mid_r)
+        elif self.rows >= 2:
+            tile_pos = (0, mid_r)
+            timer_pos = (0, min(mid_r + 1, self.rows - 1))
+            if tile_pos == timer_pos:
+                tile_pos = (0, max(mid_r - 1, 0))
+        else:
+            tile_pos = (0, 0)
+            timer_pos = (0, 0)  # single-key deck: TILE only
+        self.tile_key = tile_pos[1] * self.cols + tile_pos[0]
+        self.timer_key = timer_pos[1] * self.cols + timer_pos[0]
+
+    # ---------- Key handling ----------
 
     def handle_key(self, key, state):
         if not state:
             return
-        col = key % self.cols
-        row = key // self.cols
 
-        # Check for result display timeout
+        # Block input during result flash
         if self.last_result and time.monotonic() - self.result_time < 1.5:
             return
 
-        if not self.tiling:
-            # Any key enters tiling mode
-            self.tiling = True
+        if self.mode == MODE_IDLE:
+            self._handle_idle_key(key)
+        elif self.mode == MODE_TILING:
+            self._handle_tiling_key(key)
+        elif self.mode == MODE_TIMER_LIST:
+            self._handle_timer_list_key(key)
+
+    def _handle_idle_key(self, key):
+        if key == self.timer_key and self.timer_key != self.tile_key:
+            self._enter_timer_mode()
+        elif key == self.tile_key:
+            self.mode = MODE_TILING
             self.corner1 = None
             self.corner2 = None
             self.last_result = None
             self.render()
-            return
-
-        if self.corner1 is None:
-            # First corner
-            self.corner1 = (col, row)
-            self.render()
         else:
-            # Second corner — apply tiling
-            self.corner2 = (col, row)
-            c1 = min(self.corner1[0], self.corner2[0])
-            r1 = min(self.corner1[1], self.corner2[1])
-            c2 = max(self.corner1[0], self.corner2[0])
-            r2 = max(self.corner1[1], self.corner2[1])
-
-            ok = _tile_via_dbus(
-                self.grid_cols, self.grid_rows, c1, r1, c2, r2
-            )
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
-            self.tiling = False
+            # Legacy behavior: any key also enters tiling mode
+            self.mode = MODE_TILING
             self.corner1 = None
             self.corner2 = None
+            self.last_result = None
             self.render()
+
+    def _handle_tiling_key(self, key):
+        col = key % self.cols
+        row = key // self.cols
+        if self.corner1 is None:
+            self.corner1 = (col, row)
+            self.render()
+            return
+        self.corner2 = (col, row)
+        c1 = min(self.corner1[0], self.corner2[0])
+        r1 = min(self.corner1[1], self.corner2[1])
+        c2 = max(self.corner1[0], self.corner2[0])
+        r2 = max(self.corner1[1], self.corner2[1])
+        ok = _tile_via_dbus(
+            self.grid_cols, self.grid_rows, c1, r1, c2, r2
+        )
+        self.last_result = "ok" if ok else "err"
+        self.result_time = time.monotonic()
+        self.mode = MODE_IDLE
+        self.corner1 = None
+        self.corner2 = None
+        self.render()
+
+    def _handle_timer_list_key(self, key):
+        # Layout: 0 = BACK, total-2 = NEW, total-1 = REFRESH
+        if key == 0:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == self.total_keys - 1:
+            self._refresh_timers()
+            self.render()
+            return
+        if key == self.total_keys - 2:
+            new_id = _add_tracker_timer()
+            if new_id:
+                self._refresh_timers()
+                self.render()
+            else:
+                self.last_result = "err"
+                self.result_time = time.monotonic()
+                self.render()
+            return
+        timer_id = self.timer_key_map.get(key)
+        if not timer_id:
+            return
+        ok = _toggle_tracker_timer(timer_id)
+        if ok:
+            self._refresh_timers()
+            self.render()
+        else:
+            self.last_result = "err"
+            self.result_time = time.monotonic()
+            self.render()
+
+    def _enter_timer_mode(self):
+        self.mode = MODE_TIMER_LIST
+        self._refresh_timers()
+        self.render()
+
+    def _refresh_timers(self):
+        self.timers = _list_tracker_timers()
+        self.timer_key_map = {}
+        # Keys for timers: 1 .. total-3 (skip BACK=0, NEW=total-2, REFRESH=last)
+        usable = list(range(1, self.total_keys - 2))
+        for idx, timer in enumerate(self.timers):
+            if idx >= len(usable):
+                break
+            self.timer_key_map[usable[idx]] = timer.get("id")
+
+    # ---------- Rendering ----------
 
     def render(self):
         # Result flash
@@ -187,53 +378,100 @@ class Tiler:
                 return
             self.last_result = None
 
-        if not self.tiling:
-            # Idle: show "TILE" button in center, rest dark
-            mid_c = self.cols // 2
-            mid_r = self.rows // 2
-            for key in range(self.total_keys):
-                r = key // self.cols
-                c = key % self.cols
-                if (c, r) == (mid_c, mid_r):
-                    set_key(self.deck, key, COLOR_TITLE, "TILE")
-                elif (c, r) == (mid_c, 0):
-                    if not self.dbus_ok:
-                        set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
-                    else:
-                        set_key(self.deck, key, COLOR_EMPTY, "")
-                else:
-                    set_key(self.deck, key, COLOR_EMPTY, "")
-            return
+        if self.mode == MODE_IDLE:
+            self._render_idle()
+        elif self.mode == MODE_TILING:
+            self._render_tiling()
+        elif self.mode == MODE_TIMER_LIST:
+            self._render_timer_list()
 
-        # Tiling mode: show grid
-        # Build preview region if corner1 is set
+    def _render_idle(self):
+        for key in range(self.total_keys):
+            if key == self.tile_key:
+                set_key(self.deck, key, COLOR_TITLE, "TILE")
+            elif key == self.timer_key and self.timer_key != self.tile_key:
+                set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER")
+            elif key == 0 and not self.dbus_ok:
+                set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_tiling(self):
         preview = set()
         if self.corner1:
-            # Show hover preview assuming corner2 could be any cell
             preview.add(self.corner1)
-
         for key in range(self.total_keys):
             r = key // self.cols
             c = key % self.cols
-
             if (c, r) == self.corner1:
                 set_key(self.deck, key, COLOR_SELECTED, "1")
             elif (c, r) in preview:
                 set_key(self.deck, key, COLOR_PREVIEW, "")
             else:
-                # Grid cell with coordinates
                 label = f"{c},{r}"
                 set_key(self.deck, key, COLOR_GRID, label)
 
+    def _render_timer_list(self):
+        for key in range(self.total_keys):
+            if key == 0:
+                set_key(self.deck, key, COLOR_BACK, "BACK")
+                continue
+            if key == self.total_keys - 1:
+                set_key(self.deck, key, COLOR_REFRESH, "RFSH")
+                continue
+            if key == self.total_keys - 2:
+                set_key(self.deck, key, COLOR_NEW, "NEW")
+                continue
+            timer_id = self.timer_key_map.get(key)
+            if not timer_id:
+                # Empty slot — show hint if no timers exist at all
+                if not self.timers and key == 1:
+                    set_key(self.deck, key, COLOR_EMPTY, "NO\nTIMERS")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+                continue
+            timer = next(
+                (t for t in self.timers if t.get("id") == timer_id), None
+            )
+            if not timer:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+                continue
+            color = (
+                COLOR_TIMER_RUNNING if timer.get("running")
+                else COLOR_TIMER_PAUSED
+            )
+            label = _label_for_timer(timer)
+            set_key(self.deck, key, color, label)
+
     def loop(self):
-        """Refresh loop for result timeout."""
+        """Refresh loop: clear result flash + refresh timer list."""
+        last_timer_refresh = 0
         while self.running and self.deck.is_open():
-            if self.last_result:
-                elapsed = time.monotonic() - self.result_time
-                if elapsed >= 1.5:
-                    with self.lock:
+            now = time.monotonic()
+            with self.lock:
+                if self.last_result:
+                    elapsed = now - self.result_time
+                    if elapsed >= 1.5:
                         self.render()
+                elif self.mode == MODE_TIMER_LIST:
+                    # Auto-refresh every 2s to update elapsed time labels
+                    if now - last_timer_refresh >= 2.0:
+                        self._refresh_timers()
+                        self.render()
+                        last_timer_refresh = now
             time.sleep(0.3)
+
+
+def _label_for_timer(timer):
+    """Build a short 2-line label: first word of name + mm:ss."""
+    name = timer.get("name") or "?"
+    first = name.split()[0] if name.split() else name
+    if len(first) > 6:
+        first = first[:6]
+    elapsed = int(timer.get("elapsed") or 0)
+    mm = elapsed // 60
+    ss = elapsed % 60
+    return f"{first}\n{mm:02d}:{ss:02d}"
 
 
 def main():
@@ -256,8 +494,8 @@ def main():
         print("WARNING: streamdeck-tiler extension not found.")
         print("Install: re-login to GNOME to activate the extension.")
 
-    print("Press any button to enter tiling mode.")
-    print("Then press first corner, then second corner.")
+    print("Press TILE to enter tiling mode (first corner, second corner).")
+    print("Press TIMER to list and toggle tracker timers.")
 
     game = Tiler(deck)
     game.render()

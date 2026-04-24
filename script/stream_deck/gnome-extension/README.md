@@ -1,8 +1,14 @@
 # Stream Deck Tiler — GNOME Shell Extension
 
-Companion D-Bus extension used by `game_tiler.py` to tile the focused window
-via `Meta.Window.move_resize_frame()`. No keyboard simulation, no gTile
-dependency. Works on Wayland and X11, GNOME Shell 45–48.
+Companion D-Bus extension used by `game_tiler.py` to:
+
+- Tile the focused window via `Meta.Window.move_resize_frame()` — no
+  keyboard simulation, no gTile dependency.
+- List and toggle timers managed by the
+  [tracker](https://github.com/aliakseiz/tracker) extension
+  (`tracker@aliakseiz.github.com`), which has no public API of its own.
+
+Works on Wayland and X11, GNOME Shell 45–48.
 
 ## D-Bus interface
 
@@ -12,6 +18,17 @@ dependency. Works on Wayland and X11, GNOME Shell 45–48.
   - `TileWindow(gridCols, gridRows, col1, row1, col2, row2) -> success`
   - `GetMonitorGeometry() -> (x, y, width, height)`
   - `GetGridSize(gridCols, gridRows) -> (cellW, cellH)`
+  - `ListTrackerTimers() -> json` — JSON array of
+    `{id, name, running, elapsed}` read from tracker's in-memory state.
+    Returns `[]` if tracker is not installed or not enabled.
+  - `ToggleTrackerTimer(id) -> success` — start a paused timer or pause
+    a running one. Reaches into tracker's private state; may break on
+    tracker upgrades.
+  - `AddTrackerTimer() -> id` — create a new timer via tracker's
+    `_addNewTimer()`, open tracker's panel menu, and enter edit mode on
+    the new timer with the name entry focused and empty so the keyboard
+    can type the name. Returns the new timer id, or empty string on
+    failure.
 
 ## Install
 
@@ -71,6 +88,34 @@ gdbus call --session \
   --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
   --method org.gnome.Shell.Extensions.StreamDeckTiler.TileWindow \
   2 1 0 0 0 0
+```
+
+List tracker timers:
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
+  --method org.gnome.Shell.Extensions.StreamDeckTiler.ListTrackerTimers
+```
+
+Toggle a timer (replace `<id>` with an id from the list):
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
+  --method org.gnome.Shell.Extensions.StreamDeckTiler.ToggleTrackerTimer \
+  '<id>'
+```
+
+Create a new timer and open edit mode on it:
+
+```bash
+gdbus call --session \
+  --dest org.gnome.Shell \
+  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
+  --method org.gnome.Shell.Extensions.StreamDeckTiler.AddTrackerTimer
 ```
 
 ## Uninstall
