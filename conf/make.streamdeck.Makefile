@@ -100,6 +100,10 @@ streamdeck_colormixer:
 streamdeck_djscratch:
 	./script/stream_deck/game_djscratch.py
 
+.PHONY: streamdeck_tiler
+streamdeck_tiler:
+	./script/stream_deck/game_tiler.py
+
 .PHONY: streamdeck_fishing
 streamdeck_fishing:
 	./script/stream_deck/game_fishing.py
