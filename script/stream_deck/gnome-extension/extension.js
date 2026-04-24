@@ -70,6 +70,13 @@ const IFACE_XML = `
     <method name="ResetAllTrackerTimers">
       <arg type="b" direction="out" name="success"/>
     </method>
+    <method name="ListWindows">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ApplyLayout">
+      <arg type="s" direction="in" name="json"/>
+      <arg type="i" direction="out" name="matched"/>
+    </method>
   </interface>
 </node>`;
 
@@ -256,6 +263,116 @@ export default class StreamDeckTilerExtension extends Extension {
             console.log(`[StreamDeckTiler] editTimer focus failed: ${e.message}`);
         }
         return newTimer.id;
+    }
+
+    // ---------- Window layout capture / restore ----------
+
+    _collectAllWindows() {
+        const out = [];
+        try {
+            const wsMgr = global.workspace_manager;
+            const seen = new Set();
+            for (let i = 0; i < wsMgr.n_workspaces; i++) {
+                const ws = wsMgr.get_workspace_by_index(i);
+                for (const w of ws.list_windows()) {
+                    if (!w || seen.has(w)) continue;
+                    seen.add(w);
+                    if (w.get_window_type() !== Meta.WindowType.NORMAL) continue;
+                    if (w.is_skip_taskbar?.()) continue;
+                    out.push(w);
+                }
+            }
+        } catch (e) {
+            console.log(`[StreamDeckTiler] collectAllWindows: ${e.message}`);
+        }
+        return out;
+    }
+
+    /**
+     * Dump geometry + identity of every normal window across workspaces.
+     * Returns a JSON array of window records.
+     */
+    ListWindows() {
+        try {
+            const windows = this._collectAllWindows();
+            const out = windows.map(w => {
+                const rect = w.get_frame_rect();
+                return {
+                    wm_class: w.get_wm_class() || '',
+                    title: w.get_title() || '',
+                    x: rect.x, y: rect.y, w: rect.width, h: rect.height,
+                    workspace: w.get_workspace()?.index() ?? 0,
+                    monitor: w.get_monitor(),
+                    maximized: w.get_maximized(),
+                };
+            });
+            return JSON.stringify(out);
+        } catch (e) {
+            console.log(`[StreamDeckTiler] ListWindows failed: ${e.message}`);
+            return '[]';
+        }
+    }
+
+    /**
+     * Apply a list of window records to live windows. Matches by wm_class,
+     * then prefers exact title, then substring. Greedy — each live window
+     * is claimed once. Returns number of windows matched and repositioned.
+     */
+    ApplyLayout(jsonStr) {
+        let entries;
+        try {
+            entries = JSON.parse(jsonStr);
+        } catch (e) {
+            console.log(`[StreamDeckTiler] ApplyLayout parse: ${e.message}`);
+            return 0;
+        }
+        if (!Array.isArray(entries)) return 0;
+
+        const liveList = this._collectAllWindows();
+        const used = new Set();
+        let matched = 0;
+        const wsMgr = global.workspace_manager;
+
+        for (const entry of entries) {
+            let best = null;
+            let bestScore = -1;
+            for (const w of liveList) {
+                if (used.has(w)) continue;
+                const cls = w.get_wm_class() || '';
+                if (cls !== (entry.wm_class || '')) continue;
+                const title = w.get_title() || '';
+                let score = 1;
+                if (title === entry.title) score += 1000;
+                else if (entry.title && (title.includes(entry.title) ||
+                                          entry.title.includes(title))) score += 100;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = w;
+                }
+            }
+            if (!best) continue;
+            used.add(best);
+            matched++;
+
+            try {
+                const wsIdx = entry.workspace ?? 0;
+                if (wsIdx >= 0 && wsIdx < wsMgr.n_workspaces) {
+                    best.change_workspace_by_index(wsIdx, false);
+                }
+                best.unmaximize(Meta.MaximizeFlags.BOTH);
+                best.move_resize_frame(
+                    true,
+                    entry.x | 0, entry.y | 0,
+                    entry.w | 0, entry.h | 0
+                );
+                if (entry.maximized) {
+                    best.maximize(entry.maximized);
+                }
+            } catch (e) {
+                console.log(`[StreamDeckTiler] apply window: ${e.message}`);
+            }
+        }
+        return matched;
     }
 
     /**

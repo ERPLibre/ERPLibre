@@ -15,11 +15,13 @@ extension and start/stop them.
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -60,8 +62,16 @@ COLOR_VOL = (40, 120, 200)
 COLOR_MIC = (150, 100, 50)
 COLOR_MUTE_ON = (200, 0, 0)
 COLOR_MUTE_OFF = (0, 180, 40)
+COLOR_LAYOUT_TITLE = (80, 150, 80)
+COLOR_SAVE = (180, 140, 0)
+COLOR_LOAD_FILLED = (0, 150, 80)
+COLOR_LOAD_EMPTY = (60, 60, 60)
 
 VOL_STEP_PCT = 5
+
+LAYOUT_DIR = os.path.expanduser("~/.config/streamdeck-tiler")
+LAYOUT_FILE = os.path.join(LAYOUT_DIR, "layouts.json")
+NUM_LAYOUT_SLOTS = 3
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -71,6 +81,7 @@ MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
 MODE_TIMER_RESET_CONFIRM = "timer_reset_confirm"
 MODE_SOUND = "sound"
+MODE_LAYOUT = "layout"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -280,6 +291,89 @@ def _wpctl_mute_toggle(target):
         return False
 
 
+def _layouts_load():
+    try:
+        with open(LAYOUT_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"slots": {}}
+
+
+def _layouts_save(data):
+    os.makedirs(LAYOUT_DIR, exist_ok=True)
+    with open(LAYOUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _list_windows_dbus():
+    """Query the extension for all live windows. Returns list of dicts."""
+    try:
+        r = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ListWindows",
+            ],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode != 0:
+            print(f"ListWindows dbus: {r.stderr}")
+            return []
+        payload = _parse_gdbus_string_tuple(r.stdout)
+        return json.loads(payload) if payload else []
+    except Exception as e:
+        print(f"ListWindows error: {e}")
+        return []
+
+
+def _apply_layout_dbus(windows):
+    """Apply a list of window records via D-Bus. Returns matched count."""
+    try:
+        payload = json.dumps(windows)
+        r = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ApplyLayout",
+                payload,
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode != 0:
+            print(f"ApplyLayout dbus: {r.stderr}")
+            return 0
+        m = re.search(r"\((\d+),\)", r.stdout.strip())
+        return int(m.group(1)) if m else 0
+    except Exception as e:
+        print(f"ApplyLayout error: {e}")
+        return 0
+
+
+def _save_layout_slot(slot_id):
+    windows = _list_windows_dbus()
+    if not windows:
+        return False
+    data = _layouts_load()
+    data.setdefault("slots", {})[str(slot_id)] = {
+        "saved_at": datetime.now().strftime("%H:%M"),
+        "count": len(windows),
+        "windows": windows,
+    }
+    _layouts_save(data)
+    return True
+
+
+def _load_layout_slot(slot_id):
+    data = _layouts_load()
+    slot = data.get("slots", {}).get(str(slot_id))
+    if not slot:
+        return False
+    matched = _apply_layout_dbus(slot.get("windows") or [])
+    return matched > 0
+
+
 def _hot_reload_extension():
     """Call the extension's HotReload D-Bus method. Returns True on success."""
     try:
@@ -404,12 +498,19 @@ class Tiler:
         self._compute_idle_buttons()
 
     def _compute_idle_buttons(self):
-        """Pick keys for the TILE, TIMER, DEV RELOAD and SOUND entry buttons."""
+        """Pick keys for TILE, TIMER, DEV RELOAD, SOUND and LAYOUT entries."""
         mid_c = self.cols // 2
         mid_r = self.rows // 2
         dev_reload_pos = None
         sound_pos = None
-        if self.cols >= 5:
+        layout_pos = None
+        if self.cols >= 7:
+            tile_pos = (mid_c - 1, mid_r)
+            timer_pos = (mid_c, mid_r)
+            dev_reload_pos = (mid_c + 1, mid_r)
+            sound_pos = (mid_c + 2, mid_r)
+            layout_pos = (mid_c + 3, mid_r)
+        elif self.cols >= 5:
             tile_pos = (mid_c - 1, mid_r)
             timer_pos = (mid_c, mid_r)
             dev_reload_pos = (mid_c + 1, mid_r)
@@ -439,7 +540,23 @@ class Tiler:
             sound_pos[1] * self.cols + sound_pos[0]
             if sound_pos else -1
         )
+        self.layout_key = (
+            layout_pos[1] * self.cols + layout_pos[0]
+            if layout_pos else -1
+        )
         self._compute_sound_buttons()
+        self._compute_layout_buttons()
+
+    def _compute_layout_buttons(self):
+        """Layout mode keys. Requires >= 4 cols and >= 3 rows."""
+        if self.cols < 4 or self.rows < 3:
+            self.layout_keys = None
+            return
+        self.layout_keys = {
+            "back": 0,
+            "save": [self.cols + 1 + i for i in range(NUM_LAYOUT_SLOTS)],
+            "load": [2 * self.cols + 1 + i for i in range(NUM_LAYOUT_SLOTS)],
+        }
 
     def _compute_sound_buttons(self):
         """Layout for sound mode. Requires >= 4 cols and >= 3 rows."""
@@ -476,6 +593,8 @@ class Tiler:
             self._handle_timer_reset_confirm_key(key)
         elif self.mode == MODE_SOUND:
             self._handle_sound_key(key)
+        elif self.mode == MODE_LAYOUT:
+            self._handle_layout_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -486,6 +605,10 @@ class Tiler:
             return
         if key == self.sound_key and self.sound_key >= 0:
             self.mode = MODE_SOUND
+            self.render()
+            return
+        if key == self.layout_key and self.layout_key >= 0:
+            self.mode = MODE_LAYOUT
             self.render()
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
@@ -564,6 +687,31 @@ class Tiler:
             self.last_result = "err"
             self.result_time = time.monotonic()
             self.render()
+
+    def _handle_layout_key(self, key):
+        lk = self.layout_keys
+        if not lk:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == lk["back"]:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key in lk["save"]:
+            slot = lk["save"].index(key) + 1
+            ok = _save_layout_slot(slot)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        if key in lk["load"]:
+            slot = lk["load"].index(key) + 1
+            ok = _load_layout_slot(slot)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
 
     def _handle_sound_key(self, key):
         sk = self.sound_keys
@@ -665,6 +813,8 @@ class Tiler:
             self._render_timer_reset_confirm()
         elif self.mode == MODE_SOUND:
             self._render_sound()
+        elif self.mode == MODE_LAYOUT:
+            self._render_layout()
 
     def _render_idle(self):
         for key in range(self.total_keys):
@@ -676,8 +826,45 @@ class Tiler:
                 set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD")
             elif key == self.sound_key and self.sound_key >= 0:
                 set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND")
+            elif key == self.layout_key and self.layout_key >= 0:
+                set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_layout(self):
+        lk = self.layout_keys
+        if not lk:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+
+        data = _layouts_load()
+        slots = data.get("slots", {})
+        assignments = {lk["back"]: (COLOR_BACK, "BACK")}
+        for i, save_key in enumerate(lk["save"]):
+            assignments[save_key] = (COLOR_SAVE, f"SAVE\n{i + 1}")
+        for i, load_key in enumerate(lk["load"]):
+            slot = slots.get(str(i + 1))
+            if slot:
+                count = slot.get("count", "?")
+                when = slot.get("saved_at", "")
+                label = f"LOAD {i + 1}\n{count}w\n{when}"
+                assignments[load_key] = (COLOR_LOAD_FILLED, label)
+            else:
+                assignments[load_key] = (
+                    COLOR_LOAD_EMPTY, f"LOAD {i + 1}\nEMPTY"
+                )
+        for key in range(self.total_keys):
+            if key in assignments:
+                color, label = assignments[key]
+                set_key(self.deck, key, color, label)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
