@@ -66,12 +66,23 @@ COLOR_LAYOUT_TITLE = (80, 150, 80)
 COLOR_SAVE = (180, 140, 0)
 COLOR_LOAD_FILLED = (0, 150, 80)
 COLOR_LOAD_EMPTY = (60, 60, 60)
+COLOR_A11Y_TITLE = (180, 160, 60)
+COLOR_FONT_STEP = (140, 110, 60)
+COLOR_FONT_RESET = (80, 60, 160)
 
 VOL_STEP_PCT = 5
 
 LAYOUT_DIR = os.path.expanduser("~/.config/streamdeck-tiler")
 LAYOUT_FILE = os.path.join(LAYOUT_DIR, "layouts.json")
+SETTINGS_FILE = os.path.join(LAYOUT_DIR, "settings.json")
 NUM_LAYOUT_SLOTS = 3
+
+FONT_SCALE_MIN = 0.6
+FONT_SCALE_MAX = 2.5
+FONT_SCALE_STEP = 0.1
+FONT_SCALE_DEFAULT = 1.0
+
+_font_scale = FONT_SCALE_DEFAULT
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -83,6 +94,7 @@ MODE_TIMER_RESET_CONFIRM = "timer_reset_confirm"
 MODE_SOUND = "sound"
 MODE_LAYOUT = "layout"
 MODE_LAYOUT_DELETE_CONFIRM = "layout_delete_confirm"
+MODE_A11Y = "a11y"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -306,6 +318,39 @@ def _layouts_save(data):
         json.dump(data, f, indent=2)
 
 
+def _settings_load():
+    try:
+        with open(SETTINGS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _settings_save(data):
+    os.makedirs(LAYOUT_DIR, exist_ok=True)
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def _init_font_scale():
+    """Load persisted font scale from settings.json on startup."""
+    global _font_scale
+    try:
+        val = float(_settings_load().get("font_scale", FONT_SCALE_DEFAULT))
+        _font_scale = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, val))
+    except (ValueError, TypeError):
+        _font_scale = FONT_SCALE_DEFAULT
+
+
+def _set_font_scale(scale):
+    """Clamp, store in module global, and persist."""
+    global _font_scale
+    _font_scale = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, scale))
+    data = _settings_load()
+    data["font_scale"] = round(_font_scale, 2)
+    _settings_save(data)
+
+
 def _list_windows_dbus():
     """Query the extension for all live windows. Returns list of dicts."""
     try:
@@ -459,7 +504,8 @@ def set_key(deck, key, color, text=""):
     img = Image.new("RGB", (w, h), color)
     if text:
         draw = ImageDraw.Draw(img)
-        fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
+        base_fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
+        fs = max(6, int(round(base_fs * _font_scale)))
         try:
             font = ImageFont.load_default(size=fs)
         except TypeError:
@@ -513,7 +559,7 @@ class Tiler:
     def _compute_idle_buttons(self):
         """Idle menu: TILE, TIMER, DEV RELOAD, SOUND, LAYOUT left-aligned
         on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
-        order = ["tile", "timer", "dev_reload", "sound", "layout"]
+        order = ["tile", "timer", "dev_reload", "sound", "layout", "a11y"]
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
 
@@ -529,6 +575,19 @@ class Tiler:
 
         self._compute_sound_buttons()
         self._compute_layout_buttons()
+        self._compute_a11y_buttons()
+
+    def _compute_a11y_buttons(self):
+        """A11Y mode keys. Requires >= 4 cols and >= 2 rows."""
+        if self.cols < 4 or self.rows < 2:
+            self.a11y_keys = None
+            return
+        self.a11y_keys = {
+            "back": 0,
+            "font_down": self.cols + 1,
+            "font_up": self.cols + 2,
+            "font_reset": self.cols + 3,
+        }
 
     def _compute_layout_buttons(self):
         """Layout mode keys. Requires >= 4 cols and >= 3 rows.
@@ -585,6 +644,8 @@ class Tiler:
             self._handle_layout_key(key)
         elif self.mode == MODE_LAYOUT_DELETE_CONFIRM:
             self._handle_layout_delete_confirm_key(key)
+        elif self.mode == MODE_A11Y:
+            self._handle_a11y_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -599,6 +660,10 @@ class Tiler:
             return
         if key == self.layout_key and self.layout_key >= 0:
             self.mode = MODE_LAYOUT
+            self.render()
+            return
+        if key == self.a11y_key and self.a11y_key >= 0:
+            self.mode = MODE_A11Y
             self.render()
             return
         if key in self.layout_shortcut_keys:
@@ -734,6 +799,26 @@ class Tiler:
             return
         # Other keys ignored (force explicit choice)
 
+    def _handle_a11y_key(self, key):
+        ak = self.a11y_keys
+        if not ak:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == ak["back"]:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == ak["font_down"]:
+            _set_font_scale(_font_scale - FONT_SCALE_STEP)
+        elif key == ak["font_up"]:
+            _set_font_scale(_font_scale + FONT_SCALE_STEP)
+        elif key == ak["font_reset"]:
+            _set_font_scale(FONT_SCALE_DEFAULT)
+        else:
+            return
+        self.render()
+
     def _handle_sound_key(self, key):
         sk = self.sound_keys
         if not sk:
@@ -838,6 +923,8 @@ class Tiler:
             self._render_layout()
         elif self.mode == MODE_LAYOUT_DELETE_CONFIRM:
             self._render_layout_delete_confirm()
+        elif self.mode == MODE_A11Y:
+            self._render_a11y()
 
     def _render_idle(self):
         shortcut_slots = {}
@@ -857,6 +944,8 @@ class Tiler:
                 set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND")
             elif key == self.layout_key and self.layout_key >= 0:
                 set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT")
+            elif key == self.a11y_key and self.a11y_key >= 0:
+                set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y")
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
@@ -919,6 +1008,32 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
             elif key == mid_key:
                 set_key(self.deck, key, COLOR_EMPTY, f"DEL\n{slot}?")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_a11y(self):
+        ak = self.a11y_keys
+        if not ak:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+        scale_lbl = f"SCALE\n{_font_scale:.1f}x"
+        assignments = {
+            ak["back"]: (COLOR_BACK, "BACK"),
+            ak["font_down"]: (COLOR_FONT_STEP, "FONT\n-"),
+            ak["font_up"]: (COLOR_FONT_STEP, "FONT\n+"),
+            ak["font_reset"]: (COLOR_FONT_RESET, "RESET"),
+            self.total_keys // 2: (COLOR_EMPTY, scale_lbl),
+        }
+        for key in range(self.total_keys):
+            if key in assignments:
+                color, label = assignments[key]
+                set_key(self.deck, key, color, label)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
@@ -1065,6 +1180,7 @@ def _label_for_timer(timer):
 
 
 def main():
+    _init_font_scale()
     streamdecks = DeviceManager().enumerate()
     deck = next((d for d in streamdecks if d.is_visual()), None)
     if not deck:
