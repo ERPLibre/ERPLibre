@@ -82,6 +82,7 @@ MODE_TIMER_LIST = "timer_list"
 MODE_TIMER_RESET_CONFIRM = "timer_reset_confirm"
 MODE_SOUND = "sound"
 MODE_LAYOUT = "layout"
+MODE_LAYOUT_DELETE_CONFIRM = "layout_delete_confirm"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -374,6 +375,16 @@ def _load_layout_slot(slot_id):
     return matched > 0
 
 
+def _delete_layout_slot(slot_id):
+    data = _layouts_load()
+    slots = data.get("slots", {})
+    if str(slot_id) not in slots:
+        return False
+    del slots[str(slot_id)]
+    _layouts_save(data)
+    return True
+
+
 def _hot_reload_extension():
     """Call the extension's HotReload D-Bus method. Returns True on success."""
     try:
@@ -494,6 +505,8 @@ class Tiler:
         self.timers = []  # list of dicts from _list_tracker_timers
         # Map: key index -> timer id (for timer list mode)
         self.timer_key_map = {}
+        # Layout delete pending slot id (used by confirm mode)
+        self.layout_delete_pending = None
         # Idle entry points
         self._compute_idle_buttons()
 
@@ -559,7 +572,8 @@ class Tiler:
         self._compute_layout_buttons()
 
     def _compute_layout_buttons(self):
-        """Layout mode keys. Requires >= 4 cols and >= 3 rows."""
+        """Layout mode keys. Requires >= 4 cols and >= 3 rows.
+        Delete row shown when >= 4 rows fit."""
         if self.cols < 4 or self.rows < 3:
             self.layout_keys = None
             return
@@ -567,6 +581,10 @@ class Tiler:
             "back": 0,
             "save": [self.cols + 1 + i for i in range(NUM_LAYOUT_SLOTS)],
             "load": [2 * self.cols + 1 + i for i in range(NUM_LAYOUT_SLOTS)],
+            "delete": (
+                [3 * self.cols + 1 + i for i in range(NUM_LAYOUT_SLOTS)]
+                if self.rows >= 4 else []
+            ),
         }
 
     def _compute_sound_buttons(self):
@@ -606,6 +624,8 @@ class Tiler:
             self._handle_sound_key(key)
         elif self.mode == MODE_LAYOUT:
             self._handle_layout_key(key)
+        elif self.mode == MODE_LAYOUT_DELETE_CONFIRM:
+            self._handle_layout_delete_confirm_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -727,6 +747,33 @@ class Tiler:
             self.result_time = time.monotonic()
             self.render()
             return
+        if key in lk["delete"]:
+            slot = lk["delete"].index(key) + 1
+            if str(slot) not in _layouts_load().get("slots", {}):
+                return  # empty slot: no-op
+            self.layout_delete_pending = slot
+            self.mode = MODE_LAYOUT_DELETE_CONFIRM
+            self.render()
+            return
+
+    def _handle_layout_delete_confirm_key(self, key):
+        if key == 0:
+            # Cancel
+            self.layout_delete_pending = None
+            self.mode = MODE_LAYOUT
+            self.render()
+            return
+        if key == self.total_keys - 1:
+            # Confirm
+            slot = self.layout_delete_pending
+            ok = _delete_layout_slot(slot) if slot else False
+            self.layout_delete_pending = None
+            self.mode = MODE_LAYOUT
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        # Other keys ignored (force explicit choice)
 
     def _handle_sound_key(self, key):
         sk = self.sound_keys
@@ -830,6 +877,8 @@ class Tiler:
             self._render_sound()
         elif self.mode == MODE_LAYOUT:
             self._render_layout()
+        elif self.mode == MODE_LAYOUT_DELETE_CONFIRM:
+            self._render_layout_delete_confirm()
 
     def _render_idle(self):
         shortcut_slots = {}
@@ -885,10 +934,32 @@ class Tiler:
                 assignments[load_key] = (
                     COLOR_LOAD_EMPTY, f"LOAD {i + 1}\nEMPTY"
                 )
+        for i, del_key in enumerate(lk["delete"]):
+            if str(i + 1) in slots:
+                assignments[del_key] = (COLOR_CANCEL, f"DEL {i + 1}")
+            else:
+                assignments[del_key] = (COLOR_EMPTY, "")
         for key in range(self.total_keys):
             if key in assignments:
                 color, label = assignments[key]
                 set_key(self.deck, key, color, label)
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_layout_delete_confirm(self):
+        slot = self.layout_delete_pending or "?"
+        mid_key = self.total_keys // 2
+        for key in range(self.total_keys):
+            if key == 0:
+                set_key(self.deck, key, COLOR_CANCEL, "CANCEL")
+            elif key == self.total_keys - 1:
+                set_key(self.deck, key, COLOR_CONFIRM, "OK")
+            elif key == mid_key - 1 and self.cols >= 3:
+                set_key(self.deck, key, COLOR_EMPTY, "DELETE")
+            elif key == mid_key and self.cols >= 3:
+                set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
+            elif key == mid_key:
+                set_key(self.deck, key, COLOR_EMPTY, f"DEL\n{slot}?")
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
