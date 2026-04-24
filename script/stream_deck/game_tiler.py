@@ -54,6 +54,7 @@ COLOR_RESET = (180, 100, 0)
 COLOR_CONFIRM = (0, 180, 40)
 COLOR_CANCEL = (180, 0, 0)
 COLOR_EXPORT = (0, 120, 140)
+COLOR_DEV_RELOAD = (160, 40, 120)
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -217,6 +218,28 @@ def _reset_all_tracker_timers():
         return False
 
 
+def _hot_reload_extension():
+    """Call the extension's HotReload D-Bus method. Returns True on success."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.HotReload",
+            ],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            print(f"HotReload dbus: {result.stderr}")
+            return False
+        payload = _parse_gdbus_string_tuple(result.stdout)
+        return bool(payload)
+    except Exception as e:
+        print(f"HotReload error: {e}")
+        return False
+
+
 def _ask_save_path():
     """Prompt the user for a file path via zenity. Returns '' if cancelled."""
     if not shutil.which("zenity"):
@@ -319,10 +342,15 @@ class Tiler:
         self._compute_idle_buttons()
 
     def _compute_idle_buttons(self):
-        """Pick keys for the TILE and TIMER entry buttons."""
+        """Pick keys for the TILE, TIMER and DEV RELOAD entry buttons."""
         mid_c = self.cols // 2
         mid_r = self.rows // 2
-        if self.cols >= 2:
+        dev_reload_pos = None
+        if self.cols >= 3:
+            tile_pos = (mid_c - 1, mid_r)
+            timer_pos = (mid_c, mid_r)
+            dev_reload_pos = (mid_c + 1, mid_r)
+        elif self.cols >= 2:
             tile_pos = (max(mid_c - 1, 0), mid_r)
             timer_pos = (mid_c, mid_r)
         elif self.rows >= 2:
@@ -335,6 +363,10 @@ class Tiler:
             timer_pos = (0, 0)  # single-key deck: TILE only
         self.tile_key = tile_pos[1] * self.cols + tile_pos[0]
         self.timer_key = timer_pos[1] * self.cols + timer_pos[0]
+        if dev_reload_pos:
+            self.dev_reload_key = dev_reload_pos[1] * self.cols + dev_reload_pos[0]
+        else:
+            self.dev_reload_key = -1
 
     # ---------- Key handling ----------
 
@@ -356,6 +388,12 @@ class Tiler:
             self._handle_timer_reset_confirm_key(key)
 
     def _handle_idle_key(self, key):
+        if key == self.dev_reload_key and self.dev_reload_key >= 0:
+            ok = _hot_reload_extension()
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
         if key == self.timer_key and self.timer_key != self.tile_key:
             self._enter_timer_mode()
         elif key == self.tile_key:
@@ -511,6 +549,8 @@ class Tiler:
                 set_key(self.deck, key, COLOR_TITLE, "TILE")
             elif key == self.timer_key and self.timer_key != self.tile_key:
                 set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER")
+            elif key == self.dev_reload_key and self.dev_reload_key >= 0:
+                set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
             else:
