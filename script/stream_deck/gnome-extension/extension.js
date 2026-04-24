@@ -288,6 +288,27 @@ export default class StreamDeckTilerExtension extends Extension {
         return out;
     }
 
+    _stackingIndexMap(windows) {
+        const map = new Map();
+        try {
+            const sorted = global.display.sort_windows_by_stacking(windows);
+            sorted.forEach((w, i) => map.set(w, i));
+        } catch (e) {
+            console.log(`[StreamDeckTiler] sort_windows_by_stacking: ${e.message}`);
+        }
+        return map;
+    }
+
+    _raiseWindow(win) {
+        try {
+            if (typeof win.raise === 'function') win.raise();
+            else if (typeof win.raise_and_make_recent === 'function')
+                win.raise_and_make_recent();
+        } catch (e) {
+            console.log(`[StreamDeckTiler] raise failed: ${e.message}`);
+        }
+    }
+
     /**
      * Dump geometry + identity of every normal window across workspaces.
      * Returns a JSON array of window records.
@@ -295,6 +316,7 @@ export default class StreamDeckTilerExtension extends Extension {
     ListWindows() {
         try {
             const windows = this._collectAllWindows();
+            const stackMap = this._stackingIndexMap(windows);
             const out = windows.map(w => {
                 const rect = w.get_frame_rect();
                 return {
@@ -304,6 +326,7 @@ export default class StreamDeckTilerExtension extends Extension {
                     workspace: w.get_workspace()?.index() ?? 0,
                     monitor: w.get_monitor(),
                     maximized: w.get_maximized(),
+                    stacking: stackMap.get(w) ?? 0,
                 };
             });
             return JSON.stringify(out);
@@ -330,7 +353,7 @@ export default class StreamDeckTilerExtension extends Extension {
 
         const liveList = this._collectAllWindows();
         const used = new Set();
-        let matched = 0;
+        const matchedPairs = [];  // [{win, stacking}]
         const wsMgr = global.workspace_manager;
 
         for (const entry of entries) {
@@ -352,7 +375,7 @@ export default class StreamDeckTilerExtension extends Extension {
             }
             if (!best) continue;
             used.add(best);
-            matched++;
+            matchedPairs.push({win: best, stacking: entry.stacking ?? 0});
 
             try {
                 const wsIdx = entry.workspace ?? 0;
@@ -372,7 +395,15 @@ export default class StreamDeckTilerExtension extends Extension {
                 console.log(`[StreamDeckTiler] apply window: ${e.message}`);
             }
         }
-        return matched;
+
+        // Restore Z-order: raise bottom-to-top so the highest saved index
+        // ends up on top, matching the captured stacking.
+        matchedPairs.sort((a, b) => a.stacking - b.stacking);
+        for (const {win} of matchedPairs) {
+            this._raiseWindow(win);
+        }
+
+        return matchedPairs.length;
     }
 
     /**
