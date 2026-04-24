@@ -613,14 +613,8 @@ class Tiler:
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
             self._enter_timer_mode()
-        elif key == self.tile_key:
-            self.mode = MODE_TILING
-            self.corner1 = None
-            self.corner2 = None
-            self.last_result = None
-            self.render()
-        else:
-            # Legacy behavior: any key also enters tiling mode
+            return
+        if key == self.tile_key:
             self.mode = MODE_TILING
             self.corner1 = None
             self.corner2 = None
