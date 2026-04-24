@@ -544,6 +544,17 @@ class Tiler:
             layout_pos[1] * self.cols + layout_pos[0]
             if layout_pos else -1
         )
+        # Layout shortcut keys: one row below DEV RELOAD/SOUND/LAYOUT, only
+        # shown when the corresponding slot actually holds a saved layout.
+        self.layout_shortcut_keys = []
+        if (layout_pos
+                and mid_r + 1 < self.rows
+                and mid_c + NUM_LAYOUT_SLOTS < self.cols):
+            sr = mid_r + 1
+            self.layout_shortcut_keys = [
+                sr * self.cols + mid_c + 1 + i
+                for i in range(NUM_LAYOUT_SLOTS)
+            ]
         self._compute_sound_buttons()
         self._compute_layout_buttons()
 
@@ -609,6 +620,16 @@ class Tiler:
             return
         if key == self.layout_key and self.layout_key >= 0:
             self.mode = MODE_LAYOUT
+            self.render()
+            return
+        if key in self.layout_shortcut_keys:
+            slot = self.layout_shortcut_keys.index(key) + 1
+            slots = _layouts_load().get("slots", {})
+            if str(slot) not in slots:
+                return  # empty slot: no-op
+            ok = _load_layout_slot(slot)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
             self.render()
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
@@ -811,6 +832,12 @@ class Tiler:
             self._render_layout()
 
     def _render_idle(self):
+        shortcut_slots = {}
+        if self.layout_shortcut_keys:
+            filled = _layouts_load().get("slots", {})
+            for i, sk in enumerate(self.layout_shortcut_keys):
+                if str(i + 1) in filled:
+                    shortcut_slots[sk] = i + 1
         for key in range(self.total_keys):
             if key == self.tile_key:
                 set_key(self.deck, key, COLOR_TITLE, "TILE")
@@ -822,6 +849,9 @@ class Tiler:
                 set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND")
             elif key == self.layout_key and self.layout_key >= 0:
                 set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT")
+            elif key in shortcut_slots:
+                slot = shortcut_slots[key]
+                set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
             else:
