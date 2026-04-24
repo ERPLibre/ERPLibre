@@ -517,12 +517,12 @@ class Tiler:
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
 
-        # Layout shortcuts: row 1 starting under LAYOUT, one per slot.
+        # Layout shortcuts: last row, aligned under LAYOUT, one per slot.
         self.layout_shortcut_keys = []
         if (self.layout_key >= 0
                 and self.rows >= 2
                 and self.layout_key + NUM_LAYOUT_SLOTS <= self.cols):
-            base = self.cols + self.layout_key  # row 1, same col
+            base = (self.rows - 1) * self.cols + self.layout_key
             self.layout_shortcut_keys = [
                 base + i for i in range(NUM_LAYOUT_SLOTS)
             ]
