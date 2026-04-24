@@ -227,17 +227,24 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         _kill_current_game()
 
         print(f"Launching game: {game_id}")
+        # Loop so the user can restart the game by typing "r" + Enter at the
+        # end-of-game prompt — avoids re-picking it from the gallery.
+        bash_cmd = (
+            f"cd {ERPLIBRE_DIR} && while true; do "
+            f"python3 {game_file}; "
+            f'echo ""; '
+            f'echo "Game ended. Press [r]+enter to restart, '
+            f'or enter to close..."; '
+            f"read -r ans; "
+            f'if [ "$ans" != "r" ] && [ "$ans" != "R" ]; then break; fi; '
+            f"done"
+        )
         try:
             # --wait keeps gnome-terminal process alive until window closes
             _current_game_proc = subprocess.Popen(
                 [
-                    "gnome-terminal",
-                    "--wait",
-                    "--",
-                    "bash",
-                    "-c",
-                    f"cd {ERPLIBRE_DIR} && python3 {game_file}; "
-                    f'echo ""; echo "Game ended. Press enter to close..."; read',
+                    "gnome-terminal", "--wait", "--",
+                    "bash", "-c", bash_cmd,
                 ],
                 preexec_fn=os.setsid,
             )
@@ -245,12 +252,7 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         except FileNotFoundError:
             try:
                 _current_game_proc = subprocess.Popen(
-                    [
-                        "xterm",
-                        "-e",
-                        f"cd {ERPLIBRE_DIR} && python3 {game_file}; "
-                        f'echo "Game ended."; read',
-                    ],
+                    ["xterm", "-e", bash_cmd],
                     preexec_fn=os.setsid,
                 )
                 status = {"ok": True, "game": game_id}
