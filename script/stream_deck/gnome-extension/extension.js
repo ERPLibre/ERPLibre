@@ -328,9 +328,12 @@ export default class StreamDeckTilerExtension extends Extension {
         GLib.file_set_contents(path, patched);
     }
 
-    async HotReload() {
+    HotReload() {
+        // GJS DBusExportedObject does not accept Promise return values,
+        // so keep this method sync: do the file work + createExtensionObject
+        // synchronously, then chain the async loadExtension + enable swap on
+        // the returned Promise. D-Bus reply carries the new UUID immediately.
         try {
-            // Purge leftover temps from previous reloads (except self)
             for (const uuid of this._listTempUuids(false)) {
                 this._removeExtensionByUuid(uuid);
             }
@@ -361,12 +364,17 @@ export default class StreamDeckTilerExtension extends Extension {
             const newExt = createObj.call(
                 Main.extensionManager, newUuid, dirFile, EXTENSION_TYPE_PER_USER
             );
-            await loadExt.call(Main.extensionManager, newExt);
 
-            Main.extensionManager.disableExtension?.(this.uuid);
-            Main.extensionManager.enableExtension(newUuid);
+            const selfUuid = this.uuid;
+            const loadResult = loadExt.call(Main.extensionManager, newExt);
+            Promise.resolve(loadResult).then(() => {
+                Main.extensionManager.disableExtension?.(selfUuid);
+                Main.extensionManager.enableExtension(newUuid);
+                console.log(`[StreamDeckTiler] HotReload → ${newUuid}`);
+            }).catch(e => {
+                console.log(`[StreamDeckTiler] HotReload load failed: ${e.message}`);
+            });
 
-            console.log(`[StreamDeckTiler] HotReload → ${newUuid}`);
             return newUuid;
         } catch (e) {
             console.log(`[StreamDeckTiler] HotReload failed: ${e.message}`);
