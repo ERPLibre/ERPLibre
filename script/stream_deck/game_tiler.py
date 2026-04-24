@@ -511,63 +511,22 @@ class Tiler:
         self._compute_idle_buttons()
 
     def _compute_idle_buttons(self):
-        """Pick keys for TILE, TIMER, DEV RELOAD, SOUND and LAYOUT entries."""
-        mid_c = self.cols // 2
-        mid_r = self.rows // 2
-        dev_reload_pos = None
-        sound_pos = None
-        layout_pos = None
-        if self.cols >= 7:
-            tile_pos = (mid_c - 1, mid_r)
-            timer_pos = (mid_c, mid_r)
-            dev_reload_pos = (mid_c + 1, mid_r)
-            sound_pos = (mid_c + 2, mid_r)
-            layout_pos = (mid_c + 3, mid_r)
-        elif self.cols >= 5:
-            tile_pos = (mid_c - 1, mid_r)
-            timer_pos = (mid_c, mid_r)
-            dev_reload_pos = (mid_c + 1, mid_r)
-            sound_pos = (mid_c + 2, mid_r)
-        elif self.cols >= 3:
-            tile_pos = (mid_c - 1, mid_r)
-            timer_pos = (mid_c, mid_r)
-            dev_reload_pos = (mid_c + 1, mid_r)
-        elif self.cols >= 2:
-            tile_pos = (max(mid_c - 1, 0), mid_r)
-            timer_pos = (mid_c, mid_r)
-        elif self.rows >= 2:
-            tile_pos = (0, mid_r)
-            timer_pos = (0, min(mid_r + 1, self.rows - 1))
-            if tile_pos == timer_pos:
-                tile_pos = (0, max(mid_r - 1, 0))
-        else:
-            tile_pos = (0, 0)
-            timer_pos = (0, 0)  # single-key deck: TILE only
-        self.tile_key = tile_pos[1] * self.cols + tile_pos[0]
-        self.timer_key = timer_pos[1] * self.cols + timer_pos[0]
-        self.dev_reload_key = (
-            dev_reload_pos[1] * self.cols + dev_reload_pos[0]
-            if dev_reload_pos else -1
-        )
-        self.sound_key = (
-            sound_pos[1] * self.cols + sound_pos[0]
-            if sound_pos else -1
-        )
-        self.layout_key = (
-            layout_pos[1] * self.cols + layout_pos[0]
-            if layout_pos else -1
-        )
-        # Layout shortcut keys: one row below DEV RELOAD/SOUND/LAYOUT, only
-        # shown when the corresponding slot actually holds a saved layout.
+        """Idle menu: TILE, TIMER, DEV RELOAD, SOUND, LAYOUT left-aligned
+        on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
+        order = ["tile", "timer", "dev_reload", "sound", "layout"]
+        for i, name in enumerate(order):
+            setattr(self, f"{name}_key", i if i < self.cols else -1)
+
+        # Layout shortcuts: row 1 starting under LAYOUT, one per slot.
         self.layout_shortcut_keys = []
-        if (layout_pos
-                and mid_r + 1 < self.rows
-                and mid_c + NUM_LAYOUT_SLOTS < self.cols):
-            sr = mid_r + 1
+        if (self.layout_key >= 0
+                and self.rows >= 2
+                and self.layout_key + NUM_LAYOUT_SLOTS <= self.cols):
+            base = self.cols + self.layout_key  # row 1, same col
             self.layout_shortcut_keys = [
-                sr * self.cols + mid_c + 1 + i
-                for i in range(NUM_LAYOUT_SLOTS)
+                base + i for i in range(NUM_LAYOUT_SLOTS)
             ]
+
         self._compute_sound_buttons()
         self._compute_layout_buttons()
 
