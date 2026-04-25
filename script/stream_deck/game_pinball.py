@@ -4,11 +4,15 @@
 
 """Vertical Pinball — keep the ball alive, hit bumpers, beat your score.
 
-Layout:
-- Top rows: bumpers + walls
-- Bottom row: left flipper (left half) and right flipper (right half)
-- The ball spawns at the bottom-right; press a flipper to launch.
-- Ball drains at the bottom middle = lose 1 life. Out of lives = game over.
+Rotate the deck 90° so its longer axis is vertical: the column index
+becomes the gravity axis and the row index becomes the horizontal axis.
+
+Layout (rotated view):
+- Left column (col=0): top wall + bumpers
+- Middle column: staggered bumpers + a kicker
+- Right column (col=cols-1): flippers — top half = LEFT, bottom half = RIGHT,
+  with a center drain on odd row counts
+- Ball spawns just above the right column; press any flipper to launch.
 """
 
 import random
@@ -31,7 +35,7 @@ GAME_META = {
     "multiplayer": False,
     "sdplus": False,
     "description": (
-        "Vertical pinball — flip the ball, hit bumpers, beat your score."
+        "Vertical pinball (rotate deck 90°): flip the ball, hit bumpers."
     ),
     "icon": "pinball",
 }
@@ -43,8 +47,9 @@ BUMPER_BOOST = 0.05
 WALL_DAMP = 0.92
 FLIPPER_TICKS = 6
 FLASH_TICKS = 4
-LAUNCH_VX = -0.30
-LAUNCH_VY = -0.65
+# ball_x is along the col axis (gravity); ball_y is along the row axis.
+LAUNCH_VX = -0.65   # upward in rotated view (decreasing col)
+LAUNCH_VY = -0.30   # lateral kick (toward decreasing row)
 INITIAL_LIVES = 3
 
 COLOR_BG = (8, 8, 24)
@@ -90,6 +95,9 @@ def set_key(deck, key, color, text=""):
 
 
 def _draw_ball_cell(deck, key, bg_color, ball_x, ball_y, cell_c, cell_r):
+    """Render a key with the ball drawn at its sub-cell offset.
+    `ball_x` is the col-axis position; `ball_y` is the row-axis position.
+    `cell_c` and `cell_r` are the integer cell indices being drawn."""
     fmt = deck.key_image_format()
     w, h = fmt["size"]
     img = Image.new("RGB", (w, h), bg_color)
@@ -99,12 +107,14 @@ def _draw_ball_cell(deck, key, bg_color, ball_x, ball_y, cell_c, cell_r):
     cx = (0.5 + fx) * w
     cy = (0.5 + fy) * h
     radius = max(4, int(min(w, h) * 0.30))
-    # Soft glow
     glow = max(radius + 3, int(radius * 1.6))
     glow_color = tuple(min(255, c + 50) for c in COLOR_BALL)
     draw.ellipse(
         (cx - glow, cy - glow, cx + glow, cy + glow),
-        fill=tuple(min(255, c // 4 + b // 4) for c, b in zip(glow_color, bg_color)),
+        fill=tuple(
+            min(255, c // 4 + b // 4)
+            for c, b in zip(glow_color, bg_color)
+        ),
     )
     draw.ellipse(
         (cx - radius, cy - radius, cx + radius, cy + radius),
@@ -124,6 +134,14 @@ def _draw_ball_cell(deck, key, bg_color, ball_x, ball_y, cell_c, cell_r):
 
 
 class Pinball:
+    """Pinball state. Rotated semantics:
+    - ball_x ∈ [0, cols-1] = col-axis position = vertical (gravity) axis.
+      Ball "falls" toward higher col indices; col=0 is the top of the table.
+    - ball_y ∈ [0, rows-1] = row-axis position = horizontal axis.
+    - Drain when ball_x exceeds cols (off the right edge of the deck,
+      which is the bottom of the rotated table).
+    """
+
     def __init__(self, deck):
         self.deck = deck
         rows, cols = deck.key_layout()
@@ -137,8 +155,8 @@ class Pinball:
         self.score = 0
         self.high_score = 0
         self.lives = INITIAL_LIVES
-        self.ball_x = 0.0
-        self.ball_y = 0.0
+        self.ball_x = 0.0  # col axis (gravity)
+        self.ball_y = 0.0  # row axis (horizontal)
         self.ball_vx = 0.0
         self.ball_vy = 0.0
         self.ball_waiting = True
@@ -146,40 +164,36 @@ class Pinball:
         self.flipper_right_ticks = 0
         self.bumper_flash = {}
         self.bumpers, self.kickers = self._build_obstacles()
-        # Reserved cells the ball must skip during render-fallback paint.
         self.hud_cells = self._hud_cells()
 
     # ── LAYOUT ───────────────────────────────────────────────
 
     def _build_obstacles(self):
-        """Place bumpers + kickers based on deck size. Bumpers live in
-        the top half; kickers (purple, stronger) live mid-board."""
+        """Bumpers in the upper part of the rotated table (low col index)."""
         bumpers = set()
         kickers = set()
-        if self.rows < 2 or self.cols < 2:
+        if self.cols < 2 or self.rows < 2:
             return bumpers, kickers
-        # Top row interior cells = bumpers
-        for c in range(1, self.cols - 1):
-            bumpers.add((c, 0))
-        if self.rows >= 3:
-            mid_r = self.rows // 2
-            # Stagger middle bumpers; skip drain column
-            for c in range(0, self.cols):
-                if c == self.cols // 2:
+        # Top of table = first physical column; interior rows are bumpers.
+        for r in range(1, self.rows - 1):
+            bumpers.add((0, r))
+        if self.cols >= 3:
+            mid_c = self.cols // 2
+            for r in range(0, self.rows):
+                if r == self.rows // 2:
                     continue
-                if (c % 2) == (mid_r % 2):
-                    bumpers.add((c, mid_r))
-            # One kicker at mid-center if there's room
-            if self.rows >= 4 and self.cols >= 3:
-                kickers.add((self.cols // 2, max(1, mid_r - 1)))
+                if (r % 2) == (mid_c % 2):
+                    bumpers.add((mid_c, r))
+            if self.cols >= 4 and self.rows >= 3:
+                kickers.add((max(1, mid_c - 1), self.rows // 2))
         return bumpers, kickers
 
     def _hud_cells(self):
-        """HUD positions for score/lives/hi during gameplay."""
+        """HUD lives at top corners of the rotated table (col=0)."""
         cells = {}
-        if self.rows >= 2:
+        if self.cols >= 2:
             cells[(0, 0)] = "score"
-            cells[(self.cols - 1, 0)] = "lives"
+            cells[(0, self.rows - 1)] = "lives"
         return cells
 
     # ── STATE ────────────────────────────────────────────────
@@ -193,9 +207,9 @@ class Pinball:
         self._spawn_ball()
 
     def _spawn_ball(self):
-        # Launch from bottom-right, just above the flipper row.
-        self.ball_x = float(self.cols - 1)
-        self.ball_y = float(max(0, self.rows - 2))
+        # Spawn just above the bottom-right flipper of the rotated table.
+        self.ball_x = float(max(0, self.cols - 2))
+        self.ball_y = float(self.rows - 1)
         self.ball_vx = 0.0
         self.ball_vy = 0.0
         self.ball_waiting = True
@@ -206,8 +220,8 @@ class Pinball:
         if not self.ball_waiting:
             return
         self.ball_waiting = False
-        self.ball_vx = LAUNCH_VX + random.uniform(-0.05, 0.05)
-        self.ball_vy = LAUNCH_VY
+        self.ball_vx = LAUNCH_VX                                     # upward
+        self.ball_vy = LAUNCH_VY + random.uniform(-0.05, 0.05)       # lateral
 
     # ── INPUT ────────────────────────────────────────────────
 
@@ -220,8 +234,10 @@ class Pinball:
             return
         col = key % self.cols
         row = key // self.cols
-        if row == self.rows - 1:
-            if col < self.cols / 2:
+        if col == self.cols - 1:
+            # Last physical column = bottom row of rotated table.
+            # Top half = LEFT flipper, bottom half = RIGHT flipper.
+            if row < self.rows / 2:
                 self.flipper_left_ticks = FLIPPER_TICKS
             else:
                 self.flipper_right_ticks = FLIPPER_TICKS
@@ -244,42 +260,43 @@ class Pinball:
         self.ball_vx = max(-MAX_V, min(MAX_V, self.ball_vx))
         self.ball_vy = max(-MAX_V, min(MAX_V, self.ball_vy))
 
-    def _hit_bumper(self, cell, ny):
+    def _hit_bumper(self, cell, n_x):
+        """Bumper bounces along the gravity axis (ball_x). `cell` is
+        a (col, row) tuple. Returns the new ball_x."""
         if cell in self.kickers:
             self.score += 25
             self.bumper_flash[cell] = FLASH_TICKS
-            self.ball_vy = -abs(self.ball_vy) - BUMPER_BOOST * 4
-            self.ball_vx += random.uniform(-0.25, 0.25)
-            return float(cell[1]) + 0.6
+            self.ball_vx = -abs(self.ball_vx) - BUMPER_BOOST * 4
+            self.ball_vy += random.uniform(-0.25, 0.25)
+            return float(cell[0]) + 0.6
         if cell in self.bumpers:
             self.score += 10
             self.bumper_flash[cell] = FLASH_TICKS
-            self.ball_vy = -abs(self.ball_vy) - BUMPER_BOOST
-            self.ball_vx += random.uniform(-0.20, 0.20)
-            return float(cell[1]) + 0.6
-        return ny
+            self.ball_vx = -abs(self.ball_vx) - BUMPER_BOOST
+            self.ball_vy += random.uniform(-0.20, 0.20)
+            return float(cell[0]) + 0.6
+        return n_x
 
-    def _try_flippers(self, nx, ny):
-        if ny < self.rows - 1:
-            return nx, ny, False
-        col_int = int(round(max(0, min(self.cols - 1, nx))))
-        in_left = col_int < self.cols / 2
-        in_right = col_int >= self.cols / 2
+    def _try_flippers(self, n_x, n_y):
+        if n_x < self.cols - 1:
+            return n_x, n_y, False
+        row_int = int(round(max(0, min(self.rows - 1, n_y))))
+        in_left = row_int < self.rows / 2
+        in_right = row_int >= self.rows / 2
         used = False
         if in_left and self.flipper_left_ticks > 0:
             used = True
-            self.ball_vy = -0.85
-            # Push ball further from the side based on hit position
-            offset = (col_int - 0) / max(1, (self.cols / 2 - 1))
-            self.ball_vx = -0.45 + offset * 0.6
+            self.ball_vx = -0.85
+            offset = row_int / max(1, (self.rows / 2 - 1))
+            self.ball_vy = -0.45 + offset * 0.6
         elif in_right and self.flipper_right_ticks > 0:
             used = True
-            self.ball_vy = -0.85
-            offset = (self.cols - 1 - col_int) / max(1, (self.cols / 2 - 1))
-            self.ball_vx = 0.45 - offset * 0.6
+            self.ball_vx = -0.85
+            offset = (self.rows - 1 - row_int) / max(1, (self.rows / 2 - 1))
+            self.ball_vy = 0.45 - offset * 0.6
         if used:
-            ny = float(self.rows - 1) - 0.5
-        return nx, ny, used
+            n_x = float(self.cols - 1) - 0.5
+        return n_x, n_y, used
 
     def tick(self):
         if not self.game_active or self.game_over:
@@ -288,31 +305,31 @@ class Pinball:
         self._decay_counters()
         if self.ball_waiting:
             return
-        self.ball_vy += GRAVITY
+        self.ball_vx += GRAVITY  # gravity along col axis
         self._clamp_velocity()
         nx = self.ball_x + self.ball_vx
         ny = self.ball_y + self.ball_vy
-        # Side walls
-        if nx < 0:
-            nx = -nx
-            self.ball_vx = -self.ball_vx * WALL_DAMP
-        elif nx > self.cols - 1:
-            nx = 2 * (self.cols - 1) - nx
-            self.ball_vx = -self.ball_vx * WALL_DAMP
-        # Top wall
+        # Side walls: row-axis extremes.
         if ny < 0:
             ny = -ny
             self.ball_vy = -self.ball_vy * WALL_DAMP
-        # Bumpers / kickers (use rounded cell)
+        elif ny > self.rows - 1:
+            ny = 2 * (self.rows - 1) - ny
+            self.ball_vy = -self.ball_vy * WALL_DAMP
+        # Top wall: col=0.
+        if nx < 0:
+            nx = -nx
+            self.ball_vx = -self.ball_vx * WALL_DAMP
+        # Bumpers / kickers (cell stored as (col, row)).
         cell = (
             int(round(max(0, min(self.cols - 1, nx)))),
             int(round(max(0, min(self.rows - 1, ny)))),
         )
-        ny = self._hit_bumper(cell, ny)
+        nx = self._hit_bumper(cell, nx)
         # Flippers
         nx, ny, _ = self._try_flippers(nx, ny)
-        # Drain
-        if ny >= self.rows:
+        # Drain off the rotated bottom (col >= cols).
+        if nx >= self.cols:
             self.lives -= 1
             if self.lives <= 0:
                 self.game_over = True
@@ -345,25 +362,25 @@ class Pinball:
             for c in range(self.cols):
                 key = r * self.cols + c
                 pos = (c, r)
-                # Bottom row = flippers + drain
-                if r == self.rows - 1:
-                    if c < self.cols / 2:
+                # Right column = bottom of rotated table = flippers + drain.
+                if c == self.cols - 1:
+                    if r < self.rows / 2:
                         active = self.flipper_left_ticks > 0
                         side = "L"
-                    elif c >= self.cols / 2:
+                    else:
                         active = self.flipper_right_ticks > 0
                         side = "R"
                     base = COLOR_FLIPPER_ACTIVE if active else COLOR_FLIPPER
                     is_drain = (
-                        c == self.cols // 2 and self.cols % 2 == 1
-                        and self.cols >= 3
+                        r == self.rows // 2 and self.rows % 2 == 1
+                        and self.rows >= 3
                     )
                     if is_drain and not active:
                         base = COLOR_DRAIN
                     if pos == ball_cell:
                         _draw_ball_cell(
-                            self.deck, key, base, self.ball_x, self.ball_y,
-                            c, r,
+                            self.deck, key, base,
+                            self.ball_x, self.ball_y, c, r,
                         )
                     else:
                         label = "" if is_drain else side
@@ -375,8 +392,8 @@ class Pinball:
                     color = COLOR_BUMPER_HIT if flashing else COLOR_BUMPER
                     if pos == ball_cell:
                         _draw_ball_cell(
-                            self.deck, key, color, self.ball_x, self.ball_y,
-                            c, r,
+                            self.deck, key, color,
+                            self.ball_x, self.ball_y, c, r,
                         )
                     else:
                         set_key(self.deck, key, color, "*")
@@ -387,13 +404,13 @@ class Pinball:
                     color = COLOR_KICKER_HIT if flashing else COLOR_KICKER
                     if pos == ball_cell:
                         _draw_ball_cell(
-                            self.deck, key, color, self.ball_x, self.ball_y,
-                            c, r,
+                            self.deck, key, color,
+                            self.ball_x, self.ball_y, c, r,
                         )
                     else:
                         set_key(self.deck, key, color, "K")
                     continue
-                # HUD slots (only when ball isn't there)
+                # HUD slots
                 hud_role = self.hud_cells.get(pos)
                 if hud_role and pos != ball_cell:
                     if hud_role == "score":
@@ -404,8 +421,8 @@ class Pinball:
                 # Empty playfield
                 if pos == ball_cell:
                     _draw_ball_cell(
-                        self.deck, key, COLOR_BG, self.ball_x, self.ball_y,
-                        c, r,
+                        self.deck, key, COLOR_BG,
+                        self.ball_x, self.ball_y, c, r,
                     )
                 else:
                     set_key(self.deck, key, COLOR_BG, "")
@@ -417,19 +434,23 @@ class Pinball:
             for c in range(self.cols):
                 key = r * self.cols + c
                 pos = (c, r)
-                if pos == (mid_c, 0):
+                # Title labels read top-to-bottom in the rotated view:
+                # col=0 (top) = "PIN", middle = "BALL", col=cols-1 = "PUSH".
+                if pos == (0, mid_r):
                     set_key(self.deck, key, COLOR_BUMPER, "PIN")
-                elif self.cols >= 3 and pos == (mid_c - 1, 0):
+                elif self.rows >= 3 and pos == (0, max(0, mid_r - 1)):
                     set_key(self.deck, key, COLOR_TITLE_ACCENT, "*")
-                elif self.cols >= 3 and pos == (mid_c + 1, 0):
+                elif self.rows >= 3 and pos == (
+                    0, min(self.rows - 1, mid_r + 1)
+                ):
                     set_key(self.deck, key, COLOR_TITLE_ACCENT, "*")
-                elif pos == (mid_c, mid_r):
+                elif self.cols >= 3 and pos == (mid_c, mid_r):
                     set_key(self.deck, key, COLOR_TITLE, "BALL")
-                elif pos == (0, self.rows - 1):
+                elif pos == (self.cols - 1, 0):
                     set_key(self.deck, key, COLOR_FLIPPER, "L")
                 elif pos == (self.cols - 1, self.rows - 1):
                     set_key(self.deck, key, COLOR_FLIPPER, "R")
-                elif pos == (mid_c, self.rows - 1):
+                elif pos == (self.cols - 1, mid_r):
                     set_key(self.deck, key, COLOR_TITLE, "PUSH")
                 else:
                     set_key(self.deck, key, COLOR_BG, "")
@@ -441,15 +462,15 @@ class Pinball:
             for c in range(self.cols):
                 key = r * self.cols + c
                 pos = (c, r)
-                if pos == (mid_c, 0):
+                if pos == (0, mid_r):
                     set_key(self.deck, key, COLOR_GAMEOVER, "OVER")
                 elif pos == (0, 0):
                     set_key(self.deck, key, COLOR_HI, "HI")
-                elif pos == (self.cols - 1, 0):
+                elif pos == (0, self.rows - 1):
                     set_key(self.deck, key, COLOR_HI, str(self.high_score))
-                elif pos == (mid_c, mid_r):
+                elif self.cols >= 3 and pos == (mid_c, mid_r):
                     set_key(self.deck, key, COLOR_TITLE, str(self.score))
-                elif pos == (mid_c, self.rows - 1):
+                elif pos == (self.cols - 1, mid_r):
                     set_key(self.deck, key, COLOR_TITLE, "AGAIN")
                 else:
                     set_key(self.deck, key, COLOR_BG, "")
@@ -482,8 +503,10 @@ def main():
     deck.set_brightness(80)
     rows, cols = deck.key_layout()
     print(f"Pinball on {deck.deck_type()} ({cols}x{rows})")
+    print("Rotate the deck 90°: long axis vertical, USB cable to the side.")
     print(
-        "Bottom row: left half = LEFT flipper, right half = RIGHT flipper."
+        "Right column (rotated bottom): top half = LEFT flipper, "
+        "bottom half = RIGHT flipper."
     )
     print("First flipper press launches the ball. Ctrl+C to quit.")
     game = Pinball(deck)
