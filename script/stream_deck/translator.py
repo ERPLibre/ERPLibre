@@ -96,12 +96,24 @@ class WhisperCppBackend(STTBackend):
     name = "whisper.cpp"
 
     def __init__(self):
-        # whisper.cpp ships various binary names depending on build
+        # whisper.cpp ships various binary names depending on build.
+        # Try PATH first, then well-known local install dirs so a build
+        # at ~/.local/share/whisper.cpp works without symlinking onto PATH.
+        candidates = []
         for cand in ("whisper-cli", "whisper-cpp", "main"):
             p = shutil.which(cand)
             if p:
-                self.binary = p
-                break
+                candidates.append(p)
+        local_root = os.path.expanduser("~/.local/share/whisper.cpp")
+        for rel in (
+            "build/bin/whisper-cli",
+            "main",
+            "whisper-cli",
+        ):
+            cand = os.path.join(local_root, rel)
+            if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                candidates.append(cand)
+        self.binary = candidates[0] if candidates else None
         self.available = bool(self.binary)
         # User must place a ggml model at one of these paths
         self.model = None

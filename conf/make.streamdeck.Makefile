@@ -131,6 +131,63 @@ streamdeck_tiler_uninstall_extension:
 	@rm -rf "$(STREAMDECK_TILER_EXT_DST)"
 	@echo "Removed $(STREAMDECK_TILER_EXT_DST) (log out/in to fully unload)"
 
+# ---------- Translator stack (STT + LLM) ----------
+
+WHISPER_CPP_DIR   := $(HOME)/.local/share/whisper.cpp
+WHISPER_CPP_REPO  := https://github.com/ggerganov/whisper.cpp
+WHISPER_MODEL     := tiny
+
+.PHONY: streamdeck_translator_doctor
+streamdeck_translator_doctor:
+	@./script/stream_deck/translator_doctor.py
+
+.PHONY: streamdeck_translator_install_whisper
+streamdeck_translator_install_whisper:
+	@if [ ! -d "$(WHISPER_CPP_DIR)" ]; then \
+		echo "Cloning whisper.cpp into $(WHISPER_CPP_DIR)..."; \
+		git clone --depth 1 "$(WHISPER_CPP_REPO)" "$(WHISPER_CPP_DIR)"; \
+	else \
+		echo "whisper.cpp already at $(WHISPER_CPP_DIR), pulling..."; \
+		git -C "$(WHISPER_CPP_DIR)" pull --ff-only || true; \
+	fi
+	@echo "Building whisper.cpp (this takes a few minutes)..."
+	@$(MAKE) -C "$(WHISPER_CPP_DIR)" 2>&1 | tail -20
+	@echo "Downloading $(WHISPER_MODEL) model (~75 MB)..."
+	@bash "$(WHISPER_CPP_DIR)/models/download-ggml-model.sh" \
+		"$(WHISPER_MODEL)"
+	@echo ""
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
+.PHONY: streamdeck_translator_install_ollama
+streamdeck_translator_install_ollama:
+	@if command -v ollama >/dev/null 2>&1; then \
+		echo "ollama already installed at $$(command -v ollama)"; \
+	else \
+		echo "About to run: curl -fsSL https://ollama.com/install.sh | sh"; \
+		echo "This installs ollama as a systemd user service."; \
+		printf "Continue? [y/N] "; read ans; \
+		case "$$ans" in [yY]) ;; *) echo "Cancelled."; exit 1;; esac; \
+		curl -fsSL https://ollama.com/install.sh | sh; \
+	fi
+	@model=$$(./script/stream_deck/translator_doctor.py --recommend); \
+	echo ""; \
+	echo "Pulling hardware-recommended model: $$model"; \
+	ollama pull "$$model"
+	@echo ""
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
+.PHONY: streamdeck_translator_install_typing
+streamdeck_translator_install_typing:
+	@echo "Installing wl-clipboard + ydotool for Wayland output..."
+	sudo apt install -y wl-clipboard ydotool
+	@echo "Enabling ydotoold service..."
+	sudo systemctl enable --now ydotoold
+	@echo "Adding user to input group (re-login required)..."
+	sudo usermod -aG input "$$USER"
+	@echo ""
+	@echo "Done. Re-login for the input group to take effect."
+	@echo "Verify: make streamdeck_translator_doctor"
+
 STREAMDECK_TILER_DBUS_DEST    := org.gnome.Shell
 STREAMDECK_TILER_DBUS_PATH    := /org/gnome/Shell/Extensions/StreamDeckTiler
 STREAMDECK_TILER_DBUS_IFACE   := org.gnome.Shell.Extensions.StreamDeckTiler
