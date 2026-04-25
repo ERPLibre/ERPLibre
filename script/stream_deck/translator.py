@@ -115,13 +115,24 @@ class WhisperCppBackend(STTBackend):
                 candidates.append(cand)
         self.binary = candidates[0] if candidates else None
         self.available = bool(self.binary)
-        # User must place a ggml model at one of these paths
+        # User must place a ggml model at one of these paths.
+        # The configured size (translator_stt_model) is tried first, then
+        # any other size gets picked up as a fallback.
         self.model = None
-        for cand in (
-            os.path.expanduser("~/.cache/streamdeck-tiler/whisper.bin"),
-            os.path.expanduser("~/.local/share/whisper.cpp/models/ggml-tiny.bin"),
-            os.path.expanduser("~/.local/share/whisper.cpp/models/ggml-base.bin"),
-        ):
+        size = stt_model_size()
+        local_models = os.path.expanduser(
+            "~/.local/share/whisper.cpp/models"
+        )
+        cache_models = os.path.expanduser("~/.cache/streamdeck-tiler")
+        candidates = [
+            os.path.join(local_models, f"ggml-{size}.bin"),
+            os.path.join(cache_models, "whisper.bin"),
+        ]
+        for other in WHISPER_MODEL_SIZES:
+            if other == size:
+                continue
+            candidates.append(os.path.join(local_models, f"ggml-{other}.bin"))
+        for cand in candidates:
             if os.path.isfile(cand):
                 self.model = cand
                 break
@@ -166,7 +177,7 @@ class OpenAIWhisperBackend(STTBackend):
             tmpdir = tempfile.mkdtemp(prefix="sttout_")
             cmd = [
                 self.binary, wav_path,
-                "--model", "tiny",
+                "--model", stt_model_size(),
                 "--output_format", "txt",
                 "--output_dir", tmpdir,
                 "--fp16", "False",
@@ -467,6 +478,16 @@ def stt_language():
     """ISO 639-1 STT language hint, or 'auto' for whisper auto-detect."""
     raw = _load_settings().get("translator_stt_language") or "auto"
     return str(raw).strip().lower() or "auto"
+
+
+WHISPER_MODEL_SIZES = ("tiny", "base", "small", "medium", "large")
+
+
+def stt_model_size():
+    """Whisper model size: tiny (default), base, small, medium, large."""
+    raw = _load_settings().get("translator_stt_model") or "tiny"
+    name = str(raw).strip().lower()
+    return name if name in WHISPER_MODEL_SIZES else "tiny"
 
 
 def get_prompt_template(llm_mode):

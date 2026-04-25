@@ -135,7 +135,8 @@ streamdeck_tiler_uninstall_extension:
 
 WHISPER_CPP_DIR   := $(HOME)/.local/share/whisper.cpp
 WHISPER_CPP_REPO  := https://github.com/ggerganov/whisper.cpp
-WHISPER_MODEL     := tiny
+# Override at the command line: WHISPER_MODEL=base make ...
+WHISPER_MODEL     ?= tiny
 
 .PHONY: streamdeck_translator_doctor
 streamdeck_translator_doctor:

@@ -71,6 +71,28 @@ Valeur `"auto"` (défaut) ou absente = auto-détection. Le réglage est
 appliqué via `-l` (whisper.cpp) ou `--language` (openai-whisper). Vosk
 ignore ce réglage car la langue dépend du modèle installé.
 
+### Taille de modèle STT
+
+Whisper offre plusieurs tailles de modèle (compromis précision /
+vitesse / mémoire). Défaut: `tiny` (~75 Mo, le plus rapide, moins
+précis). Surcharger dans le même fichier de réglages:
+
+```json
+{
+  "translator_stt_model": "base"
+}
+```
+
+Valeurs acceptées: `tiny`, `base`, `small`, `medium`, `large`.
+whisper.cpp cherche `ggml-<taille>.bin` sous
+`~/.local/share/whisper.cpp/models/`; openai-whisper passe la taille
+via `--model`. Télécharger le fichier ggml une fois avec la cible
+make:
+
+```bash
+WHISPER_MODEL=base make streamdeck_translator_install_whisper
+```
+
 ### Backends STT
 
 `translator.detect_stt_backends()` retourne les backends disponibles

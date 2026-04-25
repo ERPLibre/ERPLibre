@@ -79,6 +79,7 @@ def main():
 
     lang = translator.stt_language()
     print(f"  i STT language   {lang}")
+    print(f"  i STT model size {translator.stt_model_size()}")
 
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):

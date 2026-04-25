@@ -73,6 +73,27 @@ applied through `-l` for whisper.cpp and `--language` for
 openai-whisper. Vosk ignores it because language is baked into the
 installed model.
 
+### STT model size
+
+Whisper ships several model sizes trading accuracy for speed and
+memory. The default is `tiny` (~75 MB, fastest, lowest accuracy).
+Override per session in the same settings file:
+
+```json
+{
+  "translator_stt_model": "base"
+}
+```
+
+Accepted: `tiny`, `base`, `small`, `medium`, `large`. Whisper.cpp
+looks for the matching `ggml-<size>.bin` under
+`~/.local/share/whisper.cpp/models/`; openai-whisper passes the size
+through `--model`. Pull the ggml file once with the make target:
+
+```bash
+WHISPER_MODEL=base make streamdeck_translator_install_whisper
+```
+
 ### STT backends
 
 `translator.detect_stt_backends()` returns the available backends in a
