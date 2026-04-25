@@ -97,8 +97,27 @@ entier positif dans `~/.config/streamdeck-tiler/settings.json`:
 
 Le deck arrête l'enregistrement (et déclenche la transcription)
 quand le temps écoulé dépasse la valeur en secondes. `0` ou absent
-= pas de limite. Un vrai VAD basé sur le silence est dans la
-roadmap; ceci est le filet de sécurité.
+= pas de limite.
+
+### Auto-stop sur silence (VAD)
+
+Activer le filtre `silencedetect` de ffmpeg pour que le deck arrête
+dès que le locuteur fait une pause, supprimant le STOP manuel sur
+les dictées courtes:
+
+```json
+{
+  "translator_vad_enabled": true,
+  "translator_vad_silence_seconds": 2.0,
+  "translator_vad_silence_db": -30
+}
+```
+
+Demande `ffmpeg` sur PATH; sinon retombe sur STOP manuel.
+`silence_seconds` = durée de silence soutenu avant déclenchement;
+`silence_db` = seuil de bruit (dB négatif; plus bas = plus strict).
+L'enregistrement reste capé en durée par
+`translator_recording_timeout` — les deux filets se cumulent.
 
 ### Taille de modèle STT
 

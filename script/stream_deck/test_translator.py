@@ -293,6 +293,32 @@ class TestRecommendModel(unittest.TestCase):
         )
 
 
+class TestVAD(unittest.TestCase):
+    def test_vad_enabled_default_false(self):
+        with _SettingsFixture({}):
+            self.assertFalse(translator.vad_enabled())
+
+    def test_vad_enabled_true(self):
+        with _SettingsFixture({"translator_vad_enabled": True}):
+            self.assertTrue(translator.vad_enabled())
+
+    def test_vad_silence_seconds_default(self):
+        with _SettingsFixture({}):
+            self.assertEqual(translator.vad_silence_seconds(), 2.0)
+
+    def test_vad_silence_seconds_clamps_min(self):
+        with _SettingsFixture({"translator_vad_silence_seconds": 0.1}):
+            self.assertEqual(translator.vad_silence_seconds(), 0.5)
+
+    def test_vad_silence_db_default(self):
+        with _SettingsFixture({}):
+            self.assertEqual(translator.vad_silence_db(), -30)
+
+    def test_vad_silence_db_invalid_falls_back(self):
+        with _SettingsFixture({"translator_vad_silence_db": "loud"}):
+            self.assertEqual(translator.vad_silence_db(), -30)
+
+
 class TestHistory(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.NamedTemporaryFile(

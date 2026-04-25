@@ -587,6 +587,73 @@ def clear_history():
         pass
 
 
+def vad_enabled():
+    """True if ffmpeg silencedetect-based auto-stop is requested."""
+    return bool(_load_settings().get("translator_vad_enabled", False))
+
+
+def vad_silence_seconds():
+    """Sustained silence duration before auto-stop. Default 2.0s."""
+    raw = _load_settings().get("translator_vad_silence_seconds", 2.0)
+    try:
+        return max(0.5, float(raw))
+    except (ValueError, TypeError):
+        return 2.0
+
+
+def vad_silence_db():
+    """Noise threshold for ffmpeg silencedetect (negative dB). Default -30."""
+    raw = _load_settings().get("translator_vad_silence_db", -30)
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return -30
+
+
+def start_recording_vad(out_path, on_silence):
+    """Spawn ffmpeg with silencedetect; fire on_silence after sustained
+    silence. Returns Popen handle compatible with stop_recording.
+    Returns None if ffmpeg is missing."""
+    if not shutil.which("ffmpeg"):
+        return None
+    import threading
+    duration = vad_silence_seconds()
+    db = vad_silence_db()
+    cmd = [
+        "ffmpeg", "-y", "-f", "pulse", "-i", "default",
+        "-af", f"silencedetect=noise={db}dB:d={duration}",
+        "-ar", "16000", "-ac", "1",
+        "-loglevel", "info",
+        out_path,
+    ]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except Exception as e:
+        print(f"start_recording_vad failed: {e}")
+        return None
+
+    def stderr_reader():
+        try:
+            for raw in proc.stderr:
+                line = raw.decode(errors="ignore")
+                if "silence_start" in line:
+                    try:
+                        on_silence()
+                    except Exception as e:
+                        print(f"VAD callback error: {e}")
+                    return
+        except Exception:
+            pass
+
+    t = threading.Thread(target=stderr_reader, daemon=True)
+    t.start()
+    return proc
+
+
 def recording_timeout_seconds():
     """Max recording duration in seconds before auto-stop. 0 = no limit.
 

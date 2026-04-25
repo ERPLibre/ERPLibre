@@ -862,6 +862,7 @@ class Tiler:
         self._record_proc = None
         self._record_path = None
         self._record_started_at = 0.0
+        self._vad_should_stop = False
         # Restore last selections
         prefs = _settings_load()
         if prefs.get("translator_stt"):
@@ -1268,6 +1269,10 @@ class Tiler:
             self.result_time = time.monotonic()
             self.render()
 
+    def _on_vad_silence(self):
+        """Called from the VAD reader thread; defer to main loop."""
+        self._vad_should_stop = True
+
     def _toggle_record(self):
         if self._record_proc is None:
             if not self._stt_backends:
@@ -1278,7 +1283,13 @@ class Tiler:
             fd, path = tempfile.mkstemp(prefix="sttrec_", suffix=".wav")
             os.close(fd)
             self._record_path = path
-            self._record_proc = _translator.start_recording(path)
+            self._vad_should_stop = False
+            if _translator.vad_enabled():
+                self._record_proc = _translator.start_recording_vad(
+                    path, on_silence=self._on_vad_silence,
+                )
+            else:
+                self._record_proc = _translator.start_recording(path)
             if self._record_proc is None:
                 self.last_result = "err"
                 self.result_time = time.monotonic()
@@ -1875,10 +1886,14 @@ class Tiler:
                 elif (self.mode == MODE_TRANSLATOR
                         and self._record_proc is not None
                         and self._record_started_at > 0):
-                    timeout = _translator.recording_timeout_seconds()
-                    elapsed = now - self._record_started_at
-                    if timeout > 0 and elapsed >= timeout:
+                    if self._vad_should_stop:
+                        self._vad_should_stop = False
                         self._toggle_record()
+                    else:
+                        timeout = _translator.recording_timeout_seconds()
+                        elapsed = now - self._record_started_at
+                        if timeout > 0 and elapsed >= timeout:
+                            self._toggle_record()
             time.sleep(0.3)
 
 

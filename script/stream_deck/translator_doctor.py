@@ -95,6 +95,16 @@ def main():
     timeout = translator.recording_timeout_seconds()
     timeout_lbl = f"{timeout}s" if timeout > 0 else "off (manual STOP only)"
     print(f"  i Rec timeout    {timeout_lbl}")
+    if translator.vad_enabled():
+        ffmpeg_ok = shutil.which("ffmpeg") is not None
+        backend = "ffmpeg silencedetect" if ffmpeg_ok else "OFF (ffmpeg missing)"
+        print(
+            f"  i VAD            {backend} "
+            f"({translator.vad_silence_seconds()}s @ "
+            f"{translator.vad_silence_db()}dB)"
+        )
+    else:
+        print("  i VAD            disabled")
 
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):
