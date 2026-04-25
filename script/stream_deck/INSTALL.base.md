@@ -1,8 +1,19 @@
+<!---------------------------->
+<!-- multilingual suffix: en, fr -->
+<!-- no suffix: en -->
+<!---------------------------->
 
+<!-- [en] -->
 # Guide to install
 
 https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
 
+<!-- [fr] -->
+# Guide d'installation
+
+https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
+
+<!-- [common] -->
 ```
 # For Ubuntu
 
@@ -26,8 +37,13 @@ EOF
 sudo udevadm control --reload-rules
 ```
 
+<!-- [en] -->
 To diagnostic or add new material, check with
 
+<!-- [fr] -->
+Pour diagnostiquer ou ajouter du nouveau matériel, vérifier avec
+
+<!-- [common] -->
 ```sudo udevadm monitor```
 
 ```

@@ -1,5 +1,5 @@
 
-# Guide to install
+# Guide d'installation
 
 https://github.com/jamesridgway/devdeck/wiki/Installation#pre-requisite-libusb-hidapi-backend
 
@@ -26,7 +26,7 @@ EOF
 sudo udevadm control --reload-rules
 ```
 
-To diagnostic or add new material, check with
+Pour diagnostiquer ou ajouter du nouveau matériel, vérifier avec
 
 ```sudo udevadm monitor```
 
