@@ -173,10 +173,10 @@ def _lerp_color(a, b, t):
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def explosion_animation(deck, key, duration=1.0):
-    """Play a 1-second bomb explosion on `key`. Final frame is dark red
-    with a star, matching the post-game-over render so the key stays
-    visually coherent once the animation ends."""
+def explosion_animation(deck, key, duration=1.5):
+    """Play a bomb explosion on `key` (default 1.5s). Final frame is
+    dark red with a star, matching the post-game-over render so the
+    key stays visually coherent once the animation ends."""
     fmt = deck.key_image_format()
     w, h = fmt["size"]
     cx, cy = w / 2, h / 2
@@ -230,6 +230,50 @@ def explosion_animation(deck, key, duration=1.0):
             tx, ty = (w - tw) // 2, (h - th) // 2
             draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
             draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
+        native = PILHelper.to_native_key_format(deck, img)
+        try:
+            with deck:
+                deck.set_key_image(key, native)
+        except TransportError:
+            return
+        time.sleep(step)
+
+
+def spark_animation(deck, key, duration=1.5, seed=0):
+    """Fire shards on a button next to an exploding mine. Fades to
+    black so the caller can re-render the underlying state once done."""
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    frames = 10
+    step = duration / frames
+    rng = random.Random(seed or key)
+    n = rng.randint(4, 7)
+    sparks = [
+        (
+            rng.uniform(0.15, 0.85),  # x ratio
+            rng.uniform(0.15, 0.85),  # y ratio
+            rng.uniform(0.07, 0.13),  # base radius ratio
+            rng.uniform(0.0, 0.2),    # birth offset (fraction of duration)
+        )
+        for _ in range(n)
+    ]
+    for i in range(frames):
+        t = i / (frames - 1)
+        bg = _lerp_color((80, 25, 0), (0, 0, 0), t)
+        img = Image.new("RGB", (w, h), bg)
+        draw = ImageDraw.Draw(img)
+        for sx, sy, sr, born in sparks:
+            local_t = max(0.0, min(1.0, (t - born) / max(0.01, 1 - born)))
+            if local_t <= 0:
+                continue
+            r = max(1, int(w * sr * (1 - local_t * 0.6)))
+            spark_col = _lerp_color(
+                (255, 220, 80), (140, 20, 0), local_t,
+            )
+            cx, cy = sx * w, sy * h
+            draw.ellipse(
+                (cx - r, cy - r, cx + r, cy + r), fill=spark_col,
+            )
         native = PILHelper.to_native_key_format(deck, img)
         try:
             with deck:
@@ -334,6 +378,24 @@ class MinesweeperSolo:
                 target=explosion_animation,
                 args=(self.deck, hit_key),
                 daemon=True,
+            ).start()
+            for nc, nr in self.neighbors(col, row):
+                nkey = self.pos_to_key(nc, nr)
+                if nkey >= 0:
+                    threading.Thread(
+                        target=spark_animation,
+                        args=(self.deck, nkey),
+                        kwargs={"seed": nkey * 31 + hit_key},
+                        daemon=True,
+                    ).start()
+
+            def _restore_after_blast():
+                time.sleep(1.55)
+                with self.lock:
+                    self.render()
+
+            threading.Thread(
+                target=_restore_after_blast, daemon=True,
             ).start()
             return
         stack = [(col, row)]
@@ -603,6 +665,23 @@ class MinesweeperVS:
                     args=(d, key),
                     daemon=True,
                 ).start()
+                for nc, nr in self.neighbors(col, row):
+                    nkey = nr * self.cols + nc
+                    threading.Thread(
+                        target=spark_animation,
+                        args=(d, nkey),
+                        kwargs={"seed": nkey * 31 + key},
+                        daemon=True,
+                    ).start()
+
+            def _restore_after_blast():
+                time.sleep(1.55)
+                with self.lock:
+                    self.render_all()
+
+            threading.Thread(
+                target=_restore_after_blast, daemon=True,
+            ).start()
 
             # Check if all mines found
             if len(self.found_by) >= len(self.mines):
