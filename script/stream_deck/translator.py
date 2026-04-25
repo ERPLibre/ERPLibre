@@ -454,17 +454,46 @@ LLM_MODE_TRANSLATE = "translate"
 LLM_MODE_CHAT = "chat"
 LLM_MODES = [LLM_MODE_OFF, LLM_MODE_TRANSLATE, LLM_MODE_CHAT]
 
-# Default prompt templates. Each must contain {text}; the spoken text
-# is substituted in. Override by setting `translator_prompts` in
-# ~/.config/streamdeck-tiler/settings.json:
-#   {"translator_prompts": {"translate": "Translate to French: {text}"}}
-DEFAULT_PROMPTS = {
-    LLM_MODE_TRANSLATE: (
-        "Translate the following to English. Output only the "
-        "translation, no commentary.\n\n{text}"
-    ),
-    LLM_MODE_CHAT: "{text}",
+# Locale-aware translate target. The user's $LANG drives the default
+# TRSL target language so a French desktop hears "translate to French"
+# rather than the global English fallback.
+_LOCALE_TARGETS = {
+    "fr": "French",
+    "es": "Spanish",
+    "de": "German",
+    "it": "Italian",
+    "pt": "Portuguese",
+    "en": "English",
 }
+
+
+def _locale_short():
+    raw = os.environ.get("LANG") or os.environ.get("LC_ALL") or ""
+    if not raw:
+        return "en"
+    head = raw.split(".", 1)[0]
+    return head.split("_", 1)[0].lower() or "en"
+
+
+def default_translate_target():
+    """Human-readable target language for the default TRSL prompt."""
+    return _LOCALE_TARGETS.get(_locale_short(), "English")
+
+
+def _default_prompts():
+    """Compute defaults at call time so locale changes are picked up."""
+    target = default_translate_target()
+    return {
+        LLM_MODE_TRANSLATE: (
+            f"Translate the following to {target}. Output only the "
+            f"translation, no commentary.\n\n{{text}}"
+        ),
+        LLM_MODE_CHAT: "{text}",
+    }
+
+
+# Backwards-compatible name; consumers should prefer _default_prompts().
+DEFAULT_PROMPTS = _default_prompts()
 
 
 def _load_settings():
@@ -511,14 +540,14 @@ def get_prompt_template(llm_mode):
     overrides = _load_prompt_overrides()
     if llm_mode in overrides:
         return overrides[llm_mode]
-    return DEFAULT_PROMPTS.get(llm_mode, "{text}")
+    return _default_prompts().get(llm_mode, "{text}")
 
 
 def llm_postprocess(text, llm_mode, backend):
     """Run the LLM with a mode-specific prompt and return its text."""
     if not text or llm_mode == LLM_MODE_OFF or backend is None:
         return text
-    if llm_mode not in DEFAULT_PROMPTS:
+    if llm_mode not in _default_prompts():
         return text
     template = get_prompt_template(llm_mode)
     if "{text}" in template:

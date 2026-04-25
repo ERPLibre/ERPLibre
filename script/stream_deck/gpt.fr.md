@@ -112,6 +112,7 @@ make streamdeck_translator_doctor             # voir ce qui manque
 make streamdeck_translator_install_whisper    # clone + build + modèle tiny
 make streamdeck_translator_install_ollama     # ollama + modèle recommandé selon matériel
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + groupe input
+make streamdeck_translator_install_vosk_fr    # vosk + modèle français
 make streamdeck_translator_test               # enregistrement 5s + chaque backend STT
 ```
 
@@ -239,8 +240,12 @@ Le bouton `LLM` fait défiler trois modes:
 | `TRSL` | Le texte STT est emballé dans le template de prompt `translate` et la réponse du LLM est sortie. |
 | `CHAT` | Le texte STT est emballé dans le template de prompt `chat` et la réponse est sortie. |
 
-Les templates par défaut sont dans `translator.DEFAULT_PROMPTS`.
-Surcharger par mode dans `~/.config/streamdeck-tiler/settings.json`:
+Les templates par défaut sont calculés au moment de l'appel: une
+session avec `LANG=fr_*` reçoit automatiquement un prompt
+« Translate to French » sans modifier les réglages. Cibles de locale
+supportées: français, espagnol, allemand, italien, portugais — tout
+autre cas retombe sur l'anglais. Surcharger par mode dans
+`~/.config/streamdeck-tiler/settings.json`:
 
 ```json
 {

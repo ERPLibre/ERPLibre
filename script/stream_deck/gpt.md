@@ -113,6 +113,7 @@ make streamdeck_translator_doctor             # see what is missing
 make streamdeck_translator_install_whisper    # clone + build + tiny model
 make streamdeck_translator_install_ollama     # ollama + hardware-recommended model
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + input group
+make streamdeck_translator_install_vosk_fr    # vosk + French model
 make streamdeck_translator_test               # 5s recording + every STT backend
 ```
 
@@ -237,7 +238,10 @@ The `LLM` button cycles through three modes:
 | `TRSL` | STT text is wrapped in the `translate` prompt template and the LLM response is output. |
 | `CHAT` | STT text is wrapped in the `chat` prompt template and the response is output. |
 
-The default templates live in `translator.DEFAULT_PROMPTS`. Override
+The default templates are computed at call time so a `LANG=fr_*`
+session gets a "Translate to French" prompt without any settings
+edit. The supported locale targets are French, Spanish, German,
+Italian, Portuguese — anything else falls back to English. Override
 them per mode in `~/.config/streamdeck-tiler/settings.json`:
 
 ```json

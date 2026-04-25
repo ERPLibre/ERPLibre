@@ -181,6 +181,22 @@ streamdeck_translator_install_ollama:
 	@echo ""
 	@echo "Done. Verify: make streamdeck_translator_doctor"
 
+VOSK_CACHE_DIR    := $(HOME)/.cache/streamdeck-tiler
+VOSK_FR_URL       := https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip
+
+.PHONY: streamdeck_translator_install_vosk_fr
+streamdeck_translator_install_vosk_fr:
+	@echo "Installing Vosk Python package + French model..."
+	@pip install --user vosk
+	@mkdir -p "$(VOSK_CACHE_DIR)"
+	@curl -L "$(VOSK_FR_URL)" -o /tmp/vosk-fr.zip
+	@unzip -oq /tmp/vosk-fr.zip -d "$(VOSK_CACHE_DIR)"
+	@rm -rf "$(VOSK_CACHE_DIR)/vosk-model"
+	@mv "$(VOSK_CACHE_DIR)"/vosk-model-small-fr-* \
+		"$(VOSK_CACHE_DIR)/vosk-model"
+	@rm -f /tmp/vosk-fr.zip
+	@echo "Done. Verify: make streamdeck_translator_doctor"
+
 .PHONY: streamdeck_translator_install_typing
 streamdeck_translator_install_typing:
 	@echo "Installing wl-clipboard + ydotool for Wayland output..."

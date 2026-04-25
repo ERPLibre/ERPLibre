@@ -88,6 +88,10 @@ def main():
     lang = translator.stt_language()
     print(f"  i STT language   {lang}")
     print(f"  i STT model size {translator.stt_model_size()}")
+    print(
+        f"  i TRSL target    {translator.default_translate_target()} "
+        f"(from $LANG)"
+    )
 
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):
