@@ -262,6 +262,10 @@ streamdeck_dragrace:
 streamdeck_racingplus:
 	./script/stream_deck/game_racingplus.py
 
+.PHONY: streamdeck_pinball
+streamdeck_pinball:
+	./script/stream_deck/game_pinball.py
+
 .PHONY: streamdeck_gallery
 streamdeck_gallery:
 	./script/stream_deck/gallery_server.py
