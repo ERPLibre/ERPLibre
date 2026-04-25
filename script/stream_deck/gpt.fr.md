@@ -93,6 +93,17 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
 
+### Aperçu miniature des layouts
+
+Dans `MODE_LAYOUT`, chaque slot LOAD rempli affiche maintenant une
+miniature de l'arrangement de fenêtres sauvegardé au lieu d'un
+compteur textuel. Les fenêtres sont dessinées en rectangles
+proportionnels du bas vers le haut selon l'ordre de stacking, et le
+numéro de slot est superposé en jaune en haut-gauche. La boîte
+englobante est calculée depuis les fenêtres elles-mêmes pour que
+l'aperçu reste lisible pour les layouts plein-écran ou partiels.
+Les slots vides gardent leur label `LOAD N EMPTY`.
+
 ### Auto-stop d'enregistrement
 
 Oublier de presser STOP laisse l'enregistrement tourner jusqu'à la

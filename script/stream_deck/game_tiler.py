@@ -878,13 +878,58 @@ _ICONS = {
 }
 
 
-def set_key(deck, key, color, text="", icon=None):
+def _draw_layout_preview(draw, w, h, windows, slot_num=None):
+    """Render a thumbnail of saved layout windows on a button-sized canvas.
+    Bounding box is computed from the windows themselves to keep the
+    preview readable even when only a sub-region of the screen is used."""
+    if not windows:
+        return
+    margin = 2
+    cw = max(1, w - 2 * margin)
+    ch = max(1, h - 2 * margin)
+    xs = [win.get("x", 0) for win in windows]
+    ys = [win.get("y", 0) for win in windows]
+    xs2 = [win.get("x", 0) + win.get("w", 0) for win in windows]
+    ys2 = [win.get("y", 0) + win.get("h", 0) for win in windows]
+    bx0, by0 = min(xs), min(ys)
+    bx1, by1 = max(xs2), max(ys2)
+    bw = max(1, bx1 - bx0)
+    bh = max(1, by1 - by0)
+    scale = min(cw / bw, ch / bh)
+    sw = bw * scale
+    sh = bh * scale
+    ox = margin + (cw - sw) / 2
+    oy = margin + (ch - sh) / 2
+    for win in sorted(windows, key=lambda v: v.get("stacking", 0)):
+        x = ox + (win.get("x", 0) - bx0) * scale
+        y = oy + (win.get("y", 0) - by0) * scale
+        rw = max(2, win.get("w", 0) * scale)
+        rh = max(2, win.get("h", 0) * scale)
+        draw.rectangle(
+            (x, y, x + rw, y + rh),
+            outline=(220, 220, 220), width=1,
+            fill=(60, 90, 130),
+        )
+    if slot_num is not None:
+        try:
+            font = ImageFont.load_default(size=14)
+        except TypeError:
+            font = ImageFont.load_default()
+        draw.text((3, 1), str(slot_num), fill=(255, 220, 0), font=font)
+
+
+def set_key(deck, key, color, text="", icon=None, extra_draw=None):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
     img = Image.new("RGB", (w, h), color)
     draw = ImageDraw.Draw(img)
     if icon and icon in _ICONS:
         _ICONS[icon](draw, w, h)
+    if extra_draw:
+        try:
+            extra_draw(draw, w, h)
+        except Exception as e:
+            print(f"extra_draw failed: {e}")
     if text and (icon is None or _show_labels):
         base_fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
         fs = max(6, int(round(base_fs * _font_scale)))
@@ -1704,29 +1749,38 @@ class Tiler:
 
         data = _layouts_load()
         slots = data.get("slots", {})
-        assignments = {lk["back"]: (COLOR_BACK, "BACK")}
+        # Each entry: (color, label, extra_draw_or_None)
+        assignments = {lk["back"]: (COLOR_BACK, "BACK", None)}
         for i, save_key in enumerate(lk["save"]):
-            assignments[save_key] = (COLOR_SAVE, f"SAVE\n{i + 1}")
+            assignments[save_key] = (COLOR_SAVE, f"SAVE\n{i + 1}", None)
         for i, load_key in enumerate(lk["load"]):
             slot = slots.get(str(i + 1))
             if slot:
-                count = slot.get("count", "?")
-                when = slot.get("saved_at", "")
-                label = f"LOAD {i + 1}\n{count}w\n{when}"
-                assignments[load_key] = (COLOR_LOAD_FILLED, label)
+                windows = slot.get("windows") or []
+                slot_num = i + 1
+
+                def _make_preview(_windows, _num):
+                    return lambda d, w, h: _draw_layout_preview(
+                        d, w, h, _windows, slot_num=_num,
+                    )
+
+                assignments[load_key] = (
+                    COLOR_LOAD_FILLED, "",
+                    _make_preview(windows, slot_num),
+                )
             else:
                 assignments[load_key] = (
-                    COLOR_LOAD_EMPTY, f"LOAD {i + 1}\nEMPTY"
+                    COLOR_LOAD_EMPTY, f"LOAD {i + 1}\nEMPTY", None,
                 )
         for i, del_key in enumerate(lk["delete"]):
             if str(i + 1) in slots:
-                assignments[del_key] = (COLOR_CANCEL, f"DEL {i + 1}")
+                assignments[del_key] = (COLOR_CANCEL, f"DEL {i + 1}", None)
             else:
-                assignments[del_key] = (COLOR_EMPTY, "")
+                assignments[del_key] = (COLOR_EMPTY, "", None)
         for key in range(self.total_keys):
             if key in assignments:
-                color, label = assignments[key]
-                set_key(self.deck, key, color, label)
+                color, label, extra = assignments[key]
+                set_key(self.deck, key, color, label, extra_draw=extra)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 

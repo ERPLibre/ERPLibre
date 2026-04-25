@@ -129,6 +129,16 @@ advances to the next listed device, and calls `wpctl set-default
 <id>`. Labels show the last word of the active device name. Only
 PipeWire / wpctl is supported.
 
+### Layout preview thumbnails
+
+In `MODE_LAYOUT`, every filled LOAD slot now renders a miniature of
+the saved window arrangement instead of a textual count. Windows are
+drawn as scaled rectangles bottom-to-top by stacking order, and the
+slot number is overlaid in yellow on the top-left corner. The
+bounding box is computed from the saved windows themselves so the
+preview stays readable for both full-screen and partial-screen
+layouts. Empty slots keep their `LOAD N EMPTY` label.
+
 ### Recording auto-stop
 
 Forgetting to press STOP leaves a recording running until the next
@@ -286,6 +296,17 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl status`, avance vers le périphérique suivant, et appelle
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
+
+### Aperçu miniature des layouts
+
+Dans `MODE_LAYOUT`, chaque slot LOAD rempli affiche maintenant une
+miniature de l'arrangement de fenêtres sauvegardé au lieu d'un
+compteur textuel. Les fenêtres sont dessinées en rectangles
+proportionnels du bas vers le haut selon l'ordre de stacking, et le
+numéro de slot est superposé en jaune en haut-gauche. La boîte
+englobante est calculée depuis les fenêtres elles-mêmes pour que
+l'aperçu reste lisible pour les layouts plein-écran ou partiels.
+Les slots vides gardent leur label `LOAD N EMPTY`.
 
 ### Auto-stop d'enregistrement
 

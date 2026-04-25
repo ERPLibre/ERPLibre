@@ -94,6 +94,16 @@ advances to the next listed device, and calls `wpctl set-default
 <id>`. Labels show the last word of the active device name. Only
 PipeWire / wpctl is supported.
 
+### Layout preview thumbnails
+
+In `MODE_LAYOUT`, every filled LOAD slot now renders a miniature of
+the saved window arrangement instead of a textual count. Windows are
+drawn as scaled rectangles bottom-to-top by stacking order, and the
+slot number is overlaid in yellow on the top-left corner. The
+bounding box is computed from the saved windows themselves so the
+preview stays readable for both full-screen and partial-screen
+layouts. Empty slots keep their `LOAD N EMPTY` label.
+
 ### Recording auto-stop
 
 Forgetting to press STOP leaves a recording running until the next
