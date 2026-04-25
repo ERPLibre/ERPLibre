@@ -362,12 +362,14 @@ class LlamaCppBackend(LLMBackend):
     URL = "http://localhost:8080"
 
     def __init__(self):
-        import urllib.request
+        import urllib.request, json
         try:
             with urllib.request.urlopen(
-                f"{self.URL}/health", timeout=1,
-            ):
-                self.available = True
+                f"{self.URL}/v1/models", timeout=1,
+            ) as r:
+                data = json.loads(r.read())
+                # llama-server / OpenAI compat returns {"data": [...]}
+                self.available = isinstance(data.get("data"), list)
         except Exception:
             self.available = False
         self.model = "local"
