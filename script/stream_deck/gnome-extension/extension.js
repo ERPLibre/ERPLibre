@@ -18,14 +18,238 @@
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Meta from 'gi://Meta';
+import Soup from 'gi://Soup';
+import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
 const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
 const RELOAD_UUID_PREFIX = 'streamdeck-tiler-reload-';
 const EXTENSION_TYPE_PER_USER = 2;
+
+const GALLERY_PORT = 8042;
+const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
+const PROJECT_URL = 'https://github.com/ERPLibre/ERPLibre';
+const PROJECT_NAME = 'ERPLibre Stream Deck';
+const GIT_REPO = 'https://github.com/ERPLibre/ERPLibre.git';
+
+function _settingsPath() {
+    return GLib.build_filenamev([
+        GLib.get_user_config_dir(),
+        'streamdeck-tiler',
+        'extension-settings.json',
+    ]);
+}
+
+function _readSettings() {
+    try {
+        const [ok, contents] = GLib.file_get_contents(_settingsPath());
+        if (!ok) return {};
+        return JSON.parse(new TextDecoder().decode(contents));
+    } catch (e) {
+        return {};
+    }
+}
+
+function _writeSettings(data) {
+    const path = _settingsPath();
+    const dir = GLib.path_get_dirname(path);
+    GLib.mkdir_with_parents(dir, 0o755);
+    GLib.file_set_contents(path, JSON.stringify(data, null, 2));
+}
+
+function _erplibrePath() {
+    const data = _readSettings();
+    return data.erplibre_path
+        || GLib.build_filenamev([GLib.get_home_dir(), 'erplibre']);
+}
+
+function _erplibreExists(path) {
+    return GLib.file_test(path, GLib.FileTest.IS_DIR)
+        && GLib.file_test(
+            GLib.build_filenamev([path, '.git']),
+            GLib.FileTest.IS_DIR);
+}
+
+function _notify(title, body) {
+    try {
+        Main.notify(title, body);
+    } catch (e) {
+        console.log(`[StreamDeckTiler] notify failed: ${e.message}`);
+    }
+}
+
+const StreamDeckTilerIndicator = GObject.registerClass(
+class StreamDeckTilerIndicator extends PanelMenu.Button {
+    _init() {
+        super._init(0.0, 'Stream Deck Tiler');
+        this.add_child(new St.Icon({
+            icon_name: 'input-gaming-symbolic',
+            style_class: 'system-status-icon',
+        }));
+        this._buildMenu();
+        this.menu.connect('open-state-changed', (menu, isOpen) => {
+            if (isOpen) {
+                this._refreshGames();
+                this._refreshPathItems();
+            }
+        });
+    }
+
+    _buildMenu() {
+        const about = new PopupMenu.PopupMenuItem('About Us');
+        about.connect('activate', () => {
+            try {
+                Gio.AppInfo.launch_default_for_uri(PROJECT_URL, null);
+            } catch (e) {
+                _notify(PROJECT_NAME, `Open ${PROJECT_URL} for project info.`);
+            }
+        });
+        this.menu.addMenuItem(about);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._gamesSection = new PopupMenu.PopupSubMenuMenuItem('Games');
+        this.menu.addMenuItem(this._gamesSection);
+        this._populateGamesPlaceholder('Loading…');
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._settingsSection = new PopupMenu.PopupSubMenuMenuItem('Settings');
+        this.menu.addMenuItem(this._settingsSection);
+    }
+
+    _populateGamesPlaceholder(label) {
+        this._gamesSection.menu.removeAll();
+        const item = new PopupMenu.PopupMenuItem(label, {reactive: false});
+        this._gamesSection.menu.addMenuItem(item);
+    }
+
+    _refreshGames() {
+        this._populateGamesPlaceholder('Loading…');
+        const session = new Soup.Session();
+        session.timeout = 3;
+        const message = Soup.Message.new('GET', `${GALLERY_URL}/api/games`);
+        session.send_and_read_async(
+            message, GLib.PRIORITY_DEFAULT, null,
+            (sess, result) => {
+                try {
+                    const bytes = sess.send_and_read_finish(result);
+                    const text = new TextDecoder().decode(bytes.get_data());
+                    const games = JSON.parse(text);
+                    this._populateGames(Array.isArray(games) ? games : []);
+                } catch (e) {
+                    this._populateGamesPlaceholder(
+                        'Gallery offline (start gallery_server.py)');
+                }
+            });
+    }
+
+    _populateGames(games) {
+        this._gamesSection.menu.removeAll();
+        if (!games.length) {
+            this._populateGamesPlaceholder('No games found');
+            return;
+        }
+        games.sort((a, b) =>
+            (a.name || a.id || '').localeCompare(b.name || b.id || ''));
+        for (const g of games) {
+            const id = g.id || '';
+            const name = g.name || id;
+            if (!id) continue;
+            const item = new PopupMenu.PopupMenuItem(name);
+            item.connect('activate', () => this._launchGame(id));
+            this._gamesSection.menu.addMenuItem(item);
+        }
+    }
+
+    _launchGame(gameId) {
+        const session = new Soup.Session();
+        session.timeout = 3;
+        const message = Soup.Message.new(
+            'GET', `${GALLERY_URL}/launch/${gameId}`);
+        session.send_and_read_async(
+            message, GLib.PRIORITY_DEFAULT, null,
+            (sess, result) => {
+                try {
+                    sess.send_and_read_finish(result);
+                } catch (e) {
+                    _notify(PROJECT_NAME,
+                        `Could not launch ${gameId}: gallery offline?`);
+                }
+            });
+    }
+
+    _refreshPathItems() {
+        const m = this._settingsSection.menu;
+        m.removeAll();
+        const path = _erplibrePath();
+        const exists = _erplibreExists(path);
+        const status = exists ? 'OK' : 'missing';
+        const display = new PopupMenu.PopupMenuItem(
+            `ERPLibre: ${path} (${status})`, {reactive: false});
+        m.addMenuItem(display);
+        const change = new PopupMenu.PopupMenuItem('Change ERPLibre path…');
+        change.connect('activate', () => this._promptForPath());
+        m.addMenuItem(change);
+        if (!exists) {
+            const deploy = new PopupMenu.PopupMenuItem(
+                `Deploy ERPLibre to ${path}`);
+            deploy.connect('activate', () => this._deployErpLibre(path));
+            m.addMenuItem(deploy);
+        }
+    }
+
+    _promptForPath() {
+        // Shell modal dialogs require ModalDialog import; keep simple by
+        // editing the JSON file directly through the user's editor.
+        const path = _settingsPath();
+        const dir = GLib.path_get_dirname(path);
+        GLib.mkdir_with_parents(dir, 0o755);
+        if (!GLib.file_test(path, GLib.FileTest.EXISTS)) {
+            _writeSettings({erplibre_path: _erplibrePath()});
+        }
+        try {
+            Gio.AppInfo.launch_default_for_uri(`file://${path}`, null);
+            _notify(PROJECT_NAME,
+                `Edit ${path} then re-open the menu to refresh.`);
+        } catch (e) {
+            _notify(PROJECT_NAME, `Edit ${path} manually.`);
+        }
+    }
+
+    _deployErpLibre(path) {
+        _notify(PROJECT_NAME, `Cloning ${GIT_REPO} into ${path}…`);
+        try {
+            const proc = Gio.Subprocess.new(
+                ['git', 'clone', GIT_REPO, path],
+                Gio.SubprocessFlags.STDOUT_PIPE
+                | Gio.SubprocessFlags.STDERR_PIPE);
+            proc.communicate_utf8_async(null, null, (p, result) => {
+                try {
+                    const [, , stderr] = p.communicate_utf8_finish(result);
+                    if (p.get_successful()) {
+                        _notify(PROJECT_NAME,
+                            `ERPLibre deployed at ${path}.`);
+                    } else {
+                        _notify(PROJECT_NAME,
+                            `git clone failed: ${stderr.split('\n')[0]}`);
+                    }
+                } catch (e) {
+                    _notify(PROJECT_NAME, `git clone error: ${e.message}`);
+                }
+                this._refreshPathItems();
+            });
+        } catch (e) {
+            _notify(PROJECT_NAME, `Could not spawn git: ${e.message}`);
+        }
+    }
+});
 
 const IFACE_XML = `
 <node>
@@ -83,6 +307,7 @@ const IFACE_XML = `
 export default class StreamDeckTilerExtension extends Extension {
     #dbus = null;
     #registrationId = 0;
+    #indicator = null;
 
     enable() {
         this.#dbus = Gio.DBusExportedObject.wrapJSObject(IFACE_XML, this);
@@ -90,6 +315,15 @@ export default class StreamDeckTilerExtension extends Extension {
             Gio.DBus.session,
             '/org/gnome/Shell/Extensions/StreamDeckTiler'
         );
+        // The panel button uses this.uuid as the status-area key. Hot-reload
+        // temp UUIDs differ from MAIN_UUID, so each reload yields a fresh
+        // button after the previous instance's disable() destroys the old one.
+        try {
+            this.#indicator = new StreamDeckTilerIndicator();
+            Main.panel.addToStatusArea(this.uuid, this.#indicator);
+        } catch (e) {
+            console.log(`[StreamDeckTiler] panel indicator failed: ${e.message}`);
+        }
         console.log('[StreamDeckTiler] D-Bus interface registered');
     }
 
@@ -97,6 +331,10 @@ export default class StreamDeckTilerExtension extends Extension {
         if (this.#dbus) {
             this.#dbus.unexport();
             this.#dbus = null;
+        }
+        if (this.#indicator) {
+            this.#indicator.destroy();
+            this.#indicator = null;
         }
         console.log('[StreamDeckTiler] D-Bus interface unregistered');
     }
