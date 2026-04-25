@@ -124,6 +124,12 @@ def main():
         f"  i History        {len(history)} / {translator.HISTORY_MAX} entries"
     )
 
+    if translator.cloud_backends_active():
+        print(
+            "  ⚠ Cloud backends are configured — audio / prompts may "
+            "leave this machine."
+        )
+
     summary = []
     if not stt:
         summary.append("install an STT backend")

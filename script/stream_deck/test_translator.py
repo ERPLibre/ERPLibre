@@ -293,6 +293,43 @@ class TestRecommendModel(unittest.TestCase):
         )
 
 
+class TestCloudBackends(unittest.TestCase):
+    def test_no_keys_means_no_cloud(self):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with _SettingsFixture({}):
+                self.assertFalse(translator.cloud_backends_active())
+                # Detected list excludes cloud entries
+                self.assertNotIn(
+                    "openai-chat",
+                    [b.name for b in translator.detect_llm_backends()],
+                )
+
+    def test_env_key_activates_cloud(self):
+        with mock.patch.dict(
+            os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=False,
+        ):
+            with _SettingsFixture({}):
+                self.assertTrue(translator.cloud_backends_active())
+
+    def test_settings_key_activates_cloud(self):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with _SettingsFixture({"translator_anthropic_api_key": "sk-ant"}):
+                self.assertTrue(translator.cloud_backends_active())
+
+    def test_anthropic_default_model(self):
+        with mock.patch.dict(
+            os.environ, {"ANTHROPIC_API_KEY": "sk-ant"}, clear=False,
+        ):
+            with _SettingsFixture({}):
+                b = translator.AnthropicBackend()
+                self.assertTrue(b.available)
+                self.assertIn("claude", b.model)
+
+
 class TestVAD(unittest.TestCase):
     def test_vad_enabled_default_false(self):
         with _SettingsFixture({}):

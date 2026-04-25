@@ -236,10 +236,60 @@ class VoskBackend(STTBackend):
             return ""
 
 
+class OpenAIApiSTTBackend(STTBackend):
+    """OpenAI Whisper API (cloud). Audio leaves the machine — opt-in only.
+
+    Activated when OPENAI_API_KEY is in env or translator_openai_api_key
+    is set in settings.json.
+    """
+    name = "openai-api"
+
+    def __init__(self):
+        self.api_key = (
+            os.environ.get("OPENAI_API_KEY")
+            or _load_settings().get("translator_openai_api_key", "")
+        )
+        self.available = bool(
+            self.api_key and shutil.which("curl"),
+        )
+        self.model = (
+            _load_settings().get("translator_openai_stt_model")
+            or "whisper-1"
+        )
+        self.binary = "curl"  # for compatibility with doctor display
+
+    def transcribe(self, wav_path):
+        try:
+            r = subprocess.run(
+                [
+                    "curl", "-sS",
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    "-H", f"Authorization: Bearer {self.api_key}",
+                    "-F", f"model={self.model}",
+                    "-F", f"file=@{wav_path}",
+                ],
+                capture_output=True, text=True, timeout=120,
+            )
+            if r.returncode != 0:
+                print(f"openai-api STT curl failed: {r.stderr[:200]}")
+                return ""
+            import json as _json
+            data = _json.loads(r.stdout)
+            return data.get("text", "").strip()
+        except Exception as e:
+            print(f"openai-api STT error: {e}")
+            return ""
+
+
 def detect_stt_backends():
     """Return list of available STT backends."""
     out = []
-    for cls in (WhisperCppBackend, OpenAIWhisperBackend, VoskBackend):
+    for cls in (
+        WhisperCppBackend,
+        OpenAIWhisperBackend,
+        VoskBackend,
+        OpenAIApiSTTBackend,
+    ):
         b = cls()
         if b.available:
             out.append(b)
@@ -440,9 +490,107 @@ class LlamaCppBackend(LLMBackend):
             return ""
 
 
+class OpenAIChatBackend(LLMBackend):
+    """OpenAI chat completions API (cloud). Prompts leave the machine."""
+    name = "openai-chat"
+    URL = "https://api.openai.com/v1/chat/completions"
+
+    def __init__(self):
+        self.api_key = (
+            os.environ.get("OPENAI_API_KEY")
+            or _load_settings().get("translator_openai_api_key", "")
+        )
+        self.available = bool(self.api_key)
+        self.model = (
+            _load_settings().get("translator_openai_chat_model")
+            or "gpt-4o-mini"
+        )
+
+    def chat(self, prompt):
+        import urllib.request, json as _json
+        body = _json.dumps({
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                self.URL,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = _json.loads(r.read())
+                return (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+        except Exception as e:
+            print(f"openai chat error: {e}")
+            return ""
+
+
+class AnthropicBackend(LLMBackend):
+    """Anthropic Claude messages API (cloud). Prompts leave the machine."""
+    name = "anthropic"
+    URL = "https://api.anthropic.com/v1/messages"
+
+    def __init__(self):
+        self.api_key = (
+            os.environ.get("ANTHROPIC_API_KEY")
+            or _load_settings().get("translator_anthropic_api_key", "")
+        )
+        self.available = bool(self.api_key)
+        self.model = (
+            _load_settings().get("translator_anthropic_model")
+            or "claude-haiku-4-5-20251001"
+        )
+
+    def chat(self, prompt):
+        import urllib.request, json as _json
+        body = _json.dumps({
+            "model": self.model,
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                self.URL,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = _json.loads(r.read())
+                blocks = data.get("content", [])
+                if blocks and isinstance(blocks, list):
+                    return blocks[0].get("text", "").strip()
+                return ""
+        except Exception as e:
+            print(f"anthropic chat error: {e}")
+            return ""
+
+
+def cloud_backends_active():
+    """True if any cloud backend has a key configured."""
+    return any([
+        os.environ.get("OPENAI_API_KEY"),
+        os.environ.get("ANTHROPIC_API_KEY"),
+        _load_settings().get("translator_openai_api_key"),
+        _load_settings().get("translator_anthropic_api_key"),
+    ])
+
+
 def detect_llm_backends():
     out = []
-    for cls in (OllamaBackend, LlamaCppBackend):
+    for cls in (OllamaBackend, LlamaCppBackend, OpenAIChatBackend, AnthropicBackend):
         b = cls()
         if b.available:
             out.append(b)

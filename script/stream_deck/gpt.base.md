@@ -129,6 +129,23 @@ advances to the next listed device, and calls `wpctl set-default
 <id>`. Labels show the last word of the active device name. Only
 PipeWire / wpctl is supported.
 
+### Cloud STT / LLM backends
+
+The translator can fall back to hosted APIs when more accuracy or
+larger models are wanted. **These backends send audio or prompts to
+the configured provider — never enable them with sensitive content.**
+
+| Setting / env | Backend | Default model |
+|---------------|---------|---------------|
+| `OPENAI_API_KEY` or `translator_openai_api_key` | `openai-api` STT, `openai-chat` LLM | `whisper-1`, `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` or `translator_anthropic_api_key` | `anthropic` LLM | `claude-haiku-4-5-20251001` |
+
+Override models via `translator_openai_stt_model`,
+`translator_openai_chat_model`, `translator_anthropic_model` in
+`settings.json`. The cloud STT path uses `curl` for multipart upload;
+LLM paths use stdlib `urllib`. The doctor flags any active cloud
+configuration with a `⚠ Cloud backends are configured` line.
+
 ### Bluetooth device list
 
 `MODE_BLUETOOTH` now lists every paired device on row 1 starting two
@@ -306,6 +323,25 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl status`, avance vers le périphérique suivant, et appelle
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
+
+### Backends STT / LLM cloud
+
+Le translator peut basculer sur des APIs hébergées pour plus de
+précision ou des modèles plus gros. **Ces backends envoient audio
+ou prompts au fournisseur configuré — ne jamais activer avec du
+contenu sensible.**
+
+| Réglage / env | Backend | Modèle défaut |
+|---------------|---------|---------------|
+| `OPENAI_API_KEY` ou `translator_openai_api_key` | `openai-api` STT, `openai-chat` LLM | `whisper-1`, `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` ou `translator_anthropic_api_key` | `anthropic` LLM | `claude-haiku-4-5-20251001` |
+
+Surcharger les modèles via `translator_openai_stt_model`,
+`translator_openai_chat_model`, `translator_anthropic_model` dans
+`settings.json`. La voie STT cloud utilise `curl` (upload
+multipart); LLM utilise `urllib`. Le doctor signale toute
+configuration cloud active avec une ligne
+`⚠ Cloud backends are configured`.
 
 ### Liste des périphériques Bluetooth
 

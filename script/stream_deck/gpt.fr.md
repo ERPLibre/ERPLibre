@@ -93,6 +93,25 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
 
+### Backends STT / LLM cloud
+
+Le translator peut basculer sur des APIs hébergées pour plus de
+précision ou des modèles plus gros. **Ces backends envoient audio
+ou prompts au fournisseur configuré — ne jamais activer avec du
+contenu sensible.**
+
+| Réglage / env | Backend | Modèle défaut |
+|---------------|---------|---------------|
+| `OPENAI_API_KEY` ou `translator_openai_api_key` | `openai-api` STT, `openai-chat` LLM | `whisper-1`, `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` ou `translator_anthropic_api_key` | `anthropic` LLM | `claude-haiku-4-5-20251001` |
+
+Surcharger les modèles via `translator_openai_stt_model`,
+`translator_openai_chat_model`, `translator_anthropic_model` dans
+`settings.json`. La voie STT cloud utilise `curl` (upload
+multipart); LLM utilise `urllib`. Le doctor signale toute
+configuration cloud active avec une ligne
+`⚠ Cloud backends are configured`.
+
 ### Liste des périphériques Bluetooth
 
 `MODE_BLUETOOTH` liste maintenant tous les périphériques appairés

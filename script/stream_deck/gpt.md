@@ -94,6 +94,23 @@ advances to the next listed device, and calls `wpctl set-default
 <id>`. Labels show the last word of the active device name. Only
 PipeWire / wpctl is supported.
 
+### Cloud STT / LLM backends
+
+The translator can fall back to hosted APIs when more accuracy or
+larger models are wanted. **These backends send audio or prompts to
+the configured provider — never enable them with sensitive content.**
+
+| Setting / env | Backend | Default model |
+|---------------|---------|---------------|
+| `OPENAI_API_KEY` or `translator_openai_api_key` | `openai-api` STT, `openai-chat` LLM | `whisper-1`, `gpt-4o-mini` |
+| `ANTHROPIC_API_KEY` or `translator_anthropic_api_key` | `anthropic` LLM | `claude-haiku-4-5-20251001` |
+
+Override models via `translator_openai_stt_model`,
+`translator_openai_chat_model`, `translator_anthropic_model` in
+`settings.json`. The cloud STT path uses `curl` for multipart upload;
+LLM paths use stdlib `urllib`. The doctor flags any active cloud
+configuration with a `⚠ Cloud backends are configured` line.
+
 ### Bluetooth device list
 
 `MODE_BLUETOOTH` now lists every paired device on row 1 starting two
