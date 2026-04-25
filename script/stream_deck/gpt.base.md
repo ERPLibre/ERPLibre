@@ -99,11 +99,20 @@ and the model files exist.
 
 | Backend | Binary / package | Model paths checked |
 |---------|------------------|---------------------|
-| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, or `main` | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
+| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, or `main` (also probes `~/.local/share/whisper.cpp/`) | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
 | `openai-whisper` | `whisper` | downloaded automatically by `openai-whisper` |
 | `vosk` | Python `vosk` | `~/.cache/streamdeck-tiler/vosk-model/` |
 
-Install hints:
+Audit and install via make targets:
+
+```bash
+make streamdeck_translator_doctor             # see what is missing
+make streamdeck_translator_install_whisper    # clone + build + tiny model
+make streamdeck_translator_install_ollama     # ollama + hardware-recommended model
+make streamdeck_translator_install_typing     # wl-clipboard + ydotool + input group
+```
+
+Manual install hints (alternative):
 
 <!-- [fr] -->
 | Touche | Fonction |
@@ -140,11 +149,20 @@ binaire/paquet **et** les fichiers de modèle existent.
 
 | Backend | Binaire / paquet | Chemins de modèle vérifiés |
 |---------|------------------|----------------------------|
-| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, ou `main` | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
+| `whisper.cpp` | `whisper-cli`, `whisper-cpp`, ou `main` (vérifie aussi `~/.local/share/whisper.cpp/`) | `~/.cache/streamdeck-tiler/whisper.bin`, `~/.local/share/whisper.cpp/models/ggml-tiny.bin`, `~/.local/share/whisper.cpp/models/ggml-base.bin` |
 | `openai-whisper` | `whisper` | téléchargé automatiquement par `openai-whisper` |
 | `vosk` | Python `vosk` | `~/.cache/streamdeck-tiler/vosk-model/` |
 
-Pistes d'installation:
+Audit et install via cibles make:
+
+```bash
+make streamdeck_translator_doctor             # voir ce qui manque
+make streamdeck_translator_install_whisper    # clone + build + modèle tiny
+make streamdeck_translator_install_ollama     # ollama + modèle recommandé selon matériel
+make streamdeck_translator_install_typing     # wl-clipboard + ydotool + groupe input
+```
+
+Pistes d'installation manuelle (alternative):
 
 <!-- [common] -->
 ```bash
