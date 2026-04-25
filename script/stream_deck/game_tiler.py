@@ -89,6 +89,7 @@ FONT_SCALE_STEP = 0.1
 FONT_SCALE_DEFAULT = 1.0
 
 _font_scale = FONT_SCALE_DEFAULT
+_show_labels = False  # show text labels on buttons that have icons
 
 GALLERY_RESTART_URL = "http://localhost:8042/api/restart"
 COLOR_ACTIVE = (255, 200, 0)
@@ -396,12 +397,14 @@ def _settings_save(data):
 
 def _init_font_scale():
     """Load persisted font scale from settings.json on startup."""
-    global _font_scale
+    global _font_scale, _show_labels
+    data = _settings_load()
     try:
-        val = float(_settings_load().get("font_scale", FONT_SCALE_DEFAULT))
+        val = float(data.get("font_scale", FONT_SCALE_DEFAULT))
         _font_scale = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, val))
     except (ValueError, TypeError):
         _font_scale = FONT_SCALE_DEFAULT
+    _show_labels = bool(data.get("show_labels", False))
 
 
 def _set_font_scale(scale):
@@ -410,6 +413,14 @@ def _set_font_scale(scale):
     _font_scale = max(FONT_SCALE_MIN, min(FONT_SCALE_MAX, scale))
     data = _settings_load()
     data["font_scale"] = round(_font_scale, 2)
+    _settings_save(data)
+
+
+def _toggle_show_labels():
+    global _show_labels
+    _show_labels = not _show_labels
+    data = _settings_load()
+    data["show_labels"] = _show_labels
     _settings_save(data)
 
 
@@ -560,12 +571,198 @@ def _export_timers_csv(path, timers):
         return False
 
 
-def set_key(deck, key, color, text=""):
+_ICON_WHITE = (255, 255, 255)
+_ICON_RED = (220, 30, 30)
+
+
+def _icon_mic(draw, w, h, muted=False):
+    cx = w / 2
+    cap_w = w * 0.30
+    cap_h = h * 0.42
+    cap_box = (cx - cap_w / 2, h * 0.18, cx + cap_w / 2, h * 0.18 + cap_h)
+    draw.rounded_rectangle(cap_box, radius=cap_w / 2, fill=_ICON_WHITE)
+    stroke = max(2, int(w * 0.05))
+    draw.line((cx, h * 0.62, cx, h * 0.78), fill=_ICON_WHITE, width=stroke)
+    arc_box = (w * 0.25, h * 0.50, w * 0.75, h * 0.78)
+    draw.arc(arc_box, 0, 180, fill=_ICON_WHITE, width=stroke)
+    draw.line(
+        (w * 0.32, h * 0.78, w * 0.68, h * 0.78),
+        fill=_ICON_WHITE, width=stroke,
+    )
+    if muted:
+        draw.line(
+            (w * 0.15, h * 0.85, w * 0.85, h * 0.15),
+            fill=_ICON_RED, width=max(3, int(w * 0.08)),
+        )
+
+
+def _icon_mic_off(draw, w, h):
+    _icon_mic(draw, w, h, muted=True)
+
+
+def _icon_tile(draw, w, h):
+    cells = [(0.18, 0.18), (0.55, 0.18), (0.18, 0.55), (0.55, 0.55)]
+    cw = w * 0.27
+    for x, y in cells:
+        draw.rectangle(
+            (w * x, h * y, w * x + cw, h * y + cw),
+            fill=_ICON_WHITE,
+        )
+
+
+def _icon_timer(draw, w, h):
+    cx, cy = w / 2, h / 2
+    r = min(w, h) * 0.36
+    box = (cx - r, cy - r, cx + r, cy + r)
+    stroke = max(2, int(w * 0.05))
+    draw.ellipse(box, outline=_ICON_WHITE, width=stroke)
+    draw.line((cx, cy, cx, cy - r * 0.7), fill=_ICON_WHITE, width=stroke)
+    draw.line((cx, cy, cx + r * 0.5, cy), fill=_ICON_WHITE, width=stroke)
+    # Top stub knob
+    knob = w * 0.06
+    draw.rectangle(
+        (cx - knob, cy - r - knob, cx + knob, cy - r),
+        fill=_ICON_WHITE,
+    )
+
+
+def _icon_dev_reload(draw, w, h):
+    cx, cy = w / 2, h / 2
+    r = min(w, h) * 0.34
+    box = (cx - r, cy - r, cx + r, cy + r)
+    stroke = max(3, int(w * 0.07))
+    # Arc ~300° leaving a gap top-right for the arrowhead
+    draw.arc(box, 30, 320, fill=_ICON_WHITE, width=stroke)
+    # Arrowhead at the end of the arc (top-right area, angle 30°)
+    import math
+    a = math.radians(30)
+    tip = (cx + r * math.cos(a), cy + r * math.sin(a))
+    size = w * 0.13
+    draw.polygon(
+        [
+            (tip[0] + size, tip[1] - size * 0.2),
+            (tip[0] - size * 0.2, tip[1] + size),
+            (tip[0] - size * 0.4, tip[1] - size * 0.4),
+        ],
+        fill=_ICON_WHITE,
+    )
+
+
+def _icon_sound(draw, w, h):
+    cy = h / 2
+    # Speaker body: rect + triangle horn
+    body_x0 = w * 0.20
+    body_x1 = w * 0.36
+    body_y0 = cy - h * 0.13
+    body_y1 = cy + h * 0.13
+    draw.rectangle(
+        (body_x0, body_y0, body_x1, body_y1), fill=_ICON_WHITE
+    )
+    horn = [
+        (body_x1, body_y0),
+        (w * 0.55, h * 0.20),
+        (w * 0.55, h * 0.80),
+        (body_x1, body_y1),
+    ]
+    draw.polygon(horn, fill=_ICON_WHITE)
+    stroke = max(2, int(w * 0.05))
+    # Two sound waves
+    for ofs, size in ((0.02, 0.20), (0.10, 0.32)):
+        rb = (
+            w * (0.55 + ofs),
+            cy - h * size,
+            w * (0.55 + ofs) + h * size * 2,
+            cy + h * size,
+        )
+        draw.arc(rb, -45, 45, fill=_ICON_WHITE, width=stroke)
+
+
+def _icon_layout(draw, w, h):
+    stroke = max(2, int(w * 0.06))
+    # Outer frame
+    draw.rectangle(
+        (w * 0.15, h * 0.20, w * 0.85, h * 0.80),
+        outline=_ICON_WHITE, width=stroke,
+    )
+    # Sidebar split
+    draw.line(
+        (w * 0.40, h * 0.20, w * 0.40, h * 0.80),
+        fill=_ICON_WHITE, width=stroke,
+    )
+    # Title bar
+    draw.line(
+        (w * 0.40, h * 0.36, w * 0.85, h * 0.36),
+        fill=_ICON_WHITE, width=stroke,
+    )
+
+
+def _icon_a11y(draw, w, h):
+    cx = w / 2
+    # Head
+    head_r = w * 0.10
+    draw.ellipse(
+        (cx - head_r, h * 0.14, cx + head_r, h * 0.14 + head_r * 2),
+        fill=_ICON_WHITE,
+    )
+    stroke = max(2, int(w * 0.06))
+    # Arms outstretched
+    draw.line(
+        (w * 0.20, h * 0.45, w * 0.80, h * 0.45),
+        fill=_ICON_WHITE, width=stroke,
+    )
+    # Body trunk
+    draw.line(
+        (cx, h * 0.40, cx, h * 0.65),
+        fill=_ICON_WHITE, width=stroke,
+    )
+    # Legs
+    draw.line(
+        (cx, h * 0.65, w * 0.32, h * 0.85),
+        fill=_ICON_WHITE, width=stroke,
+    )
+    draw.line(
+        (cx, h * 0.65, w * 0.68, h * 0.85),
+        fill=_ICON_WHITE, width=stroke,
+    )
+
+
+def _icon_bt(draw, w, h):
+    stroke = max(3, int(w * 0.07))
+    cx = w / 2
+    points = [
+        (cx, h * 0.15),
+        (w * 0.70, h * 0.35),
+        (w * 0.30, h * 0.65),
+        (w * 0.70, h * 0.65),
+        (cx, h * 0.85),
+        (cx, h * 0.15),
+        (w * 0.30, h * 0.35),
+        (w * 0.70, h * 0.65),
+    ]
+    draw.line(points, fill=_ICON_WHITE, width=stroke, joint="curve")
+
+
+_ICONS = {
+    "mic_on": _icon_mic,
+    "mic_off": _icon_mic_off,
+    "tile": _icon_tile,
+    "timer": _icon_timer,
+    "dev_reload": _icon_dev_reload,
+    "sound": _icon_sound,
+    "layout": _icon_layout,
+    "a11y": _icon_a11y,
+    "bt": _icon_bt,
+}
+
+
+def set_key(deck, key, color, text="", icon=None):
     fmt = deck.key_image_format()
     w, h = fmt["size"]
     img = Image.new("RGB", (w, h), color)
-    if text:
-        draw = ImageDraw.Draw(img)
+    draw = ImageDraw.Draw(img)
+    if icon and icon in _ICONS:
+        _ICONS[icon](draw, w, h)
+    if text and (icon is None or _show_labels):
         base_fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
         fs = max(6, int(round(base_fs * _font_scale)))
         try:
@@ -663,12 +860,15 @@ class Tiler:
         if self.cols < 4 or self.rows < 2:
             self.a11y_keys = None
             return
-        self.a11y_keys = {
+        keys = {
             "back": 0,
             "font_down": self.cols + 1,
             "font_up": self.cols + 2,
             "font_reset": self.cols + 3,
         }
+        if self.cols >= 5:
+            keys["labels_toggle"] = self.cols + 4
+        self.a11y_keys = keys
 
     def _compute_layout_buttons(self):
         """Layout mode keys. Requires >= 4 cols and >= 3 rows.
@@ -926,6 +1126,8 @@ class Tiler:
             _set_font_scale(_font_scale + FONT_SCALE_STEP)
         elif key == ak["font_reset"]:
             _set_font_scale(FONT_SCALE_DEFAULT)
+        elif key == ak.get("labels_toggle"):
+            _toggle_show_labels()
         else:
             return
         self.render()
@@ -1049,21 +1251,30 @@ class Tiler:
         mic_color, mic_label = self._mic_indicator()
         for key in range(self.total_keys):
             if key == self.tile_key:
-                set_key(self.deck, key, COLOR_TITLE, "TILE")
+                set_key(self.deck, key, COLOR_TITLE, "TILE", icon="tile")
             elif key == self.timer_key and self.timer_key != self.tile_key:
-                set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER")
+                set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER",
+                        icon="timer")
             elif key == self.dev_reload_key and self.dev_reload_key >= 0:
-                set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD")
+                set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD",
+                        icon="dev_reload")
             elif key == self.sound_key and self.sound_key >= 0:
-                set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND")
+                set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND",
+                        icon="sound")
             elif key == self.layout_key and self.layout_key >= 0:
-                set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT")
+                set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT",
+                        icon="layout")
             elif key == self.a11y_key and self.a11y_key >= 0:
-                set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y")
+                set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y",
+                        icon="a11y")
             elif key == self.bluetooth_key and self.bluetooth_key >= 0:
-                set_key(self.deck, key, COLOR_BT_TITLE, "BT")
+                set_key(self.deck, key, COLOR_BT_TITLE, "BT", icon="bt")
             elif key == self.mic_status_key and self.mic_status_key >= 0:
-                set_key(self.deck, key, mic_color, mic_label)
+                icon_name = mic_label.split("\n")[0]  # "MIC" prefix
+                icon = "mic_on" if "ON" in mic_label else (
+                    "mic_off" if "OFF" in mic_label else None
+                )
+                set_key(self.deck, key, mic_color, mic_label, icon=icon)
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
@@ -1179,6 +1390,9 @@ class Tiler:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
         scale_lbl = f"SCALE\n{_font_scale:.1f}x"
+        labels_lbl = (
+            f"LABELS\n{'ON' if _show_labels else 'OFF'}"
+        )
         assignments = {
             ak["back"]: (COLOR_BACK, "BACK"),
             ak["font_down"]: (COLOR_FONT_STEP, "FONT\n-"),
@@ -1186,6 +1400,9 @@ class Tiler:
             ak["font_reset"]: (COLOR_FONT_RESET, "RESET"),
             self.total_keys // 2: (COLOR_EMPTY, scale_lbl),
         }
+        if "labels_toggle" in ak:
+            color = COLOR_MUTE_OFF if _show_labels else COLOR_BT_OFF
+            assignments[ak["labels_toggle"]] = (color, labels_lbl)
         for key in range(self.total_keys):
             if key in assignments:
                 color, label = assignments[key]
