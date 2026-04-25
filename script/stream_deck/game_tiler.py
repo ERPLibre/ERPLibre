@@ -21,6 +21,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 
 try:
@@ -87,6 +89,8 @@ FONT_SCALE_STEP = 0.1
 FONT_SCALE_DEFAULT = 1.0
 
 _font_scale = FONT_SCALE_DEFAULT
+
+GALLERY_RESTART_URL = "http://localhost:8042/api/restart"
 COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
@@ -634,6 +638,11 @@ class Tiler:
                 base + i for i in range(NUM_LAYOUT_SLOTS)
             ]
 
+        # Mic status indicator at bottom-left (also a click target = toggle).
+        self.mic_status_key = (
+            (self.rows - 1) * self.cols if self.rows >= 2 else -1
+        )
+
         self._compute_sound_buttons()
         self._compute_layout_buttons()
         self._compute_a11y_buttons()
@@ -742,6 +751,10 @@ class Tiler:
             return
         if key == self.bluetooth_key and self.bluetooth_key >= 0:
             self.mode = MODE_BLUETOOTH
+            self.render()
+            return
+        if key == self.mic_status_key and self.mic_status_key >= 0:
+            _wpctl_mute_toggle(WPCTL_SOURCE)
             self.render()
             return
         if key in self.layout_shortcut_keys:
@@ -1033,6 +1046,7 @@ class Tiler:
             for i, sk in enumerate(self.layout_shortcut_keys):
                 if str(i + 1) in filled:
                     shortcut_slots[sk] = i + 1
+        mic_color, mic_label = self._mic_indicator()
         for key in range(self.total_keys):
             if key == self.tile_key:
                 set_key(self.deck, key, COLOR_TITLE, "TILE")
@@ -1048,6 +1062,8 @@ class Tiler:
                 set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y")
             elif key == self.bluetooth_key and self.bluetooth_key >= 0:
                 set_key(self.deck, key, COLOR_BT_TITLE, "BT")
+            elif key == self.mic_status_key and self.mic_status_key >= 0:
+                set_key(self.deck, key, mic_color, mic_label)
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
@@ -1055,6 +1071,15 @@ class Tiler:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _mic_indicator(self):
+        """(color, label) tuple for the mic status icon."""
+        vol, muted = _wpctl_get(WPCTL_SOURCE)
+        if vol is None:
+            return COLOR_BT_NA, "MIC\nN/A"
+        if muted:
+            return COLOR_MUTE_ON, "MIC\nOFF"
+        return COLOR_MUTE_OFF, "MIC\nON"
 
     def _render_layout(self):
         lk = self.layout_keys
@@ -1280,8 +1305,9 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
     def loop(self):
-        """Refresh loop: clear result flash + refresh timer list."""
+        """Refresh loop: clear result flash + periodic mode refresh."""
         last_timer_refresh = 0
+        last_idle_refresh = 0
         while self.running and self.deck.is_open():
             now = time.monotonic()
             with self.lock:
@@ -1295,6 +1321,13 @@ class Tiler:
                         self._refresh_timers()
                         self.render()
                         last_timer_refresh = now
+                elif (self.mode == MODE_IDLE
+                        and self.mic_status_key >= 0):
+                    # Auto-refresh every 2s so mic mute toggled outside
+                    # the deck is reflected on the indicator.
+                    if now - last_idle_refresh >= 2.0:
+                        self.render()
+                        last_idle_refresh = now
             time.sleep(0.3)
 
 
