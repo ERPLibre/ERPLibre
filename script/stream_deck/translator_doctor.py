@@ -63,11 +63,19 @@ def main():
     if llm:
         for b in llm:
             _ok("LLM backend", f"{b.name} (model={b.model})")
+            installed = getattr(b, "installed_models", None) or []
+            if len(installed) > 1:
+                others = ", ".join(m for m in installed if m != b.model)
+                print(f"                 also pulled: {others}")
     else:
         _miss(
             "LLM backend",
             "make streamdeck_translator_install_ollama",
         )
+
+    pref = translator.llm_model_preference()
+    if pref:
+        print(f"  i LLM preferred  {pref}")
 
     hw = translator.detect_hardware()
     gpu = hw["gpu_name"] or "no GPU"

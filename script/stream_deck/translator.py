@@ -360,10 +360,20 @@ class OllamaBackend(LLMBackend):
                 import json
                 data = json.loads(r.read())
                 self.available = True
-                models = [m.get("name") for m in data.get("models", [])]
-                self.model = models[0] if models else "llama3.2:3b"
+                self.installed_models = [
+                    m.get("name") for m in data.get("models", [])
+                    if m.get("name")
+                ]
+                preferred = llm_model_preference()
+                if preferred and preferred in self.installed_models:
+                    self.model = preferred
+                elif self.installed_models:
+                    self.model = self.installed_models[0]
+                else:
+                    self.model = "llama3.2:3b"
         except Exception:
             self.available = False
+            self.installed_models = []
 
     def chat(self, prompt):
         import urllib.request, json
@@ -488,6 +498,12 @@ def stt_model_size():
     raw = _load_settings().get("translator_stt_model") or "tiny"
     name = str(raw).strip().lower()
     return name if name in WHISPER_MODEL_SIZES else "tiny"
+
+
+def llm_model_preference():
+    """Preferred LLM model tag, or '' to fall back to the backend default."""
+    raw = _load_settings().get("translator_llm_model") or ""
+    return str(raw).strip()
 
 
 def get_prompt_template(llm_mode):

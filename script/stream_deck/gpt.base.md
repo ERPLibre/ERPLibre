@@ -334,6 +334,20 @@ The `llama.cpp` probe asserts on the response shape, not just HTTP 200,
 to avoid false positives when a different web service happens to be
 listening on `:8080`.
 
+`OllamaBackend` lists every model returned by `/api/tags` and stores
+them as `installed_models`. By default it picks the first one. Pin a
+specific model with `translator_llm_model` in settings.json:
+
+```json
+{
+  "translator_llm_model": "llama3.2:3b-instruct"
+}
+```
+
+If the pinned tag is not pulled, the backend falls back to the first
+available model; the doctor reports the active and pinned values for
+visibility.
+
 Install hints:
 
 <!-- [fr] -->
@@ -375,6 +389,21 @@ offline raisonnable.
 La sonde `llama.cpp` valide la forme de la réponse, pas seulement
 HTTP 200, pour éviter les faux positifs quand un autre service web
 écoute sur `:8080`.
+
+`OllamaBackend` liste tous les modèles retournés par `/api/tags` et
+les stocke dans `installed_models`. Par défaut il prend le premier.
+Épingler un modèle spécifique via `translator_llm_model` dans
+settings.json:
+
+```json
+{
+  "translator_llm_model": "llama3.2:3b-instruct"
+}
+```
+
+Si le tag épinglé n'est pas téléchargé, le backend retombe sur le
+premier modèle disponible; le doctor affiche les valeurs active et
+préférée pour la visibilité.
 
 Pistes d'installation:
 

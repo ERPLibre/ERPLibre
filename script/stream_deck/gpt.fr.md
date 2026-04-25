@@ -194,6 +194,21 @@ La sonde `llama.cpp` valide la forme de la réponse, pas seulement
 HTTP 200, pour éviter les faux positifs quand un autre service web
 écoute sur `:8080`.
 
+`OllamaBackend` liste tous les modèles retournés par `/api/tags` et
+les stocke dans `installed_models`. Par défaut il prend le premier.
+Épingler un modèle spécifique via `translator_llm_model` dans
+settings.json:
+
+```json
+{
+  "translator_llm_model": "llama3.2:3b-instruct"
+}
+```
+
+Si le tag épinglé n'est pas téléchargé, le backend retombe sur le
+premier modèle disponible; le doctor affiche les valeurs active et
+préférée pour la visibilité.
+
 Pistes d'installation:
 
 ```bash
