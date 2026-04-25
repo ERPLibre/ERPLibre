@@ -151,6 +151,10 @@ streamdeck_translator_unittest:
 	@python3 -m unittest \
 		discover -s ./script/stream_deck -p "test_translator.py" -v
 
+.PHONY: streamdeck_translator_stream
+streamdeck_translator_stream:
+	@./script/stream_deck/translator_stream.py
+
 .PHONY: streamdeck_translator_install_whisper
 streamdeck_translator_install_whisper:
 	@if [ ! -d "$(WHISPER_CPP_DIR)" ]; then \
@@ -162,6 +166,9 @@ streamdeck_translator_install_whisper:
 	fi
 	@echo "Building whisper.cpp (this takes a few minutes)..."
 	@$(MAKE) -C "$(WHISPER_CPP_DIR)" 2>&1 | tail -20
+	@echo "Building whisper-stream binary..."
+	@$(MAKE) -C "$(WHISPER_CPP_DIR)" stream 2>&1 | tail -10 || \
+		echo "Note: stream target failed; live streaming will be unavailable."
 	@echo "Downloading $(WHISPER_MODEL) model (~75 MB)..."
 	@bash "$(WHISPER_CPP_DIR)/models/download-ggml-model.sh" \
 		"$(WHISPER_MODEL)"

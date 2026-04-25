@@ -197,7 +197,14 @@ make streamdeck_translator_install_typing     # wl-clipboard + ydotool + input g
 make streamdeck_translator_install_vosk_fr    # vosk + French model
 make streamdeck_translator_test               # 5s recording + every STT backend
 make streamdeck_translator_unittest            # pure unit tests (no audio / network)
+make streamdeck_translator_stream              # live streaming caption (Ctrl+C to stop)
 ```
+
+`streamdeck_translator_stream` runs whisper.cpp's `stream` binary with
+the configured language / model size and pipes each finalized line to
+the active OUT method (TYPE / CLIP). Build the stream binary once
+(`make stream` inside `~/.local/share/whisper.cpp` — already wired
+into `streamdeck_translator_install_whisper`).
 
 `streamdeck_translator_test` records a short clip and runs the active
 STT backends against it in turn so you can compare quality and timing
@@ -340,7 +347,15 @@ make streamdeck_translator_install_typing     # wl-clipboard + ydotool + groupe 
 make streamdeck_translator_install_vosk_fr    # vosk + modèle français
 make streamdeck_translator_test               # enregistrement 5s + chaque backend STT
 make streamdeck_translator_unittest            # tests unitaires purs (sans audio / réseau)
+make streamdeck_translator_stream              # caption live streaming (Ctrl+C pour arrêter)
 ```
+
+`streamdeck_translator_stream` exécute le binaire `stream` de
+whisper.cpp avec la langue / taille de modèle configurées et pipe
+chaque ligne finalisée vers la méthode OUT active (TYPE / CLIP).
+Builder le binaire stream une fois (`make stream` dans
+`~/.local/share/whisper.cpp` — déjà inclus dans
+`streamdeck_translator_install_whisper`).
 
 `streamdeck_translator_test` enregistre un court clip et exécute les
 backends STT actifs successivement pour que tu puisses comparer la
