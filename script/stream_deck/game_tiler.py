@@ -860,6 +860,7 @@ class Tiler:
         self._llm_mode_index = 0  # off / translate / chat
         self._record_proc = None
         self._record_path = None
+        self._record_started_at = 0.0
         # Restore last selections
         prefs = _settings_load()
         if prefs.get("translator_stt"):
@@ -1253,11 +1254,14 @@ class Tiler:
                 self.result_time = time.monotonic()
                 os.unlink(path)
                 self._record_path = None
+            else:
+                self._record_started_at = time.monotonic()
             self.render()
             return
         # Stop + transcribe
         _translator.stop_recording(self._record_proc)
         self._record_proc = None
+        self._record_started_at = 0.0
         path = self._record_path
         self._record_path = None
         self.render()
@@ -1810,6 +1814,13 @@ class Tiler:
                     if now - last_idle_refresh >= 2.0:
                         self.render()
                         last_idle_refresh = now
+                elif (self.mode == MODE_TRANSLATOR
+                        and self._record_proc is not None
+                        and self._record_started_at > 0):
+                    timeout = _translator.recording_timeout_seconds()
+                    elapsed = now - self._record_started_at
+                    if timeout > 0 and elapsed >= timeout:
+                        self._toggle_record()
             time.sleep(0.3)
 
 

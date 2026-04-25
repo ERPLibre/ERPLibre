@@ -535,6 +535,21 @@ def llm_model_preference():
     return str(raw).strip()
 
 
+def recording_timeout_seconds():
+    """Max recording duration in seconds before auto-stop. 0 = no limit.
+
+    A first-pass safety net for forgotten STOP presses. Real voice
+    activity detection (silence-based auto-stop) is a separate feature.
+    """
+    raw = _load_settings().get("translator_recording_timeout")
+    if raw is None:
+        return 0
+    try:
+        return max(0, int(raw))
+    except (ValueError, TypeError):
+        return 0
+
+
 def get_prompt_template(llm_mode):
     """Return the active prompt template for a mode (override or default)."""
     overrides = _load_prompt_overrides()

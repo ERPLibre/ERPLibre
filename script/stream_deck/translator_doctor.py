@@ -92,6 +92,9 @@ def main():
         f"  i TRSL target    {translator.default_translate_target()} "
         f"(from $LANG)"
     )
+    timeout = translator.recording_timeout_seconds()
+    timeout_lbl = f"{timeout}s" if timeout > 0 else "off (manual STOP only)"
+    print(f"  i Rec timeout    {timeout_lbl}")
 
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):

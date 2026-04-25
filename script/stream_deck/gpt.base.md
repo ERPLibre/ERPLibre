@@ -108,6 +108,22 @@ applied through `-l` for whisper.cpp and `--language` for
 openai-whisper. Vosk ignores it because language is baked into the
 installed model.
 
+### Recording auto-stop
+
+Forgetting to press STOP leaves a recording running until the next
+press. Set `translator_recording_timeout` to a positive integer in
+`~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_recording_timeout": 60
+}
+```
+
+The deck cancels the recording (and triggers transcription) once the
+elapsed time exceeds the value in seconds. `0` or absent = no limit.
+A real silence-based VAD is on the roadmap; this is the safety net.
+
 ### STT model size
 
 Whisper ships several model sizes trading accuracy for speed and
@@ -200,6 +216,23 @@ langue par ISO 639-1 dans `~/.config/streamdeck-tiler/settings.json`:
 Valeur `"auto"` (défaut) ou absente = auto-détection. Le réglage est
 appliqué via `-l` (whisper.cpp) ou `--language` (openai-whisper). Vosk
 ignore ce réglage car la langue dépend du modèle installé.
+
+### Auto-stop d'enregistrement
+
+Oublier de presser STOP laisse l'enregistrement tourner jusqu'à la
+prochaine pression. Définir `translator_recording_timeout` à un
+entier positif dans `~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_recording_timeout": 60
+}
+```
+
+Le deck arrête l'enregistrement (et déclenche la transcription)
+quand le temps écoulé dépasse la valeur en secondes. `0` ou absent
+= pas de limite. Un vrai VAD basé sur le silence est dans la
+roadmap; ceci est le filet de sécurité.
 
 ### Taille de modèle STT
 
