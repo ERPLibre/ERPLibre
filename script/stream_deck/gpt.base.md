@@ -129,6 +129,16 @@ advances to the next listed device, and calls `wpctl set-default
 <id>`. Labels show the last word of the active device name. Only
 PipeWire / wpctl is supported.
 
+### Bluetooth device list
+
+`MODE_BLUETOOTH` now lists every paired device on row 1 starting two
+keys after the toggle (cols 2..N-1, up to 6 slots on an 8-col deck).
+Each device button shows the last 6 chars of its name; green when
+connected, gray when disconnected. Tapping toggles
+`bluetoothctl connect <mac>` / `bluetoothctl disconnect <mac>` for
+that device. The list is hidden while the controller is powered off
+because `bluetoothctl devices` returns nothing in that state.
+
 ### Layout preview thumbnails
 
 In `MODE_LAYOUT`, every filled LOAD slot now renders a miniature of
@@ -296,6 +306,17 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl status`, avance vers le périphérique suivant, et appelle
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
+
+### Liste des périphériques Bluetooth
+
+`MODE_BLUETOOTH` liste maintenant tous les périphériques appairés
+sur la rangée 1 après le bouton toggle (cols 2..N-1, jusqu'à 6
+slots sur deck 8-col). Chaque bouton montre les 6 derniers
+caractères du nom; vert si connecté, gris sinon. Une pression
+bascule `bluetoothctl connect <mac>` /
+`bluetoothctl disconnect <mac>`. La liste est cachée quand le
+contrôleur est éteint puisque `bluetoothctl devices` ne retourne
+rien dans cet état.
 
 ### Aperçu miniature des layouts
 

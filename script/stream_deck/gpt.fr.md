@@ -93,6 +93,17 @@ SRC (touche 2) cycle l'entrée audio par défaut. Chaque bouton lit
 `wpctl set-default <id>`. Les labels affichent le dernier mot du
 nom du périphérique actif. Seul PipeWire / wpctl est supporté.
 
+### Liste des périphériques Bluetooth
+
+`MODE_BLUETOOTH` liste maintenant tous les périphériques appairés
+sur la rangée 1 après le bouton toggle (cols 2..N-1, jusqu'à 6
+slots sur deck 8-col). Chaque bouton montre les 6 derniers
+caractères du nom; vert si connecté, gris sinon. Une pression
+bascule `bluetoothctl connect <mac>` /
+`bluetoothctl disconnect <mac>`. La liste est cachée quand le
+contrôleur est éteint puisque `bluetoothctl devices` ne retourne
+rien dans cet état.
+
 ### Aperçu miniature des layouts
 
 Dans `MODE_LAYOUT`, chaque slot LOAD rempli affiche maintenant une

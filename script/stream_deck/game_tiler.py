@@ -304,6 +304,68 @@ def _bt_powered():
     return None
 
 
+def _bt_list_paired():
+    """Return [(mac, name, connected)] for paired devices via bluetoothctl."""
+    paired = []
+    if not shutil.which("bluetoothctl"):
+        return paired
+    try:
+        r = subprocess.run(
+            ["bluetoothctl", "devices", "Paired"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                parts = line.split(maxsplit=2)
+                if len(parts) >= 3 and parts[0] == "Device":
+                    paired.append((parts[1], parts[2]))
+    except Exception as e:
+        print(f"bluetoothctl devices Paired error: {e}")
+        return []
+    connected = set()
+    try:
+        r = subprocess.run(
+            ["bluetoothctl", "devices", "Connected"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode == 0:
+            for line in r.stdout.splitlines():
+                parts = line.split(maxsplit=2)
+                if len(parts) >= 2 and parts[0] == "Device":
+                    connected.add(parts[1])
+    except Exception:
+        pass
+    return [(mac, name, mac in connected) for mac, name in paired]
+
+
+def _bt_connect(mac):
+    if not shutil.which("bluetoothctl"):
+        return False
+    try:
+        r = subprocess.run(
+            ["bluetoothctl", "connect", mac],
+            capture_output=True, text=True, timeout=10,
+        )
+        return r.returncode == 0
+    except Exception as e:
+        print(f"bluetoothctl connect error: {e}")
+        return False
+
+
+def _bt_disconnect(mac):
+    if not shutil.which("bluetoothctl"):
+        return False
+    try:
+        r = subprocess.run(
+            ["bluetoothctl", "disconnect", mac],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.returncode == 0
+    except Exception as e:
+        print(f"bluetoothctl disconnect error: {e}")
+        return False
+
+
 def _bt_set_power(on):
     """Toggle bluetooth power. Returns True on success."""
     if shutil.which("bluetoothctl"):
@@ -1071,14 +1133,20 @@ class Tiler:
         self.translator_keys = keys
 
     def _compute_bluetooth_buttons(self):
-        """BLUETOOTH mode keys. Requires >= 2 cols and >= 2 rows."""
+        """BLUETOOTH mode keys. Requires >= 2 cols and >= 2 rows.
+        Paired-device slots fill row 1 after the toggle button."""
         if self.cols < 2 or self.rows < 2:
             self.bluetooth_keys = None
             return
-        self.bluetooth_keys = {
+        keys = {
             "back": 0,
             "toggle": self.cols + 1,
         }
+        # Devices on row 1 cols 2..cols-1
+        first = self.cols + 2
+        last = 2 * self.cols
+        keys["devices"] = list(range(first, last))
+        self.bluetooth_keys = keys
 
     def _compute_a11y_buttons(self):
         """A11Y mode keys. Requires >= 4 cols and >= 2 rows."""
@@ -1539,6 +1607,17 @@ class Tiler:
                 return
             _bt_set_power(not current)
             self.render()
+            return
+        if key in bk.get("devices", []):
+            idx = bk["devices"].index(key)
+            devices = _bt_list_paired()
+            if idx < len(devices):
+                mac, _name, connected = devices[idx]
+                if connected:
+                    _bt_disconnect(mac)
+                else:
+                    _bt_connect(mac)
+                self.render()
 
     def _handle_a11y_key(self, key):
         ak = self.a11y_keys
@@ -1904,6 +1983,18 @@ class Tiler:
             bk["back"]: (COLOR_BACK, "BACK"),
             bk["toggle"]: (toggle_color, toggle_label),
         }
+        # Device slots only when BT is powered (else listing is empty anyway)
+        device_keys = bk.get("devices", [])
+        if powered and device_keys:
+            devices = _bt_list_paired()
+            for i, k in enumerate(device_keys):
+                if i >= len(devices):
+                    break
+                mac, name, connected = devices[i]
+                words = name.split()
+                short = words[-1][:6] if words else name[:6]
+                color = COLOR_BT_ON if connected else COLOR_BT_OFF
+                assignments[k] = (color, short)
         for key in range(self.total_keys):
             if key in assignments:
                 color, label = assignments[key]
