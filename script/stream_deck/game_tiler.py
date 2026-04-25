@@ -863,6 +863,7 @@ class Tiler:
         self._record_path = None
         self._record_started_at = 0.0
         self._vad_should_stop = False
+        self._streaming_proc = None
         # Restore last selections
         prefs = _settings_load()
         if prefs.get("translator_stt"):
@@ -925,6 +926,7 @@ class Tiler:
             return
         keys = {
             "back": 0,
+            "stream": self.cols + 0,
             "record": self.cols + 1,
             "backend": self.cols + 2,
             "output": self.cols + 3,
@@ -1247,6 +1249,9 @@ class Tiler:
             self.mode = MODE_TRANSLATOR_HISTORY
             self.render()
             return
+        if key == tk.get("stream"):
+            self._toggle_streaming()
+            return
 
     def _handle_translator_history_key(self, key):
         # Layout: 0 = BACK, total-1 = CLEAR, others map to entries.
@@ -1272,6 +1277,38 @@ class Tiler:
     def _on_vad_silence(self):
         """Called from the VAD reader thread; defer to main loop."""
         self._vad_should_stop = True
+
+    def _toggle_streaming(self):
+        if self._streaming_proc is not None and (
+                self._streaming_proc.poll() is None):
+            try:
+                self._streaming_proc.terminate()
+                self._streaming_proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self._streaming_proc.kill()
+                except Exception:
+                    pass
+            self._streaming_proc = None
+            self.render()
+            return
+        script = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "translator_stream.py",
+        )
+        try:
+            self._streaming_proc = subprocess.Popen(
+                [sys.executable, script],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            print(f"streaming start failed: {e}")
+            self._streaming_proc = None
+            self.last_result = "err"
+            self.result_time = time.monotonic()
+        self.render()
 
     def _toggle_record(self):
         if self._record_proc is None:
@@ -1680,6 +1717,14 @@ class Tiler:
             assignments[tk["llm_backend"]] = (
                 COLOR_BACKEND, f"LLM\n{llm_be_name}", None,
             )
+        streaming_active = (
+            self._streaming_proc is not None
+            and self._streaming_proc.poll() is None
+        )
+        if "stream" in tk:
+            stream_color = COLOR_REC_ON if streaming_active else COLOR_VOL
+            stream_lbl = "STR\nON" if streaming_active else "STR"
+            assignments[tk["stream"]] = (stream_color, stream_lbl, None)
         for key in range(self.total_keys):
             if key in assignments:
                 color, label, icon = assignments[key]
@@ -1952,6 +1997,15 @@ def main():
         pass
     finally:
         game.running = False
+        if game._streaming_proc is not None:
+            try:
+                game._streaming_proc.terminate()
+                game._streaming_proc.wait(timeout=2)
+            except Exception:
+                try:
+                    game._streaming_proc.kill()
+                except Exception:
+                    pass
         with deck:
             deck.reset()
             deck.close()

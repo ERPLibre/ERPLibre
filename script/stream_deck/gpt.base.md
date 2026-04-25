@@ -68,6 +68,7 @@ BACK   .   REC   STT   OUT   LLM   LLMBE   .
 | Key | Function |
 |-----|----------|
 | BACK (key 0) | Back to idle. Stops a recording in progress. |
+| STR (key cols+0) | Toggle live streaming captions (spawns `translator_stream.py` as a child process). Red when active. |
 | REC (key cols+1) | Start / stop recording. Red while recording, gray when idle. Icon: `mic_on` while recording, `mic_off` when idle. |
 | STT (key cols+2) | Cycle the active speech-to-text backend. Label is the backend name (`whisper.cpp`, `openai-whisper`, `vosk`). |
 | OUT (key cols+3) | Cycle the output method (`TYPE` or `CLIP`). |
@@ -217,6 +218,7 @@ Manual install hints (alternative):
 | Touche | Fonction |
 |--------|----------|
 | BACK (touche 0) | Retour à l'accueil. Arrête un enregistrement en cours. |
+| STR (touche cols+0) | Bascule la transcription streaming (lance `translator_stream.py` comme sous-processus). Rouge si actif. |
 | REC (touche cols+1) | Démarrer / arrêter l'enregistrement. Rouge pendant l'enregistrement, gris au repos. Icône: `mic_on` pendant l'enregistrement, `mic_off` au repos. |
 | STT (touche cols+2) | Faire défiler le backend de reconnaissance vocale actif. Le label est le nom du backend (`whisper.cpp`, `openai-whisper`, `vosk`). |
 | OUT (touche cols+3) | Faire défiler la méthode de sortie (`TYPE` ou `CLIP`). |

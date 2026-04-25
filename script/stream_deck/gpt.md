@@ -33,6 +33,7 @@ BACK   .   REC   STT   OUT   LLM   LLMBE   .
 | Key | Function |
 |-----|----------|
 | BACK (key 0) | Back to idle. Stops a recording in progress. |
+| STR (key cols+0) | Toggle live streaming captions (spawns `translator_stream.py` as a child process). Red when active. |
 | REC (key cols+1) | Start / stop recording. Red while recording, gray when idle. Icon: `mic_on` while recording, `mic_off` when idle. |
 | STT (key cols+2) | Cycle the active speech-to-text backend. Label is the backend name (`whisper.cpp`, `openai-whisper`, `vosk`). |
 | OUT (key cols+3) | Cycle the output method (`TYPE` or `CLIP`). |
