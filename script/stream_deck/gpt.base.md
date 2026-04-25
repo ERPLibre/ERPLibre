@@ -148,7 +148,13 @@ make streamdeck_translator_doctor             # see what is missing
 make streamdeck_translator_install_whisper    # clone + build + tiny model
 make streamdeck_translator_install_ollama     # ollama + hardware-recommended model
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + input group
+make streamdeck_translator_test               # 5s recording + every STT backend
 ```
+
+`streamdeck_translator_test` records a short clip and runs the active
+STT backends against it in turn so you can compare quality and timing
+on your own voice before driving the deck. Add `-- --seconds 10` to
+record longer or `-- --keep` to preserve the WAV file.
 
 Manual install hints (alternative):
 
@@ -235,7 +241,14 @@ make streamdeck_translator_doctor             # voir ce qui manque
 make streamdeck_translator_install_whisper    # clone + build + modèle tiny
 make streamdeck_translator_install_ollama     # ollama + modèle recommandé selon matériel
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + groupe input
+make streamdeck_translator_test               # enregistrement 5s + chaque backend STT
 ```
+
+`streamdeck_translator_test` enregistre un court clip et exécute les
+backends STT actifs successivement pour que tu puisses comparer la
+qualité et le timing sur ta propre voix avant de piloter le deck.
+Ajoute `-- --seconds 10` pour enregistrer plus longtemps ou
+`-- --keep` pour conserver le WAV.
 
 Pistes d'installation manuelle (alternative):
 

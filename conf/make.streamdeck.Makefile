@@ -142,6 +142,10 @@ WHISPER_MODEL     ?= tiny
 streamdeck_translator_doctor:
 	@./script/stream_deck/translator_doctor.py
 
+.PHONY: streamdeck_translator_test
+streamdeck_translator_test:
+	@./script/stream_deck/translator_test.py
+
 .PHONY: streamdeck_translator_install_whisper
 streamdeck_translator_install_whisper:
 	@if [ ! -d "$(WHISPER_CPP_DIR)" ]; then \
