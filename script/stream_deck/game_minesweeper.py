@@ -283,6 +283,85 @@ def spark_animation(deck, key, duration=1.5, seed=0):
         time.sleep(step)
 
 
+def _build_marquee_row(text, color, speed_px_s, font_size, kw, kh):
+    """Wide canvas with `text` repeated for a CRT marquee row.
+    Returns (canvas_image, canvas_width, speed_px_s)."""
+    try:
+        font = ImageFont.load_default(size=font_size)
+    except TypeError:
+        font = ImageFont.load_default()
+    seed = f"  {text}  *  "
+    measure = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    bbox = measure.textbbox((0, 0), seed, font=font)
+    seed_w = max(10, bbox[2] - bbox[0])
+    repeats = max(2, ((kw * 16) // seed_w) + 2)
+    full = seed * repeats
+    fbbox = measure.textbbox((0, 0), full, font=font)
+    fw = max(fbbox[2] - fbbox[0], kw)
+    img = Image.new("RGB", (fw, kh), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    for y in range(0, kh, 2):
+        draw.line((0, y, fw, y), fill=(12, 12, 12))
+    th = fbbox[3] - fbbox[1]
+    ty = (kh - th) // 2 - fbbox[1]
+    draw.text((1, ty + 1), full, fill=(0, 0, 0), font=font)
+    draw.text((0, ty), full, fill=color, font=font)
+    return img, fw, speed_px_s
+
+
+def victory_marquee(deck, rows_config, duration=5.0, fps=15,
+                    should_stop=None):
+    """Retro CRT marquee across all keys. `rows_config[i]` is
+    (text, color, speed_px_s, font_size) or None to leave the row dark."""
+    fmt = deck.key_image_format()
+    kw, kh = fmt["size"]
+    rows, cols = deck.key_layout()
+    canvases = [None] * rows
+    for i, cfg in enumerate(rows_config[:rows]):
+        if cfg is None:
+            continue
+        text, color, speed, fs = cfg
+        canvases[i] = _build_marquee_row(text, color, speed, fs, kw, kh)
+    blank_native = PILHelper.to_native_key_format(
+        deck, Image.new("RGB", (kw, kh), (0, 0, 0)),
+    )
+    step = 1.0 / max(1, fps)
+    frames = int(duration * fps)
+    for f in range(frames):
+        if should_stop and should_stop():
+            return
+        elapsed = f * step
+        for r in range(rows):
+            entry = canvases[r]
+            if entry is None:
+                for c in range(cols):
+                    try:
+                        with deck:
+                            deck.set_key_image(r * cols + c, blank_native)
+                    except TransportError:
+                        return
+                continue
+            big_img, fw, speed = entry
+            offset = int(elapsed * speed) % fw
+            for c in range(cols):
+                x = (offset + c * kw) % fw
+                if x + kw <= fw:
+                    slice_img = big_img.crop((x, 0, x + kw, kh))
+                else:
+                    slice_img = Image.new("RGB", (kw, kh), (0, 0, 0))
+                    head = big_img.crop((x, 0, fw, kh))
+                    slice_img.paste(head, (0, 0))
+                    tail = big_img.crop((0, 0, kw - (fw - x), kh))
+                    slice_img.paste(tail, (fw - x, 0))
+                native = PILHelper.to_native_key_format(deck, slice_img)
+                try:
+                    with deck:
+                        deck.set_key_image(r * cols + c, native)
+                except TransportError:
+                    return
+        time.sleep(step)
+
+
 # ──────────────────────────────────────────────────────────────
 # SOLO (classic minesweeper)
 # ──────────────────────────────────────────────────────────────
@@ -391,8 +470,18 @@ class MinesweeperSolo:
 
             def _restore_after_blast():
                 time.sleep(1.55)
+                if not self.game_over:
+                    return
                 with self.lock:
                     self.render()
+                cfg = self._solo_marquee_rows()
+                victory_marquee(
+                    self.deck, cfg, duration=5.0,
+                    should_stop=lambda: not self.game_over,
+                )
+                if self.game_over:
+                    with self.lock:
+                        self.render()
 
             threading.Thread(
                 target=_restore_after_blast, daemon=True,
@@ -420,6 +509,7 @@ class MinesweeperSolo:
             self.game_over = True
             self.games_won += 1
             self.games_played += 1
+            self._spawn_endgame_marquee()
 
     def chord(self, col, row):
         if (col, row) not in self.revealed:
@@ -451,6 +541,7 @@ class MinesweeperSolo:
             self.game_over = True
             self.games_won += 1
             self.games_played += 1
+            self._spawn_endgame_marquee()
 
     def handle_key_down(self, key):
         self._key_down_time[key] = time.monotonic()
@@ -550,6 +641,51 @@ class MinesweeperSolo:
                 self.handle_key_up(key)
                 self.render()
 
+    def _solo_marquee_rows(self):
+        if self.won:
+            top = "*** VICTORY ***"
+            top_color = (0, 255, 80)
+            score = f"W {self.games_won}/{self.games_played}"
+            score_color = (255, 255, 0)
+            sub = "YOU WIN  *  YOU WIN"
+            sub_color = (0, 200, 60)
+        else:
+            top = "*** GAME OVER ***"
+            top_color = (220, 30, 30)
+            losses = self.games_played - self.games_won
+            score = f"L {losses}/{self.games_played}"
+            score_color = (180, 60, 60)
+            sub = "BUSTED  *  TRY AGAIN"
+            sub_color = (140, 90, 90)
+        if self.rows >= 3:
+            return [
+                (top, top_color, 90, 22),
+                (score, score_color, 30, 30),
+                (sub, sub_color, 70, 18),
+            ]
+        if self.rows == 2:
+            return [
+                (top, top_color, 90, 22),
+                (score, score_color, 50, 26),
+            ]
+        return [(f"{top}  {score}", top_color, 90, 22)]
+
+    def _spawn_endgame_marquee(self, after=0.0):
+        def _run():
+            if after > 0:
+                time.sleep(after)
+            if not self.game_over:
+                return
+            cfg = self._solo_marquee_rows()
+            victory_marquee(
+                self.deck, cfg, duration=5.0,
+                should_stop=lambda: not self.game_over,
+            )
+            if self.game_over:
+                with self.lock:
+                    self.render()
+        threading.Thread(target=_run, daemon=True).start()
+
 
 # ──────────────────────────────────────────────────────────────
 # VS (mine hunter — find bombs to score!)
@@ -575,6 +711,7 @@ class MinesweeperVS:
         self.game_over = False
         self.winner = -1
         self._cooldown_until = 0
+        self._marquee_active = False
 
     def neighbors(self, col, row):
         result = []
@@ -676,6 +813,8 @@ class MinesweeperVS:
 
             def _restore_after_blast():
                 time.sleep(1.55)
+                if self._marquee_active:
+                    return
                 with self.lock:
                     self.render_all()
 
@@ -686,13 +825,14 @@ class MinesweeperVS:
             # Check if all mines found
             if len(self.found_by) >= len(self.mines):
                 self.game_over = True
-                self._cooldown_until = now + 3.0
+                self._cooldown_until = now + 7.0
                 if self.scores[0] > self.scores[1]:
                     self.winner = 0
                 elif self.scores[1] > self.scores[0]:
                     self.winner = 1
                 else:
                     self.winner = -1
+                self._spawn_endgame_marquee(after=1.55)
         else:
             # Safe cell — flood fill then pass turn
             self._flood_reveal(col, row)
@@ -784,6 +924,68 @@ class MinesweeperVS:
                     set_key_image(deck, key, COLOR_HIDDEN, "?")
                 else:
                     set_key_image(deck, key, COLOR_WAIT, "")
+
+    def _vs_marquee_rows(self, deck_index):
+        is_winner = self.winner == deck_index
+        is_draw = self.winner < 0
+        my = self.scores[deck_index]
+        op = self.scores[1 - deck_index]
+        if is_draw:
+            top, top_color = "*** DRAW ***", (255, 255, 0)
+            big, big_color = f"{my}-{op}", (255, 255, 0)
+        elif is_winner:
+            top, top_color = "*** YOU WIN ***", (0, 255, 80)
+            big, big_color = str(my), (255, 255, 0)
+        else:
+            top, top_color = "*** YOU LOSE ***", (220, 30, 30)
+            big, big_color = str(my), (110, 60, 60)
+        sub = f"P1 {self.scores[0]}  P2 {self.scores[1]}"
+        sub_color = (
+            (200, 200, 200) if (is_winner or is_draw) else (110, 110, 110)
+        )
+        if self.rows >= 3:
+            return [
+                (top, top_color, 90, 22),
+                (big, big_color, 25, 38),
+                (sub, sub_color, 70, 18),
+            ]
+        if self.rows == 2:
+            return [
+                (top, top_color, 90, 22),
+                (sub, sub_color, 50, 22),
+            ]
+        return [(f"{top}  {sub}", top_color, 90, 22)]
+
+    def _spawn_endgame_marquee(self, after=0.0):
+        self._marquee_active = True
+
+        def _run():
+            if after > 0:
+                time.sleep(after)
+            if not self.game_over:
+                self._marquee_active = False
+                return
+            threads = []
+            for i, d in enumerate(self.decks):
+                cfg = self._vs_marquee_rows(i)
+                t = threading.Thread(
+                    target=victory_marquee,
+                    args=(d, cfg),
+                    kwargs={
+                        "duration": 5.0,
+                        "should_stop": lambda: not self.game_over,
+                    },
+                    daemon=True,
+                )
+                t.start()
+                threads.append(t)
+            for t in threads:
+                t.join()
+            self._marquee_active = False
+            if self.game_over:
+                with self.lock:
+                    self.render_all()
+        threading.Thread(target=_run, daemon=True).start()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -907,7 +1109,7 @@ def main():
         # Render loop for cooldown
         def render_loop():
             while all(d.is_open() for d in decks):
-                if game.game_over:
+                if game.game_over and not game._marquee_active:
                     with game.lock:
                         game.render_all()
                 time.sleep(0.5)
