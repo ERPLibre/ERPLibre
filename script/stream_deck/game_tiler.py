@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -33,6 +34,8 @@ try:
 except ImportError as e:
     print("pip install -r script/stream_deck/requirements.txt")
     raise e
+
+import translator as _translator
 
 GAME_META = {
     "name": "Window Tiler",
@@ -75,6 +78,11 @@ COLOR_BT_TITLE = (0, 100, 200)
 COLOR_BT_ON = (0, 150, 220)
 COLOR_BT_OFF = (60, 60, 60)
 COLOR_BT_NA = (100, 40, 40)
+COLOR_TR_TITLE = (160, 90, 200)
+COLOR_REC_ON = (200, 30, 30)
+COLOR_REC_OFF = (60, 60, 60)
+COLOR_BACKEND = (90, 130, 80)
+COLOR_OUTPUT = (50, 110, 150)
 
 VOL_STEP_PCT = 5
 
@@ -105,6 +113,7 @@ MODE_LAYOUT = "layout"
 MODE_LAYOUT_DELETE_CONFIRM = "layout_delete_confirm"
 MODE_A11Y = "a11y"
 MODE_BLUETOOTH = "bluetooth"
+MODE_TRANSLATOR = "translator"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -726,6 +735,29 @@ def _icon_a11y(draw, w, h):
     )
 
 
+def _icon_translator(draw, w, h):
+    # Speech bubble with tail + 3 dots inside
+    stroke = max(2, int(w * 0.05))
+    box = (w * 0.15, h * 0.18, w * 0.85, h * 0.62)
+    draw.rounded_rectangle(
+        box, radius=h * 0.10, outline=_ICON_WHITE, width=stroke,
+    )
+    # Tail
+    tail = [
+        (w * 0.30, h * 0.62),
+        (w * 0.25, h * 0.85),
+        (w * 0.45, h * 0.62),
+    ]
+    draw.polygon(tail, fill=_ICON_WHITE)
+    # Three dots inside
+    cy = h * 0.40
+    r = w * 0.05
+    for cx in (w * 0.32, w * 0.50, w * 0.68):
+        draw.ellipse(
+            (cx - r, cy - r, cx + r, cy + r), fill=_ICON_WHITE,
+        )
+
+
 def _icon_bt(draw, w, h):
     stroke = max(3, int(w * 0.07))
     cx = w / 2
@@ -752,6 +784,7 @@ _ICONS = {
     "layout": _icon_layout,
     "a11y": _icon_a11y,
     "bt": _icon_bt,
+    "translator": _icon_translator,
 }
 
 
@@ -812,6 +845,27 @@ class Tiler:
         self.timer_key_map = {}
         # Layout delete pending slot id (used by confirm mode)
         self.layout_delete_pending = None
+        # Translator state
+        self._stt_backends = _translator.detect_stt_backends()
+        self._stt_index = 0
+        self._output_methods = (
+            _translator.detect_output_methods()
+            or [_translator.OUTPUT_CLIP]
+        )
+        self._output_index = 0
+        self._record_proc = None
+        self._record_path = None
+        # Restore last selections
+        prefs = _settings_load()
+        if prefs.get("translator_stt"):
+            for i, b in enumerate(self._stt_backends):
+                if b.name == prefs["translator_stt"]:
+                    self._stt_index = i
+                    break
+        if prefs.get("translator_output") in self._output_methods:
+            self._output_index = self._output_methods.index(
+                prefs["translator_output"]
+            )
         # Idle entry points
         self._compute_idle_buttons()
 
@@ -820,7 +874,7 @@ class Tiler:
         on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
         order = [
             "tile", "timer", "dev_reload", "sound", "layout", "a11y",
-            "bluetooth",
+            "bluetooth", "translator",
         ]
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
@@ -844,6 +898,19 @@ class Tiler:
         self._compute_layout_buttons()
         self._compute_a11y_buttons()
         self._compute_bluetooth_buttons()
+        self._compute_translator_buttons()
+
+    def _compute_translator_buttons(self):
+        """Translator mode keys. Requires >= 4 cols and >= 2 rows."""
+        if self.cols < 4 or self.rows < 2:
+            self.translator_keys = None
+            return
+        self.translator_keys = {
+            "back": 0,
+            "record": self.cols + 1,
+            "backend": self.cols + 2,
+            "output": self.cols + 3,
+        }
 
     def _compute_bluetooth_buttons(self):
         """BLUETOOTH mode keys. Requires >= 2 cols and >= 2 rows."""
@@ -929,6 +996,8 @@ class Tiler:
             self._handle_a11y_key(key)
         elif self.mode == MODE_BLUETOOTH:
             self._handle_bluetooth_key(key)
+        elif self.mode == MODE_TRANSLATOR:
+            self._handle_translator_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -951,6 +1020,10 @@ class Tiler:
             return
         if key == self.bluetooth_key and self.bluetooth_key >= 0:
             self.mode = MODE_BLUETOOTH
+            self.render()
+            return
+        if key == self.translator_key and self.translator_key >= 0:
+            self.mode = MODE_TRANSLATOR
             self.render()
             return
         if key == self.mic_status_key and self.mic_status_key >= 0:
@@ -1089,6 +1162,90 @@ class Tiler:
             self.render()
             return
         # Other keys ignored (force explicit choice)
+
+    def _handle_translator_key(self, key):
+        tk = self.translator_keys
+        if not tk:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == tk["back"]:
+            if self._record_proc is not None:
+                _translator.stop_recording(self._record_proc)
+                self._record_proc = None
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == tk["record"]:
+            self._toggle_record()
+            return
+        if key == tk["backend"] and self._stt_backends:
+            self._stt_index = (self._stt_index + 1) % len(self._stt_backends)
+            data = _settings_load()
+            data["translator_stt"] = self._stt_backends[self._stt_index].name
+            _settings_save(data)
+            self.render()
+            return
+        if key == tk["output"]:
+            self._output_index = (
+                (self._output_index + 1) % len(self._output_methods)
+            )
+            data = _settings_load()
+            data["translator_output"] = (
+                self._output_methods[self._output_index]
+            )
+            _settings_save(data)
+            self.render()
+            return
+
+    def _toggle_record(self):
+        if self._record_proc is None:
+            if not self._stt_backends:
+                self.last_result = "err"
+                self.result_time = time.monotonic()
+                self.render()
+                return
+            fd, path = tempfile.mkstemp(prefix="sttrec_", suffix=".wav")
+            os.close(fd)
+            self._record_path = path
+            self._record_proc = _translator.start_recording(path)
+            if self._record_proc is None:
+                self.last_result = "err"
+                self.result_time = time.monotonic()
+                os.unlink(path)
+                self._record_path = None
+            self.render()
+            return
+        # Stop + transcribe
+        _translator.stop_recording(self._record_proc)
+        self._record_proc = None
+        path = self._record_path
+        self._record_path = None
+        self.render()
+        threading.Thread(
+            target=self._finish_transcription,
+            args=(path,),
+            daemon=True,
+        ).start()
+
+    def _finish_transcription(self, wav_path):
+        try:
+            backend = self._stt_backends[self._stt_index]
+            text = backend.transcribe(wav_path)
+            ok = False
+            if text:
+                method = self._output_methods[self._output_index]
+                ok = _translator.output_text(text, method)
+        finally:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+        with self.lock:
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            if self.mode == MODE_TRANSLATOR:
+                self.render()
 
     def _handle_bluetooth_key(self, key):
         bk = self.bluetooth_keys
@@ -1240,6 +1397,8 @@ class Tiler:
             self._render_a11y()
         elif self.mode == MODE_BLUETOOTH:
             self._render_bluetooth()
+        elif self.mode == MODE_TRANSLATOR:
+            self._render_translator()
 
     def _render_idle(self):
         shortcut_slots = {}
@@ -1269,6 +1428,11 @@ class Tiler:
                         icon="a11y")
             elif key == self.bluetooth_key and self.bluetooth_key >= 0:
                 set_key(self.deck, key, COLOR_BT_TITLE, "BT", icon="bt")
+            elif key == self.translator_key and self.translator_key >= 0:
+                set_key(
+                    self.deck, key, COLOR_TR_TITLE, "TRANSL",
+                    icon="translator",
+                )
             elif key == self.mic_status_key and self.mic_status_key >= 0:
                 icon_name = mic_label.split("\n")[0]  # "MIC" prefix
                 icon = "mic_on" if "ON" in mic_label else (
@@ -1346,6 +1510,42 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
             elif key == mid_key:
                 set_key(self.deck, key, COLOR_EMPTY, f"DEL\n{slot}?")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_translator(self):
+        tk = self.translator_keys
+        if not tk:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+        recording = self._record_proc is not None
+        if self._stt_backends:
+            backend_name = self._stt_backends[self._stt_index].name
+        else:
+            backend_name = "NONE"
+        method = self._output_methods[self._output_index]
+        method_lbl = "TYPE" if method == _translator.OUTPUT_TYPE else "CLIP"
+        rec_color = COLOR_REC_ON if recording else COLOR_REC_OFF
+        rec_label = "STOP" if recording else "REC"
+        rec_icon = "mic_on" if recording else "mic_off"
+        assignments = {
+            tk["back"]: (COLOR_BACK, "BACK", None),
+            tk["record"]: (rec_color, rec_label, rec_icon),
+            tk["backend"]: (
+                COLOR_BACKEND, f"STT\n{backend_name[:6]}", None,
+            ),
+            tk["output"]: (COLOR_OUTPUT, f"OUT\n{method_lbl}", None),
+        }
+        for key in range(self.total_keys):
+            if key in assignments:
+                color, label, icon = assignments[key]
+                set_key(self.deck, key, color, label, icon=icon)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
