@@ -250,6 +250,187 @@ def _clipboard_command():
     return None
 
 
+# ---------- Hardware detection ----------
+
+def detect_hardware():
+    """Return {ram_gb, gpu_name, gpu_vram_gb} best-effort."""
+    info = {"ram_gb": 0, "gpu_name": "", "gpu_vram_gb": 0}
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    info["ram_gb"] = round(kb / (1024 * 1024))
+                    break
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(
+            ["lspci"], capture_output=True, text=True, timeout=2,
+        )
+        for line in r.stdout.splitlines():
+            if any(t in line.lower() for t in ("vga", "3d controller")):
+                info["gpu_name"] = line.split(":", 2)[-1].strip()
+                break
+    except Exception:
+        pass
+    if shutil.which("nvidia-smi"):
+        try:
+            r = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                mb = int(r.stdout.strip().splitlines()[0])
+                info["gpu_vram_gb"] = round(mb / 1024)
+        except Exception:
+            pass
+    return info
+
+
+def recommend_model(hw):
+    """Map hardware to an Ollama model tag."""
+    ram = hw.get("ram_gb", 0)
+    vram = hw.get("gpu_vram_gb", 0)
+    if vram >= 16:
+        return "llama3.1:8b-instruct-q5_K_M"
+    if ram >= 32 or vram >= 8:
+        return "llama3.1:8b-instruct-q4_K_M"
+    if ram >= 16:
+        return "llama3.2:3b-instruct"
+    if ram >= 8:
+        return "qwen2.5:1.5b-instruct"
+    return "qwen2.5:0.5b-instruct"
+
+
+# ---------- LLM backends ----------
+
+class LLMBackend:
+    name = "?"
+    available = False
+    model = ""
+
+    def chat(self, prompt):
+        return ""
+
+
+class OllamaBackend(LLMBackend):
+    name = "ollama"
+    URL = "http://localhost:11434"
+
+    def __init__(self):
+        import urllib.request
+        try:
+            with urllib.request.urlopen(
+                f"{self.URL}/api/tags", timeout=1,
+            ) as r:
+                import json
+                data = json.loads(r.read())
+                self.available = True
+                models = [m.get("name") for m in data.get("models", [])]
+                self.model = models[0] if models else "llama3.2:3b"
+        except Exception:
+            self.available = False
+
+    def chat(self, prompt):
+        import urllib.request, json
+        body = json.dumps({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                f"{self.URL}/api/generate",
+                data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read()).get("response", "").strip()
+        except Exception as e:
+            print(f"ollama chat error: {e}")
+            return ""
+
+
+class LlamaCppBackend(LLMBackend):
+    """Reaches a llama.cpp llama-server via the OpenAI-compatible API."""
+    name = "llama.cpp"
+    URL = "http://localhost:8080"
+
+    def __init__(self):
+        import urllib.request
+        try:
+            with urllib.request.urlopen(
+                f"{self.URL}/health", timeout=1,
+            ):
+                self.available = True
+        except Exception:
+            self.available = False
+        self.model = "local"
+
+    def chat(self, prompt):
+        import urllib.request, json
+        body = json.dumps({
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }).encode()
+        try:
+            req = urllib.request.Request(
+                f"{self.URL}/v1/chat/completions",
+                data=body,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as r:
+                data = json.loads(r.read())
+                return (
+                    data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+        except Exception as e:
+            print(f"llama.cpp chat error: {e}")
+            return ""
+
+
+def detect_llm_backends():
+    out = []
+    for cls in (OllamaBackend, LlamaCppBackend):
+        b = cls()
+        if b.available:
+            out.append(b)
+    return out
+
+
+# LLM modes for chaining after STT
+LLM_MODE_OFF = "off"
+LLM_MODE_TRANSLATE = "translate"
+LLM_MODE_CHAT = "chat"
+LLM_MODES = [LLM_MODE_OFF, LLM_MODE_TRANSLATE, LLM_MODE_CHAT]
+
+
+def llm_postprocess(text, llm_mode, backend):
+    """Run the LLM with a mode-specific prompt and return its text."""
+    if not text or llm_mode == LLM_MODE_OFF or backend is None:
+        return text
+    if llm_mode == LLM_MODE_TRANSLATE:
+        prompt = (
+            "Translate the following to English. Output only the "
+            "translation, no commentary.\n\n" + text
+        )
+    elif llm_mode == LLM_MODE_CHAT:
+        prompt = text
+    else:
+        return text
+    out = backend.chat(prompt)
+    return out or text
+
+
 def output_text(text, method):
     """Send text to the focused window or clipboard. Returns True on success."""
     if not text:

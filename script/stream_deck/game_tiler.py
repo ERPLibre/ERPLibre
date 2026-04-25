@@ -83,6 +83,8 @@ COLOR_REC_ON = (200, 30, 30)
 COLOR_REC_OFF = (60, 60, 60)
 COLOR_BACKEND = (90, 130, 80)
 COLOR_OUTPUT = (50, 110, 150)
+COLOR_LLM_OFF = (60, 60, 60)
+COLOR_LLM_ON = (140, 60, 160)
 
 VOL_STEP_PCT = 5
 
@@ -853,6 +855,9 @@ class Tiler:
             or [_translator.OUTPUT_CLIP]
         )
         self._output_index = 0
+        self._llm_backends = _translator.detect_llm_backends()
+        self._llm_index = 0
+        self._llm_mode_index = 0  # off / translate / chat
         self._record_proc = None
         self._record_path = None
         # Restore last selections
@@ -865,6 +870,15 @@ class Tiler:
         if prefs.get("translator_output") in self._output_methods:
             self._output_index = self._output_methods.index(
                 prefs["translator_output"]
+            )
+        if prefs.get("translator_llm"):
+            for i, b in enumerate(self._llm_backends):
+                if b.name == prefs["translator_llm"]:
+                    self._llm_index = i
+                    break
+        if prefs.get("translator_llm_mode") in _translator.LLM_MODES:
+            self._llm_mode_index = _translator.LLM_MODES.index(
+                prefs["translator_llm_mode"]
             )
         # Idle entry points
         self._compute_idle_buttons()
@@ -901,16 +915,21 @@ class Tiler:
         self._compute_translator_buttons()
 
     def _compute_translator_buttons(self):
-        """Translator mode keys. Requires >= 4 cols and >= 2 rows."""
+        """Translator mode keys. Requires >= 4 cols and >= 2 rows.
+        LLM controls appear when there is room (cols >= 6)."""
         if self.cols < 4 or self.rows < 2:
             self.translator_keys = None
             return
-        self.translator_keys = {
+        keys = {
             "back": 0,
             "record": self.cols + 1,
             "backend": self.cols + 2,
             "output": self.cols + 3,
         }
+        if self.cols >= 6:
+            keys["llm_mode"] = self.cols + 4
+            keys["llm_backend"] = self.cols + 5
+        self.translator_keys = keys
 
     def _compute_bluetooth_buttons(self):
         """BLUETOOTH mode keys. Requires >= 2 cols and >= 2 rows."""
@@ -1197,6 +1216,26 @@ class Tiler:
             _settings_save(data)
             self.render()
             return
+        if key == tk.get("llm_mode"):
+            self._llm_mode_index = (
+                (self._llm_mode_index + 1) % len(_translator.LLM_MODES)
+            )
+            data = _settings_load()
+            data["translator_llm_mode"] = (
+                _translator.LLM_MODES[self._llm_mode_index]
+            )
+            _settings_save(data)
+            self.render()
+            return
+        if key == tk.get("llm_backend") and self._llm_backends:
+            self._llm_index = (
+                (self._llm_index + 1) % len(self._llm_backends)
+            )
+            data = _settings_load()
+            data["translator_llm"] = self._llm_backends[self._llm_index].name
+            _settings_save(data)
+            self.render()
+            return
 
     def _toggle_record(self):
         if self._record_proc is None:
@@ -1229,10 +1268,16 @@ class Tiler:
         ).start()
 
     def _finish_transcription(self, wav_path):
+        ok = False
         try:
             backend = self._stt_backends[self._stt_index]
             text = backend.transcribe(wav_path)
-            ok = False
+            llm_mode = _translator.LLM_MODES[self._llm_mode_index]
+            llm_backend = (
+                self._llm_backends[self._llm_index]
+                if self._llm_backends else None
+            )
+            text = _translator.llm_postprocess(text, llm_mode, llm_backend)
             if text:
                 method = self._output_methods[self._output_index]
                 ok = _translator.output_text(text, method)
@@ -1534,6 +1579,20 @@ class Tiler:
         rec_color = COLOR_REC_ON if recording else COLOR_REC_OFF
         rec_label = "STOP" if recording else "REC"
         rec_icon = "mic_on" if recording else "mic_off"
+        llm_mode = _translator.LLM_MODES[self._llm_mode_index]
+        llm_lbl = {
+            _translator.LLM_MODE_OFF: "LLM\nOFF",
+            _translator.LLM_MODE_TRANSLATE: "LLM\nTRSL",
+            _translator.LLM_MODE_CHAT: "LLM\nCHAT",
+        }[llm_mode]
+        llm_color = (
+            COLOR_LLM_OFF if llm_mode == _translator.LLM_MODE_OFF
+            else COLOR_LLM_ON
+        )
+        if self._llm_backends:
+            llm_be_name = self._llm_backends[self._llm_index].name[:6]
+        else:
+            llm_be_name = "NONE"
         assignments = {
             tk["back"]: (COLOR_BACK, "BACK", None),
             tk["record"]: (rec_color, rec_label, rec_icon),
@@ -1542,6 +1601,12 @@ class Tiler:
             ),
             tk["output"]: (COLOR_OUTPUT, f"OUT\n{method_lbl}", None),
         }
+        if "llm_mode" in tk:
+            assignments[tk["llm_mode"]] = (llm_color, llm_lbl, None)
+        if "llm_backend" in tk:
+            assignments[tk["llm_backend"]] = (
+                COLOR_BACKEND, f"LLM\n{llm_be_name}", None,
+            )
         for key in range(self.total_keys):
             if key in assignments:
                 color, label, icon = assignments[key]
