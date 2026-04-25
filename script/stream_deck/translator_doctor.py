@@ -109,6 +109,11 @@ def main():
         apps = ", ".join(sorted(presets.keys()))
         print(f"  i Per-app prompts: {apps}")
 
+    history = translator.load_history()
+    print(
+        f"  i History        {len(history)} / {translator.HISTORY_MAX} entries"
+    )
+
     summary = []
     if not stt:
         summary.append("install an STT backend")

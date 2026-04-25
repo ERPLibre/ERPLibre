@@ -73,6 +73,17 @@ applied through `-l` for whisper.cpp and `--language` for
 openai-whisper. Vosk ignores it because language is baked into the
 installed model.
 
+### History
+
+After every successful transcription the deck appends an entry to a
+ring buffer kept in `~/.config/streamdeck-tiler/translator-history.json`
+(20 most recent kept). In `MODE_TRANSLATOR`, press the **HIST** button
+(8-col deck only) to enter history mode: each remaining key shows a
+truncated snippet of a saved entry; press to re-output it via the
+current OUT method. Top-right key = `CLEAR` (deletes the file, no
+confirm). Entry payload: `text`, `ts` (unix seconds), `llm_mode`,
+`language`, `wm_class`.
+
 ### Recording auto-stop
 
 Forgetting to press STOP leaves a recording running until the next

@@ -116,6 +116,7 @@ MODE_LAYOUT_DELETE_CONFIRM = "layout_delete_confirm"
 MODE_A11Y = "a11y"
 MODE_BLUETOOTH = "bluetooth"
 MODE_TRANSLATOR = "translator"
+MODE_TRANSLATOR_HISTORY = "translator_history"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -930,6 +931,8 @@ class Tiler:
         if self.cols >= 6:
             keys["llm_mode"] = self.cols + 4
             keys["llm_backend"] = self.cols + 5
+        if self.cols >= 7:
+            keys["history"] = self.cols + 6
         self.translator_keys = keys
 
     def _compute_bluetooth_buttons(self):
@@ -1018,6 +1021,8 @@ class Tiler:
             self._handle_bluetooth_key(key)
         elif self.mode == MODE_TRANSLATOR:
             self._handle_translator_key(key)
+        elif self.mode == MODE_TRANSLATOR_HISTORY:
+            self._handle_translator_history_key(key)
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -1237,6 +1242,31 @@ class Tiler:
             _settings_save(data)
             self.render()
             return
+        if key == tk.get("history"):
+            self.mode = MODE_TRANSLATOR_HISTORY
+            self.render()
+            return
+
+    def _handle_translator_history_key(self, key):
+        # Layout: 0 = BACK, total-1 = CLEAR, others map to entries.
+        if key == 0:
+            self.mode = MODE_TRANSLATOR
+            self.render()
+            return
+        if key == self.total_keys - 1:
+            _translator.clear_history()
+            self.render()
+            return
+        entries = list(reversed(_translator.load_history()))
+        # Slot map: keys 1..total-2 map to entries[0..]
+        idx = key - 1
+        if 0 <= idx < len(entries):
+            entry = entries[idx]
+            method = self._output_methods[self._output_index]
+            ok = _translator.output_text(entry.get("text", ""), method)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
 
     def _toggle_record(self):
         if self._record_proc is None:
@@ -1275,16 +1305,25 @@ class Tiler:
         ok = False
         try:
             backend = self._stt_backends[self._stt_index]
-            text = backend.transcribe(wav_path)
+            raw = backend.transcribe(wav_path)
             llm_mode = _translator.LLM_MODES[self._llm_mode_index]
             llm_backend = (
                 self._llm_backends[self._llm_index]
                 if self._llm_backends else None
             )
-            text = _translator.llm_postprocess(text, llm_mode, llm_backend)
+            text = _translator.llm_postprocess(raw, llm_mode, llm_backend)
             if text:
                 method = self._output_methods[self._output_index]
                 ok = _translator.output_text(text, method)
+                try:
+                    _translator.append_history(
+                        text,
+                        llm_mode=llm_mode,
+                        language=_translator.stt_language(),
+                        wm_class=_translator.focused_window_class(),
+                    )
+                except Exception as e:
+                    print(f"history append error: {e}")
         finally:
             try:
                 os.unlink(wav_path)
@@ -1448,6 +1487,8 @@ class Tiler:
             self._render_bluetooth()
         elif self.mode == MODE_TRANSLATOR:
             self._render_translator()
+        elif self.mode == MODE_TRANSLATOR_HISTORY:
+            self._render_translator_history()
 
     def _render_idle(self):
         shortcut_slots = {}
@@ -1559,6 +1600,23 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
             elif key == mid_key:
                 set_key(self.deck, key, COLOR_EMPTY, f"DEL\n{slot}?")
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _render_translator_history(self):
+        entries = list(reversed(_translator.load_history()))
+        for key in range(self.total_keys):
+            if key == 0:
+                set_key(self.deck, key, COLOR_BACK, "BACK")
+                continue
+            if key == self.total_keys - 1:
+                set_key(self.deck, key, COLOR_CANCEL, "CLEAR")
+                continue
+            idx = key - 1
+            if idx < len(entries):
+                text = entries[idx].get("text") or ""
+                snippet = text[:8] if len(text) > 8 else text
+                set_key(self.deck, key, COLOR_LOAD_FILLED, snippet)
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 

@@ -293,5 +293,62 @@ class TestRecommendModel(unittest.TestCase):
         )
 
 
+class TestHistory(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False,
+        )
+        self._tmp.close()
+        os.unlink(self._tmp.name)
+        self._patch = mock.patch.object(
+            translator, "HISTORY_FILE", self._tmp.name,
+        )
+        self._patch.start()
+
+    def tearDown(self):
+        self._patch.stop()
+        try:
+            os.unlink(self._tmp.name)
+        except FileNotFoundError:
+            pass
+
+    def test_append_then_load(self):
+        translator.append_history("hello", language="fr")
+        translator.append_history("world", language="en")
+        entries = translator.load_history()
+        self.assertEqual([e["text"] for e in entries], ["hello", "world"])
+
+    def test_empty_text_is_ignored(self):
+        translator.append_history("")
+        self.assertEqual(translator.load_history(), [])
+
+    def test_ring_buffer_trims_to_max(self):
+        for i in range(translator.HISTORY_MAX + 5):
+            translator.append_history(f"msg{i}")
+        entries = translator.load_history()
+        self.assertEqual(len(entries), translator.HISTORY_MAX)
+        self.assertEqual(entries[0]["text"], "msg5")
+        self.assertEqual(entries[-1]["text"], f"msg{translator.HISTORY_MAX + 4}")
+
+    def test_clear_removes_file(self):
+        translator.append_history("hello")
+        translator.clear_history()
+        self.assertEqual(translator.load_history(), [])
+
+    def test_load_handles_missing_file(self):
+        self.assertEqual(translator.load_history(), [])
+
+    def test_load_filters_invalid_entries(self):
+        with open(self._tmp.name, "w") as f:
+            json.dump({"entries": [
+                {"text": "kept"},
+                {"no_text": "dropped"},
+                "not-a-dict",
+                {"text": ""},
+            ]}, f)
+        entries = translator.load_history()
+        self.assertEqual([e["text"] for e in entries], ["kept"])
+
+
 if __name__ == "__main__":
     unittest.main()

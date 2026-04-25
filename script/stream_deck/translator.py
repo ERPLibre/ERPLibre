@@ -15,6 +15,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 
 
 # ---------- Audio capture ----------
@@ -533,6 +534,57 @@ def llm_model_preference():
     """Preferred LLM model tag, or '' to fall back to the backend default."""
     raw = _load_settings().get("translator_llm_model") or ""
     return str(raw).strip()
+
+
+HISTORY_FILE = os.path.expanduser(
+    "~/.config/streamdeck-tiler/translator-history.json"
+)
+HISTORY_MAX = 20
+
+
+def load_history():
+    """Return the recent transcription entries (oldest first)."""
+    import json
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return []
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        return []
+    return [e for e in entries if isinstance(e, dict) and e.get("text")]
+
+
+def _save_history(entries):
+    import json
+    os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump({"entries": entries}, f, indent=2, ensure_ascii=False)
+
+
+def append_history(text, llm_mode="off", language="auto", wm_class=""):
+    """Add an entry; trim to HISTORY_MAX (oldest first)."""
+    if not text:
+        return
+    entries = load_history()
+    entries.append({
+        "ts": int(time.time()),
+        "text": text,
+        "llm_mode": llm_mode,
+        "language": language,
+        "wm_class": wm_class,
+    })
+    if len(entries) > HISTORY_MAX:
+        entries = entries[-HISTORY_MAX:]
+    _save_history(entries)
+
+
+def clear_history():
+    try:
+        os.unlink(HISTORY_FILE)
+    except FileNotFoundError:
+        pass
 
 
 def recording_timeout_seconds():

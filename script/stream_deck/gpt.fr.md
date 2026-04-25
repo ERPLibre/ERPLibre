@@ -71,6 +71,18 @@ Valeur `"auto"` (défaut) ou absente = auto-détection. Le réglage est
 appliqué via `-l` (whisper.cpp) ou `--language` (openai-whisper). Vosk
 ignore ce réglage car la langue dépend du modèle installé.
 
+### Historique
+
+Après chaque transcription réussie, le deck ajoute une entrée à un
+ring buffer dans
+`~/.config/streamdeck-tiler/translator-history.json` (20 dernières
+gardées). Dans `MODE_TRANSLATOR`, presse le bouton **HIST** (deck
+8-col seulement) pour entrer en mode historique: chaque touche
+montre un extrait tronqué; presse pour ré-émettre via la méthode OUT
+courante. Touche en haut-à-droite = `CLEAR` (supprime le fichier,
+sans confirmation). Payload: `text`, `ts` (secondes unix),
+`llm_mode`, `language`, `wm_class`.
+
 ### Auto-stop d'enregistrement
 
 Oublier de presser STOP laisse l'enregistrement tourner jusqu'à la
