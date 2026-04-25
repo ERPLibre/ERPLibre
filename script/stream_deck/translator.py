@@ -427,20 +427,52 @@ LLM_MODE_TRANSLATE = "translate"
 LLM_MODE_CHAT = "chat"
 LLM_MODES = [LLM_MODE_OFF, LLM_MODE_TRANSLATE, LLM_MODE_CHAT]
 
+# Default prompt templates. Each must contain {text}; the spoken text
+# is substituted in. Override by setting `translator_prompts` in
+# ~/.config/streamdeck-tiler/settings.json:
+#   {"translator_prompts": {"translate": "Translate to French: {text}"}}
+DEFAULT_PROMPTS = {
+    LLM_MODE_TRANSLATE: (
+        "Translate the following to English. Output only the "
+        "translation, no commentary.\n\n{text}"
+    ),
+    LLM_MODE_CHAT: "{text}",
+}
+
+
+def _load_prompt_overrides():
+    import json
+    settings_path = os.path.expanduser(
+        "~/.config/streamdeck-tiler/settings.json"
+    )
+    try:
+        with open(settings_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    custom = data.get("translator_prompts") or {}
+    return {k: v for k, v in custom.items() if isinstance(v, str)}
+
+
+def get_prompt_template(llm_mode):
+    """Return the active prompt template for a mode (override or default)."""
+    overrides = _load_prompt_overrides()
+    if llm_mode in overrides:
+        return overrides[llm_mode]
+    return DEFAULT_PROMPTS.get(llm_mode, "{text}")
+
 
 def llm_postprocess(text, llm_mode, backend):
     """Run the LLM with a mode-specific prompt and return its text."""
     if not text or llm_mode == LLM_MODE_OFF or backend is None:
         return text
-    if llm_mode == LLM_MODE_TRANSLATE:
-        prompt = (
-            "Translate the following to English. Output only the "
-            "translation, no commentary.\n\n" + text
-        )
-    elif llm_mode == LLM_MODE_CHAT:
-        prompt = text
-    else:
+    if llm_mode not in DEFAULT_PROMPTS:
         return text
+    template = get_prompt_template(llm_mode)
+    if "{text}" in template:
+        prompt = template.replace("{text}", text)
+    else:
+        prompt = f"{template}\n\n{text}"
     out = backend.chat(prompt)
     return out or text
 

@@ -323,8 +323,23 @@ The `LLM` button cycles through three modes:
 | Mode | What it does |
 |------|--------------|
 | `OFF` | STT text is sent straight to the output method. |
-| `TRSL` | STT text is wrapped in `Translate the following to English. Output only the translation, no commentary.\n\n<text>` and the LLM response is output. |
-| `CHAT` | STT text is sent to the LLM as a raw prompt (no system message), and the response is output. |
+| `TRSL` | STT text is wrapped in the `translate` prompt template and the LLM response is output. |
+| `CHAT` | STT text is wrapped in the `chat` prompt template and the response is output. |
+
+The default templates live in `translator.DEFAULT_PROMPTS`. Override
+them per mode in `~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_prompts": {
+    "translate": "Translate to French. Output only the French translation:\n\n{text}",
+    "chat": "You are a concise assistant. {text}"
+  }
+}
+```
+
+The `{text}` placeholder is substituted with the STT result. If
+`{text}` is absent the STT result is appended after a blank line.
 
 If the LLM call fails, the original STT text is used as a fallback so
 no audio capture is lost.
@@ -341,8 +356,23 @@ Le bouton `LLM` fait défiler trois modes:
 | Mode | Ce qu'il fait |
 |------|---------------|
 | `OFF` | Le texte STT est envoyé directement à la méthode de sortie. |
-| `TRSL` | Le texte STT est emballé dans `Translate the following to English. Output only the translation, no commentary.\n\n<texte>` et la réponse du LLM est sortie. |
-| `CHAT` | Le texte STT est envoyé au LLM comme prompt brut (sans message système), et la réponse est sortie. |
+| `TRSL` | Le texte STT est emballé dans le template de prompt `translate` et la réponse du LLM est sortie. |
+| `CHAT` | Le texte STT est emballé dans le template de prompt `chat` et la réponse est sortie. |
+
+Les templates par défaut sont dans `translator.DEFAULT_PROMPTS`.
+Surcharger par mode dans `~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_prompts": {
+    "translate": "Translate to French. Output only the French translation:\n\n{text}",
+    "chat": "You are a concise assistant. {text}"
+  }
+}
+```
+
+Le placeholder `{text}` est remplacé par le résultat STT. Si `{text}`
+est absent, le résultat STT est ajouté après une ligne vide.
 
 Si l'appel LLM échoue, le texte STT original est utilisé comme
 fallback pour qu'aucune capture audio ne soit perdue.

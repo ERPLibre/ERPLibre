@@ -177,8 +177,23 @@ Le bouton `LLM` fait défiler trois modes:
 | Mode | Ce qu'il fait |
 |------|---------------|
 | `OFF` | Le texte STT est envoyé directement à la méthode de sortie. |
-| `TRSL` | Le texte STT est emballé dans `Translate the following to English. Output only the translation, no commentary.\n\n<texte>` et la réponse du LLM est sortie. |
-| `CHAT` | Le texte STT est envoyé au LLM comme prompt brut (sans message système), et la réponse est sortie. |
+| `TRSL` | Le texte STT est emballé dans le template de prompt `translate` et la réponse du LLM est sortie. |
+| `CHAT` | Le texte STT est emballé dans le template de prompt `chat` et la réponse est sortie. |
+
+Les templates par défaut sont dans `translator.DEFAULT_PROMPTS`.
+Surcharger par mode dans `~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_prompts": {
+    "translate": "Translate to French. Output only the French translation:\n\n{text}",
+    "chat": "You are a concise assistant. {text}"
+  }
+}
+```
+
+Le placeholder `{text}` est remplacé par le résultat STT. Si `{text}`
+est absent, le résultat STT est ajouté après une ligne vide.
 
 Si l'appel LLM échoue, le texte STT original est utilisé comme
 fallback pour qu'aucune capture audio ne soit perdue.

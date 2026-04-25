@@ -77,6 +77,14 @@ def main():
     )
     print(f"  i Recommended    {translator.recommend_model(hw)}")
 
+    overrides = translator._load_prompt_overrides()
+    for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):
+        active = translator.get_prompt_template(mode)
+        is_override = mode in overrides
+        kind = "custom" if is_override else "default"
+        snippet = active if len(active) <= 60 else active[:57] + "…"
+        print(f"  i Prompt {mode:9s} ({kind}): {snippet}")
+
     summary = []
     if not stt:
         summary.append("install an STT backend")
