@@ -169,6 +169,76 @@ def hold_animation(deck, key, stop_event):
             time.sleep(0.12)
 
 
+def _lerp_color(a, b, t):
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
+def explosion_animation(deck, key, duration=1.0):
+    """Play a 1-second bomb explosion on `key`. Final frame is dark red
+    with a star, matching the post-game-over render so the key stays
+    visually coherent once the animation ends."""
+    fmt = deck.key_image_format()
+    w, h = fmt["size"]
+    cx, cy = w / 2, h / 2
+    max_r = math.hypot(w, h) / 2
+    frames = 12
+    step = duration / frames
+    for i in range(frames):
+        t = i / (frames - 1)
+        if t < 0.15:
+            bg = _lerp_color((255, 240, 180), (255, 255, 255), t / 0.15)
+        elif t < 0.35:
+            bg = _lerp_color((255, 255, 255), (255, 200, 0), (t - 0.15) / 0.20)
+        elif t < 0.60:
+            bg = _lerp_color((255, 200, 0), (255, 80, 0), (t - 0.35) / 0.25)
+        elif t < 0.85:
+            bg = _lerp_color((255, 80, 0), (200, 0, 0), (t - 0.60) / 0.25)
+        else:
+            bg = _lerp_color((200, 0, 0), (140, 0, 0), (t - 0.85) / 0.15)
+        img = Image.new("RGB", (w, h), bg)
+        draw = ImageDraw.Draw(img)
+        if t < 0.55:
+            r = max_r * (t / 0.55)
+            stroke = max(2, int(w * 0.08 * (1 - t / 0.55)))
+            ring = _lerp_color((255, 255, 255), (255, 220, 0), t / 0.55)
+            draw.ellipse(
+                (cx - r, cy - r, cx + r, cy + r),
+                outline=ring, width=max(1, stroke),
+            )
+        if 0.10 < t < 0.75:
+            ray_len = max_r * (0.4 + t * 0.7)
+            ray_stroke = max(2, int(w * 0.07 * (1 - (t - 0.10) / 0.65)))
+            ray_color = _lerp_color((255, 255, 200), (255, 100, 0), t)
+            spin = t * 90
+            for ang_deg in range(0, 360, 45):
+                ang = math.radians(ang_deg + spin)
+                x2 = cx + ray_len * math.cos(ang)
+                y2 = cy + ray_len * math.sin(ang)
+                draw.line(
+                    (cx, cy, x2, y2),
+                    fill=ray_color, width=max(1, ray_stroke),
+                )
+        if t > 0.55:
+            text = "*"
+            size = int(28 - (t - 0.55) * 10)
+            try:
+                font = ImageFont.load_default(size=max(14, size))
+            except TypeError:
+                font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), text, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            tx, ty = (w - tw) // 2, (h - th) // 2
+            draw.text((tx + 1, ty + 1), text, fill=(0, 0, 0), font=font)
+            draw.text((tx, ty), text, fill=(255, 255, 255), font=font)
+        native = PILHelper.to_native_key_format(deck, img)
+        try:
+            with deck:
+                deck.set_key_image(key, native)
+        except TransportError:
+            return
+        time.sleep(step)
+
+
 # ──────────────────────────────────────────────────────────────
 # SOLO (classic minesweeper)
 # ──────────────────────────────────────────────────────────────
@@ -259,6 +329,12 @@ class MinesweeperSolo:
             self.won = False
             self.games_played += 1
             self.revealed.update(self.mines)
+            hit_key = self.pos_to_key(col, row)
+            threading.Thread(
+                target=explosion_animation,
+                args=(self.deck, hit_key),
+                daemon=True,
+            ).start()
             return
         stack = [(col, row)]
         while stack:
@@ -521,6 +597,12 @@ class MinesweeperVS:
             self.clicked.add(pos)
             self.found_by[pos] = deck_index
             self.scores[deck_index] += 1
+            for d in self.decks:
+                threading.Thread(
+                    target=explosion_animation,
+                    args=(d, key),
+                    daemon=True,
+                ).start()
 
             # Check if all mines found
             if len(self.found_by) >= len(self.mines):
