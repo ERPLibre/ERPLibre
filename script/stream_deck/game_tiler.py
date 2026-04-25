@@ -379,6 +379,93 @@ def _wpctl_mute_toggle(target):
         return False
 
 
+_WPCTL_DEV_RE = re.compile(
+    r"^\s*│\s+(\*\s+)?(\d+)\.\s+(.+?)\s+\[vol:"
+)
+
+
+def _wpctl_list_devices(kind):
+    """Parse `wpctl status` for Audio Sinks or Sources.
+
+    kind = 'Sinks' | 'Sources'. Returns list of
+    {id: int, name: str, default: bool}, ordered as printed.
+    """
+    try:
+        r = subprocess.run(
+            ["wpctl", "status"],
+            capture_output=True, text=True, timeout=2,
+        )
+    except Exception:
+        return []
+    if r.returncode != 0:
+        return []
+    out = []
+    in_audio = False
+    in_section = False
+    for line in r.stdout.splitlines():
+        if line.startswith("Audio"):
+            in_audio = True
+            continue
+        if line.startswith("Video"):
+            in_audio = False
+            continue
+        if not in_audio:
+            continue
+        if f"├─ {kind}:" in line:
+            in_section = True
+            continue
+        if line.startswith(" ├─") or line.startswith(" └─"):
+            in_section = False
+            continue
+        if in_section:
+            m = _WPCTL_DEV_RE.match(line)
+            if m:
+                marker, id_str, name = m.groups()
+                out.append({
+                    "id": int(id_str),
+                    "name": name.strip(),
+                    "default": bool(marker),
+                })
+    return out
+
+
+def _wpctl_set_default(device_id):
+    try:
+        r = subprocess.run(
+            ["wpctl", "set-default", str(device_id)],
+            capture_output=True, text=True, timeout=2,
+        )
+        return r.returncode == 0
+    except Exception as e:
+        print(f"wpctl set-default error: {e}")
+        return False
+
+
+def _wpctl_cycle_default(kind):
+    """Switch to the next device in the section. Returns new active dict."""
+    devices = _wpctl_list_devices(kind)
+    if not devices:
+        return None
+    idx = next(
+        (i for i, d in enumerate(devices) if d["default"]),
+        0,
+    )
+    nxt = devices[(idx + 1) % len(devices)]
+    if _wpctl_set_default(nxt["id"]):
+        return nxt
+    return None
+
+
+def _wpctl_default_short(kind):
+    """Short label for the currently default device (last word, ≤ 6 chars)."""
+    for d in _wpctl_list_devices(kind):
+        if d["default"]:
+            words = d["name"].split()
+            tail = words[-1] if words else d["name"]
+            return tail[:6]
+    return ""
+
+
 def _layouts_load():
     try:
         with open(LAYOUT_FILE, encoding="utf-8") as f:
@@ -980,11 +1067,12 @@ class Tiler:
         }
 
     def _compute_sound_buttons(self):
-        """Layout for sound mode. Requires >= 4 cols and >= 3 rows."""
+        """Layout for sound mode. Requires >= 4 cols and >= 3 rows.
+        Device picker keys (SINK / SRC) appear when row 0 has slack."""
         if self.cols < 4 or self.rows < 3:
             self.sound_keys = None
             return
-        self.sound_keys = {
+        keys = {
             "back": 0,
             "vol_down": self.cols + 1,
             "vol_up": self.cols + 2,
@@ -993,6 +1081,10 @@ class Tiler:
             "mic_up": 2 * self.cols + 2,
             "mic_mute": 2 * self.cols + 3,
         }
+        if self.cols >= 4:
+            keys["sink"] = 1     # row 0, col 1 — cycles default output
+            keys["source"] = 2   # row 0, col 2 — cycles default input
+        self.sound_keys = keys
 
     # ---------- Key handling ----------
 
@@ -1448,6 +1540,10 @@ class Tiler:
             _wpctl_volume_delta(WPCTL_SOURCE, VOL_STEP_PCT)
         elif key == sk["mic_mute"]:
             _wpctl_mute_toggle(WPCTL_SOURCE)
+        elif key == sk.get("sink"):
+            _wpctl_cycle_default("Sinks")
+        elif key == sk.get("source"):
+            _wpctl_cycle_default("Sources")
         else:
             return
         self.render()
@@ -1815,6 +1911,12 @@ class Tiler:
             sk["mic_down"]: (COLOR_MIC, f"MIC\n-{VOL_STEP_PCT}%"),
             sk["mic_up"]: (COLOR_MIC, f"MIC\n+{VOL_STEP_PCT}%"),
         }
+        if "sink" in sk:
+            short = _wpctl_default_short("Sinks") or "?"
+            labels[sk["sink"]] = (COLOR_SOUND_TITLE, f"SINK\n{short}")
+        if "source" in sk:
+            short = _wpctl_default_short("Sources") or "?"
+            labels[sk["source"]] = (COLOR_MIC, f"SRC\n{short}")
         if out_muted:
             labels[sk["out_mute"]] = (COLOR_MUTE_ON, "OUT\nMUTE")
         else:

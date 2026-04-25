@@ -85,6 +85,15 @@ current OUT method. Top-right key = `CLEAR` (deletes the file, no
 confirm). Entry payload: `text`, `ts` (unix seconds), `llm_mode`,
 `language`, `wm_class`.
 
+### Sound device picker
+
+`MODE_SOUND` exposes two extra keys when the deck has at least 4
+columns: SINK (key 1) cycles the default audio output, SRC (key 2)
+cycles the default audio input. Each button reads `wpctl status`,
+advances to the next listed device, and calls `wpctl set-default
+<id>`. Labels show the last word of the active device name. Only
+PipeWire / wpctl is supported.
+
 ### Recording auto-stop
 
 Forgetting to press STOP leaves a recording running until the next
