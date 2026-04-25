@@ -19,6 +19,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import webbrowser
 
 PORT = 8042
@@ -84,6 +85,15 @@ def _kill_current_game():
         _current_game_proc = None
 
 
+def _exec_self():
+    """Replace the current process with a fresh interpreter running
+    the same script. Picks up edits without needing an external watcher."""
+    try:
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        print(f"execv failed: {e}", file=sys.stderr)
+
+
 class GameHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=SCRIPT_DIR, **kwargs)
@@ -112,6 +122,9 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
             return
         if self.path == "/api/saves/clear-all":
             self._clear_all_saves()
+            return
+        if self.path == "/api/restart":
+            self._restart_self()
             return
         super().do_GET()
 
@@ -208,6 +221,17 @@ class GameHandler(http.server.SimpleHTTPRequestHandler):
         """Stop the current game."""
         _kill_current_game()
         self._json_response({"ok": True})
+
+    def _restart_self(self):
+        """Reply OK then re-exec this server so source edits take effect."""
+        self._json_response({"ok": True})
+        try:
+            self.wfile.flush()
+        except Exception:
+            pass
+        _kill_current_game()
+        # Defer execv so the response actually leaves the socket.
+        threading.Timer(0.3, _exec_self).start()
 
     def _launch_game(self, game_id):
         global _current_game_proc
