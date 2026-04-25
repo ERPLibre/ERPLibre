@@ -131,6 +131,7 @@ make streamdeck_translator_install_ollama     # ollama + hardware-recommended mo
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + input group
 make streamdeck_translator_install_vosk_fr    # vosk + French model
 make streamdeck_translator_test               # 5s recording + every STT backend
+make streamdeck_translator_unittest            # pure unit tests (no audio / network)
 ```
 
 `streamdeck_translator_test` records a short clip and runs the active
@@ -271,6 +272,32 @@ them per mode in `~/.config/streamdeck-tiler/settings.json`:
 
 The `{text}` placeholder is substituted with the STT result. If
 `{text}` is absent the STT result is appended after a blank line.
+
+#### Per-app prompt presets
+
+Layer per-application prompts on top of the global override. The
+extension exposes `GetFocusedWindowClass` and the translator looks
+up the bucket matching the active window's wm_class:
+
+```json
+{
+  "translator_prompts_per_app": {
+    "Slack": {
+      "translate": "Translate to English, keep it casual:\n\n{text}",
+      "chat": "Reply in one short sentence: {text}"
+    },
+    "Code": {
+      "chat": "Format as a code comment, no prose:\n\n{text}"
+    }
+  }
+}
+```
+
+Resolution order: per-app preset → global `translator_prompts` → locale
+default. Run `gnome-extensions list` to see your wm_class candidates,
+or check `gdbus call ...GetFocusedWindowClass` directly. Reload the
+extension once after upgrading so `GetFocusedWindowClass` is
+registered (DEV RELOAD on the deck or re-login).
 
 If the LLM call fails, the original STT text is used as a fallback so
 no audio capture is lost.

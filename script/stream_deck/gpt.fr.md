@@ -131,6 +131,7 @@ make streamdeck_translator_install_ollama     # ollama + modèle recommandé sel
 make streamdeck_translator_install_typing     # wl-clipboard + ydotool + groupe input
 make streamdeck_translator_install_vosk_fr    # vosk + modèle français
 make streamdeck_translator_test               # enregistrement 5s + chaque backend STT
+make streamdeck_translator_unittest            # tests unitaires purs (sans audio / réseau)
 ```
 
 `streamdeck_translator_test` enregistre un court clip et exécute les
@@ -275,6 +276,32 @@ autre cas retombe sur l'anglais. Surcharger par mode dans
 
 Le placeholder `{text}` est remplacé par le résultat STT. Si `{text}`
 est absent, le résultat STT est ajouté après une ligne vide.
+
+#### Prompts par application
+
+Superposer des prompts par application sur l'override global.
+L'extension expose `GetFocusedWindowClass` et le translator cherche
+le bucket correspondant à la wm_class de la fenêtre active:
+
+```json
+{
+  "translator_prompts_per_app": {
+    "Slack": {
+      "translate": "Traduire en anglais, ton informel:\n\n{text}",
+      "chat": "Répondre en une phrase courte: {text}"
+    },
+    "Code": {
+      "chat": "Formater comme un commentaire de code:\n\n{text}"
+    }
+  }
+}
+```
+
+Ordre de résolution: preset par app → `translator_prompts` global →
+défaut locale. Trouve les candidats wm_class via
+`gdbus call ...GetFocusedWindowClass`. Recharge l'extension après
+mise à jour pour enregistrer `GetFocusedWindowClass` (DEV RELOAD sur
+le deck ou re-login).
 
 Si l'appel LLM échoue, le texte STT original est utilisé comme
 fallback pour qu'aucune capture audio ne soit perdue.

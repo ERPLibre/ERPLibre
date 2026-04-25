@@ -146,6 +146,11 @@ streamdeck_translator_doctor:
 streamdeck_translator_test:
 	@./script/stream_deck/translator_test.py
 
+.PHONY: streamdeck_translator_unittest
+streamdeck_translator_unittest:
+	@python3 -m unittest \
+		discover -s ./script/stream_deck -p "test_translator.py" -v
+
 .PHONY: streamdeck_translator_install_whisper
 streamdeck_translator_install_whisper:
 	@if [ ! -d "$(WHISPER_CPP_DIR)" ]; then \

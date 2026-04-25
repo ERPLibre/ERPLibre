@@ -550,8 +550,61 @@ def recording_timeout_seconds():
         return 0
 
 
-def get_prompt_template(llm_mode):
-    """Return the active prompt template for a mode (override or default)."""
+def focused_window_class():
+    """Query the GNOME extension for the focused window's wm_class.
+
+    Returns empty string if the extension is unreachable, the call
+    fails, or no normal window is focused.
+    """
+    try:
+        r = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", "org.gnome.Shell",
+                "--object-path",
+                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "--method",
+                "org.gnome.Shell.Extensions.StreamDeckTiler"
+                ".GetFocusedWindowClass",
+            ],
+            capture_output=True, text=True, timeout=2,
+        )
+        if r.returncode != 0:
+            return ""
+        # Output: ('Firefox',)
+        out = r.stdout.strip()
+        if out.startswith("('") and out.endswith("',)"):
+            return out[2:-3]
+        return ""
+    except Exception:
+        return ""
+
+
+def _per_app_prompt_overrides(wm_class):
+    """Return the override dict for a given wm_class, or {} if none."""
+    if not wm_class:
+        return {}
+    presets = _load_settings().get("translator_prompts_per_app") or {}
+    if not isinstance(presets, dict):
+        return {}
+    bucket = presets.get(wm_class) or {}
+    if not isinstance(bucket, dict):
+        return {}
+    return {k: v for k, v in bucket.items() if isinstance(v, str)}
+
+
+def get_prompt_template(llm_mode, wm_class=None):
+    """Return the active prompt template for a mode.
+
+    Resolution order: per-app override (matching wm_class) > global
+    override > locale-aware default. Pass wm_class=None to skip
+    per-app lookup; pass a string to apply it.
+    """
+    if wm_class is None:
+        wm_class = focused_window_class()
+    per_app = _per_app_prompt_overrides(wm_class)
+    if llm_mode in per_app:
+        return per_app[llm_mode]
     overrides = _load_prompt_overrides()
     if llm_mode in overrides:
         return overrides[llm_mode]
@@ -559,12 +612,16 @@ def get_prompt_template(llm_mode):
 
 
 def llm_postprocess(text, llm_mode, backend):
-    """Run the LLM with a mode-specific prompt and return its text."""
+    """Run the LLM with a mode-specific prompt and return its text.
+
+    Uses the focused window's wm_class to pick a per-app preset when
+    the user has configured one in translator_prompts_per_app.
+    """
     if not text or llm_mode == LLM_MODE_OFF or backend is None:
         return text
     if llm_mode not in _default_prompts():
         return text
-    template = get_prompt_template(llm_mode)
+    template = get_prompt_template(llm_mode, wm_class=focused_window_class())
     if "{text}" in template:
         prompt = template.replace("{text}", text)
     else:

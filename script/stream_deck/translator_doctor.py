@@ -98,11 +98,16 @@ def main():
 
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):
-        active = translator.get_prompt_template(mode)
+        active = translator.get_prompt_template(mode, wm_class="")
         is_override = mode in overrides
         kind = "custom" if is_override else "default"
         snippet = active if len(active) <= 60 else active[:57] + "…"
         print(f"  i Prompt {mode:9s} ({kind}): {snippet}")
+    presets = translator._load_settings().get(
+        "translator_prompts_per_app") or {}
+    if isinstance(presets, dict) and presets:
+        apps = ", ".join(sorted(presets.keys()))
+        print(f"  i Per-app prompts: {apps}")
 
     summary = []
     if not stt:

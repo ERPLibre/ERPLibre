@@ -301,6 +301,9 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="json"/>
       <arg type="i" direction="out" name="matched"/>
     </method>
+    <method name="GetFocusedWindowClass">
+      <arg type="s" direction="out" name="wmClass"/>
+    </method>
   </interface>
 </node>`;
 
@@ -642,6 +645,24 @@ export default class StreamDeckTilerExtension extends Extension {
         }
 
         return matchedPairs.length;
+    }
+
+    /**
+     * Return the wm_class of the currently focused window, or empty
+     * string if no normal window is focused. Used by the translator
+     * to look up per-app prompt presets.
+     */
+    GetFocusedWindowClass() {
+        try {
+            const win = global.display.focus_window;
+            if (!win) return '';
+            return win.get_wm_class() || '';
+        } catch (e) {
+            console.log(
+                `[StreamDeckTiler] GetFocusedWindowClass failed: ${e.message}`
+            );
+            return '';
+        }
     }
 
     /**
