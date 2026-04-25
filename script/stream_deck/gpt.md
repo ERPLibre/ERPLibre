@@ -56,6 +56,23 @@ fewer than 4 columns or fewer than 2 rows show
 Recording produces a 16 kHz mono WAV file in `/tmp/sttrec_*`. The file
 is unlinked after transcription.
 
+### STT language
+
+Whisper auto-detects the spoken language but is biased toward English.
+Force a specific language via its ISO 639-1 code in
+`~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_stt_language": "fr"
+}
+```
+
+Value `"auto"` (default) or absent = auto-detect. The setting is
+applied through `-l` for whisper.cpp and `--language` for
+openai-whisper. Vosk ignores it because language is baked into the
+installed model.
+
 ### STT backends
 
 `translator.detect_stt_backends()` returns the available backends in a

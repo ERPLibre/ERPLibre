@@ -77,6 +77,9 @@ def main():
     )
     print(f"  i Recommended    {translator.recommend_model(hw)}")
 
+    lang = translator.stt_language()
+    print(f"  i STT language   {lang}")
+
     overrides = translator._load_prompt_overrides()
     for mode in (translator.LLM_MODE_TRANSLATE, translator.LLM_MODE_CHAT):
         active = translator.get_prompt_template(mode)

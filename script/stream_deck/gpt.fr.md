@@ -56,6 +56,21 @@ decks avec moins de 4 colonnes ou moins de 2 rangées affichent
 L'enregistrement produit un fichier WAV mono 16 kHz dans
 `/tmp/sttrec_*`. Le fichier est supprimé après la transcription.
 
+### Langue STT
+
+Whisper auto-détecte la langue mais a un biais anglais. Forcer une
+langue par ISO 639-1 dans `~/.config/streamdeck-tiler/settings.json`:
+
+```json
+{
+  "translator_stt_language": "fr"
+}
+```
+
+Valeur `"auto"` (défaut) ou absente = auto-détection. Le réglage est
+appliqué via `-l` (whisper.cpp) ou `--language` (openai-whisper). Vosk
+ignore ce réglage car la langue dépend du modèle installé.
+
 ### Backends STT
 
 `translator.detect_stt_backends()` retourne les backends disponibles

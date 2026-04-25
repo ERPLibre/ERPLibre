@@ -130,15 +130,18 @@ class WhisperCppBackend(STTBackend):
 
     def transcribe(self, wav_path):
         try:
+            cmd = [
+                self.binary,
+                "-m", self.model,
+                "-f", wav_path,
+                "-nt", "-np",
+                "--output-txt",
+            ]
+            lang = stt_language()
+            if lang and lang != "auto":
+                cmd.extend(["-l", lang])
             r = subprocess.run(
-                [
-                    self.binary,
-                    "-m", self.model,
-                    "-f", wav_path,
-                    "-nt", "-np",
-                    "--output-txt",
-                ],
-                capture_output=True, text=True, timeout=120,
+                cmd, capture_output=True, text=True, timeout=120,
             )
             # whisper.cpp writes to <wav>.txt with --output-txt
             txt_path = wav_path + ".txt"
@@ -161,15 +164,18 @@ class OpenAIWhisperBackend(STTBackend):
     def transcribe(self, wav_path):
         try:
             tmpdir = tempfile.mkdtemp(prefix="sttout_")
+            cmd = [
+                self.binary, wav_path,
+                "--model", "tiny",
+                "--output_format", "txt",
+                "--output_dir", tmpdir,
+                "--fp16", "False",
+            ]
+            lang = stt_language()
+            if lang and lang != "auto":
+                cmd.extend(["--language", lang])
             r = subprocess.run(
-                [
-                    self.binary, wav_path,
-                    "--model", "tiny",
-                    "--output_format", "txt",
-                    "--output_dir", tmpdir,
-                    "--fp16", "False",
-                ],
-                capture_output=True, text=True, timeout=180,
+                cmd, capture_output=True, text=True, timeout=180,
             )
             base = os.path.splitext(os.path.basename(wav_path))[0]
             out_path = os.path.join(tmpdir, base + ".txt")
@@ -440,18 +446,27 @@ DEFAULT_PROMPTS = {
 }
 
 
-def _load_prompt_overrides():
+def _load_settings():
     import json
     settings_path = os.path.expanduser(
         "~/.config/streamdeck-tiler/settings.json"
     )
     try:
         with open(settings_path, encoding="utf-8") as f:
-            data = json.load(f)
+            return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return {}
-    custom = data.get("translator_prompts") or {}
+
+
+def _load_prompt_overrides():
+    custom = _load_settings().get("translator_prompts") or {}
     return {k: v for k, v in custom.items() if isinstance(v, str)}
+
+
+def stt_language():
+    """ISO 639-1 STT language hint, or 'auto' for whisper auto-detect."""
+    raw = _load_settings().get("translator_stt_language") or "auto"
+    return str(raw).strip().lower() or "auto"
 
 
 def get_prompt_template(llm_mode):
