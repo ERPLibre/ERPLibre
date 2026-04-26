@@ -43,6 +43,7 @@ export let indicatorDescriptor = {
 };
 
 try {
+    const {default: Gio} = await import('gi://Gio');
     const {default: GObject} = await import('gi://GObject');
     // GLib is only used by helpers we no longer call here; keep the import
     // commented to document the intent without forcing the resolve cost.
@@ -67,7 +68,8 @@ try {
 
     PencilIndicator = GObject.registerClass(
         class PencilIndicator extends PanelMenu.Button {
-            _init({extension, openPrefs} = {}) {
+            _init({extension, openPrefs,
+                iconName = 'document-edit-symbolic'} = {}) {
                 super._init(0.0, 'Stream Deck Pencil');
                 this._extension = extension;
                 this._openPrefs = openPrefs;
@@ -75,10 +77,14 @@ try {
                     ? extension.getSettings()
                     : null;
 
-                this.add_child(new St.Icon({
-                    icon_name: 'document-edit-symbolic',
-                    style_class: 'system-status-icon',
-                }));
+                const _icon = iconName.startsWith('/')
+                    ? new St.Icon({
+                        gicon: Gio.icon_new_for_string(iconName),
+                        style_class: 'system-status-icon'})
+                    : new St.Icon({
+                        icon_name: iconName,
+                        style_class: 'system-status-icon'});
+                this.add_child(_icon);
 
                 if (this._settings) {
                     this._pathsSig = this._settings.connect(

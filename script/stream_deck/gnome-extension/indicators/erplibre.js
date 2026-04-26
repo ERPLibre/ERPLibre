@@ -1,3 +1,4 @@
+import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
@@ -20,16 +21,20 @@ function _notify(title, body) {
 
 export const ErpLibreIndicator = GObject.registerClass(
 class ErpLibreIndicator extends PanelMenu.Button {
-    _init({extension, openPrefs}) {
+    _init({extension, openPrefs, iconName = 'network-server-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck ERPLibre');
         this._extension = extension;
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._localCache = [];
-        this.add_child(new St.Icon({
-            icon_name: 'network-server-symbolic',
-            style_class: 'system-status-icon',
-        }));
+        const _icon = iconName.startsWith('/')
+            ? new St.Icon({
+                gicon: Gio.icon_new_for_string(iconName),
+                style_class: 'system-status-icon'})
+            : new St.Icon({
+                icon_name: iconName,
+                style_class: 'system-status-icon'});
+        this.add_child(_icon);
         this._sigInstances = this._settings.connect('changed::instances',
             () => this._rebuildMenu());
         this._sigPattern = this._settings.connect(

@@ -14,6 +14,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {IndicatorRegistry} from './lib/registry.js';
 import {runMigrationGjs} from './lib/settings.js';
+import {parseObject} from './lib/settings.js';
 import {setGettext} from './lib/i18n.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
@@ -110,6 +111,10 @@ export default class StreamDeckTilerExtension extends Extension {
             () => this._reorderIndicators());
         this.#signalIds.push(orderSig);
 
+        const ovSig = this.#settings.connect('changed::icon-overrides',
+            () => this._reorderIndicators());
+        this.#signalIds.push(ovSig);
+
         console.log('[StreamDeckTiler] enabled');
     }
 
@@ -160,9 +165,12 @@ export default class StreamDeckTilerExtension extends Extension {
         const desc = this.#registry.get(id);
         if (!desc) return;
         try {
+            const overrides = parseObject(
+                this.#settings.get_string('icon-overrides'));
             const ind = desc.ctor({
                 openPrefs: () => this.openPreferences(),
                 extension: this,
+                iconName: overrides[id] || undefined,
             });
             const role = `${this.uuid}-${id}`;
             Main.panel.addToStatusArea(role, ind);

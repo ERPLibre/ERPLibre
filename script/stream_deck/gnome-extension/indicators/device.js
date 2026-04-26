@@ -1,3 +1,4 @@
+import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
@@ -17,16 +18,20 @@ const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
 
 export const DeviceIndicator = GObject.registerClass(
 class DeviceIndicator extends PanelMenu.Button {
-    _init({extension, openPrefs}) {
+    _init({extension, openPrefs, iconName = 'input-tablet-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck Device');
         this._extension = extension;
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._cache = [];
-        this.add_child(new St.Icon({
-            icon_name: 'input-tablet-symbolic',
-            style_class: 'system-status-icon',
-        }));
+        const _icon = iconName.startsWith('/')
+            ? new St.Icon({
+                gicon: Gio.icon_new_for_string(iconName),
+                style_class: 'system-status-icon'})
+            : new St.Icon({
+                icon_name: iconName,
+                style_class: 'system-status-icon'});
+        this.add_child(_icon);
         this._rescanThenRebuild();
     }
 

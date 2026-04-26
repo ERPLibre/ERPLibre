@@ -25,10 +25,14 @@ class ControllerIndicator extends PanelMenu.Button {
     _init({iconName = 'input-gaming-symbolic', openPrefs} = {}) {
         super._init(0.0, 'Stream Deck Controller');
         this._openPrefs = openPrefs;
-        this.add_child(new St.Icon({
-            icon_name: iconName,
-            style_class: 'system-status-icon',
-        }));
+        const _icon = iconName.startsWith('/')
+            ? new St.Icon({
+                gicon: Gio.icon_new_for_string(iconName),
+                style_class: 'system-status-icon'})
+            : new St.Icon({
+                icon_name: iconName,
+                style_class: 'system-status-icon'});
+        this.add_child(_icon);
         this._buildMenu();
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen) this._refreshGames();

@@ -1,3 +1,4 @@
+import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -15,15 +16,19 @@ function _notify(title, body) {
 
 export const FilmIndicator = GObject.registerClass(
 class FilmIndicator extends PanelMenu.Button {
-    _init({extension, openPrefs}) {
+    _init({extension, openPrefs, iconName = 'video-x-generic-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck Film');
         this._extension = extension;
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
-        this.add_child(new St.Icon({
-            icon_name: 'video-x-generic-symbolic',
-            style_class: 'system-status-icon',
-        }));
+        const _icon = iconName.startsWith('/')
+            ? new St.Icon({
+                gicon: Gio.icon_new_for_string(iconName),
+                style_class: 'system-status-icon'})
+            : new St.Icon({
+                icon_name: iconName,
+                style_class: 'system-status-icon'});
+        this.add_child(_icon);
         this._sig = this._settings.connect('changed::films',
             () => this._rebuildMenu());
         this._rebuildMenu();

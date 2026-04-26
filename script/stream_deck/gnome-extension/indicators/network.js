@@ -18,7 +18,7 @@ function _notify(title, body) {
 
 export const NetworkIndicator = GObject.registerClass(
 class NetworkIndicator extends PanelMenu.Button {
-    _init({extension, openPrefs}) {
+    _init({extension, openPrefs, iconName = 'network-wired-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck Network');
         this._extension = extension;
         this._openPrefs = openPrefs;
@@ -26,10 +26,14 @@ class NetworkIndicator extends PanelMenu.Button {
         this._scanning = false;
         this._cancellable = null;
         this._scanResult = {cidr: null, hosts: [], lastScan: null};
-        this.add_child(new St.Icon({
-            icon_name: 'network-wired-symbolic',
-            style_class: 'system-status-icon',
-        }));
+        const _icon = iconName.startsWith('/')
+            ? new St.Icon({
+                gicon: Gio.icon_new_for_string(iconName),
+                style_class: 'system-status-icon'})
+            : new St.Icon({
+                icon_name: iconName,
+                style_class: 'system-status-icon'});
+        this.add_child(_icon);
         this._sigUser = this._settings.connect(
             'changed::network-ssh-user', () => this._rebuildMenu());
         this._sigCfg = this._settings.connect(

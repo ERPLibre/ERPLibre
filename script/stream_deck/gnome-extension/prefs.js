@@ -45,6 +45,53 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildErpLibrePage(settings));
         window.add(this._buildNetworkPage(settings));
         window.add(this._buildDevicePage(settings));
+        window.add(this._buildThemingPage(settings));
+    }
+
+    _buildThemingPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Theming', icon_name: 'preferences-color-symbolic',
+        });
+        const group = new Adw.PreferencesGroup({title: 'Icon overrides'});
+        page.add(group);
+
+        const indicators = [
+            ['controller', 'input-gaming-symbolic'],
+            ['pencil',     'document-edit-symbolic'],
+            ['film',       'video-x-generic-symbolic'],
+            ['erplibre',   'network-server-symbolic'],
+            ['network',    'network-wired-symbolic'],
+            ['device',     'input-tablet-symbolic'],
+        ];
+
+        for (const [id, defaultIcon] of indicators) {
+            const row = new Adw.EntryRow({
+                title: id,
+                text: this._currentOverride(settings, id) || defaultIcon,
+            });
+            row.connect('changed', () => this._setOverride(settings, id,
+                row.get_text()));
+            group.add(row);
+        }
+        return page;
+    }
+
+    _currentOverride(settings, id) {
+        try {
+            const obj = JSON.parse(
+                settings.get_string('icon-overrides') || '{}');
+            return obj[id] || '';
+        } catch (_e) { return ''; }
+    }
+
+    _setOverride(settings, id, value) {
+        let obj = {};
+        try {
+            obj = JSON.parse(settings.get_string('icon-overrides') || '{}');
+        } catch (_e) {}
+        if (value && value.trim() !== '') obj[id] = value.trim();
+        else delete obj[id];
+        settings.set_string('icon-overrides', JSON.stringify(obj));
     }
 
     _buildDevicePage(settings) {
