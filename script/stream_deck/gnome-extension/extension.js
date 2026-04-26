@@ -16,6 +16,8 @@ import {IndicatorRegistry} from './lib/registry.js';
 import {runMigrationGjs} from './lib/settings.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
+import {indicatorDescriptor as pencilDescriptor}
+    from './indicators/pencil.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
 const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
@@ -84,6 +86,7 @@ export default class StreamDeckTilerExtension extends Extension {
 
         this.#registry = new IndicatorRegistry();
         this.#registry.register(controllerDescriptor);
+        this.#registry.register(pencilDescriptor);
         // Future indicators register themselves here via subsequent plans.
 
         this._buildIndicators();
