@@ -1,0 +1,136 @@
+import GObject from 'gi://GObject';
+import GLib from 'gi://GLib';
+import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {detectStreamDecksGjs} from '../lib/usb.js';
+import {spawnDetached} from '../lib/spawn.js';
+
+function _notify(title, body) {
+    try { Main.notify(title, body); } catch (_e) {}
+}
+
+const PIDFILE = `${GLib.get_user_cache_dir()}/streamdeck-tiler/controller.pid`;
+const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
+
+export const DeviceIndicator = GObject.registerClass(
+class DeviceIndicator extends PanelMenu.Button {
+    _init({extension, openPrefs}) {
+        super._init(0.0, 'Stream Deck Device');
+        this._extension = extension;
+        this._openPrefs = openPrefs;
+        this._settings = extension.getSettings();
+        this._cache = [];
+        this.add_child(new St.Icon({
+            icon_name: 'input-tablet-symbolic',
+            style_class: 'system-status-icon',
+        }));
+        this._rescanThenRebuild();
+    }
+
+    destroy() {
+        if (this._timerId) GLib.source_remove(this._timerId);
+        this._timerId = 0;
+        super.destroy();
+    }
+
+    async _rescanThenRebuild() {
+        this._cache = await detectStreamDecksGjs();
+        this._rebuildMenu();
+    }
+
+    _rebuildMenu() {
+        this.menu.removeAll();
+        if (!this._cache.length) {
+            this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                '(no Stream Deck found)', {reactive: false}));
+        } else {
+            for (const d of this._cache)
+                this.menu.addMenuItem(this._row(d));
+        }
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const rescan = new PopupMenu.PopupMenuItem('🔄 Re-scan USB');
+        rescan.connect('activate', () => this._rescanThenRebuild());
+        this.menu.addMenuItem(rescan);
+        const prefs = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+        prefs.connect('activate', () => this._openPrefs?.());
+        this.menu.addMenuItem(prefs);
+    }
+
+    _row(dev) {
+        const sub = new PopupMenu.PopupSubMenuMenuItem(
+            `${dev.product || 'Stream Deck'} (${dev.serial || '?'})`);
+
+        const status = new PopupMenu.PopupMenuItem('Status');
+        status.connect('activate', () => _notify(dev.product || 'Stream Deck',
+            `Bus ${dev.bus} Device ${dev.device}\n` +
+            `Vendor: ${dev.vendor_name}\n` +
+            `Serial: ${dev.serial}`));
+        sub.menu.addMenuItem(status);
+
+        const open = new PopupMenu.PopupMenuItem('Open controller UI');
+        open.connect('activate', () => this._launchController());
+        sub.menu.addMenuItem(open);
+
+        const restart = new PopupMenu.PopupMenuItem('Restart deck');
+        restart.connect('activate', () => this._restart());
+        sub.menu.addMenuItem(restart);
+
+        const det = new PopupMenu.PopupMenuItem('Show details');
+        det.connect('activate', async () => {
+            const {default: GLib2} = await import('gi://GLib');
+            const [, stdout] = GLib2.spawn_command_line_sync(
+                `lsusb -s ${dev.bus}:${dev.device} -v`);
+            _notify(dev.product || 'Stream Deck',
+                new TextDecoder().decode(stdout || new Uint8Array())
+                    .slice(0, 800));
+        });
+        sub.menu.addMenuItem(det);
+        return sub;
+    }
+
+    _projectRoot() {
+        return this._extension.path.replace(
+            /\/script\/stream_deck\/gnome-extension\/?$/, '');
+    }
+
+    _launchController() {
+        const root = this._projectRoot();
+        const py = `${root}/.venv.erplibre/bin/python`;
+        const script = `${root}/${CONTROLLER_REL}`;
+        if (!GLib.file_test(py, GLib.FileTest.IS_EXECUTABLE)) {
+            _notify('Stream Deck',
+                'Python venv not found at .venv.erplibre');
+            return;
+        }
+        spawnDetached([py, script], {notify: _notify, title: 'Stream Deck'});
+    }
+
+    _restart() {
+        if (GLib.file_test(PIDFILE, GLib.FileTest.EXISTS)) {
+            try {
+                const [ok, contents] = GLib.file_get_contents(PIDFILE);
+                if (ok) {
+                    const pid = parseInt(
+                        new TextDecoder().decode(contents).trim(), 10);
+                    if (pid > 0) spawnDetached(['kill', String(pid)],
+                        {notify: _notify, title: 'Stream Deck'});
+                }
+            } catch (_e) {}
+        }
+        // Give it half a second to die, then relaunch.
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+            this._launchController();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+});
+
+export const indicatorDescriptor = {
+    id: 'device',
+    displayName: 'Device',
+    defaultEnabled: true,
+    ctor: (opts) => new DeviceIndicator(opts),
+};
