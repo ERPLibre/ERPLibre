@@ -58,10 +58,16 @@ class PathDialog extends ModalDialog {
 
     _launchChooser() {
         // Use zenity as the cross-DE file chooser invokable from a shell context.
-        const proc = Gio.Subprocess.new(
-            ['zenity', '--file-selection', '--directory',
-                '--title=Select project path'],
-            Gio.SubprocessFlags.STDOUT_PIPE);
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(
+                ['zenity', '--file-selection', '--directory',
+                    '--title=Select project path'],
+                Gio.SubprocessFlags.STDOUT_PIPE);
+        } catch (e) {
+            console.log(`[StreamDeckTiler] zenity not available: ${e.message}`);
+            return;
+        }
         proc.communicate_utf8_async(null, null, (p, res) => {
             try {
                 const [, stdout] = p.communicate_utf8_finish(res);
