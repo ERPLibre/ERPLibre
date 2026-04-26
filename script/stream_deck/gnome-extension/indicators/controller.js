@@ -1,0 +1,129 @@
+import Gio from 'gi://Gio';
+import GObject from 'gi://GObject';
+import Soup from 'gi://Soup';
+import St from 'gi://St';
+import GLib from 'gi://GLib';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+const GALLERY_PORT = 8042;
+const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
+const PROJECT_URL = 'https://github.com/ERPLibre/ERPLibre';
+const PROJECT_NAME = 'ERPLibre Stream Deck';
+
+function _notify(title, body) {
+    try {
+        Main.notify(title, body);
+    } catch (e) {
+        console.log(`[StreamDeckTiler:controller] notify failed: ${e.message}`);
+    }
+}
+
+export const ControllerIndicator = GObject.registerClass(
+class ControllerIndicator extends PanelMenu.Button {
+    _init({iconName = 'input-gaming-symbolic', openPrefs} = {}) {
+        super._init(0.0, 'Stream Deck Controller');
+        this._openPrefs = openPrefs;
+        this.add_child(new St.Icon({
+            icon_name: iconName,
+            style_class: 'system-status-icon',
+        }));
+        this._buildMenu();
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen) this._refreshGames();
+        });
+    }
+
+    _buildMenu() {
+        const about = new PopupMenu.PopupMenuItem('About');
+        about.connect('activate', () => {
+            try {
+                Gio.AppInfo.launch_default_for_uri(PROJECT_URL, null);
+            } catch (_e) {
+                _notify(PROJECT_NAME, `Open ${PROJECT_URL} for project info.`);
+            }
+        });
+        this.menu.addMenuItem(about);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._gamesSection = new PopupMenu.PopupSubMenuMenuItem('Games');
+        this.menu.addMenuItem(this._gamesSection);
+        this._populateGamesPlaceholder('Loading…');
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        const settings = new PopupMenu.PopupMenuItem('Open prefs…');
+        settings.connect('activate', () => {
+            if (typeof this._openPrefs === 'function') this._openPrefs();
+        });
+        this.menu.addMenuItem(settings);
+    }
+
+    _populateGamesPlaceholder(label) {
+        this._gamesSection.menu.removeAll();
+        this._gamesSection.menu.addMenuItem(
+            new PopupMenu.PopupMenuItem(label, {reactive: false}));
+    }
+
+    _refreshGames() {
+        this._populateGamesPlaceholder('Loading…');
+        const session = new Soup.Session();
+        session.timeout = 3;
+        const message = Soup.Message.new('GET', `${GALLERY_URL}/api/games`);
+        session.send_and_read_async(
+            message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                try {
+                    const bytes = sess.send_and_read_finish(result);
+                    const text = new TextDecoder().decode(bytes.get_data());
+                    const games = JSON.parse(text);
+                    this._populateGames(Array.isArray(games) ? games : []);
+                } catch (_e) {
+                    this._populateGamesPlaceholder(
+                        'Gallery offline (start gallery_server.py)');
+                }
+            });
+    }
+
+    _populateGames(games) {
+        this._gamesSection.menu.removeAll();
+        if (!games.length) {
+            this._populateGamesPlaceholder('No games found');
+            return;
+        }
+        games.sort((a, b) =>
+            (a.name || a.id || '').localeCompare(b.name || b.id || ''));
+        for (const g of games) {
+            const id = g.id || '';
+            const name = g.name || id;
+            if (!id) continue;
+            const item = new PopupMenu.PopupMenuItem(name);
+            item.connect('activate', () => this._launchGame(id));
+            this._gamesSection.menu.addMenuItem(item);
+        }
+    }
+
+    _launchGame(gameId) {
+        const session = new Soup.Session();
+        session.timeout = 3;
+        const message = Soup.Message.new('GET',
+            `${GALLERY_URL}/launch/${gameId}`);
+        session.send_and_read_async(
+            message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                try {
+                    sess.send_and_read_finish(result);
+                } catch (_e) {
+                    _notify(PROJECT_NAME,
+                        `Could not launch ${gameId}: gallery offline?`);
+                }
+            });
+    }
+});
+
+export const indicatorDescriptor = {
+    id: 'controller',
+    displayName: 'Controller',
+    defaultEnabled: true,
+    ctor: (opts) => new ControllerIndicator(opts),
+};
