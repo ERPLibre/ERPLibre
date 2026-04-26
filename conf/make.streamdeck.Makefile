@@ -112,10 +112,13 @@ STREAMDECK_TILER_EXT_TMP_PREFIX := streamdeck-tiler-reload-
 
 .PHONY: streamdeck_tiler_install_extension
 streamdeck_tiler_install_extension:
-	@mkdir -p "$(STREAMDECK_TILER_EXT_DST)"
-	@cp "$(STREAMDECK_TILER_EXT_SRC)/extension.js" "$(STREAMDECK_TILER_EXT_DST)/"
-	@cp "$(STREAMDECK_TILER_EXT_SRC)/metadata.json" "$(STREAMDECK_TILER_EXT_DST)/"
-	@echo "Installed to $(STREAMDECK_TILER_EXT_DST)"
+	@if [ -L "$(STREAMDECK_TILER_EXT_DST)" ] || [ -d "$(STREAMDECK_TILER_EXT_DST)" ]; then \
+		rm -rf "$(STREAMDECK_TILER_EXT_DST)"; \
+	fi
+	@mkdir -p "$(STREAMDECK_TILER_EXT_BASE_DIR)"
+	@ln -sfn "$(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)" "$(STREAMDECK_TILER_EXT_DST)"
+	@glib-compile-schemas "$(STREAMDECK_TILER_EXT_SRC)/schemas/" 2>/dev/null || true
+	@echo "Symlinked $(STREAMDECK_TILER_EXT_DST) -> $(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
 	@echo "Then:    make streamdeck_tiler_enable_extension"
