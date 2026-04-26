@@ -75,3 +75,73 @@ export function getSettings(extensionInstance) {
 export function resetCachedSettings() {
     _gioSettings = null;
 }
+
+/**
+ * Pure-logic migration: given the parsed legacy JSON object and the
+ * existing paths array, return the new paths array. No file I/O.
+ */
+export function migrateLegacyJson(legacy, existingPaths) {
+    if (Array.isArray(existingPaths) && existingPaths.length > 0) {
+        return existingPaths;
+    }
+    if (!legacy || typeof legacy !== 'object') return existingPaths || [];
+    const erpPath = legacy.erplibre_path;
+    if (typeof erpPath !== 'string' || !erpPath.trim()) {
+        return existingPaths || [];
+    }
+    return [{
+        id: uuid4(),
+        label: 'ERPLibre',
+        path: erpPath,
+        default_cmd: 'claude --resume',
+    }];
+}
+
+/**
+ * Default legacy JSON path. GJS-only — wrapped in a function so Node
+ * tests don't import GLib.
+ */
+export async function legacyJsonPath() {
+    const {default: GLib} = await import('gi://GLib');
+    return GLib.build_filenamev([
+        GLib.get_user_config_dir(),
+        'streamdeck-tiler',
+        'extension-settings.json',
+    ]);
+}
+
+/**
+ * Run the migration at extension enable time. Callable only from GJS.
+ *
+ *   1. If migration-done is true, no-op.
+ *   2. Read legacy JSON; on parse failure, log + mark done + exit.
+ *   3. Merge into paths; bump schema-version + migration-done.
+ *   4. Rename the legacy file to <name>.bak.
+ */
+export async function runMigrationGjs(settings, log = console.log) {
+    if (settings.get_boolean('migration-done')) return;
+    const {default: GLib} = await import('gi://GLib');
+    const path = await legacyJsonPath();
+    let legacy = {};
+    if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            if (ok) legacy = JSON.parse(new TextDecoder().decode(contents));
+        } catch (e) {
+            log(`[StreamDeckTiler] migration: bad legacy JSON: ${e.message}`);
+            legacy = {};
+        }
+    }
+    const existing = parseList(settings.get_string('paths'));
+    const merged = migrateLegacyJson(legacy, existing);
+    if (merged !== existing) {
+        settings.set_string('paths', serializeList(merged));
+    }
+    settings.set_int('schema-version', 1);
+    settings.set_boolean('migration-done', true);
+    if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+        try {
+            GLib.rename(path, `${path}.bak`);
+        } catch (_e) {}
+    }
+}
