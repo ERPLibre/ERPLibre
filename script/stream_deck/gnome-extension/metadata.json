@@ -4,5 +4,7 @@
   "description": "D-Bus interface for window tiling from Stream Deck",
   "shell-version": ["45", "46", "47", "48"],
   "version": 1,
-  "url": "https://github.com/ERPLibre/erplibre"
+  "url": "https://github.com/ERPLibre/erplibre",
+  "gettext-domain": "streamdeck-tiler",
+  "settings-schema": "org.gnome.shell.extensions.streamdeck-tiler"
 }
