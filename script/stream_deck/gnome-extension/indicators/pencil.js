@@ -19,3 +19,254 @@ export function defaultPathEntry({label = '', path = '', default_cmd} = {}) {
 }
 
 // Indicator class + descriptor are added in Task 2.
+
+import {parseList, serializeList, pushRecent} from '../lib/settings.js';
+import {findTerminal, buildTerminalArgv, spawnDetached} from '../lib/spawn.js';
+
+// `gi://` and `resource://` modules are only resolvable inside GJS. We
+// therefore load them via dynamic import behind a try/catch so this file
+// can also be evaluated under Node for unit tests of the pure helpers
+// above. In GJS, the `try` branch succeeds and we register the indicator
+// class + descriptor; in Node the imports throw and we leave a stub
+// descriptor whose `ctor` errors out if anyone tries to instantiate it.
+
+export let PencilIndicator = null;
+export let indicatorDescriptor = {
+    id: 'pencil',
+    displayName: 'Pencil',
+    defaultEnabled: true,
+    ctor: () => {
+        throw new Error(
+            'PencilIndicator unavailable: GJS modules failed to load.'
+        );
+    },
+};
+
+try {
+    const {default: GObject} = await import('gi://GObject');
+    // GLib is only used by helpers we no longer call here; keep the import
+    // commented to document the intent without forcing the resolve cost.
+    // const {default: GLib} = await import('gi://GLib');
+    const {default: St} = await import('gi://St');
+    const Main = await import('resource:///org/gnome/shell/ui/main.js');
+    const PanelMenu = await import(
+        'resource:///org/gnome/shell/ui/panelMenu.js'
+    );
+    const PopupMenu = await import(
+        'resource:///org/gnome/shell/ui/popupMenu.js'
+    );
+    const {PathDialog} = await import('../ui/path-dialog.js');
+
+    const _notify = (title, body) => {
+        try {
+            Main.notify(title, body);
+        } catch (_e) {
+            // best-effort notification
+        }
+    };
+
+    PencilIndicator = GObject.registerClass(
+        class PencilIndicator extends PanelMenu.Button {
+            _init({extension, openPrefs} = {}) {
+                super._init(0.0, 'Stream Deck Pencil');
+                this._extension = extension;
+                this._openPrefs = openPrefs;
+                this._settings = extension?.getSettings
+                    ? extension.getSettings()
+                    : null;
+
+                this.add_child(new St.Icon({
+                    icon_name: 'document-edit-symbolic',
+                    style_class: 'system-status-icon',
+                }));
+
+                if (this._settings) {
+                    this._pathsSig = this._settings.connect(
+                        'changed::paths',
+                        () => this._rebuildMenu()
+                    );
+                    this._cmdSig = this._settings.connect(
+                        'changed::terminal-claude-cmd',
+                        () => this._rebuildMenu()
+                    );
+                }
+
+                this._rebuildMenu();
+            }
+
+            destroy() {
+                if (this._settings) {
+                    if (this._pathsSig) {
+                        this._settings.disconnect(this._pathsSig);
+                        this._pathsSig = null;
+                    }
+                    if (this._cmdSig) {
+                        this._settings.disconnect(this._cmdSig);
+                        this._cmdSig = null;
+                    }
+                }
+                super.destroy();
+            }
+
+            _rebuildMenu() {
+                this.menu.removeAll();
+
+                const paths = this._settings
+                    ? parseList(this._settings.get_string('paths'))
+                    : [];
+
+                if (!paths.length) {
+                    this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                        '(no paths configured — use Add path…)',
+                        {reactive: false}));
+                } else {
+                    for (const entry of paths) {
+                        this.menu.addMenuItem(this._makeRow(entry));
+                    }
+                }
+
+                this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+                const addItem = new PopupMenu.PopupMenuItem('+ Add path…');
+                addItem.connect('activate', () => this._openAddDialog());
+                this.menu.addMenuItem(addItem);
+
+                const prefsItem = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+                prefsItem.connect('activate', () => {
+                    if (typeof this._openPrefs === 'function') {
+                        try {
+                            this._openPrefs();
+                        } catch (_e) {
+                            // ignore
+                        }
+                    }
+                });
+                this.menu.addMenuItem(prefsItem);
+            }
+
+            _makeRow(entry) {
+                const item = new PopupMenu.PopupBaseMenuItem({reactive: false});
+                const box = new St.BoxLayout({
+                    vertical: false,
+                    style: 'spacing: 6px;',
+                    x_expand: true,
+                });
+
+                const labelBox = new St.BoxLayout({
+                    vertical: true,
+                    x_expand: true,
+                });
+                labelBox.add_child(new St.Label({text: resolveLabel(entry)}));
+                labelBox.add_child(new St.Label({
+                    text: entry.path,
+                    style: 'opacity: 0.6; font-size: 0.85em;',
+                }));
+                box.add_child(labelBox);
+
+                const defaultCmd = this._settings
+                    ? this._settings.get_string('terminal-claude-cmd')
+                    : 'claude --resume';
+
+                const resumeBtn = this._mkBtn('Resume',
+                    () => this._launch(entry, 'claude --resume'));
+                const freshBtn = this._mkBtn('Fresh',
+                    () => this._launch(entry, 'claude'));
+                const customBtn = this._mkBtn('Custom…',
+                    () => this._launch(entry, defaultCmd));
+                const editBtn = this._mkBtn('✎',
+                    () => this._editEntry(entry));
+
+                for (const b of [resumeBtn, freshBtn, customBtn, editBtn]) {
+                    box.add_child(b);
+                }
+                item.add_child(box);
+                return item;
+            }
+
+            _mkBtn(label, onClick) {
+                const btn = new St.Button({
+                    label,
+                    style_class: 'streamdeck-tiler-btn',
+                    style: 'padding: 2px 6px;',
+                });
+                btn.connect('clicked', () => {
+                    try {
+                        onClick();
+                    } catch (e) {
+                        _notify('Stream Deck',
+                            `Action failed: ${e.message || e}`);
+                    }
+                });
+                return btn;
+            }
+
+            async _launch(entry, command) {
+                const terminal = await findTerminal();
+                if (!terminal) {
+                    _notify('Stream Deck',
+                        'No terminal found. Install gnome-terminal, kgx or xterm.');
+                    return;
+                }
+                const argv = buildTerminalArgv({
+                    cwd: entry.path,
+                    command,
+                    terminal,
+                });
+                const ok = await spawnDetached(argv,
+                    {notify: _notify, title: 'Stream Deck'});
+                if (ok && this._settings && entry?.path) {
+                    const recent = parseList(
+                        this._settings.get_string('recent-paths'));
+                    this._settings.set_string('recent-paths',
+                        serializeList(pushRecent(recent, entry.path)));
+                }
+            }
+
+            _openAddDialog() {
+                if (!this._settings) return;
+                const recent = parseList(
+                    this._settings.get_string('recent-paths'));
+                const dlg = new PathDialog({
+                    title: 'Add path',
+                    recentPaths: recent,
+                    onConfirm: ({label, path}) => {
+                        const list = parseList(
+                            this._settings.get_string('paths'));
+                        list.push(defaultPathEntry({label, path}));
+                        this._settings.set_string('paths',
+                            serializeList(list));
+                    },
+                });
+                dlg.open();
+            }
+
+            _editEntry(entry) {
+                if (!this._settings) return;
+                const dlg = new PathDialog({
+                    title: 'Edit path',
+                    entry,
+                    onConfirm: ({label, path}) => {
+                        const list = parseList(
+                            this._settings.get_string('paths'));
+                        const i = list.findIndex(e => e.id === entry.id);
+                        if (i >= 0) {
+                            list[i] = {...list[i], label, path};
+                            this._settings.set_string('paths',
+                                serializeList(list));
+                        }
+                    },
+                });
+                dlg.open();
+            }
+        }
+    );
+
+    indicatorDescriptor = {
+        id: 'pencil',
+        displayName: 'Pencil',
+        defaultEnabled: true,
+        ctor: (opts) => new PencilIndicator(opts),
+    };
+} catch (_e) {
+    // Non-GJS environment (e.g. Node unit tests) — leave stub descriptor.
+}
