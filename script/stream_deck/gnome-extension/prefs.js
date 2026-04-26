@@ -42,6 +42,24 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildFilmPage(settings));
         window.add(this._buildErpLibrePage(settings));
         window.add(this._buildNetworkPage(settings));
+        window.add(this._buildDevicePage(settings));
+    }
+
+    _buildDevicePage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Device', icon_name: 'input-tablet-symbolic',
+        });
+        const opts = new Adw.PreferencesGroup({title: 'Options'});
+        const refreshRow = new Adw.SpinRow({
+            title: 'Auto-refresh (seconds, 0 = off)',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 86400,
+                step_increment: 60}),
+        });
+        settings.bind('device-auto-refresh-sec', refreshRow, 'value',
+            Gio.SettingsBindFlags.DEFAULT);
+        opts.add(refreshRow);
+        page.add(opts);
+        return page;
     }
 
     _buildNetworkPage(settings) {

@@ -69,6 +69,17 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] When nmap missing, scan still runs via nc (slower)
 - [ ] Setting `network-auto-refresh-sec` to 60 — wait 60s, scan re-runs (Plan G adds the timer; for Plan E, the SpinRow exists but no timer fires yet)
 
-## Future (Plans F–H)
+## Device (Plan F)
+
+- [ ] Device indicator with `input-tablet-symbolic` icon
+- [ ] No deck plugged in: "(no Stream Deck found)"
+- [ ] Plug deck + click "Re-scan USB" → row appears with product + serial
+- [ ] Status item → notification with bus/device/vendor/serial
+- [ ] Open controller UI → erplibre_controller.py runs (verify `pgrep -af erplibre_controller`)
+- [ ] Pidfile `~/.cache/streamdeck-tiler/controller.pid` exists after launch
+- [ ] Restart deck → controller exits + relaunches (PID changes; note: SIGTERM may leave pidfile stale until next launch overwrites it)
+- [ ] Show details → notification with truncated `lsusb -v` output
+
+## Future (Plans G–H)
 
 (Sections added by subsequent plans.)
