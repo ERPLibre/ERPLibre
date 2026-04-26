@@ -39,6 +39,22 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] mpv → spawns mpv with `--start=<position>` (verify in `pgrep -af mpv`)
 - [ ] Edit dialog has Delete button; deleting removes entry
 
-## Future (Plans D–H)
+## ERPLibre (Plan D)
+
+- [ ] ERPLibre indicator with `network-server-symbolic` icon
+- [ ] Local section lists all `~/erplibre*` directories with `.git` + `env_var.sh`
+- [ ] Local instance "Open URL" → browser opens `http://localhost:<port>`
+- [ ] Local instance "Start server" → terminal opens at the dir running `make run`
+- [ ] Add remote instance with valid keepass DB + entry → submenu shows Auto-login, Copy username, Copy password, Open in KeePassXC
+- [ ] First Copy username triggers master-pw dialog; correct pw → notify "username copied"
+- [ ] Wrong pw → notify "KeePassXC unlock failed", cache invalidated, next click re-prompts
+- [ ] Auto-login (selenium) → opens browser + Selenium script logs in (visible in browser)
+- [ ] Auto-login (selenium) when `.venv.erplibre/bin/python` missing → falls back to xdotool, notifies
+- [ ] Auto-login (xdotool) → browser opens, fields fill in
+- [ ] Edit remote instance → dialog pre-filled, Save updates, Delete removes
+- [ ] `gsettings set erplibre-auto-detect false` → local section becomes empty
+- [ ] Re-scan local item rebuilds the local list
+
+## Future (Plans E–H)
 
 (Sections added by subsequent plans.)

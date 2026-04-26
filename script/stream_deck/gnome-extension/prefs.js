@@ -39,6 +39,32 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(buttonsPage);
         window.add(this._buildPencilPage(settings));
         window.add(this._buildFilmPage(settings));
+        window.add(this._buildErpLibrePage(settings));
+    }
+
+    _buildErpLibrePage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'ERPLibre', icon_name: 'network-server-symbolic',
+        });
+        const detect = new Adw.PreferencesGroup({title: 'Local detection'});
+        const autoRow = new Adw.SwitchRow({
+            title: 'Auto-detect local instances',
+        });
+        settings.bind('erplibre-auto-detect', autoRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        detect.add(autoRow);
+        const patternRow = new Adw.EntryRow({title: 'Local search pattern'});
+        settings.bind('erplibre-local-pattern', patternRow, 'text',
+            Gio.SettingsBindFlags.DEFAULT);
+        detect.add(patternRow);
+        page.add(detect);
+
+        const remotes = new Adw.PreferencesGroup({
+            title: 'Remote instances',
+            description: 'Edit via the Add instance dialog from the panel button.',
+        });
+        page.add(remotes);
+        return page;
     }
 
     _buildFilmPage(settings) {
