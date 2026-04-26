@@ -1,0 +1,77 @@
+/**
+ * Settings module. Pure JSON helpers + Gio.Settings wrapper.
+ *
+ * Pure helpers are tested via node --test. The Gio.Settings wrapper
+ * is only usable from GJS at extension runtime.
+ */
+
+export const MAX_RECENT = 10;
+
+export function parseList(serialized) {
+    if (typeof serialized !== 'string' || serialized === '') return [];
+    try {
+        const parsed = JSON.parse(serialized);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_e) {
+        return [];
+    }
+}
+
+export function serializeList(arr) {
+    return JSON.stringify(Array.isArray(arr) ? arr : []);
+}
+
+export function parseObject(serialized) {
+    if (typeof serialized !== 'string' || serialized === '') return {};
+    try {
+        const parsed = JSON.parse(serialized);
+        return (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+            ? parsed
+            : {};
+    } catch (_e) {
+        return {};
+    }
+}
+
+export function serializeObject(obj) {
+    return JSON.stringify(obj && typeof obj === 'object' ? obj : {});
+}
+
+export function pushRecent(arr, value) {
+    const list = Array.isArray(arr) ? arr.slice() : [];
+    const filtered = list.filter(v => v !== value);
+    filtered.unshift(value);
+    return filtered.slice(0, MAX_RECENT);
+}
+
+/**
+ * Generate a UUID v4 (RFC 4122). Used for stable IDs on catalogue entries.
+ * Pure JS so it works in both Node tests and GJS runtime.
+ */
+export function uuid4() {
+    const bytes = new Uint8Array(16);
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+        globalThis.crypto.getRandomValues(bytes);
+    } else {
+        for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const h = [...bytes].map(b => b.toString(16).padStart(2, '0'));
+    return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
+}
+
+/**
+ * GJS-only thin wrapper around Gio.Settings. Lazily loaded so Node tests
+ * importing this file don't blow up.
+ */
+let _gioSettings = null;
+export function getSettings(extensionInstance) {
+    if (_gioSettings) return _gioSettings;
+    _gioSettings = extensionInstance.getSettings();
+    return _gioSettings;
+}
+
+export function resetCachedSettings() {
+    _gioSettings = null;
+}
