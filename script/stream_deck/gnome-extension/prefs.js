@@ -38,6 +38,19 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
         window.add(buttonsPage);
         window.add(this._buildPencilPage(settings));
+        window.add(this._buildFilmPage(settings));
+    }
+
+    _buildFilmPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Film', icon_name: 'video-x-generic-symbolic',
+        });
+        const group = new Adw.PreferencesGroup({
+            title: 'Films',
+            description: 'Edit via the Add film dialog from the panel button.',
+        });
+        page.add(group);
+        return page;
     }
 
     _buildPencilPage(settings) {

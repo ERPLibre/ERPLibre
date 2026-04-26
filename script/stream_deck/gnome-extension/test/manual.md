@@ -27,6 +27,18 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] After a launch, `gsettings get … recent-paths` includes that path (capped at 10)
 - [ ] Toggle `enable-pencil` off → button disappears; on → button reappears
 
-## Future (Plans C–H)
+## Film (Plan C)
+
+- [ ] Film indicator in panel with `video-x-generic-symbolic` icon
+- [ ] Empty state: "(no films — use + Add film)"
+- [ ] Add film with name + URL only → entry shows just name
+- [ ] Add film with name + URL + episode + position → label "Name · S2E5 · 01:23:45"
+- [ ] Position invalid format (e.g. `xx`) → dialog shows "Invalid position format"
+- [ ] Click row → sub-menu Browser / mpv / Edit
+- [ ] Browser → xdg-open URL
+- [ ] mpv → spawns mpv with `--start=<position>` (verify in `pgrep -af mpv`)
+- [ ] Edit dialog has Delete button; deleting removes entry
+
+## Future (Plans D–H)
 
 (Sections added by subsequent plans.)
