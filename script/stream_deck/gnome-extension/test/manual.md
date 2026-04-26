@@ -1,3 +1,5 @@
+> **Release gate:** every box in this file must be ticked before tagging a release that touches the stream_deck gnome extension.
+
 # Stream Deck GNOME Extension — Manual Smoke Checklist
 
 Run after each `gnome-extensions enable` cycle.
@@ -114,6 +116,10 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Set sync path to a local git repo, enable sync → toggling a setting commits the JSON within 5s
 - [ ] Pre-populate the JSON in another machine → first enable() pulls + applies
 
-## Future (Plan H)
+## Release
 
-(Sections added by subsequent plans.)
+- [ ] `make test_gnome_extension` passes (currently 50 unit tests)
+- [ ] `make test_full_fast` includes the extension target and passes
+- [ ] All sections above ticked
+- [ ] CHANGELOG.base.md entry present and regenerated
+- [ ] README.base.md regenerated for both `script/stream_deck/` and `script/stream_deck/gnome-extension/`
