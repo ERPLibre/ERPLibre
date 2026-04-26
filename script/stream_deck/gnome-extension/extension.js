@@ -73,6 +73,35 @@ const IFACE_XML = `
       <arg type="i" direction="out" name="matched"/>
     </method>
     <method name="GetFocusedWindowClass"><arg type="s" direction="out" name="wmClass"/></method>
+    <method name="OpenPath">
+      <arg type="s" direction="in" name="path"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="OpenFilm">
+      <arg type="s" direction="in" name="film_id"/>
+      <arg type="s" direction="in" name="player"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="OpenInstance">
+      <arg type="s" direction="in" name="id"/>
+      <arg type="s" direction="in" name="action"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="ScanNetwork">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ListDevices">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ListPaths">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ListFilms">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ListInstances">
+      <arg type="s" direction="out" name="json"/>
+    </method>
   </interface>
 </node>`;
 
@@ -300,6 +329,67 @@ export default class StreamDeckTilerExtension extends Extension {
         const ind = this._getTrackerIndicator();
         if (!ind || typeof ind._resetAllTimers !== 'function') return false;
         try { ind._resetAllTimers(); return true; } catch (_e) { return false; }
+    }
+
+    // ---------- D-Bus method extensions ----------
+
+    ListPaths()    { return this.#settings.get_string('paths'); }
+    ListFilms()    { return this.#settings.get_string('films'); }
+    ListInstances(){ return this.#settings.get_string('instances'); }
+
+    OpenPath(path) {
+        const ind = this.#indicators.get('pencil');
+        if (!ind) return false;
+        const all = JSON.parse(this.#settings.get_string('paths') || '[]');
+        const entry = all.find(e => e.path === path) || {path, label: ''};
+        ind._launch(entry, this.#settings.get_string('terminal-claude-cmd'));
+        return true;
+    }
+
+    OpenFilm(filmId, player) {
+        const ind = this.#indicators.get('film');
+        if (!ind) return false;
+        const all = JSON.parse(this.#settings.get_string('films') || '[]');
+        const film = all.find(f => f.id === filmId);
+        if (!film) return false;
+        ind._launch(film, player === 'mpv' ? 'mpv' : 'browser');
+        return true;
+    }
+
+    OpenInstance(id, action) {
+        const ind = this.#indicators.get('erplibre');
+        if (!ind) return false;
+        const remotes = JSON.parse(this.#settings.get_string('instances') || '[]');
+        const local = ind._localCache || [];
+        const inst = remotes.find(e => e.id === id) || local.find(e => e.id === id);
+        if (!inst) return false;
+        switch (action) {
+            case 'url':           ind._launchBrowser(inst); return true;
+            case 'login':         ind._autoLogin(inst);     return true;
+            case 'copy_user':     ind._copyAttr(inst, 'username'); return true;
+            case 'copy_pass':     ind._copyAttr(inst, 'password'); return true;
+            case 'open_keepass':  ind._openInKeepassXC(inst); return true;
+            case 'start_server':
+                if (inst.type === 'local') {
+                    ind._startServer(inst);
+                    return true;
+                }
+                return false;
+            default: return false;
+        }
+    }
+
+    ScanNetwork() {
+        const ind = this.#indicators.get('network');
+        if (!ind) return '[]';
+        ind._startScan();
+        return JSON.stringify(ind._scanResult.hosts || []);
+    }
+
+    ListDevices() {
+        const ind = this.#indicators.get('device');
+        if (!ind) return '[]';
+        return JSON.stringify(ind._cache || []);
     }
 
     // ---------- Window layout capture / restore (unchanged) ----------
