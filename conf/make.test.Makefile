@@ -125,3 +125,12 @@ test_addons_project_sale_link_specific_file:
 	./odoo_bin.sh db --drop --database test_addons_project_sale_link
 	./script/addons/install_addons_dev.sh test_addons_project_sale_link project_sale_link
 	./test.sh -d test_addons_project_sale_link --db-filter test_addons_project_sale_link -i project_sale_link --test-file=odoo18.0/addons/OCA_project/project_sale_link/tests/test_project_sale_link.py
+
+test_gnome_extension:
+	@echo "→ schema strict dry-run"
+	glib-compile-schemas --strict --dry-run \
+	    script/stream_deck/gnome-extension/schemas/
+	@echo "→ node --test for pure logic"
+	node --test script/stream_deck/gnome-extension/test/unit/*.test.js
+
+.PHONY: test_gnome_extension
