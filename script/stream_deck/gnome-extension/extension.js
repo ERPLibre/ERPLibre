@@ -14,6 +14,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {IndicatorRegistry} from './lib/registry.js';
 import {runMigrationGjs} from './lib/settings.js';
+import {setGettext} from './lib/i18n.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 import {indicatorDescriptor as pencilDescriptor}
@@ -89,6 +90,7 @@ export default class StreamDeckTilerExtension extends Extension {
             '/org/gnome/Shell/Extensions/StreamDeckTiler');
 
         this.#settings = this.getSettings();
+        setGettext((s) => this.gettext ? this.gettext(s) : s);
         runMigrationGjs(this.#settings).catch(e =>
             console.log(`[StreamDeckTiler] migration failed: ${e.message}`));
 

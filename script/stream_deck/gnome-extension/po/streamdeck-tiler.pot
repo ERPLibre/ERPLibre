@@ -1,0 +1,25 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Project-Id-Version: streamdeck-tiler 1.0\n"
+
+msgid "Open prefs"
+msgstr ""
+
+msgid "Add path…"
+msgstr ""
+
+msgid "Add film…"
+msgstr ""
+
+msgid "Add remote instance…"
+msgstr ""
+
+msgid "Refresh scan"
+msgstr ""
+
+msgid "Re-scan USB"
+msgstr ""
+
+msgid "Re-scan local"
+msgstr ""

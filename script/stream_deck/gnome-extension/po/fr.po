@@ -1,0 +1,25 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: fr\n"
+
+msgid "Open prefs"
+msgstr "Ouvrir les préférences"
+
+msgid "Add path…"
+msgstr "Ajouter un chemin…"
+
+msgid "Add film…"
+msgstr "Ajouter un film…"
+
+msgid "Add remote instance…"
+msgstr "Ajouter une instance distante…"
+
+msgid "Refresh scan"
+msgstr "Relancer le scan"
+
+msgid "Re-scan USB"
+msgstr "Re-scan USB"
+
+msgid "Re-scan local"
+msgstr "Re-scan local"

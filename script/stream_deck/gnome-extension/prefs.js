@@ -3,6 +3,7 @@ import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import {setGettext} from './lib/i18n.js';
 
 const INDICATORS = [
     {id: 'controller', label: 'Controller'},
@@ -16,6 +17,7 @@ const INDICATORS = [
 export default class StreamDeckTilerPrefs extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
+        setGettext((s) => this.gettext ? this.gettext(s) : s);
 
         const buttonsPage = new Adw.PreferencesPage({
             title: 'Buttons',
