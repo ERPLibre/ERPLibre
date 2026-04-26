@@ -80,6 +80,40 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Restart deck → controller exits + relaunches (PID changes; note: SIGTERM may leave pidfile stale until next launch overwrites it)
 - [ ] Show details → notification with truncated `lsusb -v` output
 
-## Future (Plans G–H)
+## Cross-cutting (Plan G)
+
+### i18n
+- [ ] `LANG=fr_FR.UTF-8 gnome-extensions prefs streamdeck-tiler@technolibre.ca` shows French strings (e.g. "Ajouter un chemin…")
+- [ ] `make extension_i18n_compile` succeeds; `.mo` files exist under `locale/`
+
+### Theming
+- [ ] Theming page: change pencil icon to `applications-utilities-symbolic` → top-bar icon updates after menu toggle
+- [ ] Setting an absolute path to an SVG → top-bar shows that SVG
+
+### Drag-reorder
+- [ ] Drag rows in "Order in top bar" → top-bar order matches `gsettings get button-order`
+- [ ] Disable an indicator + reorder → re-enable → still in correct position
+
+### Auto-refresh
+- [ ] `network-auto-refresh-sec=60` → scan re-runs every minute (timestamp advances)
+- [ ] Set back to 0 → timer stops (no further scans)
+- [ ] Same for `device-auto-refresh-sec`
+
+### D-Bus
+- [ ] `gdbus call … ListPaths` returns the paths JSON
+- [ ] `gdbus call … OpenPath '/home/x/proj'` opens a terminal at that path
+- [ ] `gdbus call … OpenFilm '<id>' 'mpv'` launches mpv
+- [ ] `gdbus call … ListDevices` returns the devices JSON
+
+### Backup/restore
+- [ ] Export settings → JSON file with all keys + schema_version
+- [ ] Modify keys, Import → settings restored
+- [ ] Reset → all keys back to defaults
+
+### Sync
+- [ ] Set sync path to a local git repo, enable sync → toggling a setting commits the JSON within 5s
+- [ ] Pre-populate the JSON in another machine → first enable() pulls + applies
+
+## Future (Plan H)
 
 (Sections added by subsequent plans.)
