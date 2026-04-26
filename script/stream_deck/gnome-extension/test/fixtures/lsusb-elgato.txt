@@ -1,0 +1,16 @@
+Bus 003 Device 010: ID 0fd9:0084 Elgato Systems GmbH Stream Deck XL
+Device Descriptor:
+  bLength                18
+  bDescriptorType         1
+  bcdUSB               1.10
+  idVendor           0x0fd9 Elgato Systems GmbH
+  idProduct          0x0084 Stream Deck XL
+  iManufacturer           1 Elgato
+  iProduct                2 Stream Deck XL
+  iSerial                 3 AL01K1A12345
+Bus 003 Device 011: ID 0fd9:0080 Elgato Systems GmbH Stream Deck Mini
+Device Descriptor:
+  bLength                18
+  iManufacturer           1 Elgato
+  iProduct                2 Stream Deck Mini
+  iSerial                 3 AL02K9B98765
