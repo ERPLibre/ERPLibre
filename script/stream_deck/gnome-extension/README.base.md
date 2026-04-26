@@ -6,387 +6,164 @@
 <!-- [en] -->
 # Stream Deck Tiler — GNOME Shell Extension
 
-Companion D-Bus extension used by `game_tiler.py` to:
+Six-indicator panel for the GNOME top bar plus a D-Bus interface used by the
+Stream Deck Python helpers.
 
-- Tile the focused window via `Meta.Window.move_resize_frame()` — no
-  keyboard simulation, no gTile dependency.
-- List and toggle timers managed by the
-  [tracker](https://github.com/aliakseiz/tracker) extension
-  (`tracker@aliakseiz.github.com`), which has no public API of its own.
+## Indicators
 
-Works on Wayland and X11, GNOME Shell 45–48.
+| Id          | Default icon                  | What it does                                                                 |
+|-------------|-------------------------------|------------------------------------------------------------------------------|
+| controller  | `input-gaming-symbolic`       | Tiling D-Bus + Games sub-menu + link to prefs                                |
+| pencil      | `document-edit-symbolic`      | Open `gnome-terminal` running `claude` in a chosen path (Resume / Fresh / Custom) |
+| film        | `video-x-generic-symbolic`    | Curated film list opened via browser or `mpv --start=<position>`             |
+| erplibre    | `network-server-symbolic`     | Local + remote ERPLibre instances; KeepassXC-driven Selenium / xdotool login |
+| network     | `network-wired-symbolic`      | SSH host discovery (`nmap -p22` or `nc` fallback) + `~/.ssh/config` hosts    |
+| device      | `input-tablet-symbolic`       | List of Elgato Stream Deck USB devices, launch / restart controller daemon  |
 
-## D-Bus interface
+Each indicator can be toggled in the preferences window.
 
-- Name: `org.gnome.Shell.Extensions.StreamDeckTiler`
-- Path: `/org/gnome/Shell/Extensions/StreamDeckTiler`
-- Methods:
-  - `TileWindow(gridCols, gridRows, col1, row1, col2, row2) -> success`
-  - `GetMonitorGeometry() -> (x, y, width, height)`
-  - `GetGridSize(gridCols, gridRows) -> (cellW, cellH)`
-  - `ListTrackerTimers() -> json` — JSON array of
-    `{id, name, running, elapsed}` read from tracker's in-memory state.
-    Returns `[]` if tracker is not installed or not enabled.
-  - `ToggleTrackerTimer(id) -> success` — start a paused timer or pause
-    a running one. Reaches into tracker's private state; may break on
-    tracker upgrades.
-  - `AddTrackerTimer() -> id` — create a new timer via tracker's
-    `_addNewTimer()`, open tracker's panel menu, and enter edit mode on
-    the new timer with the name entry focused and empty so the keyboard
-    can type the name. Returns the new timer id, or empty string on
-    failure.
-  - `HotReload() -> newUuid` — copy the extension directory under a
-    timestamped temp UUID, load it via `Main.extensionManager`, and
-    swap the enabled instance so the new source code runs without a
-    session re-login. Returns the new temp UUID, or empty string on
-    failure. See "Hot reload" below.
-  - `HotExit() -> success` — disable + remove all temp reload instances
-    and re-enable the main UUID. Complements `HotReload`.
+## Preferences
 
-## Install
+`gnome-extensions prefs streamdeck-tiler@technolibre.ca`
 
-UUID: `streamdeck-tiler@technolibre.ca`
+Pages: Buttons, Pencil, Film, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
 
-### Option A — Makefile (from repo root)
+## GSettings keys
 
-First install and after every edit to `extension.js`:
+Schema id `org.gnome.shell.extensions.streamdeck-tiler`. Selected keys:
+
+- `enable-controller`, `enable-pencil`, `enable-film`, `enable-erplibre`, `enable-network`, `enable-device` (booleans)
+- `button-order` (`as`) — left-to-right ordering
+- `paths`, `films`, `instances` (`s`, JSON arrays)
+- `terminal-claude-cmd` (`s`, default `claude --resume`)
+- `network-cidrs` (`as`), `network-ssh-user` (`s`), `network-use-nmap` (`b`), `network-read-ssh-config` (`b`), `network-auto-refresh-sec` (`i`)
+- `device-auto-refresh-sec` (`i`)
+- `icon-overrides` (`s`, JSON object keyed by indicator id)
+- `enable-git-sync` (`b`), `git-sync-path` (`s`)
+
+## D-Bus
+
+Object path `/org/gnome/Shell/Extensions/StreamDeckTiler`, interface `org.gnome.Shell.Extensions.StreamDeckTiler`. Methods include the existing tiling / hot-reload calls plus:
+
+- `OpenPath(s) -> b`
+- `OpenFilm(s, s) -> b` (player = `browser` | `mpv`)
+- `OpenInstance(s, s) -> b` (action = `url` | `login` | `copy_user` | `copy_pass` | `open_keepass` | `start_server`)
+- `ScanNetwork() -> s`
+- `ListPaths() -> s`, `ListFilms() -> s`, `ListInstances() -> s`, `ListDevices() -> s`
+
+## KeepassXC
+
+Per ERPLibre instance: `keepass_db`, `keepass_keyfile` (optional), `keepass_yubikey_slot` / `keepass_yubikey_serial` (optional), `keepass_entry`. Master password is held in memory for 5 minutes after a successful unlock.
+
+## Auto-login methods
+
+- `selenium` — invokes `script/selenium/web_login.py` via `.venv.erplibre/bin/python`. Falls back to `xdotool` if the venv is missing.
+- `xdotool` — experimental. Open URL, type user, Tab, type password, Return.
+- `none` — hide the auto-login menu item.
+
+## Limitations
+
+- DRM streaming sites (Netflix, Crunchyroll, etc.) only work via the browser launcher.
+- Network scan does not require root but cannot find SSH on non-default ports.
+- Git sync resolves conflicts as last-write-wins; manual merges may be required.
+
+## Hot-reload
+
+The existing UUID-rename trick is preserved. Call:
 
 <!-- [fr] -->
 # Stream Deck Tiler — Extension GNOME Shell
 
-Extension D-Bus compagnon utilisée par `game_tiler.py` pour:
+Panneau à six indicateurs pour la barre du haut GNOME, plus une interface D-Bus utilisée par les helpers Python Stream Deck.
 
-- Pavager la fenêtre active via `Meta.Window.move_resize_frame()` — sans
-  simulation clavier, sans dépendance gTile.
-- Lister et basculer les chronos gérés par l'extension
-  [tracker](https://github.com/aliakseiz/tracker)
-  (`tracker@aliakseiz.github.com`), qui n'a pas d'API publique propre.
+## Indicateurs
 
-Fonctionne sur Wayland et X11, GNOME Shell 45–48.
+| Id          | Icône par défaut              | Rôle                                                                          |
+|-------------|-------------------------------|-------------------------------------------------------------------------------|
+| controller  | `input-gaming-symbolic`       | D-Bus de tuilage + sous-menu Games + lien vers les préférences                |
+| pencil      | `document-edit-symbolic`      | Ouvre un `gnome-terminal` avec `claude` dans un chemin choisi (Resume / Fresh / Custom) |
+| film        | `video-x-generic-symbolic`    | Liste de films à ouvrir dans le navigateur ou via `mpv --start=<position>`    |
+| erplibre    | `network-server-symbolic`     | Instances ERPLibre locales + distantes ; login Selenium / xdotool via KeepassXC |
+| network     | `network-wired-symbolic`      | Découverte SSH (`nmap -p22` ou `nc` en repli) + hôtes de `~/.ssh/config`      |
+| device      | `input-tablet-symbolic`       | Liste des Stream Deck USB Elgato, démarrage / redémarrage du daemon contrôleur |
 
-## Interface D-Bus
+Chaque indicateur peut être activé/désactivé dans la fenêtre de préférences.
 
-- Nom: `org.gnome.Shell.Extensions.StreamDeckTiler`
-- Chemin: `/org/gnome/Shell/Extensions/StreamDeckTiler`
-- Méthodes:
-  - `TileWindow(gridCols, gridRows, col1, row1, col2, row2) -> success`
-  - `GetMonitorGeometry() -> (x, y, width, height)`
-  - `GetGridSize(gridCols, gridRows) -> (cellW, cellH)`
-  - `ListTrackerTimers() -> json` — tableau JSON de
-    `{id, name, running, elapsed}` lu depuis l'état mémoire de tracker.
-    Retourne `[]` si tracker n'est pas installé ou pas activé.
-  - `ToggleTrackerTimer(id) -> success` — démarrer un chrono en pause
-    ou mettre en pause un chrono en cours. Accède à l'état privé de
-    tracker; peut se casser lors de mises à jour de tracker.
-  - `AddTrackerTimer() -> id` — créer un nouveau chrono via la méthode
-    `_addNewTimer()` de tracker, ouvrir le menu panel de tracker, et
-    entrer en mode édition sur le nouveau chrono avec le champ nom
-    focalisé et vide pour que le clavier puisse taper le nom. Retourne
-    l'id du nouveau chrono, ou chaîne vide en cas d'échec.
-  - `HotReload() -> newUuid` — copier le dossier d'extension sous un
-    UUID temporaire horodaté, le charger via `Main.extensionManager`,
-    et basculer l'instance activée pour que le nouveau code source
-    tourne sans re-login de session. Retourne le nouvel UUID
-    temporaire, ou chaîne vide en cas d'échec. Voir « Hot reload »
-    ci-dessous.
-  - `HotExit() -> success` — désactiver + supprimer toutes les
-    instances temporaires de reload et réactiver l'UUID principal.
-    Complément de `HotReload`.
+## Préférences
 
-## Installation
+`gnome-extensions prefs streamdeck-tiler@technolibre.ca`
 
-UUID: `streamdeck-tiler@technolibre.ca`
+Pages : Buttons, Pencil, Film, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
 
-### Option A — Makefile (depuis la racine du dépôt)
+## Clés GSettings
 
-Première installation et après chaque édition de `extension.js`:
+Schéma `org.gnome.shell.extensions.streamdeck-tiler`. Clés notables :
+
+- `enable-controller`, `enable-pencil`, `enable-film`, `enable-erplibre`, `enable-network`, `enable-device` (booléens)
+- `button-order` (`as`) — ordre gauche → droite
+- `paths`, `films`, `instances` (`s`, JSON)
+- `terminal-claude-cmd` (`s`, défaut `claude --resume`)
+- `network-cidrs` (`as`), `network-ssh-user` (`s`), `network-use-nmap` (`b`), `network-read-ssh-config` (`b`), `network-auto-refresh-sec` (`i`)
+- `device-auto-refresh-sec` (`i`)
+- `icon-overrides` (`s`, JSON)
+- `enable-git-sync` (`b`), `git-sync-path` (`s`)
+
+## D-Bus
+
+Object path `/org/gnome/Shell/Extensions/StreamDeckTiler`, interface `org.gnome.Shell.Extensions.StreamDeckTiler`. Méthodes existantes (tuilage / hot-reload) + extensions :
+
+- `OpenPath(s) -> b`
+- `OpenFilm(s, s) -> b` (player = `browser` | `mpv`)
+- `OpenInstance(s, s) -> b` (action = `url` | `login` | `copy_user` | `copy_pass` | `open_keepass` | `start_server`)
+- `ScanNetwork() -> s`
+- `ListPaths() -> s`, `ListFilms() -> s`, `ListInstances() -> s`, `ListDevices() -> s`
+
+## KeepassXC
+
+Par instance ERPLibre : `keepass_db`, `keepass_keyfile` (optionnel), `keepass_yubikey_slot` / `keepass_yubikey_serial` (optionnel), `keepass_entry`. Le mot de passe maître est gardé en mémoire 5 minutes après le déverrouillage.
+
+## Méthodes d'auto-login
+
+- `selenium` — invoque `script/selenium/web_login.py` via `.venv.erplibre/bin/python`. Repli sur `xdotool` si le venv manque.
+- `xdotool` — expérimental. Ouvre l'URL, tape l'utilisateur, Tab, mot de passe, Entrée.
+- `none` — masque l'item d'auto-login.
+
+## Limitations
+
+- Les sites de streaming DRM (Netflix, Crunchyroll, etc.) ne fonctionnent que via le navigateur.
+- Le scan réseau n'exige pas root mais ne trouve pas SSH sur des ports non standards.
+- La sync Git résout les conflits en mode dernier-écrit-gagne ; un merge manuel peut être requis.
+
+## Hot-reload
+
+La technique UUID-rename existante est préservée. Appeler :
 
 <!-- [common] -->
-```bash
-make streamdeck_tiler_install_extension
-# Wayland: log out / log in
-# X11:     Alt+F2, r, Enter
-make streamdeck_tiler_enable_extension
+
 ```
-
-<!-- [en] -->
-Uninstall: `make streamdeck_tiler_uninstall_extension`
-
-> Why re-login?
-> GNOME Shell 45+ caches imported ES modules for the lifetime of the
-> session. `gnome-extensions disable && enable` calls
-> `disable()`/`enable()` on the already-loaded module — it does **not**
-> re-read `extension.js`. The old `org.gnome.Shell.Extensions.ReloadExtension`
-> D-Bus method is deprecated on GNOME 45+ and returns `NotSupported`. On
-> Wayland a full shell restart means a session re-login; X11 can use
-> `Alt+F2` → `r`. See **Hot reload** below for a dev-loop workaround.
-
-## Hot reload (dev loop)
-
-After the first install + re-login, subsequent edits to `extension.js`
-can be loaded without a new re-login via the extension's `HotReload`
-D-Bus method. The method duplicates the extension directory under a
-fresh UUID (e.g. `streamdeck-tiler-reload-<ts>@technolibre.ca`) so the
-GJS module-cache key changes — the new UUID triggers a genuine ESM
-re-import. The technique is adapted from
-[ExtensionReloader](https://codeberg.org/som/ExtensionReloader).
-
-<!-- [fr] -->
-Désinstaller: `make streamdeck_tiler_uninstall_extension`
-
-> Pourquoi re-login?
-> GNOME Shell 45+ met en cache les modules ES importés pour la durée
-> de la session. `gnome-extensions disable && enable` appelle
-> `disable()`/`enable()` sur le module déjà chargé — cela **ne**
-> relit **pas** `extension.js`. L'ancienne méthode D-Bus
-> `org.gnome.Shell.Extensions.ReloadExtension` est dépréciée sur
-> GNOME 45+ et retourne `NotSupported`. Sur Wayland, un redémarrage
-> complet du shell signifie un re-login de session; X11 peut utiliser
-> `Alt+F2` → `r`. Voir **Hot reload** ci-dessous pour un contournement
-> de la boucle de dev.
-
-## Hot reload (boucle de dev)
-
-Après la première installation + re-login, les éditions suivantes de
-`extension.js` peuvent être chargées sans nouveau re-login via la
-méthode D-Bus `HotReload` de l'extension. La méthode duplique le
-dossier d'extension sous un UUID frais (ex
-`streamdeck-tiler-reload-<ts>@technolibre.ca`) pour que la clé de
-cache de module GJS change — le nouvel UUID déclenche une vraie
-ré-importation ESM. La technique est adaptée de
-[ExtensionReloader](https://codeberg.org/som/ExtensionReloader).
-
-<!-- [common] -->
-```bash
-# Edit extension.js
-make streamdeck_tiler_reload         # hot-reload, no re-login
-# Edit again, reload again (previous temp is auto-purged)
-make streamdeck_tiler_reload
-# When done, restore the main UUID as the running instance:
-make streamdeck_tiler_reload_clean
-```
-
-<!-- [en] -->
-Important limits:
-
-- **First use requires one re-login.** The `HotReload` method itself
-  only becomes available after the shell has loaded this version of
-  `extension.js`. If `streamdeck_tiler_reload` reports
-  `UnknownMethod: HotReload`, log out and back in once, then retry.
-- After `streamdeck_tiler_reload_clean`, the main UUID runs the **cached
-  (old)** source code until the next re-login — because its ES module
-  is still in memory. Edits made during the dev loop are picked up the
-  next time the shell starts fresh.
-- Each reload leaves a `streamdeck-tiler-reload-*@technolibre.ca`
-  directory on disk until cleaned up. `_reload_clean` removes them.
-- For a fully isolated dev environment (no temp UUIDs in the main
-  session), use a nested shell:
-  `dbus-run-session -- gnome-shell --nested --wayland`
-  (GNOME 48 and older) or `--devkit --wayland` (GNOME 49+).
-
-### Option B — manual
-
-<!-- [fr] -->
-Limites importantes:
-
-- **Le premier usage demande un re-login.** La méthode `HotReload`
-  elle-même ne devient disponible qu'après que le shell ait chargé
-  cette version de `extension.js`. Si `streamdeck_tiler_reload`
-  rapporte `UnknownMethod: HotReload`, déconnecte-toi et reconnecte
-  une fois, puis réessaie.
-- Après `streamdeck_tiler_reload_clean`, l'UUID principal tourne le
-  code source **caché (ancien)** jusqu'au prochain re-login — parce
-  que son module ES reste en mémoire. Les éditions faites pendant la
-  boucle de dev sont prises en compte au prochain démarrage propre du
-  shell.
-- Chaque reload laisse un dossier
-  `streamdeck-tiler-reload-*@technolibre.ca` sur le disque jusqu'au
-  nettoyage. `_reload_clean` les supprime.
-- Pour un environnement de dev complètement isolé (aucun UUID
-  temporaire dans la session principale), utilise un shell imbriqué:
-  `dbus-run-session -- gnome-shell --nested --wayland`
-  (GNOME 48 et antérieur) ou `--devkit --wayland` (GNOME 49+).
-
-### Option B — manuel
-
-<!-- [common] -->
-```bash
-# From repo root
-EXT_UUID=streamdeck-tiler@technolibre.ca
-EXT_DIR=~/.local/share/gnome-shell/extensions/$EXT_UUID
-mkdir -p "$EXT_DIR"
-cp script/stream_deck/gnome-extension/extension.js "$EXT_DIR/"
-cp script/stream_deck/gnome-extension/metadata.json "$EXT_DIR/"
-```
-
-<!-- [en] -->
-## Activate
-
-GNOME Shell must reload to see a new extension. On Wayland, only a full
-session re-login reloads the shell.
-
-<!-- [fr] -->
-## Activation
-
-GNOME Shell doit se recharger pour voir une nouvelle extension. Sur
-Wayland, seul un re-login complet de session recharge le shell.
-
-<!-- [common] -->
-```bash
-# 1. Log out of the GNOME session, then log back in.
-# 2. Enable the extension:
-gnome-extensions enable streamdeck-tiler@technolibre.ca
-```
-
-<!-- [en] -->
-Verify:
-
-<!-- [fr] -->
-Vérifier:
-
-<!-- [common] -->
-```bash
-gnome-extensions info streamdeck-tiler@technolibre.ca | grep -i Activ
-# Expect: Activé: Oui  (or: Enabled: Yes)
-
-gdbus introspect --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler
-# Expect: node containing method TileWindow
-```
-
-<!-- [en] -->
-## Manual test
-
-Tile the focused window to the left half of a 2×1 grid:
-
-<!-- [fr] -->
-## Test manuel
-
-Pavager la fenêtre active sur la moitié gauche d'une grille 2×1:
-
-<!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.TileWindow \
-  2 1 0 0 0 0
-```
-
-<!-- [en] -->
-List tracker timers:
-
-<!-- [fr] -->
-Lister les chronos tracker:
-
-<!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.ListTrackerTimers
-```
-
-<!-- [en] -->
-Toggle a timer (replace `<id>` with an id from the list):
-
-<!-- [fr] -->
-Basculer un chrono (remplacer `<id>` par un id de la liste):
-
-<!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.ToggleTrackerTimer \
-  '<id>'
-```
-
-<!-- [en] -->
-Create a new timer and open edit mode on it:
-
-<!-- [fr] -->
-Créer un nouveau chrono et ouvrir le mode édition dessus:
-
-<!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.AddTrackerTimer
-```
-
-<!-- [en] -->
-Hot-reload the extension (returns the new temp UUID):
-
-<!-- [fr] -->
-Hot-reload de l'extension (retourne le nouvel UUID temporaire):
-
-<!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
+gdbus call --session --dest org.gnome.Shell \
   --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
   --method org.gnome.Shell.Extensions.StreamDeckTiler.HotReload
 ```
 
 <!-- [en] -->
-Tear down the reload state:
+
+## Tests
 
 <!-- [fr] -->
-Démanteler l'état de reload:
+
+## Tests
 
 <!-- [common] -->
-```bash
-gdbus call --session \
-  --dest org.gnome.Shell \
-  --object-path /org/gnome/Shell/Extensions/StreamDeckTiler \
-  --method org.gnome.Shell.Extensions.StreamDeckTiler.HotExit
+
+```
+make test_gnome_extension
 ```
 
 <!-- [en] -->
-## Uninstall
+
+Runs `glib-compile-schemas --strict --dry-run` plus `node --test test/unit/*.test.js`. The manual smoke checklist lives at `test/manual.md`.
 
 <!-- [fr] -->
-## Désinstallation
 
-<!-- [common] -->
-```bash
-gnome-extensions disable streamdeck-tiler@technolibre.ca
-rm -rf ~/.local/share/gnome-shell/extensions/streamdeck-tiler@technolibre.ca
-# Log out / log in to fully unload from the shell.
-```
-
-<!-- [en] -->
-## Troubleshooting
-
-- Error `GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: ... object does not exist at ...StreamDeckTiler`
-  → Extension not enabled or shell not reloaded. Run
-  `gnome-extensions enable streamdeck-tiler@technolibre.ca` then log out/in
-  (Wayland) or press `Alt+F2` → `r` → Enter (X11 only).
-- `gnome-extensions info ...` shows `État: INITIALIZED` and `Activé: Non`
-  → Same cause, same fix.
-- Shell version mismatch → Edit `metadata.json` `shell-version` to include
-  your GNOME version (`gnome-shell --version`).
-
-## Logs
-
-<!-- [fr] -->
-## Dépannage
-
-- Erreur `GDBus.Error:org.freedesktop.DBus.Error.UnknownMethod: ... object does not exist at ...StreamDeckTiler`
-  → Extension pas activée ou shell pas rechargé. Exécuter
-  `gnome-extensions enable streamdeck-tiler@technolibre.ca` puis log
-  out/in (Wayland) ou presser `Alt+F2` → `r` → Entrée (X11 seulement).
-- `gnome-extensions info ...` affiche `État: INITIALIZED` et
-  `Activé: Non` → Même cause, même solution.
-- Mauvaise version de shell → Éditer `metadata.json` `shell-version`
-  pour inclure ta version GNOME (`gnome-shell --version`).
-
-## Logs
-
-<!-- [common] -->
-```bash
-journalctl --user -f /usr/bin/gnome-shell | grep StreamDeckTiler
-```
+Exécute `glib-compile-schemas --strict --dry-run` puis `node --test test/unit/*.test.js`. La checklist manuelle est dans `test/manual.md`.
