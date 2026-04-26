@@ -37,5 +37,31 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         buttonsPage.add(togglesGroup);
 
         window.add(buttonsPage);
+        window.add(this._buildPencilPage(settings));
+    }
+
+    _buildPencilPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Pencil',
+            icon_name: 'document-edit-symbolic',
+        });
+        const cmdGroup = new Adw.PreferencesGroup({
+            title: 'Default command',
+        });
+        const cmdRow = new Adw.EntryRow({
+            title: 'Default claude command',
+        });
+        settings.bind('terminal-claude-cmd', cmdRow, 'text',
+            Gio.SettingsBindFlags.DEFAULT);
+        cmdGroup.add(cmdRow);
+        page.add(cmdGroup);
+
+        const pathsGroup = new Adw.PreferencesGroup({
+            title: 'Paths',
+            description:
+                'Edit via the Add path dialog from the panel button.',
+        });
+        page.add(pathsGroup);
+        return page;
     }
 }
