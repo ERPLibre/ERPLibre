@@ -1,5 +1,6 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -40,6 +41,42 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildPencilPage(settings));
         window.add(this._buildFilmPage(settings));
         window.add(this._buildErpLibrePage(settings));
+        window.add(this._buildNetworkPage(settings));
+    }
+
+    _buildNetworkPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Network', icon_name: 'network-wired-symbolic',
+        });
+        const opts = new Adw.PreferencesGroup({title: 'Options'});
+        const userRow = new Adw.EntryRow({title: 'SSH user (empty = $USER)'});
+        settings.bind('network-ssh-user', userRow, 'text',
+            Gio.SettingsBindFlags.DEFAULT);
+        opts.add(userRow);
+        const sshRow = new Adw.SwitchRow({title: 'Read ~/.ssh/config'});
+        settings.bind('network-read-ssh-config', sshRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        opts.add(sshRow);
+        const nmapRow = new Adw.SwitchRow({title: 'Use nmap if available'});
+        settings.bind('network-use-nmap', nmapRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        opts.add(nmapRow);
+        const refreshRow = new Adw.SpinRow({
+            title: 'Auto-refresh (seconds, 0 = off)',
+            adjustment: new Gtk.Adjustment({lower: 0, upper: 86400,
+                step_increment: 60}),
+        });
+        settings.bind('network-auto-refresh-sec', refreshRow, 'value',
+            Gio.SettingsBindFlags.DEFAULT);
+        opts.add(refreshRow);
+        page.add(opts);
+
+        const cidrsGroup = new Adw.PreferencesGroup({
+            title: 'CIDR ranges',
+            description: 'Empty list = auto-detect. Edit via dconf-editor.',
+        });
+        page.add(cidrsGroup);
+        return page;
     }
 
     _buildErpLibrePage(settings) {

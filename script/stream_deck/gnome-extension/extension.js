@@ -22,6 +22,8 @@ import {indicatorDescriptor as filmDescriptor}
     from './indicators/film.js';
 import {indicatorDescriptor as erplibreDescriptor}
     from './indicators/erplibre.js';
+import {indicatorDescriptor as networkDescriptor}
+    from './indicators/network.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
 const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
@@ -93,6 +95,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this.#registry.register(pencilDescriptor);
         this.#registry.register(filmDescriptor);
         this.#registry.register(erplibreDescriptor);
+        this.#registry.register(networkDescriptor);
         // Future indicators register themselves here via subsequent plans.
 
         this._buildIndicators();

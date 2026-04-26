@@ -55,6 +55,20 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] `gsettings set erplibre-auto-detect false` → local section becomes empty
 - [ ] Re-scan local item rebuilds the local list
 
-## Future (Plans E–H)
+## Network (Plan E)
+
+- [ ] Network indicator with `network-wired-symbolic` icon
+- [ ] On open, header shows "Subnet: ? · last scan never"
+- [ ] Click "🔄 Refresh scan" → scan runs without crashing the shell
+- [ ] After scan: header shows detected /24 + timestamp; scanned hosts listed
+- [ ] If `~/.ssh/config` has at least one non-wildcard Host stanza, "Configured" section lists it
+- [ ] Configured row "SSH terminal" opens a terminal running ssh by alias
+- [ ] Scanned row "SSH terminal" opens a terminal running ssh user@ip; user = `network-ssh-user` or `$USER`
+- [ ] Copy IP populates clipboard (paste verifies)
+- [ ] Open Files sftp:// item launches Nautilus sftp
+- [ ] When nmap missing, scan still runs via nc (slower)
+- [ ] Setting `network-auto-refresh-sec` to 60 — wait 60s, scan re-runs (Plan G adds the timer; for Plan E, the SpinRow exists but no timer fires yet)
+
+## Future (Plans F–H)
 
 (Sections added by subsequent plans.)
