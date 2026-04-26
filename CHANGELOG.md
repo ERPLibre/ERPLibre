@@ -15,6 +15,7 @@ Recreating the virtual environment, use installation guide from tool `make`.
 
 ## Added
 
+- stream_deck: multi-indicator GNOME extension (registry-based, six panel buttons: controller, pencil, film, ERPLibre, network, device); GSettings schema; KeepassXC + Selenium / xdotool auto-login; SSH discovery; git settings sync; backup/restore; FR/EN i18n.
 - Support Odoo migration database and module with TODO
 - Support multi version odoo switch on same workspace
 - Script for hardening the installation
