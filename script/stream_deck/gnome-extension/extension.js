@@ -13,7 +13,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {IndicatorRegistry} from './lib/registry.js';
-import {parseList, runMigrationGjs} from './lib/settings.js';
+import {runMigrationGjs} from './lib/settings.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 

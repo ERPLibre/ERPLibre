@@ -28,7 +28,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         for (const ind of INDICATORS) {
             const row = new Adw.SwitchRow({
                 title: ind.label,
-                subtitle: `enable-${ind.id}`,
+                subtitle: `Show the ${ind.label.toLowerCase()} indicator in the top bar`,
             });
             settings.bind(`enable-${ind.id}`, row, 'active',
                 Gio.SettingsBindFlags.DEFAULT);
