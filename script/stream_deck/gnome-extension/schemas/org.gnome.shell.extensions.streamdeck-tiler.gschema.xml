@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="streamdeck-tiler">
+  <schema id="org.gnome.shell.extensions.streamdeck-tiler"
+          path="/org/gnome/shell/extensions/streamdeck-tiler/">
+
+    <!-- Per-indicator toggles -->
+    <key name="enable-controller" type="b"><default>true</default><summary>Enable controller indicator</summary></key>
+    <key name="enable-pencil"     type="b"><default>true</default><summary>Enable pencil indicator</summary></key>
+    <key name="enable-film"       type="b"><default>true</default><summary>Enable film indicator</summary></key>
+    <key name="enable-erplibre"   type="b"><default>true</default><summary>Enable ERPLibre indicator</summary></key>
+    <key name="enable-network"    type="b"><default>true</default><summary>Enable network indicator</summary></key>
+    <key name="enable-device"     type="b"><default>true</default><summary>Enable device indicator</summary></key>
+
+    <!-- Top-bar ordering -->
+    <key name="button-order" type="as">
+      <default>['device','network','erplibre','film','pencil','controller']</default>
+      <summary>Order of indicators left to right in the top bar</summary>
+    </key>
+
+    <!-- Catalogues (JSON serialised) -->
+    <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
+    <key name="films"        type="s"><default>"[]"</default><summary>Films catalogue (JSON array)</summary></key>
+    <key name="instances"    type="s"><default>"[]"</default><summary>ERPLibre instances catalogue (JSON array)</summary></key>
+    <key name="recent-paths" type="s"><default>"[]"</default><summary>Recently opened paths (JSON array, capped at 10)</summary></key>
+
+    <!-- Pencil -->
+    <key name="terminal-claude-cmd" type="s">
+      <default>"claude --resume"</default>
+      <summary>Default command run inside gnome-terminal for pencil entries</summary>
+    </key>
+
+    <!-- ERPLibre -->
+    <key name="erplibre-auto-detect"   type="b"><default>true</default><summary>Auto-detect local ERPLibre instances</summary></key>
+    <key name="erplibre-local-pattern" type="s"><default>"~/erplibre*"</default><summary>Glob pattern for local ERPLibre dirs</summary></key>
+
+    <!-- Network -->
+    <key name="network-cidrs"            type="as"><default>[]</default><summary>CIDR ranges to scan; empty = auto-detect</summary></key>
+    <key name="network-ssh-user"         type="s"><default>""</default><summary>SSH user; empty = $USER</summary></key>
+    <key name="network-use-nmap"         type="b"><default>true</default><summary>Use nmap when available, else nc fallback</summary></key>
+    <key name="network-read-ssh-config"  type="b"><default>true</default><summary>Show ~/.ssh/config hosts in network indicator</summary></key>
+    <key name="network-auto-refresh-sec" type="i"><default>0</default><summary>Auto-refresh interval seconds; 0 disables</summary></key>
+
+    <!-- Device -->
+    <key name="device-auto-refresh-sec"  type="i"><default>0</default><summary>Auto-refresh interval seconds; 0 disables</summary></key>
+
+    <!-- Theming -->
+    <key name="icon-overrides" type="s"><default>"{}"</default><summary>Per-indicator icon overrides (JSON object)</summary></key>
+
+    <!-- Sync -->
+    <key name="enable-git-sync" type="b"><default>false</default><summary>Enable settings sync via git</summary></key>
+    <key name="git-sync-path"   type="s"><default>""</default><summary>Path to a git repo holding the sync JSON</summary></key>
+
+    <!-- Migration -->
+    <key name="schema-version"  type="i"><default>1</default><summary>Schema version, bumped per migration</summary></key>
+    <key name="migration-done"  type="b"><default>false</default><summary>True after legacy JSON has been migrated</summary></key>
+  </schema>
+</schemalist>
