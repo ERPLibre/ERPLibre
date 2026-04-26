@@ -39,15 +39,30 @@ class NetworkIndicator extends PanelMenu.Button {
         this._sigCfg = this._settings.connect(
             'changed::network-read-ssh-config', () => this._rebuildMenu());
         this._rebuildMenu();
+        this._sigTimer = this._settings.connect(
+            'changed::network-auto-refresh-sec', () => this._resetTimer());
+        this._resetTimer();
     }
 
     destroy() {
         if (this._cancellable) this._cancellable.cancel();
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
-        for (const s of [this._sigUser, this._sigCfg])
+        for (const s of [this._sigUser, this._sigCfg, this._sigTimer])
             if (s) this._settings.disconnect(s);
         super.destroy();
+    }
+
+    _resetTimer() {
+        if (this._timerId) GLib.source_remove(this._timerId);
+        this._timerId = 0;
+        const sec = this._settings.get_int('network-auto-refresh-sec');
+        if (sec > 0) {
+            this._timerId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, sec, () => {
+                this._startScan();
+                return GLib.SOURCE_CONTINUE;
+            });
+        }
     }
 
     _rebuildMenu() {

@@ -33,12 +33,29 @@ class DeviceIndicator extends PanelMenu.Button {
                 style_class: 'system-status-icon'});
         this.add_child(_icon);
         this._rescanThenRebuild();
+        this._sigTimer = this._settings.connect(
+            'changed::device-auto-refresh-sec', () => this._resetTimer());
+        this._resetTimer();
     }
 
     destroy() {
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
+        if (this._sigTimer) this._settings.disconnect(this._sigTimer);
+        this._sigTimer = 0;
         super.destroy();
+    }
+
+    _resetTimer() {
+        if (this._timerId) GLib.source_remove(this._timerId);
+        this._timerId = 0;
+        const sec = this._settings.get_int('device-auto-refresh-sec');
+        if (sec > 0) {
+            this._timerId = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, sec, () => {
+                this._rescanThenRebuild();
+                return GLib.SOURCE_CONTINUE;
+            });
+        }
     }
 
     async _rescanThenRebuild() {
