@@ -2,6 +2,7 @@
 # © 2021-2025 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import atexit
 import io
 import itertools
 import os
@@ -11,6 +12,7 @@ import subprocess
 import threading
 import time
 from fractions import Fraction
+from pathlib import Path
 
 try:
     import cv2
@@ -45,6 +47,22 @@ WEBCAM_TYPE = "local"
 WEBCAM_IP_URL = "http://192.168.1.1:8080/shot.jpg"
 is_feature = "dynamic_smyles"
 feature_resize = "linear_from_start"
+
+PIDFILE = Path(os.environ.get(
+    "XDG_CACHE_HOME", str(Path.home() / ".cache")
+)) / "streamdeck-tiler" / "controller.pid"
+
+
+def _write_pidfile():
+    PIDFILE.parent.mkdir(parents=True, exist_ok=True)
+    PIDFILE.write_text(str(os.getpid()))
+
+
+def _remove_pidfile():
+    try:
+        PIDFILE.unlink()
+    except FileNotFoundError:
+        pass
 
 
 class StreamDeckController(object):
@@ -1221,5 +1239,7 @@ class StreamDeckController(object):
 
 
 if __name__ == "__main__":
+    _write_pidfile()
+    atexit.register(_remove_pidfile)
     sdc = StreamDeckController()
     sdc.init_and_run()
