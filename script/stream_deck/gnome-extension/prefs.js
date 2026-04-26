@@ -1,5 +1,7 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
+import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
@@ -39,6 +41,16 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         }
         buttonsPage.add(togglesGroup);
 
+        const orderGroup = new Adw.PreferencesGroup({
+            title: 'Order in top bar',
+            description: 'Drag rows to change the left-to-right order.',
+        });
+        buttonsPage.add(orderGroup);
+
+        const list = new Gtk.ListBox({selection_mode: Gtk.SelectionMode.NONE});
+        orderGroup.add(list);
+        this._refreshOrderList(list, settings);
+
         window.add(buttonsPage);
         window.add(this._buildPencilPage(settings));
         window.add(this._buildFilmPage(settings));
@@ -46,6 +58,58 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildNetworkPage(settings));
         window.add(this._buildDevicePage(settings));
         window.add(this._buildThemingPage(settings));
+    }
+
+    _refreshOrderList(list, settings) {
+        const known = new Set(['controller','pencil','film','erplibre',
+            'network','device']);
+        let order = settings.get_strv('button-order')
+            .filter(id => known.has(id));
+        for (const id of known)
+            if (!order.includes(id)) order.push(id);
+
+        while (list.get_first_child())
+            list.remove(list.get_first_child());
+
+        for (const id of order) {
+            const row = new Gtk.ListBoxRow({name: id});
+            const lbl = new Gtk.Label({
+                label: id,
+                xalign: 0,
+                margin_start: 8,
+                margin_end: 8,
+                margin_top: 6,
+                margin_bottom: 6,
+            });
+            row.set_child(lbl);
+
+            // Drag source
+            const src = new Gtk.DragSource();
+            src.connect('prepare',
+                () => Gdk.ContentProvider.new_for_value(id));
+            row.add_controller(src);
+
+            // Drop target
+            const tgt = new Gtk.DropTarget({
+                actions: Gdk.DragAction.MOVE,
+                formats: Gdk.ContentFormats.new_for_gtype(GObject.TYPE_STRING),
+            });
+            tgt.connect('drop', (_t, value) => {
+                if (typeof value !== 'string') return false;
+                const fromIdx = order.indexOf(value);
+                const toIdx = order.indexOf(id);
+                if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx)
+                    return false;
+                order.splice(fromIdx, 1);
+                order.splice(toIdx, 0, value);
+                settings.set_strv('button-order', order);
+                this._refreshOrderList(list, settings);
+                return true;
+            });
+            row.add_controller(tgt);
+
+            list.append(row);
+        }
     }
 
     _buildThemingPage(settings) {
