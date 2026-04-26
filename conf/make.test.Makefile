@@ -25,7 +25,7 @@ test_full:
 	./script/test/check_result_test.sh ${LOG_FILE}
 
 .PHONY: test_full_fast
-test_full_fast:
+test_full_fast: test_gnome_extension
 	./script/make.sh clean
 	# Need to create a BD to create cache _cache_erplibre_base
 	./script/database/db_restore.py --database test
