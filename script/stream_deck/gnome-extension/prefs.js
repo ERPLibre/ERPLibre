@@ -61,6 +61,34 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildDevicePage(settings));
         window.add(this._buildThemingPage(settings));
         window.add(this._buildAdvancedPage(settings));
+        window.add(this._buildSyncPage(settings));
+    }
+
+    _buildSyncPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Sync', icon_name: 'folder-remote-symbolic',
+        });
+        const grp = new Adw.PreferencesGroup({title: 'Git sync'});
+        page.add(grp);
+
+        const enRow = new Adw.SwitchRow({title: 'Enable git sync'});
+        settings.bind('enable-git-sync', enRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        grp.add(enRow);
+
+        const pathRow = new Adw.EntryRow({
+            title: 'Sync repo path (must contain a git repo)'});
+        settings.bind('git-sync-path', pathRow, 'text',
+            Gio.SettingsBindFlags.DEFAULT);
+        grp.add(pathRow);
+
+        const warn = new Adw.ActionRow({
+            title: 'Last write wins on conflict.',
+            subtitle: 'Manual merges may be required.',
+        });
+        grp.add(warn);
+
+        return page;
     }
 
     _buildAdvancedPage(settings) {

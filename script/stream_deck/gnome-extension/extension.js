@@ -15,6 +15,8 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {IndicatorRegistry} from './lib/registry.js';
 import {runMigrationGjs} from './lib/settings.js';
 import {parseObject} from './lib/settings.js';
+import {exportSettingsAsObj} from './lib/settings.js';
+import {Debouncer, gitPull, gitCommitPush} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
@@ -124,6 +126,26 @@ export default class StreamDeckTilerExtension extends Extension {
         runMigrationGjs(this.#settings).catch(e =>
             console.log(`[StreamDeckTiler] migration failed: ${e.message}`));
 
+        this._syncDebounce = new Debouncer({delayMs: 5000,
+            scheduler: (fn, ms) =>
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms,
+                    () => { fn(); return GLib.SOURCE_REMOVE; }),
+            canceller: id => GLib.source_remove(id)});
+
+        if (this.#settings.get_boolean('enable-git-sync')) {
+            const repo = this.#settings.get_string('git-sync-path');
+            if (repo) gitPull(repo).then(() => this._syncImport(repo));
+        }
+
+        const watchKeys = ['paths','films','instances','icon-overrides',
+            'enable-controller','enable-pencil','enable-film','enable-erplibre',
+            'enable-network','enable-device','button-order'];
+        for (const k of watchKeys) {
+            const sig = this.#settings.connect(`changed::${k}`,
+                () => this._syncDebounceWrite());
+            this.#signalIds.push(sig);
+        }
+
         this.#registry = new IndicatorRegistry();
         this.#registry.register(controllerDescriptor);
         this.#registry.register(pencilDescriptor);
@@ -154,6 +176,8 @@ export default class StreamDeckTilerExtension extends Extension {
         }
         for (const id of this.#signalIds) this.#settings?.disconnect(id);
         this.#signalIds = [];
+        try { this._syncDebounce?.flush(); } catch (_e) {}
+        this._syncDebounce = null;
         for (const ind of this.#indicators.values()) {
             try { ind.destroy(); } catch (e) {
                 console.log(`[StreamDeckTiler] destroy ${e.message}`);
@@ -222,6 +246,38 @@ export default class StreamDeckTilerExtension extends Extension {
         for (const id of [...this.#indicators.keys()]) this._unmount(id);
         for (const id of order) {
             if (this.#settings.get_boolean(`enable-${id}`)) this._mount(id);
+        }
+    }
+
+    _syncDebounceWrite() {
+        if (!this.#settings.get_boolean('enable-git-sync')) return;
+        const repo = this.#settings.get_string('git-sync-path');
+        if (!repo) return;
+        this._syncDebounce.bump(async () => {
+            const obj = exportSettingsAsObj(this.#settings);
+            const file = Gio.File.new_for_path(`${repo}/streamdeck-tiler.json`);
+            try {
+                file.replace_contents(
+                    new TextEncoder().encode(JSON.stringify(obj, null, 2)),
+                    null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+                await gitCommitPush(repo, GLib.get_host_name());
+            } catch (e) {
+                console.log(`[StreamDeckTiler] sync failed: ${e.message}`);
+            }
+        });
+    }
+
+    async _syncImport(repo) {
+        const file = Gio.File.new_for_path(`${repo}/streamdeck-tiler.json`);
+        if (!file.query_exists(null)) return;
+        try {
+            const [, contents] = file.load_contents(null);
+            const obj = JSON.parse(new TextDecoder().decode(contents));
+            const {importSettingsFromObj} =
+                await import('./lib/settings.js');
+            await importSettingsFromObj(this.#settings, obj);
+        } catch (e) {
+            console.log(`[StreamDeckTiler] sync import failed: ${e.message}`);
         }
     }
 
