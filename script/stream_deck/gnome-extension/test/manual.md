@@ -14,6 +14,19 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] HotReload via D-Bus does not crash the shell
 - [ ] If `~/.config/streamdeck-tiler/extension-settings.json` exists with `erplibre_path`, after first enable: `gsettings get org.gnome.shell.extensions.streamdeck-tiler paths` returns a JSON array containing that path; the legacy file is renamed to `.bak`
 
-## Future (Plans B–H)
+## Pencil (Plan B)
+
+- [ ] Pencil indicator in panel with `document-edit-symbolic` icon
+- [ ] Empty state shows "(no paths configured — use Add path…)"
+- [ ] "+ Add path…" opens a dialog with label, path, file picker, recent suggestions
+- [ ] Dialog confirm adds the entry; the menu rebuilds live
+- [ ] Per-entry `Resume` opens gnome-terminal in path running `claude --resume`
+- [ ] Per-entry `Fresh` runs `claude` (no flag)
+- [ ] Per-entry `Custom…` runs the value of `terminal-claude-cmd` GSettings key
+- [ ] `✎` opens the dialog pre-filled with the entry; saving updates the entry
+- [ ] After a launch, `gsettings get … recent-paths` includes that path (capped at 10)
+- [ ] Toggle `enable-pencil` off → button disappears; on → button reappears
+
+## Future (Plans C–H)
 
 (Sections added by subsequent plans.)
