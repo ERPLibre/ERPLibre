@@ -6,6 +6,8 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {setGettext} from './lib/i18n.js';
+import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings}
+    from './lib/settings.js';
 
 const INDICATORS = [
     {id: 'controller', label: 'Controller'},
@@ -58,6 +60,81 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildNetworkPage(settings));
         window.add(this._buildDevicePage(settings));
         window.add(this._buildThemingPage(settings));
+        window.add(this._buildAdvancedPage(settings));
+    }
+
+    _buildAdvancedPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Advanced', icon_name: 'document-properties-symbolic',
+        });
+        const grp = new Adw.PreferencesGroup({title: 'Backup & restore'});
+        page.add(grp);
+
+        const exp = new Adw.ActionRow({title: 'Export settings…'});
+        const expBtn = new Gtk.Button({label: 'Export', valign: Gtk.Align.CENTER});
+        expBtn.connect('clicked', () => this._exportSettings(settings, page));
+        exp.add_suffix(expBtn);
+        grp.add(exp);
+
+        const imp = new Adw.ActionRow({title: 'Import settings…'});
+        const impBtn = new Gtk.Button({label: 'Import', valign: Gtk.Align.CENTER});
+        impBtn.connect('clicked', () => this._importSettings(settings, page));
+        imp.add_suffix(impBtn);
+        grp.add(imp);
+
+        const rst = new Adw.ActionRow({title: 'Reset to defaults'});
+        const rstBtn = new Gtk.Button({label: 'Reset',
+            valign: Gtk.Align.CENTER, css_classes: ['destructive-action']});
+        rstBtn.connect('clicked', () => this._resetAll(settings));
+        rst.add_suffix(rstBtn);
+        grp.add(rst);
+
+        return page;
+    }
+
+    _exportSettings(settings, parent) {
+        const dlg = new Gtk.FileChooserNative({
+            title: 'Export settings', action: Gtk.FileChooserAction.SAVE,
+            accept_label: 'Save', cancel_label: 'Cancel',
+            modal: true, transient_for: parent.get_root?.(),
+        });
+        dlg.set_current_name('streamdeck-tiler-settings.json');
+        dlg.connect('response', (_d, response) => {
+            if (response === Gtk.ResponseType.ACCEPT) {
+                const file = dlg.get_file();
+                const obj = exportSettingsAsObj(settings);
+                file.replace_contents(
+                    new TextEncoder().encode(JSON.stringify(obj, null, 2)),
+                    null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            }
+            dlg.destroy();
+        });
+        dlg.show();
+    }
+
+    _importSettings(settings, parent) {
+        const dlg = new Gtk.FileChooserNative({
+            title: 'Import settings', action: Gtk.FileChooserAction.OPEN,
+            accept_label: 'Open', cancel_label: 'Cancel',
+            modal: true, transient_for: parent.get_root?.(),
+        });
+        dlg.connect('response', async (_d, response) => {
+            if (response === Gtk.ResponseType.ACCEPT) {
+                const file = dlg.get_file();
+                const [, contents] = file.load_contents(null);
+                const text = new TextDecoder().decode(contents);
+                try {
+                    const obj = JSON.parse(text);
+                    await importSettingsFromObj(settings, obj);
+                } catch (_e) {}
+            }
+            dlg.destroy();
+        });
+        dlg.show();
+    }
+
+    _resetAll(settings) {
+        resetAllSettings(settings);
     }
 
     _refreshOrderList(list, settings) {

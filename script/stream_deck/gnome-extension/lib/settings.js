@@ -145,3 +145,43 @@ export async function runMigrationGjs(settings, log = console.log) {
         } catch (_e) {}
     }
 }
+
+export const SCHEMA_KEYS = [
+    'enable-controller','enable-pencil','enable-film',
+    'enable-erplibre','enable-network','enable-device',
+    'button-order','paths','films','instances','recent-paths',
+    'terminal-claude-cmd','erplibre-auto-detect','erplibre-local-pattern',
+    'network-cidrs','network-ssh-user','network-use-nmap',
+    'network-read-ssh-config','network-auto-refresh-sec',
+    'device-auto-refresh-sec','icon-overrides','enable-git-sync',
+    'git-sync-path','schema-version',
+];
+
+export function exportSettingsAsObj(settings) {
+    const out = {};
+    for (const k of SCHEMA_KEYS) {
+        const v = settings.get_value(k);
+        out[k] = v.deep_unpack ? v.deep_unpack() : v.unpack();
+    }
+    return {schema_version: settings.get_int('schema-version'),
+        settings: out};
+}
+
+export async function importSettingsFromObj(settings, obj) {
+    if (!obj || typeof obj !== 'object' || !obj.settings) return false;
+    const {default: GLib} = await import('gi://GLib');
+    for (const [k, raw] of Object.entries(obj.settings)) {
+        if (!SCHEMA_KEYS.includes(k)) continue;
+        try {
+            const cur = settings.get_value(k);
+            const variantType = cur.get_type_string();
+            const variant = GLib.Variant.new(variantType, raw);
+            settings.set_value(k, variant);
+        } catch (_e) { /* skip mismatched */ }
+    }
+    return true;
+}
+
+export function resetAllSettings(settings) {
+    for (const k of SCHEMA_KEYS) settings.reset(k);
+}
