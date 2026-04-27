@@ -3,13 +3,35 @@
 # a Vite dev server on this machine, then iterate on src/**.{ts,scss,html}
 # with HMR / hot reload — no rebuild, no reinstall on every change.
 #
+# Capacitor 8 dropped the --external flag from previous versions. The
+# supported equivalents are --live-reload + --host + --port (+ optional
+# --forwardPorts to enable 'adb reverse' so the phone can hit localhost
+# over USB).
+#
 # This script defaults to the USB-tethering path (--forwardPorts) which
 # uses `adb reverse` to route the phone's localhost:5173 back to this
-# machine. No WiFi config needed, works on cellular, on hotel WiFi, etc.
+# machine. No WiFi config required, works on any network, only USB cable
+# + adb.
 #
 # Set LIVERELOAD_HOST=auto (or any LAN IP) to switch to WiFi mode — the
 # phone hits the dev machine over the LAN at the chosen IP. Phone and
 # dev machine must then share the same network.
+#
+# Override examples:
+#   LIVERELOAD_HOST=auto       ./mobile/compile_and_run_livereload.sh
+#       Auto-detect LAN IP via `hostname -I`. Phone connects over WiFi.
+#
+#   LIVERELOAD_HOST=10.0.0.42  ./mobile/compile_and_run_livereload.sh
+#       Explicit LAN IP. Useful when `hostname -I` returns the wrong
+#       interface (multiple NICs, VPN, etc.).
+#
+#   LIVERELOAD_PORT=5174       ./mobile/compile_and_run_livereload.sh
+#       Use port 5174 instead of the default 5173. Both the dev server
+#       and the adb-reverse port are remapped together.
+#
+#   LIVERELOAD_HOST=auto LIVERELOAD_PORT=5174 \
+#       ./mobile/compile_and_run_livereload.sh
+#       Stack overrides as expected.
 #
 # Trade-offs vs compile_and_run.sh:
 #   ✓ ~500 ms iteration on TS / SCSS / template changes
