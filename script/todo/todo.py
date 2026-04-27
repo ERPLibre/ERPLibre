@@ -2366,11 +2366,17 @@ class TODO:
         )
 
         default_debug = False
+        default_skip_repos = False
+        default_skip_whisper = False
+        default_all_abis = False
         project_name = default_project_name
         project_url_name = default_project_url_name
         project_principal_subject = default_project_note_subject
         package_name = default_package_name
         do_debug = default_debug
+        do_skip_repos = default_skip_repos
+        do_skip_whisper = default_skip_whisper
+        do_all_abis = default_all_abis
         do_change_picture_menu = False
 
         do_personalize = input(
@@ -2403,6 +2409,36 @@ class TODO:
             )
             do_debug = (
                 input("Compilation with debug information, default No (Y) : ")
+                .strip()
+                .lower()
+                == "y"
+            )
+            do_skip_repos = (
+                input(
+                    "Skip manifest repos bundling — saves ~15s build + ~180MB"
+                    " APK, the Code tool fail-softs on missing repos,"
+                    " default No (Y) : "
+                )
+                .strip()
+                .lower()
+                == "y"
+            )
+            do_skip_whisper = (
+                input(
+                    "Skip whisper.cpp native build — disables transcription,"
+                    " saves ~5min first build + ~3.5MB APK,"
+                    " default No (Y) : "
+                )
+                .strip()
+                .lower()
+                == "y"
+            )
+            do_all_abis = (
+                input(
+                    "Package all ABIs (arm64 + arm + x86 + x86_64) — needed"
+                    " for emulator, ~50% bigger native libs,"
+                    " default No (Y) : "
+                )
                 .strip()
                 .lower()
                 == "y"
@@ -2462,8 +2498,15 @@ class TODO:
             cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
             self.execute.exec_command_live(cmd_client, source_erplibre=False)
 
+        env_prefix = ""
+        if do_skip_repos:
+            env_prefix += "BUNDLE_SKIP_REPOS=1 "
+        if do_skip_whisper:
+            env_prefix += "BUNDLE_SKIP_WHISPER=1 "
+        if do_all_abis:
+            env_prefix += "ALL_ABIS=1 "
         status = self.execute.exec_command_live(
-            "./mobile/compile_and_run.sh", source_erplibre=False
+            f"{env_prefix}./mobile/compile_and_run.sh", source_erplibre=False
         )
 
 
