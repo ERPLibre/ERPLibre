@@ -40,18 +40,21 @@
 #   BUNDLE_PARALLEL=4 ./mobile/compile_and_run.sh
 #
 # ── Combos pratiques ─────────────────────────────────────────────────────
-# Tightest dev loop (no manifest, no workspace, no whisper, arm64 only):
-#
-#   BUNDLE_SKIP_REPOS=1 BUNDLE_SKIP_WHISPER=1 BUNDLE_SKIP_ERPLIBRE=1 \
-#       ./mobile/compile_and_run.sh
-#   → APK ~25 MB, install ≈ 5 s, build ≈ 5 s
-#
-# Emulator dev (everything but for x86_64):
+# Emulator dev (every ABI for x86_64 host):
 #
 #   ALL_ABIS=1 ./mobile/compile_and_run.sh
 #
 # For TS / SCSS only iterations, prefer ./mobile/compile_and_run_livereload.sh
 # instead — it installs the APK once, then HMR-reloads on every save.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# 🚀 Ligne magique pour la boucle dev la plus serrée
+# (no manifest, no workspace, no whisper, arm64 only — APK ~25 MB,
+# install ≈ 5 s, build ≈ 5 s) :
+#
+#   BUNDLE_SKIP_REPOS=1 BUNDLE_SKIP_WHISPER=1 BUNDLE_SKIP_ERPLIBRE=1 \
+#       ./mobile/compile_and_run.sh
+# ─────────────────────────────────────────────────────────────────────────
 
 if [[ ! -d "./mobile/erplibre_home_mobile" ]]; then
   echo "Please, run installation ./mobile/install_mobile_dev.sh before run this script ./mobile/compile_and_run.sh"
