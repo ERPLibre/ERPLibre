@@ -2369,6 +2369,7 @@ class TODO:
         default_skip_repos = False
         default_skip_whisper = False
         default_all_abis = False
+        default_livereload = False
         project_name = default_project_name
         project_url_name = default_project_url_name
         project_principal_subject = default_project_note_subject
@@ -2377,6 +2378,7 @@ class TODO:
         do_skip_repos = default_skip_repos
         do_skip_whisper = default_skip_whisper
         do_all_abis = default_all_abis
+        do_livereload = default_livereload
         do_change_picture_menu = False
 
         do_personalize = input(
@@ -2438,6 +2440,18 @@ class TODO:
                     "Package all ABIs (arm64 + arm + x86 + x86_64) — needed"
                     " for emulator, ~50% bigger native libs,"
                     " default No (Y) : "
+                )
+                .strip()
+                .lower()
+                == "y"
+            )
+            do_livereload = (
+                input(
+                    "Use Capacitor livereload — phone WebView fetches src/"
+                    " from a Vite dev server on this machine, hot-reload on"
+                    " every TS/SCSS save. Phone + machine must share WiFi."
+                    " Native (Java/Gradle/migrations) changes still need a"
+                    " regular rebuild. default No (Y) : "
                 )
                 .strip()
                 .lower()
@@ -2505,8 +2519,13 @@ class TODO:
             env_prefix += "BUNDLE_SKIP_WHISPER=1 "
         if do_all_abis:
             env_prefix += "ALL_ABIS=1 "
+        script = (
+            "./mobile/compile_and_run_livereload.sh"
+            if do_livereload
+            else "./mobile/compile_and_run.sh"
+        )
         status = self.execute.exec_command_live(
-            f"{env_prefix}./mobile/compile_and_run.sh", source_erplibre=False
+            f"{env_prefix}{script}", source_erplibre=False
         )
 
 
