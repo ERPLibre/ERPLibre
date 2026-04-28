@@ -151,6 +151,8 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] After the user types another message, `last_prompt` updates but `description` (the very first prompt) stays put as the sticky session topic
 - [ ] Quit Claude (`/exit` / `Ctrl-D`) → SessionEnd removes the file → badge count decrements
 - [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)
+- [ ] D-Bus: `gdbus call ... FocusClaudeSession '<session_id>'` raises and focuses the terminal hosting that session
+- [ ] Stream Deck idle page shows one button per running session (robot icon, green/yellow/red); clicking it raises the matching gnome-terminal window
 
 ## Release
 

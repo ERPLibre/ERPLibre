@@ -105,6 +105,10 @@ const IFACE_XML = `
     <method name="ListInstances">
       <arg type="s" direction="out" name="json"/>
     </method>
+    <method name="FocusClaudeSession">
+      <arg type="s" direction="in" name="session_id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
   </interface>
 </node>`;
 
@@ -465,6 +469,72 @@ export default class StreamDeckTilerExtension extends Extension {
         const ind = this.#indicators.get('device');
         if (!ind) return '[]';
         return JSON.stringify(ind._cache || []);
+    }
+
+    FocusClaudeSession(sessionId) {
+        try {
+            const state = this._readClaudeState(sessionId);
+            if (!state || !state.pid) return false;
+            return this._focusWindowForPid(state.pid, state.cwd || '');
+        } catch (_e) { return false; }
+    }
+
+    _readClaudeState(sessionId) {
+        const sid = String(sessionId || '').trim();
+        if (!sid) return null;
+        const base = GLib.getenv('XDG_STATE_HOME')
+            || `${GLib.get_home_dir()}/.local/state`;
+        const path = `${base}/streamdeck-tiler/claude/${sid}.json`;
+        if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return null;
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            if (!ok) return null;
+            return JSON.parse(new TextDecoder().decode(contents));
+        } catch (_e) { return null; }
+    }
+
+    _readPpid(pid) {
+        try {
+            const [ok, contents] = GLib.file_get_contents(
+                `/proc/${pid}/stat`);
+            if (!ok) return 0;
+            const text = new TextDecoder().decode(contents);
+            const rparen = text.lastIndexOf(')');
+            if (rparen < 0) return 0;
+            const rest = text.slice(rparen + 2).split(' ');
+            return parseInt(rest[1], 10) || 0;
+        } catch (_e) { return 0; }
+    }
+
+    _focusWindowForPid(claudePid, cwd) {
+        const ancestors = new Set([claudePid]);
+        let p = claudePid;
+        for (let i = 0; i < 20; i++) {
+            const pp = this._readPpid(p);
+            if (pp <= 1) break;
+            ancestors.add(pp);
+            p = pp;
+        }
+        const candidates = [];
+        for (const w of this._collectAllWindows()) {
+            const wpid = w.get_pid?.();
+            if (wpid && ancestors.has(wpid)) candidates.push(w);
+        }
+        if (!candidates.length) return false;
+        const basename = String(cwd || '').replace(/\/+$/, '')
+            .split('/').pop() || '';
+        const sorted = candidates.slice().sort((a, b) => {
+            const ta = (a.get_title?.() || '').toLowerCase();
+            const tb = (b.get_title?.() || '').toLowerCase();
+            const ba = basename && ta.includes(basename.toLowerCase()) ? 1 : 0;
+            const bb = basename && tb.includes(basename.toLowerCase()) ? 1 : 0;
+            return bb - ba;
+        });
+        const target = sorted[0];
+        try {
+            target.activate(global.get_current_time());
+            return true;
+        } catch (_e) { return false; }
     }
 
     // ---------- Window layout capture / restore (unchanged) ----------

@@ -1228,6 +1228,36 @@ class Tiler:
         self._compute_translator_buttons()
         self._compute_claude_buttons()
 
+    def _focus_claude_for_key(self, key):
+        """Resolve the session attached to `key` and ask the GNOME
+        extension to focus its terminal."""
+        if not self.claude_keys:
+            return False
+        try:
+            idx = self.claude_keys.index(key)
+        except ValueError:
+            return False
+        sessions = _load_claude_sessions()
+        if idx >= len(sessions):
+            return False
+        sid = sessions[idx].get("session_id") or ""
+        if not sid:
+            return False
+        try:
+            out = subprocess.check_output([
+                "gdbus", "call", "--session",
+                "--dest", "org.gnome.Shell",
+                "--object-path",
+                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "--method",
+                "org.gnome.Shell.Extensions.StreamDeckTiler"
+                ".FocusClaudeSession",
+                sid,
+            ], stderr=subprocess.DEVNULL, timeout=2).decode()
+            return "true" in out.lower()
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
+
     def _compute_claude_buttons(self):
         """Reserve free cells (rows 1+, after mic + layout shortcuts) for
         Claude session indicators. One cell per running session."""
@@ -1403,6 +1433,12 @@ class Tiler:
             if str(slot) not in slots:
                 return  # empty slot: no-op
             ok = _load_layout_slot(slot)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        if key in (self.claude_keys or []):
+            ok = self._focus_claude_for_key(key)
             self.last_result = "ok" if ok else "err"
             self.result_time = time.monotonic()
             self.render()
