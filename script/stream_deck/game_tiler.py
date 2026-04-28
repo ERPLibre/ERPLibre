@@ -40,6 +40,7 @@ import translator as _translator
 GAME_META = {
     "name": "Window Tiler",
     "category": "sim",
+    "section": "erplibre",
     "multiplayer": False,
     "sdplus": False,
     "description": "Tile windows on a grid. Pick two corners to place.",

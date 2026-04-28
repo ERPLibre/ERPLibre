@@ -110,9 +110,14 @@ class ControllerIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(this._gallerySection);
         this._populateGallerySubmenu();
 
+        this._erplibreSection = new PopupMenu.PopupSubMenuMenuItem(
+            'ERPLibre');
+        this.menu.addMenuItem(this._erplibreSection);
+        this._populateSectionPlaceholder(this._erplibreSection, 'Loading…');
+
         this._gamesSection = new PopupMenu.PopupSubMenuMenuItem('Games');
         this.menu.addMenuItem(this._gamesSection);
-        this._populateGamesPlaceholder('Loading…');
+        this._populateSectionPlaceholder(this._gamesSection, 'Loading…');
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -206,10 +211,15 @@ class ControllerIndicator extends PanelMenu.Button {
         }
     }
 
-    _populateGamesPlaceholder(label) {
-        this._gamesSection.menu.removeAll();
-        this._gamesSection.menu.addMenuItem(
+    _populateSectionPlaceholder(section, label) {
+        section.menu.removeAll();
+        section.menu.addMenuItem(
             new PopupMenu.PopupMenuItem(label, {reactive: false}));
+    }
+
+    _populateGamesPlaceholder(label) {
+        this._populateSectionPlaceholder(this._gamesSection, label);
+        this._populateSectionPlaceholder(this._erplibreSection, label);
     }
 
     _refreshGames() {
@@ -238,20 +248,30 @@ class ControllerIndicator extends PanelMenu.Button {
     }
 
     _populateGames(games) {
-        this._gamesSection.menu.removeAll();
-        if (!games.length) {
-            this._populateGamesPlaceholder('No games found');
+        const sorted = (Array.isArray(games) ? games : []).slice().sort(
+            (a, b) => (a.name || a.id || '')
+                .localeCompare(b.name || b.id || ''));
+        const erplibre = sorted.filter(g => g.section === 'erplibre');
+        const others = sorted.filter(g => g.section !== 'erplibre');
+        this._fillSection(this._erplibreSection, erplibre,
+            'No ERPLibre tools');
+        this._fillSection(this._gamesSection, others, 'No games found');
+    }
+
+    _fillSection(section, items, emptyLabel) {
+        section.menu.removeAll();
+        if (!items.length) {
+            section.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                emptyLabel, {reactive: false}));
             return;
         }
-        games.sort((a, b) =>
-            (a.name || a.id || '').localeCompare(b.name || b.id || ''));
-        for (const g of games) {
+        for (const g of items) {
             const id = g.id || '';
-            const name = g.name || id;
             if (!id) continue;
+            const name = g.name || id;
             const item = new PopupMenu.PopupMenuItem(name);
             item.connect('activate', () => this._launchGame(id));
-            this._gamesSection.menu.addMenuItem(item);
+            section.menu.addMenuItem(item);
         }
     }
 
