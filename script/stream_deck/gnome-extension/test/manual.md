@@ -7,7 +7,10 @@ Run after each `gnome-extensions enable` cycle.
 ## Foundation (Plan A)
 
 - [ ] Controller indicator shows in top bar with `input-gaming-symbolic` icon
-- [ ] Click → menu: About, Games (loads or "offline"), "Open prefs…"
+- [ ] Click → menu: About, Start gallery server… ▶, Games (loads or "offline"), "Open prefs…"
+- [ ] "Start gallery server…" submenu lists every entry from the `paths` GSetting (label + path)
+- [ ] Picking a path opens gnome-terminal in that directory running `source .venv.erplibre/bin/activate && make streamdeck_gallery`
+- [ ] If `paths` is empty the submenu shows "(no paths configured — add one in pencil prefs)"
 - [ ] About item launches repo URL in browser
 - [ ] Open prefs item opens the preferences window
 - [ ] In prefs, "Buttons" page lists 6 indicators with toggles

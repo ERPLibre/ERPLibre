@@ -10,6 +10,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {detectStreamDecksGjs} from '../lib/usb.js';
 import {makeBadgedIcon} from '../lib/badges.js';
+import {parseList} from '../lib/settings.js';
+import {buildTerminalArgv, findTerminal, spawnDetached}
+    from '../lib/spawn.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -51,13 +54,20 @@ class ControllerIndicator extends PanelMenu.Button {
             this._sigBadges = this._settings.connect(
                 'changed::enable-icon-badges',
                 () => this._refreshBadge());
+            this._sigPaths = this._settings.connect(
+                'changed::paths',
+                () => this._populateGallerySubmenu());
         }
         this._rescanDecks();
     }
 
     destroy() {
-        if (this._sigBadges && this._settings)
-            this._settings.disconnect(this._sigBadges);
+        if (this._settings) {
+            for (const k of ['_sigBadges', '_sigPaths']) {
+                if (this[k]) this._settings.disconnect(this[k]);
+                this[k] = 0;
+            }
+        }
         super.destroy();
     }
 
@@ -94,6 +104,11 @@ class ControllerIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        this._gallerySection = new PopupMenu.PopupSubMenuMenuItem(
+            'Start gallery server…');
+        this.menu.addMenuItem(this._gallerySection);
+        this._populateGallerySubmenu();
+
         this._gamesSection = new PopupMenu.PopupSubMenuMenuItem('Games');
         this.menu.addMenuItem(this._gamesSection);
         this._populateGamesPlaceholder('Loading…');
@@ -105,6 +120,45 @@ class ControllerIndicator extends PanelMenu.Button {
             if (typeof this._openPrefs === 'function') this._openPrefs();
         });
         this.menu.addMenuItem(settings);
+    }
+
+    _populateGallerySubmenu() {
+        if (!this._gallerySection) return;
+        this._gallerySection.menu.removeAll();
+        const paths = this._settings
+            ? parseList(this._settings.get_string('paths'))
+            : [];
+        if (!paths.length) {
+            this._gallerySection.menu.addMenuItem(
+                new PopupMenu.PopupMenuItem(
+                    '(no paths configured — add one in pencil prefs)',
+                    {reactive: false}));
+            return;
+        }
+        for (const p of paths) {
+            const label = p.label && p.label.trim() !== ''
+                ? `${p.label} (${p.path})` : p.path;
+            const item = new PopupMenu.PopupMenuItem(label);
+            item.connect('activate', () => this._launchGalleryAt(p.path));
+            this._gallerySection.menu.addMenuItem(item);
+        }
+    }
+
+    async _launchGalleryAt(cwd) {
+        const terminal = await findTerminal();
+        if (!terminal) {
+            _notify(PROJECT_NAME,
+                'No terminal found. Install gnome-terminal, kgx or xterm.');
+            return;
+        }
+        const argv = buildTerminalArgv({
+            cwd,
+            command:
+                'source .venv.erplibre/bin/activate && ' +
+                'make streamdeck_gallery',
+            terminal,
+        });
+        spawnDetached(argv, {notify: _notify, title: PROJECT_NAME});
     }
 
     _populateGamesPlaceholder(label) {
