@@ -107,6 +107,80 @@ COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
 
+# Claude session indicator colours (mirrors GNOME extension badge palette).
+COLOR_CLAUDE_ACTIVE = (46, 125, 50)     # green
+COLOR_CLAUDE_AWAIT_STOP = (212, 160, 23)  # yellow
+COLOR_CLAUDE_AWAIT_NOTIFY = (198, 40, 40)  # red
+
+CLAUDE_STATE_DIR = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "streamdeck-tiler", "claude",
+)
+
+
+def _load_claude_sessions():
+    """Return active Claude sessions from the state dir, sorted newest first.
+
+    Drops files whose PID is no longer running (best-effort).
+    """
+    out = []
+    if not os.path.isdir(CLAUDE_STATE_DIR):
+        return out
+    for name in sorted(os.listdir(CLAUDE_STATE_DIR)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(CLAUDE_STATE_DIR, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        pid = int(d.get("pid") or 0)
+        if pid > 0 and not os.path.exists(f"/proc/{pid}"):
+            continue
+        ts_active = int(d.get("ts_active") or 0)
+        ts_stop = int(d.get("ts_stop") or 0)
+        ts_notif = int(d.get("ts_notification") or 0)
+        ts = max(ts_active, ts_stop, ts_notif)
+        if ts == ts_notif and ts_notif > 0:
+            status = "awaiting_notification"
+        elif ts == ts_stop and ts_stop > 0:
+            status = "awaiting_stop"
+        else:
+            status = "active"
+        out.append({
+            "session_id": d.get("session_id", ""),
+            "cwd": d.get("cwd", ""),
+            "description": d.get("description", "")
+                or d.get("last_prompt", ""),
+            "status": status,
+            "ts": ts,
+        })
+    out.sort(key=lambda s: -s.get("ts", 0))
+    return out
+
+
+def _claude_color(session):
+    if session.get("status") == "awaiting_notification":
+        return COLOR_CLAUDE_AWAIT_NOTIFY
+    if session.get("status") == "awaiting_stop":
+        return COLOR_CLAUDE_AWAIT_STOP
+    return COLOR_CLAUDE_ACTIVE
+
+
+def _claude_label(session, max_chars=18):
+    """Two short lines for the button."""
+    desc = (session.get("description") or "").strip()
+    if not desc:
+        return ""
+    if len(desc) <= max_chars:
+        return desc
+    # Word-break at a space close to the middle.
+    cut = desc.rfind(" ", 0, max_chars)
+    if cut < max_chars // 2:
+        cut = max_chars
+    return desc[:cut].rstrip()
+
 MODE_IDLE = "idle"
 MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
@@ -927,6 +1001,45 @@ def _icon_bt(draw, w, h):
     draw.line(points, fill=_ICON_WHITE, width=stroke, joint="curve")
 
 
+def _icon_robot(draw, w, h):
+    stroke = max(2, int(w * 0.05))
+    # Antenna
+    cx = w / 2
+    draw.line([(cx, h * 0.10), (cx, h * 0.22)],
+              fill=_ICON_WHITE, width=stroke)
+    draw.ellipse(
+        [cx - w * 0.05, h * 0.05, cx + w * 0.05, h * 0.15],
+        fill=_ICON_WHITE,
+    )
+    # Head
+    draw.rounded_rectangle(
+        [w * 0.20, h * 0.25, w * 0.80, h * 0.65],
+        radius=int(w * 0.10), outline=_ICON_WHITE, width=stroke,
+    )
+    # Eyes
+    eye_r = max(2, int(w * 0.05))
+    draw.ellipse(
+        [w * 0.32 - eye_r, h * 0.42 - eye_r,
+         w * 0.32 + eye_r, h * 0.42 + eye_r],
+        fill=_ICON_WHITE,
+    )
+    draw.ellipse(
+        [w * 0.68 - eye_r, h * 0.42 - eye_r,
+         w * 0.68 + eye_r, h * 0.42 + eye_r],
+        fill=_ICON_WHITE,
+    )
+    # Mouth
+    draw.line(
+        [(w * 0.36, h * 0.55), (w * 0.64, h * 0.55)],
+        fill=_ICON_WHITE, width=stroke,
+    )
+    # Body hint (shoulders)
+    draw.line(
+        [(w * 0.30, h * 0.72), (w * 0.70, h * 0.72)],
+        fill=_ICON_WHITE, width=stroke,
+    )
+
+
 _ICONS = {
     "mic_on": _icon_mic,
     "mic_off": _icon_mic_off,
@@ -938,6 +1051,7 @@ _ICONS = {
     "a11y": _icon_a11y,
     "bt": _icon_bt,
     "translator": _icon_translator,
+    "robot": _icon_robot,
 }
 
 
@@ -1112,6 +1226,25 @@ class Tiler:
         self._compute_a11y_buttons()
         self._compute_bluetooth_buttons()
         self._compute_translator_buttons()
+        self._compute_claude_buttons()
+
+    def _compute_claude_buttons(self):
+        """Reserve free cells (rows 1+, after mic + layout shortcuts) for
+        Claude session indicators. One cell per running session."""
+        used = set()
+        for k in (self.tile_key, self.timer_key, self.dev_reload_key,
+                  self.sound_key, self.layout_key, self.a11y_key,
+                  self.bluetooth_key, self.translator_key,
+                  self.mic_status_key):
+            if k >= 0:
+                used.add(k)
+        used.update(self.layout_shortcut_keys or [])
+        # Walk rows 1..end in reading order, skipping used cells.
+        self.claude_keys = []
+        for k in range(self.cols, self.total_keys):
+            if k in used:
+                continue
+            self.claude_keys.append(k)
 
     def _compute_translator_buttons(self):
         """Translator mode keys. Requires >= 4 cols and >= 2 rows.
@@ -1767,6 +1900,10 @@ class Tiler:
                 if str(i + 1) in filled:
                     shortcut_slots[sk] = i + 1
         mic_color, mic_label = self._mic_indicator()
+        claude_sessions = _load_claude_sessions()
+        claude_by_key = {}
+        for slot, session in zip(self.claude_keys or [], claude_sessions):
+            claude_by_key[slot] = session
         for key in range(self.total_keys):
             if key == self.tile_key:
                 set_key(self.deck, key, COLOR_TITLE, "TILE", icon="tile")
@@ -1801,6 +1938,10 @@ class Tiler:
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
+            elif key in claude_by_key:
+                s = claude_by_key[key]
+                set_key(self.deck, key, _claude_color(s),
+                        _claude_label(s), icon="robot")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
             else:
