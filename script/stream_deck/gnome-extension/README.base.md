@@ -50,9 +50,10 @@ count badge:
 
 - **controller** — number of Stream Deck devices currently detected
 - **pencil** — first badge: configured paths; second badge (only when
-  ≥1 Claude session is running): live session count, yellow when at
-  least one session is paused on a `Stop` hook (waiting for the user)
-  and red when a `Notification` hook is pending
+  ≥1 Claude session is running): live session count; third badge
+  (only when at least one session awaits user feedback): awaiting
+  count, yellow on a `Stop` hook (assistant turn ended), red when a
+  `Notification` hook is pending
 - **film** — number of films in the catalogue
 - **erplibre** — local + remote instance count
 - **network** — `~/.ssh/config` hosts + last network scan host count
@@ -142,8 +143,9 @@ l'icône de la barre du haut :
 - **controller** — nombre de Stream Decks détectés
 - **pencil** — première pastille : chemins configurés ; deuxième
   pastille (seulement quand ≥1 session Claude tourne) : nombre de
-  sessions vivantes, jaune si au moins une attend l'utilisateur (hook
-  `Stop`), rouge si un hook `Notification` est en attente
+  sessions vivantes ; troisième pastille (seulement si au moins une
+  session attend l'utilisateur) : compte en attente, jaune sur hook
+  `Stop` (tour de l'assistant fini), rouge si hook `Notification`
 - **film** — nombre de films
 - **erplibre** — instances locales + distantes
 - **network** — hôtes `~/.ssh/config` + résultats du dernier scan

@@ -133,9 +133,9 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Install the hook from `hooks/README.md` into `~/.claude/settings.json` and restart Claude
 - [ ] Open `claude --resume` in a path that exists in `paths`; pencil icon now shows a second blue badge with `1`
 - [ ] Open a second `claude` instance in the same path; second badge becomes `2`
-- [ ] Wait for assistant turn end (Stop hook fires) → second badge turns yellow
-- [ ] Trigger a permission prompt (Notification hook) → second badge turns red
-- [ ] Type a new message → badge returns to blue
+- [ ] Wait for assistant turn end (Stop hook fires) → third yellow badge appears with `1`
+- [ ] Trigger a permission prompt (Notification hook) → third badge turns red
+- [ ] Type a new message → third badge disappears (back to two badges)
 - [ ] Pencil dropdown row for that path shows the same count + colour next to its label
 - [ ] Quit Claude (`/exit` / `Ctrl-D`) → SessionEnd removes the file → badge count decrements
 - [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)

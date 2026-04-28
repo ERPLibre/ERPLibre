@@ -148,12 +148,19 @@ try {
                     : 0;
                 const idx = this._claudeIndex;
                 const active = idx?.total || 0;
-                let kind = BADGE_DEFAULT;
-                if (idx?.totalAwaitNotify > 0) kind = BADGE_ALERT;
-                else if (idx?.totalAwaitStop > 0) kind = BADGE_WARN;
+                const awaitStop = idx?.totalAwaitStop || 0;
+                const awaitNotify = idx?.totalAwaitNotify || 0;
+                const awaiting = awaitStop + awaitNotify;
+                const awaitKind = awaitNotify > 0
+                    ? BADGE_ALERT : BADGE_WARN;
                 this._badged.setBadges([
                     {count: dirs, kind: BADGE_DEFAULT},
-                    active > 0 ? {count: active, kind} : null,
+                    active > 0
+                        ? {count: active, kind: BADGE_DEFAULT}
+                        : null,
+                    awaiting > 0
+                        ? {count: awaiting, kind: awaitKind}
+                        : null,
                 ]);
             }
 

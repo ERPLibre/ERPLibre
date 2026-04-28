@@ -45,8 +45,9 @@ l'icône de la barre du haut :
 - **controller** — nombre de Stream Decks détectés
 - **pencil** — première pastille : chemins configurés ; deuxième
   pastille (seulement quand ≥1 session Claude tourne) : nombre de
-  sessions vivantes, jaune si au moins une attend l'utilisateur (hook
-  `Stop`), rouge si un hook `Notification` est en attente
+  sessions vivantes ; troisième pastille (seulement si au moins une
+  session attend l'utilisateur) : compte en attente, jaune sur hook
+  `Stop` (tour de l'assistant fini), rouge si hook `Notification`
 - **film** — nombre de films
 - **erplibre** — instances locales + distantes
 - **network** — hôtes `~/.ssh/config` + résultats du dernier scan

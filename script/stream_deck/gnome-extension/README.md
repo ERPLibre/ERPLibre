@@ -45,9 +45,10 @@ count badge:
 
 - **controller** — number of Stream Deck devices currently detected
 - **pencil** — first badge: configured paths; second badge (only when
-  ≥1 Claude session is running): live session count, yellow when at
-  least one session is paused on a `Stop` hook (waiting for the user)
-  and red when a `Notification` hook is pending
+  ≥1 Claude session is running): live session count; third badge
+  (only when at least one session awaits user feedback): awaiting
+  count, yellow on a `Stop` hook (assistant turn ended), red when a
+  `Notification` hook is pending
 - **film** — number of films in the catalogue
 - **erplibre** — local + remote instance count
 - **network** — `~/.ssh/config` hosts + last network scan host count
