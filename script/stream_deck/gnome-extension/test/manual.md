@@ -11,6 +11,10 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] "Start gallery server…" submenu lists every entry from the `paths` GSetting (label + path)
 - [ ] Picking a path opens gnome-terminal in that directory running `source .venv.erplibre/bin/activate && make streamdeck_gallery`
 - [ ] If `paths` is empty the submenu shows "(no paths configured — add one in pencil prefs)"
+- [ ] Submenu top line shows `○ Offline` when the gallery is not running
+- [ ] After launching, re-opening the menu (or waiting ~2.5s + reopening) shows `● Running on http://localhost:8042`, the submenu title becomes "Gallery server (running) …", and an "Open in browser" item appears
+- [ ] Path entries show "— port busy" + are insensitive while running
+- [ ] After Ctrl-C in the gallery terminal, re-opening the menu shows `○ Offline` again and path entries become clickable
 - [ ] About item launches repo URL in browser
 - [ ] Open prefs item opens the preferences window
 - [ ] In prefs, "Buttons" page lists 6 indicators with toggles

@@ -43,6 +43,7 @@ class ControllerIndicator extends PanelMenu.Button {
             : null;
         this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
         this.add_child(this._badged.actor);
+        this._galleryOnline = null; // null = unknown, true/false = probed
         this._buildMenu();
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen) {
@@ -125,6 +126,36 @@ class ControllerIndicator extends PanelMenu.Button {
     _populateGallerySubmenu() {
         if (!this._gallerySection) return;
         this._gallerySection.menu.removeAll();
+
+        const online = this._galleryOnline === true;
+        const unknown = this._galleryOnline === null;
+        let header;
+        if (online) {
+            header = `● Running on ${GALLERY_URL}`;
+            this._gallerySection.label.text =
+                `Gallery server (running) ${GALLERY_URL}`;
+        } else if (unknown) {
+            header = '… Probing';
+            this._gallerySection.label.text = 'Start gallery server…';
+        } else {
+            header = '○ Offline';
+            this._gallerySection.label.text = 'Start gallery server…';
+        }
+        this._gallerySection.menu.addMenuItem(
+            new PopupMenu.PopupMenuItem(header, {reactive: false}));
+
+        if (online) {
+            const open = new PopupMenu.PopupMenuItem('Open in browser');
+            open.connect('activate', () => {
+                try {
+                    Gio.AppInfo.launch_default_for_uri(GALLERY_URL, null);
+                } catch (_e) {
+                    _notify(PROJECT_NAME, `Open ${GALLERY_URL} manually.`);
+                }
+            });
+            this._gallerySection.menu.addMenuItem(open);
+        }
+
         const paths = this._settings
             ? parseList(this._settings.get_string('paths'))
             : [];
@@ -136,10 +167,15 @@ class ControllerIndicator extends PanelMenu.Button {
             return;
         }
         for (const p of paths) {
-            const label = p.label && p.label.trim() !== ''
+            const baseLabel = p.label && p.label.trim() !== ''
                 ? `${p.label} (${p.path})` : p.path;
-            const item = new PopupMenu.PopupMenuItem(label);
-            item.connect('activate', () => this._launchGalleryAt(p.path));
+            const label = online ? `${baseLabel} — port busy` : baseLabel;
+            const item = new PopupMenu.PopupMenuItem(label,
+                {reactive: !online});
+            if (!online) {
+                item.connect('activate',
+                    () => this._launchGalleryAt(p.path));
+            }
             this._gallerySection.menu.addMenuItem(item);
         }
     }
@@ -158,7 +194,16 @@ class ControllerIndicator extends PanelMenu.Button {
                 'make streamdeck_gallery',
             terminal,
         });
-        spawnDetached(argv, {notify: _notify, title: PROJECT_NAME});
+        const ok = await spawnDetached(argv,
+            {notify: _notify, title: PROJECT_NAME});
+        if (ok) {
+            // Re-probe after a short delay so the running state shows
+            // up the next time the user opens the menu.
+            GLib.timeout_add(GLib.PRIORITY_LOW, 2500, () => {
+                this._refreshGames();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     _populateGamesPlaceholder(label) {
@@ -174,14 +219,20 @@ class ControllerIndicator extends PanelMenu.Button {
         const message = Soup.Message.new('GET', `${GALLERY_URL}/api/games`);
         session.send_and_read_async(
             message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                let online = false;
                 try {
                     const bytes = sess.send_and_read_finish(result);
                     const text = new TextDecoder().decode(bytes.get_data());
                     const games = JSON.parse(text);
                     this._populateGames(Array.isArray(games) ? games : []);
+                    online = true;
                 } catch (_e) {
                     this._populateGamesPlaceholder(
                         'Gallery offline (start gallery_server.py)');
+                }
+                if (this._galleryOnline !== online) {
+                    this._galleryOnline = online;
+                    this._populateGallerySubmenu();
                 }
             });
     }
