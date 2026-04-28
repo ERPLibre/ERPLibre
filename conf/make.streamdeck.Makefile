@@ -362,3 +362,20 @@ streamdeck_pinball:
 .PHONY: streamdeck_gallery
 streamdeck_gallery:
 	./script/stream_deck/gallery_server.py
+
+# ---------- Claude Code hooks ----------
+
+CLAUDE_HOOKS_INSTALLER := \
+	$(STREAMDECK_TILER_EXT_SRC)/hooks/install_claude_hooks.py
+
+.PHONY: claude_install_hooks
+claude_install_hooks:
+	@$(CLAUDE_HOOKS_INSTALLER)
+
+.PHONY: claude_install_hooks_dry_run
+claude_install_hooks_dry_run:
+	@$(CLAUDE_HOOKS_INSTALLER) --dry-run
+
+.PHONY: claude_uninstall_hooks
+claude_uninstall_hooks:
+	@$(CLAUDE_HOOKS_INSTALLER) --remove
