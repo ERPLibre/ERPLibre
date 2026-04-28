@@ -153,6 +153,7 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)
 - [ ] D-Bus: `gdbus call ... FocusClaudeSession '<session_id>'` raises and focuses the terminal hosting that session
 - [ ] Stream Deck idle page shows one button per running session (robot icon, green/yellow/red); clicking it raises the matching gnome-terminal window
+- [ ] Clicking a session sub-row in the pencil dropdown raises the matching gnome-terminal window
 
 ## Release
 

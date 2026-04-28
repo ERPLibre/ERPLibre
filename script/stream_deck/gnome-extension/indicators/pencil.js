@@ -325,8 +325,16 @@ try {
             }
 
             _makeSessionItem(session) {
-                const item = new PopupMenu.PopupBaseMenuItem(
-                    {reactive: false, can_focus: false});
+                const item = new PopupMenu.PopupBaseMenuItem();
+                item.connect('activate', () => {
+                    try {
+                        this._extension?.FocusClaudeSession?.(
+                            session.session_id);
+                    } catch (e) {
+                        _notify('Stream Deck',
+                            `Focus failed: ${e.message || e}`);
+                    }
+                });
                 const box = new St.BoxLayout({
                     vertical: false,
                     style: 'spacing: 8px; padding-left: 16px;',
