@@ -64,6 +64,34 @@ try {
 
     const _normPath = p => String(p || '').replace(/\/+$/, '');
 
+    /** True if cwd is the exact same dir as base, or a subdir of it. */
+    const _cwdMatchesPath = (cwd, base) => {
+        const c = _normPath(cwd);
+        const b = _normPath(base);
+        if (!c || !b) return false;
+        return c === b || c.startsWith(`${b}/`);
+    };
+
+    /**
+     * For each session, pick the configured path that is the longest
+     * prefix of its cwd. Returns Map<session_id, ownerPath>.
+     * Sessions without a matching path are absent from the map.
+     */
+    const _assignSessionsToPaths = (sessions, paths) => {
+        const owners = new Map();
+        const sortedPaths = paths.slice().sort(
+            (a, b) => _normPath(b.path).length - _normPath(a.path).length);
+        for (const s of sessions) {
+            for (const p of sortedPaths) {
+                if (_cwdMatchesPath(s.cwd, p.path)) {
+                    owners.set(s.session_id, _normPath(p.path));
+                    break;
+                }
+            }
+        }
+        return owners;
+    };
+
     const _DOT_COLOR_BY_KIND = {
         [BADGE_DEFAULT]: '#3477b8',
         [BADGE_OK]: '#2e7d32',
@@ -159,7 +187,7 @@ try {
                     ? parseList(this._settings.get_string('paths')).length
                     : 0;
                 const idx = this._claudeIndex;
-                const active = idx?.total || 0;
+                const totalActive = idx?.totalActive || 0;
                 const awaitStop = idx?.totalAwaitStop || 0;
                 const awaitNotify = idx?.totalAwaitNotify || 0;
                 const awaiting = awaitStop + awaitNotify;
@@ -167,8 +195,8 @@ try {
                     ? BADGE_ALERT : BADGE_WARN;
                 this._badged.setBadges([
                     {count: dirs, kind: BADGE_DEFAULT},
-                    active > 0
-                        ? {count: active, kind: BADGE_OK}
+                    totalActive > 0
+                        ? {count: totalActive, kind: BADGE_OK}
                         : null,
                     awaiting > 0
                         ? {count: awaiting, kind: awaitKind}
@@ -183,6 +211,13 @@ try {
                     ? parseList(this._settings.get_string('paths'))
                     : [];
 
+                const allSessions = this._claudeIndex
+                    ? Array.from(this._claudeIndex.byPath?.values() || [])
+                        .flatMap(b => b.sessions)
+                    : [];
+                this._sessionOwner = _assignSessionsToPaths(
+                    allSessions, paths);
+
                 if (!paths.length) {
                     this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                         '(no paths configured — use Add path…)',
@@ -194,6 +229,20 @@ try {
                             this.menu.addMenuItem(item);
                         }
                     }
+                }
+
+                const orphans = allSessions.filter(
+                    s => !this._sessionOwner.has(s.session_id));
+                if (orphans.length) {
+                    this.menu.addMenuItem(
+                        new PopupMenu.PopupSeparatorMenuItem());
+                    this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                        `— Other sessions (${orphans.length}) —`,
+                        {reactive: false}));
+                    const sorted = orphans.slice().sort(
+                        (a, b) => (b.ts || 0) - (a.ts || 0));
+                    for (const s of sorted)
+                        this.menu.addMenuItem(this._makeSessionItem(s));
                 }
 
                 this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -263,14 +312,15 @@ try {
 
             _makeSessionRows(entry) {
                 const rows = [];
-                const idx = this._claudeIndex;
-                if (!idx) return rows;
-                const bucket = idx.byPath?.get(_normPath(entry.path)) ||
-                    idx.byPath?.get(entry.path);
-                if (!bucket || !bucket.sessions?.length) return rows;
-                const sorted = bucket.sessions.slice().sort(
-                    (a, b) => (b.ts || 0) - (a.ts || 0));
-                for (const s of sorted) rows.push(this._makeSessionItem(s));
+                if (!this._sessionOwner) return rows;
+                const owner = _normPath(entry.path);
+                const allSessions = Array.from(
+                    this._claudeIndex?.byPath?.values() || [])
+                    .flatMap(b => b.sessions);
+                const ours = allSessions.filter(
+                    s => this._sessionOwner.get(s.session_id) === owner);
+                ours.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                for (const s of ours) rows.push(this._makeSessionItem(s));
                 return rows;
             }
 
@@ -319,16 +369,21 @@ try {
             }
 
             _buildRowBadge(entry) {
-                const idx = this._claudeIndex;
-                if (!idx) return null;
-                const bucket = idx.byPath?.get(_normPath(entry.path)) ||
-                    idx.byPath?.get(entry.path);
-                if (!bucket || bucket.total === 0) return null;
+                if (!this._sessionOwner || !this._claudeIndex) return null;
+                const owner = _normPath(entry.path);
+                const allSessions = Array.from(
+                    this._claudeIndex.byPath?.values() || [])
+                    .flatMap(b => b.sessions);
+                const ours = allSessions.filter(
+                    s => this._sessionOwner.get(s.session_id) === owner);
+                if (!ours.length) return null;
                 let kind = BADGE_OK;
-                if (bucket.awaitNotify > 0) kind = BADGE_ALERT;
-                else if (bucket.awaitStop > 0) kind = BADGE_WARN;
+                if (ours.some(s => s.status === 'awaiting_notification'))
+                    kind = BADGE_ALERT;
+                else if (ours.some(s => s.status === 'awaiting_stop'))
+                    kind = BADGE_WARN;
                 return new St.Label({
-                    text: formatBadgeCount(bucket.total),
+                    text: formatBadgeCount(ours.length),
                     style: badgeStyleFor(kind),
                 });
             }
