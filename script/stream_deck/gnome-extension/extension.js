@@ -18,6 +18,7 @@ import {parseObject} from './lib/settings.js';
 import {exportSettingsAsObj} from './lib/settings.js';
 import {Debouncer, gitPull, gitCommitPush} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
+import {ClaudeStateWatcher} from './lib/claude-state.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 import {indicatorDescriptor as pencilDescriptor}
@@ -114,6 +115,7 @@ export default class StreamDeckTilerExtension extends Extension {
     #registry = null;
     #settings = null;
     #signalIds = [];
+    #claudeState = null;
 
     enable() {
         this.#dbus = Gio.DBusExportedObject.wrapJSObject(IFACE_XML, this);
@@ -144,6 +146,12 @@ export default class StreamDeckTilerExtension extends Extension {
             const sig = this.#settings.connect(`changed::${k}`,
                 () => this._syncDebounceWrite());
             this.#signalIds.push(sig);
+        }
+
+        if (this.#settings.get_boolean('enable-claude-state-watch')) {
+            this.#claudeState = new ClaudeStateWatcher();
+            this.#claudeState.start().catch(e =>
+                console.log(`[StreamDeckTiler] claude-state: ${e.message}`));
         }
 
         this.#registry = new IndicatorRegistry();
@@ -184,6 +192,8 @@ export default class StreamDeckTilerExtension extends Extension {
             }
         }
         this.#indicators.clear();
+        try { this.#claudeState?.stop(); } catch (_e) {}
+        this.#claudeState = null;
         this.#registry = null;
         this.#settings = null;
         console.log('[StreamDeckTiler] disabled');
@@ -224,6 +234,7 @@ export default class StreamDeckTilerExtension extends Extension {
                 openPrefs: () => this.openPreferences(),
                 extension: this,
                 iconName: overrides[id] || undefined,
+                claudeState: this.#claudeState,
             });
             const role = `${this.uuid}-${id}`;
             Main.panel.addToStatusArea(role, ind);

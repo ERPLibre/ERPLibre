@@ -43,6 +43,7 @@ export let indicatorDescriptor = {
 };
 
 try {
+    const {default: Clutter} = await import('gi://Clutter');
     const {default: Gio} = await import('gi://Gio');
     const {default: GObject} = await import('gi://GObject');
     // GLib is only used by helpers we no longer call here; keep the import
@@ -57,6 +58,11 @@ try {
         'resource:///org/gnome/shell/ui/popupMenu.js'
     );
     const {PathDialog} = await import('../ui/path-dialog.js');
+    const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_WARN,
+        BADGE_ALERT, formatBadgeCount} =
+        await import('../lib/badges.js');
+
+    const _normPath = p => String(p || '').replace(/\/+$/, '');
 
     const _notify = (title, body) => {
         try {
@@ -68,7 +74,7 @@ try {
 
     PencilIndicator = GObject.registerClass(
         class PencilIndicator extends PanelMenu.Button {
-            _init({extension, openPrefs,
+            _init({extension, openPrefs, claudeState,
                 iconName = 'document-edit-symbolic'} = {}) {
                 super._init(0.0, 'Stream Deck Pencil');
                 this._extension = extension;
@@ -76,42 +82,75 @@ try {
                 this._settings = extension?.getSettings
                     ? extension.getSettings()
                     : null;
+                this._claudeState = claudeState || null;
+                this._claudeIndex = null;
 
-                const _icon = iconName.startsWith('/')
-                    ? new St.Icon({
-                        gicon: Gio.icon_new_for_string(iconName),
-                        style_class: 'system-status-icon'})
-                    : new St.Icon({
-                        icon_name: iconName,
-                        style_class: 'system-status-icon'});
-                this.add_child(_icon);
+                this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
+                this.add_child(this._badged.actor);
 
                 if (this._settings) {
                     this._pathsSig = this._settings.connect(
                         'changed::paths',
-                        () => this._rebuildMenu()
+                        () => { this._rebuildMenu(); this._refreshBadge(); }
                     );
                     this._cmdSig = this._settings.connect(
                         'changed::terminal-claude-cmd',
                         () => this._rebuildMenu()
                     );
+                    this._badgeSig = this._settings.connect(
+                        'changed::enable-icon-badges',
+                        () => this._refreshBadge()
+                    );
+                }
+
+                if (this._claudeState) {
+                    this._claudeUnsub = this._claudeState.subscribe(
+                        idx => {
+                            this._claudeIndex = idx;
+                            this._rebuildMenu();
+                            this._refreshBadge();
+                        });
                 }
 
                 this._rebuildMenu();
+                this._refreshBadge();
             }
 
             destroy() {
                 if (this._settings) {
-                    if (this._pathsSig) {
-                        this._settings.disconnect(this._pathsSig);
-                        this._pathsSig = null;
-                    }
-                    if (this._cmdSig) {
-                        this._settings.disconnect(this._cmdSig);
-                        this._cmdSig = null;
+                    for (const k of ['_pathsSig', '_cmdSig', '_badgeSig']) {
+                        if (this[k]) {
+                            this._settings.disconnect(this[k]);
+                            this[k] = null;
+                        }
                     }
                 }
+                if (this._claudeUnsub) {
+                    try { this._claudeUnsub(); } catch (_e) {}
+                    this._claudeUnsub = null;
+                }
                 super.destroy();
+            }
+
+            _refreshBadge() {
+                if (!this._badged) return;
+                if (this._settings &&
+                    !this._settings.get_boolean('enable-icon-badges')) {
+                    this._badged.setBadges([]);
+                    return;
+                }
+                const dirs = this._settings
+                    ? parseList(this._settings.get_string('paths')).length
+                    : 0;
+                const idx = this._claudeIndex;
+                const active = idx?.total || 0;
+                let kind = BADGE_DEFAULT;
+                if (idx?.totalAwaitNotify > 0) kind = BADGE_ALERT;
+                else if (idx?.totalAwaitStop > 0) kind = BADGE_WARN;
+                this._badged.setBadges([
+                    {count: dirs, kind: BADGE_DEFAULT},
+                    active > 0 ? {count: active, kind} : null,
+                ]);
             }
 
             _rebuildMenu() {
@@ -162,7 +201,14 @@ try {
                     vertical: true,
                     x_expand: true,
                 });
-                labelBox.add_child(new St.Label({text: resolveLabel(entry)}));
+                const titleRow = new St.BoxLayout({
+                    vertical: false,
+                    style: 'spacing: 6px;',
+                });
+                titleRow.add_child(new St.Label({text: resolveLabel(entry)}));
+                const rowBadge = this._buildRowBadge(entry);
+                if (rowBadge) titleRow.add_child(rowBadge);
+                labelBox.add_child(titleRow);
                 labelBox.add_child(new St.Label({
                     text: entry.path,
                     style: 'opacity: 0.6; font-size: 0.85em;',
@@ -187,6 +233,21 @@ try {
                 }
                 item.add_child(box);
                 return item;
+            }
+
+            _buildRowBadge(entry) {
+                const idx = this._claudeIndex;
+                if (!idx) return null;
+                const bucket = idx.byPath?.get(_normPath(entry.path)) ||
+                    idx.byPath?.get(entry.path);
+                if (!bucket || bucket.total === 0) return null;
+                let kind = BADGE_DEFAULT;
+                if (bucket.awaitNotify > 0) kind = BADGE_ALERT;
+                else if (bucket.awaitStop > 0) kind = BADGE_WARN;
+                return new St.Label({
+                    text: formatBadgeCount(bucket.total),
+                    style: badgeStyleFor(kind),
+                });
             }
 
             _mkBtn(label, onClick) {

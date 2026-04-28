@@ -116,9 +116,33 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Set sync path to a local git repo, enable sync → toggling a setting commits the JSON within 5s
 - [ ] Pre-populate the JSON in another machine → first enable() pulls + applies
 
+## Icon badges + Claude session state
+
+### Static count badges
+- [ ] After `gnome-extensions enable`, every visible indicator that has data shows a small blue circle with a number on the top-right corner of its panel icon
+- [ ] Film indicator badge equals `gsettings get … films` array length
+- [ ] Pencil indicator first badge equals `paths` array length
+- [ ] ERPLibre indicator badge equals (local detected) + (remote `instances` length)
+- [ ] Network indicator badge equals (configured `~/.ssh/config` non-wildcard hosts) + (last scan host count)
+- [ ] Device indicator badge equals number of Stream Decks reported by `lsusb -d 0fd9:`
+- [ ] Controller indicator badge matches the device count
+- [ ] Setting `enable-icon-badges=false` hides every badge live; `true` brings them back
+- [ ] When a count exceeds 99 the badge text is `99+`
+
+### Claude session badge
+- [ ] Install the hook from `hooks/README.md` into `~/.claude/settings.json` and restart Claude
+- [ ] Open `claude --resume` in a path that exists in `paths`; pencil icon now shows a second blue badge with `1`
+- [ ] Open a second `claude` instance in the same path; second badge becomes `2`
+- [ ] Wait for assistant turn end (Stop hook fires) → second badge turns yellow
+- [ ] Trigger a permission prompt (Notification hook) → second badge turns red
+- [ ] Type a new message → badge returns to blue
+- [ ] Pencil dropdown row for that path shows the same count + colour next to its label
+- [ ] Quit Claude (`/exit` / `Ctrl-D`) → SessionEnd removes the file → badge count decrements
+- [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)
+
 ## Release
 
-- [ ] `make test_gnome_extension` passes (currently 50 unit tests)
+- [ ] `make test_gnome_extension` passes (currently 62 unit tests)
 - [ ] `make test_full_fast` includes the extension target and passes
 - [ ] All sections above ticked
 - [ ] CHANGELOG.base.md entry present and regenerated

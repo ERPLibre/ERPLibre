@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
@@ -14,6 +15,7 @@ import {callKeepassCli, masterPasswordCache, cacheKey}
     from '../lib/keepass.js';
 import {InstanceDialog} from '../ui/instance-dialog.js';
 import {MasterPwDialog} from '../ui/master-pw-dialog.js';
+import {makeBadgedIcon} from '../lib/badges.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -27,27 +29,36 @@ class ErpLibreIndicator extends PanelMenu.Button {
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._localCache = [];
-        const _icon = iconName.startsWith('/')
-            ? new St.Icon({
-                gicon: Gio.icon_new_for_string(iconName),
-                style_class: 'system-status-icon'})
-            : new St.Icon({
-                icon_name: iconName,
-                style_class: 'system-status-icon'});
-        this.add_child(_icon);
+        this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
+        this.add_child(this._badged.actor);
         this._sigInstances = this._settings.connect('changed::instances',
-            () => this._rebuildMenu());
+            () => { this._rebuildMenu(); this._refreshBadge(); });
         this._sigPattern = this._settings.connect(
             'changed::erplibre-local-pattern', () => this._rescanThenRebuild());
         this._sigAuto = this._settings.connect(
             'changed::erplibre-auto-detect', () => this._rescanThenRebuild());
+        this._sigBadges = this._settings.connect(
+            'changed::enable-icon-badges',
+            () => this._refreshBadge());
         this._rescanThenRebuild();
     }
 
     destroy() {
-        for (const s of [this._sigInstances, this._sigPattern, this._sigAuto])
+        for (const s of [this._sigInstances, this._sigPattern, this._sigAuto,
+            this._sigBadges])
             if (s) this._settings.disconnect(s);
         super.destroy();
+    }
+
+    _refreshBadge() {
+        if (!this._badged) return;
+        if (!this._settings.get_boolean('enable-icon-badges')) {
+            this._badged.setBadges([]);
+            return;
+        }
+        const remotes = parseList(this._settings.get_string('instances'));
+        const total = (this._localCache?.length || 0) + remotes.length;
+        this._badged.setBadges([{count: total}]);
     }
 
     async _rescanThenRebuild() {
@@ -58,6 +69,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
             this._localCache = [];
         }
         this._rebuildMenu();
+        this._refreshBadge();
     }
 
     _rebuildMenu() {

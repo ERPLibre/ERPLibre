@@ -50,6 +50,16 @@
     <key name="enable-git-sync" type="b"><default>false</default><summary>Enable settings sync via git</summary></key>
     <key name="git-sync-path"   type="s"><default>""</default><summary>Path to a git repo holding the sync JSON</summary></key>
 
+    <!-- Badges -->
+    <key name="enable-icon-badges" type="b">
+      <default>true</default>
+      <summary>Show count badges on top-bar indicator icons</summary>
+    </key>
+    <key name="enable-claude-state-watch" type="b">
+      <default>true</default>
+      <summary>Watch ~/.local/state/streamdeck-tiler/claude/ for Claude session state files (used by the pencil badge)</summary>
+    </key>
+
     <!-- Migration -->
     <key name="schema-version"  type="i"><default>1</default><summary>Schema version, bumped per migration</summary></key>
     <key name="migration-done"  type="b"><default>false</default><summary>True after legacy JSON has been migrated</summary></key>

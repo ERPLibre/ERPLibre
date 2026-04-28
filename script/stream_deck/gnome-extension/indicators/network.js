@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -11,6 +12,7 @@ import {scanNmapGjs, scanNcGjs, autoDetectCidrGjs, reverseDnsGjs}
 import {parseSshConfig, isWildcardHost} from '../lib/ssh-config.js';
 import {buildBrowserArgv, buildTerminalArgv, findTerminal,
     spawnDetached} from '../lib/spawn.js';
+import {makeBadgedIcon} from '../lib/badges.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -26,19 +28,18 @@ class NetworkIndicator extends PanelMenu.Button {
         this._scanning = false;
         this._cancellable = null;
         this._scanResult = {cidr: null, hosts: [], lastScan: null};
-        const _icon = iconName.startsWith('/')
-            ? new St.Icon({
-                gicon: Gio.icon_new_for_string(iconName),
-                style_class: 'system-status-icon'})
-            : new St.Icon({
-                icon_name: iconName,
-                style_class: 'system-status-icon'});
-        this.add_child(_icon);
+        this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
+        this.add_child(this._badged.actor);
         this._sigUser = this._settings.connect(
             'changed::network-ssh-user', () => this._rebuildMenu());
         this._sigCfg = this._settings.connect(
-            'changed::network-read-ssh-config', () => this._rebuildMenu());
+            'changed::network-read-ssh-config',
+            () => { this._rebuildMenu(); this._refreshBadge(); });
+        this._sigBadges = this._settings.connect(
+            'changed::enable-icon-badges',
+            () => this._refreshBadge());
         this._rebuildMenu();
+        this._refreshBadge();
         this._sigTimer = this._settings.connect(
             'changed::network-auto-refresh-sec', () => this._resetTimer());
         this._resetTimer();
@@ -48,9 +49,36 @@ class NetworkIndicator extends PanelMenu.Button {
         if (this._cancellable) this._cancellable.cancel();
         if (this._timerId) GLib.source_remove(this._timerId);
         this._timerId = 0;
-        for (const s of [this._sigUser, this._sigCfg, this._sigTimer])
+        for (const s of [this._sigUser, this._sigCfg, this._sigTimer,
+            this._sigBadges])
             if (s) this._settings.disconnect(s);
         super.destroy();
+    }
+
+    _countConfiguredHosts() {
+        if (!this._settings.get_boolean('network-read-ssh-config')) return 0;
+        const path = `${GLib.get_home_dir()}/.ssh/config`;
+        if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return 0;
+        try {
+            const [ok, contents] = GLib.file_get_contents(path);
+            if (!ok) return 0;
+            const hosts = parseSshConfig(
+                new TextDecoder().decode(contents));
+            return hosts.filter(h => !isWildcardHost(h.alias)).length;
+        } catch (_e) {
+            return 0;
+        }
+    }
+
+    _refreshBadge() {
+        if (!this._badged) return;
+        if (!this._settings.get_boolean('enable-icon-badges')) {
+            this._badged.setBadges([]);
+            return;
+        }
+        const total = this._countConfiguredHosts() +
+            (this._scanResult.hosts?.length || 0);
+        this._badged.setBadges([{count: total}]);
     }
 
     _resetTimer() {
@@ -215,6 +243,7 @@ class NetworkIndicator extends PanelMenu.Button {
             this._scanning = false;
             this._cancellable = null;
             this._rebuildMenu();
+            this._refreshBadge();
         }
     }
 });

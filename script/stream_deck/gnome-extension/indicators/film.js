@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
@@ -9,6 +10,7 @@ import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, spawnDetached} from '../lib/spawn.js';
 import {buildFilmLabel, defaultFilmEntry} from '../lib/film-helpers.js';
 import {FilmDialog} from '../ui/film-dialog.js';
+import {makeBadgedIcon} from '../lib/badges.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -21,22 +23,31 @@ class FilmIndicator extends PanelMenu.Button {
         this._extension = extension;
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
-        const _icon = iconName.startsWith('/')
-            ? new St.Icon({
-                gicon: Gio.icon_new_for_string(iconName),
-                style_class: 'system-status-icon'})
-            : new St.Icon({
-                icon_name: iconName,
-                style_class: 'system-status-icon'});
-        this.add_child(_icon);
+        this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
+        this.add_child(this._badged.actor);
         this._sig = this._settings.connect('changed::films',
-            () => this._rebuildMenu());
+            () => { this._rebuildMenu(); this._refreshBadge(); });
+        this._sigBadges = this._settings.connect(
+            'changed::enable-icon-badges',
+            () => this._refreshBadge());
         this._rebuildMenu();
+        this._refreshBadge();
     }
 
     destroy() {
         if (this._sig) this._settings.disconnect(this._sig);
+        if (this._sigBadges) this._settings.disconnect(this._sigBadges);
         super.destroy();
+    }
+
+    _refreshBadge() {
+        if (!this._badged) return;
+        if (!this._settings.get_boolean('enable-icon-badges')) {
+            this._badged.setBadges([]);
+            return;
+        }
+        const films = parseList(this._settings.get_string('films'));
+        this._badged.setBadges([{count: films.length}]);
     }
 
     _rebuildMenu() {

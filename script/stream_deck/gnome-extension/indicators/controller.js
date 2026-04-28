@@ -1,3 +1,4 @@
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import Soup from 'gi://Soup';
@@ -6,6 +7,9 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {detectStreamDecksGjs} from '../lib/usb.js';
+import {makeBadgedIcon} from '../lib/badges.js';
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
@@ -22,21 +26,53 @@ function _notify(title, body) {
 
 export const ControllerIndicator = GObject.registerClass(
 class ControllerIndicator extends PanelMenu.Button {
-    _init({iconName = 'input-gaming-symbolic', openPrefs} = {}) {
+    _init({extension, iconName = 'input-gaming-symbolic', openPrefs} = {}) {
         super._init(0.0, 'Stream Deck Controller');
+        this._extension = extension;
         this._openPrefs = openPrefs;
-        const _icon = iconName.startsWith('/')
-            ? new St.Icon({
-                gicon: Gio.icon_new_for_string(iconName),
-                style_class: 'system-status-icon'})
-            : new St.Icon({
-                icon_name: iconName,
-                style_class: 'system-status-icon'});
-        this.add_child(_icon);
+        this._settings = extension?.getSettings ? extension.getSettings()
+            : null;
+        this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
+        this.add_child(this._badged.actor);
         this._buildMenu();
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
-            if (isOpen) this._refreshGames();
+            if (isOpen) {
+                this._refreshGames();
+                this._rescanDecks();
+            }
         });
+        if (this._settings) {
+            this._sigBadges = this._settings.connect(
+                'changed::enable-icon-badges',
+                () => this._refreshBadge());
+        }
+        this._rescanDecks();
+    }
+
+    destroy() {
+        if (this._sigBadges && this._settings)
+            this._settings.disconnect(this._sigBadges);
+        super.destroy();
+    }
+
+    async _rescanDecks() {
+        try {
+            const list = await detectStreamDecksGjs();
+            this._deckCount = Array.isArray(list) ? list.length : 0;
+        } catch (_e) {
+            this._deckCount = 0;
+        }
+        this._refreshBadge();
+    }
+
+    _refreshBadge() {
+        if (!this._badged) return;
+        if (this._settings &&
+            !this._settings.get_boolean('enable-icon-badges')) {
+            this._badged.setBadges([]);
+            return;
+        }
+        this._badged.setBadges([{count: this._deckCount || 0}]);
     }
 
     _buildMenu() {

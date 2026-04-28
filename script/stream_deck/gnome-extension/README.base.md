@@ -40,6 +40,30 @@ Schema id `org.gnome.shell.extensions.streamdeck-tiler`. Selected keys:
 - `device-auto-refresh-sec` (`i`)
 - `icon-overrides` (`s`, JSON object keyed by indicator id)
 - `enable-git-sync` (`b`), `git-sync-path` (`s`)
+- `enable-icon-badges` (`b`, default `true`) — show count circles on top-bar icons
+- `enable-claude-state-watch` (`b`, default `true`) — watch Claude session state files for the pencil badge
+
+## Icon badges
+
+Each visible indicator decorates its top-bar icon with a small circular
+count badge:
+
+- **controller** — number of Stream Deck devices currently detected
+- **pencil** — first badge: configured paths; second badge (only when
+  ≥1 Claude session is running): live session count, yellow when at
+  least one session is paused on a `Stop` hook (waiting for the user)
+  and red when a `Notification` hook is pending
+- **film** — number of films in the catalogue
+- **erplibre** — local + remote instance count
+- **network** — `~/.ssh/config` hosts + last network scan host count
+- **device** — number of Stream Deck devices
+
+The pencil dropdown also shows a per-row badge with the same colour for
+each path that has running Claude sessions.
+
+The Claude session badge requires the Python hook in
+`hooks/streamdeck-tiler-hook.py` to be wired into Claude Code; see
+`hooks/README.md` for the `~/.claude/settings.json` snippet.
 
 ## D-Bus
 
@@ -107,6 +131,30 @@ Schéma `org.gnome.shell.extensions.streamdeck-tiler`. Clés notables :
 - `device-auto-refresh-sec` (`i`)
 - `icon-overrides` (`s`, JSON)
 - `enable-git-sync` (`b`), `git-sync-path` (`s`)
+- `enable-icon-badges` (`b`, défaut `true`) — affiche les pastilles de comptage sur les icônes
+- `enable-claude-state-watch` (`b`, défaut `true`) — surveille les fichiers d'état Claude pour le badge du crayon
+
+## Pastilles de comptage
+
+Chaque indicateur visible affiche une petite pastille circulaire sur
+l'icône de la barre du haut :
+
+- **controller** — nombre de Stream Decks détectés
+- **pencil** — première pastille : chemins configurés ; deuxième
+  pastille (seulement quand ≥1 session Claude tourne) : nombre de
+  sessions vivantes, jaune si au moins une attend l'utilisateur (hook
+  `Stop`), rouge si un hook `Notification` est en attente
+- **film** — nombre de films
+- **erplibre** — instances locales + distantes
+- **network** — hôtes `~/.ssh/config` + résultats du dernier scan
+- **device** — nombre de Stream Decks
+
+Le menu déroulant du crayon ajoute aussi une pastille par ligne pour
+les chemins qui ont des sessions Claude actives.
+
+Le badge des sessions Claude requiert le hook Python
+`hooks/streamdeck-tiler-hook.py` branché dans Claude Code ; voir
+`hooks/README.fr.md` pour l'extrait `~/.claude/settings.json`.
 
 ## D-Bus
 

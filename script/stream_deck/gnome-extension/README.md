@@ -35,6 +35,30 @@ Schema id `org.gnome.shell.extensions.streamdeck-tiler`. Selected keys:
 - `device-auto-refresh-sec` (`i`)
 - `icon-overrides` (`s`, JSON object keyed by indicator id)
 - `enable-git-sync` (`b`), `git-sync-path` (`s`)
+- `enable-icon-badges` (`b`, default `true`) — show count circles on top-bar icons
+- `enable-claude-state-watch` (`b`, default `true`) — watch Claude session state files for the pencil badge
+
+## Icon badges
+
+Each visible indicator decorates its top-bar icon with a small circular
+count badge:
+
+- **controller** — number of Stream Deck devices currently detected
+- **pencil** — first badge: configured paths; second badge (only when
+  ≥1 Claude session is running): live session count, yellow when at
+  least one session is paused on a `Stop` hook (waiting for the user)
+  and red when a `Notification` hook is pending
+- **film** — number of films in the catalogue
+- **erplibre** — local + remote instance count
+- **network** — `~/.ssh/config` hosts + last network scan host count
+- **device** — number of Stream Deck devices
+
+The pencil dropdown also shows a per-row badge with the same colour for
+each path that has running Claude sessions.
+
+The Claude session badge requires the Python hook in
+`hooks/streamdeck-tiler-hook.py` to be wired into Claude Code; see
+`hooks/README.md` for the `~/.claude/settings.json` snippet.
 
 ## D-Bus
 
