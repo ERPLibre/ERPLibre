@@ -260,6 +260,45 @@ try {
                     }
                 });
                 this.menu.addMenuItem(prefsItem);
+
+                this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                    '— Legend —', {reactive: false}));
+                for (const row of this._buildLegendRows()) {
+                    this.menu.addMenuItem(row);
+                }
+            }
+
+            _buildLegendRows() {
+                const entries = [
+                    {kind: BADGE_DEFAULT, text: 'Path / catalogue count'},
+                    {kind: BADGE_OK, text: 'Active session (Claude working)'},
+                    {kind: BADGE_WARN,
+                     text: 'Awaiting answer (Stop hook fired)'},
+                    {kind: BADGE_ALERT,
+                     text: 'Needs attention (Notification hook)'},
+                ];
+                return entries.map(e => {
+                    const item = new PopupMenu.PopupBaseMenuItem(
+                        {reactive: false, can_focus: false});
+                    const box = new St.BoxLayout({
+                        vertical: false,
+                        style: 'spacing: 8px;',
+                        x_expand: true,
+                    });
+                    box.add_child(new St.Label({
+                        text: '●',
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style: _dotColorStyle(e.kind),
+                    }));
+                    box.add_child(new St.Label({
+                        text: e.text,
+                        y_align: Clutter.ActorAlign.CENTER,
+                        style: 'opacity: 0.85;',
+                    }));
+                    item.add_child(box);
+                    return item;
+                });
             }
 
             _makeRow(entry) {

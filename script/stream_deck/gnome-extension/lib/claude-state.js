@@ -183,17 +183,22 @@ export class ClaudeStateWatcher {
         const dir = Gio.File.new_for_path(this._stateDir);
         this._monitor = dir.monitor_directory(
             Gio.FileMonitorFlags.NONE, null);
-        // Drop the default 800 ms rate limit so file events propagate
-        // immediately. The polling timer below is a backup for cases
-        // where the file monitor backend coalesces events under load.
-        try { this._monitor.set_rate_limit(0); } catch (_e) {}
+        // Reduce (but do not zero) the rate limit so quick bursts of
+        // hook writes still surface. Setting to 0 broke the monitor on
+        // some Mutter versions, so keep a safe lower bound.
+        try { this._monitor.set_rate_limit(100); } catch (_e) {}
         this._monitorSig = this._monitor.connect(
             'changed', () => this._scheduleRefresh());
         if (this._pollIntervalMs > 0) {
+            // Force a re-read on a short cadence so a missed file event
+            // never leaves the indicators painted with stale colours.
+            // PRIORITY_DEFAULT keeps it scheduled even when the shell is
+            // busy rendering. Returning the literal `true` is the
+            // documented contract for repeating GLib timeouts.
             this._pollTimer = GLib.timeout_add(
-                GLib.PRIORITY_LOW, this._pollIntervalMs, () => {
-                    this._scheduleRefresh();
-                    return GLib.SOURCE_CONTINUE;
+                GLib.PRIORITY_DEFAULT, this._pollIntervalMs, () => {
+                    try { this._refresh(); } catch (_e) {}
+                    return true;
                 });
         }
         await this._refresh();

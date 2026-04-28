@@ -121,6 +121,9 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="session_id"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
+    <method name="DebugClaudeIndex">
+      <arg type="s" direction="out" name="json"/>
+    </method>
   </interface>
 </node>`;
 
@@ -482,6 +485,38 @@ export default class StreamDeckTilerExtension extends Extension {
         const ind = this.#indicators.get('device');
         if (!ind) return '[]';
         return JSON.stringify(ind._cache || []);
+    }
+
+    DebugClaudeIndex() {
+        try {
+            const idx = this.#claudeState?.getIndex?.()
+                ?? {total: 0, byPath: new Map()};
+            const sessions = [];
+            for (const bucket of idx.byPath?.values?.() || []) {
+                for (const s of (bucket.sessions || [])) {
+                    sessions.push({
+                        session_id: s.session_id,
+                        cwd: s.cwd,
+                        status: s.status,
+                        ts_active: s.ts_active,
+                        ts_stop: s.ts_stop,
+                        ts_notification: s.ts_notification,
+                        description: (s.description || '').slice(0, 60),
+                    });
+                }
+            }
+            return JSON.stringify({
+                total: idx.total || 0,
+                totalActive: idx.totalActive || 0,
+                totalAwaitStop: idx.totalAwaitStop || 0,
+                totalAwaitNotify: idx.totalAwaitNotify || 0,
+                pollIntervalMs: this.#claudeState?._pollIntervalMs ?? -1,
+                pollTimer: this.#claudeState?._pollTimer ?? -1,
+                sessions,
+            });
+        } catch (e) {
+            return JSON.stringify({error: e.message || String(e)});
+        }
     }
 
     GetFocusedWindowId() {
