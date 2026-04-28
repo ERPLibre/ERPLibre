@@ -28,6 +28,7 @@ Schéma `org.gnome.shell.extensions.streamdeck-tiler`. Clés notables :
 
 - `enable-controller`, `enable-pencil`, `enable-film`, `enable-erplibre`, `enable-network`, `enable-device` (booléens)
 - `button-order` (`as`) — ordre gauche → droite
+- `panel-box` (`s`, défaut `left`) — `left` (côté droit de la zone gauche, juste avant l'horloge centrale), `center` ou `right`
 - `paths`, `films`, `instances` (`s`, JSON)
 - `terminal-claude-cmd` (`s`, défaut `claude --resume`)
 - `network-cidrs` (`as`), `network-ssh-user` (`s`), `network-use-nmap` (`b`), `network-read-ssh-config` (`b`), `network-auto-refresh-sec` (`i`)

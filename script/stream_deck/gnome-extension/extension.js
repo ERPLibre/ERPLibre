@@ -174,6 +174,10 @@ export default class StreamDeckTilerExtension extends Extension {
             () => this._reorderIndicators());
         this.#signalIds.push(ovSig);
 
+        const boxSig = this.#settings.connect('changed::panel-box',
+            () => this._reorderIndicators());
+        this.#signalIds.push(boxSig);
+
         console.log('[StreamDeckTiler] enabled');
     }
 
@@ -237,7 +241,11 @@ export default class StreamDeckTilerExtension extends Extension {
                 claudeState: this.#claudeState,
             });
             const role = `${this.uuid}-${id}`;
-            Main.panel.addToStatusArea(role, ind);
+            const box = this.#settings.get_string('panel-box') || 'left';
+            // -1 appends. In the left box this lands the indicators just
+            // before the centre clock; in right it lands at the system-tray
+            // edge.
+            Main.panel.addToStatusArea(role, ind, -1, box);
             this.#indicators.set(id, ind);
         } catch (e) {
             console.log(`[StreamDeckTiler] mount ${id} failed: ${e.message}`);

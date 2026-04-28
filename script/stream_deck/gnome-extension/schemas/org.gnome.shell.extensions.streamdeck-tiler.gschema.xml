@@ -16,6 +16,10 @@
       <default>['device','network','erplibre','film','pencil','controller']</default>
       <summary>Order of indicators left to right in the top bar</summary>
     </key>
+    <key name="panel-box" type="s">
+      <default>"left"</default>
+      <summary>Top-bar box to mount indicators in: left, center, or right (indicators are appended, so left = right edge of the left box, just before the centre clock)</summary>
+    </key>
 
     <!-- Catalogues (JSON serialised) -->
     <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
