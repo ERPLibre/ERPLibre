@@ -5,6 +5,7 @@
  */
 
 export const BADGE_DEFAULT = 'default';
+export const BADGE_OK = 'ok';
 export const BADGE_WARN = 'warn';
 export const BADGE_ALERT = 'alert';
 
@@ -19,6 +20,7 @@ const STYLE_BASE =
 
 const STYLE_BY_KIND = {
     [BADGE_DEFAULT]: `${STYLE_BASE}background-color: #3477b8;`,
+    [BADGE_OK]:      `${STYLE_BASE}background-color: #2e7d32;`,
     [BADGE_WARN]:    `${STYLE_BASE}background-color: #d4a017;`,
     [BADGE_ALERT]:   `${STYLE_BASE}background-color: #c62828;`,
 };
@@ -35,13 +37,15 @@ export function formatBadgeCount(n, cap = 99) {
 
 /**
  * Resolve the highest-severity kind from the list of badges
- * (alert > warn > default).
+ * (alert > warn > ok > default).
  */
 export function pickHighestKind(badges) {
     let best = BADGE_DEFAULT;
     for (const b of badges || []) {
         if (b?.kind === BADGE_ALERT) return BADGE_ALERT;
         if (b?.kind === BADGE_WARN) best = BADGE_WARN;
+        else if (b?.kind === BADGE_OK && best === BADGE_DEFAULT)
+            best = BADGE_OK;
     }
     return best;
 }

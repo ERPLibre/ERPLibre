@@ -132,11 +132,21 @@ def main() -> None:
         "session_id": session_id,
         "pid": existing.get("pid") or find_claude_ancestor(),
         "cwd": payload.get("cwd") or existing.get("cwd") or os.getcwd(),
+        "description": existing.get("description") or "",
+        "last_prompt": existing.get("last_prompt") or "",
         TS_ACTIVE: int(existing.get(TS_ACTIVE) or 0),
         TS_STOP: int(existing.get(TS_STOP) or 0),
         TS_NOTIFICATION: int(existing.get(TS_NOTIFICATION) or 0),
     }
     record[field] = now
+
+    if event == "UserPromptSubmit":
+        prompt = (payload.get("prompt") or "").strip()
+        first_line = (prompt.splitlines() or [""])[0][:120]
+        if first_line:
+            record["last_prompt"] = first_line
+            if not record["description"]:
+                record["description"] = first_line
 
     tmp = target.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(record), encoding="utf-8")

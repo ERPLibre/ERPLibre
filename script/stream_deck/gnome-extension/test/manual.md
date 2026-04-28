@@ -146,6 +146,9 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Trigger a permission prompt (Notification hook) → third badge turns red
 - [ ] Type a new message → third badge disappears (back to two badges)
 - [ ] Pencil dropdown row for that path shows the same count + colour next to its label
+- [ ] Below each path row, one indented sub-row per running session shows a coloured dot (green = working, yellow = awaiting answer, red = needs attention), the first user prompt as description, and a "Working / Awaiting answer / Needs attention" line plus the 8-char session id
+- [ ] Pencil panel badges: 1st = paths (blue), 2nd = active sessions (green), 3rd = awaiting (yellow → red); the green badge flips to yellow/red on the per-row badge as sessions await
+- [ ] After the user types another message, `last_prompt` updates but `description` (the very first prompt) stays put as the sticky session topic
 - [ ] Quit Claude (`/exit` / `Ctrl-D`) → SessionEnd removes the file → badge count decrements
 - [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)
 

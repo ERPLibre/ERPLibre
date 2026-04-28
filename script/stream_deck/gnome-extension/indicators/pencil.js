@@ -58,11 +58,23 @@ try {
         'resource:///org/gnome/shell/ui/popupMenu.js'
     );
     const {PathDialog} = await import('../ui/path-dialog.js');
-    const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_WARN,
-        BADGE_ALERT, formatBadgeCount} =
+    const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_OK,
+        BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
 
     const _normPath = p => String(p || '').replace(/\/+$/, '');
+
+    const _DOT_COLOR_BY_KIND = {
+        [BADGE_DEFAULT]: '#3477b8',
+        [BADGE_OK]: '#2e7d32',
+        [BADGE_WARN]: '#d4a017',
+        [BADGE_ALERT]: '#c62828',
+    };
+    const _dotColorStyle = kind =>
+        `color: ${_DOT_COLOR_BY_KIND[kind] ||
+            _DOT_COLOR_BY_KIND[BADGE_DEFAULT]}; font-weight: bold;`;
+
+    const _shortId = id => String(id || '').slice(0, 8);
 
     const _notify = (title, body) => {
         try {
@@ -156,7 +168,7 @@ try {
                 this._badged.setBadges([
                     {count: dirs, kind: BADGE_DEFAULT},
                     active > 0
-                        ? {count: active, kind: BADGE_DEFAULT}
+                        ? {count: active, kind: BADGE_OK}
                         : null,
                     awaiting > 0
                         ? {count: awaiting, kind: awaitKind}
@@ -178,6 +190,9 @@ try {
                 } else {
                     for (const entry of paths) {
                         this.menu.addMenuItem(this._makeRow(entry));
+                        for (const item of this._makeSessionRows(entry)) {
+                            this.menu.addMenuItem(item);
+                        }
                     }
                 }
 
@@ -246,13 +261,70 @@ try {
                 return item;
             }
 
+            _makeSessionRows(entry) {
+                const rows = [];
+                const idx = this._claudeIndex;
+                if (!idx) return rows;
+                const bucket = idx.byPath?.get(_normPath(entry.path)) ||
+                    idx.byPath?.get(entry.path);
+                if (!bucket || !bucket.sessions?.length) return rows;
+                const sorted = bucket.sessions.slice().sort(
+                    (a, b) => (b.ts || 0) - (a.ts || 0));
+                for (const s of sorted) rows.push(this._makeSessionItem(s));
+                return rows;
+            }
+
+            _makeSessionItem(session) {
+                const item = new PopupMenu.PopupBaseMenuItem(
+                    {reactive: false, can_focus: false});
+                const box = new St.BoxLayout({
+                    vertical: false,
+                    style: 'spacing: 8px; padding-left: 16px;',
+                    x_expand: true,
+                });
+
+                let dotKind = BADGE_OK;
+                let stateLabel = 'Working';
+                if (session.status === 'awaiting_notification') {
+                    dotKind = BADGE_ALERT;
+                    stateLabel = 'Needs attention';
+                } else if (session.status === 'awaiting_stop') {
+                    dotKind = BADGE_WARN;
+                    stateLabel = 'Awaiting answer';
+                }
+
+                const dot = new St.Label({
+                    text: '●',
+                    y_align: Clutter.ActorAlign.CENTER,
+                    style: `${_dotColorStyle(dotKind)}`,
+                });
+                box.add_child(dot);
+
+                const labelBox = new St.BoxLayout({
+                    vertical: true,
+                    x_expand: true,
+                });
+                const desc = session.description ||
+                    session.last_prompt || '(no description yet)';
+                labelBox.add_child(new St.Label({text: desc}));
+                const meta = `${stateLabel} · ${_shortId(session.session_id)}`;
+                labelBox.add_child(new St.Label({
+                    text: meta,
+                    style: 'opacity: 0.6; font-size: 0.85em;',
+                }));
+                box.add_child(labelBox);
+
+                item.add_child(box);
+                return item;
+            }
+
             _buildRowBadge(entry) {
                 const idx = this._claudeIndex;
                 if (!idx) return null;
                 const bucket = idx.byPath?.get(_normPath(entry.path)) ||
                     idx.byPath?.get(entry.path);
                 if (!bucket || bucket.total === 0) return null;
-                let kind = BADGE_DEFAULT;
+                let kind = BADGE_OK;
                 if (bucket.awaitNotify > 0) kind = BADGE_ALERT;
                 else if (bucket.awaitStop > 0) kind = BADGE_WARN;
                 return new St.Label({

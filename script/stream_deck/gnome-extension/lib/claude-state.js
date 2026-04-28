@@ -63,10 +63,16 @@ export function parseStateEntry(raw) {
         else status = STATUS_ACTIVE;
     }
 
+    const description = typeof raw.description === 'string'
+        ? raw.description : '';
+    const last_prompt = typeof raw.last_prompt === 'string'
+        ? raw.last_prompt : '';
+
     return {
         session_id, pid, cwd, status,
         ts_active, ts_stop, ts_notification,
         ts: max,
+        description, last_prompt,
     };
 }
 
