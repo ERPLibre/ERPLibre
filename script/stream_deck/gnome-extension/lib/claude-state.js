@@ -28,6 +28,14 @@ export const STATE_DIR_REL =
 /**
  * Parse one state file payload (already JSON-decoded). Returns the
  * normalised shape, or null when invalid.
+ *
+ * The on-disk format keeps three independent timestamps; the status
+ * is derived as "the most recent of the three", so a fresh
+ * UserPromptSubmit clears a stale Stop/Notification.
+ *
+ * Backwards-compatible: an old-style file with `status` + `ts` is
+ * mapped onto the timestamp triplet using `ts` as the value of the
+ * matching field.
  */
 export function parseStateEntry(raw) {
     if (!raw || typeof raw !== 'object') return null;
@@ -36,10 +44,34 @@ export function parseStateEntry(raw) {
     const pid = Number.isFinite(raw.pid) ? Math.floor(raw.pid) : 0;
     const cwdRaw = typeof raw.cwd === 'string' ? raw.cwd : '';
     const cwd = cwdRaw.replace(/\/+$/, '');
-    const status = [STATUS_ACTIVE, STATUS_AWAIT_STOP, STATUS_AWAIT_NOTIFY]
-        .includes(raw.status) ? raw.status : STATUS_ACTIVE;
-    const ts = Number.isFinite(raw.ts) ? Math.floor(raw.ts) : 0;
-    return {session_id, pid, cwd, status, ts};
+
+    let ts_active = _num(raw.ts_active);
+    let ts_stop = _num(raw.ts_stop);
+    let ts_notification = _num(raw.ts_notification);
+    if (!ts_active && !ts_stop && !ts_notification) {
+        const ts = _num(raw.ts);
+        if (raw.status === STATUS_AWAIT_STOP) ts_stop = ts;
+        else if (raw.status === STATUS_AWAIT_NOTIFY) ts_notification = ts;
+        else ts_active = ts;
+    }
+
+    let status = STATUS_ACTIVE;
+    const max = Math.max(ts_active, ts_stop, ts_notification);
+    if (max > 0) {
+        if (ts_notification === max) status = STATUS_AWAIT_NOTIFY;
+        else if (ts_stop === max) status = STATUS_AWAIT_STOP;
+        else status = STATUS_ACTIVE;
+    }
+
+    return {
+        session_id, pid, cwd, status,
+        ts_active, ts_stop, ts_notification,
+        ts: max,
+    };
+}
+
+function _num(v) {
+    return Number.isFinite(v) ? Math.floor(v) : 0;
 }
 
 /**

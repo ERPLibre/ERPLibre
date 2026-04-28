@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
 """Stream Deck Tiler — Claude Code session-state hook.
 
-Drop a single state file per Claude session under
+Maintains one JSON file per Claude session under
 `$XDG_STATE_HOME/streamdeck-tiler/claude/{session_id}.json` so the
 GNOME Shell extension can show how many sessions are running and
 which ones are awaiting user input.
 
+The file stores three independent timestamps (ms epoch):
+
+* ``ts_active`` — last user activity (SessionStart, UserPromptSubmit,
+  PreToolUse, PostToolUse, SubagentStop, PreCompact)
+* ``ts_stop`` — last Stop hook (assistant turn ended, awaiting user)
+* ``ts_notification`` — last Notification hook (permission / idle alert)
+
+Status is derived in the extension by picking the most recent of the
+three. A user-driven event (UserPromptSubmit, PreTool/PostTool…)
+therefore *clears* a stale Stop or Notification by bumping
+``ts_active`` past them, so the badge does not stay red after the
+user types again.
+
 This script is meant to be wired into Claude Code via
 `~/.claude/settings.json`. See `hooks/README.md` for the snippet.
-
 Exit code is always 0 — hook failures must never block Claude.
 """
 
@@ -21,20 +33,20 @@ import time
 from pathlib import Path
 
 
-STATUS_ACTIVE = "active"
-STATUS_AWAIT_STOP = "awaiting_stop"
-STATUS_AWAIT_NOTIFY = "awaiting_notification"
+TS_ACTIVE = "ts_active"
+TS_STOP = "ts_stop"
+TS_NOTIFICATION = "ts_notification"
 
-STATUS_BY_EVENT = {
-    "SessionStart": STATUS_ACTIVE,
-    "UserPromptSubmit": STATUS_ACTIVE,
-    "PreToolUse": STATUS_ACTIVE,
-    "PostToolUse": STATUS_ACTIVE,
-    "SubagentStop": STATUS_ACTIVE,
-    "PreCompact": STATUS_ACTIVE,
-    "Stop": STATUS_AWAIT_STOP,
-    "Notification": STATUS_AWAIT_NOTIFY,
-    "SessionEnd": None,  # delete the state file
+# Maps a hook event name to the timestamp field it should update.
+EVENT_FIELD = {
+    "SessionStart": TS_ACTIVE,
+    "UserPromptSubmit": TS_ACTIVE,
+    "PreToolUse": TS_ACTIVE,
+    "PostToolUse": TS_ACTIVE,
+    "SubagentStop": TS_ACTIVE,
+    "PreCompact": TS_ACTIVE,
+    "Stop": TS_STOP,
+    "Notification": TS_NOTIFICATION,
 }
 
 
@@ -49,8 +61,7 @@ def state_dir() -> Path:
 def find_claude_ancestor() -> int:
     """Walk parent PIDs to find the closest ancestor whose comm is 'claude'.
 
-    Returns 0 when the chain cannot be inspected — the extension treats
-    PID 0 as "alive" so the file persists until SessionEnd.
+    Returns 0 when the chain cannot be inspected.
     """
     pid = os.getppid()
     for _ in range(12):
@@ -68,7 +79,6 @@ def find_claude_ancestor() -> int:
                 encoding="utf-8", errors="replace")
         except OSError:
             return 0
-        # Format: pid (comm) state ppid …  comm may include spaces.
         rparen = stat.rfind(")")
         if rparen < 0:
             return 0
@@ -82,6 +92,15 @@ def find_claude_ancestor() -> int:
     return 0
 
 
+def load_existing(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def main() -> None:
     try:
         payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
@@ -92,24 +111,33 @@ def main() -> None:
         sys.argv[1] if len(sys.argv) > 1 else "")
     session_id = (payload.get("session_id") or "").strip()
     if not session_id:
-        return  # nothing to track
+        return
 
     target = state_dir() / f"{session_id}.json"
 
-    if event == "SessionEnd" or STATUS_BY_EVENT.get(event) is None:
+    if event == "SessionEnd":
         try:
             target.unlink()
         except FileNotFoundError:
             pass
         return
 
+    field = EVENT_FIELD.get(event)
+    if field is None:
+        return
+
+    now = int(time.time() * 1000)
+    existing = load_existing(target) or {}
     record = {
         "session_id": session_id,
-        "pid": find_claude_ancestor(),
-        "cwd": payload.get("cwd") or os.getcwd(),
-        "status": STATUS_BY_EVENT.get(event, STATUS_ACTIVE),
-        "ts": int(time.time() * 1000),
+        "pid": existing.get("pid") or find_claude_ancestor(),
+        "cwd": payload.get("cwd") or existing.get("cwd") or os.getcwd(),
+        TS_ACTIVE: int(existing.get(TS_ACTIVE) or 0),
+        TS_STOP: int(existing.get(TS_STOP) or 0),
+        TS_NOTIFICATION: int(existing.get(TS_NOTIFICATION) or 0),
     }
+    record[field] = now
+
     tmp = target.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(record), encoding="utf-8")
     tmp.replace(target)
@@ -119,5 +147,4 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Hook must never break Claude. Swallow and exit cleanly.
         pass

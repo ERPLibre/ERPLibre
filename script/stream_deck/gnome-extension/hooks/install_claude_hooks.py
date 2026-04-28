@@ -27,6 +27,8 @@ SETTINGS = Path.home() / ".claude" / "settings.json"
 EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
     "Stop",
     "Notification",
     "SessionEnd",

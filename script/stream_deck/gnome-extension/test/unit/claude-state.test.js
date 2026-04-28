@@ -10,13 +10,12 @@ test('parseStateEntry: rejects payloads without session_id', () => {
     assert.equal(parseStateEntry({session_id: ''}), null);
 });
 
-test('parseStateEntry: normalises status + trailing slash', () => {
+test('parseStateEntry: normalises trailing slash', () => {
     const e = parseStateEntry({
         session_id: 'abc',
         pid: 100,
         cwd: '/home/x/proj/',
-        status: 'unknown',
-        ts: 1700,
+        ts_active: 1700,
     });
     assert.equal(e.session_id, 'abc');
     assert.equal(e.pid, 100);
@@ -25,10 +24,29 @@ test('parseStateEntry: normalises status + trailing slash', () => {
     assert.equal(e.ts, 1700);
 });
 
-test('parseStateEntry: passes valid statuses through', () => {
-    assert.equal(parseStateEntry({session_id: 'a', status: STATUS_AWAIT_STOP}).status,
+test('parseStateEntry: derives status from max timestamp', () => {
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_active: 50, ts_stop: 100}).status,
         STATUS_AWAIT_STOP);
-    assert.equal(parseStateEntry({session_id: 'a', status: STATUS_AWAIT_NOTIFY}).status,
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_stop: 100, ts_notification: 200}).status,
+        STATUS_AWAIT_NOTIFY);
+    // User activity after notification clears it.
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_notification: 200, ts_active: 300}).status,
+        STATUS_ACTIVE);
+    // Tie between notification and stop favours notification.
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_stop: 100, ts_notification: 100}).status,
+        STATUS_AWAIT_NOTIFY);
+});
+
+test('parseStateEntry: legacy {status, ts} payload still parses', () => {
+    assert.equal(parseStateEntry(
+        {session_id: 'a', status: STATUS_AWAIT_STOP, ts: 999}).status,
+        STATUS_AWAIT_STOP);
+    assert.equal(parseStateEntry(
+        {session_id: 'a', status: STATUS_AWAIT_NOTIFY, ts: 999}).status,
         STATUS_AWAIT_NOTIFY);
 });
 
