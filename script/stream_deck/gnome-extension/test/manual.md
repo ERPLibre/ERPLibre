@@ -154,6 +154,8 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] D-Bus: `gdbus call ... FocusClaudeSession '<session_id>'` raises and focuses the terminal hosting that session
 - [ ] Stream Deck idle page shows one button per running session (robot icon, green/yellow/red); clicking it raises the matching gnome-terminal window
 - [ ] Clicking a session sub-row in the pencil dropdown raises the matching gnome-terminal window
+- [ ] Each session row has a "⤺ Set window…" sub-action: clicking it shows a 3 s notification, switching to a terminal during that window saves the new target (next focus click goes to that terminal)
+- [ ] When a session is yellow / red, an "↵ Accept response (send Enter)" sub-action appears: clicking it focuses the terminal and synthesises an Enter key via Clutter's virtual keyboard (no external tool needed)
 
 ## Release
 

@@ -45,10 +45,8 @@ export let indicatorDescriptor = {
 try {
     const {default: Clutter} = await import('gi://Clutter');
     const {default: Gio} = await import('gi://Gio');
+    const {default: GLib} = await import('gi://GLib');
     const {default: GObject} = await import('gi://GObject');
-    // GLib is only used by helpers we no longer call here; keep the import
-    // commented to document the intent without forcing the resolve cost.
-    // const {default: GLib} = await import('gi://GLib');
     const {default: St} = await import('gi://St');
     const Main = await import('resource:///org/gnome/shell/ui/main.js');
     const PanelMenu = await import(
@@ -320,8 +318,59 @@ try {
                 const ours = allSessions.filter(
                     s => this._sessionOwner.get(s.session_id) === owner);
                 ours.sort((a, b) => (b.ts || 0) - (a.ts || 0));
-                for (const s of ours) rows.push(this._makeSessionItem(s));
+                for (const s of ours) {
+                    rows.push(this._makeSessionItem(s));
+                    for (const act of this._makeSessionActions(s)) {
+                        rows.push(act);
+                    }
+                }
                 return rows;
+            }
+
+            _makeSessionActions(session) {
+                const out = [];
+                const setItem = new PopupMenu.PopupMenuItem(
+                    '   ⤺ Set window…');
+                setItem.connect('activate',
+                    () => this._startSetWindow(session));
+                out.push(setItem);
+
+                if (session.status === 'awaiting_notification'
+                        || session.status === 'awaiting_stop') {
+                    const accept = new PopupMenu.PopupMenuItem(
+                        '   ↵ Accept response (send Enter)');
+                    accept.connect('activate',
+                        () => this._acceptSession(session));
+                    out.push(accept);
+                }
+                return out;
+            }
+
+            _startSetWindow(session) {
+                _notify('Stream Deck',
+                    'Switch to the right terminal within 3 s — its window '
+                    + 'will be saved as the target for this session.');
+                const sid = session.session_id;
+                if (!sid) return;
+                const ext = this._extension;
+                if (!ext) return;
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
+                    const ok = ext.SetClaudeSessionWindow?.(sid);
+                    _notify('Stream Deck',
+                        ok ? 'Window saved.'
+                           : 'No focused window — try again.');
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+
+            _acceptSession(session) {
+                const sid = session.session_id;
+                if (!sid) return;
+                const ok = this._extension?.AcceptClaudeSession?.(sid);
+                if (!ok) {
+                    _notify('Stream Deck',
+                        'Could not send Enter — install ydotool.');
+                }
             }
 
             _makeSessionItem(session) {

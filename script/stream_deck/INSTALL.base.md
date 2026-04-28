@@ -51,3 +51,69 @@ Pour diagnostiquer ou ajouter du nouveau matériel, vérifier avec
 
 sudo apt install -y wmctrl
 ```
+
+<!-- [en] -->
+## Auto-accept Claude prompts (Wayland)
+<!-- [fr] -->
+## Auto-accepter les invites Claude (Wayland)
+<!-- [end] -->
+
+<!-- [en] -->
+The pencil indicator's "Accept response" action and the deck's red
+session button synthesise an Enter keystroke into the focused Claude
+terminal so a `Notification` permission prompt can be cleared without
+leaving the launcher. The keystroke is generated **inside the GNOME
+extension** through Clutter's virtual input device — no external
+helper is needed and no group/permission change is required.
+<!-- [fr] -->
+L'action « Accept response » de l'indicateur crayon et le bouton
+rouge sur le deck synthétisent une frappe Entrée dans le terminal
+Claude focalisé pour acquitter un `Notification` sans quitter le
+lanceur. La frappe est générée **directement par l'extension GNOME**
+via le périphérique d'entrée virtuel de Clutter — aucun outil
+externe n'est requis et aucun changement de groupe n'est nécessaire.
+<!-- [end] -->
+
+<!-- [en] -->
+External tools like `wtype` (which requires `zwp_virtual_keyboard_v1`,
+not exposed to arbitrary clients by Mutter) or `ydotool` (which is
+not packaged on Debian 13) are therefore **not** prerequisites.
+<!-- [fr] -->
+Les outils externes comme `wtype` (qui requiert
+`zwp_virtual_keyboard_v1`, non exposé aux clients arbitraires par
+Mutter) ou `ydotool` (non packagé sur Debian 13) ne sont **pas**
+des prérequis.
+<!-- [end] -->
+
+<!-- [en] -->
+## Stream Deck Tiler GNOME extension hooks
+<!-- [fr] -->
+## Hooks de l'extension GNOME Stream Deck Tiler
+<!-- [end] -->
+
+<!-- [en] -->
+The pencil badge needs Claude Code to write a small JSON state file
+on every session event. Wire the hook (idempotent, safe to re-run):
+<!-- [fr] -->
+La pastille du crayon a besoin que Claude Code écrive un petit
+fichier JSON d'état à chaque événement de session. Branche le hook
+(idempotent, peut être relancé) :
+<!-- [end] -->
+
+<!-- [common] -->
+```
+make claude_install_hooks
+```
+<!-- [end] -->
+
+<!-- [en] -->
+Run `make claude_uninstall_hooks` to remove. Existing Claude
+sessions reload `~/.claude/settings.json` only at SessionStart, so
+restart any open `claude` after the install for the badge to start
+tracking them.
+<!-- [fr] -->
+`make claude_uninstall_hooks` pour retirer. Les sessions Claude en
+cours ne relisent `~/.claude/settings.json` qu'au SessionStart ;
+relance les `claude` ouverts pour que la pastille les suive.
+<!-- [end] -->
+

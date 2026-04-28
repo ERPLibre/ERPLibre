@@ -6,6 +6,7 @@
  * indicators based on GSettings, and reacts to live toggles.
  */
 
+import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -112,6 +113,14 @@ const IFACE_XML = `
     <method name="GetFocusedWindowId">
       <arg type="s" direction="out" name="id"/>
     </method>
+    <method name="SetClaudeSessionWindow">
+      <arg type="s" direction="in" name="session_id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="AcceptClaudeSession">
+      <arg type="s" direction="in" name="session_id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
   </interface>
 </node>`;
 
@@ -203,6 +212,7 @@ export default class StreamDeckTilerExtension extends Extension {
             }
         }
         this.#indicators.clear();
+        this._virtualKeyboard = null;
         try { this.#claudeState?.stop(); } catch (_e) {}
         this.#claudeState = null;
         this.#registry = null;
@@ -481,6 +491,80 @@ export default class StreamDeckTilerExtension extends Extension {
             const id = w.get_stable_sequence?.() ?? w.get_id?.() ?? 0;
             return String(id);
         } catch (_e) { return ''; }
+    }
+
+    /**
+     * Overwrite the `window_id` field of a session's state file to
+     * whichever window currently has focus. Used by the pencil "Set
+     * window" action so the user can correct a mis-captured target.
+     */
+    SetClaudeSessionWindow(sessionId) {
+        try {
+            const state = this._readClaudeState(sessionId);
+            if (!state) return false;
+            const w = global.display.focus_window;
+            if (!w) return false;
+            const wid = w.get_stable_sequence?.() ?? w.get_id?.() ?? 0;
+            if (!wid) return false;
+            state.window_id = Number(wid);
+            return this._writeClaudeState(sessionId, state);
+        } catch (_e) { return false; }
+    }
+
+    /**
+     * Focus the session's terminal then synthesize an Enter key via
+     * ydotool so the user can auto-accept a Claude permission prompt
+     * directly from the panel. Returns false (with a notification) if
+     * ydotool is not available.
+     */
+    AcceptClaudeSession(sessionId) {
+        const state = this._readClaudeState(sessionId);
+        if (!state) return false;
+        if (!this.FocusClaudeSession(sessionId)) return false;
+        // Synthesize the Enter via Clutter's virtual keyboard. Since
+        // we are inside Mutter we don't need wtype/ydotool — Mutter
+        // restricts the public virtual-keyboard protocol but trusts
+        // its own shell. A short delay gives focus time to land.
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            try {
+                this._sendKeyval(Clutter.KEY_Return);
+            } catch (_e) {}
+            return GLib.SOURCE_REMOVE;
+        });
+        return true;
+    }
+
+    _sendKeyval(keyval) {
+        const seat = Clutter.get_default_backend().get_default_seat();
+        if (!this._virtualKeyboard) {
+            this._virtualKeyboard = seat.create_virtual_device(
+                Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        }
+        const time = Clutter.CURRENT_TIME;
+        this._virtualKeyboard.notify_keyval(
+            time, keyval, Clutter.KeyState.PRESSED);
+        this._virtualKeyboard.notify_keyval(
+            time, keyval, Clutter.KeyState.RELEASED);
+    }
+
+    _writeClaudeState(sessionId, data) {
+        const sid = String(sessionId || '').trim();
+        if (!sid) return false;
+        const base = GLib.getenv('XDG_STATE_HOME')
+            || `${GLib.get_home_dir()}/.local/state`;
+        const dir = `${base}/streamdeck-tiler/claude`;
+        const path = `${dir}/${sid}.json`;
+        try {
+            GLib.mkdir_with_parents(dir, 0o700);
+            const json = JSON.stringify(data);
+            const tmp = `${path}.tmp`;
+            const file = Gio.File.new_for_path(tmp);
+            file.replace_contents(
+                new TextEncoder().encode(json),
+                null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            GLib.rename(tmp, path);
+            return true;
+        } catch (_e) { return false; }
     }
 
     FocusClaudeSession(sessionId) {
