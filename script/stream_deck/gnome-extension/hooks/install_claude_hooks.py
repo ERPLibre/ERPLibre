@@ -24,15 +24,19 @@ from pathlib import Path
 
 HOOK_PATH = Path(__file__).resolve().parent / "streamdeck-tiler-hook.py"
 SETTINGS = Path.home() / ".claude" / "settings.json"
-EVENTS = (
+INSTALL_EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
-    "PreToolUse",
-    "PostToolUse",
     "Stop",
     "Notification",
     "SessionEnd",
 )
+
+# Legacy events we used to register; keep them in the remove list so
+# `--remove` cleans up old installs that bumped `ts_active` on every
+# tool call and made interrupted Stops look like resumed work.
+REMOVE_EVENTS = INSTALL_EVENTS + ("PreToolUse", "PostToolUse",
+                                  "SubagentStop", "PreCompact")
 TAG = "streamdeck-tiler"
 
 
@@ -70,11 +74,11 @@ def has_entry(matchers: list, command: str) -> bool:
     return False
 
 
-def install(data: dict, command: str) -> int:
+def install(data: dict, command: str, events=INSTALL_EVENTS) -> int:
     """Add hook entries; return number of events newly modified."""
     hooks = data.setdefault("hooks", {})
     changed = 0
-    for event in EVENTS:
+    for event in events:
         matchers = hooks.setdefault(event, [])
         if not isinstance(matchers, list):
             print(
@@ -89,10 +93,10 @@ def install(data: dict, command: str) -> int:
     return changed
 
 
-def remove(data: dict, command: str) -> int:
+def remove(data: dict, command: str, events=REMOVE_EVENTS) -> int:
     hooks = data.get("hooks") or {}
     removed = 0
-    for event in EVENTS:
+    for event in events:
         matchers = hooks.get(event)
         if not isinstance(matchers, list):
             continue
@@ -141,9 +145,18 @@ def main() -> int:
         verb = "would remove" if args.dry_run else "removed"
         print(f"{verb} {n} hook entries from {SETTINGS}")
     else:
-        n = install(data, command)
-        verb = "would add" if args.dry_run else "added"
-        print(f"{verb} {n} hook entries in {SETTINGS}")
+        # Strip any legacy entries we no longer install (PreToolUse,
+        # PostToolUse, SubagentStop, PreCompact) before adding the
+        # current event set, so re-running the installer cleans up
+        # older versions of the hook configuration.
+        legacy_only = tuple(e for e in REMOVE_EVENTS
+                            if e not in INSTALL_EVENTS)
+        legacy_removed = remove(data, command, legacy_only)
+        added = install(data, command)
+        n = added + legacy_removed
+        verb = "would update" if args.dry_run else "updated"
+        print(f"{verb} {n} hook entries in {SETTINGS} "
+              f"(+{added} new, -{legacy_removed} legacy)")
         if n == 0:
             print("(already up to date)")
 

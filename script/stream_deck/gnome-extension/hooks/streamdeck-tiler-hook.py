@@ -40,13 +40,16 @@ TS_STOP = "ts_stop"
 TS_NOTIFICATION = "ts_notification"
 
 # Maps a hook event name to the timestamp field it should update.
+#
+# `Stop` must be the most recent event after a Ctrl+C interrupt, so we
+# deliberately leave PreToolUse, PostToolUse, SubagentStop and PreCompact
+# OUT of this map. Otherwise an interrupted tool's PostToolUse fires
+# AFTER Stop and bumps `ts_active` past `ts_stop`, making the status
+# look like the assistant is working again when it has actually been
+# stopped by the user.
 EVENT_FIELD = {
     "SessionStart": TS_ACTIVE,
     "UserPromptSubmit": TS_ACTIVE,
-    "PreToolUse": TS_ACTIVE,
-    "PostToolUse": TS_ACTIVE,
-    "SubagentStop": TS_ACTIVE,
-    "PreCompact": TS_ACTIVE,
     "Stop": TS_STOP,
     "Notification": TS_NOTIFICATION,
 }
@@ -172,8 +175,7 @@ def main() -> None:
     # fire while the terminal is focused. Stop/Notification can fire
     # while the user looks at another window, so reusing the previous
     # value avoids capturing the wrong target.
-    if event in ("SessionStart", "UserPromptSubmit",
-                 "PreToolUse", "PostToolUse"):
+    if event in ("SessionStart", "UserPromptSubmit"):
         wid = capture_focused_window_id()
         if wid > 0:
             record["window_id"] = wid
