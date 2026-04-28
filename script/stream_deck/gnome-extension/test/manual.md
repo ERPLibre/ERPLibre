@@ -152,7 +152,9 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] Quit Claude (`/exit` / `Ctrl-D`) → SessionEnd removes the file → badge count decrements
 - [ ] `kill -9` on the claude process → next refresh cleans the stale state file (`/proc` check)
 - [ ] D-Bus: `gdbus call ... FocusClaudeSession '<session_id>'` raises and focuses the terminal hosting that session
-- [ ] Stream Deck idle page shows one button per running session (robot icon, green/yellow/red); clicking it raises the matching gnome-terminal window
+- [ ] Stream Deck idle page shows one button per running session (robot icon, green/yellow/red); clicking it opens an action page with BACK / FOCUS / ACCEPT keys
+- [ ] FOCUS key raises the matching gnome-terminal window and returns the deck to idle
+- [ ] ACCEPT key (visible when the deck has ≥3 cols) sends Enter into the focused terminal via the extension's Clutter virtual keyboard
 - [ ] Clicking a session sub-row in the pencil dropdown raises the matching gnome-terminal window
 - [ ] Each session row has a "⤺ Set window…" sub-action: clicking it shows a 3 s notification, switching to a terminal during that window saves the new target (next focus click goes to that terminal)
 - [ ] When a session is yellow / red, an "↵ Accept response (send Enter)" sub-action appears: clicking it focuses the terminal and synthesises an Enter key via Clutter's virtual keyboard (no external tool needed)

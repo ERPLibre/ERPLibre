@@ -181,6 +181,44 @@ def _claude_label(session, max_chars=18):
         cut = max_chars
     return desc[:cut].rstrip()
 
+
+def _chunk_text_for_cells(text, num_cells, per_cell=12):
+    """Split `text` into up to `num_cells` chunks of ~`per_cell` chars.
+
+    Breaks at word boundaries when a space is available close to the
+    target length so reading flows from one cell to the next.
+    """
+    text = (text or "").strip()
+    if not text or num_cells <= 0:
+        return []
+    chunks = []
+    remaining = text
+    for _ in range(num_cells):
+        if not remaining:
+            break
+        if len(remaining) <= per_cell:
+            chunks.append(remaining)
+            remaining = ""
+            break
+        cut = remaining.rfind(" ", 0, per_cell + 2)
+        if cut < per_cell // 2:
+            cut = per_cell
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+    return chunks
+
+
+def _wrap_chunk(text, line_chars=6):
+    """Insert a newline near `line_chars` so set_key renders 2 lines
+    instead of overflowing a narrow key."""
+    text = (text or "").strip()
+    if len(text) <= line_chars:
+        return text
+    cut = text.rfind(" ", 0, line_chars + 2)
+    if cut < line_chars // 2:
+        cut = line_chars
+    return f"{text[:cut].rstrip()}\n{text[cut:].lstrip()}"
+
 MODE_IDLE = "idle"
 MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
@@ -192,6 +230,7 @@ MODE_A11Y = "a11y"
 MODE_BLUETOOTH = "bluetooth"
 MODE_TRANSLATOR = "translator"
 MODE_TRANSLATOR_HISTORY = "translator_history"
+MODE_CLAUDE_SESSION = "claude_session"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -1150,6 +1189,7 @@ class Tiler:
         self.corner2 = None
         self.last_result = None  # "ok" or "err"
         self.result_time = 0
+        self._claude_session_sid = None  # active session in MODE_CLAUDE_SESSION
         self.dbus_ok = _check_dbus_available()
         # Timer state
         self.timers = []  # list of dicts from _list_tracker_timers
@@ -1227,10 +1267,44 @@ class Tiler:
         self._compute_bluetooth_buttons()
         self._compute_translator_buttons()
         self._compute_claude_buttons()
+        self._compute_claude_session_keys()
+
+    def _enter_claude_session_mode(self, key):
+        """Open the actions page for the claude session attached to
+        `key`. Stores the session id so re-renders survive state file
+        churn from new prompts."""
+        if not self.claude_keys:
+            return
+        try:
+            idx = self.claude_keys.index(key)
+        except ValueError:
+            return
+        sessions = _load_claude_sessions()
+        if idx >= len(sessions):
+            return
+        sid = sessions[idx].get("session_id") or ""
+        if not sid:
+            return
+        self._claude_session_sid = sid
+        self.mode = MODE_CLAUDE_SESSION
+        self.render()
+
+    def _call_claude_dbus(self, method, sid):
+        try:
+            out = subprocess.check_output([
+                "gdbus", "call", "--session",
+                "--dest", "org.gnome.Shell",
+                "--object-path",
+                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "--method",
+                f"org.gnome.Shell.Extensions.StreamDeckTiler.{method}",
+                sid,
+            ], stderr=subprocess.DEVNULL, timeout=2).decode()
+            return "true" in out.lower()
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
 
     def _focus_claude_for_key(self, key):
-        """Resolve the session attached to `key` and ask the GNOME
-        extension to focus its terminal."""
         if not self.claude_keys:
             return False
         try:
@@ -1243,20 +1317,18 @@ class Tiler:
         sid = sessions[idx].get("session_id") or ""
         if not sid:
             return False
-        try:
-            out = subprocess.check_output([
-                "gdbus", "call", "--session",
-                "--dest", "org.gnome.Shell",
-                "--object-path",
-                "/org/gnome/Shell/Extensions/StreamDeckTiler",
-                "--method",
-                "org.gnome.Shell.Extensions.StreamDeckTiler"
-                ".FocusClaudeSession",
-                sid,
-            ], stderr=subprocess.DEVNULL, timeout=2).decode()
-            return "true" in out.lower()
-        except (subprocess.SubprocessError, FileNotFoundError):
-            return False
+        return self._call_claude_dbus("FocusClaudeSession", sid)
+
+    def _compute_claude_session_keys(self):
+        """Layout for the per-session action page. Requires >= 2 cols.
+        Cell 0 is BACK, cells 1..3 are FOCUS / ACCEPT / (placeholder)."""
+        if self.cols < 2:
+            self.claude_session_keys = None
+            return
+        keys = {"back": 0, "focus": 1}
+        if self.cols >= 3:
+            keys["accept"] = 2
+        self.claude_session_keys = keys
 
     def _compute_claude_buttons(self):
         """Reserve free cells (rows 1+, after mic + layout shortcuts) for
@@ -1395,6 +1467,38 @@ class Tiler:
             self._handle_translator_key(key)
         elif self.mode == MODE_TRANSLATOR_HISTORY:
             self._handle_translator_history_key(key)
+        elif self.mode == MODE_CLAUDE_SESSION:
+            self._handle_claude_session_key(key)
+
+    def _handle_claude_session_key(self, key):
+        cs = self.claude_session_keys
+        if not cs:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == cs.get("back"):
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        sid = self._claude_session_sid
+        if not sid:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == cs.get("focus"):
+            ok = self._call_claude_dbus("FocusClaudeSession", sid)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if "accept" in cs and key == cs["accept"]:
+            ok = self._call_claude_dbus("AcceptClaudeSession", sid)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.mode = MODE_IDLE
+            self.render()
+            return
 
     def _handle_idle_key(self, key):
         if key == self.dev_reload_key and self.dev_reload_key >= 0:
@@ -1438,10 +1542,7 @@ class Tiler:
             self.render()
             return
         if key in (self.claude_keys or []):
-            ok = self._focus_claude_for_key(key)
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
-            self.render()
+            self._enter_claude_session_mode(key)
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
             self._enter_timer_mode()
@@ -1927,6 +2028,42 @@ class Tiler:
             self._render_translator()
         elif self.mode == MODE_TRANSLATOR_HISTORY:
             self._render_translator_history()
+        elif self.mode == MODE_CLAUDE_SESSION:
+            self._render_claude_session()
+
+    def _render_claude_session(self):
+        cs = self.claude_session_keys or {}
+        sid = self._claude_session_sid or ''
+        session = None
+        for s in _load_claude_sessions():
+            if s.get('session_id') == sid:
+                session = s
+                break
+
+        action_keys = {cs.get('back'), cs.get('focus')}
+        if 'accept' in cs:
+            action_keys.add(cs['accept'])
+        text_keys = [k for k in range(self.total_keys)
+                     if k not in action_keys]
+        desc = (session or {}).get('description') \
+            or (session or {}).get('last_prompt') or ''
+        chunks = _chunk_text_for_cells(desc, len(text_keys))
+        chunk_by_key = dict(zip(text_keys, chunks))
+
+        for key in range(self.total_keys):
+            if key == cs.get('back'):
+                set_key(self.deck, key, COLOR_TITLE, 'BACK')
+            elif key == cs.get('focus'):
+                set_key(self.deck, key, COLOR_VOL, 'FOCUS', icon='robot')
+            elif 'accept' in cs and key == cs['accept']:
+                color = (_claude_color(session) if session
+                         else COLOR_CLAUDE_AWAIT_STOP)
+                set_key(self.deck, key, color, 'ACCEPT\n↵')
+            elif key in chunk_by_key:
+                set_key(self.deck, key, COLOR_EMPTY,
+                        _wrap_chunk(chunk_by_key[key]))
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, '')
 
     def _render_idle(self):
         shortcut_slots = {}
