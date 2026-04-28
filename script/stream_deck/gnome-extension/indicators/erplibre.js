@@ -21,7 +21,11 @@ function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
 }
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const ErpLibreIndicator = GObject.registerClass(
+{GTypeName: `SDT_ErpLibreIndicator_${_GTYPE_SUFFIX}`},
 class ErpLibreIndicator extends PanelMenu.Button {
     _init({extension, openPrefs, iconName = 'network-server-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck ERPLibre');

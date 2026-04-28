@@ -5,7 +5,11 @@ import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
 import {validatePositionInput} from '../lib/film-helpers.js';
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const FilmDialog = GObject.registerClass(
+{GTypeName: `SDT_FilmDialog_${_GTYPE_SUFFIX}`},
 class FilmDialog extends ModalDialog {
     _init({title = 'Add film', entry = null, onConfirm, onDelete}) {
         super._init({styleClass: 'streamdeck-tiler-dialog'});

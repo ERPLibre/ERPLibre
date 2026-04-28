@@ -24,7 +24,13 @@ function _notify(title, body) {
     }
 }
 
+// Unique per module evaluation. Required for the HotReload UUID-rename
+// trick: GObject types are process-wide and immutable, so loading the
+// same class under a fresh UUID needs a fresh GTypeName.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const ControllerIndicator = GObject.registerClass(
+{GTypeName: `SDT_ControllerIndicator_${_GTYPE_SUFFIX}`},
 class ControllerIndicator extends PanelMenu.Button {
     _init({extension, iconName = 'input-gaming-symbolic', openPrefs} = {}) {
         super._init(0.0, 'Stream Deck Controller');

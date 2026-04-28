@@ -5,7 +5,11 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const PathDialog = GObject.registerClass(
+{GTypeName: `SDT_PathDialog_${_GTYPE_SUFFIX}`},
 class PathDialog extends ModalDialog {
     _init({title = 'Add path', entry = null, recentPaths = [], onConfirm}) {
         super._init({styleClass: 'streamdeck-tiler-dialog'});

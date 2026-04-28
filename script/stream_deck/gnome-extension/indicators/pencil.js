@@ -72,7 +72,11 @@ try {
         }
     };
 
+    // See indicators/controller.js for the rationale of the random suffix.
+    const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
     PencilIndicator = GObject.registerClass(
+        {GTypeName: `SDT_PencilIndicator_${_GTYPE_SUFFIX}`},
         class PencilIndicator extends PanelMenu.Button {
             _init({extension, openPrefs, claudeState,
                 iconName = 'document-edit-symbolic'} = {}) {

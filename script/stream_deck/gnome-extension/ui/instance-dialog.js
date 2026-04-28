@@ -3,7 +3,11 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const InstanceDialog = GObject.registerClass(
+{GTypeName: `SDT_InstanceDialog_${_GTYPE_SUFFIX}`},
 class InstanceDialog extends ModalDialog {
     _init({title = 'Add instance', entry = null, onConfirm, onDelete}) {
         super._init({styleClass: 'streamdeck-tiler-dialog'});

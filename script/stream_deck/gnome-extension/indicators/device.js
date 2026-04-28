@@ -18,7 +18,11 @@ function _notify(title, body) {
 const PIDFILE = `${GLib.get_user_cache_dir()}/streamdeck-tiler/controller.pid`;
 const CONTROLLER_REL = 'script/stream_deck/erplibre_controller.py';
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const DeviceIndicator = GObject.registerClass(
+{GTypeName: `SDT_DeviceIndicator_${_GTYPE_SUFFIX}`},
 class DeviceIndicator extends PanelMenu.Button {
     _init({extension, openPrefs, iconName = 'input-tablet-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck Device');

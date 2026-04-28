@@ -18,7 +18,11 @@ function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
 }
 
+// See indicators/controller.js for the rationale of the random suffix.
+const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
+
 export const NetworkIndicator = GObject.registerClass(
+{GTypeName: `SDT_NetworkIndicator_${_GTYPE_SUFFIX}`},
 class NetworkIndicator extends PanelMenu.Button {
     _init({extension, openPrefs, iconName = 'network-wired-symbolic'} = {}) {
         super._init(0.0, 'Stream Deck Network');
