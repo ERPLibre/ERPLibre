@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -92,6 +94,31 @@ def find_claude_ancestor() -> int:
     return 0
 
 
+def capture_focused_window_id() -> int:
+    """Ask the GNOME extension for the currently focused window id.
+
+    Falls back to 0 when D-Bus is unavailable. Returns a stable
+    Mutter window id (Meta.Window.get_stable_sequence) so the same
+    window can be re-focused later regardless of title changes.
+    """
+    try:
+        out = subprocess.run([
+            "gdbus", "call", "--session",
+            "--dest", "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell/Extensions/StreamDeckTiler",
+            "--method",
+            "org.gnome.Shell.Extensions.StreamDeckTiler"
+            ".GetFocusedWindowId",
+        ], capture_output=True, text=True, timeout=2)
+        if out.returncode != 0:
+            return 0
+        m = re.search(r"'(\d+)'", out.stdout)
+        return int(m.group(1)) if m else 0
+    except (subprocess.SubprocessError, FileNotFoundError, ValueError):
+        return 0
+
+
 def load_existing(path: Path) -> dict | None:
     if not path.exists():
         return None
@@ -134,11 +161,22 @@ def main() -> None:
         "cwd": payload.get("cwd") or existing.get("cwd") or os.getcwd(),
         "description": existing.get("description") or "",
         "last_prompt": existing.get("last_prompt") or "",
+        "window_id": int(existing.get("window_id") or 0),
         TS_ACTIVE: int(existing.get(TS_ACTIVE) or 0),
         TS_STOP: int(existing.get(TS_STOP) or 0),
         TS_NOTIFICATION: int(existing.get(TS_NOTIFICATION) or 0),
     }
     record[field] = now
+
+    # Refresh the stored window id only on user-driven events: those
+    # fire while the terminal is focused. Stop/Notification can fire
+    # while the user looks at another window, so reusing the previous
+    # value avoids capturing the wrong target.
+    if event in ("SessionStart", "UserPromptSubmit",
+                 "PreToolUse", "PostToolUse"):
+        wid = capture_focused_window_id()
+        if wid > 0:
+            record["window_id"] = wid
 
     if event == "UserPromptSubmit":
         prompt = (payload.get("prompt") or "").strip()

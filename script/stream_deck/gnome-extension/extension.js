@@ -109,6 +109,9 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="session_id"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
+    <method name="GetFocusedWindowId">
+      <arg type="s" direction="out" name="id"/>
+    </method>
   </interface>
 </node>`;
 
@@ -471,11 +474,46 @@ export default class StreamDeckTilerExtension extends Extension {
         return JSON.stringify(ind._cache || []);
     }
 
+    GetFocusedWindowId() {
+        try {
+            const w = global.display.focus_window;
+            if (!w) return '';
+            const id = w.get_stable_sequence?.() ?? w.get_id?.() ?? 0;
+            return String(id);
+        } catch (_e) { return ''; }
+    }
+
     FocusClaudeSession(sessionId) {
         try {
             const state = this._readClaudeState(sessionId);
-            if (!state || !state.pid) return false;
-            return this._focusWindowForPid(state.pid, state.cwd || '');
+            if (!state) return false;
+            const wid = state.window_id
+                ? Number(state.window_id) : 0;
+            if (wid > 0) {
+                for (const w of this._collectAllWindows()) {
+                    const id = w.get_stable_sequence?.()
+                        ?? w.get_id?.() ?? 0;
+                    if (Number(id) === wid) {
+                        return this._activateWindow(w);
+                    }
+                }
+            }
+            if (state.pid) {
+                return this._focusWindowForPid(state.pid, state.cwd || '');
+            }
+            return false;
+        } catch (_e) { return false; }
+    }
+
+    _activateWindow(target) {
+        try {
+            const time = global.display.get_current_time_roundtrip();
+            const ws = target.get_workspace?.();
+            const activeWs = global.workspace_manager?.get_active_workspace?.();
+            if (ws && activeWs && ws !== activeWs) ws.activate(time);
+            try { Main.activateWindow(target, time); }
+            catch (_e) { target.activate(time); target.raise?.(); }
+            return true;
         } catch (_e) { return false; }
     }
 
@@ -530,11 +568,7 @@ export default class StreamDeckTilerExtension extends Extension {
             const bb = basename && tb.includes(basename.toLowerCase()) ? 1 : 0;
             return bb - ba;
         });
-        const target = sorted[0];
-        try {
-            target.activate(global.get_current_time());
-            return true;
-        } catch (_e) { return false; }
+        return this._activateWindow(sorted[0]);
     }
 
     // ---------- Window layout capture / restore (unchanged) ----------
