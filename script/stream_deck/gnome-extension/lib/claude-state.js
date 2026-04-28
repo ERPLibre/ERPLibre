@@ -158,12 +158,16 @@ export async function defaultStateDir() {
  *   const off = w.subscribe(index => …);
  *   w.stop();
  */
+export const POLL_INTERVAL_MS = 2000;
+
 export class ClaudeStateWatcher {
-    constructor({stateDir, isPidAlive} = {}) {
+    constructor({stateDir, isPidAlive, pollIntervalMs} = {}) {
         this._stateDir = stateDir || null;
         this._isPidAlive = isPidAlive || _defaultIsPidAlive;
         this._monitor = null;
         this._monitorSig = 0;
+        this._pollTimer = 0;
+        this._pollIntervalMs = pollIntervalMs ?? POLL_INTERVAL_MS;
         this._index = indexSessions([]);
         this._subs = new Set();
         this._refreshing = false;
@@ -179,8 +183,19 @@ export class ClaudeStateWatcher {
         const dir = Gio.File.new_for_path(this._stateDir);
         this._monitor = dir.monitor_directory(
             Gio.FileMonitorFlags.NONE, null);
+        // Drop the default 800 ms rate limit so file events propagate
+        // immediately. The polling timer below is a backup for cases
+        // where the file monitor backend coalesces events under load.
+        try { this._monitor.set_rate_limit(0); } catch (_e) {}
         this._monitorSig = this._monitor.connect(
             'changed', () => this._scheduleRefresh());
+        if (this._pollIntervalMs > 0) {
+            this._pollTimer = GLib.timeout_add(
+                GLib.PRIORITY_LOW, this._pollIntervalMs, () => {
+                    this._scheduleRefresh();
+                    return GLib.SOURCE_CONTINUE;
+                });
+        }
         await this._refresh();
     }
 
@@ -191,6 +206,12 @@ export class ClaudeStateWatcher {
             this._monitor.cancel?.();
             this._monitor = null;
             this._monitorSig = 0;
+        }
+        if (this._pollTimer) {
+            try {
+                _gjs?.GLib?.source_remove(this._pollTimer);
+            } catch (_e) {}
+            this._pollTimer = 0;
         }
         this._subs.clear();
     }
