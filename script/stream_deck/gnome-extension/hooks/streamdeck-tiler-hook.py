@@ -38,18 +38,20 @@ from pathlib import Path
 TS_ACTIVE = "ts_active"
 TS_STOP = "ts_stop"
 TS_NOTIFICATION = "ts_notification"
+TS_TOOL = "ts_tool"
 
 # Maps a hook event name to the timestamp field it should update.
 #
 # `Stop` must be the most recent event after a Ctrl+C interrupt, so we
-# deliberately leave PreToolUse, PostToolUse, SubagentStop and PreCompact
-# OUT of this map. Otherwise an interrupted tool's PostToolUse fires
-# AFTER Stop and bumps `ts_active` past `ts_stop`, making the status
-# look like the assistant is working again when it has actually been
-# stopped by the user.
+# deliberately leave `PostToolUse` and `SubagentStop` OUT of this map.
+# Otherwise an interrupted tool's PostToolUse fires AFTER Stop and
+# would bump the timestamp past `ts_stop`, masking the interrupt.
+# `PreToolUse` is safe because it always fires BEFORE the tool runs
+# (and therefore before any Stop that interrupts it).
 EVENT_FIELD = {
     "SessionStart": TS_ACTIVE,
     "UserPromptSubmit": TS_ACTIVE,
+    "PreToolUse": TS_TOOL,
     "Stop": TS_STOP,
     "Notification": TS_NOTIFICATION,
 }
@@ -163,6 +165,7 @@ def main() -> None:
         "pid": existing.get("pid") or find_claude_ancestor(),
         "cwd": payload.get("cwd") or existing.get("cwd") or os.getcwd(),
         "description": existing.get("description") or "",
+        "description_locked": bool(existing.get("description_locked")),
         "last_prompt": existing.get("last_prompt") or "",
         "window_id": int(existing.get("window_id") or 0),
         "notification_message":
@@ -170,6 +173,7 @@ def main() -> None:
         TS_ACTIVE: int(existing.get(TS_ACTIVE) or 0),
         TS_STOP: int(existing.get(TS_STOP) or 0),
         TS_NOTIFICATION: int(existing.get(TS_NOTIFICATION) or 0),
+        TS_TOOL: int(existing.get(TS_TOOL) or 0),
     }
     record[field] = now
 
@@ -196,7 +200,10 @@ def main() -> None:
         first_line = (prompt.splitlines() or [""])[0][:120]
         if first_line:
             record["last_prompt"] = first_line
-            if not record["description"]:
+            # Preserve a user-renamed description; only auto-fill the
+            # very first prompt when nothing is set yet.
+            if (not record["description"]
+                    and not record["description_locked"]):
                 record["description"] = first_line
 
     tmp = target.with_suffix(".json.tmp")

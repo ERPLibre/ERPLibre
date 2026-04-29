@@ -41,6 +41,21 @@ test('parseStateEntry: derives status from max timestamp', () => {
         STATUS_AWAIT_NOTIFY);
 });
 
+test('parseStateEntry: ts_tool yields working status', async () => {
+    const {STATUS_WORKING} = await import('../../lib/claude-state.js');
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_active: 50, ts_tool: 100}).status,
+        STATUS_WORKING);
+    // Stop after tool resets to await_stop (Ctrl+C semantics).
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_tool: 100, ts_stop: 200}).status,
+        STATUS_AWAIT_STOP);
+    // Notification still wins over working.
+    assert.equal(parseStateEntry(
+        {session_id: 'a', ts_tool: 100, ts_notification: 200}).status,
+        STATUS_AWAIT_NOTIFY);
+});
+
 test('parseStateEntry: legacy {status, ts} payload still parses', () => {
     assert.equal(parseStateEntry(
         {session_id: 'a', status: STATUS_AWAIT_STOP, ts: 999}).status,

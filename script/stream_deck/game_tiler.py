@@ -109,6 +109,7 @@ COLOR_ERR = (200, 0, 0)
 
 # Claude session indicator colours (mirrors GNOME extension badge palette).
 COLOR_CLAUDE_ACTIVE = (46, 125, 50)     # green
+COLOR_CLAUDE_WORKING = (0, 131, 143)    # cyan / teal
 COLOR_CLAUDE_AWAIT_STOP = (212, 160, 23)  # yellow
 COLOR_CLAUDE_AWAIT_NOTIFY = (198, 40, 40)  # red
 
@@ -141,11 +142,14 @@ def _load_claude_sessions():
         ts_active = int(d.get("ts_active") or 0)
         ts_stop = int(d.get("ts_stop") or 0)
         ts_notif = int(d.get("ts_notification") or 0)
-        ts = max(ts_active, ts_stop, ts_notif)
+        ts_tool = int(d.get("ts_tool") or 0)
+        ts = max(ts_active, ts_stop, ts_notif, ts_tool)
         if ts == ts_notif and ts_notif > 0:
             status = "awaiting_notification"
         elif ts == ts_stop and ts_stop > 0:
             status = "awaiting_stop"
+        elif ts == ts_tool and ts_tool > 0:
+            status = "working"
         else:
             status = "active"
         out.append({
@@ -166,6 +170,8 @@ def _claude_color(session):
         return COLOR_CLAUDE_AWAIT_NOTIFY
     if session.get("status") == "awaiting_stop":
         return COLOR_CLAUDE_AWAIT_STOP
+    if session.get("status") == "working":
+        return COLOR_CLAUDE_WORKING
     return COLOR_CLAUDE_ACTIVE
 
 

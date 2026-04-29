@@ -46,6 +46,18 @@ msgstr ""
 msgid "Active session (Claude working)"
 msgstr ""
 
+msgid "Idle session (between turns)"
+msgstr ""
+
+msgid "Computing (PreToolUse fired)"
+msgstr ""
+
+msgid "Idle"
+msgstr ""
+
+msgid "Computing"
+msgstr ""
+
 msgid "Awaiting answer (Stop hook fired)"
 msgstr ""
 
@@ -62,6 +74,12 @@ msgid "Custom…"
 msgstr ""
 
 msgid "Set window…"
+msgstr ""
+
+msgid "Rename description…"
+msgstr ""
+
+msgid "Rename description"
 msgstr ""
 
 msgid "Accept response (send Enter)"

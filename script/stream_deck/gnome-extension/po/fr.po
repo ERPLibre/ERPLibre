@@ -46,6 +46,18 @@ msgstr "Nombre de chemins / catalogue"
 msgid "Active session (Claude working)"
 msgstr "Session active (Claude travaille)"
 
+msgid "Idle session (between turns)"
+msgstr "Session inactive (entre deux tours)"
+
+msgid "Computing (PreToolUse fired)"
+msgstr "Calcul en cours (PreToolUse)"
+
+msgid "Idle"
+msgstr "Inactif"
+
+msgid "Computing"
+msgstr "Calcul…"
+
 msgid "Awaiting answer (Stop hook fired)"
 msgstr "En attente de réponse (hook Stop)"
 
@@ -64,11 +76,17 @@ msgstr "Personnalisé…"
 msgid "Set window…"
 msgstr "Définir la fenêtre…"
 
+msgid "Rename description…"
+msgstr "Renommer la description…"
+
+msgid "Rename description"
+msgstr "Renommer la description"
+
 msgid "Accept response (send Enter)"
 msgstr "Accepter la réponse (envoyer Entrée)"
 
 msgid "Working"
-msgstr "Travaille"
+msgstr "Actif"
 
 msgid "Awaiting answer"
 msgstr "En attente"

@@ -6,6 +6,7 @@
 
 export const BADGE_DEFAULT = 'default';
 export const BADGE_OK = 'ok';
+export const BADGE_INFO = 'info';
 export const BADGE_WARN = 'warn';
 export const BADGE_ALERT = 'alert';
 
@@ -21,6 +22,7 @@ const STYLE_BASE =
 const STYLE_BY_KIND = {
     [BADGE_DEFAULT]: `${STYLE_BASE}background-color: #3477b8;`,
     [BADGE_OK]:      `${STYLE_BASE}background-color: #2e7d32;`,
+    [BADGE_INFO]:    `${STYLE_BASE}background-color: #00838f;`,
     [BADGE_WARN]:    `${STYLE_BASE}background-color: #d4a017;`,
     [BADGE_ALERT]:   `${STYLE_BASE}background-color: #c62828;`,
 };

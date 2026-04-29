@@ -27,16 +27,17 @@ SETTINGS = Path.home() / ".claude" / "settings.json"
 INSTALL_EVENTS = (
     "SessionStart",
     "UserPromptSubmit",
+    "PreToolUse",
     "Stop",
     "Notification",
     "SessionEnd",
 )
 
 # Legacy events we used to register; keep them in the remove list so
-# `--remove` cleans up old installs that bumped `ts_active` on every
-# tool call and made interrupted Stops look like resumed work.
-REMOVE_EVENTS = INSTALL_EVENTS + ("PreToolUse", "PostToolUse",
-                                  "SubagentStop", "PreCompact")
+# `--remove` cleans up old installs that wrote into `ts_active` on
+# tool boundaries and made interrupted Stops look like resumed work.
+REMOVE_EVENTS = INSTALL_EVENTS + ("PostToolUse", "SubagentStop",
+                                  "PreCompact")
 TAG = "streamdeck-tiler"
 
 

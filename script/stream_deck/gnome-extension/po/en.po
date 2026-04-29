@@ -46,6 +46,18 @@ msgstr "Path / catalogue count"
 msgid "Active session (Claude working)"
 msgstr "Active session (Claude working)"
 
+msgid "Idle session (between turns)"
+msgstr "Idle session (between turns)"
+
+msgid "Computing (PreToolUse fired)"
+msgstr "Computing (PreToolUse fired)"
+
+msgid "Idle"
+msgstr "Idle"
+
+msgid "Computing"
+msgstr "Computing"
+
 msgid "Awaiting answer (Stop hook fired)"
 msgstr "Awaiting answer (Stop hook fired)"
 
@@ -63,6 +75,12 @@ msgstr "Custom…"
 
 msgid "Set window…"
 msgstr "Set window…"
+
+msgid "Rename description…"
+msgstr "Rename description…"
+
+msgid "Rename description"
+msgstr "Rename description"
 
 msgid "Accept response (send Enter)"
 msgstr "Accept response (send Enter)"

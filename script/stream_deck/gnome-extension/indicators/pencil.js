@@ -56,8 +56,9 @@ try {
         'resource:///org/gnome/shell/ui/popupMenu.js'
     );
     const {PathDialog} = await import('../ui/path-dialog.js');
+    const {RenameDialog} = await import('../ui/rename-dialog.js');
     const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_OK,
-        BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
+        BADGE_INFO, BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
     const {_} = await import('../lib/i18n.js');
     const {normPath: _normPath, assignSessionsToPaths: _assignSessionsToPaths} =
@@ -66,6 +67,7 @@ try {
     const _DOT_COLOR_BY_KIND = {
         [BADGE_DEFAULT]: '#3477b8',
         [BADGE_OK]: '#2e7d32',
+        [BADGE_INFO]: '#00838f',
         [BADGE_WARN]: '#d4a017',
         [BADGE_ALERT]: '#c62828',
     };
@@ -158,7 +160,8 @@ try {
                     ? parseList(this._settings.get_string('paths')).length
                     : 0;
                 const idx = this._claudeIndex;
-                const totalActive = idx?.totalActive || 0;
+                const totalAlive = idx?.totalAlive
+                    ?? ((idx?.totalActive || 0) + (idx?.totalWorking || 0));
                 const awaitStop = idx?.totalAwaitStop || 0;
                 const awaitNotify = idx?.totalAwaitNotify || 0;
                 const awaiting = awaitStop + awaitNotify;
@@ -166,8 +169,8 @@ try {
                     ? BADGE_ALERT : BADGE_WARN;
                 this._badged.setBadges([
                     {count: dirs, kind: BADGE_DEFAULT},
-                    totalActive > 0
-                        ? {count: totalActive, kind: BADGE_OK}
+                    totalAlive > 0
+                        ? {count: totalAlive, kind: BADGE_OK}
                         : null,
                     awaiting > 0
                         ? {count: awaiting, kind: awaitKind}
@@ -249,7 +252,9 @@ try {
                     {kind: BADGE_DEFAULT,
                      text: _('Path / catalogue count')},
                     {kind: BADGE_OK,
-                     text: _('Active session (Claude working)')},
+                     text: _('Idle session (between turns)')},
+                    {kind: BADGE_INFO,
+                     text: _('Computing (PreToolUse fired)')},
                     {kind: BADGE_WARN,
                      text: _('Awaiting answer (Stop hook fired)')},
                     {kind: BADGE_ALERT,
@@ -345,6 +350,12 @@ try {
 
             _makeSessionActions(session) {
                 const out = [];
+                const renameItem = new PopupMenu.PopupMenuItem(
+                    `   ✎ ${_('Rename description…')}`);
+                renameItem.connect('activate',
+                    () => this._startRename(session));
+                out.push(renameItem);
+
                 const setItem = new PopupMenu.PopupMenuItem(
                     `   ⤺ ${_('Set window…')}`);
                 setItem.connect('activate',
@@ -360,6 +371,19 @@ try {
                     out.push(accept);
                 }
                 return out;
+            }
+
+            _startRename(session) {
+                const sid = session.session_id;
+                if (!sid || !this._extension) return;
+                const dlg = new RenameDialog({
+                    title: _('Rename description'),
+                    value: session.description || session.last_prompt || '',
+                    onConfirm: text => {
+                        this._extension.RenameClaudeSession?.(sid, text);
+                    },
+                });
+                dlg.open();
             }
 
             _startSetWindow(session) {
@@ -408,13 +432,16 @@ try {
                 });
 
                 let dotKind = BADGE_OK;
-                let stateLabel = _('Working');
+                let stateLabel = _('Idle');
                 if (session.status === 'awaiting_notification') {
                     dotKind = BADGE_ALERT;
                     stateLabel = _('Needs attention');
                 } else if (session.status === 'awaiting_stop') {
                     dotKind = BADGE_WARN;
                     stateLabel = _('Awaiting answer');
+                } else if (session.status === 'working') {
+                    dotKind = BADGE_INFO;
+                    stateLabel = _('Computing');
                 }
 
                 const dot = new St.Label({

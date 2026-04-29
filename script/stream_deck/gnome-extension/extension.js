@@ -124,6 +124,11 @@ const IFACE_XML = `
     <method name="DebugClaudeIndex">
       <arg type="s" direction="out" name="json"/>
     </method>
+    <method name="RenameClaudeSession">
+      <arg type="s" direction="in" name="session_id"/>
+      <arg type="s" direction="in" name="description"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
   </interface>
 </node>`;
 
@@ -533,6 +538,23 @@ export default class StreamDeckTilerExtension extends Extension {
      * whichever window currently has focus. Used by the pencil "Set
      * window" action so the user can correct a mis-captured target.
      */
+    /**
+     * Rename a session's `description` field. Marks
+     * `description_locked: true` so the hook stops overwriting it on
+     * later UserPromptSubmit. Empty string clears the lock so the next
+     * prompt re-fills the description automatically.
+     */
+    RenameClaudeSession(sessionId, description) {
+        try {
+            const state = this._readClaudeState(sessionId);
+            if (!state) return false;
+            const text = String(description || '').trim().slice(0, 200);
+            state.description = text;
+            state.description_locked = text.length > 0;
+            return this._writeClaudeState(sessionId, state);
+        } catch (_e) { return false; }
+    }
+
     SetClaudeSessionWindow(sessionId) {
         try {
             const state = this._readClaudeState(sessionId);

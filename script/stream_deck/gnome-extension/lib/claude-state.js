@@ -19,6 +19,7 @@
  */
 
 export const STATUS_ACTIVE = 'active';
+export const STATUS_WORKING = 'working';
 export const STATUS_AWAIT_STOP = 'awaiting_stop';
 export const STATUS_AWAIT_NOTIFY = 'awaiting_notification';
 
@@ -48,18 +49,21 @@ export function parseStateEntry(raw) {
     let ts_active = _num(raw.ts_active);
     let ts_stop = _num(raw.ts_stop);
     let ts_notification = _num(raw.ts_notification);
-    if (!ts_active && !ts_stop && !ts_notification) {
+    let ts_tool = _num(raw.ts_tool);
+    if (!ts_active && !ts_stop && !ts_notification && !ts_tool) {
         const ts = _num(raw.ts);
         if (raw.status === STATUS_AWAIT_STOP) ts_stop = ts;
         else if (raw.status === STATUS_AWAIT_NOTIFY) ts_notification = ts;
+        else if (raw.status === STATUS_WORKING) ts_tool = ts;
         else ts_active = ts;
     }
 
     let status = STATUS_ACTIVE;
-    const max = Math.max(ts_active, ts_stop, ts_notification);
+    const max = Math.max(ts_active, ts_stop, ts_notification, ts_tool);
     if (max > 0) {
         if (ts_notification === max) status = STATUS_AWAIT_NOTIFY;
         else if (ts_stop === max) status = STATUS_AWAIT_STOP;
+        else if (ts_tool === max) status = STATUS_WORKING;
         else status = STATUS_ACTIVE;
     }
 
@@ -73,7 +77,7 @@ export function parseStateEntry(raw) {
 
     return {
         session_id, pid, cwd, status,
-        ts_active, ts_stop, ts_notification,
+        ts_active, ts_stop, ts_notification, ts_tool,
         ts: max,
         description, last_prompt, notification_message,
     };
@@ -91,13 +95,14 @@ export function indexSessions(entries) {
     const list = (entries || []).filter(Boolean);
     const byPath = new Map();
     let totalActive = 0;
+    let totalWorking = 0;
     let totalAwaitStop = 0;
     let totalAwaitNotify = 0;
     for (const e of list) {
         const cwd = e.cwd || '';
         if (!byPath.has(cwd)) {
             byPath.set(cwd, {
-                total: 0, active: 0,
+                total: 0, active: 0, working: 0,
                 awaitStop: 0, awaitNotify: 0,
                 sessions: [],
             });
@@ -111,6 +116,9 @@ export function indexSessions(entries) {
         } else if (e.status === STATUS_AWAIT_NOTIFY) {
             bucket.awaitNotify += 1;
             totalAwaitNotify += 1;
+        } else if (e.status === STATUS_WORKING) {
+            bucket.working += 1;
+            totalWorking += 1;
         } else {
             bucket.active += 1;
             totalActive += 1;
@@ -119,9 +127,12 @@ export function indexSessions(entries) {
     return {
         total: list.length,
         totalActive,
+        totalWorking,
         totalAwaitStop,
         totalAwaitNotify,
         totalAwaiting: totalAwaitStop + totalAwaitNotify,
+        // alive = anything not awaiting (counts for green badge)
+        totalAlive: totalActive + totalWorking,
         byPath,
     };
 }
