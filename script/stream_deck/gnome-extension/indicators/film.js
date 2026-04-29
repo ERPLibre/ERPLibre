@@ -7,7 +7,8 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {parseList, serializeList} from '../lib/settings.js';
-import {buildBrowserArgv, buildMpvArgv, spawnDetached} from '../lib/spawn.js';
+import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, spawnDetached}
+    from '../lib/spawn.js';
 import {buildFilmLabel, defaultFilmEntry} from '../lib/film-helpers.js';
 import {FilmDialog} from '../ui/film-dialog.js';
 import {makeBadgedIcon} from '../lib/badges.js';
@@ -84,6 +85,10 @@ class FilmIndicator extends PanelMenu.Button {
         mpvItem.connect('activate', () => this._launch(film, 'mpv'));
         sub.menu.addMenuItem(mpvItem);
 
+        const vlcItem = new PopupMenu.PopupMenuItem('▶ VLC');
+        vlcItem.connect('activate', () => this._launch(film, 'vlc'));
+        sub.menu.addMenuItem(vlcItem);
+
         const editItem = new PopupMenu.PopupMenuItem('✎ Edit');
         editItem.connect('activate', () => this._editEntry(film));
         sub.menu.addMenuItem(editItem);
@@ -92,9 +97,13 @@ class FilmIndicator extends PanelMenu.Button {
     }
 
     async _launch(film, player) {
-        const argv = player === 'mpv'
-            ? buildMpvArgv(film.url, film.position || '')
-            : buildBrowserArgv(film.url);
+        let argv;
+        if (player === 'mpv')
+            argv = buildMpvArgv(film.url, film.position || '');
+        else if (player === 'vlc')
+            argv = buildVlcArgv(film.url, film.position || '');
+        else
+            argv = buildBrowserArgv(film.url);
         await spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
     }
 

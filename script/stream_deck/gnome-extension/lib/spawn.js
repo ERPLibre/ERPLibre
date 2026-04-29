@@ -37,6 +37,16 @@ export function buildMpvArgv(url, position) {
     return argv;
 }
 
+export function buildVlcArgv(url, position) {
+    const argv = ['vlc'];
+    if (position && String(position).trim() !== '') {
+        const seconds = parsePosition(position);
+        if (seconds > 0) argv.push(`--start-time=${seconds}`);
+    }
+    argv.push(String(url));
+    return argv;
+}
+
 export function parsePosition(text) {
     if (typeof text !== 'string' || text.trim() === '') return 0;
     const cleaned = text.trim();
@@ -56,10 +66,28 @@ export function formatPosition(seconds) {
     return `${pad(h)}:${pad(m)}:${pad(ss)}`;
 }
 
+async function _logSpawnError(argv, message) {
+    try {
+        const {logError} = await import('./log.js');
+        await logError(argv?.[0] || 'spawn',
+            `${(argv || []).join(' ')} :: ${message}`);
+    } catch (_e) {}
+}
+
+async function _logSpawnOk(argv, exit) {
+    try {
+        const {logInfo} = await import('./log.js');
+        await logInfo(argv?.[0] || 'spawn',
+            `${(argv || []).join(' ')} :: exit=${exit}`);
+    } catch (_e) {}
+}
+
 /**
  * GJS-only — spawn argv asynchronously via Gio.Subprocess. Returns
  * a promise resolving to {ok, stdout, stderr, exit}. Errors notify
- * via the provided notify callback (typically Main.notify).
+ * via the provided notify callback (typically Main.notify) and are
+ * appended to the extension log file so the prefs Log page can
+ * surface them.
  */
 export async function runProcess(argv, {notify, title} = {}) {
     const {default: Gio} = await import('gi://Gio');
@@ -73,19 +101,25 @@ export async function runProcess(argv, {notify, title} = {}) {
                 try {
                     const [, stdout, stderr] = p.communicate_utf8_finish(res);
                     const ok = p.get_successful();
-                    if (!ok && notify) {
-                        notify(title || 'Stream Deck',
+                    if (!ok) {
+                        if (notify) notify(title || 'Stream Deck',
                             `Command failed: ${argv[0]}`);
+                        _logSpawnError(argv,
+                            `exit=${p.get_exit_status()} ${stderr || ''}`);
+                    } else {
+                        _logSpawnOk(argv, p.get_exit_status());
                     }
                     resolve({ok, stdout, stderr, exit: p.get_exit_status()});
                 } catch (e) {
                     if (notify) notify(title || 'Stream Deck', e.message);
+                    _logSpawnError(argv, e.message || String(e));
                     resolve({ok: false, stdout: '', stderr: e.message, exit: -1});
                 }
             });
         } catch (e) {
             if (notify) notify(title || 'Stream Deck',
                 `Spawn failed: ${e.message}`);
+            _logSpawnError(argv, e.message || String(e));
             resolve({ok: false, stdout: '', stderr: e.message, exit: -1});
         }
     });
@@ -99,10 +133,12 @@ export async function spawnDetached(argv, {notify, title} = {}) {
     const {default: Gio} = await import('gi://Gio');
     try {
         Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
+        _logSpawnOk(argv, 'detached');
         return true;
     } catch (e) {
         if (notify) notify(title || 'Stream Deck',
             `Spawn failed: ${e.message}`);
+        _logSpawnError(argv, e.message || String(e));
         return false;
     }
 }

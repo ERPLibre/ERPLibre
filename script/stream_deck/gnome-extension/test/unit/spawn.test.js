@@ -4,6 +4,7 @@ import {
     buildTerminalArgv,
     buildBrowserArgv,
     buildMpvArgv,
+    buildVlcArgv,
     parsePosition,
     formatPosition,
 } from '../../lib/spawn.js';
@@ -44,6 +45,24 @@ test('buildMpvArgv with position', () => {
 
 test('buildMpvArgv without position', () => {
     assert.deepEqual(buildMpvArgv('https://x', ''), ['mpv', 'https://x']);
+});
+
+test('buildVlcArgv with hh:mm:ss position', () => {
+    assert.deepEqual(
+        buildVlcArgv('https://x', '00:01:23'),
+        ['vlc', '--start-time=83', 'https://x']
+    );
+});
+
+test('buildVlcArgv with seconds position', () => {
+    assert.deepEqual(
+        buildVlcArgv('https://x', '120'),
+        ['vlc', '--start-time=120', 'https://x']
+    );
+});
+
+test('buildVlcArgv without position', () => {
+    assert.deepEqual(buildVlcArgv('https://x', ''), ['vlc', 'https://x']);
 });
 
 test('parsePosition handles hh:mm:ss / mm:ss / seconds', () => {

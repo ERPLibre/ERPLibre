@@ -8,6 +8,7 @@ import {ExtensionPreferences}
 import {setGettext} from './lib/i18n.js';
 import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings}
     from './lib/settings.js';
+import {readLogTail, clearLog} from './lib/log.js';
 
 const INDICATORS = [
     {id: 'controller', label: 'Controller'},
@@ -62,6 +63,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildThemingPage(settings));
         window.add(this._buildAdvancedPage(settings));
         window.add(this._buildSyncPage(settings));
+        window.add(this._buildLogPage(settings));
     }
 
     _buildSyncPage(settings) {
@@ -349,6 +351,82 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             description: 'Edit via the Add film dialog from the panel button.',
         });
         page.add(group);
+        return page;
+    }
+
+    _buildLogPage(settings) {
+        const page = new Adw.PreferencesPage({
+            title: 'Log',
+            icon_name: 'document-properties-symbolic',
+        });
+        const group = new Adw.PreferencesGroup({
+            title: 'Recent activity',
+            description: 'Last 200 entries from '
+                + '$XDG_STATE_HOME/streamdeck-tiler/log.jsonl',
+        });
+
+        const buf = new Gtk.TextBuffer();
+        const view = new Gtk.TextView({
+            buffer: buf,
+            editable: false,
+            monospace: true,
+            wrap_mode: Gtk.WrapMode.WORD_CHAR,
+            top_margin: 6, bottom_margin: 6,
+            left_margin: 6, right_margin: 6,
+        });
+        const scroll = new Gtk.ScrolledWindow({
+            hexpand: true, vexpand: true,
+            min_content_height: 320,
+            child: view,
+        });
+
+        const refreshLog = async () => {
+            try {
+                const entries = await readLogTail(200);
+                if (!entries.length) {
+                    buf.set_text('(empty)', -1);
+                    return;
+                }
+                const text = entries.map(e => {
+                    const t = new Date(e.ts || 0).toLocaleString();
+                    return `${t}  ${(e.level || '').padEnd(5)}  ${e.source}: `
+                        + `${e.message}`;
+                }).join('\n');
+                buf.set_text(text, -1);
+                const end = buf.get_end_iter();
+                view.scroll_to_iter(end, 0, false, 0, 0);
+            } catch (e) {
+                buf.set_text(`Failed to read log: ${e.message || e}`, -1);
+            }
+        };
+
+        const row = new Adw.ActionRow({title: 'Activity log'});
+        const refreshBtn = new Gtk.Button({
+            label: 'Refresh',
+            valign: Gtk.Align.CENTER,
+        });
+        refreshBtn.connect('clicked', () => refreshLog());
+        const clearBtn = new Gtk.Button({
+            label: 'Clear',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['destructive-action'],
+        });
+        clearBtn.connect('clicked', async () => {
+            await clearLog();
+            await refreshLog();
+        });
+        row.add_suffix(refreshBtn);
+        row.add_suffix(clearBtn);
+        group.add(row);
+
+        const viewerGroup = new Adw.PreferencesGroup();
+        viewerGroup.add(scroll);
+
+        page.add(group);
+        page.add(viewerGroup);
+
+        // Initial fill on first display.
+        refreshLog();
         return page;
     }
 
