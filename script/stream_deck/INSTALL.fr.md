@@ -37,6 +37,44 @@ sudo apt install -y wmctrl
 ```
 
 <!-- [en] -->
+## mpv film launcher — yt-dlp backend
+<!-- [fr] -->
+## Lecteur film mpv — backend yt-dlp
+<!-- [end] -->
+
+<!-- [en] -->
+The film indicator's `mpv` launcher passes URLs to mpv, which
+delegates stream extraction to a `youtube-dl` backend. Legacy
+`youtube-dl` is unmaintained on Debian 13 / Ubuntu 24.04+; install
+`yt-dlp` and the extension's
+`--script-opts=ytdl_hook-ytdl_path=yt-dlp` arg picks it up
+automatically — no per-user `mpv.conf` needed.
+<!-- [fr] -->
+Le lanceur `mpv` de l'indicateur film passe les URL à mpv, qui
+délègue l'extraction du flux à un backend `youtube-dl`. Le
+`youtube-dl` historique n'est plus maintenu sur Debian 13 /
+Ubuntu 24.04+ ; installe `yt-dlp` et l'extension transmet
+`--script-opts=ytdl_hook-ytdl_path=yt-dlp` automatiquement — pas
+besoin de `mpv.conf` per-user.
+<!-- [end] -->
+
+<!-- [common] -->
+```
+sudo apt install -y mpv yt-dlp
+# Verify:
+yt-dlp --version
+```
+<!-- [end] -->
+
+<!-- [en] -->
+Errors like "youtube-dl failed: not found" surface in the prefs
+Log page when yt-dlp is missing.
+<!-- [fr] -->
+Les erreurs du type « youtube-dl failed: not found » apparaissent
+dans l'onglet Log des préférences quand yt-dlp manque.
+<!-- [end] -->
+
+<!-- [en] -->
 ## Auto-accept Claude prompts (Wayland)
 <!-- [fr] -->
 ## Auto-accepter les invites Claude (Wayland)

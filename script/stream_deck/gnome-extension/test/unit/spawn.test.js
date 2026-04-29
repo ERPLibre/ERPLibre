@@ -39,12 +39,22 @@ test('buildBrowserArgv', () => {
 test('buildMpvArgv with position', () => {
     assert.deepEqual(
         buildMpvArgv('https://x', '00:01:23'),
-        ['mpv', '--start=00:01:23', 'https://x']
+        ['mpv', '--script-opts=ytdl_hook-ytdl_path=yt-dlp',
+         '--start=00:01:23', 'https://x']
     );
 });
 
 test('buildMpvArgv without position', () => {
-    assert.deepEqual(buildMpvArgv('https://x', ''), ['mpv', 'https://x']);
+    assert.deepEqual(
+        buildMpvArgv('https://x', ''),
+        ['mpv', '--script-opts=ytdl_hook-ytdl_path=yt-dlp', 'https://x']
+    );
+});
+
+test('buildMpvArgv always pins ytdl backend to yt-dlp', () => {
+    const argv = buildMpvArgv('https://x', '');
+    assert.ok(argv.some(a => a.includes('ytdl_path=yt-dlp')),
+        `expected yt-dlp in argv, got ${argv}`);
 });
 
 test('buildVlcArgv with hh:mm:ss position', () => {

@@ -29,7 +29,15 @@ export function buildBrowserArgv(url) {
 }
 
 export function buildMpvArgv(url, position) {
-    const argv = ['mpv'];
+    // mpv defaults to looking up `youtube-dl` for stream extraction.
+    // That binary is obsolete on Debian 13+; point at `yt-dlp` instead
+    // so URLs from YouTube and friends keep working without a per-user
+    // mpv.conf. If yt-dlp is also missing, mpv reports a clean error
+    // that the prefs Log page now surfaces.
+    const argv = [
+        'mpv',
+        '--script-opts=ytdl_hook-ytdl_path=yt-dlp',
+    ];
     if (position && String(position).trim() !== '') {
         argv.push(`--start=${position}`);
     }
