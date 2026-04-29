@@ -48,13 +48,24 @@ export function buildMpvArgv(url, position) {
 }
 
 export function buildVlcArgv(url, position) {
-    const argv = ['vlc'];
-    if (position && String(position).trim() !== '') {
+    const startArg = (() => {
+        if (!position || String(position).trim() === '') return '';
         const seconds = parsePosition(position);
-        if (seconds > 0) argv.push(`--start-time=${seconds}`);
-    }
-    argv.push(String(url));
-    return argv;
+        return seconds > 0 ? ` --start-time=${seconds}` : '';
+    })();
+
+    // VLC's bundled youtube.lua plugin is broken on Debian 13 (it
+    // depends on the obsolete youtube-dl). Resolve the playable URL
+    // through `yt-dlp -g` first when it is available, then fall back
+    // to passing the URL directly for local files / direct streams.
+    //
+    // Pass the URL as `$1` so we never have to escape it inside the
+    // shell command — bash's `bash -c '<script>' <name> <args...>`
+    // syntax sets `$0=<name>` and `$1+=<args>`.
+    const cmd =
+        'URL=$(yt-dlp -g -f best "$1" 2>/dev/null | head -n1); '
+        + `exec vlc${startArg} "${'$'}{URL:-${'$'}1}"`;
+    return ['bash', '-c', cmd, 'sdt-vlc', String(url)];
 }
 
 export function parsePosition(text) {

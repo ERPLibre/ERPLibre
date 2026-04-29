@@ -65,22 +65,28 @@ test('buildMpvArgv enables save-position-on-quit', () => {
         `expected save-position arg in ${argv}`);
 });
 
-test('buildVlcArgv with hh:mm:ss position', () => {
-    assert.deepEqual(
-        buildVlcArgv('https://x', '00:01:23'),
-        ['vlc', '--start-time=83', 'https://x']
-    );
+test('buildVlcArgv wraps with yt-dlp resolver shell command', () => {
+    const argv = buildVlcArgv('https://x', '');
+    assert.equal(argv[0], 'bash');
+    assert.equal(argv[1], '-c');
+    assert.match(argv[2], /yt-dlp -g -f best "\$1"/);
+    assert.match(argv[2], /exec vlc /);
+    // URL is pased as $1 (after the script name placeholder).
+    assert.equal(argv[3], 'sdt-vlc');
+    assert.equal(argv[4], 'https://x');
 });
 
-test('buildVlcArgv with seconds position', () => {
-    assert.deepEqual(
-        buildVlcArgv('https://x', '120'),
-        ['vlc', '--start-time=120', 'https://x']
-    );
+test('buildVlcArgv embeds --start-time when position set', () => {
+    const argv = buildVlcArgv('https://x', '00:01:23');
+    assert.match(argv[2], /exec vlc --start-time=83/);
 });
 
-test('buildVlcArgv without position', () => {
-    assert.deepEqual(buildVlcArgv('https://x', ''), ['vlc', 'https://x']);
+test('buildVlcArgv passes URL via $1 (no quoting hell)', () => {
+    const argv = buildVlcArgv('https://x?with&weird="chars', '');
+    // The URL is in argv[4] verbatim; the shell never sees it as
+    // unescaped text inside the script string.
+    assert.equal(argv[4], 'https://x?with&weird="chars');
+    assert.match(argv[2], /\$\{URL:-\$1\}/);
 });
 
 test('parsePosition handles hh:mm:ss / mm:ss / seconds', () => {

@@ -297,10 +297,10 @@ def _tile_via_dbus(grid_cols, grid_rows, c1, r1, c2, r2):
         )
         if result.returncode == 0 and "true" in result.stdout.lower():
             return True
-        print(f"Tiler dbus: {result.stdout} {result.stderr}")
+        print(f"Tiler dbus: {result.stdout} {result.stderr}", file=sys.stderr, flush=True)
         return False
     except Exception as e:
-        print(f"Tiler dbus error: {e}")
+        print(f"Tiler dbus error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -351,14 +351,14 @@ def _list_tracker_timers():
             capture_output=True, text=True, timeout=3,
         )
         if result.returncode != 0:
-            print(f"Timer list dbus: {result.stderr}")
+            print(f"Timer list dbus: {result.stderr}", file=sys.stderr, flush=True)
             return []
         payload = _parse_gdbus_string_tuple(result.stdout)
         if not payload:
             return []
         return json.loads(payload)
     except Exception as e:
-        print(f"Timer list error: {e}")
+        print(f"Timer list error: {e}", file=sys.stderr, flush=True)
         return []
 
 
@@ -377,10 +377,10 @@ def _toggle_tracker_timer(timer_id):
         )
         if result.returncode == 0 and "true" in result.stdout.lower():
             return True
-        print(f"Timer toggle dbus: {result.stdout} {result.stderr}")
+        print(f"Timer toggle dbus: {result.stdout} {result.stderr}", file=sys.stderr, flush=True)
         return False
     except Exception as e:
-        print(f"Timer toggle error: {e}")
+        print(f"Timer toggle error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -400,12 +400,12 @@ def _add_tracker_timer():
             capture_output=True, text=True, timeout=3,
         )
         if result.returncode != 0:
-            print(f"Timer add dbus: {result.stderr}")
+            print(f"Timer add dbus: {result.stderr}", file=sys.stderr, flush=True)
             return ""
         payload = _parse_gdbus_string_tuple(result.stdout)
         return payload or ""
     except Exception as e:
-        print(f"Timer add error: {e}")
+        print(f"Timer add error: {e}", file=sys.stderr, flush=True)
         return ""
 
 
@@ -423,10 +423,10 @@ def _reset_all_tracker_timers():
         )
         if result.returncode == 0 and "true" in result.stdout.lower():
             return True
-        print(f"Timer reset dbus: {result.stdout} {result.stderr}")
+        print(f"Timer reset dbus: {result.stdout} {result.stderr}", file=sys.stderr, flush=True)
         return False
     except Exception as e:
-        print(f"Timer reset error: {e}")
+        print(f"Timer reset error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -443,7 +443,7 @@ def _bt_powered():
                     if line.strip().startswith("Powered:"):
                         return line.split(":", 1)[1].strip() == "yes"
         except Exception as e:
-            print(f"bluetoothctl show error: {e}")
+            print(f"bluetoothctl show error: {e}", file=sys.stderr, flush=True)
     if shutil.which("rfkill"):
         try:
             r = subprocess.run(
@@ -455,7 +455,7 @@ def _bt_powered():
                     if line.strip().startswith("Soft blocked:"):
                         return line.split(":", 1)[1].strip() == "no"
         except Exception as e:
-            print(f"rfkill list error: {e}")
+            print(f"rfkill list error: {e}", file=sys.stderr, flush=True)
     return None
 
 
@@ -475,7 +475,7 @@ def _bt_list_paired():
                 if len(parts) >= 3 and parts[0] == "Device":
                     paired.append((parts[1], parts[2]))
     except Exception as e:
-        print(f"bluetoothctl devices Paired error: {e}")
+        print(f"bluetoothctl devices Paired error: {e}", file=sys.stderr, flush=True)
         return []
     connected = set()
     try:
@@ -503,7 +503,7 @@ def _bt_connect(mac):
         )
         return r.returncode == 0
     except Exception as e:
-        print(f"bluetoothctl connect error: {e}")
+        print(f"bluetoothctl connect error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -517,7 +517,7 @@ def _bt_disconnect(mac):
         )
         return r.returncode == 0
     except Exception as e:
-        print(f"bluetoothctl disconnect error: {e}")
+        print(f"bluetoothctl disconnect error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -532,7 +532,7 @@ def _bt_set_power(on):
             if r.returncode == 0:
                 return True
         except Exception as e:
-            print(f"bluetoothctl power error: {e}")
+            print(f"bluetoothctl power error: {e}", file=sys.stderr, flush=True)
     if shutil.which("rfkill"):
         try:
             r = subprocess.run(
@@ -541,7 +541,7 @@ def _bt_set_power(on):
             )
             return r.returncode == 0
         except Exception as e:
-            print(f"rfkill error: {e}")
+            print(f"rfkill error: {e}", file=sys.stderr, flush=True)
     return False
 
 
@@ -566,7 +566,7 @@ def _wpctl_get(target):
         muted = len(parts) > 2 and "MUTED" in parts[2]
         return int(round(vol * 100)), muted
     except Exception as e:
-        print(f"wpctl get error: {e}")
+        print(f"wpctl get error: {e}", file=sys.stderr, flush=True)
         return None, None
 
 
@@ -580,7 +580,7 @@ def _wpctl_volume_delta(target, delta_pct):
         )
         return r.returncode == 0
     except Exception as e:
-        print(f"wpctl set-volume error: {e}")
+        print(f"wpctl set-volume error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -592,7 +592,7 @@ def _wpctl_mute_toggle(target):
         )
         return r.returncode == 0
     except Exception as e:
-        print(f"wpctl set-mute error: {e}")
+        print(f"wpctl set-mute error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -654,7 +654,7 @@ def _wpctl_set_default(device_id):
         )
         return r.returncode == 0
     except Exception as e:
-        print(f"wpctl set-default error: {e}")
+        print(f"wpctl set-default error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -753,12 +753,12 @@ def _list_windows_dbus():
             capture_output=True, text=True, timeout=3,
         )
         if r.returncode != 0:
-            print(f"ListWindows dbus: {r.stderr}")
+            print(f"ListWindows dbus: {r.stderr}", file=sys.stderr, flush=True)
             return []
         payload = _parse_gdbus_string_tuple(r.stdout)
         return json.loads(payload) if payload else []
     except Exception as e:
-        print(f"ListWindows error: {e}")
+        print(f"ListWindows error: {e}", file=sys.stderr, flush=True)
         return []
 
 
@@ -777,12 +777,12 @@ def _apply_layout_dbus(windows):
             capture_output=True, text=True, timeout=10,
         )
         if r.returncode != 0:
-            print(f"ApplyLayout dbus: {r.stderr}")
+            print(f"ApplyLayout dbus: {r.stderr}", file=sys.stderr, flush=True)
             return 0
         m = re.search(r"\((\d+),\)", r.stdout.strip())
         return int(m.group(1)) if m else 0
     except Exception as e:
-        print(f"ApplyLayout error: {e}")
+        print(f"ApplyLayout error: {e}", file=sys.stderr, flush=True)
         return 0
 
 
@@ -832,12 +832,15 @@ def _hot_reload_extension():
             capture_output=True, text=True, timeout=10,
         )
         if result.returncode != 0:
-            print(f"HotReload dbus: {result.stderr}")
+            print(f"[streamdeck-tiler] HotReload dbus: "
+                  f"{result.stderr.strip()}",
+                  file=sys.stderr, flush=True)
             return False
         payload = _parse_gdbus_string_tuple(result.stdout)
         return bool(payload)
     except Exception as e:
-        print(f"HotReload error: {e}")
+        print(f"[streamdeck-tiler] HotReload error: {e}",
+              file=sys.stderr, flush=True)
         return False
 
 
@@ -863,7 +866,7 @@ def _ask_save_path():
             path += ".csv"
         return path
     except Exception as e:
-        print(f"File dialog error: {e}")
+        print(f"File dialog error: {e}", file=sys.stderr, flush=True)
         return ""
 
 
@@ -883,7 +886,7 @@ def _export_timers_csv(path, timers):
                 writer.writerow([name, elapsed, f"{hh:02d}:{mm:02d}:{ss:02d}"])
         return True
     except Exception as e:
-        print(f"CSV write error: {e}")
+        print(f"CSV write error: {e}", file=sys.stderr, flush=True)
         return False
 
 
@@ -1186,7 +1189,7 @@ def set_key(deck, key, color, text="", icon=None, extra_draw=None):
         try:
             extra_draw(draw, w, h)
         except Exception as e:
-            print(f"extra_draw failed: {e}")
+            print(f"extra_draw failed: {e}", file=sys.stderr, flush=True)
     if text and (icon is None or _show_labels):
         base_fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
         fs = max(6, int(round(base_fs * _font_scale)))
@@ -1312,6 +1315,15 @@ class Tiler:
         self._compute_claude_session_keys()
         self._compute_mpv_session_keys()
 
+    def _flag_err(self, reason):
+        """Set the result-flash to 'err' AND surface `reason` in
+        stderr so the terminal running game_tiler.py captures every
+        button failure, not just the silent flash on the deck."""
+        print(f"[streamdeck-tiler] {reason}",
+              file=sys.stderr, flush=True)
+        self.last_result = "err"
+        self.result_time = time.monotonic()
+
     def _enter_claude_session_mode(self, key):
         """Open the actions page for the claude session attached to
         `key`. Stores the session id so re-renders survive state file
@@ -1342,9 +1354,21 @@ class Tiler:
                 "--method",
                 f"org.gnome.Shell.Extensions.StreamDeckTiler.{method}",
                 sid,
-            ], stderr=subprocess.DEVNULL, timeout=2).decode()
-            return "true" in out.lower()
-        except (subprocess.SubprocessError, FileNotFoundError):
+            ], stderr=subprocess.STDOUT, timeout=2).decode()
+            ok = "true" in out.lower()
+            if not ok:
+                print(f"[streamdeck-tiler] {method}({sid!r}) "
+                      f"returned: {out.strip()}",
+                      file=sys.stderr, flush=True)
+            return ok
+        except subprocess.CalledProcessError as e:
+            print(f"[streamdeck-tiler] {method}({sid!r}) failed: "
+                  f"{(e.output or b'').decode(errors='replace').strip()}",
+                  file=sys.stderr, flush=True)
+            return False
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            print(f"[streamdeck-tiler] {method}({sid!r}) failed: {e}",
+                  file=sys.stderr, flush=True)
             return False
 
     def _focus_claude_for_key(self, key):
@@ -1567,9 +1591,23 @@ class Tiler:
                 "org.gnome.Shell.Extensions.StreamDeckTiler"
                 ".MpvSendCommand",
                 str(int(pid)), command,
-            ], stderr=subprocess.DEVNULL, timeout=2).decode()
-            return "true" in out.lower()
-        except (subprocess.SubprocessError, FileNotFoundError):
+            ], stderr=subprocess.STDOUT, timeout=2).decode()
+            ok = "true" in out.lower()
+            if not ok:
+                print(f"[streamdeck-tiler] MpvSendCommand({pid}, "
+                      f"{command!r}) returned: {out.strip()}",
+                      file=sys.stderr, flush=True)
+            return ok
+        except subprocess.CalledProcessError as e:
+            print(f"[streamdeck-tiler] MpvSendCommand({pid}, {command!r}) "
+                  f"failed: "
+                  f"{(e.output or b'').decode(errors='replace').strip()}",
+                  file=sys.stderr, flush=True)
+            return False
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            print(f"[streamdeck-tiler] MpvSendCommand({pid}, {command!r}) "
+                  f"failed: {e}",
+                  file=sys.stderr, flush=True)
             return False
 
     def _handle_claude_session_key(self, key):
@@ -1653,8 +1691,11 @@ class Tiler:
             if str(slot) not in slots:
                 return  # empty slot: no-op
             ok = _load_layout_slot(slot)
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
+            if ok:
+                self.last_result = "ok"
+                self.result_time = time.monotonic()
+            else:
+                self._flag_err(f"layout shortcut load slot {slot} failed")
             self.render()
             return
         if key in (self.claude_keys or []):
@@ -1704,8 +1745,13 @@ class Tiler:
         ok = _tile_via_dbus(
             self.grid_cols, self.grid_rows, c1, r1, c2, r2
         )
-        self.last_result = "ok" if ok else "err"
-        self.result_time = time.monotonic()
+        if ok:
+            self.last_result = "ok"
+            self.result_time = time.monotonic()
+        else:
+            self._flag_err(
+                f"TileWindow({self.grid_cols}x{self.grid_rows} "
+                f"{c1},{r1}-{c2},{r2}) failed via D-Bus")
         self.mode = MODE_IDLE
         self.corner1 = None
         self.corner2 = None
@@ -1731,8 +1777,7 @@ class Tiler:
                 self._refresh_timers()
                 self.render()
             else:
-                self.last_result = "err"
-                self.result_time = time.monotonic()
+                self._flag_err("AddTrackerTimer returned no id")
                 self.render()
             return
         if key == self.total_keys - 4:
@@ -1746,8 +1791,7 @@ class Tiler:
             self._refresh_timers()
             self.render()
         else:
-            self.last_result = "err"
-            self.result_time = time.monotonic()
+            self._flag_err(f"ToggleTrackerTimer({timer_id}) failed")
             self.render()
 
     def _handle_layout_key(self, key):
@@ -1763,15 +1807,21 @@ class Tiler:
         if key in lk["save"]:
             slot = lk["save"].index(key) + 1
             ok = _save_layout_slot(slot)
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
+            if ok:
+                self.last_result = "ok"
+                self.result_time = time.monotonic()
+            else:
+                self._flag_err(f"layout save slot {slot} failed")
             self.render()
             return
         if key in lk["load"]:
             slot = lk["load"].index(key) + 1
             ok = _load_layout_slot(slot)
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
+            if ok:
+                self.last_result = "ok"
+                self.result_time = time.monotonic()
+            else:
+                self._flag_err(f"layout load slot {slot} failed")
             self.render()
             return
         if key in lk["delete"]:
@@ -1796,8 +1846,11 @@ class Tiler:
             ok = _delete_layout_slot(slot) if slot else False
             self.layout_delete_pending = None
             self.mode = MODE_LAYOUT
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
+            if ok:
+                self.last_result = "ok"
+                self.result_time = time.monotonic()
+            else:
+                self._flag_err(f"layout delete slot {slot} failed")
             self.render()
             return
         # Other keys ignored (force explicit choice)
@@ -1915,17 +1968,16 @@ class Tiler:
                 stderr=subprocess.DEVNULL,
             )
         except Exception as e:
-            print(f"streaming start failed: {e}")
             self._streaming_proc = None
-            self.last_result = "err"
-            self.result_time = time.monotonic()
+            self._flag_err(f"streaming start failed: {e}")
         self.render()
 
     def _toggle_record(self):
         if self._record_proc is None:
             if not self._stt_backends:
-                self.last_result = "err"
-                self.result_time = time.monotonic()
+                self._flag_err(
+                    "translator: no STT backend available "
+                    "(install whisper-cpp or vosk)")
                 self.render()
                 return
             fd, path = tempfile.mkstemp(prefix="sttrec_", suffix=".wav")
@@ -1939,8 +1991,8 @@ class Tiler:
             else:
                 self._record_proc = _translator.start_recording(path)
             if self._record_proc is None:
-                self.last_result = "err"
-                self.result_time = time.monotonic()
+                self._flag_err(
+                    f"translator: failed to start recording at {path}")
                 os.unlink(path)
                 self._record_path = None
             else:
@@ -1982,7 +2034,7 @@ class Tiler:
                         wm_class=_translator.focused_window_class(),
                     )
                 except Exception as e:
-                    print(f"history append error: {e}")
+                    print(f"history append error: {e}", file=sys.stderr, flush=True)
         finally:
             try:
                 os.unlink(wav_path)
@@ -2007,8 +2059,8 @@ class Tiler:
         if key == bk["toggle"]:
             current = _bt_powered()
             if current is None:
-                self.last_result = "err"
-                self.result_time = time.monotonic()
+                self._flag_err(
+                    "bluetooth: bluetoothctl unavailable or no adapter")
                 self.render()
                 return
             _bt_set_power(not current)
@@ -2091,9 +2143,9 @@ class Tiler:
             if ok:
                 self._refresh_timers()
                 self.last_result = "ok"
+                self.result_time = time.monotonic()
             else:
-                self.last_result = "err"
-            self.result_time = time.monotonic()
+                self._flag_err("ResetAllTrackerTimers failed via D-Bus")
             self.render()
             return
         # Other keys: ignore (force explicit choice)
@@ -2730,7 +2782,7 @@ def main():
     if dbus_ok:
         print("D-Bus tiler extension detected!")
     else:
-        print("WARNING: streamdeck-tiler extension not found.")
+        print("WARNING: streamdeck-tiler extension not found.", file=sys.stderr, flush=True)
         print("Install: re-login to GNOME to activate the extension.")
 
     print("Press TILE to enter tiling mode (first corner, second corner).")
