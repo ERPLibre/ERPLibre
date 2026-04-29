@@ -132,7 +132,19 @@ streamdeck_tiler_enable_extension:
 streamdeck_tiler_uninstall_extension:
 	-@gnome-extensions disable "$(STREAMDECK_TILER_EXT_UUID)" 2>/dev/null || true
 	@rm -rf "$(STREAMDECK_TILER_EXT_DST)"
-	@echo "Removed $(STREAMDECK_TILER_EXT_DST) (log out/in to fully unload)"
+	@echo "Removed $(STREAMDECK_TILER_EXT_DST)"
+	@for d in "$(STREAMDECK_TILER_EXT_BASE_DIR)"/$(STREAMDECK_TILER_EXT_TMP_PREFIX)*@technolibre.ca; do \
+		[ -d "$$d" ] || [ -L "$$d" ] || continue; \
+		uuid=$$(basename "$$d"); \
+		gnome-extensions disable "$$uuid" 2>/dev/null || true; \
+		rm -rf "$$d"; \
+		echo "Removed reload temp $$uuid"; \
+	done
+	@echo "Log out / log in to fully unload from gnome-shell."
+
+# Convenience aliases for the common short names users actually type.
+.PHONY: streamdeck_tiler_uninstall
+streamdeck_tiler_uninstall: streamdeck_tiler_uninstall_extension
 
 # ---------- Translator stack (STT + LLM) ----------
 
