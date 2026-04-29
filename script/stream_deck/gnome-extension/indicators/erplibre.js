@@ -2,6 +2,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
+import Soup from 'gi://Soup';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
@@ -15,7 +16,10 @@ import {callKeepassCli, masterPasswordCache, cacheKey}
     from '../lib/keepass.js';
 import {InstanceDialog} from '../ui/instance-dialog.js';
 import {MasterPwDialog} from '../ui/master-pw-dialog.js';
-import {makeBadgedIcon} from '../lib/badges.js';
+import {makeBadgedIcon, BADGE_OK, BADGE_WARN, BADGE_ALERT}
+    from '../lib/badges.js';
+
+const PROBE_TTL_MS = 30 * 1000;
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -33,8 +37,12 @@ class ErpLibreIndicator extends PanelMenu.Button {
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._localCache = [];
+        this._instanceStatus = new Map(); // id -> {state, ts}
         this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
         this.add_child(this._badged.actor);
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen) this._probeAllInstances();
+        });
         this._sigInstances = this._settings.connect('changed::instances',
             () => { this._rebuildMenu(); this._refreshBadge(); });
         this._sigPattern = this._settings.connect(
@@ -60,9 +68,72 @@ class ErpLibreIndicator extends PanelMenu.Button {
             this._badged.setBadges([]);
             return;
         }
+        const all = this._allInstances();
+        const total = all.length;
+        if (total === 0) {
+            this._badged.setBadges([]);
+            return;
+        }
+        const probed = all
+            .map(i => this._instanceStatus.get(i.id)?.state)
+            .filter(s => s);
+        const upCount = probed.filter(s => s === 'up').length;
+        const downCount = probed.filter(s => s === 'down').length;
+        let kind = BADGE_OK;
+        if (probed.length > 0) {
+            if (upCount === 0) kind = BADGE_ALERT;
+            else if (downCount > 0) kind = BADGE_WARN;
+        }
+        this._badged.setBadges([{count: total, kind}]);
+    }
+
+    _allInstances() {
         const remotes = parseList(this._settings.get_string('instances'));
-        const total = (this._localCache?.length || 0) + remotes.length;
-        this._badged.setBadges([{count: total}]);
+        return [
+            ...(this._localCache || []).map(i => ({...i, _local: true})),
+            ...remotes.map(i => ({...i, _local: false})),
+        ];
+    }
+
+    _probeAllInstances() {
+        const now = GLib.get_real_time() / 1000;
+        const stale = id => {
+            const e = this._instanceStatus.get(id);
+            return !e || (now - e.ts) > PROBE_TTL_MS;
+        };
+        for (const inst of this._allInstances()) {
+            if (!inst.id || !inst.url) continue;
+            if (!stale(inst.id)) continue;
+            this._probeInstance(inst);
+        }
+    }
+
+    _probeInstance(inst) {
+        try {
+            const session = new Soup.Session();
+            session.timeout = 2;
+            const message = Soup.Message.new('GET', inst.url);
+            session.send_and_read_async(
+                message, GLib.PRIORITY_DEFAULT, null, (sess, result) => {
+                    let state = 'down';
+                    try {
+                        sess.send_and_read_finish(result);
+                        state = 'up';
+                    } catch (_e) {
+                        state = 'down';
+                    }
+                    this._instanceStatus.set(inst.id, {
+                        state,
+                        ts: GLib.get_real_time() / 1000,
+                    });
+                    this._refreshBadge();
+                    this._rebuildMenu();
+                });
+        } catch (_e) {
+            this._instanceStatus.set(inst.id, {
+                state: 'down', ts: GLib.get_real_time() / 1000,
+            });
+        }
     }
 
     async _rescanThenRebuild() {
@@ -114,7 +185,11 @@ class ErpLibreIndicator extends PanelMenu.Button {
     }
 
     _makeRow(inst, isLocal) {
-        const sub = new PopupMenu.PopupSubMenuMenuItem(inst.name);
+        const status = this._instanceStatus.get(inst.id)?.state;
+        const dot = status === 'up' ? '🟢 '
+            : status === 'down' ? '🔴 '
+            : '⚪ ';
+        const sub = new PopupMenu.PopupSubMenuMenuItem(`${dot}${inst.name}`);
         const open = new PopupMenu.PopupMenuItem('Open URL');
         open.connect('activate', () => this._launchBrowser(inst));
         sub.menu.addMenuItem(open);
