@@ -133,12 +133,17 @@ class ControllerIndicator extends PanelMenu.Button {
         this._gallerySection.menu.removeAll();
 
         const online = this._galleryOnline === true;
-        const unknown = this._galleryOnline === null;
+        const starting = !online && this._galleryStarting === true;
+        const unknown = this._galleryOnline === null && !starting;
         let header;
         if (online) {
             header = `● Running on ${GALLERY_URL}`;
             this._gallerySection.label.text =
                 `Gallery server (running) ${GALLERY_URL}`;
+        } else if (starting) {
+            header = `◐ Starting on ${GALLERY_URL}`;
+            this._gallerySection.label.text =
+                'Gallery server (starting)…';
         } else if (unknown) {
             header = '… Probing';
             this._gallerySection.label.text = 'Start gallery server…';
@@ -236,15 +241,46 @@ class ControllerIndicator extends PanelMenu.Button {
                     const games = JSON.parse(text);
                     this._populateGames(Array.isArray(games) ? games : []);
                     online = true;
+                    if (this._galleryStarting) {
+                        this._galleryStarting = false;
+                        this._populateGallerySubmenu();
+                    }
                 } catch (_e) {
+                    // HTTP failed — TCP probe distinguishes "starting"
+                    // (port open but not serving yet) from "offline".
                     this._populateGamesPlaceholder(
                         'Gallery offline (start gallery_server.py)');
+                    this._probeGalleryTcp();
                 }
                 if (this._galleryOnline !== online) {
                     this._galleryOnline = online;
                     this._populateGallerySubmenu();
                 }
             });
+    }
+
+    _probeGalleryTcp() {
+        try {
+            const client = new Gio.SocketClient();
+            client.set_timeout(1);
+            client.connect_to_host_async(
+                'localhost', GALLERY_PORT, null, (c, res) => {
+                    let starting = false;
+                    try {
+                        const conn = c.connect_to_host_finish(res);
+                        if (conn) {
+                            starting = true;
+                            try { conn.close(null); } catch (_e) {}
+                        }
+                    } catch (_e) {
+                        starting = false;
+                    }
+                    if (this._galleryStarting !== starting) {
+                        this._galleryStarting = starting;
+                        this._populateGallerySubmenu();
+                    }
+                });
+        } catch (_e) {}
     }
 
     _populateGames(games) {
