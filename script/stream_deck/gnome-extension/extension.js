@@ -121,6 +121,10 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="session_id"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
+    <method name="KillClaudeSession">
+      <arg type="s" direction="in" name="session_id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
     <method name="DebugClaudeIndex">
       <arg type="s" direction="out" name="json"/>
     </method>
@@ -176,6 +180,9 @@ export default class StreamDeckTilerExtension extends Extension {
             this.#claudeState = new ClaudeStateWatcher();
             this.#claudeState.start().catch(e =>
                 console.log(`[StreamDeckTiler] claude-state: ${e.message}`));
+            this._notifySeen = new Map(); // sid -> last notif ts (ms)
+            this.#claudeState.subscribe(idx =>
+                this._maybeNotifyAwaiting(idx));
         }
 
         this.#registry = new IndicatorRegistry();
@@ -524,6 +531,33 @@ export default class StreamDeckTilerExtension extends Extension {
         }
     }
 
+    _maybeNotifyAwaiting(idx) {
+        if (!this.#settings ||
+            !this.#settings.get_boolean('enable-claude-desktop-notify'))
+            return;
+        const NOTIFY_THROTTLE_MS = 30 * 1000;
+        const now = Date.now();
+        const seen = this._notifySeen;
+        if (!seen) return;
+        for (const bucket of idx?.byPath?.values?.() || []) {
+            for (const s of (bucket.sessions || [])) {
+                if (s.status !== 'awaiting_notification') continue;
+                // The notification ts identifies the *event*; throttle
+                // by it so we never re-notify for the same hook fire.
+                const eventTs = s.ts_notification || 0;
+                const last = seen.get(s.session_id) || 0;
+                if (eventTs <= last) continue;
+                if (now - last < NOTIFY_THROTTLE_MS) continue;
+                seen.set(s.session_id, eventTs);
+                const desc = s.description || s.last_prompt || s.session_id;
+                const body = s.notification_message || desc;
+                try {
+                    Main.notify(`Claude: ${desc}`.slice(0, 80), body);
+                } catch (_e) {}
+            }
+        }
+    }
+
     GetFocusedWindowId() {
         try {
             const w = global.display.focus_window;
@@ -565,6 +599,23 @@ export default class StreamDeckTilerExtension extends Extension {
             if (!wid) return false;
             state.window_id = Number(wid);
             return this._writeClaudeState(sessionId, state);
+        } catch (_e) { return false; }
+    }
+
+    /**
+     * Send SIGTERM to the Claude process backing this session. The
+     * SessionEnd hook then deletes the state file as Claude exits;
+     * the watcher's PID-liveness sweep handles a hard kill.
+     */
+    KillClaudeSession(sessionId) {
+        try {
+            const state = this._readClaudeState(sessionId);
+            if (!state || !state.pid) return false;
+            const pid = Number(state.pid);
+            if (!pid || pid <= 1) return false;
+            Gio.Subprocess.new(
+                ['kill', String(pid)], Gio.SubprocessFlags.NONE);
+            return true;
         } catch (_e) { return false; }
     }
 

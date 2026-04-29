@@ -63,6 +63,10 @@
       <default>true</default>
       <summary>Watch ~/.local/state/streamdeck-tiler/claude/ for Claude session state files (used by the pencil badge)</summary>
     </key>
+    <key name="enable-claude-desktop-notify" type="b">
+      <default>true</default>
+      <summary>Show a desktop notification when a Claude session goes red (Notification hook fired)</summary>
+    </key>
 
     <!-- Migration -->
     <key name="schema-version"  type="i"><default>1</default><summary>Schema version, bumped per migration</summary></key>

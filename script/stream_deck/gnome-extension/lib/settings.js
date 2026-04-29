@@ -156,6 +156,7 @@ export const SCHEMA_KEYS = [
     'device-auto-refresh-sec','icon-overrides','enable-git-sync',
     'git-sync-path','schema-version',
     'enable-icon-badges','enable-claude-state-watch',
+    'enable-claude-desktop-notify',
     'panel-box',
 ];
 

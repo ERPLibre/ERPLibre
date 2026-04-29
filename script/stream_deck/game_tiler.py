@@ -1328,13 +1328,18 @@ class Tiler:
 
     def _compute_claude_session_keys(self):
         """Layout for the per-session action page. Requires >= 2 cols.
-        Cell 0 is BACK, cells 1..3 are FOCUS / ACCEPT / (placeholder)."""
+        Cells fill row 0 left-to-right as the deck has more columns:
+        BACK / FOCUS / ACCEPT / SET WINDOW / KILL."""
         if self.cols < 2:
             self.claude_session_keys = None
             return
         keys = {"back": 0, "focus": 1}
         if self.cols >= 3:
             keys["accept"] = 2
+        if self.cols >= 4:
+            keys["set_window"] = 3
+        if self.cols >= 5:
+            keys["kill"] = 4
         self.claude_session_keys = keys
 
     def _compute_claude_buttons(self):
@@ -1501,6 +1506,20 @@ class Tiler:
             return
         if "accept" in cs and key == cs["accept"]:
             ok = self._call_claude_dbus("AcceptClaudeSession", sid)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if "set_window" in cs and key == cs["set_window"]:
+            ok = self._call_claude_dbus("SetClaudeSessionWindow", sid)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if "kill" in cs and key == cs["kill"]:
+            ok = self._call_claude_dbus("KillClaudeSession", sid)
             self.last_result = "ok" if ok else "err"
             self.result_time = time.monotonic()
             self.mode = MODE_IDLE
@@ -2048,8 +2067,9 @@ class Tiler:
                 break
 
         action_keys = {cs.get('back'), cs.get('focus')}
-        if 'accept' in cs:
-            action_keys.add(cs['accept'])
+        for k in ('accept', 'set_window', 'kill'):
+            if k in cs:
+                action_keys.add(cs[k])
         text_keys = [k for k in range(self.total_keys)
                      if k not in action_keys]
         # When the session needs the user (red/yellow), prefer the
@@ -2074,6 +2094,11 @@ class Tiler:
                 color = (_claude_color(session) if session
                          else COLOR_CLAUDE_AWAIT_STOP)
                 set_key(self.deck, key, color, 'ACCEPT\n↵')
+            elif 'set_window' in cs and key == cs['set_window']:
+                set_key(self.deck, key, COLOR_LAYOUT_TITLE,
+                        'SET\nWIN')
+            elif 'kill' in cs and key == cs['kill']:
+                set_key(self.deck, key, COLOR_CANCEL, 'KILL')
             elif key in chunk_by_key:
                 set_key(self.deck, key, COLOR_EMPTY,
                         _wrap_chunk(chunk_by_key[key]))
