@@ -6,9 +6,11 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {setGettext} from './lib/i18n.js';
-import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings}
+import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings,
+    parseList, serializeList}
     from './lib/settings.js';
 import {readLogTail, clearLog} from './lib/log.js';
+import {defaultFilmEntry} from './lib/film-helpers.js';
 
 const INDICATORS = [
     {id: 'controller', label: 'Controller'},
@@ -351,7 +353,122 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             description: 'Edit via the Add film dialog from the panel button.',
         });
         page.add(group);
+
+        const importGroup = new Adw.PreferencesGroup({
+            title: 'Import from Firefox',
+            description:
+                'Scan every running Firefox profile\'s open tabs and '
+                + 'add YouTube URLs as new film entries '
+                + '(requires python3-lz4).',
+        });
+        const importRow = new Adw.ActionRow({
+            title: 'Import YouTube tabs',
+            subtitle: 'Click to scan now',
+        });
+        const importBtn = new Gtk.Button({
+            label: 'Import',
+            valign: Gtk.Align.CENTER,
+            css_classes: ['suggested-action'],
+        });
+        importBtn.connect('clicked',
+            () => this._runFirefoxImport(settings, importBtn));
+        importRow.add_suffix(importBtn);
+        importGroup.add(importRow);
+        page.add(importGroup);
         return page;
+    }
+
+    _runFirefoxImport(settings, button) {
+        const ext = this.dir?.get_path?.()
+            || this.metadata?.path
+            || this.path
+            || '.';
+        const helper = `${ext}/scripts/firefox_youtube_tabs.py`;
+        button.set_sensitive(false);
+        button.set_label('Scanning…');
+        try {
+            const proc = Gio.Subprocess.new(
+                ['python3', helper],
+                Gio.SubprocessFlags.STDOUT_PIPE
+                    | Gio.SubprocessFlags.STDERR_PIPE);
+            proc.communicate_utf8_async(null, null, (p, res) => {
+                let stdout = '', stderr = '', ok = true;
+                try {
+                    [, stdout, stderr] = p.communicate_utf8_finish(res);
+                    ok = p.get_successful();
+                } catch (e) {
+                    ok = false;
+                    stderr = e.message || String(e);
+                }
+                this._applyFirefoxImport(settings, button,
+                    ok, stdout, stderr);
+            });
+        } catch (e) {
+            button.set_sensitive(true);
+            button.set_label('Import');
+            this._showImportToast(button,
+                `Spawn failed: ${e.message || e}`);
+        }
+    }
+
+    _applyFirefoxImport(settings, button, ok, stdout, stderr) {
+        button.set_sensitive(true);
+        button.set_label('Import');
+        if (!ok) {
+            this._showImportToast(button,
+                `Helper failed: ${(stderr || '').slice(0, 200)}`);
+            return;
+        }
+        let entries;
+        try {
+            entries = JSON.parse(stdout || '[]');
+        } catch (_e) {
+            this._showImportToast(button,
+                'Helper output not JSON — see prefs Log');
+            return;
+        }
+        if (!Array.isArray(entries) || !entries.length) {
+            this._showImportToast(button,
+                stderr.includes('python3-lz4 not installed')
+                    ? 'Install python3-lz4: sudo apt install python3-lz4'
+                    : 'No YouTube tabs found in Firefox session.');
+            return;
+        }
+        const films = parseList(settings.get_string('films'));
+        const existing = new Set(films.map(f => (f.url || '').trim()));
+        let added = 0;
+        for (const e of entries) {
+            const url = String(e.url || '').trim();
+            if (!url || existing.has(url)) continue;
+            const name = String(e.title || url).slice(0, 80);
+            films.push(defaultFilmEntry({name, url}));
+            existing.add(url);
+            added += 1;
+        }
+        if (added > 0) {
+            settings.set_string('films', serializeList(films));
+        }
+        const skipped = entries.length - added;
+        this._showImportToast(button,
+            `Imported ${added} film${added === 1 ? '' : 's'}`
+            + (skipped > 0 ? ` (${skipped} duplicate${skipped === 1
+                ? '' : 's'} skipped)` : ''));
+    }
+
+    _showImportToast(button, message) {
+        // Walk up to find the Adw.ToastOverlay or the prefs window
+        // (which has add_toast on its child PreferencesWindow).
+        let widget = button;
+        while (widget) {
+            if (typeof widget.add_toast === 'function') {
+                widget.add_toast(new Adw.Toast({title: message,
+                    timeout: 5}));
+                return;
+            }
+            widget = widget.get_parent ? widget.get_parent() : null;
+        }
+        // Fallback: log to stderr; user can also see in Activity Log.
+        console.log(`[StreamDeckTiler:prefs] ${message}`);
     }
 
     _buildLogPage(settings) {

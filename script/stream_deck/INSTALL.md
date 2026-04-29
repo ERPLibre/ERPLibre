@@ -75,6 +75,29 @@ dans l'onglet Log des préférences quand yt-dlp manque.
 <!-- [end] -->
 
 <!-- [en] -->
+### Import YouTube tabs from Firefox
+
+The prefs Film page has an "Import" button that scans every running
+Firefox profile's open tabs and adds any YouTube URL as a new film
+entry. The helper reads `recovery.jsonlz4` from each profile so it
+needs Mozilla's lz4 codec:
+<!-- [fr] -->
+### Importer les onglets YouTube depuis Firefox
+
+L'onglet Film des préférences expose un bouton « Import » qui scanne
+les onglets ouverts de chaque profil Firefox et ajoute toute URL
+YouTube comme nouvelle entrée film. Le helper lit
+`recovery.jsonlz4` de chaque profil et nécessite le codec lz4 de
+Mozilla :
+<!-- [end] -->
+
+<!-- [common] -->
+```
+sudo apt install -y python3-lz4
+```
+<!-- [end] -->
+
+<!-- [en] -->
 ### mpv keyboard shortcuts (default bindings)
 <!-- [fr] -->
 ### Raccourcis clavier mpv (bindings par défaut)
