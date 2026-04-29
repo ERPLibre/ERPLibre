@@ -146,6 +146,13 @@ streamdeck_tiler_uninstall_extension:
 .PHONY: streamdeck_tiler_uninstall
 streamdeck_tiler_uninstall: streamdeck_tiler_uninstall_extension
 
+# Launch a nested gnome-shell with the extension loaded in an
+# isolated XDG sandbox. Lets the dev reload code freely without
+# touching the parent Wayland session — close the window to wipe.
+.PHONY: streamdeck_tiler_dev_nested
+streamdeck_tiler_dev_nested:
+	@$(STREAMDECK_TILER_EXT_SRC)/dev_nested.sh
+
 # ---------- Translator stack (STT + LLM) ----------
 
 WHISPER_CPP_DIR   := $(HOME)/.local/share/whisper.cpp
