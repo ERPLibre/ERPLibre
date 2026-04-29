@@ -89,12 +89,14 @@ export async function readLogTail(maxLines = 200) {
 
 export async function clearLog() {
     try {
-        const {Gio, GLib} = await _loadGjs();
+        const {GLib} = await _loadGjs();
         const path = _logFilePath(GLib);
         GLib.mkdir_with_parents(path.replace(/\/[^/]+$/, ''), 0o700);
-        const file = Gio.File.new_for_path(path);
-        file.replace_contents(new Uint8Array(0), null, false,
-            Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        // Gio.File.replace_contents with a 0-byte Uint8Array silently
+        // misbehaves on some GJS bindings. GLib.file_set_contents is
+        // a one-shot sync write that always truncates to the given
+        // length, so it actually empties the file.
+        GLib.file_set_contents(path, '');
         return true;
     } catch (_e) { return false; }
 }

@@ -9,11 +9,13 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, formatPosition,
-    runProcess, spawnDetached} from '../lib/spawn.js';
+    spawnDetached} from '../lib/spawn.js';
 import {buildFilmLabel, defaultFilmEntry} from '../lib/film-helpers.js';
 import {FilmDialog} from '../ui/film-dialog.js';
 import {makeBadgedIcon} from '../lib/badges.js';
 import {logInfo, logWarn} from '../lib/log.js';
+import {writeMpvEntry, deleteMpvEntry, listMpvEntriesSync}
+    from '../lib/mpv-state.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -34,6 +36,11 @@ class FilmIndicator extends PanelMenu.Button {
         this.add_child(this._badged.actor);
         this._sig = this._settings.connect('changed::films',
             () => { this._rebuildMenu(); this._refreshBadge(); });
+        // Refresh on menu open so the ▶ "playing" indicator picks up
+        // mpv state changes without polling.
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen) this._rebuildMenu();
+        });
         this._sigBadges = this._settings.connect(
             'changed::enable-icon-badges',
             () => this._refreshBadge());
@@ -76,8 +83,18 @@ class FilmIndicator extends PanelMenu.Button {
         this.menu.addMenuItem(prefsItem);
     }
 
+    _isPlaying(filmId) {
+        try {
+            return listMpvEntriesSync(Gio, GLib).some(
+                e => e.film_id === filmId);
+        } catch (_e) { return false; }
+    }
+
     _makeRow(film) {
-        const sub = new PopupMenu.PopupSubMenuMenuItem(buildFilmLabel(film));
+        const playing = this._isPlaying(film.id);
+        const prefix = playing ? '▶ ' : '';
+        const sub = new PopupMenu.PopupSubMenuMenuItem(
+            `${prefix}${buildFilmLabel(film)}`);
 
         const browserItem = new PopupMenu.PopupMenuItem('▶ Browser');
         browserItem.connect('activate', () => this._launch(film, 'browser'));
@@ -100,18 +117,62 @@ class FilmIndicator extends PanelMenu.Button {
 
     async _launch(film, player) {
         if (player === 'mpv') {
-            // Wait for mpv so we can read its watch-later file when
-            // the user quits and bump the film's `position` field.
-            const argv = buildMpvArgv(film.url, film.position || '');
-            const result = await runProcess(argv,
-                {notify: _notify, title: 'Stream Deck'});
-            if (result.ok) this._updateMpvPosition(film);
+            await this._launchMpvTracked(film);
             return;
         }
         const argv = player === 'vlc'
             ? buildVlcArgv(film.url, film.position || '')
             : buildBrowserArgv(film.url);
         await spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
+    }
+
+    async _launchMpvTracked(film) {
+        const runtimeDir = GLib.get_user_runtime_dir()
+            || GLib.get_tmp_dir();
+        // 12 hex chars from urandom-ish via GLib UUID is overkill;
+        // a millisecond timestamp + random suffix is plenty for a
+        // socket path that lives less than a film viewing.
+        const tag = `${Date.now().toString(36)}-`
+            + Math.floor(Math.random() * 1e6).toString(36);
+        const socketPath = `${runtimeDir}/sdt-mpv-${tag}.sock`;
+
+        const argv = buildMpvArgv(film.url, film.position || '');
+        argv.push(`--input-ipc-server=${socketPath}`);
+        if (film.name) argv.push(`--title=${film.name}`);
+
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
+        } catch (e) {
+            _notify('Stream Deck', `mpv spawn failed: ${e.message}`);
+            logWarn('film', `mpv spawn failed: ${e.message}`);
+            return;
+        }
+        const pidStr = proc.get_identifier();
+        const pid = parseInt(pidStr, 10) || 0;
+        if (!pid) return;
+
+        const entry = {
+            pid,
+            ipc_socket: socketPath,
+            url: film.url,
+            title: film.name || film.url,
+            film_id: film.id,
+            started_at: Date.now(),
+        };
+        try { await writeMpvEntry(entry); }
+        catch (e) { logWarn('film',
+            `mpv state write failed: ${e.message || e}`); }
+        logInfo('film',
+            `mpv pid=${pid} sock=${socketPath} -> ${film.url}`);
+
+        proc.wait_async(null, async (p, res) => {
+            try { p.wait_finish(res); } catch (_e) {}
+            try { await deleteMpvEntry(pid); } catch (_e) {}
+            try { GLib.unlink(socketPath); } catch (_e) {}
+            this._updateMpvPosition(film);
+            logInfo('film', `mpv pid=${pid} exited`);
+        });
     }
 
     _updateMpvPosition(film) {

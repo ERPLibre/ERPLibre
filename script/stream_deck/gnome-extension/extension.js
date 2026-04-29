@@ -20,6 +20,7 @@ import {exportSettingsAsObj} from './lib/settings.js';
 import {Debouncer, gitPull, gitCommitPush} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
 import {ClaudeStateWatcher} from './lib/claude-state.js';
+import {listMpvEntriesSync, sendMpvCommand} from './lib/mpv-state.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 import {indicatorDescriptor as pencilDescriptor}
@@ -131,6 +132,14 @@ const IFACE_XML = `
     <method name="RenameClaudeSession">
       <arg type="s" direction="in" name="session_id"/>
       <arg type="s" direction="in" name="description"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="ListMpvSessions">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="MpvSendCommand">
+      <arg type="i" direction="in" name="pid"/>
+      <arg type="s" direction="in" name="command"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
   </interface>
@@ -607,6 +616,65 @@ export default class StreamDeckTilerExtension extends Extension {
      * SessionEnd hook then deletes the state file as Claude exits;
      * the watcher's PID-liveness sweep handles a hard kill.
      */
+    /**
+     * Return the list of running mpv sessions launched through the
+     * film indicator as a JSON array. Used by the Stream Deck game
+     * tiler so it can show one button per active film.
+     */
+    ListMpvSessions() {
+        try {
+            return JSON.stringify(listMpvEntriesSync(Gio, GLib));
+        } catch (_e) { return '[]'; }
+    }
+
+    MpvSendCommand(pid, command) {
+        try {
+            const id = Number(pid);
+            if (!id || id <= 1) return false;
+            // Find the matching entry to get its socket.
+            // We could re-read state, but since listMpvEntries is
+            // async, do a minimal sync read via Gio here.
+            const base = GLib.getenv('XDG_STATE_HOME')
+                || `${GLib.get_home_dir()}/.local/state`;
+            const path = `${base}/streamdeck-tiler/mpv/${id}.json`;
+            if (!GLib.file_test(path, GLib.FileTest.EXISTS)) return false;
+            const [ok, contents] = GLib.file_get_contents(path);
+            if (!ok) return false;
+            const entry = JSON.parse(new TextDecoder().decode(contents));
+            const socketPath = entry.ipc_socket;
+            if (!socketPath) return false;
+
+            // Map shorthand commands to mpv IPC payloads.
+            let payload;
+            switch (String(command || '').toLowerCase()) {
+                case 'play_pause':
+                case 'cycle_pause':
+                    payload = {command: ['cycle', 'pause']};
+                    break;
+                case 'play':
+                    payload = {command: ['set_property', 'pause', false]};
+                    break;
+                case 'pause':
+                    payload = {command: ['set_property', 'pause', true]};
+                    break;
+                case 'quit':
+                    payload = {command: ['quit']};
+                    break;
+                case 'quit_save':
+                    payload = {command: ['quit-watch-later']};
+                    break;
+                default:
+                    try { payload = JSON.parse(command); }
+                    catch (_e) { return false; }
+            }
+            // Fire and forget; sendMpvCommand is async but Gio
+            // sockets honour writes synchronously enough on a Unix
+            // domain that the next async boundary will deliver.
+            sendMpvCommand(socketPath, payload).catch(() => {});
+            return true;
+        } catch (_e) { return false; }
+    }
+
     KillClaudeSession(sessionId) {
         try {
             const state = this._readClaudeState(sessionId);

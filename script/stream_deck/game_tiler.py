@@ -117,6 +117,39 @@ CLAUDE_STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
     "streamdeck-tiler", "claude",
 )
+MPV_STATE_DIR = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "streamdeck-tiler", "mpv",
+)
+COLOR_MPV_ACTIVE = (40, 100, 180)  # blue
+
+
+def _load_mpv_sessions():
+    """Return active mpv sessions launched by the film indicator,
+    sorted newest first. Drops entries whose pid is gone."""
+    out = []
+    if not os.path.isdir(MPV_STATE_DIR):
+        return out
+    for name in sorted(os.listdir(MPV_STATE_DIR)):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(MPV_STATE_DIR, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        pid = int(d.get("pid") or 0)
+        if pid > 0 and not os.path.exists(f"/proc/{pid}"):
+            continue
+        out.append({
+            "pid": pid,
+            "title": d.get("title", "") or d.get("url", ""),
+            "url": d.get("url", ""),
+            "started_at": int(d.get("started_at") or 0),
+        })
+    out.sort(key=lambda s: -s.get("started_at", 0))
+    return out
 
 
 def _load_claude_sessions():
@@ -238,6 +271,7 @@ MODE_BLUETOOTH = "bluetooth"
 MODE_TRANSLATOR = "translator"
 MODE_TRANSLATOR_HISTORY = "translator_history"
 MODE_CLAUDE_SESSION = "claude_session"
+MODE_MPV_SESSION = "mpv_session"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -1197,6 +1231,7 @@ class Tiler:
         self.last_result = None  # "ok" or "err"
         self.result_time = 0
         self._claude_session_sid = None  # active session in MODE_CLAUDE_SESSION
+        self._mpv_session_pid = None     # active mpv pid in MODE_MPV_SESSION
         self.dbus_ok = _check_dbus_available()
         # Timer state
         self.timers = []  # list of dicts from _list_tracker_timers
@@ -1275,6 +1310,7 @@ class Tiler:
         self._compute_translator_buttons()
         self._compute_claude_buttons()
         self._compute_claude_session_keys()
+        self._compute_mpv_session_keys()
 
     def _enter_claude_session_mode(self, key):
         """Open the actions page for the claude session attached to
@@ -1341,6 +1377,16 @@ class Tiler:
         if self.cols >= 5:
             keys["kill"] = 4
         self.claude_session_keys = keys
+
+    def _compute_mpv_session_keys(self):
+        """Layout for the per-mpv action page. >= 3 cols required.
+        BACK / PLAY-PAUSE / QUIT (and BACK closes the deck view)."""
+        if self.cols < 3:
+            self.mpv_session_keys = None
+            return
+        self.mpv_session_keys = {
+            "back": 0, "play_pause": 1, "quit": 2,
+        }
 
     def _compute_claude_buttons(self):
         """Reserve free cells (rows 1+, after mic + layout shortcuts) for
@@ -1481,6 +1527,50 @@ class Tiler:
             self._handle_translator_history_key(key)
         elif self.mode == MODE_CLAUDE_SESSION:
             self._handle_claude_session_key(key)
+        elif self.mode == MODE_MPV_SESSION:
+            self._handle_mpv_session_key(key)
+
+    def _handle_mpv_session_key(self, key):
+        ms = self.mpv_session_keys
+        if not ms:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == ms.get("back"):
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        pid = self._mpv_session_pid
+        if not pid:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        cmd = None
+        if key == ms.get("play_pause"): cmd = "play_pause"
+        elif key == ms.get("quit"):     cmd = "quit"
+        if not cmd:
+            return
+        ok = self._call_mpv_dbus(pid, cmd)
+        self.last_result = "ok" if ok else "err"
+        self.result_time = time.monotonic()
+        self.mode = MODE_IDLE
+        self.render()
+
+    def _call_mpv_dbus(self, pid, command):
+        try:
+            out = subprocess.check_output([
+                "gdbus", "call", "--session",
+                "--dest", "org.gnome.Shell",
+                "--object-path",
+                "/org/gnome/Shell/Extensions/StreamDeckTiler",
+                "--method",
+                "org.gnome.Shell.Extensions.StreamDeckTiler"
+                ".MpvSendCommand",
+                str(int(pid)), command,
+            ], stderr=subprocess.DEVNULL, timeout=2).decode()
+            return "true" in out.lower()
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
 
     def _handle_claude_session_key(self, key):
         cs = self.claude_session_keys
@@ -1568,7 +1658,26 @@ class Tiler:
             self.render()
             return
         if key in (self.claude_keys or []):
-            self._enter_claude_session_mode(key)
+            session_keys = list(self.claude_keys or [])
+            try:
+                idx = session_keys.index(key)
+            except ValueError:
+                return
+            mpv_sessions = _load_mpv_sessions()
+            if idx < len(mpv_sessions):
+                self._mpv_session_pid = mpv_sessions[idx]['pid']
+                self.mode = MODE_MPV_SESSION
+                self.render()
+                return
+            # Fall through to claude using the offset.
+            claude_sessions = _load_claude_sessions()
+            cidx = idx - len(mpv_sessions)
+            if cidx < len(claude_sessions):
+                sid = claude_sessions[cidx].get('session_id') or ''
+                if sid:
+                    self._claude_session_sid = sid
+                    self.mode = MODE_CLAUDE_SESSION
+                    self.render()
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
             self._enter_timer_mode()
@@ -2056,6 +2165,36 @@ class Tiler:
             self._render_translator_history()
         elif self.mode == MODE_CLAUDE_SESSION:
             self._render_claude_session()
+        elif self.mode == MODE_MPV_SESSION:
+            self._render_mpv_session()
+
+    def _render_mpv_session(self):
+        ms = self.mpv_session_keys or {}
+        pid = self._mpv_session_pid
+        sess = None
+        for s in _load_mpv_sessions():
+            if s.get('pid') == pid:
+                sess = s
+                break
+        action_keys = {ms.get('back'), ms.get('play_pause'), ms.get('quit')}
+        text_keys = [k for k in range(self.total_keys)
+                     if k not in action_keys]
+        title = (sess or {}).get('title') or (sess or {}).get('url') or ''
+        chunks = _chunk_text_for_cells(title, len(text_keys))
+        chunk_by_key = dict(zip(text_keys, chunks))
+
+        for key in range(self.total_keys):
+            if key == ms.get('back'):
+                set_key(self.deck, key, COLOR_TITLE, 'BACK')
+            elif key == ms.get('play_pause'):
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'PLAY\nPAUSE')
+            elif key == ms.get('quit'):
+                set_key(self.deck, key, COLOR_CANCEL, 'QUIT')
+            elif key in chunk_by_key:
+                set_key(self.deck, key, COLOR_EMPTY,
+                        _wrap_chunk(chunk_by_key[key]))
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, '')
 
     def _render_claude_session(self):
         cs = self.claude_session_keys or {}
@@ -2113,10 +2252,22 @@ class Tiler:
                 if str(i + 1) in filled:
                     shortcut_slots[sk] = i + 1
         mic_color, mic_label = self._mic_indicator()
+        session_keys = list(self.claude_keys or [])
+        mpv_sessions = _load_mpv_sessions()
         claude_sessions = _load_claude_sessions()
+        mpv_by_key = {}
         claude_by_key = {}
-        for slot, session in zip(self.claude_keys or [], claude_sessions):
-            claude_by_key[slot] = session
+        cursor = 0
+        for s in mpv_sessions:
+            if cursor >= len(session_keys):
+                break
+            mpv_by_key[session_keys[cursor]] = s
+            cursor += 1
+        for s in claude_sessions:
+            if cursor >= len(session_keys):
+                break
+            claude_by_key[session_keys[cursor]] = s
+            cursor += 1
         for key in range(self.total_keys):
             if key == self.tile_key:
                 set_key(self.deck, key, COLOR_TITLE, "TILE", icon="tile")
@@ -2151,6 +2302,11 @@ class Tiler:
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
+            elif key in mpv_by_key:
+                s = mpv_by_key[key]
+                title = (s.get('title') or s.get('url') or 'mpv')[:18]
+                set_key(self.deck, key, COLOR_MPV_ACTIVE,
+                        _wrap_chunk(title))
             elif key in claude_by_key:
                 s = claude_by_key[key]
                 set_key(self.deck, key, _claude_color(s),
