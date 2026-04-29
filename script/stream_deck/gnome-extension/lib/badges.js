@@ -10,8 +10,13 @@ export const BADGE_INFO = 'info';
 export const BADGE_WARN = 'warn';
 export const BADGE_ALERT = 'alert';
 
+// Cap on vertical badge stack so the top-bar height stays bounded even
+// when an indicator wants to surface more counts than fit beside its
+// icon.
+export const BADGE_VERTICAL_MAX = 3;
+
 const STYLE_BASE =
-    'border-radius: 8px;' +
+    'border-radius: 7px;' +
     'padding: 0 4px;' +
     'min-width: 10px;' +
     'font-size: 9px;' +
@@ -79,19 +84,24 @@ function _buildIcon(St, Gio, iconName) {
  * GJS-only — pass already-loaded gi module defaults via `gi`.
  */
 export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
-    const root = new St.Widget({
-        layout_manager: new Clutter.BinLayout(),
+    // Horizontal row: icon on the left, vertical badge stack on the
+    // right. Keeps the icon graphic untouched and lets up to three
+    // badges sit beside it (centered when there is only one).
+    const root = new St.BoxLayout({
         style_class: 'system-status-icon',
+        vertical: false,
         x_expand: false,
         y_expand: false,
+        style: 'spacing: 2px;',
     });
 
     let icon = _buildIcon(St, Gio, iconName);
     root.add_child(icon);
 
     const badgeBox = new St.BoxLayout({
-        x_align: Clutter.ActorAlign.END,
-        y_align: Clutter.ActorAlign.START,
+        vertical: true,
+        x_align: Clutter.ActorAlign.START,
+        y_align: Clutter.ActorAlign.CENTER,
         x_expand: false,
         y_expand: false,
         style: 'spacing: 1px; padding: 0;',
@@ -107,14 +117,20 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
 
     function setBadges(badges) {
         badgeBox.destroy_all_children();
+        const visible = [];
         for (const b of badges || []) {
             if (!b) continue;
             const text = b.text ?? formatBadgeCount(b.count);
             if (text === '') continue;
+            visible.push({text, kind: b.kind || BADGE_DEFAULT});
+            if (visible.length >= BADGE_VERTICAL_MAX) break;
+        }
+        for (const v of visible) {
             const label = new St.Label({
-                text,
+                text: v.text,
+                x_align: Clutter.ActorAlign.CENTER,
                 y_align: Clutter.ActorAlign.CENTER,
-                style: badgeStyleFor(b.kind || BADGE_DEFAULT),
+                style: badgeStyleFor(v.kind),
             });
             badgeBox.add_child(label);
         }
