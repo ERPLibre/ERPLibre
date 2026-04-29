@@ -38,17 +38,22 @@ Run after each `gnome-extensions enable` cycle.
 - [ ] After a launch, `gsettings get … recent-paths` includes that path (capped at 10)
 - [ ] Toggle `enable-pencil` off → button disappears; on → button reappears
 
-## Film (Plan C)
+## Media (Plan C)
 
-- [ ] Film indicator in panel with `video-x-generic-symbolic` icon
-- [ ] Empty state: "(no films — use + Add film)"
-- [ ] Add film with name + URL only → entry shows just name
-- [ ] Add film with name + URL + episode + position → label "Name · S2E5 · 01:23:45"
+- [ ] Media indicator in panel with `video-x-generic-symbolic` icon
+- [ ] Empty state: "(no media — use + Add media)"
+- [ ] Add media with name + URL only → entry shows just name
+- [ ] Add media with name + URL + episode + position → label "Name · S2E5 · 01:23:45"
 - [ ] Position invalid format (e.g. `xx`) → dialog shows "Invalid position format"
-- [ ] Click row → sub-menu Browser / mpv / Edit
+- [ ] Add dialog has a Video / Audio kind toggle that auto-flips to Audio when the URL is a Spotify link or an audio extension (`.mp3`, `.flac`, …)
+- [ ] Dropdown shows two sections `— Videos (n) —` and `— Audio (n) —` when both exist
+- [ ] Click row → sub-menu Browser / mpv / VLC / (Spotify when URL is Spotify) / Edit
 - [ ] Browser → xdg-open URL
 - [ ] mpv → spawns mpv with `--start=<position>` (verify in `pgrep -af mpv`)
+- [ ] VLC → bash wrapper that resolves YouTube URLs through `yt-dlp -g` first
+- [ ] Spotify entry on a `spotify:` / `open.spotify.com/...` URL launches via `xdg-open` (Spotify desktop or web fallback)
 - [ ] Edit dialog has Delete button; deleting removes entry
+- [ ] Schema migration: `gsettings get … schema-version` is `2` after first run; `gsettings get … media` contains entries previously stored under `films` with `kind: 'video'` tagged automatically
 
 ## ERPLibre (Plan D)
 
@@ -113,7 +118,7 @@ Run after each `gnome-extensions enable` cycle.
 ### D-Bus
 - [ ] `gdbus call … ListPaths` returns the paths JSON
 - [ ] `gdbus call … OpenPath '/home/x/proj'` opens a terminal at that path
-- [ ] `gdbus call … OpenFilm '<id>' 'mpv'` launches mpv
+- [ ] `gdbus call … OpenMedia '<id>' 'mpv'` launches mpv (legacy `OpenFilm` alias still works)
 - [ ] `gdbus call … ListDevices` returns the devices JSON
 
 ### Backup/restore
@@ -129,7 +134,7 @@ Run after each `gnome-extensions enable` cycle.
 
 ### Static count badges
 - [ ] After `gnome-extensions enable`, every visible indicator that has data shows a small blue circle with a number on the top-right corner of its panel icon
-- [ ] Film indicator badge equals `gsettings get … films` array length
+- [ ] Media indicator badge equals `gsettings get … media` array length
 - [ ] Pencil indicator first badge equals `paths` array length
 - [ ] ERPLibre indicator badge equals (local detected) + (remote `instances` length)
 - [ ] Network indicator badge equals (configured `~/.ssh/config` non-wildcard hosts) + (last scan host count)

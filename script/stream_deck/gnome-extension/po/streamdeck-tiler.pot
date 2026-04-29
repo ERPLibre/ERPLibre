@@ -12,6 +12,24 @@ msgstr ""
 msgid "Add film…"
 msgstr ""
 
+msgid "Add media…"
+msgstr ""
+
+msgid "Edit media"
+msgstr ""
+
+msgid "Add media"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "Audio"
+msgstr ""
+
+msgid "Kind:"
+msgstr ""
+
 msgid "Add remote instance…"
 msgstr ""
 

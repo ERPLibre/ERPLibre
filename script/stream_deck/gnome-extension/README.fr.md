@@ -9,7 +9,7 @@ Panneau à six indicateurs pour la barre du haut GNOME, plus une interface D-Bus
 |-------------|-------------------------------|-------------------------------------------------------------------------------|
 | controller  | `input-gaming-symbolic`       | D-Bus de tuilage + sous-menu Games + lien vers les préférences                |
 | pencil      | `document-edit-symbolic`      | Ouvre un `gnome-terminal` avec `claude` dans un chemin choisi (Resume / Fresh / Custom) |
-| film        | `video-x-generic-symbolic`    | Liste de films à ouvrir dans le navigateur ou via `mpv --start=<position>`    |
+| media       | `video-x-generic-symbolic`    | Liste vidéo / audio ouverte via navigateur, `mpv --start=<position>`, VLC ou Spotify |
 | erplibre    | `network-server-symbolic`     | Instances ERPLibre locales + distantes ; login Selenium / xdotool via KeepassXC |
 | network     | `network-wired-symbolic`      | Découverte SSH (`nmap -p22` ou `nc` en repli) + hôtes de `~/.ssh/config`      |
 | device      | `input-tablet-symbolic`       | Liste des Stream Deck USB Elgato, démarrage / redémarrage du daemon contrôleur |
@@ -20,16 +20,16 @@ Chaque indicateur peut être activé/désactivé dans la fenêtre de préférenc
 
 `gnome-extensions prefs streamdeck-tiler@technolibre.ca`
 
-Pages : Buttons, Pencil, Film, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
+Pages : Buttons, Pencil, Media, ERPLibre, Network, Device, Theming, Sync, Advanced, About.
 
 ## Clés GSettings
 
 Schéma `org.gnome.shell.extensions.streamdeck-tiler`. Clés notables :
 
-- `enable-controller`, `enable-pencil`, `enable-film`, `enable-erplibre`, `enable-network`, `enable-device` (booléens)
+- `enable-controller`, `enable-pencil`, `enable-media`, `enable-erplibre`, `enable-network`, `enable-device` (booléens)
 - `button-order` (`as`) — ordre gauche → droite
 - `panel-box` (`s`, défaut `left`) — `left` (côté droit de la zone gauche, juste avant l'horloge centrale), `center` ou `right`
-- `paths`, `films`, `instances` (`s`, JSON)
+- `paths`, `media`, `instances` (`s`, JSON)
 - `terminal-claude-cmd` (`s`, défaut `claude --resume`)
 - `network-cidrs` (`as`), `network-ssh-user` (`s`), `network-use-nmap` (`b`), `network-read-ssh-config` (`b`), `network-auto-refresh-sec` (`i`)
 - `device-auto-refresh-sec` (`i`)
@@ -49,7 +49,7 @@ l'icône de la barre du haut :
   sessions vivantes ; troisième pastille (seulement si au moins une
   session attend l'utilisateur) : compte en attente, jaune sur hook
   `Stop` (tour de l'assistant fini), rouge si hook `Notification`
-- **film** — nombre de films
+- **media** — nombre d'entrées média
 - **erplibre** — instances locales + distantes
 - **network** — hôtes `~/.ssh/config` + résultats du dernier scan
 - **device** — nombre de Stream Decks
@@ -66,10 +66,10 @@ Le badge des sessions Claude requiert le hook Python
 Object path `/org/gnome/Shell/Extensions/StreamDeckTiler`, interface `org.gnome.Shell.Extensions.StreamDeckTiler`. Méthodes existantes (tuilage / hot-reload) + extensions :
 
 - `OpenPath(s) -> b`
-- `OpenFilm(s, s) -> b` (player = `browser` | `mpv`)
+- `OpenMedia(s, s) -> b  (alias OpenFilm kept)` (player = `browser` | `mpv`)
 - `OpenInstance(s, s) -> b` (action = `url` | `login` | `copy_user` | `copy_pass` | `open_keepass` | `start_server`)
 - `ScanNetwork() -> s`
-- `ListPaths() -> s`, `ListFilms() -> s`, `ListInstances() -> s`, `ListDevices() -> s`
+- `ListPaths() -> s`, `ListMedia() -> s  (alias ListFilms kept)`, `ListInstances() -> s`, `ListDevices() -> s`
 
 ## KeepassXC
 
