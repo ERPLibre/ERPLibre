@@ -59,6 +59,7 @@ try {
     const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_OK,
         BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
+    const {_} = await import('../lib/i18n.js');
 
     const _normPath = p => String(p || '').replace(/\/+$/, '');
 
@@ -218,7 +219,7 @@ try {
 
                 if (!paths.length) {
                     this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                        '(no paths configured — use Add path…)',
+                        _('(no paths configured — use Add path…)'),
                         {reactive: false}));
                 } else {
                     for (const entry of paths) {
@@ -235,7 +236,8 @@ try {
                     this.menu.addMenuItem(
                         new PopupMenu.PopupSeparatorMenuItem());
                     this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                        `— Other sessions (${orphans.length}) —`,
+                        _('— Other sessions ({n}) —')
+                            .replace('{n}', orphans.length),
                         {reactive: false}));
                     const sorted = orphans.slice().sort(
                         (a, b) => (b.ts || 0) - (a.ts || 0));
@@ -245,11 +247,12 @@ try {
 
                 this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-                const addItem = new PopupMenu.PopupMenuItem('+ Add path…');
+                const addItem = new PopupMenu.PopupMenuItem(_('+ Add path…'));
                 addItem.connect('activate', () => this._openAddDialog());
                 this.menu.addMenuItem(addItem);
 
-                const prefsItem = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+                const prefsItem = new PopupMenu.PopupMenuItem(
+                    _('⚙ Open prefs'));
                 prefsItem.connect('activate', () => {
                     if (typeof this._openPrefs === 'function') {
                         try {
@@ -263,7 +266,7 @@ try {
 
                 this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
                 this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                    '— Legend —', {reactive: false}));
+                    _('— Legend —'), {reactive: false}));
                 for (const row of this._buildLegendRows()) {
                     this.menu.addMenuItem(row);
                 }
@@ -271,12 +274,14 @@ try {
 
             _buildLegendRows() {
                 const entries = [
-                    {kind: BADGE_DEFAULT, text: 'Path / catalogue count'},
-                    {kind: BADGE_OK, text: 'Active session (Claude working)'},
+                    {kind: BADGE_DEFAULT,
+                     text: _('Path / catalogue count')},
+                    {kind: BADGE_OK,
+                     text: _('Active session (Claude working)')},
                     {kind: BADGE_WARN,
-                     text: 'Awaiting answer (Stop hook fired)'},
+                     text: _('Awaiting answer (Stop hook fired)')},
                     {kind: BADGE_ALERT,
-                     text: 'Needs attention (Notification hook)'},
+                     text: _('Needs attention (Notification hook)')},
                 ];
                 return entries.map(e => {
                     const item = new PopupMenu.PopupBaseMenuItem(
@@ -331,11 +336,11 @@ try {
                     ? this._settings.get_string('terminal-claude-cmd')
                     : 'claude --resume';
 
-                const resumeBtn = this._mkBtn('Resume',
+                const resumeBtn = this._mkBtn(_('Resume'),
                     () => this._launch(entry, 'claude --resume'));
-                const freshBtn = this._mkBtn('Fresh',
+                const freshBtn = this._mkBtn(_('Fresh'),
                     () => this._launch(entry, 'claude'));
-                const customBtn = this._mkBtn('Custom…',
+                const customBtn = this._mkBtn(_('Custom…'),
                     () => this._launch(entry, defaultCmd));
                 const editBtn = this._mkBtn('✎',
                     () => this._editEntry(entry));
@@ -369,7 +374,7 @@ try {
             _makeSessionActions(session) {
                 const out = [];
                 const setItem = new PopupMenu.PopupMenuItem(
-                    '   ⤺ Set window…');
+                    `   ⤺ ${_('Set window…')}`);
                 setItem.connect('activate',
                     () => this._startSetWindow(session));
                 out.push(setItem);
@@ -377,7 +382,7 @@ try {
                 if (session.status === 'awaiting_notification'
                         || session.status === 'awaiting_stop') {
                     const accept = new PopupMenu.PopupMenuItem(
-                        '   ↵ Accept response (send Enter)');
+                        `   ↵ ${_('Accept response (send Enter)')}`);
                     accept.connect('activate',
                         () => this._acceptSession(session));
                     out.push(accept);
@@ -386,18 +391,18 @@ try {
             }
 
             _startSetWindow(session) {
-                _notify('Stream Deck',
-                    'Switch to the right terminal within 3 s — its window '
-                    + 'will be saved as the target for this session.');
+                _notify(_('Stream Deck'),
+                    _('Switch to the target terminal within 3 s — its '
+                      + 'window will be saved for this session.'));
                 const sid = session.session_id;
                 if (!sid) return;
                 const ext = this._extension;
                 if (!ext) return;
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
                     const ok = ext.SetClaudeSessionWindow?.(sid);
-                    _notify('Stream Deck',
-                        ok ? 'Window saved.'
-                           : 'No focused window — try again.');
+                    _notify(_('Stream Deck'),
+                        ok ? _('Window saved.')
+                           : _('No focused window — try again.'));
                     return GLib.SOURCE_REMOVE;
                 });
             }
@@ -407,8 +412,9 @@ try {
                 if (!sid) return;
                 const ok = this._extension?.AcceptClaudeSession?.(sid);
                 if (!ok) {
-                    _notify('Stream Deck',
-                        'Could not send Enter — install ydotool.');
+                    _notify(_('Stream Deck'),
+                        _('Could not send Enter — see '
+                          + 'script/stream_deck/INSTALL.md'));
                 }
             }
 
@@ -419,8 +425,8 @@ try {
                         this._extension?.FocusClaudeSession?.(
                             session.session_id);
                     } catch (e) {
-                        _notify('Stream Deck',
-                            `Focus failed: ${e.message || e}`);
+                        _notify(_('Stream Deck'),
+                            _('Focus failed: ') + (e.message || e));
                     }
                 });
                 const box = new St.BoxLayout({
@@ -430,13 +436,13 @@ try {
                 });
 
                 let dotKind = BADGE_OK;
-                let stateLabel = 'Working';
+                let stateLabel = _('Working');
                 if (session.status === 'awaiting_notification') {
                     dotKind = BADGE_ALERT;
-                    stateLabel = 'Needs attention';
+                    stateLabel = _('Needs attention');
                 } else if (session.status === 'awaiting_stop') {
                     dotKind = BADGE_WARN;
-                    stateLabel = 'Awaiting answer';
+                    stateLabel = _('Awaiting answer');
                 }
 
                 const dot = new St.Label({
@@ -451,7 +457,7 @@ try {
                     x_expand: true,
                 });
                 const desc = session.description ||
-                    session.last_prompt || '(no description yet)';
+                    session.last_prompt || _('(no description yet)');
                 labelBox.add_child(new St.Label({text: desc}));
                 const meta = `${stateLabel} · ${_shortId(session.session_id)}`;
                 labelBox.add_child(new St.Label({
@@ -494,8 +500,8 @@ try {
                     try {
                         onClick();
                     } catch (e) {
-                        _notify('Stream Deck',
-                            `Action failed: ${e.message || e}`);
+                        _notify(_('Stream Deck'),
+                            _('Action failed: ') + (e.message || e));
                     }
                 });
                 return btn;
@@ -504,8 +510,9 @@ try {
             async _launch(entry, command) {
                 const terminal = await findTerminal();
                 if (!terminal) {
-                    _notify('Stream Deck',
-                        'No terminal found. Install gnome-terminal, kgx or xterm.');
+                    _notify(_('Stream Deck'),
+                        _('No terminal found. Install gnome-terminal, '
+                          + 'kgx or xterm.'));
                     return;
                 }
                 const argv = buildTerminalArgv({
@@ -514,7 +521,7 @@ try {
                     terminal,
                 });
                 const ok = await spawnDetached(argv,
-                    {notify: _notify, title: 'Stream Deck'});
+                    {notify: _notify, title: _('Stream Deck')});
                 if (ok && this._settings && entry?.path) {
                     const recent = parseList(
                         this._settings.get_string('recent-paths'));
@@ -528,7 +535,7 @@ try {
                 const recent = parseList(
                     this._settings.get_string('recent-paths'));
                 const dlg = new PathDialog({
-                    title: 'Add path',
+                    title: _('Add path'),
                     recentPaths: recent,
                     onConfirm: ({label, path}) => {
                         const list = parseList(
@@ -544,7 +551,7 @@ try {
             _editEntry(entry) {
                 if (!this._settings) return;
                 const dlg = new PathDialog({
-                    title: 'Edit path',
+                    title: _('Edit path'),
                     entry,
                     onConfirm: ({label, path}) => {
                         const list = parseList(

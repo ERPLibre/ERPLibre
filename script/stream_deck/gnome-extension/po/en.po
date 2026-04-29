@@ -23,3 +23,88 @@ msgstr "Re-scan USB"
 
 msgid "Re-scan local"
 msgstr "Re-scan local"
+
+# pencil indicator
+msgid "(no paths configured — use Add path…)"
+msgstr "(no paths configured — use Add path…)"
+
+msgid "+ Add path…"
+msgstr "+ Add path…"
+
+msgid "⚙ Open prefs"
+msgstr "⚙ Open prefs"
+
+msgid "— Other sessions ({n}) —"
+msgstr "— Other sessions ({n}) —"
+
+msgid "— Legend —"
+msgstr "— Legend —"
+
+msgid "Path / catalogue count"
+msgstr "Path / catalogue count"
+
+msgid "Active session (Claude working)"
+msgstr "Active session (Claude working)"
+
+msgid "Awaiting answer (Stop hook fired)"
+msgstr "Awaiting answer (Stop hook fired)"
+
+msgid "Needs attention (Notification hook)"
+msgstr "Needs attention (Notification hook)"
+
+msgid "Resume"
+msgstr "Resume"
+
+msgid "Fresh"
+msgstr "Fresh"
+
+msgid "Custom…"
+msgstr "Custom…"
+
+msgid "Set window…"
+msgstr "Set window…"
+
+msgid "Accept response (send Enter)"
+msgstr "Accept response (send Enter)"
+
+msgid "Working"
+msgstr "Working"
+
+msgid "Awaiting answer"
+msgstr "Awaiting answer"
+
+msgid "Needs attention"
+msgstr "Needs attention"
+
+msgid "(no description yet)"
+msgstr "(no description yet)"
+
+msgid "Add path"
+msgstr "Add path"
+
+msgid "Edit path"
+msgstr "Edit path"
+
+msgid "Stream Deck"
+msgstr "Stream Deck"
+
+msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
+msgstr "Switch to the target terminal within 3 s — its window will be saved for this session."
+
+msgid "Window saved."
+msgstr "Window saved."
+
+msgid "No focused window — try again."
+msgstr "No focused window — try again."
+
+msgid "Could not send Enter — see script/stream_deck/INSTALL.md"
+msgstr "Could not send Enter — see script/stream_deck/INSTALL.md"
+
+msgid "Focus failed: "
+msgstr "Focus failed: "
+
+msgid "Action failed: "
+msgstr "Action failed: "
+
+msgid "No terminal found. Install gnome-terminal, kgx or xterm."
+msgstr "No terminal found. Install gnome-terminal, kgx or xterm."

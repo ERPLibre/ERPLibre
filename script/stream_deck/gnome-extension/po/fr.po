@@ -23,3 +23,88 @@ msgstr "Re-scan USB"
 
 msgid "Re-scan local"
 msgstr "Re-scan local"
+
+# pencil indicator
+msgid "(no paths configured — use Add path…)"
+msgstr "(aucun chemin configuré — utilisez Ajouter un chemin…)"
+
+msgid "+ Add path…"
+msgstr "+ Ajouter un chemin…"
+
+msgid "⚙ Open prefs"
+msgstr "⚙ Ouvrir les préférences"
+
+msgid "— Other sessions ({n}) —"
+msgstr "— Autres sessions ({n}) —"
+
+msgid "— Legend —"
+msgstr "— Légende —"
+
+msgid "Path / catalogue count"
+msgstr "Nombre de chemins / catalogue"
+
+msgid "Active session (Claude working)"
+msgstr "Session active (Claude travaille)"
+
+msgid "Awaiting answer (Stop hook fired)"
+msgstr "En attente de réponse (hook Stop)"
+
+msgid "Needs attention (Notification hook)"
+msgstr "Attention requise (hook Notification)"
+
+msgid "Resume"
+msgstr "Reprendre"
+
+msgid "Fresh"
+msgstr "Nouveau"
+
+msgid "Custom…"
+msgstr "Personnalisé…"
+
+msgid "Set window…"
+msgstr "Définir la fenêtre…"
+
+msgid "Accept response (send Enter)"
+msgstr "Accepter la réponse (envoyer Entrée)"
+
+msgid "Working"
+msgstr "Travaille"
+
+msgid "Awaiting answer"
+msgstr "En attente"
+
+msgid "Needs attention"
+msgstr "Attention requise"
+
+msgid "(no description yet)"
+msgstr "(aucune description)"
+
+msgid "Add path"
+msgstr "Ajouter un chemin"
+
+msgid "Edit path"
+msgstr "Modifier le chemin"
+
+msgid "Stream Deck"
+msgstr "Stream Deck"
+
+msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
+msgstr "Basculez vers le bon terminal en 3 s — sa fenêtre sera enregistrée pour cette session."
+
+msgid "Window saved."
+msgstr "Fenêtre enregistrée."
+
+msgid "No focused window — try again."
+msgstr "Aucune fenêtre active — réessayez."
+
+msgid "Could not send Enter — see script/stream_deck/INSTALL.md"
+msgstr "Impossible d'envoyer Entrée — voir script/stream_deck/INSTALL.md"
+
+msgid "Focus failed: "
+msgstr "Échec du focus : "
+
+msgid "Action failed: "
+msgstr "Action échouée : "
+
+msgid "No terminal found. Install gnome-terminal, kgx or xterm."
+msgstr "Aucun terminal trouvé. Installez gnome-terminal, kgx ou xterm."

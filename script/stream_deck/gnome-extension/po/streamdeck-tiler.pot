@@ -23,3 +23,88 @@ msgstr ""
 
 msgid "Re-scan local"
 msgstr ""
+
+# pencil indicator
+msgid "(no paths configured — use Add path…)"
+msgstr ""
+
+msgid "+ Add path…"
+msgstr ""
+
+msgid "⚙ Open prefs"
+msgstr ""
+
+msgid "— Other sessions ({n}) —"
+msgstr ""
+
+msgid "— Legend —"
+msgstr ""
+
+msgid "Path / catalogue count"
+msgstr ""
+
+msgid "Active session (Claude working)"
+msgstr ""
+
+msgid "Awaiting answer (Stop hook fired)"
+msgstr ""
+
+msgid "Needs attention (Notification hook)"
+msgstr ""
+
+msgid "Resume"
+msgstr ""
+
+msgid "Fresh"
+msgstr ""
+
+msgid "Custom…"
+msgstr ""
+
+msgid "Set window…"
+msgstr ""
+
+msgid "Accept response (send Enter)"
+msgstr ""
+
+msgid "Working"
+msgstr ""
+
+msgid "Awaiting answer"
+msgstr ""
+
+msgid "Needs attention"
+msgstr ""
+
+msgid "(no description yet)"
+msgstr ""
+
+msgid "Add path"
+msgstr ""
+
+msgid "Edit path"
+msgstr ""
+
+msgid "Stream Deck"
+msgstr ""
+
+msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
+msgstr ""
+
+msgid "Window saved."
+msgstr ""
+
+msgid "No focused window — try again."
+msgstr ""
+
+msgid "Could not send Enter — see script/stream_deck/INSTALL.md"
+msgstr ""
+
+msgid "Focus failed: "
+msgstr ""
+
+msgid "Action failed: "
+msgstr ""
+
+msgid "No terminal found. Install gnome-terminal, kgx or xterm."
+msgstr ""

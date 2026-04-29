@@ -379,3 +379,9 @@ claude_install_hooks_dry_run:
 .PHONY: claude_uninstall_hooks
 claude_uninstall_hooks:
 	@$(CLAUDE_HOOKS_INSTALLER) --remove
+
+# ---------- streamdeck-tiler i18n ----------
+
+.PHONY: streamdeck_tiler_compile_locale
+streamdeck_tiler_compile_locale:
+	@python3 $(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py
