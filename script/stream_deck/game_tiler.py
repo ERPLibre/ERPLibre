@@ -1177,11 +1177,43 @@ def _draw_layout_preview(draw, w, h, windows, slot_num=None):
             fill=(60, 90, 130),
         )
     if slot_num is not None:
-        try:
-            font = ImageFont.load_default(size=14)
-        except TypeError:
-            font = ImageFont.load_default()
+        font = _load_label_font(14)
         draw.text((3, 1), str(slot_num), fill=(255, 220, 0), font=font)
+
+
+# Pillow's `load_default()` returns a tiny Latin-1 bitmap that
+# renders missing glyphs as boxes — French accents, Spotify's "▶"
+# etc. all break visually. Cache one TrueType font that ships on
+# Debian / Fedora / Arch (DejaVu) and fall back to PIL's default
+# only when it is genuinely missing.
+_FONT_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+)
+_FONT_PATH = None
+for _candidate in _FONT_CANDIDATES:
+    if os.path.isfile(_candidate):
+        _FONT_PATH = _candidate
+        break
+
+
+def _load_label_font(fs):
+    """Return a font sized `fs` with broad Unicode coverage."""
+    if _FONT_PATH:
+        try:
+            return ImageFont.truetype(_FONT_PATH, fs)
+        except (OSError, IOError):
+            pass
+    try:
+        return ImageFont.load_default(size=fs)
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def set_key(deck, key, color, text="", icon=None, extra_draw=None):
@@ -1199,10 +1231,7 @@ def set_key(deck, key, color, text="", icon=None, extra_draw=None):
     if text and (icon is None or _show_labels):
         base_fs = 20 if len(text) <= 2 else 14 if len(text) <= 4 else 11
         fs = max(6, int(round(base_fs * _font_scale)))
-        try:
-            font = ImageFont.load_default(size=fs)
-        except TypeError:
-            font = ImageFont.load_default()
+        font = _load_label_font(fs)
         bbox = draw.textbbox((0, 0), text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         draw.text(
