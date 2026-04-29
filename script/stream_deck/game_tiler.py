@@ -107,6 +107,12 @@ COLOR_ACTIVE = (255, 200, 0)
 COLOR_OK = (0, 200, 60)
 COLOR_ERR = (200, 0, 0)
 
+# How long the OK / ERR flash takes over the deck after a button
+# press. Short = snappier; the value is shared by the input lockout
+# in handle_key, the render-time overlay, and the loop that clears
+# it once expired.
+RESULT_FLASH_SEC = 0.5
+
 # Claude session indicator colours (mirrors GNOME extension badge palette).
 COLOR_CLAUDE_ACTIVE = (46, 125, 50)     # green
 COLOR_CLAUDE_WORKING = (0, 131, 143)    # cyan / teal
@@ -1524,7 +1530,8 @@ class Tiler:
             return
 
         # Block input during result flash
-        if self.last_result and time.monotonic() - self.result_time < 1.5:
+        if (self.last_result and time.monotonic() - self.result_time
+                < RESULT_FLASH_SEC):
             return
 
         if self.mode == MODE_IDLE:
@@ -2185,7 +2192,7 @@ class Tiler:
         # Result flash
         if self.last_result:
             elapsed = time.monotonic() - self.result_time
-            if elapsed < 1.5:
+            if elapsed < RESULT_FLASH_SEC:
                 color = COLOR_OK if self.last_result == "ok" else COLOR_ERR
                 label = "OK!" if self.last_result == "ok" else "ERR"
                 for key in range(self.total_keys):
@@ -2723,7 +2730,7 @@ class Tiler:
             with self.lock:
                 if self.last_result:
                     elapsed = now - self.result_time
-                    if elapsed >= 1.5:
+                    if elapsed >= RESULT_FLASH_SEC:
                         self.render()
                 elif self.mode == MODE_TIMER_LIST:
                     # Auto-refresh every 2s to update elapsed time labels
