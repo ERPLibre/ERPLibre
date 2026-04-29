@@ -8,9 +8,10 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {parseList, serializeList} from '../lib/settings.js';
-import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, formatPosition,
-    spawnDetached} from '../lib/spawn.js';
-import {buildFilmLabel, defaultFilmEntry} from '../lib/film-helpers.js';
+import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
+    formatPosition, spawnDetached} from '../lib/spawn.js';
+import {buildFilmLabel, defaultFilmEntry, isSpotifyUrl, normaliseKind}
+    from '../lib/film-helpers.js';
 import {FilmDialog} from '../ui/film-dialog.js';
 import {makeBadgedIcon} from '../lib/badges.js';
 import {logInfo, logWarn} from '../lib/log.js';
@@ -69,12 +70,32 @@ class FilmIndicator extends PanelMenu.Button {
         const films = parseList(this._settings.get_string('films'));
         if (!films.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no films — use + Add film)', {reactive: false}));
+                '(no media — use + Add media)', {reactive: false}));
         } else {
-            for (const film of films) this.menu.addMenuItem(this._makeRow(film));
+            const videos = films.filter(
+                f => normaliseKind(f.kind) === 'video');
+            const audio = films.filter(
+                f => normaliseKind(f.kind) === 'audio');
+            if (videos.length) {
+                this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                    `— Videos (${videos.length}) —`,
+                    {reactive: false}));
+                for (const film of videos)
+                    this.menu.addMenuItem(this._makeRow(film));
+            }
+            if (audio.length) {
+                if (videos.length)
+                    this.menu.addMenuItem(
+                        new PopupMenu.PopupSeparatorMenuItem());
+                this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                    `— Audio (${audio.length}) —`,
+                    {reactive: false}));
+                for (const film of audio)
+                    this.menu.addMenuItem(this._makeRow(film));
+            }
         }
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const add = new PopupMenu.PopupMenuItem('+ Add film…');
+        const add = new PopupMenu.PopupMenuItem('+ Add media…');
         add.connect('activate', () => this._openAddDialog());
         this.menu.addMenuItem(add);
 
@@ -108,6 +129,13 @@ class FilmIndicator extends PanelMenu.Button {
         vlcItem.connect('activate', () => this._launch(film, 'vlc'));
         sub.menu.addMenuItem(vlcItem);
 
+        if (isSpotifyUrl(film.url)) {
+            const spotifyItem = new PopupMenu.PopupMenuItem('▶ Spotify');
+            spotifyItem.connect('activate',
+                () => this._launch(film, 'spotify'));
+            sub.menu.addMenuItem(spotifyItem);
+        }
+
         const editItem = new PopupMenu.PopupMenuItem('✎ Edit');
         editItem.connect('activate', () => this._editEntry(film));
         sub.menu.addMenuItem(editItem);
@@ -120,9 +148,13 @@ class FilmIndicator extends PanelMenu.Button {
             await this._launchMpvTracked(film);
             return;
         }
-        const argv = player === 'vlc'
-            ? buildVlcArgv(film.url, film.position || '')
-            : buildBrowserArgv(film.url);
+        let argv;
+        if (player === 'vlc')
+            argv = buildVlcArgv(film.url, film.position || '');
+        else if (player === 'spotify')
+            argv = buildSpotifyArgv(film.url);
+        else
+            argv = buildBrowserArgv(film.url);
         await spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
     }
 
@@ -213,7 +245,7 @@ class FilmIndicator extends PanelMenu.Button {
 
     _openAddDialog() {
         const dlg = new FilmDialog({
-            title: 'Add film',
+            title: 'Add media',
             onConfirm: data => {
                 const list = parseList(this._settings.get_string('films'));
                 list.push(defaultFilmEntry(data));
@@ -225,7 +257,7 @@ class FilmIndicator extends PanelMenu.Button {
 
     _editEntry(entry) {
         const dlg = new FilmDialog({
-            title: 'Edit film',
+            title: 'Edit media',
             entry,
             onConfirm: data => {
                 const list = parseList(this._settings.get_string('films'));

@@ -47,6 +47,17 @@ export function buildMpvArgv(url, position) {
     return argv;
 }
 
+/**
+ * Open a Spotify URI (`spotify:track:…`, `https://open.spotify.com/…`)
+ * via xdg-open so the host's default handler picks it up — typically
+ * the Spotify desktop app when installed, falling back to the web
+ * player. Returning a single argv keeps the spawn path uniform with
+ * the other media launchers.
+ */
+export function buildSpotifyArgv(url) {
+    return ['xdg-open', String(url)];
+}
+
 export function buildVlcArgv(url, position) {
     const startArg = (() => {
         if (!position || String(position).trim() === '') return '';

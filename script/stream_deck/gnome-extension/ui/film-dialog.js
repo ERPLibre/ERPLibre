@@ -3,7 +3,8 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
-import {validatePositionInput} from '../lib/film-helpers.js';
+import {validatePositionInput, guessKind, normaliseKind}
+    from '../lib/film-helpers.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -11,7 +12,7 @@ const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
 export const FilmDialog = GObject.registerClass(
 {GTypeName: `SDT_FilmDialog_${_GTYPE_SUFFIX}`},
 class FilmDialog extends ModalDialog {
-    _init({title = 'Add film', entry = null, onConfirm, onDelete}) {
+    _init({title = 'Add media', entry = null, onConfirm, onDelete}) {
         super._init({styleClass: 'streamdeck-tiler-dialog'});
         this._onConfirm = onConfirm;
         this._onDelete = onDelete;
@@ -29,7 +30,30 @@ class FilmDialog extends ModalDialog {
 
         this._urlEntry = new St.Entry({hint_text: 'URL (required)',
             text: entry?.url ?? ''});
+        this._urlEntry.clutter_text?.connect?.('text-changed',
+            () => this._maybeAutoKind());
         box.add_child(this._urlEntry);
+
+        // Kind selector — Video / Audio. Auto-detected from URL on
+        // text-changed, but user can override before saving.
+        this._kind = entry?.kind
+            ? normaliseKind(entry.kind)
+            : guessKind(entry?.url ?? '');
+        const kindRow = new St.BoxLayout({vertical: false,
+            style: 'spacing: 8px;'});
+        kindRow.add_child(new St.Label({text: 'Kind:'}));
+        this._kindVideoBtn = new St.Button({label: 'Video',
+            style_class: 'streamdeck-tiler-btn'});
+        this._kindAudioBtn = new St.Button({label: 'Audio',
+            style_class: 'streamdeck-tiler-btn'});
+        this._kindVideoBtn.connect('clicked',
+            () => this._setKind('video'));
+        this._kindAudioBtn.connect('clicked',
+            () => this._setKind('audio'));
+        kindRow.add_child(this._kindVideoBtn);
+        kindRow.add_child(this._kindAudioBtn);
+        box.add_child(kindRow);
+        this._refreshKindButtons();
 
         this._epEntry = new St.Entry({hint_text: 'Episode (e.g. S2E5)',
             text: entry?.episode ?? ''});
@@ -69,7 +93,33 @@ class FilmDialog extends ModalDialog {
             name, url,
             episode: this._epEntry.get_text(),
             position,
+            kind: normaliseKind(this._kind),
         });
         this.close();
+    }
+
+    _setKind(kind) {
+        this._kind = normaliseKind(kind);
+        this._userPickedKind = true;
+        this._refreshKindButtons();
+    }
+
+    _maybeAutoKind() {
+        if (this._userPickedKind) return;
+        const guess = guessKind(this._urlEntry.get_text());
+        if (guess !== this._kind) {
+            this._kind = guess;
+            this._refreshKindButtons();
+        }
+    }
+
+    _refreshKindButtons() {
+        const accent = 'background: #3477b8; color: white;'
+            + ' padding: 2px 8px; border-radius: 4px;';
+        const dim = 'opacity: 0.6; padding: 2px 8px;';
+        this._kindVideoBtn.style =
+            this._kind === 'video' ? accent : dim;
+        this._kindAudioBtn.style =
+            this._kind === 'audio' ? accent : dim;
     }
 });

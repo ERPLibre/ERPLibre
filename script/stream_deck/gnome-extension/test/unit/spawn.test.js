@@ -5,6 +5,7 @@ import {
     buildBrowserArgv,
     buildMpvArgv,
     buildVlcArgv,
+    buildSpotifyArgv,
     parsePosition,
     formatPosition,
 } from '../../lib/spawn.js';
@@ -79,6 +80,15 @@ test('buildVlcArgv wraps with yt-dlp resolver shell command', () => {
 test('buildVlcArgv embeds --start-time when position set', () => {
     const argv = buildVlcArgv('https://x', '00:01:23');
     assert.match(argv[2], /exec vlc --start-time=83/);
+});
+
+test('buildSpotifyArgv hands the URI to xdg-open', () => {
+    assert.deepEqual(
+        buildSpotifyArgv('spotify:track:abc'),
+        ['xdg-open', 'spotify:track:abc']);
+    assert.deepEqual(
+        buildSpotifyArgv('https://open.spotify.com/track/abc'),
+        ['xdg-open', 'https://open.spotify.com/track/abc']);
 });
 
 test('buildVlcArgv passes URL via $1 (no quoting hell)', () => {
