@@ -147,9 +147,9 @@ export async function runMigrationGjs(settings, log = console.log) {
 }
 
 export const SCHEMA_KEYS = [
-    'enable-controller','enable-pencil','enable-film',
+    'enable-controller','enable-pencil','enable-film','enable-media',
     'enable-erplibre','enable-network','enable-device',
-    'button-order','paths','films','instances','recent-paths',
+    'button-order','paths','films','media','instances','recent-paths',
     'terminal-claude-cmd','erplibre-auto-detect','erplibre-local-pattern',
     'network-cidrs','network-ssh-user','network-use-nmap',
     'network-read-ssh-config','network-auto-refresh-sec',

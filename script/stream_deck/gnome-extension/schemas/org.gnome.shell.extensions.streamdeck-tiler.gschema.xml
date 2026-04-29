@@ -6,14 +6,15 @@
     <!-- Per-indicator toggles -->
     <key name="enable-controller" type="b"><default>true</default><summary>Enable controller indicator</summary></key>
     <key name="enable-pencil"     type="b"><default>true</default><summary>Enable pencil indicator</summary></key>
-    <key name="enable-film"       type="b"><default>true</default><summary>Enable film indicator</summary></key>
+    <key name="enable-film"       type="b"><default>true</default><summary>Enable film indicator (legacy alias for enable-media; kept for downgrade safety)</summary></key>
+    <key name="enable-media"      type="b"><default>true</default><summary>Enable media indicator (replaces enable-film since schema v2)</summary></key>
     <key name="enable-erplibre"   type="b"><default>true</default><summary>Enable ERPLibre indicator</summary></key>
     <key name="enable-network"    type="b"><default>true</default><summary>Enable network indicator</summary></key>
     <key name="enable-device"     type="b"><default>true</default><summary>Enable device indicator</summary></key>
 
     <!-- Top-bar ordering -->
     <key name="button-order" type="as">
-      <default>['device','network','erplibre','film','pencil','controller']</default>
+      <default>['device','network','erplibre','media','pencil','controller']</default>
       <summary>Order of indicators left to right in the top bar</summary>
     </key>
     <key name="panel-box" type="s">
@@ -23,7 +24,8 @@
 
     <!-- Catalogues (JSON serialised) -->
     <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
-    <key name="films"        type="s"><default>"[]"</default><summary>Films catalogue (JSON array)</summary></key>
+    <key name="films"        type="s"><default>"[]"</default><summary>Legacy media catalogue (JSON array). Replaced by `media` in schema v2; kept for downgrade safety.</summary></key>
+    <key name="media"        type="s"><default>"[]"</default><summary>Media catalogue (JSON array of video / audio entries with `kind` field)</summary></key>
     <key name="instances"    type="s"><default>"[]"</default><summary>ERPLibre instances catalogue (JSON array)</summary></key>
     <key name="recent-paths" type="s"><default>"[]"</default><summary>Recently opened paths (JSON array, capped at 10)</summary></key>
 

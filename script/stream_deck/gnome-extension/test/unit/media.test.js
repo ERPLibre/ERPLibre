@@ -1,24 +1,24 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildFilmLabel, defaultFilmEntry, validatePositionInput,
+import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
     isSpotifyUrl, guessKind, normaliseKind}
-    from '../../lib/film-helpers.js';
+    from '../../lib/media-helpers.js';
 
-test('buildFilmLabel joins fields with bullets', () => {
+test('buildMediaLabel joins fields with bullets', () => {
     assert.equal(
-        buildFilmLabel({name: 'Foundation', episode: 'S2E5',
+        buildMediaLabel({name: 'Foundation', episode: 'S2E5',
             position: '01:23:45'}),
         'Foundation · S2E5 · 01:23:45');
     assert.equal(
-        buildFilmLabel({name: 'Solo', episode: '', position: ''}),
+        buildMediaLabel({name: 'Solo', episode: '', position: ''}),
         'Solo');
     assert.equal(
-        buildFilmLabel({name: 'Solo', episode: 'E1', position: ''}),
+        buildMediaLabel({name: 'Solo', episode: 'E1', position: ''}),
         'Solo · E1');
 });
 
-test('defaultFilmEntry stamps id + defaults', () => {
-    const f = defaultFilmEntry({name: 'X', url: 'https://x'});
+test('defaultMediaEntry stamps id + defaults', () => {
+    const f = defaultMediaEntry({name: 'X', url: 'https://x'});
     assert.match(f.id, /^[0-9a-f]{8}-/);
     assert.equal(f.name, 'X');
     assert.equal(f.url, 'https://x');
@@ -65,14 +65,14 @@ test('normaliseKind: collapses to video unless explicitly audio', () => {
     assert.equal(normaliseKind(undefined), 'video');
 });
 
-test('defaultFilmEntry: auto-tags spotify URL as audio', () => {
-    const e = defaultFilmEntry({name: 'song',
+test('defaultMediaEntry: auto-tags spotify URL as audio', () => {
+    const e = defaultMediaEntry({name: 'song',
         url: 'https://open.spotify.com/track/abc'});
     assert.equal(e.kind, 'audio');
 });
 
-test('defaultFilmEntry: explicit kind wins', () => {
-    const e = defaultFilmEntry({name: 'video',
+test('defaultMediaEntry: explicit kind wins', () => {
+    const e = defaultMediaEntry({name: 'video',
         url: 'https://example.com/song.mp3', kind: 'video'});
     assert.equal(e.kind, 'video');
 });

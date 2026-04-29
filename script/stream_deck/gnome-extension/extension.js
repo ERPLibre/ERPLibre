@@ -21,12 +21,13 @@ import {Debouncer, gitPull, gitCommitPush} from './lib/git-sync.js';
 import {setGettext} from './lib/i18n.js';
 import {ClaudeStateWatcher} from './lib/claude-state.js';
 import {listMpvEntriesSync, sendMpvCommand} from './lib/mpv-state.js';
+import {runSchemaMigrations} from './lib/migrations.js';
 import {indicatorDescriptor as controllerDescriptor}
     from './indicators/controller.js';
 import {indicatorDescriptor as pencilDescriptor}
     from './indicators/pencil.js';
-import {indicatorDescriptor as filmDescriptor}
-    from './indicators/film.js';
+import {indicatorDescriptor as mediaDescriptor}
+    from './indicators/media.js';
 import {indicatorDescriptor as erplibreDescriptor}
     from './indicators/erplibre.js';
 import {indicatorDescriptor as networkDescriptor}
@@ -87,6 +88,11 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="player"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
+    <method name="OpenMedia">
+      <arg type="s" direction="in" name="media_id"/>
+      <arg type="s" direction="in" name="player"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
     <method name="OpenInstance">
       <arg type="s" direction="in" name="id"/>
       <arg type="s" direction="in" name="action"/>
@@ -102,6 +108,9 @@ const IFACE_XML = `
       <arg type="s" direction="out" name="json"/>
     </method>
     <method name="ListFilms">
+      <arg type="s" direction="out" name="json"/>
+    </method>
+    <method name="ListMedia">
       <arg type="s" direction="out" name="json"/>
     </method>
     <method name="ListInstances">
@@ -162,6 +171,12 @@ export default class StreamDeckTilerExtension extends Extension {
 
         this.#settings = this.getSettings();
         setGettext((s) => this.gettext ? this.gettext(s) : s);
+        // Sync schema migrations must run BEFORE indicators load
+        // (they read enable-${id} keys that the migrations may
+        // have just populated). The async legacy-JSON migration
+        // can stay fire-and-forget.
+        runSchemaMigrations(this.#settings, m =>
+            console.log(`[StreamDeckTiler] schema: ${m}`));
         runMigrationGjs(this.#settings).catch(e =>
             console.log(`[StreamDeckTiler] migration failed: ${e.message}`));
 
@@ -176,8 +191,8 @@ export default class StreamDeckTilerExtension extends Extension {
             if (repo) gitPull(repo).then(() => this._syncImport(repo));
         }
 
-        const watchKeys = ['paths','films','instances','icon-overrides',
-            'enable-controller','enable-pencil','enable-film','enable-erplibre',
+        const watchKeys = ['paths','media','instances','icon-overrides',
+            'enable-controller','enable-pencil','enable-media','enable-erplibre',
             'enable-network','enable-device','button-order'];
         for (const k of watchKeys) {
             const sig = this.#settings.connect(`changed::${k}`,
@@ -197,7 +212,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this.#registry = new IndicatorRegistry();
         this.#registry.register(controllerDescriptor);
         this.#registry.register(pencilDescriptor);
-        this.#registry.register(filmDescriptor);
+        this.#registry.register(mediaDescriptor);
         this.#registry.register(erplibreDescriptor);
         this.#registry.register(networkDescriptor);
         this.#registry.register(deviceDescriptor);
@@ -450,7 +465,8 @@ export default class StreamDeckTilerExtension extends Extension {
     // ---------- D-Bus method extensions ----------
 
     ListPaths()    { return this.#settings.get_string('paths'); }
-    ListFilms()    { return this.#settings.get_string('films'); }
+    ListFilms()    { return this.#settings.get_string('media'); }
+    ListMedia()    { return this.#settings.get_string('media'); }
     ListInstances(){ return this.#settings.get_string('instances'); }
 
     OpenPath(path) {
@@ -462,11 +478,13 @@ export default class StreamDeckTilerExtension extends Extension {
         return true;
     }
 
-    OpenFilm(filmId, player) {
-        const ind = this.#indicators.get('film');
+    OpenFilm(filmId, player) { return this.OpenMedia(filmId, player); }
+
+    OpenMedia(mediaId, player) {
+        const ind = this.#indicators.get('media');
         if (!ind) return false;
-        const all = JSON.parse(this.#settings.get_string('films') || '[]');
-        const film = all.find(f => f.id === filmId);
+        const all = JSON.parse(this.#settings.get_string('media') || '[]');
+        const film = all.find(f => f.id === mediaId);
         if (!film) return false;
         ind._launch(film, player === 'mpv' ? 'mpv' : 'browser');
         return true;

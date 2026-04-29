@@ -10,7 +10,8 @@ import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings,
     parseList, serializeList}
     from './lib/settings.js';
 import {readLogTail, clearLog} from './lib/log.js';
-import {defaultFilmEntry} from './lib/film-helpers.js';
+import {defaultMediaEntry as defaultFilmEntry}
+    from './lib/media-helpers.js';
 
 const INDICATORS = [
     {id: 'controller', label: 'Controller'},
@@ -434,7 +435,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
                     : 'No YouTube tabs found in Firefox session.');
             return;
         }
-        const films = parseList(settings.get_string('films'));
+        const films = parseList(settings.get_string('media'));
         const existing = new Set(films.map(f => (f.url || '').trim()));
         let added = 0;
         for (const e of entries) {
@@ -446,7 +447,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             added += 1;
         }
         if (added > 0) {
-            settings.set_string('films', serializeList(films));
+            settings.set_string('media', serializeList(films));
         }
         const skipped = entries.length - added;
         this._showImportToast(button,

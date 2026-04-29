@@ -10,9 +10,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
     formatPosition, spawnDetached} from '../lib/spawn.js';
-import {buildFilmLabel, defaultFilmEntry, isSpotifyUrl, normaliseKind}
-    from '../lib/film-helpers.js';
-import {FilmDialog} from '../ui/film-dialog.js';
+import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind}
+    from '../lib/media-helpers.js';
+import {MediaDialog} from '../ui/media-dialog.js';
 import {makeBadgedIcon} from '../lib/badges.js';
 import {logInfo, logWarn} from '../lib/log.js';
 import {writeMpvEntry, deleteMpvEntry, listMpvEntriesSync}
@@ -25,17 +25,17 @@ function _notify(title, body) {
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
 
-export const FilmIndicator = GObject.registerClass(
-{GTypeName: `SDT_FilmIndicator_${_GTYPE_SUFFIX}`},
-class FilmIndicator extends PanelMenu.Button {
+export const MediaIndicator = GObject.registerClass(
+{GTypeName: `SDT_MediaIndicator_${_GTYPE_SUFFIX}`},
+class MediaIndicator extends PanelMenu.Button {
     _init({extension, openPrefs, iconName = 'video-x-generic-symbolic'} = {}) {
-        super._init(0.0, 'Stream Deck Film');
+        super._init(0.0, 'Stream Deck Media');
         this._extension = extension;
         this._openPrefs = openPrefs;
         this._settings = extension.getSettings();
         this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
         this.add_child(this._badged.actor);
-        this._sig = this._settings.connect('changed::films',
+        this._sig = this._settings.connect('changed::media',
             () => { this._rebuildMenu(); this._refreshBadge(); });
         // Refresh on menu open so the ▶ "playing" indicator picks up
         // mpv state changes without polling.
@@ -61,13 +61,13 @@ class FilmIndicator extends PanelMenu.Button {
             this._badged.setBadges([]);
             return;
         }
-        const films = parseList(this._settings.get_string('films'));
+        const films = parseList(this._settings.get_string('media'));
         this._badged.setBadges([{count: films.length}]);
     }
 
     _rebuildMenu() {
         this.menu.removeAll();
-        const films = parseList(this._settings.get_string('films'));
+        const films = parseList(this._settings.get_string('media'));
         if (!films.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                 '(no media — use + Add media)', {reactive: false}));
@@ -115,7 +115,7 @@ class FilmIndicator extends PanelMenu.Button {
         const playing = this._isPlaying(film.id);
         const prefix = playing ? '▶ ' : '';
         const sub = new PopupMenu.PopupSubMenuMenuItem(
-            `${prefix}${buildFilmLabel(film)}`);
+            `${prefix}${buildMediaLabel(film)}`);
 
         const browserItem = new PopupMenu.PopupMenuItem('▶ Browser');
         browserItem.connect('activate', () => this._launch(film, 'browser'));
@@ -229,12 +229,12 @@ class FilmIndicator extends PanelMenu.Button {
             const seconds = Math.floor(parseFloat(m[1]));
             if (!Number.isFinite(seconds) || seconds <= 0) return;
             const formatted = formatPosition(seconds);
-            const list = parseList(this._settings.get_string('films'));
+            const list = parseList(this._settings.get_string('media'));
             const i = list.findIndex(e => e.id === film.id);
             if (i < 0) return;
             if (list[i].position === formatted) return;
             list[i].position = formatted;
-            this._settings.set_string('films', serializeList(list));
+            this._settings.set_string('media', serializeList(list));
             logInfo('film',
                 `position updated for ${film.id} -> ${formatted}`);
         } catch (e) {
@@ -244,33 +244,33 @@ class FilmIndicator extends PanelMenu.Button {
     }
 
     _openAddDialog() {
-        const dlg = new FilmDialog({
+        const dlg = new MediaDialog({
             title: 'Add media',
             onConfirm: data => {
-                const list = parseList(this._settings.get_string('films'));
-                list.push(defaultFilmEntry(data));
-                this._settings.set_string('films', serializeList(list));
+                const list = parseList(this._settings.get_string('media'));
+                list.push(defaultMediaEntry(data));
+                this._settings.set_string('media', serializeList(list));
             },
         });
         dlg.open();
     }
 
     _editEntry(entry) {
-        const dlg = new FilmDialog({
+        const dlg = new MediaDialog({
             title: 'Edit media',
             entry,
             onConfirm: data => {
-                const list = parseList(this._settings.get_string('films'));
+                const list = parseList(this._settings.get_string('media'));
                 const i = list.findIndex(e => e.id === entry.id);
                 if (i >= 0) {
                     list[i] = {...list[i], ...data};
-                    this._settings.set_string('films', serializeList(list));
+                    this._settings.set_string('media', serializeList(list));
                 }
             },
             onDelete: () => {
-                const list = parseList(this._settings.get_string('films'))
+                const list = parseList(this._settings.get_string('media'))
                     .filter(e => e.id !== entry.id);
-                this._settings.set_string('films', serializeList(list));
+                this._settings.set_string('media', serializeList(list));
             },
         });
         dlg.open();
@@ -278,8 +278,8 @@ class FilmIndicator extends PanelMenu.Button {
 });
 
 export const indicatorDescriptor = {
-    id: 'film',
-    displayName: 'Film',
+    id: 'media',
+    displayName: 'Media',
     defaultEnabled: true,
-    ctor: (opts) => new FilmIndicator(opts),
+    ctor: (opts) => new MediaIndicator(opts),
 };

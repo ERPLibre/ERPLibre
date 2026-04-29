@@ -1,21 +1,21 @@
 /**
- * Film helpers. Pure JS so they can be tested via node --test without
- * pulling in GJS imports.
+ * Media helpers (video + audio entries). Pure JS so they can be
+ * tested via node --test without pulling in GJS imports.
  *
- * The GJS indicator class lives in indicators/film.js and imports from
- * here.
+ * The GJS indicator class lives in indicators/media.js and imports
+ * from here.
  */
 
 import {uuid4} from './settings.js';
 
-export function buildFilmLabel(entry) {
+export function buildMediaLabel(entry) {
     const parts = [entry?.name || ''];
     if (entry?.episode && entry.episode.trim() !== '') parts.push(entry.episode);
     if (entry?.position && entry.position.trim() !== '') parts.push(entry.position);
     return parts.filter(Boolean).join(' · ');
 }
 
-export function defaultFilmEntry({name = '', url = '', episode = '',
+export function defaultMediaEntry({name = '', url = '', episode = '',
     position = '', kind = ''} = {}) {
     return {id: uuid4(), name, url, episode, position,
         kind: kind || guessKind(url)};
@@ -51,3 +51,10 @@ export function guessKind(url) {
 export function normaliseKind(kind) {
     return kind === 'audio' ? 'audio' : 'video';
 }
+
+// Backwards-compat aliases — older callers (and a few tests) still
+// reference the film-prefixed helpers.
+export {
+    buildMediaLabel as buildFilmLabel,
+    defaultMediaEntry as defaultFilmEntry,
+};
