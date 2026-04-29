@@ -153,6 +153,7 @@ def _load_claude_sessions():
             "cwd": d.get("cwd", ""),
             "description": d.get("description", "")
                 or d.get("last_prompt", ""),
+            "notification_message": d.get("notification_message", ""),
             "status": status,
             "ts": ts,
         })
@@ -2045,9 +2046,17 @@ class Tiler:
             action_keys.add(cs['accept'])
         text_keys = [k for k in range(self.total_keys)
                      if k not in action_keys]
-        desc = (session or {}).get('description') \
-            or (session or {}).get('last_prompt') or ''
-        chunks = _chunk_text_for_cells(desc, len(text_keys))
+        # When the session needs the user (red/yellow), prefer the
+        # notification text so the deck shows what Claude is asking
+        # rather than the stale topic description.
+        if (session and session.get('status')
+                in ('awaiting_notification', 'awaiting_stop')
+                and session.get('notification_message')):
+            text_to_show = session['notification_message']
+        else:
+            text_to_show = (session or {}).get('description') \
+                or (session or {}).get('last_prompt') or ''
+        chunks = _chunk_text_for_cells(text_to_show, len(text_keys))
         chunk_by_key = dict(zip(text_keys, chunks))
 
         for key in range(self.total_keys):

@@ -165,11 +165,22 @@ def main() -> None:
         "description": existing.get("description") or "",
         "last_prompt": existing.get("last_prompt") or "",
         "window_id": int(existing.get("window_id") or 0),
+        "notification_message":
+            existing.get("notification_message") or "",
         TS_ACTIVE: int(existing.get(TS_ACTIVE) or 0),
         TS_STOP: int(existing.get(TS_STOP) or 0),
         TS_NOTIFICATION: int(existing.get(TS_NOTIFICATION) or 0),
     }
     record[field] = now
+
+    if event == "Notification":
+        msg = (payload.get("message") or "").strip()
+        if msg:
+            record["notification_message"] = msg[:200]
+    elif event == "UserPromptSubmit":
+        # User answered: clear the pending notification text so the
+        # next awaiting state starts from a clean slate.
+        record["notification_message"] = ""
 
     # Refresh the stored window id only on user-driven events: those
     # fire while the terminal is focused. Stop/Notification can fire

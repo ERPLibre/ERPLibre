@@ -67,12 +67,15 @@ export function parseStateEntry(raw) {
         ? raw.description : '';
     const last_prompt = typeof raw.last_prompt === 'string'
         ? raw.last_prompt : '';
+    const notification_message =
+        typeof raw.notification_message === 'string'
+            ? raw.notification_message : '';
 
     return {
         session_id, pid, cwd, status,
         ts_active, ts_stop, ts_notification,
         ts: max,
-        description, last_prompt,
+        description, last_prompt, notification_message,
     };
 }
 

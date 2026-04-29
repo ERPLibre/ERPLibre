@@ -431,6 +431,14 @@ try {
                 const desc = session.description ||
                     session.last_prompt || _('(no description yet)');
                 labelBox.add_child(new St.Label({text: desc}));
+                if ((session.status === 'awaiting_notification'
+                        || session.status === 'awaiting_stop')
+                        && session.notification_message) {
+                    labelBox.add_child(new St.Label({
+                        text: `❓ ${session.notification_message}`,
+                        style: 'font-size: 0.9em;',
+                    }));
+                }
                 const meta = `${stateLabel} · ${_shortId(session.session_id)}`;
                 labelBox.add_child(new St.Label({
                     text: meta,
