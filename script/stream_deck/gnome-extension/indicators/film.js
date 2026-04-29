@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -7,11 +8,12 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {parseList, serializeList} from '../lib/settings.js';
-import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, spawnDetached}
-    from '../lib/spawn.js';
+import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, formatPosition,
+    runProcess, spawnDetached} from '../lib/spawn.js';
 import {buildFilmLabel, defaultFilmEntry} from '../lib/film-helpers.js';
 import {FilmDialog} from '../ui/film-dialog.js';
 import {makeBadgedIcon} from '../lib/badges.js';
+import {logInfo, logWarn} from '../lib/log.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -97,14 +99,55 @@ class FilmIndicator extends PanelMenu.Button {
     }
 
     async _launch(film, player) {
-        let argv;
-        if (player === 'mpv')
-            argv = buildMpvArgv(film.url, film.position || '');
-        else if (player === 'vlc')
-            argv = buildVlcArgv(film.url, film.position || '');
-        else
-            argv = buildBrowserArgv(film.url);
+        if (player === 'mpv') {
+            // Wait for mpv so we can read its watch-later file when
+            // the user quits and bump the film's `position` field.
+            const argv = buildMpvArgv(film.url, film.position || '');
+            const result = await runProcess(argv,
+                {notify: _notify, title: 'Stream Deck'});
+            if (result.ok) this._updateMpvPosition(film);
+            return;
+        }
+        const argv = player === 'vlc'
+            ? buildVlcArgv(film.url, film.position || '')
+            : buildBrowserArgv(film.url);
         await spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
+    }
+
+    _updateMpvPosition(film) {
+        try {
+            if (!film?.url || !film?.id) return;
+            // mpv hashes the playback URL as upper-case MD5 hex and
+            // stores `start=<seconds>` in the watch-later file.
+            const hash = GLib.compute_checksum_for_string(
+                GLib.ChecksumType.MD5, film.url, -1).toUpperCase();
+            const path = `${GLib.get_user_config_dir()}`
+                + `/mpv/watch_later/${hash}`;
+            if (!GLib.file_test(path, GLib.FileTest.EXISTS)) {
+                logInfo('film',
+                    `mpv left no watch-later for ${film.url}`);
+                return;
+            }
+            const [ok, contents] = GLib.file_get_contents(path);
+            if (!ok) return;
+            const text = new TextDecoder().decode(contents);
+            const m = text.match(/^start=([\d.]+)/m);
+            if (!m) return;
+            const seconds = Math.floor(parseFloat(m[1]));
+            if (!Number.isFinite(seconds) || seconds <= 0) return;
+            const formatted = formatPosition(seconds);
+            const list = parseList(this._settings.get_string('films'));
+            const i = list.findIndex(e => e.id === film.id);
+            if (i < 0) return;
+            if (list[i].position === formatted) return;
+            list[i].position = formatted;
+            this._settings.set_string('films', serializeList(list));
+            logInfo('film',
+                `position updated for ${film.id} -> ${formatted}`);
+        } catch (e) {
+            logWarn('film',
+                `position update failed: ${e.message || e}`);
+        }
     }
 
     _openAddDialog() {

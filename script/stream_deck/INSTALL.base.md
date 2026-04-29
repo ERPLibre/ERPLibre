@@ -91,6 +91,42 @@ dans l'onglet Log des préférences quand yt-dlp manque.
 <!-- [end] -->
 
 <!-- [en] -->
+### mpv keyboard shortcuts (default bindings)
+<!-- [fr] -->
+### Raccourcis clavier mpv (bindings par défaut)
+<!-- [end] -->
+
+<!-- [common] -->
+| Key            | Action                                       |
+|----------------|----------------------------------------------|
+| `Space` / `p`  | Pause / play toggle                          |
+| `q`            | Quit (saves position via watch-later)        |
+| `Shift-Q`      | Quit and save explicitly                     |
+| `←` / `→`      | Seek -5 s / +5 s                             |
+| `↑` / `↓`      | Seek +1 min / -1 min                         |
+| `Page Up/Down` | Seek ±10 min                                 |
+| `m`            | Mute toggle                                  |
+| `f`            | Fullscreen toggle                            |
+| `XF86AudioPlay`| Play / pause (multimedia keyboard)           |
+<!-- [end] -->
+
+<!-- [en] -->
+The film launcher passes `--save-position-on-quit=yes`, so quitting
+mpv (any of the keys above, or closing the window) writes
+`start=<seconds>` to `~/.config/mpv/watch_later/<MD5_OF_URL>`. The
+extension reads that file when mpv exits and updates the entry's
+`position` field — the next launch (mpv, browser or VLC) honours
+that timestamp.
+<!-- [fr] -->
+Le lanceur film passe `--save-position-on-quit=yes` ; quitter mpv
+(une des touches ci-dessus, ou fermer la fenêtre) écrit
+`start=<secondes>` dans `~/.config/mpv/watch_later/<MD5_DE_URL>`.
+L'extension relit ce fichier à la sortie de mpv et met à jour le
+champ `position` de l'entrée — le prochain lancement (mpv, browser
+ou VLC) honore ce timestamp.
+<!-- [end] -->
+
+<!-- [en] -->
 ## Auto-accept Claude prompts (Wayland)
 <!-- [fr] -->
 ## Auto-accepter les invites Claude (Wayland)

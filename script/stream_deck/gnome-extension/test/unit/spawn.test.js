@@ -40,6 +40,7 @@ test('buildMpvArgv with position', () => {
     assert.deepEqual(
         buildMpvArgv('https://x', '00:01:23'),
         ['mpv', '--script-opts=ytdl_hook-ytdl_path=yt-dlp',
+         '--save-position-on-quit=yes',
          '--start=00:01:23', 'https://x']
     );
 });
@@ -47,7 +48,8 @@ test('buildMpvArgv with position', () => {
 test('buildMpvArgv without position', () => {
     assert.deepEqual(
         buildMpvArgv('https://x', ''),
-        ['mpv', '--script-opts=ytdl_hook-ytdl_path=yt-dlp', 'https://x']
+        ['mpv', '--script-opts=ytdl_hook-ytdl_path=yt-dlp',
+         '--save-position-on-quit=yes', 'https://x']
     );
 });
 
@@ -55,6 +57,12 @@ test('buildMpvArgv always pins ytdl backend to yt-dlp', () => {
     const argv = buildMpvArgv('https://x', '');
     assert.ok(argv.some(a => a.includes('ytdl_path=yt-dlp')),
         `expected yt-dlp in argv, got ${argv}`);
+});
+
+test('buildMpvArgv enables save-position-on-quit', () => {
+    const argv = buildMpvArgv('https://x', '');
+    assert.ok(argv.includes('--save-position-on-quit=yes'),
+        `expected save-position arg in ${argv}`);
 });
 
 test('buildVlcArgv with hh:mm:ss position', () => {
