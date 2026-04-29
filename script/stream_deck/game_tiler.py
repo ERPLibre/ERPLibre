@@ -113,6 +113,12 @@ COLOR_ERR = (200, 0, 0)
 # it once expired.
 RESULT_FLASH_SEC = 0.5
 
+# Auto-cancel tiling mode after this many seconds of inactivity, so a
+# half-started TILE selection (first corner picked, second never
+# clicked) doesn't lock the deck on the tiling grid forever. Reset on
+# any tiling key press.
+TILING_IDLE_TIMEOUT_SEC = 5.0
+
 # Claude session indicator colours (mirrors GNOME extension badge palette).
 COLOR_CLAUDE_ACTIVE = (46, 125, 50)     # green
 COLOR_CLAUDE_WORKING = (0, 131, 143)    # cyan / teal
@@ -1270,6 +1276,7 @@ class Tiler:
         self.result_time = 0
         self._claude_session_sid = None  # active session in MODE_CLAUDE_SESSION
         self._mpv_session_pid = None     # active mpv pid in MODE_MPV_SESSION
+        self._tiling_last_touch = 0.0    # monotonic ts of last tiling input
         self.dbus_ok = _check_dbus_available()
         # Timer state
         self.timers = []  # list of dicts from _list_tracker_timers
@@ -1764,9 +1771,13 @@ class Tiler:
             self.corner1 = None
             self.corner2 = None
             self.last_result = None
+            self._tiling_last_touch = time.monotonic()
             self.render()
 
     def _handle_tiling_key(self, key):
+        # Bump the inactivity timer so the auto-cancel below does
+        # not fire while the user is actively picking corners.
+        self._tiling_last_touch = time.monotonic()
         col = key % self.cols
         row = key // self.cols
         if self.corner1 is None:
@@ -1788,6 +1799,7 @@ class Tiler:
             self._flag_err(
                 f"TileWindow({self.grid_cols}x{self.grid_rows} "
                 f"{c1},{r1}-{c2},{r2}) failed via D-Bus")
+        self._tiling_last_touch = 0.0
         self.mode = MODE_IDLE
         self.corner1 = None
         self.corner2 = None
@@ -2761,6 +2773,18 @@ class Tiler:
                     elapsed = now - self.result_time
                     if elapsed >= RESULT_FLASH_SEC:
                         self.render()
+                elif (self.mode == MODE_TILING
+                        and self._tiling_last_touch > 0
+                        and (now - self._tiling_last_touch
+                             >= TILING_IDLE_TIMEOUT_SEC)):
+                    # Idle too long while picking corners — drop back
+                    # to the idle layout without touching the focused
+                    # window.
+                    self.mode = MODE_IDLE
+                    self.corner1 = None
+                    self.corner2 = None
+                    self._tiling_last_touch = 0.0
+                    self.render()
                 elif self.mode == MODE_TIMER_LIST:
                     # Auto-refresh every 2s to update elapsed time labels
                     if now - last_timer_refresh >= 2.0:
