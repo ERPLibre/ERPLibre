@@ -2,7 +2,7 @@
   "uuid": "streamdeck-tiler@technolibre.ca",
   "name": "Stream Deck Tiler",
   "description": "D-Bus interface for window tiling from Stream Deck",
-  "shell-version": ["45", "46", "47", "48"],
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
   "version": 1,
   "url": "https://github.com/ERPLibre/erplibre",
   "gettext-domain": "streamdeck-tiler",
