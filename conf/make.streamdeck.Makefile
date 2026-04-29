@@ -154,6 +154,11 @@ streamdeck_translator_unittest:
 	@python3 -m unittest \
 		discover -s ./script/stream_deck -p "test_translator.py" -v
 
+.PHONY: streamdeck_tiler_unittest
+streamdeck_tiler_unittest:
+	@python3 -m unittest \
+		discover -s ./script/stream_deck -p "test_game_tiler*.py" -v
+
 .PHONY: streamdeck_translator_stream
 streamdeck_translator_stream:
 	@./script/stream_deck/translator_stream.py

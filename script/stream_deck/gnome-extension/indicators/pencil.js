@@ -60,36 +60,8 @@ try {
         BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
     const {_} = await import('../lib/i18n.js');
-
-    const _normPath = p => String(p || '').replace(/\/+$/, '');
-
-    /** True if cwd is the exact same dir as base, or a subdir of it. */
-    const _cwdMatchesPath = (cwd, base) => {
-        const c = _normPath(cwd);
-        const b = _normPath(base);
-        if (!c || !b) return false;
-        return c === b || c.startsWith(`${b}/`);
-    };
-
-    /**
-     * For each session, pick the configured path that is the longest
-     * prefix of its cwd. Returns Map<session_id, ownerPath>.
-     * Sessions without a matching path are absent from the map.
-     */
-    const _assignSessionsToPaths = (sessions, paths) => {
-        const owners = new Map();
-        const sortedPaths = paths.slice().sort(
-            (a, b) => _normPath(b.path).length - _normPath(a.path).length);
-        for (const s of sessions) {
-            for (const p of sortedPaths) {
-                if (_cwdMatchesPath(s.cwd, p.path)) {
-                    owners.set(s.session_id, _normPath(p.path));
-                    break;
-                }
-            }
-        }
-        return owners;
-    };
+    const {normPath: _normPath, assignSessionsToPaths: _assignSessionsToPaths} =
+        await import('../lib/pencil-helpers.js');
 
     const _DOT_COLOR_BY_KIND = {
         [BADGE_DEFAULT]: '#3477b8',
