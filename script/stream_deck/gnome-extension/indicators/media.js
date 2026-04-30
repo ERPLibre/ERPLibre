@@ -10,7 +10,8 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
     formatPosition, spawnDetached} from '../lib/spawn.js';
-import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind}
+import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind,
+    nextEpisodeUrl, nextEpisodeLabel}
     from '../lib/media-helpers.js';
 import {MediaDialog} from '../ui/media-dialog.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
@@ -159,11 +160,39 @@ class MediaIndicator extends PanelMenu.Button {
             sub.menu.addMenuItem(spotifyItem);
         }
 
+        if (nextEpisodeUrl(film.url)) {
+            const nextItem = new PopupMenu.PopupMenuItem(
+                _('⏭ Next episode'));
+            nextItem.connect('activate',
+                () => this._addNextEpisode(film));
+            sub.menu.addMenuItem(nextItem);
+        }
+
         const editItem = new PopupMenu.PopupMenuItem(_('✎ Edit'));
         editItem.connect('activate', () => this._editEntry(film));
         sub.menu.addMenuItem(editItem);
 
         return sub;
+    }
+
+    _addNextEpisode(film) {
+        const nextUrl = nextEpisodeUrl(film.url);
+        if (!nextUrl) return;
+        const films = parseList(this._settings.get_string('media'));
+        const idx = films.findIndex(f => f.id === film.id);
+        const newName = nextEpisodeLabel(film.name, film.url, nextUrl);
+        const next = defaultMediaEntry({
+            name: newName,
+            url: nextUrl,
+            episode: '',
+            position: '',
+            kind: normaliseKind(film.kind),
+        });
+        // Insert immediately after the source entry so the user sees
+        // the new row right below the one they clicked.
+        if (idx >= 0) films.splice(idx + 1, 0, next);
+        else films.push(next);
+        this._settings.set_string('media', serializeList(films));
     }
 
     async _launch(film, player) {

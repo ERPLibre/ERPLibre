@@ -838,3 +838,6 @@ msgstr ""
 
 msgid "Summary"
 msgstr ""
+
+msgid "⏭ Next episode"
+msgstr ""

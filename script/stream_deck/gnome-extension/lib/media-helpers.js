@@ -386,6 +386,74 @@ export function normaliseMediaUrl(url) {
         .replace(/\/+$/, '');
 }
 
+/**
+ * Compute the URL of the episode that follows `url` by simple
+ * pattern increment. Returns null when no recognised episode marker
+ * is found. Pure helper, unit-tested.
+ *
+ * Supported URL shapes (most QC-friendly first):
+ *   …/S01E03                 → …/S01E04
+ *   …/s01e03                 → …/s01e04
+ *   …/saison-1/episode-3     → …/saison-1/episode-4
+ *   …/season-1/episode-3     → …/season-1/episode-4
+ *   …/saison1-episode3       → …/saison1-episode4
+ *
+ * Season transitions are intentionally not handled — bumping into a
+ * non-existent episode is the user's signal to manually pick the
+ * next season's first episode.
+ */
+export function nextEpisodeUrl(url) {
+    const raw = String(url || '');
+    if (!raw) return null;
+    const patterns = [
+        // Compact SnnEnn anywhere in the URL.
+        /(S)(\d+)(E)(\d+)/i,
+        // saison-N/episode-N or season-N/episode-N (slash separator).
+        /(saison|season)(-)(\d+)(\/episode-)(\d+)/i,
+        // saisonN-episodeN or saison-N-episode-N (single segment).
+        /(saison|season)(-?)(\d+)(-episode-?)(\d+)/i,
+    ];
+    for (const re of patterns) {
+        const m = re.exec(raw);
+        if (!m) continue;
+        // The episode digits sit in the last capture group of every
+        // pattern above; the rest gets concatenated unchanged.
+        const lastIdx = m.length - 1;
+        const oldEp = m[lastIdx];
+        const next = parseInt(oldEp, 10) + 1;
+        const padded = String(next).padStart(oldEp.length, '0');
+        const head = m.slice(1, lastIdx).join('');
+        const replaced = raw.replace(re, head + padded);
+        return replaced;
+    }
+    return null;
+}
+
+/**
+ * Compute a label suffix that reflects the bumped episode for a
+ * "Next episode" entry. Returns '' when no S{n}E{n} or
+ * episode/saison marker fits the original name.
+ */
+export function nextEpisodeLabel(name, oldUrl, newUrl) {
+    if (!name || !oldUrl || !newUrl) return name || '';
+    const compact = /S(\d+)E(\d+)/i;
+    const oldM = compact.exec(oldUrl);
+    const newM = compact.exec(newUrl);
+    if (oldM && newM) {
+        const tag = `S${newM[1]}E${newM[2]}`;
+        if (compact.test(name)) return name.replace(compact, tag);
+        return `${name} — ${tag}`;
+    }
+    const ep = /episode-?(\d+)/i;
+    const newEp = ep.exec(newUrl);
+    if (newEp) {
+        const tag = `Ép. ${newEp[1]}`;
+        if (ep.test(name)) return name.replace(ep, `episode-${newEp[1]}`);
+        return `${name} — ${tag}`;
+    }
+    return name;
+}
+
 // Backwards-compat aliases — older callers (and a few tests) still
 // reference the film-prefixed helpers.
 export {

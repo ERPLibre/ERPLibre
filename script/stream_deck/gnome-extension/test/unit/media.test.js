@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
-    isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl}
+    isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl,
+    nextEpisodeUrl, nextEpisodeLabel}
     from '../../lib/media-helpers.js';
 
 test('buildMediaLabel joins fields with bullets', () => {
@@ -422,4 +423,61 @@ test('normaliseMediaUrl: apple music album + track inside album', () => {
         normaliseMediaUrl(
             'https://music.apple.com/us/album/some-slug/1234567890?i=99999'),
         'applemusic:album:1234567890:i:99999');
+});
+
+test('nextEpisodeUrl: SnnEnn compact pattern increments', () => {
+    assert.equal(
+        nextEpisodeUrl('https://ici.tou.tv/des-rumeurs-de-la-rue/S01E03'),
+        'https://ici.tou.tv/des-rumeurs-de-la-rue/S01E04');
+    assert.equal(
+        nextEpisodeUrl('https://ici.tou.tv/show/s01e09'),
+        'https://ici.tou.tv/show/s01e10');
+});
+
+test('nextEpisodeUrl: saison-N/episode-N pattern increments', () => {
+    assert.equal(
+        nextEpisodeUrl(
+            'https://noovo.ca/emissions/od/saison-12/episode-3'),
+        'https://noovo.ca/emissions/od/saison-12/episode-4');
+});
+
+test('nextEpisodeUrl: season prefix in English also works', () => {
+    assert.equal(
+        nextEpisodeUrl('https://example.com/show/season-2/episode-9'),
+        'https://example.com/show/season-2/episode-10');
+});
+
+test('nextEpisodeUrl: zero-padded episode keeps padding width', () => {
+    assert.equal(
+        nextEpisodeUrl('https://x/show/S02E09'),
+        'https://x/show/S02E10');
+    assert.equal(
+        nextEpisodeUrl('https://x/show/S02E099'),
+        'https://x/show/S02E100');
+});
+
+test('nextEpisodeUrl: returns null when no episode marker', () => {
+    assert.equal(nextEpisodeUrl('https://ici.tou.tv/des-rumeurs-de-la-rue'),
+        null);
+    assert.equal(nextEpisodeUrl('https://example.com/random/path'), null);
+    assert.equal(nextEpisodeUrl(''), null);
+    assert.equal(nextEpisodeUrl(null), null);
+});
+
+test('nextEpisodeLabel: appends or replaces SnnEnn tag in name', () => {
+    assert.equal(
+        nextEpisodeLabel('Show', 'http://x/S01E03', 'http://x/S01E04'),
+        'Show — S01E04');
+    assert.equal(
+        nextEpisodeLabel('Show — S01E03',
+            'http://x/S01E03', 'http://x/S01E04'),
+        'Show — S01E04');
+});
+
+test('nextEpisodeLabel: appends Ép. tag for episode-N pattern', () => {
+    assert.equal(
+        nextEpisodeLabel('Show',
+            'http://x/saison-1/episode-3',
+            'http://x/saison-1/episode-4'),
+        'Show — Ép. 4');
 });

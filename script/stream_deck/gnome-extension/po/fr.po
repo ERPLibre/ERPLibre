@@ -877,3 +877,6 @@ msgstr "— Récents ({n}) —"
 
 msgid "Summary"
 msgstr "Sommaire"
+
+msgid "⏭ Next episode"
+msgstr "⏭ Prochain épisode"
