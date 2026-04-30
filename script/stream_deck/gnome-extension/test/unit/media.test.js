@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
-    isSpotifyUrl, guessKind, normaliseKind}
+    isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl}
     from '../../lib/media-helpers.js';
 
 test('buildMediaLabel joins fields with bullets', () => {
@@ -75,4 +75,83 @@ test('defaultMediaEntry: explicit kind wins', () => {
     const e = defaultMediaEntry({name: 'video',
         url: 'https://example.com/song.mp3', kind: 'video'});
     assert.equal(e.kind, 'video');
+});
+
+test('normaliseMediaUrl: empty input', () => {
+    assert.equal(normaliseMediaUrl(''), '');
+    assert.equal(normaliseMediaUrl(null), '');
+    assert.equal(normaliseMediaUrl(undefined), '');
+    assert.equal(normaliseMediaUrl('   '), '');
+});
+
+test('normaliseMediaUrl: youtube watch + youtu.be collapse to same key',
+() => {
+    const a = normaliseMediaUrl('https://www.youtube.com/watch?v=abc123');
+    const b = normaliseMediaUrl('https://youtube.com/watch?v=abc123');
+    const c = normaliseMediaUrl('https://m.youtube.com/watch?v=abc123');
+    const d = normaliseMediaUrl('https://music.youtube.com/watch?v=abc123');
+    const e = normaliseMediaUrl('https://youtu.be/abc123');
+    const f = normaliseMediaUrl('https://youtu.be/abc123?t=42');
+    assert.equal(a, 'youtube:abc123');
+    assert.equal(b, 'youtube:abc123');
+    assert.equal(c, 'youtube:abc123');
+    assert.equal(d, 'youtube:abc123');
+    assert.equal(e, 'youtube:abc123');
+    assert.equal(f, 'youtube:abc123');
+});
+
+test('normaliseMediaUrl: youtube tracking params and playlists ignored',
+() => {
+    assert.equal(
+        normaliseMediaUrl(
+            'https://youtube.com/watch?v=abc&list=L&utm_source=foo'),
+        'youtube:abc');
+    assert.equal(
+        normaliseMediaUrl('https://youtube.com/watch?v=abc&t=10s'),
+        'youtube:abc');
+});
+
+test('normaliseMediaUrl: youtube shorts and embed', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.youtube.com/shorts/xyz789'),
+        'youtube:xyz789');
+    assert.equal(
+        normaliseMediaUrl('https://www.youtube.com/embed/xyz789'),
+        'youtube:xyz789');
+});
+
+test('normaliseMediaUrl: spotify URI and web link match', () => {
+    assert.equal(normaliseMediaUrl('spotify:track:xyz'), 'spotify:track:xyz');
+    assert.equal(
+        normaliseMediaUrl('https://open.spotify.com/track/xyz'),
+        'spotify:track:xyz');
+    assert.equal(
+        normaliseMediaUrl('https://open.spotify.com/track/xyz?si=abc'),
+        'spotify:track:xyz');
+});
+
+test('normaliseMediaUrl: spotify supports album / playlist / episode', () => {
+    assert.equal(
+        normaliseMediaUrl('https://open.spotify.com/album/abc'),
+        'spotify:album:abc');
+    assert.equal(
+        normaliseMediaUrl('https://open.spotify.com/playlist/abc'),
+        'spotify:playlist:abc');
+    assert.equal(
+        normaliseMediaUrl('https://open.spotify.com/episode/abc'),
+        'spotify:episode:abc');
+});
+
+test('normaliseMediaUrl: generic URLs lower-case host + drop query', () => {
+    assert.equal(
+        normaliseMediaUrl('HTTPS://Example.COM/A.mp3?utm=foo'),
+        'https://example.com/a.mp3');
+    assert.equal(
+        normaliseMediaUrl('https://example.com/path/'),
+        'https://example.com/path');
+});
+
+test('normaliseMediaUrl: malformed URL falls back to lowercase', () => {
+    assert.equal(normaliseMediaUrl('not a url'), 'not a url');
+    assert.equal(normaliseMediaUrl('Random TEXT'), 'random text');
 });

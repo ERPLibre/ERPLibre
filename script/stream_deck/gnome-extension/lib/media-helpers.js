@@ -52,6 +52,52 @@ export function normaliseKind(kind) {
     return kind === 'audio' ? 'audio' : 'video';
 }
 
+const _YT_HOSTS = /^(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)$/i;
+
+/**
+ * Reduce a media URL to a canonical form so two equivalent links
+ * dedupe to the same key. Strips tracking params and timestamps,
+ * extracts video / track ids when the host is known, lowercases
+ * everything that is not an identifier.
+ */
+export function normaliseMediaUrl(url) {
+    const raw = String(url || '').trim();
+    if (!raw) return '';
+
+    const spURI = /^spotify:([a-z]+):([A-Za-z0-9]+)/i.exec(raw);
+    if (spURI) return `spotify:${spURI[1].toLowerCase()}:${spURI[2]}`;
+
+    let u;
+    try { u = new URL(raw); }
+    catch (_e) { return raw.toLowerCase(); }
+
+    const host = (u.hostname || '').toLowerCase();
+
+    if (_YT_HOSTS.test(host)) {
+        let id = '';
+        if (host.endsWith('youtu.be')) {
+            id = u.pathname.replace(/^\/+/, '').split('/')[0] || '';
+        } else if (u.pathname === '/watch') {
+            id = u.searchParams.get('v') || '';
+        } else if (u.pathname.startsWith('/shorts/')) {
+            id = u.pathname.split('/')[2] || '';
+        } else if (u.pathname.startsWith('/embed/')) {
+            id = u.pathname.split('/')[2] || '';
+        }
+        if (id) return `youtube:${id}`;
+    }
+
+    if (host === 'open.spotify.com') {
+        const m =
+            /^\/(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/
+                .exec(u.pathname);
+        if (m) return `spotify:${m[1]}:${m[2]}`;
+    }
+
+    return `${u.protocol}//${host}${u.pathname.toLowerCase()}`
+        .replace(/\/+$/, '');
+}
+
 // Backwards-compat aliases — older callers (and a few tests) still
 // reference the film-prefixed helpers.
 export {

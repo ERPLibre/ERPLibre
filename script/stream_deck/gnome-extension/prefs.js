@@ -10,7 +10,7 @@ import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings,
     parseList, serializeList}
     from './lib/settings.js';
 import {readLogTail, clearLog} from './lib/log.js';
-import {defaultMediaEntry as defaultFilmEntry}
+import {defaultMediaEntry as defaultFilmEntry, normaliseMediaUrl}
     from './lib/media-helpers.js';
 
 // Labels resolved at fillPreferencesWindow() time so _() is wired.
@@ -670,14 +670,20 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             return;
         }
         const films = parseList(settings.get_string('media'));
-        const existing = new Set(films.map(f => (f.url || '').trim()));
+        // Dedupe on the canonical URL form so the same YouTube video
+        // imported twice — once as youtu.be/X, once as
+        // www.youtube.com/watch?v=X&t=42s — only lands once.
+        const existing = new Set(
+            films.map(f => normaliseMediaUrl(f.url || '')));
         let added = 0;
         for (const e of entries) {
             const url = String(e.url || '').trim();
-            if (!url || existing.has(url)) continue;
+            if (!url) continue;
+            const key = normaliseMediaUrl(url);
+            if (existing.has(key)) continue;
             const name = String(e.title || url).slice(0, 80);
             films.push(defaultFilmEntry({name, url}));
-            existing.add(url);
+            existing.add(key);
             added += 1;
         }
         if (added > 0) {
