@@ -5,7 +5,7 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences}
     from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
-import {setGettext} from './lib/i18n.js';
+import {setGettext, _} from './lib/i18n.js';
 import {exportSettingsAsObj, importSettingsFromObj, resetAllSettings,
     parseList, serializeList}
     from './lib/settings.js';
@@ -13,13 +13,9 @@ import {readLogTail, clearLog} from './lib/log.js';
 import {defaultMediaEntry as defaultFilmEntry}
     from './lib/media-helpers.js';
 
-const INDICATORS = [
-    {id: 'controller', label: 'Controller'},
-    {id: 'pencil',     label: 'Pencil'},
-    {id: 'film',       label: 'Film'},
-    {id: 'erplibre',   label: 'ERPLibre'},
-    {id: 'network',    label: 'Network'},
-    {id: 'device',     label: 'Device'},
+// Labels resolved at fillPreferencesWindow() time so _() is wired.
+const INDICATOR_IDS = [
+    'controller', 'pencil', 'film', 'erplibre', 'network', 'device',
 ];
 
 export default class StreamDeckTilerPrefs extends ExtensionPreferences {
@@ -28,28 +24,37 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         setGettext((s) => this.gettext ? this.gettext(s) : s);
 
         const buttonsPage = new Adw.PreferencesPage({
-            title: 'Buttons',
+            title: _('Buttons'),
             icon_name: 'view-grid-symbolic',
         });
 
         const togglesGroup = new Adw.PreferencesGroup({
-            title: 'Indicators',
-            description: 'Toggle each panel button on or off.',
+            title: _('Indicators'),
+            description: _('Toggle each panel button on or off.'),
         });
-        for (const ind of INDICATORS) {
+        const labels = {
+            controller: _('Controller'),
+            pencil:     _('Pencil'),
+            film:       _('Film'),
+            erplibre:   _('ERPLibre'),
+            network:    _('Network'),
+            device:     _('Device'),
+        };
+        for (const id of INDICATOR_IDS) {
             const row = new Adw.SwitchRow({
-                title: ind.label,
-                subtitle: `Show the ${ind.label.toLowerCase()} indicator in the top bar`,
+                title: labels[id],
+                subtitle: _('Show the {label} indicator in the top bar')
+                    .replace('{label}', labels[id].toLowerCase()),
             });
-            settings.bind(`enable-${ind.id}`, row, 'active',
+            settings.bind(`enable-${id}`, row, 'active',
                 Gio.SettingsBindFlags.DEFAULT);
             togglesGroup.add(row);
         }
         buttonsPage.add(togglesGroup);
 
         const orderGroup = new Adw.PreferencesGroup({
-            title: 'Order in top bar',
-            description: 'Drag rows to change the left-to-right order.',
+            title: _('Order in top bar'),
+            description: _('Drag rows to change the left-to-right order.'),
         });
         buttonsPage.add(orderGroup);
 
@@ -73,54 +78,52 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildAboutPage() {
         const page = new Adw.PreferencesPage({
-            title: 'About', icon_name: 'dialog-information-symbolic',
+            title: _('About'), icon_name: 'dialog-information-symbolic',
         });
 
         const erp = new Adw.PreferencesGroup({
-            title: 'ERPLibre',
-            description:
-                'Community fork of Odoo Community Edition under '
+            title: _('ERPLibre'),
+            description: _('Community fork of Odoo Community Edition under '
                 + 'AGPL-3.0+. Supports Odoo 12 through 18 (default 18.0) '
                 + 'and ships the Stream Deck tooling shown in this '
-                + 'extension.',
+                + 'extension.'),
         });
         page.add(erp);
-        erp.add(this._linkRow('Project page', 'github.com/ERPLibre/ERPLibre',
+        erp.add(this._linkRow(_('Project page'),
+            'github.com/ERPLibre/ERPLibre',
             'https://github.com/ERPLibre/ERPLibre'));
-        erp.add(this._linkRow('Documentation',
+        erp.add(this._linkRow(_('Documentation'),
             'erplibre.readthedocs.io',
             'https://erplibre.readthedocs.io'));
-        erp.add(this._linkRow('Issue tracker',
+        erp.add(this._linkRow(_('Issue tracker'),
             'github.com/ERPLibre/ERPLibre/issues',
             'https://github.com/ERPLibre/ERPLibre/issues'));
 
         const tlc = new Adw.PreferencesGroup({
-            title: 'TechnoLibre',
-            description:
-                'Quebec-based open-source company maintaining ERPLibre '
-                + 'and the Stream Deck integration. Sponsors community '
-                + 'development and offers commercial support.',
+            title: _('TechnoLibre'),
+            description: _('Quebec-based open-source company maintaining '
+                + 'ERPLibre and the Stream Deck integration. Sponsors '
+                + 'community development and offers commercial support.'),
         });
         page.add(tlc);
-        tlc.add(this._linkRow('Website', 'technolibre.ca',
+        tlc.add(this._linkRow(_('Website'), 'technolibre.ca',
             'https://technolibre.ca'));
-        tlc.add(this._linkRow('Contact', 'gnome-extension@technolibre.ca',
+        tlc.add(this._linkRow(_('Contact'), 'gnome-extension@technolibre.ca',
             'mailto:gnome-extension@technolibre.ca'));
 
         const plugin = new Adw.PreferencesGroup({
-            title: 'Stream Deck integration',
-            description:
-                'GNOME shell extension + Python deck driver under '
-                + 'script/stream_deck/. Hooks Claude sessions, mpv, VLC, '
-                + 'gallery server and Mutter window tiling onto the '
-                + 'Elgato hardware.',
+            title: _('Stream Deck integration'),
+            description: _('GNOME shell extension + Python deck driver '
+                + 'under script/stream_deck/. Hooks Claude sessions, mpv, '
+                + 'VLC, gallery server and Mutter window tiling onto the '
+                + 'Elgato hardware.'),
         });
         page.add(plugin);
-        plugin.add(this._linkRow('Source folder',
+        plugin.add(this._linkRow(_('Source folder'),
             'script/stream_deck/gnome-extension/',
             'https://github.com/ERPLibre/ERPLibre/tree/master/'
                 + 'script/stream_deck/gnome-extension'));
-        plugin.add(this._linkRow('License', 'AGPL-3.0+',
+        plugin.add(this._linkRow(_('License'), 'AGPL-3.0+',
             'https://www.gnu.org/licenses/agpl-3.0.html'));
 
         return page;
@@ -130,7 +133,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const row = new Adw.ActionRow({title, subtitle});
         const btn = new Gtk.LinkButton({
             uri,
-            label: 'Open',
+            label: _('Open'),
             valign: Gtk.Align.CENTER,
         });
         row.add_suffix(btn);
@@ -140,94 +143,97 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildHelpPage() {
         const page = new Adw.PreferencesPage({
-            title: 'Help', icon_name: 'help-about-symbolic',
+            title: _('Help'), icon_name: 'help-about-symbolic',
         });
 
         const badges = new Adw.PreferencesGroup({
-            title: 'Badge colours',
-            description: 'Counts shown beside each top-bar indicator.',
+            title: _('Badge colours'),
+            description: _('Counts shown beside each top-bar indicator.'),
         });
         page.add(badges);
         for (const [title, subtitle] of [
-            ['● Blue — catalogue count',
-                'Paths, decks, instances or media stored in the indicator.'],
-            ['● Green — active session',
-                'Alive Claude session: SessionStart or UserPromptSubmit '
-                + 'fired and the session is between turns.'],
-            ['● Cyan — computing',
-                'PreToolUse hook fired — Claude is running a tool.'],
-            ['● Yellow — awaiting answer',
-                'Stop hook fired — Claude finished its turn and waits '
-                + 'for the next prompt.'],
-            ['● Red — needs attention',
-                'Notification hook fired — Claude needs explicit input '
-                + '(approval, missing tool, etc.).'],
+            [_('● Blue — catalogue count'),
+                _('Paths, decks, instances or media stored in the '
+                    + 'indicator.')],
+            [_('● Green — active session'),
+                _('Alive Claude session: SessionStart or UserPromptSubmit '
+                    + 'fired and the session is between turns.')],
+            [_('● Cyan — computing'),
+                _('PreToolUse hook fired — Claude is running a tool.')],
+            [_('● Yellow — awaiting answer'),
+                _('Stop hook fired — Claude finished its turn and waits '
+                    + 'for the next prompt.')],
+            [_('● Red — needs attention'),
+                _('Notification hook fired — Claude needs explicit input '
+                    + '(approval, missing tool, etc.).')],
         ]) {
             badges.add(new Adw.ActionRow({title, subtitle}));
         }
 
         const hooks = new Adw.PreferencesGroup({
-            title: 'Claude hooks',
-            description:
-                'How the Claude session badges stay in sync with the '
-                + 'agent. Install them once with make claude_install_hooks.',
+            title: _('Claude hooks'),
+            description: _('How the Claude session badges stay in sync '
+                + 'with the agent. Install them once with '
+                + 'make claude_install_hooks.'),
         });
         page.add(hooks);
         for (const [title, subtitle] of [
             ['SessionStart / UserPromptSubmit',
-                'Marks the session as active (green) and captures the '
-                + 'focused window id for terminal focus + Set window.'],
+                _('Marks the session as active (green) and captures the '
+                    + 'focused window id for terminal focus + Set window.')],
             ['PreToolUse',
-                'Marks the session as computing (cyan).'],
+                _('Marks the session as computing (cyan).')],
             ['Stop',
-                'Marks the session as awaiting answer (yellow).'],
+                _('Marks the session as awaiting answer (yellow).')],
             ['Notification',
-                'Marks the session as needs attention (red) and '
-                + 'optionally fires a desktop notification.'],
+                _('Marks the session as needs attention (red) and '
+                    + 'optionally fires a desktop notification.')],
             ['SessionEnd',
-                'Removes the state file when Claude exits cleanly.'],
-            ['Ctrl+C interrupt',
-                'Treated like Stop — the session goes back to '
-                + 'awaiting answer instead of staying computing.'],
+                _('Removes the state file when Claude exits cleanly.')],
+            [_('Ctrl+C interrupt'),
+                _('Treated like Stop — the session goes back to '
+                    + 'awaiting answer instead of staying computing.')],
         ]) {
             hooks.add(new Adw.ActionRow({title, subtitle}));
         }
 
         const interactions = new Adw.PreferencesGroup({
-            title: 'Indicator interactions',
-            description: 'Mouse shortcuts on the top-bar icons.',
+            title: _('Indicator interactions'),
+            description: _('Mouse shortcuts on the top-bar icons.'),
         });
         page.add(interactions);
         for (const [title, subtitle] of [
-            ['Hover',
-                'Shows a tooltip with the per-kind breakdown.'],
-            ['Click on a pencil count badge',
-                'Opens the dropdown filtered by that kind '
-                + '(active / awaiting / notify). A × Clear row at the '
-                + 'top resets the filter.'],
-            ['Click on a session row',
-                'Focuses the terminal window saved at SessionStart.'],
-            ['Set window…',
-                'Re-saves the focused window for that session if the '
-                + 'terminal was reopened or moved.'],
+            [_('Hover'),
+                _('Shows a tooltip with the per-kind breakdown.')],
+            [_('Click on a pencil count badge'),
+                _('Opens the dropdown filtered by that kind '
+                    + '(active / awaiting / notify). A × Clear row at the '
+                    + 'top resets the filter.')],
+            [_('Click on a session row'),
+                _('Focuses the terminal window saved at SessionStart.')],
+            [_('Set window…'),
+                _('Re-saves the focused window for that session if the '
+                    + 'terminal was reopened or moved.')],
         ]) {
             interactions.add(new Adw.ActionRow({title, subtitle}));
         }
 
         const tiler = new Adw.PreferencesGroup({
-            title: 'Tiling on the deck',
-            description:
-                'TILE button on the deck enters a corner-pick mode.',
+            title: _('Tiling on the deck'),
+            description: _('TILE button on the deck enters a corner-pick '
+                + 'mode.'),
         });
         page.add(tiler);
         for (const [title, subtitle] of [
-            ['Pick two corners',
-                'First press selects the top-left of the target tile, '
-                + 'second press selects the bottom-right. The focused '
-                + 'window is moved + resized via the Mutter D-Bus API.'],
-            ['Auto-cancel after 5 s',
-                'If the second corner is never picked, tiling mode '
-                + 'returns to idle without touching the focused window.'],
+            [_('Pick two corners'),
+                _('First press selects the top-left of the target tile, '
+                    + 'second press selects the bottom-right. The focused '
+                    + 'window is moved + resized via the Mutter D-Bus '
+                    + 'API.')],
+            [_('Auto-cancel after 5 s'),
+                _('If the second corner is never picked, tiling mode '
+                    + 'returns to idle without touching the focused '
+                    + 'window.')],
         ]) {
             tiler.add(new Adw.ActionRow({title, subtitle}));
         }
@@ -237,25 +243,25 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildSyncPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Sync', icon_name: 'folder-remote-symbolic',
+            title: _('Sync'), icon_name: 'folder-remote-symbolic',
         });
-        const grp = new Adw.PreferencesGroup({title: 'Git sync'});
+        const grp = new Adw.PreferencesGroup({title: _('Git sync')});
         page.add(grp);
 
-        const enRow = new Adw.SwitchRow({title: 'Enable git sync'});
+        const enRow = new Adw.SwitchRow({title: _('Enable git sync')});
         settings.bind('enable-git-sync', enRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
         grp.add(enRow);
 
         const pathRow = new Adw.EntryRow({
-            title: 'Sync repo path (must contain a git repo)'});
+            title: _('Sync repo path (must contain a git repo)')});
         settings.bind('git-sync-path', pathRow, 'text',
             Gio.SettingsBindFlags.DEFAULT);
         grp.add(pathRow);
 
         const warn = new Adw.ActionRow({
-            title: 'Last write wins on conflict.',
-            subtitle: 'Manual merges may be required.',
+            title: _('Last write wins on conflict.'),
+            subtitle: _('Manual merges may be required.'),
         });
         grp.add(warn);
 
@@ -264,25 +270,27 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildAdvancedPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Advanced', icon_name: 'document-properties-symbolic',
+            title: _('Advanced'), icon_name: 'document-properties-symbolic',
         });
-        const grp = new Adw.PreferencesGroup({title: 'Backup & restore'});
+        const grp = new Adw.PreferencesGroup({title: _('Backup & restore')});
         page.add(grp);
 
-        const exp = new Adw.ActionRow({title: 'Export settings…'});
-        const expBtn = new Gtk.Button({label: 'Export', valign: Gtk.Align.CENTER});
+        const exp = new Adw.ActionRow({title: _('Export settings…')});
+        const expBtn = new Gtk.Button({label: _('Export'),
+            valign: Gtk.Align.CENTER});
         expBtn.connect('clicked', () => this._exportSettings(settings, page));
         exp.add_suffix(expBtn);
         grp.add(exp);
 
-        const imp = new Adw.ActionRow({title: 'Import settings…'});
-        const impBtn = new Gtk.Button({label: 'Import', valign: Gtk.Align.CENTER});
+        const imp = new Adw.ActionRow({title: _('Import settings…')});
+        const impBtn = new Gtk.Button({label: _('Import'),
+            valign: Gtk.Align.CENTER});
         impBtn.connect('clicked', () => this._importSettings(settings, page));
         imp.add_suffix(impBtn);
         grp.add(imp);
 
-        const rst = new Adw.ActionRow({title: 'Reset to defaults'});
-        const rstBtn = new Gtk.Button({label: 'Reset',
+        const rst = new Adw.ActionRow({title: _('Reset to defaults')});
+        const rstBtn = new Gtk.Button({label: _('Reset'),
             valign: Gtk.Align.CENTER, css_classes: ['destructive-action']});
         rstBtn.connect('clicked', () => this._resetAll(settings));
         rst.add_suffix(rstBtn);
@@ -293,8 +301,8 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _exportSettings(settings, parent) {
         const dlg = new Gtk.FileChooserNative({
-            title: 'Export settings', action: Gtk.FileChooserAction.SAVE,
-            accept_label: 'Save', cancel_label: 'Cancel',
+            title: _('Export settings'), action: Gtk.FileChooserAction.SAVE,
+            accept_label: _('Save'), cancel_label: _('Cancel'),
             modal: true, transient_for: parent.get_root?.(),
         });
         dlg.set_current_name('streamdeck-tiler-settings.json');
@@ -313,8 +321,8 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _importSettings(settings, parent) {
         const dlg = new Gtk.FileChooserNative({
-            title: 'Import settings', action: Gtk.FileChooserAction.OPEN,
-            accept_label: 'Open', cancel_label: 'Cancel',
+            title: _('Import settings'), action: Gtk.FileChooserAction.OPEN,
+            accept_label: _('Open'), cancel_label: _('Cancel'),
             modal: true, transient_for: parent.get_root?.(),
         });
         dlg.connect('response', async (_d, response) => {
@@ -390,34 +398,33 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildThemingPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Theming', icon_name: 'preferences-color-symbolic',
+            title: _('Theming'), icon_name: 'preferences-color-symbolic',
         });
 
         const badgeGroup = new Adw.PreferencesGroup({
-            title: 'Badges',
+            title: _('Badges'),
             description:
-                'Count badges shown beside each top-bar indicator icon.',
+                _('Count badges shown beside each top-bar indicator icon.'),
         });
         page.add(badgeGroup);
 
         const enableRow = new Adw.SwitchRow({
-            title: 'Show count badges',
+            title: _('Show count badges'),
             subtitle:
-                'Display the number of items beside each indicator icon.',
+                _('Display the number of items beside each indicator icon.'),
         });
         settings.bind('enable-icon-badges', enableRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
         badgeGroup.add(enableRow);
 
         const orientRow = new Adw.ComboRow({
-            title: 'Stack direction',
-            subtitle:
-                'Vertical: stack beside icon, up to 3, centered when alone.\n'
-                + 'Horizontal: single row beside icon.',
+            title: _('Stack direction'),
+            subtitle: _('Vertical: stack beside icon, up to 3, centered '
+                + 'when alone.\nHorizontal: single row beside icon.'),
         });
         const orientModel = new Gtk.StringList();
-        orientModel.append('Vertical');
-        orientModel.append('Horizontal');
+        orientModel.append(_('Vertical'));
+        orientModel.append(_('Horizontal'));
         orientRow.set_model(orientModel);
         const ORIENTATIONS = ['vertical', 'horizontal'];
         const _applyOrient = () => {
@@ -434,7 +441,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         settings.connect('changed::badge-orientation', _applyOrient);
         badgeGroup.add(orientRow);
 
-        const group = new Adw.PreferencesGroup({title: 'Icon overrides'});
+        const group = new Adw.PreferencesGroup({title: _('Icon overrides')});
         page.add(group);
 
         const indicators = [
@@ -478,11 +485,11 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildDevicePage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Device', icon_name: 'input-tablet-symbolic',
+            title: _('Device'), icon_name: 'input-tablet-symbolic',
         });
-        const opts = new Adw.PreferencesGroup({title: 'Options'});
+        const opts = new Adw.PreferencesGroup({title: _('Options')});
         const refreshRow = new Adw.SpinRow({
-            title: 'Auto-refresh (seconds, 0 = off)',
+            title: _('Auto-refresh (seconds, 0 = off)'),
             adjustment: new Gtk.Adjustment({lower: 0, upper: 86400,
                 step_increment: 60}),
         });
@@ -495,23 +502,23 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildNetworkPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Network', icon_name: 'network-wired-symbolic',
+            title: _('Network'), icon_name: 'network-wired-symbolic',
         });
-        const opts = new Adw.PreferencesGroup({title: 'Options'});
-        const userRow = new Adw.EntryRow({title: 'SSH user (empty = $USER)'});
+        const opts = new Adw.PreferencesGroup({title: _('Options')});
+        const userRow = new Adw.EntryRow({title: _('SSH user (empty = $USER)')});
         settings.bind('network-ssh-user', userRow, 'text',
             Gio.SettingsBindFlags.DEFAULT);
         opts.add(userRow);
-        const sshRow = new Adw.SwitchRow({title: 'Read ~/.ssh/config'});
+        const sshRow = new Adw.SwitchRow({title: _('Read ~/.ssh/config')});
         settings.bind('network-read-ssh-config', sshRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
         opts.add(sshRow);
-        const nmapRow = new Adw.SwitchRow({title: 'Use nmap if available'});
+        const nmapRow = new Adw.SwitchRow({title: _('Use nmap if available')});
         settings.bind('network-use-nmap', nmapRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
         opts.add(nmapRow);
         const refreshRow = new Adw.SpinRow({
-            title: 'Auto-refresh (seconds, 0 = off)',
+            title: _('Auto-refresh (seconds, 0 = off)'),
             adjustment: new Gtk.Adjustment({lower: 0, upper: 86400,
                 step_increment: 60}),
         });
@@ -521,8 +528,8 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         page.add(opts);
 
         const cidrsGroup = new Adw.PreferencesGroup({
-            title: 'CIDR ranges',
-            description: 'Empty list = auto-detect. Edit via dconf-editor.',
+            title: _('CIDR ranges'),
+            description: _('Empty list = auto-detect. Edit via dconf-editor.'),
         });
         page.add(cidrsGroup);
         return page;
@@ -530,24 +537,24 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildErpLibrePage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'ERPLibre', icon_name: 'network-server-symbolic',
+            title: _('ERPLibre'), icon_name: 'network-server-symbolic',
         });
-        const detect = new Adw.PreferencesGroup({title: 'Local detection'});
+        const detect = new Adw.PreferencesGroup({title: _('Local detection')});
         const autoRow = new Adw.SwitchRow({
-            title: 'Auto-detect local instances',
+            title: _('Auto-detect local instances'),
         });
         settings.bind('erplibre-auto-detect', autoRow, 'active',
             Gio.SettingsBindFlags.DEFAULT);
         detect.add(autoRow);
-        const patternRow = new Adw.EntryRow({title: 'Local search pattern'});
+        const patternRow = new Adw.EntryRow({title: _('Local search pattern')});
         settings.bind('erplibre-local-pattern', patternRow, 'text',
             Gio.SettingsBindFlags.DEFAULT);
         detect.add(patternRow);
         page.add(detect);
 
         const remotes = new Adw.PreferencesGroup({
-            title: 'Remote instances',
-            description: 'Edit via the Add instance dialog from the panel button.',
+            title: _('Remote instances'),
+            description: _('Edit via the Add instance dialog from the panel button.'),
         });
         page.add(remotes);
         return page;
@@ -555,27 +562,26 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildFilmPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Film', icon_name: 'video-x-generic-symbolic',
+            title: _('Film'), icon_name: 'video-x-generic-symbolic',
         });
         const group = new Adw.PreferencesGroup({
-            title: 'Films',
-            description: 'Edit via the Add film dialog from the panel button.',
+            title: _('Films'),
+            description: _('Edit via the Add film dialog from the panel button.'),
         });
         page.add(group);
 
         const importGroup = new Adw.PreferencesGroup({
-            title: 'Import from Firefox',
-            description:
-                'Scan every running Firefox profile\'s open tabs and '
-                + 'add YouTube URLs as new film entries '
-                + '(requires python3-lz4).',
+            title: _('Import from Firefox'),
+            description: _('Scan every running Firefox profile\'s open '
+                + 'tabs and add YouTube URLs as new film entries '
+                + '(requires python3-lz4).'),
         });
         const importRow = new Adw.ActionRow({
-            title: 'Import YouTube tabs',
-            subtitle: 'Click to scan now',
+            title: _('Import YouTube tabs'),
+            subtitle: _('Click to scan now'),
         });
         const importBtn = new Gtk.Button({
-            label: 'Import',
+            label: _('Import'),
             valign: Gtk.Align.CENTER,
             css_classes: ['suggested-action'],
         });
@@ -594,7 +600,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             || '.';
         const helper = `${ext}/scripts/firefox_youtube_tabs.py`;
         button.set_sensitive(false);
-        button.set_label('Scanning…');
+        button.set_label(_('Scanning…'));
         try {
             const proc = Gio.Subprocess.new(
                 ['python3', helper],
@@ -614,18 +620,19 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             });
         } catch (e) {
             button.set_sensitive(true);
-            button.set_label('Import');
+            button.set_label(_('Import'));
             this._showImportToast(button,
-                `Spawn failed: ${e.message || e}`);
+                _('Spawn failed: {err}').replace('{err}', e.message || e));
         }
     }
 
     _applyFirefoxImport(settings, button, ok, stdout, stderr) {
         button.set_sensitive(true);
-        button.set_label('Import');
+        button.set_label(_('Import'));
         if (!ok) {
             this._showImportToast(button,
-                `Helper failed: ${(stderr || '').slice(0, 200)}`);
+                _('Helper failed: {err}')
+                    .replace('{err}', (stderr || '').slice(0, 200)));
             return;
         }
         let entries;
@@ -633,14 +640,14 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             entries = JSON.parse(stdout || '[]');
         } catch (_e) {
             this._showImportToast(button,
-                'Helper output not JSON — see prefs Log');
+                _('Helper output not JSON — see prefs Log'));
             return;
         }
         if (!Array.isArray(entries) || !entries.length) {
             this._showImportToast(button,
                 stderr.includes('python3-lz4 not installed')
-                    ? 'Install python3-lz4: sudo apt install python3-lz4'
-                    : 'No YouTube tabs found in Firefox session.');
+                    ? _('Install python3-lz4: sudo apt install python3-lz4')
+                    : _('No YouTube tabs found in Firefox session.'));
             return;
         }
         const films = parseList(settings.get_string('media'));
@@ -658,10 +665,12 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             settings.set_string('media', serializeList(films));
         }
         const skipped = entries.length - added;
-        this._showImportToast(button,
-            `Imported ${added} film${added === 1 ? '' : 's'}`
-            + (skipped > 0 ? ` (${skipped} duplicate${skipped === 1
-                ? '' : 's'} skipped)` : ''));
+        let toast = _('Imported {n} films').replace('{n}', added);
+        if (skipped > 0) {
+            toast += ' '
+                + _('({n} duplicates skipped)').replace('{n}', skipped);
+        }
+        this._showImportToast(button, toast);
     }
 
     _showImportToast(button, message) {
@@ -682,13 +691,13 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildLogPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Log',
+            title: _('Log'),
             icon_name: 'document-properties-symbolic',
         });
         const group = new Adw.PreferencesGroup({
-            title: 'Recent activity',
-            description: 'Last 200 entries from '
-                + '$XDG_STATE_HOME/streamdeck-tiler/log.jsonl',
+            title: _('Recent activity'),
+            description: _('Last 200 entries from '
+                + '$XDG_STATE_HOME/streamdeck-tiler/log.jsonl'),
         });
 
         const buf = new Gtk.TextBuffer();
@@ -710,7 +719,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             try {
                 const entries = await readLogTail(200);
                 if (!entries.length) {
-                    buf.set_text('(empty)', -1);
+                    buf.set_text(_('(empty)'), -1);
                     return;
                 }
                 const text = entries.map(e => {
@@ -722,18 +731,19 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
                 const end = buf.get_end_iter();
                 view.scroll_to_iter(end, 0, false, 0, 0);
             } catch (e) {
-                buf.set_text(`Failed to read log: ${e.message || e}`, -1);
+                buf.set_text(_('Failed to read log: {err}')
+                    .replace('{err}', e.message || e), -1);
             }
         };
 
-        const row = new Adw.ActionRow({title: 'Activity log'});
+        const row = new Adw.ActionRow({title: _('Activity log')});
         const refreshBtn = new Gtk.Button({
-            label: 'Refresh',
+            label: _('Refresh'),
             valign: Gtk.Align.CENTER,
         });
         refreshBtn.connect('clicked', () => refreshLog());
         const clearBtn = new Gtk.Button({
-            label: 'Clear',
+            label: _('Clear'),
             valign: Gtk.Align.CENTER,
             css_classes: ['destructive-action'],
         });
@@ -758,14 +768,14 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildPencilPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: 'Pencil',
+            title: _('Pencil'),
             icon_name: 'document-edit-symbolic',
         });
         const cmdGroup = new Adw.PreferencesGroup({
-            title: 'Default command',
+            title: _('Default command'),
         });
         const cmdRow = new Adw.EntryRow({
-            title: 'Default claude command',
+            title: _('Default claude command'),
         });
         settings.bind('terminal-claude-cmd', cmdRow, 'text',
             Gio.SettingsBindFlags.DEFAULT);
@@ -773,9 +783,9 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         page.add(cmdGroup);
 
         const pathsGroup = new Adw.PreferencesGroup({
-            title: 'Paths',
+            title: _('Paths'),
             description:
-                'Edit via the Add path dialog from the panel button.',
+                _('Edit via the Add path dialog from the panel button.'),
         });
         page.add(pathsGroup);
         return page;

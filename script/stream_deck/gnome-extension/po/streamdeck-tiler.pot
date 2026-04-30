@@ -321,3 +321,487 @@ msgstr ""
 
 msgid "Active sessions"
 msgstr ""
+
+msgid "Buttons"
+msgstr ""
+
+msgid "Indicators"
+msgstr ""
+
+msgid "Toggle each panel button on or off."
+msgstr ""
+
+msgid "Show the {label} indicator in the top bar"
+msgstr ""
+
+msgid "Controller"
+msgstr ""
+
+msgid "Pencil"
+msgstr ""
+
+msgid "Film"
+msgstr ""
+
+msgid "ERPLibre"
+msgstr ""
+
+msgid "Network"
+msgstr ""
+
+msgid "Device"
+msgstr ""
+
+msgid "Order in top bar"
+msgstr ""
+
+msgid "Drag rows to change the left-to-right order."
+msgstr ""
+
+msgid "About"
+msgstr ""
+
+msgid ""
+"Community fork of Odoo Community Edition under AGPL-3.0+. Supports Odoo 12 "
+"through 18 (default 18.0) and ships the Stream Deck tooling shown in this "
+"extension."
+msgstr ""
+
+msgid "Project page"
+msgstr ""
+
+msgid "Documentation"
+msgstr ""
+
+msgid "Issue tracker"
+msgstr ""
+
+msgid "TechnoLibre"
+msgstr ""
+
+msgid ""
+"Quebec-based open-source company maintaining ERPLibre and the Stream Deck "
+"integration. Sponsors community development and offers commercial support."
+msgstr ""
+
+msgid "Website"
+msgstr ""
+
+msgid "Contact"
+msgstr ""
+
+msgid "Stream Deck integration"
+msgstr ""
+
+msgid ""
+"GNOME shell extension + Python deck driver under script/stream_deck/. Hooks "
+"Claude sessions, mpv, VLC, gallery server and Mutter window tiling onto the "
+"Elgato hardware."
+msgstr ""
+
+msgid "Source folder"
+msgstr ""
+
+msgid "License"
+msgstr ""
+
+msgid "Open"
+msgstr ""
+
+msgid "Help"
+msgstr ""
+
+msgid "Badge colours"
+msgstr ""
+
+msgid "Counts shown beside each top-bar indicator."
+msgstr ""
+
+msgid "● Blue — catalogue count"
+msgstr ""
+
+msgid "Paths, decks, instances or media stored in the indicator."
+msgstr ""
+
+msgid "● Green — active session"
+msgstr ""
+
+msgid ""
+"Alive Claude session: SessionStart or UserPromptSubmit fired and the session"
+" is between turns."
+msgstr ""
+
+msgid "● Cyan — computing"
+msgstr ""
+
+msgid "PreToolUse hook fired — Claude is running a tool."
+msgstr ""
+
+msgid "● Yellow — awaiting answer"
+msgstr ""
+
+msgid ""
+"Stop hook fired — Claude finished its turn and waits for the next prompt."
+msgstr ""
+
+msgid "● Red — needs attention"
+msgstr ""
+
+msgid ""
+"Notification hook fired — Claude needs explicit input (approval, missing "
+"tool, etc.)."
+msgstr ""
+
+msgid "Claude hooks"
+msgstr ""
+
+msgid ""
+"How the Claude session badges stay in sync with the agent. Install them once"
+" with make claude_install_hooks."
+msgstr ""
+
+msgid ""
+"Marks the session as active (green) and captures the focused window id for "
+"terminal focus + Set window."
+msgstr ""
+
+msgid "Marks the session as computing (cyan)."
+msgstr ""
+
+msgid "Marks the session as awaiting answer (yellow)."
+msgstr ""
+
+msgid ""
+"Marks the session as needs attention (red) and optionally fires a desktop "
+"notification."
+msgstr ""
+
+msgid "Removes the state file when Claude exits cleanly."
+msgstr ""
+
+msgid "Ctrl+C interrupt"
+msgstr ""
+
+msgid ""
+"Treated like Stop — the session goes back to awaiting answer instead of "
+"staying computing."
+msgstr ""
+
+msgid "Indicator interactions"
+msgstr ""
+
+msgid "Mouse shortcuts on the top-bar icons."
+msgstr ""
+
+msgid "Hover"
+msgstr ""
+
+msgid "Shows a tooltip with the per-kind breakdown."
+msgstr ""
+
+msgid "Click on a pencil count badge"
+msgstr ""
+
+msgid ""
+"Opens the dropdown filtered by that kind (active / awaiting / notify). A × "
+"Clear row at the top resets the filter."
+msgstr ""
+
+msgid "Click on a session row"
+msgstr ""
+
+msgid "Focuses the terminal window saved at SessionStart."
+msgstr ""
+
+msgid ""
+"Re-saves the focused window for that session if the terminal was reopened or"
+" moved."
+msgstr ""
+
+msgid "Tiling on the deck"
+msgstr ""
+
+msgid "TILE button on the deck enters a corner-pick mode."
+msgstr ""
+
+msgid "Pick two corners"
+msgstr ""
+
+msgid ""
+"First press selects the top-left of the target tile, second press selects "
+"the bottom-right. The focused window is moved + resized via the Mutter D-Bus"
+" API."
+msgstr ""
+
+msgid "Auto-cancel after 5 s"
+msgstr ""
+
+msgid ""
+"If the second corner is never picked, tiling mode returns to idle without "
+"touching the focused window."
+msgstr ""
+
+msgid "Sync"
+msgstr ""
+
+msgid "Git sync"
+msgstr ""
+
+msgid "Enable git sync"
+msgstr ""
+
+msgid "Sync repo path (must contain a git repo)"
+msgstr ""
+
+msgid "Last write wins on conflict."
+msgstr ""
+
+msgid "Manual merges may be required."
+msgstr ""
+
+msgid "Advanced"
+msgstr ""
+
+msgid "Backup & restore"
+msgstr ""
+
+msgid "Export settings…"
+msgstr ""
+
+msgid "Import settings…"
+msgstr ""
+
+msgid "Reset to defaults"
+msgstr ""
+
+msgid "Export"
+msgstr ""
+
+msgid "Import"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Export settings"
+msgstr ""
+
+msgid "Import settings"
+msgstr ""
+
+msgid "Theming"
+msgstr ""
+
+msgid "Badges"
+msgstr ""
+
+msgid "Count badges shown beside each top-bar indicator icon."
+msgstr ""
+
+msgid "Show count badges"
+msgstr ""
+
+msgid "Display the number of items beside each indicator icon."
+msgstr ""
+
+msgid "Stack direction"
+msgstr ""
+
+msgid ""
+"Vertical: stack beside icon, up to 3, centered when alone.\n"
+"Horizontal: single row beside icon."
+msgstr ""
+
+msgid "Vertical"
+msgstr ""
+
+msgid "Horizontal"
+msgstr ""
+
+msgid "Icon overrides"
+msgstr ""
+
+msgid "Options"
+msgstr ""
+
+msgid "Auto-refresh (seconds, 0 = off)"
+msgstr ""
+
+msgid "SSH user (empty = $USER)"
+msgstr ""
+
+msgid "Read ~/.ssh/config"
+msgstr ""
+
+msgid "Use nmap if available"
+msgstr ""
+
+msgid "CIDR ranges"
+msgstr ""
+
+msgid "Empty list = auto-detect. Edit via dconf-editor."
+msgstr ""
+
+msgid "Local detection"
+msgstr ""
+
+msgid "Auto-detect local instances"
+msgstr ""
+
+msgid "Local search pattern"
+msgstr ""
+
+msgid "Remote instances"
+msgstr ""
+
+msgid "Edit via the Add instance dialog from the panel button."
+msgstr ""
+
+msgid "Films"
+msgstr ""
+
+msgid "Edit via the Add film dialog from the panel button."
+msgstr ""
+
+msgid "Import from Firefox"
+msgstr ""
+
+msgid ""
+"Scan every running Firefox profile's open tabs and add YouTube URLs as new "
+"film entries (requires python3-lz4)."
+msgstr ""
+
+msgid "Import YouTube tabs"
+msgstr ""
+
+msgid "Click to scan now"
+msgstr ""
+
+msgid "Scanning…"
+msgstr ""
+
+msgid "Spawn failed: {err}"
+msgstr ""
+
+msgid "Helper failed: {err}"
+msgstr ""
+
+msgid "Helper output not JSON — see prefs Log"
+msgstr ""
+
+msgid "Install python3-lz4: sudo apt install python3-lz4"
+msgstr ""
+
+msgid "No YouTube tabs found in Firefox session."
+msgstr ""
+
+msgid "Imported {n} films"
+msgstr ""
+
+msgid "({n} duplicates skipped)"
+msgstr ""
+
+msgid "Log"
+msgstr ""
+
+msgid "Recent activity"
+msgstr ""
+
+msgid "Last 200 entries from $XDG_STATE_HOME/streamdeck-tiler/log.jsonl"
+msgstr ""
+
+msgid "Activity log"
+msgstr ""
+
+msgid "Refresh"
+msgstr ""
+
+msgid "Clear"
+msgstr ""
+
+msgid "(empty)"
+msgstr ""
+
+msgid "Failed to read log: {err}"
+msgstr ""
+
+msgid "Label (optional)"
+msgstr ""
+
+msgid "/path/to/project"
+msgstr ""
+
+msgid "Recent:"
+msgstr ""
+
+msgid "Select project path"
+msgstr ""
+
+msgid "Rename"
+msgstr ""
+
+msgid "description"
+msgstr ""
+
+msgid "Unlock {db}"
+msgstr ""
+
+msgid "Master password"
+msgstr ""
+
+msgid "Unlock"
+msgstr ""
+
+msgid "Add instance"
+msgstr ""
+
+msgid "Name"
+msgstr ""
+
+msgid "URL (https://…)"
+msgstr ""
+
+msgid "Port (8069)"
+msgstr ""
+
+msgid "KeePassXC DB path"
+msgstr ""
+
+msgid "KeePassXC key file (optional)"
+msgstr ""
+
+msgid "YubiKey slot (1, 2, or empty)"
+msgstr ""
+
+msgid "YubiKey serial (optional)"
+msgstr ""
+
+msgid "KeePassXC entry title"
+msgstr ""
+
+msgid "auto_login_method: selenium | xdotool | none"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Name (required)"
+msgstr ""
+
+msgid "URL (required)"
+msgstr ""
+
+msgid "Episode (e.g. S2E5)"
+msgstr ""
+
+msgid "Position (hh:mm:ss or seconds)"
+msgstr ""
+
+msgid "Invalid position format"
+msgstr ""

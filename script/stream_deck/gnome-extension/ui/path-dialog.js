@@ -4,6 +4,7 @@ import St from 'gi://St';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
+import {_} from '../lib/i18n.js';
 
 // See indicators/controller.js for the rationale of the random suffix.
 const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
@@ -11,7 +12,8 @@ const _GTYPE_SUFFIX = Math.floor(Math.random() * 1e9).toString(36);
 export const PathDialog = GObject.registerClass(
 {GTypeName: `SDT_PathDialog_${_GTYPE_SUFFIX}`},
 class PathDialog extends ModalDialog {
-    _init({title = 'Add path', entry = null, recentPaths = [], onConfirm}) {
+    _init({title = _('Add path'), entry = null, recentPaths = [],
+        onConfirm}) {
         super._init({styleClass: 'streamdeck-tiler-dialog'});
         this._onConfirm = onConfirm;
 
@@ -22,14 +24,14 @@ class PathDialog extends ModalDialog {
             style: 'font-weight: bold;'}));
 
         this._labelEntry = new St.Entry({
-            hint_text: 'Label (optional)',
+            hint_text: _('Label (optional)'),
             text: entry?.label ?? '',
         });
         box.add_child(this._labelEntry);
 
         const pathRow = new St.BoxLayout({style: 'spacing: 4px;'});
         this._pathEntry = new St.Entry({
-            hint_text: '/path/to/project',
+            hint_text: _('/path/to/project'),
             text: entry?.path ?? '',
             x_expand: true,
         });
@@ -40,7 +42,7 @@ class PathDialog extends ModalDialog {
         box.add_child(pathRow);
 
         if (recentPaths.length) {
-            box.add_child(new St.Label({text: 'Recent:',
+            box.add_child(new St.Label({text: _('Recent:'),
                 style: 'opacity: 0.7;'}));
             for (const r of recentPaths.slice(0, 5)) {
                 const btn = new St.Button({label: r,
@@ -53,9 +55,9 @@ class PathDialog extends ModalDialog {
         }
 
         this.setButtons([
-            {label: 'Cancel', action: () => this.close(),
+            {label: _('Cancel'), action: () => this.close(),
                 key: Clutter.KEY_Escape},
-            {label: 'Save', action: () => this._confirm(),
+            {label: _('Save'), action: () => this._confirm(),
                 default: true},
         ]);
     }
@@ -66,7 +68,7 @@ class PathDialog extends ModalDialog {
         try {
             proc = Gio.Subprocess.new(
                 ['zenity', '--file-selection', '--directory',
-                    '--title=Select project path'],
+                    `--title=${_('Select project path')}`],
                 Gio.SubprocessFlags.STDOUT_PIPE);
         } catch (e) {
             console.log(`[StreamDeckTiler] zenity not available: ${e.message}`);
