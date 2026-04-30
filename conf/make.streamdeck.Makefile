@@ -153,6 +153,13 @@ streamdeck_tiler_uninstall: streamdeck_tiler_uninstall_extension
 streamdeck_tiler_dev_nested:
 	@$(STREAMDECK_TILER_EXT_SRC)/dev_nested.sh
 
+# Headless-ish smoke test: launch a nested gnome-shell with the
+# extension enabled and verify the D-Bus interface answers. Needs a
+# Wayland host on the dev machine (skipped on bare CI).
+.PHONY: streamdeck_tiler_e2e_nested
+streamdeck_tiler_e2e_nested:
+	@$(STREAMDECK_TILER_EXT_SRC)/test/e2e_nested.sh
+
 # ---------- Translator stack (STT + LLM) ----------
 
 WHISPER_CPP_DIR   := $(HOME)/.local/share/whisper.cpp
