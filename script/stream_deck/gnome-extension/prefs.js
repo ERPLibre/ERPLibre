@@ -67,6 +67,104 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildAdvancedPage(settings));
         window.add(this._buildSyncPage(settings));
         window.add(this._buildLogPage(settings));
+        window.add(this._buildHelpPage());
+    }
+
+    _buildHelpPage() {
+        const page = new Adw.PreferencesPage({
+            title: 'Help', icon_name: 'help-about-symbolic',
+        });
+
+        const badges = new Adw.PreferencesGroup({
+            title: 'Badge colours',
+            description: 'Counts shown beside each top-bar indicator.',
+        });
+        page.add(badges);
+        for (const [title, subtitle] of [
+            ['● Blue — catalogue count',
+                'Paths, decks, instances or media stored in the indicator.'],
+            ['● Green — active session',
+                'Alive Claude session: SessionStart or UserPromptSubmit '
+                + 'fired and the session is between turns.'],
+            ['● Cyan — computing',
+                'PreToolUse hook fired — Claude is running a tool.'],
+            ['● Yellow — awaiting answer',
+                'Stop hook fired — Claude finished its turn and waits '
+                + 'for the next prompt.'],
+            ['● Red — needs attention',
+                'Notification hook fired — Claude needs explicit input '
+                + '(approval, missing tool, etc.).'],
+        ]) {
+            badges.add(new Adw.ActionRow({title, subtitle}));
+        }
+
+        const hooks = new Adw.PreferencesGroup({
+            title: 'Claude hooks',
+            description:
+                'How the Claude session badges stay in sync with the '
+                + 'agent. Install them once with make claude_install_hooks.',
+        });
+        page.add(hooks);
+        for (const [title, subtitle] of [
+            ['SessionStart / UserPromptSubmit',
+                'Marks the session as active (green) and captures the '
+                + 'focused window id for terminal focus + Set window.'],
+            ['PreToolUse',
+                'Marks the session as computing (cyan).'],
+            ['Stop',
+                'Marks the session as awaiting answer (yellow).'],
+            ['Notification',
+                'Marks the session as needs attention (red) and '
+                + 'optionally fires a desktop notification.'],
+            ['SessionEnd',
+                'Removes the state file when Claude exits cleanly.'],
+            ['Ctrl+C interrupt',
+                'Treated like Stop — the session goes back to '
+                + 'awaiting answer instead of staying computing.'],
+        ]) {
+            hooks.add(new Adw.ActionRow({title, subtitle}));
+        }
+
+        const interactions = new Adw.PreferencesGroup({
+            title: 'Indicator interactions',
+            description: 'Mouse shortcuts on the top-bar icons.',
+        });
+        page.add(interactions);
+        for (const [title, subtitle] of [
+            ['Hover',
+                'Shows a tooltip with the per-kind breakdown.'],
+            ['Click on a pencil count badge',
+                'Opens the dropdown filtered by that kind '
+                + '(active / awaiting / notify). A × Clear row at the '
+                + 'top resets the filter.'],
+            ['Click on a session row',
+                'Focuses the terminal window saved at SessionStart.'],
+            ['Set window…',
+                'Re-saves the focused window for that session if the '
+                + 'terminal was reopened or moved.'],
+        ]) {
+            interactions.add(new Adw.ActionRow({title, subtitle}));
+        }
+
+        const tiler = new Adw.PreferencesGroup({
+            title: 'Tiling on the deck',
+            description:
+                'TILE button on the deck enters a corner-pick mode.',
+        });
+        page.add(tiler);
+        for (const [title, subtitle] of [
+            ['Pick two corners',
+                'First press selects the top-left of the target tile, '
+                + 'second press selects the bottom-right. The focused '
+                + 'window is moved + resized via the Mutter D-Bus API.'],
+            ['Auto-cancel after 5 s',
+                'If the second corner is never picked, tiling mode '
+                + 'returns to idle without touching the focused window.'],
+        ]) {
+            tiler.add(new Adw.ActionRow({title, subtitle}));
+        }
+
+        return page;
     }
 
     _buildSyncPage(settings) {
