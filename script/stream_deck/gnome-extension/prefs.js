@@ -104,8 +104,8 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         page.add(tlc);
         tlc.add(this._linkRow('Website', 'technolibre.ca',
             'https://technolibre.ca'));
-        tlc.add(this._linkRow('Contact', 'mathben@technolibre.ca',
-            'mailto:mathben@technolibre.ca'));
+        tlc.add(this._linkRow('Contact', 'gnome-extension@technolibre.ca',
+            'mailto:gnome-extension@technolibre.ca'));
 
         const plugin = new Adw.PreferencesGroup({
             title: 'Stream Deck integration',
