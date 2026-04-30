@@ -170,6 +170,33 @@ class ClaudeLabelTest(unittest.TestCase):
         self.assertEqual(GT._claude_label({}, max_chars=18), "")
 
 
+class WrapButtonLabelTest(unittest.TestCase):
+    def test_short_one_line(self):
+        self.assertEqual(GT._wrap_button_label("Hi"), "Hi")
+
+    def test_breaks_at_space(self):
+        self.assertEqual(
+            GT._wrap_button_label("Add path", max_chars=8, max_lines=2),
+            "Add path")
+        self.assertEqual(
+            GT._wrap_button_label("Add new database",
+                max_chars=8, max_lines=2),
+            "Add new\ndatabase")
+
+    def test_hard_break_long_word(self):
+        out = GT._wrap_button_label("supercalifragilistic",
+            max_chars=8, max_lines=2)
+        # Two lines of <= 8 chars, last truncated with ellipsis.
+        self.assertEqual(out.count("\n"), 1)
+        for line in out.split("\n"):
+            self.assertLessEqual(len(line), 8)
+        self.assertTrue(out.endswith("…"))
+
+    def test_empty_input(self):
+        self.assertEqual(GT._wrap_button_label(""), "")
+        self.assertEqual(GT._wrap_button_label(None), "")
+
+
 class TodoMenuParseTest(unittest.TestCase):
     def test_simple_block(self):
         text = (

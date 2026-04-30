@@ -1004,7 +1004,9 @@ export default class StreamDeckTilerExtension extends Extension {
             const stackMap = this._stackingIndexMap(windows);
             const out = windows.map(w => {
                 const rect = w.get_frame_rect();
+                const id = w.get_stable_sequence?.() ?? w.get_id?.() ?? 0;
                 return {
+                    id: String(id),
                     wm_class: w.get_wm_class() || '',
                     title: w.get_title() || '',
                     x: rect.x, y: rect.y, w: rect.width, h: rect.height,

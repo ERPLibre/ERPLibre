@@ -503,6 +503,33 @@ def _wrap_chunk(text, line_chars=6):
         cut = line_chars
     return f"{text[:cut].rstrip()}\n{text[cut:].lstrip()}"
 
+
+def _wrap_button_label(text, max_chars=8, max_lines=2):
+    """Wrap `text` for a deck button with up to `max_lines` lines of
+    `max_chars` glyphs each. Breaks at spaces when possible, hard-
+    breaks long words, and appends a trailing ellipsis when the
+    label still overflows."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    lines = []
+    rest = text
+    while rest and len(lines) < max_lines:
+        if len(rest) <= max_chars:
+            lines.append(rest)
+            rest = ""
+            break
+        cut = rest.rfind(" ", 0, max_chars + 1)
+        if cut < 1:
+            cut = max_chars
+        lines.append(rest[:cut].rstrip())
+        rest = rest[cut:].lstrip()
+    if rest:
+        last = lines[-1]
+        room = max_chars - 1
+        lines[-1] = (last[:room] if len(last) >= room else last) + "…"
+    return "\n".join(lines)
+
 MODE_IDLE = "idle"
 MODE_TILING = "tiling"
 MODE_TIMER_LIST = "timer_list"
@@ -1688,12 +1715,16 @@ class Tiler:
             self._flag_err("Could not capture TODO terminal window id")
             self.render()
             return
-        live = _list_mutter_window_ids() or set()
-        # Drop registrations whose windows have closed.
-        self.todo_terminals = [
-            t for t in self.todo_terminals
-            if not live or str(t.get("window_id")) in live
-        ]
+        live = _list_mutter_window_ids()
+        if live:
+            # Drop registrations whose windows have closed; if the
+            # extension answer is empty or lacks ids, leave the list
+            # untouched so the freshly-captured terminal is not
+            # incorrectly purged.
+            self.todo_terminals = [
+                t for t in self.todo_terminals
+                if str(t.get("window_id")) in live
+            ]
         existing = next((t for t in self.todo_terminals
                          if str(t.get("window_id")) == str(wid)), None)
         if existing is None:
@@ -1710,9 +1741,14 @@ class Tiler:
         _save_todo_terminals(self.todo_terminals)
 
     def _refresh_todo_terminals(self):
-        """Drop registrations whose windows have closed."""
+        """Drop registrations whose windows have closed. Skip the
+        purge entirely when the extension's ListWindows answer comes
+        back empty or without ids — older extension builds did not
+        ship the ``id`` field, and a stale-looking 'no live windows'
+        snapshot would otherwise nuke a freshly-registered terminal
+        the user just opened."""
         live = _list_mutter_window_ids()
-        if live is None:
+        if not live:
             return
         before = len(self.todo_terminals)
         self.todo_terminals = [
@@ -2726,25 +2762,15 @@ class Tiler:
         return out
 
     def _todo_session_keys(self):
-        """Layout: row 0 has BACK, ENTER, FOCUS, FORGET. Subsequent
-        rows hold digits 1..9 then 0 in reading order starting at the
-        next row's first cell. Returns ``None`` when the deck does
-        not have enough keys to fit the numpad."""
-        if self.total_keys < 14 or self.rows < 2:
+        """Layout: row 0 has BACK, ENTER, FOCUS, FORGET on the four
+        leftmost cells. Every cell from the start of row 1 to the
+        end of the deck is reserved for parsed menu items (or the
+        numpad fallback). Returns ``None`` when the deck has fewer
+        than two rows."""
+        if self.rows < 2 or self.cols < 4:
             return None
         keys = {"back": 0, "enter": 1, "focus": 2, "forget": 3}
-        digits = "1234567890"
-        digit_keys = {}
-        start = self.cols
-        for i, d in enumerate(digits):
-            k = start + i
-            if k >= self.total_keys:
-                return None
-            digit_keys[d] = k
-        keys["digits"] = digit_keys
-        # Slots usable for parsed menu items: row 1 onwards, capped at
-        # the numpad slot count so the layout stays predictable.
-        keys["item_slots"] = list(digit_keys.values())
+        keys["item_slots"] = list(range(self.cols, self.total_keys))
         return keys
 
     def _todo_active_term(self):
@@ -2775,17 +2801,25 @@ class Tiler:
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
-        digit_keys = ts["digits"]
-        # Parsed menu wins over numpad: each item is placed at the
-        # cell whose digit matches its [N] number — '1' → digit_keys
-        # ['1'], '5' → digit_keys['5'], '0' → digit_keys['0'].
+        slots = ts["item_slots"]
         items = self._todo_session_items()
         item_by_key = {}
-        for digit, label in items:
-            cell = digit_keys.get(digit)
-            if cell is not None:
-                item_by_key[cell] = (digit, label)
-        digit_to_key = {v: d for d, v in digit_keys.items()}
+        digit_by_key = {}
+        if items:
+            # Parsed menu wins over numpad: each item lands on the
+            # next free row 1+ slot in reading order so menus larger
+            # than nine entries fit on bigger decks.
+            for i, (digit, label) in enumerate(items[:len(slots)]):
+                item_by_key[slots[i]] = (digit, label)
+        else:
+            # No menu detected (free-text prompt or ASCII logo). Lay
+            # out a numpad in reading order so the user can still
+            # type digits 1..9, 0 to drive todo.py manually.
+            digits = "1234567890"
+            for i, d in enumerate(digits):
+                if i >= len(slots):
+                    break
+                digit_by_key[slots[i]] = d
         for key in range(self.total_keys):
             if key == ts["back"]:
                 set_key(self.deck, key, COLOR_BACK, _t("BACK"))
@@ -2797,12 +2831,13 @@ class Tiler:
                 set_key(self.deck, key, COLOR_CANCEL, _t("FORGET"))
             elif key in item_by_key:
                 digit, label = item_by_key[key]
-                short = (label or '')[:14]
+                wrapped = _wrap_button_label(label,
+                    max_chars=8, max_lines=2)
                 set_key(self.deck, key, COLOR_TODO_TERMINAL,
-                        f"{digit}\n{short}")
-            elif key in digit_to_key:
-                d = digit_to_key[key]
-                set_key(self.deck, key, COLOR_TODO_TERMINAL, d)
+                        f"[{digit}]\n{wrapped}")
+            elif key in digit_by_key:
+                set_key(self.deck, key, COLOR_TODO_TERMINAL,
+                        digit_by_key[key])
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
@@ -2856,16 +2891,25 @@ class Tiler:
             self.mode = MODE_IDLE
             self.render()
             return
-        digit_keys = ts["digits"]
-        digit_to_key = {v: d for d, v in digit_keys.items()}
-        if key in digit_to_key:
-            d = digit_to_key[key]
-            # Send the digit plus newline so todo.py's input() prompt
-            # advances on a single deck press.
-            ok = _send_keys_to_window(wid, f"{d}\n")
-            self.last_result = "ok" if ok else "err"
-            self.result_time = time.monotonic()
-            self.render()
+        slots = ts["item_slots"]
+        try:
+            idx = slots.index(key)
+        except ValueError:
+            return
+        items = self._todo_session_items()
+        if items and idx < len(items):
+            digit, _label = items[idx]
+        else:
+            digits = "1234567890"
+            if idx >= len(digits):
+                return
+            digit = digits[idx]
+        # Send the digit plus newline so todo.py's input() prompt
+        # advances on a single deck press.
+        ok = _send_keys_to_window(wid, f"{digit}\n")
+        self.last_result = "ok" if ok else "err"
+        self.result_time = time.monotonic()
+        self.render()
 
     def _render_mpv_session(self):
         ms = self.mpv_session_keys or {}
