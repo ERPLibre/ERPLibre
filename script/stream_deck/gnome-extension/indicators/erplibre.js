@@ -279,13 +279,78 @@ class ErpLibreIndicator extends PanelMenu.Button {
                     + 'or xterm.'));
             return;
         }
+
+        // Mirror the deck driver's TODO flow so the same registry is
+        // populated whether the user opens todo.py from here or from
+        // the deck button. Wrap the python invocation through
+        // script(1) so the pty session lands in a per-terminal log
+        // file the deck side can tail to surface menu items.
+        const stateBase = GLib.getenv('XDG_STATE_HOME')
+            || `${GLib.get_home_dir()}/.local/state`;
+        const logDir = `${stateBase}/streamdeck-tiler/todo`;
+        try { GLib.mkdir_with_parents(logDir, 0o700); } catch (_e) {}
+        const logPath = GLib.find_program_in_path('script')
+            ? `${logDir}/todo-${Date.now()}.log` : '';
+
+        const inner = 'source .venv.erplibre/bin/activate && '
+            + 'python3 -u ./script/todo/todo.py';
+        const cmd = logPath
+            ? `script -fqc ${this._shellQuote(inner)} `
+                + `${this._shellQuote(logPath)}`
+            : inner;
         const argv = buildTerminalArgv({
             cwd: inst.local_path,
-            command: 'source .venv.erplibre/bin/activate && '
-                + 'python3 ./script/todo/todo.py',
+            command: cmd,
             terminal,
         });
         spawnDetached(argv, {notify: _notify, title: 'ERPLibre'});
+
+        // Capture the focused window id and append to the deck-side
+        // registry after a short delay so the freshly-opened
+        // gnome-terminal has time to settle.
+        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+            try { this._registerTodoTerminal(logPath); }
+            catch (e) {
+                console.log(
+                    `[StreamDeckTiler] register TODO failed: ${e.message}`);
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _shellQuote(s) {
+        return "'" + String(s).replace(/'/g, "'\\''") + "'";
+    }
+
+    _registerTodoTerminal(logPath) {
+        const wid = this._extension?.GetFocusedWindowId?.();
+        if (!wid) return;
+        const stateBase = GLib.getenv('XDG_STATE_HOME')
+            || `${GLib.get_home_dir()}/.local/state`;
+        const dir = `${stateBase}/streamdeck-tiler`;
+        const regPath = `${dir}/todo_terminals.json`;
+        let entries = [];
+        if (GLib.file_test(regPath, GLib.FileTest.EXISTS)) {
+            try {
+                const [ok, contents] = GLib.file_get_contents(regPath);
+                if (ok) {
+                    const text = new TextDecoder().decode(contents);
+                    const parsed = JSON.parse(text);
+                    if (Array.isArray(parsed)) entries = parsed;
+                }
+            } catch (_e) { entries = []; }
+        }
+        if (entries.some(e => String(e.window_id) === String(wid))) {
+            return;
+        }
+        entries.push({
+            window_id: String(wid),
+            name: `TODO ${entries.length + 1}`,
+            opened_at: Date.now() / 1000,
+            log_path: logPath || '',
+        });
+        try { GLib.mkdir_with_parents(dir, 0o700); } catch (_e) {}
+        GLib.file_set_contents(regPath, JSON.stringify(entries));
     }
 
     async _withMasterPw(inst, action) {
