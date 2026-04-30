@@ -204,18 +204,27 @@ try {
                     this._filter = k;
                     this._rebuildMenu();
                 };
+                // Vertical stack is capped at 2 slots, so collapse the
+                // alive + awaiting badges into a single "secondary"
+                // slot. Severity wins: notify (red) > stop (yellow) >
+                // alive (green) — the count keeps the original number
+                // for the chosen kind so the user sees the urgent one
+                // when present.
+                let secondary = null;
+                if (awaitNotify > 0) {
+                    secondary = {count: awaitNotify, kind: BADGE_ALERT,
+                        onClick: () => setFilter('notify')};
+                } else if (awaitStop > 0) {
+                    secondary = {count: awaitStop, kind: BADGE_WARN,
+                        onClick: () => setFilter('awaiting')};
+                } else if (totalAlive > 0) {
+                    secondary = {count: totalAlive, kind: BADGE_OK,
+                        onClick: () => setFilter('alive')};
+                }
                 this._badged.setBadges([
                     {count: dirs, kind: BADGE_DEFAULT,
                         onClick: () => setFilter(null)},
-                    totalAlive > 0
-                        ? {count: totalAlive, kind: BADGE_OK,
-                            onClick: () => setFilter('alive')}
-                        : null,
-                    awaiting > 0
-                        ? {count: awaiting, kind: awaitKind,
-                            onClick: () => setFilter(
-                                awaitNotify > 0 ? 'notify' : 'awaiting')}
-                        : null,
+                    secondary,
                 ]);
             }
 

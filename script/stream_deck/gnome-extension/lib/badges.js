@@ -12,8 +12,8 @@ export const BADGE_ALERT = 'alert';
 
 // Cap on vertical badge stack so the top-bar height stays bounded even
 // when an indicator wants to surface more counts than fit beside its
-// icon.
-export const BADGE_VERTICAL_MAX = 3;
+// icon. Two slots leaves enough vertical room for a readable font.
+export const BADGE_VERTICAL_MAX = 2;
 
 export const ORIENT_VERTICAL = 'vertical';
 export const ORIENT_HORIZONTAL = 'horizontal';
@@ -22,14 +22,13 @@ export function normaliseOrientation(value) {
     return value === ORIENT_HORIZONTAL ? ORIENT_HORIZONTAL : ORIENT_VERTICAL;
 }
 
-// Tight base style so up-to-three vertically stacked badges still fit
-// inside a stock GNOME top bar (~32 px). Keep bold weight + white text
-// so the small font stays legible against the saturated colors.
+// Two-slot vertical stack lets the font grow back to readable size
+// while still fitting inside a stock GNOME top bar (~32 px).
 const STYLE_BASE =
-    'border-radius: 5px;' +
-    'padding: 0 3px;' +
-    'min-width: 8px;' +
-    'font-size: 8px;' +
+    'border-radius: 6px;' +
+    'padding: 0 5px;' +
+    'min-width: 12px;' +
+    'font-size: 11px;' +
     'font-weight: bold;' +
     'color: white;' +
     'text-align: center;';
