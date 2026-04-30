@@ -165,6 +165,8 @@ _DECK_LABELS = {
         'DECK\nTOO\nSMALL': 'DECK\nTROP\nPETIT',
         # Project shortcuts
         'TODO':       'TODO',
+        'ENTER\n↵':   'ENTRER\n↵',
+        'FORGET':     'OUBLI',
         # Claude session page
         'FOCUS':      'FOCUS',
         'ACCEPT\n↵':  'OK\n↵',
@@ -199,7 +201,12 @@ MPV_STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
     "streamdeck-tiler", "mpv",
 )
+TODO_TERMINALS_PATH = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "streamdeck-tiler", "todo_terminals.json",
+)
 COLOR_MPV_ACTIVE = (40, 100, 180)  # blue
+COLOR_TODO_TERMINAL = (140, 90, 50)  # warm tan, distinct from claude/mpv
 
 
 def _load_mpv_sessions():
@@ -228,6 +235,110 @@ def _load_mpv_sessions():
         })
     out.sort(key=lambda s: -s.get("started_at", 0))
     return out
+
+
+def _load_todo_terminals():
+    """Return the list of terminals the user has opened from the deck
+    TODO button. Each entry: {window_id, name, opened_at}."""
+    if not os.path.exists(TODO_TERMINALS_PATH):
+        return []
+    try:
+        with open(TODO_TERMINALS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return []
+        return data
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _save_todo_terminals(entries):
+    """Replace the TODO terminal registry on disk."""
+    try:
+        os.makedirs(os.path.dirname(TODO_TERMINALS_PATH), exist_ok=True)
+        tmp = TODO_TERMINALS_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(entries, f)
+        os.replace(tmp, TODO_TERMINALS_PATH)
+    except OSError as e:
+        print(f"todo terminals save: {e}", file=sys.stderr, flush=True)
+
+
+def _list_mutter_window_ids():
+    """Ask the extension for the live set of window stable_sequence
+    ids so we can prune stale TODO terminal registrations."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.ListWindows",
+            ],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode != 0:
+            return None
+        payload = _parse_gdbus_string_tuple(result.stdout)
+        if not payload:
+            return None
+        windows = json.loads(payload)
+        if not isinstance(windows, list):
+            return None
+        ids = set()
+        for w in windows:
+            wid = w.get("id")
+            if wid:
+                ids.add(str(wid))
+        return ids
+    except Exception:
+        return None
+
+
+def _get_focused_window_id():
+    """Query the extension for the id of the currently focused window."""
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.GetFocusedWindowId",
+            ],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode != 0:
+            return ""
+        return _parse_gdbus_string_tuple(result.stdout) or ""
+    except Exception:
+        return ""
+
+
+def _send_keys_to_window(window_id, text):
+    """Synthesise `text` into the window with the given stable sequence
+    id, via the extension's Clutter virtual keyboard."""
+    if not window_id:
+        return False
+    try:
+        result = subprocess.run(
+            [
+                "gdbus", "call", "--session",
+                "--dest", DBUS_DEST,
+                "--object-path", DBUS_PATH,
+                "--method", f"{DBUS_IFACE}.SendKeysToWindow",
+                str(window_id), text,
+            ],
+            capture_output=True, text=True, timeout=2,
+        )
+        if result.returncode != 0:
+            print(f"SendKeysToWindow: {result.stderr}",
+                file=sys.stderr, flush=True)
+            return False
+        return "true" in result.stdout.lower()
+    except Exception as e:
+        print(f"SendKeysToWindow error: {e}",
+            file=sys.stderr, flush=True)
+        return False
 
 
 def _load_claude_sessions():
@@ -350,6 +461,7 @@ MODE_TRANSLATOR = "translator"
 MODE_TRANSLATOR_HISTORY = "translator_history"
 MODE_CLAUDE_SESSION = "claude_session"
 MODE_MPV_SESSION = "mpv_session"
+MODE_TODO_SESSION = "todo_session"
 
 WPCTL_SINK = "@DEFAULT_AUDIO_SINK@"
 WPCTL_SOURCE = "@DEFAULT_AUDIO_SOURCE@"
@@ -1343,6 +1455,11 @@ class Tiler:
         self.last_press_key = None  # which key triggered last_result
         self._claude_session_sid = None  # active session in MODE_CLAUDE_SESSION
         self._mpv_session_pid = None     # active mpv pid in MODE_MPV_SESSION
+        self._todo_session_window_id = None  # active terminal id
+        # Window-id capture for newly spawned TODO terminals: timestamp
+        # set by _launch_todo_terminal, polled by the main loop.
+        self._pending_todo_capture_at = 0.0
+        self.todo_terminals = _load_todo_terminals()
         self._tiling_last_touch = 0.0    # monotonic ts of last tiling input
         self.dbus_ok = _check_dbus_available()
         # Timer state
@@ -1443,12 +1560,11 @@ class Tiler:
 
     def _launch_todo_terminal(self):
         """Open a gnome-terminal under the project root, activate the
-        ERPLibre venv, and run script/todo/todo.py — the same flow as
-        the ERPLibre indicator's TODO menu item, just exposed as a
-        deck button. Future iterations may drive todo.py directly via
-        an interactive subprocess to render the TUI as deck buttons,
-        but the structured-output parser is a separate engineering
-        scope (see ARCHITECTURE.md TODOs)."""
+        ERPLibre venv, and run script/todo/todo.py. Schedule a window-
+        id capture roughly one second later so the deck can register
+        the freshly-opened terminal and surface a per-window button
+        that drives the todo.py TUI via the extension's
+        SendKeysToWindow D-Bus method."""
         root = os.path.abspath(os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "..", ".."))
         venv = os.path.join(root, ".venv.erplibre", "bin", "activate")
@@ -1476,6 +1592,10 @@ class Tiler:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True)
+                # Capture happens on the first idle tick after the
+                # delay so the new gnome-terminal has time to settle
+                # and grab focus.
+                self._pending_todo_capture_at = time.monotonic() + 1.0
                 self.last_result = "ok"
                 self.result_time = time.monotonic()
                 self.render()
@@ -1485,6 +1605,42 @@ class Tiler:
                     file=sys.stderr, flush=True)
         self._flag_err("No terminal found (gnome-terminal / kgx / xterm)")
         self.render()
+
+    def _capture_pending_todo_terminal(self):
+        wid = _get_focused_window_id()
+        if not wid:
+            self._flag_err("Could not capture TODO terminal window id")
+            self.render()
+            return
+        live = _list_mutter_window_ids() or set()
+        # Drop registrations whose windows have closed.
+        self.todo_terminals = [
+            t for t in self.todo_terminals
+            if not live or str(t.get("window_id")) in live
+        ]
+        existing = next((t for t in self.todo_terminals
+                         if str(t.get("window_id")) == str(wid)), None)
+        if existing is None:
+            n = len(self.todo_terminals) + 1
+            self.todo_terminals.append({
+                "window_id": str(wid),
+                "name": f"TODO {n}",
+                "opened_at": time.time(),
+            })
+        _save_todo_terminals(self.todo_terminals)
+
+    def _refresh_todo_terminals(self):
+        """Drop registrations whose windows have closed."""
+        live = _list_mutter_window_ids()
+        if live is None:
+            return
+        before = len(self.todo_terminals)
+        self.todo_terminals = [
+            t for t in self.todo_terminals
+            if str(t.get("window_id")) in live
+        ]
+        if len(self.todo_terminals) != before:
+            _save_todo_terminals(self.todo_terminals)
 
     def _flag_err(self, reason):
         """Set the result-flash to 'err' AND surface `reason` in
@@ -1734,6 +1890,8 @@ class Tiler:
             self._handle_claude_session_key(key)
         elif self.mode == MODE_MPV_SESSION:
             self._handle_mpv_session_key(key)
+        elif self.mode == MODE_TODO_SESSION:
+            self._handle_todo_session_key(key)
 
     def _handle_mpv_session_key(self, key):
         ms = self.mpv_session_keys
@@ -1907,14 +2065,32 @@ class Tiler:
                 self.mode = MODE_MPV_SESSION
                 self.render()
                 return
-            # Fall through to claude using the offset.
-            claude_sessions = _load_claude_sessions()
             cidx = idx - len(mpv_sessions)
+            claude_sessions = _load_claude_sessions()
             if cidx < len(claude_sessions):
                 sid = claude_sessions[cidx].get('session_id') or ''
                 if sid:
                     self._claude_session_sid = sid
                     self.mode = MODE_CLAUDE_SESSION
+                    self.render()
+                return
+            tidx = cidx - len(claude_sessions)
+            running_timers = [
+                t for t in (self.timers or []) if t.get('running')
+                and t.get('id') not in self._dashboard_hidden_timer_ids
+            ]
+            if tidx < len(running_timers):
+                # Tapping a timer dashboard tile drops back to the
+                # timer list page so the user can pause it.
+                self._enter_timer_mode()
+                return
+            todoidx = tidx - len(running_timers)
+            terms = self.todo_terminals or []
+            if todoidx < len(terms):
+                wid = str(terms[todoidx].get('window_id') or '')
+                if wid:
+                    self._todo_session_window_id = wid
+                    self.mode = MODE_TODO_SESSION
                     self.render()
             return
         if key == self.timer_key and self.timer_key != self.tile_key:
@@ -2435,6 +2611,8 @@ class Tiler:
             self._render_claude_session()
         elif self.mode == MODE_MPV_SESSION:
             self._render_mpv_session()
+        elif self.mode == MODE_TODO_SESSION:
+            self._render_todo_session()
 
     def _overlay_flash(self):
         if self.last_press_key is None:
@@ -2466,6 +2644,119 @@ class Tiler:
             if 0 <= nc < self.cols and 0 <= nr < self.rows:
                 out.add(nr * self.cols + nc)
         return out
+
+    def _todo_session_keys(self):
+        """Layout: row 0 has BACK, ENTER, FOCUS, FORGET. Subsequent
+        rows hold digits 1..9 then 0 in reading order starting at the
+        next row's first cell. Returns ``None`` when the deck does
+        not have enough keys to fit the numpad."""
+        if self.total_keys < 14 or self.rows < 2:
+            return None
+        keys = {"back": 0, "enter": 1, "focus": 2, "forget": 3}
+        digits = "1234567890"
+        digit_keys = {}
+        start = self.cols
+        for i, d in enumerate(digits):
+            k = start + i
+            if k >= self.total_keys:
+                return None
+            digit_keys[d] = k
+        keys["digits"] = digit_keys
+        return keys
+
+    def _render_todo_session(self):
+        ts = self._todo_session_keys()
+        term = next((t for t in (self.todo_terminals or [])
+                     if str(t.get("window_id"))
+                     == str(self._todo_session_window_id)), None)
+        if not ts:
+            for key in range(self.total_keys):
+                if key == 0:
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
+                elif key == self.total_keys // 2:
+                    set_key(self.deck, key, COLOR_ERR,
+                        _t("DECK\nTOO\nSMALL"))
+                else:
+                    set_key(self.deck, key, COLOR_EMPTY, "")
+            return
+        digit_keys = ts["digits"]
+        digit_to_key = {v: d for d, v in digit_keys.items()}
+        for key in range(self.total_keys):
+            if key == ts["back"]:
+                set_key(self.deck, key, COLOR_BACK, _t("BACK"))
+            elif key == ts["enter"]:
+                set_key(self.deck, key, COLOR_CONFIRM, _t("ENTER\n↵"))
+            elif key == ts["focus"]:
+                set_key(self.deck, key, COLOR_VOL, _t("FOCUS"))
+            elif key == ts["forget"]:
+                set_key(self.deck, key, COLOR_CANCEL, _t("FORGET"))
+            elif key in digit_to_key:
+                d = digit_to_key[key]
+                label = (term.get("name") if term and key == digit_keys["1"]
+                         else None)
+                set_key(self.deck, key, COLOR_TODO_TERMINAL, d)
+                _ = label  # reserved for future title overlay
+            else:
+                set_key(self.deck, key, COLOR_EMPTY, "")
+
+    def _handle_todo_session_key(self, key):
+        ts = self._todo_session_keys()
+        wid = self._todo_session_window_id
+        if not ts:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == ts["back"]:
+            self.mode = MODE_IDLE
+            self._todo_session_window_id = None
+            self.render()
+            return
+        if not wid:
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        if key == ts["enter"]:
+            ok = _send_keys_to_window(wid, "\n")
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        if key == ts["focus"]:
+            try:
+                result = subprocess.run([
+                    "gdbus", "call", "--session",
+                    "--dest", DBUS_DEST,
+                    "--object-path", DBUS_PATH,
+                    "--method", f"{DBUS_IFACE}.FocusWindowById",
+                    str(wid),
+                ], capture_output=True, text=True, timeout=2)
+                ok = (result.returncode == 0
+                      and "true" in result.stdout.lower())
+            except Exception:
+                ok = False
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
+            return
+        if key == ts["forget"]:
+            self.todo_terminals = [
+                t for t in (self.todo_terminals or [])
+                if str(t.get("window_id")) != str(wid)]
+            _save_todo_terminals(self.todo_terminals)
+            self._todo_session_window_id = None
+            self.last_result = "ok"
+            self.result_time = time.monotonic()
+            self.mode = MODE_IDLE
+            self.render()
+            return
+        digit_keys = ts["digits"]
+        digit_to_key = {v: d for d, v in digit_keys.items()}
+        if key in digit_to_key:
+            d = digit_to_key[key]
+            ok = _send_keys_to_window(wid, d)
+            self.last_result = "ok" if ok else "err"
+            self.result_time = time.monotonic()
+            self.render()
 
     def _render_mpv_session(self):
         ms = self.mpv_session_keys or {}
@@ -2574,6 +2865,7 @@ class Tiler:
         mpv_by_key = {}
         claude_by_key = {}
         timer_by_key = {}
+        todo_by_key = {}
         cursor = 0
         for s in mpv_sessions:
             if cursor >= len(session_keys):
@@ -2589,6 +2881,11 @@ class Tiler:
             if cursor >= len(session_keys):
                 break
             timer_by_key[session_keys[cursor]] = t
+            cursor += 1
+        for term in (self.todo_terminals or []):
+            if cursor >= len(session_keys):
+                break
+            todo_by_key[session_keys[cursor]] = term
             cursor += 1
         for key in range(self.total_keys):
             if key == self.tile_key:
@@ -2637,6 +2934,10 @@ class Tiler:
                 t = timer_by_key[key]
                 set_key(self.deck, key, COLOR_TIMER_RUNNING,
                         _label_for_timer(t), icon="timer")
+            elif key in todo_by_key:
+                term = todo_by_key[key]
+                set_key(self.deck, key, COLOR_TODO_TERMINAL,
+                        term.get("name") or "TODO")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, _t("NO\nEXT"))
             else:
@@ -3031,8 +3332,14 @@ class Tiler:
                     # running timers update their mm:ss + appear /
                     # disappear as the user starts / stops them in
                     # the tracker.
+                    if (self._pending_todo_capture_at
+                            and now >= self._pending_todo_capture_at):
+                        self._pending_todo_capture_at = 0.0
+                        self._capture_pending_todo_terminal()
+                        self.render()
                     if now - last_idle_refresh >= 2.0:
                         self._refresh_timers()
+                        self._refresh_todo_terminals()
                         self.render()
                         last_idle_refresh = now
                 elif (self.mode == MODE_TRANSLATOR

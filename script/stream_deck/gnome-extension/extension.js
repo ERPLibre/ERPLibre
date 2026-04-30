@@ -153,6 +153,15 @@ const IFACE_XML = `
       <arg type="s" direction="in" name="command"/>
       <arg type="b" direction="out" name="ok"/>
     </method>
+    <method name="FocusWindowById">
+      <arg type="s" direction="in" name="window_id"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
+    <method name="SendKeysToWindow">
+      <arg type="s" direction="in" name="window_id"/>
+      <arg type="s" direction="in" name="text"/>
+      <arg type="b" direction="out" name="ok"/>
+    </method>
   </interface>
 </node>`;
 
@@ -749,6 +758,62 @@ export default class StreamDeckTilerExtension extends Extension {
                 ['kill', String(pid)], Gio.SubprocessFlags.NONE);
             return true;
         } catch (_e) { return false; }
+    }
+
+    FocusWindowById(windowId) {
+        try {
+            const wid = Number(windowId);
+            if (!wid) return false;
+            for (const w of this._collectAllWindows()) {
+                const id = w.get_stable_sequence?.()
+                    ?? w.get_id?.() ?? 0;
+                if (Number(id) === wid) {
+                    return this._activateWindow(w);
+                }
+            }
+            return false;
+        } catch (_e) { return false; }
+    }
+
+    /**
+     * Focus the window identified by `windowId` (Mutter stable
+     * sequence id) and synthesise the keystrokes for `text` via the
+     * Clutter virtual keyboard. Supports digits 0-9, '\n' (Return),
+     * space and basic ASCII letters — enough to drive a numeric TUI
+     * like script/todo/todo.py from the deck.
+     */
+    SendKeysToWindow(windowId, text) {
+        try {
+            if (!this.FocusWindowById(windowId)) return false;
+            const payload = String(text || '');
+            if (!payload) return true;
+            // Give Mutter a moment to land focus before typing.
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+                try {
+                    for (const ch of payload) {
+                        const kv = this._charToKeyval(ch);
+                        if (kv) this._sendKeyval(kv);
+                    }
+                } catch (_e) {}
+                return GLib.SOURCE_REMOVE;
+            });
+            return true;
+        } catch (_e) { return false; }
+    }
+
+    _charToKeyval(ch) {
+        if (ch === '\n' || ch === '\r') return Clutter.KEY_Return;
+        if (ch === ' ') return Clutter.KEY_space;
+        if (ch === '\t') return Clutter.KEY_Tab;
+        const code = ch.charCodeAt(0);
+        // Digits 0-9, letters a-z, A-Z map to their keyval which is
+        // simply the ASCII codepoint for the printable range.
+        if ((code >= 0x30 && code <= 0x39)
+                || (code >= 0x41 && code <= 0x5A)
+                || (code >= 0x61 && code <= 0x7A)) {
+            return code;
+        }
+        return 0;
     }
 
     /**
