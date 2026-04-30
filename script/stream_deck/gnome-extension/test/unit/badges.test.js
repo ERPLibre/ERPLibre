@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {formatBadgeCount, pickHighestKind, badgeStyleFor,
+import {formatBadgeCount, formatBadgeTooltip, pickHighestKind, badgeStyleFor,
     normaliseOrientation, ORIENT_VERTICAL, ORIENT_HORIZONTAL,
     BADGE_DEFAULT, BADGE_WARN, BADGE_ALERT}
     from '../../lib/badges.js';
@@ -39,6 +39,27 @@ test('pickHighestKind: alert beats warn beats default', () => {
 
 test('badgeStyleFor returns the same string for unknown kinds', () => {
     assert.equal(badgeStyleFor('nope'), badgeStyleFor(BADGE_DEFAULT));
+});
+
+test('formatBadgeTooltip skips zero entries unless flagged', () => {
+    assert.equal(
+        formatBadgeTooltip([
+            {count: 3, label: 'paths'},
+            {count: 0, label: 'awaiting'},
+            {count: 2, label: 'active'},
+        ]),
+        '3 paths · 2 active');
+    assert.equal(
+        formatBadgeTooltip([
+            {count: 0, label: 'paths', alwaysShow: true},
+        ]),
+        '0 paths');
+});
+
+test('formatBadgeTooltip falls back to bare count when no label', () => {
+    assert.equal(formatBadgeTooltip([{count: 5}]), '5');
+    assert.equal(formatBadgeTooltip([]), '');
+    assert.equal(formatBadgeTooltip(null), '');
 });
 
 test('normaliseOrientation defaults to vertical', () => {

@@ -9,7 +9,8 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {detectStreamDecksGjs} from '../lib/usb.js';
-import {makeBadgedIcon, bindBadgeOrientation} from '../lib/badges.js';
+import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
+    formatBadgeTooltip} from '../lib/badges.js';
 import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
@@ -61,6 +62,12 @@ class ControllerIndicator extends PanelMenu.Button {
             this._sigOrient = bindBadgeOrientation(
                 this._badged, this._settings);
         }
+        this._tip = attachHoverTooltip({
+            St, Clutter,
+            uiGroup: Main.layoutManager.uiGroup,
+            target: this,
+            getText: () => this._tooltipText(),
+        });
         this._rescanDecks();
     }
 
@@ -71,7 +78,14 @@ class ControllerIndicator extends PanelMenu.Button {
                 this[k] = 0;
             }
         }
+        this._tip?.detach();
         super.destroy();
+    }
+
+    _tooltipText() {
+        return formatBadgeTooltip([
+            {count: this._deckCount || 0, label: 'decks', alwaysShow: true},
+        ]);
     }
 
     async _rescanDecks() {

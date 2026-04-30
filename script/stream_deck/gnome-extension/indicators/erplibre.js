@@ -16,8 +16,8 @@ import {callKeepassCli, masterPasswordCache, cacheKey}
     from '../lib/keepass.js';
 import {InstanceDialog} from '../ui/instance-dialog.js';
 import {MasterPwDialog} from '../ui/master-pw-dialog.js';
-import {makeBadgedIcon, bindBadgeOrientation,
-    BADGE_OK, BADGE_WARN, BADGE_ALERT}
+import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
+    formatBadgeTooltip, BADGE_OK, BADGE_WARN, BADGE_ALERT}
     from '../lib/badges.js';
 
 const PROBE_TTL_MS = 30 * 1000;
@@ -54,6 +54,12 @@ class ErpLibreIndicator extends PanelMenu.Button {
             'changed::enable-icon-badges',
             () => this._refreshBadge());
         this._sigOrient = bindBadgeOrientation(this._badged, this._settings);
+        this._tip = attachHoverTooltip({
+            St, Clutter,
+            uiGroup: Main.layoutManager.uiGroup,
+            target: this,
+            getText: () => this._tooltipText(),
+        });
         this._rescanThenRebuild();
     }
 
@@ -61,7 +67,23 @@ class ErpLibreIndicator extends PanelMenu.Button {
         for (const s of [this._sigInstances, this._sigPattern, this._sigAuto,
             this._sigBadges, this._sigOrient])
             if (s) this._settings.disconnect(s);
+        this._tip?.detach();
         super.destroy();
+    }
+
+    _tooltipText() {
+        const all = this._allInstances();
+        const total = all.length;
+        const probed = all
+            .map(i => this._instanceStatus.get(i.id)?.state)
+            .filter(s => s);
+        const up = probed.filter(s => s === 'up').length;
+        const down = probed.filter(s => s === 'down').length;
+        return formatBadgeTooltip([
+            {count: total, label: 'instances', alwaysShow: true},
+            {count: up,    label: 'up'},
+            {count: down,  label: 'down'},
+        ]);
     }
 
     _refreshBadge() {

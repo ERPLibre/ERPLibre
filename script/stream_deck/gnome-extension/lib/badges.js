@@ -177,3 +177,90 @@ export function bindBadgeOrientation(badged, settings) {
     apply();
     return settings.connect('changed::badge-orientation', apply);
 }
+
+/**
+ * Format the per-indicator hover tooltip from a list of badges, where
+ * each entry carries a numeric count and an optional human label.
+ * Pure helper, unit-tested.
+ *
+ * Example: formatBadgeTooltip([
+ *     {count: 3, label: 'paths'},
+ *     {count: 2, label: 'active'},
+ *     {count: 1, label: 'awaiting'},
+ * ]) => '3 paths · 2 active · 1 awaiting'.
+ */
+export function formatBadgeTooltip(parts) {
+    const out = [];
+    for (const p of parts || []) {
+        if (!p) continue;
+        const n = Number.isFinite(p.count) ? Math.max(0, Math.floor(p.count))
+            : 0;
+        if (n === 0 && !p.alwaysShow) continue;
+        const label = (p.label || '').trim();
+        out.push(label ? `${n} ${label}` : `${n}`);
+    }
+    return out.join(' · ');
+}
+
+/**
+ * Attach a hover tooltip to a top-bar actor. Returns {detach, refresh}.
+ *
+ * Pure data-flow: reads tooltip text from `getText()` on each hover so
+ * the caller can keep mutating its model without manually pushing
+ * updates here. Floats a small St.Label in the supplied uiGroup
+ * (typically Main.layoutManager.uiGroup) under the target actor.
+ *
+ * GJS-only — pass already-loaded St, Clutter and the uiGroup actor.
+ */
+export function attachHoverTooltip({St, Clutter, uiGroup, target, getText}) {
+    if (!St || !Clutter || !uiGroup || !target) return {detach() {}};
+    let tip = null;
+
+    const _hide = () => {
+        if (tip) {
+            try { tip.destroy(); } catch (_e) {}
+            tip = null;
+        }
+    };
+
+    const _spawn = () => {
+        _hide();
+        const text = (typeof getText === 'function' ? getText() : '') || '';
+        if (!text) return;
+        tip = new St.Label({
+            text,
+            style:
+                'background-color: rgba(0, 0, 0, 0.85);' +
+                ' color: white; padding: 4px 8px;' +
+                ' border-radius: 6px; font-size: 11px;',
+        });
+        uiGroup.add_child(tip);
+        const [x, y] = target.get_transformed_position();
+        const w = target.get_width();
+        const h = target.get_height();
+        const tw = tip.get_width() || 100;
+        let nx = Math.round(x + w / 2 - tw / 2);
+        if (nx < 4) nx = 4;
+        tip.set_position(nx, Math.round(y + h + 4));
+    };
+
+    const eEnter = target.connect('enter-event', () => {
+        _spawn();
+        return Clutter.EVENT_PROPAGATE;
+    });
+    const eLeave = target.connect('leave-event', () => {
+        _hide();
+        return Clutter.EVENT_PROPAGATE;
+    });
+    const eDestroy = target.connect('destroy', _hide);
+
+    return {
+        detach() {
+            try { target.disconnect(eEnter); } catch (_e) {}
+            try { target.disconnect(eLeave); } catch (_e) {}
+            try { target.disconnect(eDestroy); } catch (_e) {}
+            _hide();
+        },
+        refresh() { if (tip) _spawn(); },
+    };
+}

@@ -12,7 +12,8 @@ import {scanNmapGjs, scanNcGjs, autoDetectCidrGjs, reverseDnsGjs}
 import {parseSshConfig, isWildcardHost} from '../lib/ssh-config.js';
 import {buildBrowserArgv, buildTerminalArgv, findTerminal,
     spawnDetached} from '../lib/spawn.js';
-import {makeBadgedIcon, bindBadgeOrientation} from '../lib/badges.js';
+import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
+    formatBadgeTooltip} from '../lib/badges.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -43,6 +44,12 @@ class NetworkIndicator extends PanelMenu.Button {
             'changed::enable-icon-badges',
             () => this._refreshBadge());
         this._sigOrient = bindBadgeOrientation(this._badged, this._settings);
+        this._tip = attachHoverTooltip({
+            St, Clutter,
+            uiGroup: Main.layoutManager.uiGroup,
+            target: this,
+            getText: () => this._tooltipText(),
+        });
         this._rebuildMenu();
         this._refreshBadge();
         this._sigTimer = this._settings.connect(
@@ -57,7 +64,17 @@ class NetworkIndicator extends PanelMenu.Button {
         for (const s of [this._sigUser, this._sigCfg, this._sigTimer,
             this._sigBadges, this._sigOrient])
             if (s) this._settings.disconnect(s);
+        this._tip?.detach();
         super.destroy();
+    }
+
+    _tooltipText() {
+        const cfg = this._countConfiguredHosts();
+        const scanned = this._scanResult.hosts?.length || 0;
+        return formatBadgeTooltip([
+            {count: cfg,     label: 'ssh hosts'},
+            {count: scanned, label: 'scanned'},
+        ]) || '0 hosts';
     }
 
     _countConfiguredHosts() {

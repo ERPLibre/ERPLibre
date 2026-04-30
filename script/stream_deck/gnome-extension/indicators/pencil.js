@@ -57,7 +57,8 @@ try {
     );
     const {PathDialog} = await import('../ui/path-dialog.js');
     const {RenameDialog} = await import('../ui/rename-dialog.js');
-    const {makeBadgedIcon, bindBadgeOrientation, badgeStyleFor,
+    const {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
+        formatBadgeTooltip, badgeStyleFor,
         BADGE_DEFAULT, BADGE_OK,
         BADGE_INFO, BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
@@ -123,6 +124,13 @@ try {
                         this._badged, this._settings);
                 }
 
+                this._tip = attachHoverTooltip({
+                    St, Clutter,
+                    uiGroup: Main.layoutManager.uiGroup,
+                    target: this,
+                    getText: () => this._tooltipText(),
+                });
+
                 if (this._claudeState) {
                     this._claudeUnsub = this._claudeState.subscribe(
                         idx => {
@@ -150,7 +158,25 @@ try {
                     try { this._claudeUnsub(); } catch (_e) {}
                     this._claudeUnsub = null;
                 }
+                this._tip?.detach();
                 super.destroy();
+            }
+
+            _tooltipText() {
+                const dirs = this._settings
+                    ? parseList(this._settings.get_string('paths')).length
+                    : 0;
+                const idx = this._claudeIndex;
+                const totalAlive = idx?.totalAlive
+                    ?? ((idx?.totalActive || 0) + (idx?.totalWorking || 0));
+                const awaitStop = idx?.totalAwaitStop || 0;
+                const awaitNotify = idx?.totalAwaitNotify || 0;
+                return formatBadgeTooltip([
+                    {count: dirs,        label: 'paths', alwaysShow: true},
+                    {count: totalAlive,  label: 'active'},
+                    {count: awaitStop,   label: 'awaiting'},
+                    {count: awaitNotify, label: 'notify'},
+                ]);
             }
 
             _refreshBadge() {
