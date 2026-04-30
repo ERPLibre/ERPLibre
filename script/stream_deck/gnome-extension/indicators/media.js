@@ -15,6 +15,7 @@ import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind}
 import {MediaDialog} from '../ui/media-dialog.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
+import {_} from '../lib/i18n.js';
 import {logInfo, logWarn} from '../lib/log.js';
 import {writeMpvEntry, deleteMpvEntry, listMpvEntriesSync}
     from '../lib/mpv-state.js';
@@ -121,7 +122,7 @@ class MediaIndicator extends PanelMenu.Button {
         add.connect('activate', () => this._openAddDialog());
         this.menu.addMenuItem(add);
 
-        const prefsItem = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+        const prefsItem = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
         prefsItem.connect('activate', () => this._openPrefs?.());
         this.menu.addMenuItem(prefsItem);
     }

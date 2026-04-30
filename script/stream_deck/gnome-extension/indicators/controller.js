@@ -11,6 +11,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {detectStreamDecksGjs} from '../lib/usb.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
+import {_} from '../lib/i18n.js';
 import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
@@ -124,7 +125,7 @@ class ControllerIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const settings = new PopupMenu.PopupMenuItem('Open prefs…');
+        const settings = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
         settings.connect('activate', () => {
             if (typeof this._openPrefs === 'function') this._openPrefs();
         });

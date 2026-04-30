@@ -14,6 +14,7 @@ import {buildBrowserArgv, buildTerminalArgv, findTerminal,
     spawnDetached} from '../lib/spawn.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
+import {_} from '../lib/i18n.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -135,7 +136,7 @@ class NetworkIndicator extends PanelMenu.Button {
         }
         this._addScannedHosts();
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const prefs = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+        const prefs = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
         prefs.connect('activate', () => this._openPrefs?.());
         this.menu.addMenuItem(prefs);
     }

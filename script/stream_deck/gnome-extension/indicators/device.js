@@ -11,6 +11,7 @@ import {detectStreamDecksGjs} from '../lib/usb.js';
 import {spawnDetached} from '../lib/spawn.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
+import {_} from '../lib/i18n.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -108,7 +109,7 @@ class DeviceIndicator extends PanelMenu.Button {
         const rescan = new PopupMenu.PopupMenuItem('🔄 Re-scan USB');
         rescan.connect('activate', () => this._rescanThenRebuild());
         this.menu.addMenuItem(rescan);
-        const prefs = new PopupMenu.PopupMenuItem('⚙ Open prefs');
+        const prefs = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
         prefs.connect('activate', () => this._openPrefs?.());
         this.menu.addMenuItem(prefs);
     }
