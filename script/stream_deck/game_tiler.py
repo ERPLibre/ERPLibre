@@ -127,15 +127,60 @@ TILING_IDLE_TIMEOUT_SEC = 5.0
 _DECK_LANG = os.environ.get('LANG', 'en').lower()[:2]
 _DECK_LABELS = {
     'fr': {
-        'BACK':    'RETOUR',
-        'QUIT':    'QUITTER',
-        'KILL':    'TUER',
-        'NO\nEXT': 'EXT\nABS',
+        # Navigation / actions
+        'BACK':       'RETOUR',
+        'QUIT':       'QUITTER',
+        'KILL':       'TUER',
+        'CANCEL':     'ANNULER',
+        'CLEAR':      'EFFACER',
+        'DELETE':     'SUPPR',
+        'NEW':        'NOUV',
+        # Timer page
+        'RFSH':       'ACTUAL',
+        'RESET\nALL': 'RAZ\nTOUT',
+        'RESET':      'RAZ',
+        'ALL?':       'TOUT?',
+        'RESET\nALL?': 'RAZ\nTOUT?',
+        'EXPT\nCSV':  'EXP\nCSV',
+        'CLEAN\nDASH': 'NETTOY\nTABL',
+        'NO\nTIMERS': 'AUCUN\nMINUT',
+        # Idle screen titles
+        'TILE':       'TUILE',
+        'TIMER':      'MINUT',
+        'SOUND':      'SON',
+        'LAYOUT':     'DISPO',
+        'TRANSL':     'TRADUC',
+        # Sound / mic / bluetooth labels
+        'MIC\nN/A':   'MIC\nN/D',
+        'MIC\nON':    'MIC\nON',
+        'MIC\nOFF':   'MIC\nMUET',
+        'MIC\nMUTE':  'MIC\nMUET',
+        'OUT\nMUTE':  'SORT\nMUET',
+        'BT\nN/A':    'BT\nN/D',
+        # Layout slot prompts
+        'SAVE':       'ENREG',
+        'EMPTY':      'VIDE',
+        # Errors
+        'NO\nEXT':    'EXT\nABS',
+        'DECK\nTOO\nSMALL': 'DECK\nTROP\nPETIT',
+        # Claude session page
+        'FOCUS':      'FOCUS',
+        'ACCEPT\n↵':  'OK\n↵',
+        'SET\nWIN':   'DEF\nFEN',
+        # MPV session page
+        'PLAY\nPAUSE': 'LECT\nPAUSE',
+        'VOL\n−':     'VOL\n−',
+        'VOL\n+':     'VOL\n+',
+        # Result flash glyphs (kept short)
+        'OK!':        'OK!',
+        'ERR':        'ERR',
     },
 }
 
 
 def _t(label):
+    """Translate `label` to the active deck language. Falls back to
+    the original English label when no translation is recorded."""
     return _DECK_LABELS.get(_DECK_LANG, {}).get(label, label)
 
 # Claude session indicator colours (mirrors GNOME extension badge palette).
@@ -2381,13 +2426,13 @@ class Tiler:
             if key == ms.get('back'):
                 set_key(self.deck, key, COLOR_TITLE, _t('BACK'))
             elif key == ms.get('play_pause'):
-                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'PLAY\nPAUSE')
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, _t('PLAY\nPAUSE'))
             elif key == ms.get('quit'):
                 set_key(self.deck, key, COLOR_CANCEL, _t('QUIT'))
             elif key == ms.get('vol_down'):
-                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'VOL\n−')
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, _t('VOL\n−'))
             elif key == ms.get('vol_up'):
-                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'VOL\n+')
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, _t('VOL\n+'))
             elif key in chunk_by_key:
                 set_key(self.deck, key, COLOR_EMPTY,
                         _wrap_chunk(chunk_by_key[key]))
@@ -2426,14 +2471,15 @@ class Tiler:
             if key == cs.get('back'):
                 set_key(self.deck, key, COLOR_TITLE, _t('BACK'))
             elif key == cs.get('focus'):
-                set_key(self.deck, key, COLOR_VOL, 'FOCUS', icon='robot')
+                set_key(self.deck, key, COLOR_VOL, _t('FOCUS'),
+                        icon='robot')
             elif 'accept' in cs and key == cs['accept']:
                 color = (_claude_color(session) if session
                          else COLOR_CLAUDE_AWAIT_STOP)
-                set_key(self.deck, key, color, 'ACCEPT\n↵')
+                set_key(self.deck, key, color, _t('ACCEPT\n↵'))
             elif 'set_window' in cs and key == cs['set_window']:
                 set_key(self.deck, key, COLOR_LAYOUT_TITLE,
-                        'SET\nWIN')
+                        _t('SET\nWIN'))
             elif 'kill' in cs and key == cs['kill']:
                 set_key(self.deck, key, COLOR_CANCEL, _t('KILL'))
             elif key in chunk_by_key:
@@ -2449,7 +2495,7 @@ class Tiler:
             for i, sk in enumerate(self.layout_shortcut_keys):
                 if str(i + 1) in filled:
                     shortcut_slots[sk] = i + 1
-        mic_color, mic_label = self._mic_indicator()
+        mic_color, mic_label, mic_icon = self._mic_indicator()
         session_keys = list(self.claude_keys or [])
         mpv_sessions = _load_mpv_sessions()
         claude_sessions = _load_claude_sessions()
@@ -2484,18 +2530,19 @@ class Tiler:
             cursor += 1
         for key in range(self.total_keys):
             if key == self.tile_key:
-                set_key(self.deck, key, COLOR_TITLE, "TILE", icon="tile")
+                set_key(self.deck, key, COLOR_TITLE, _t("TILE"),
+                        icon="tile")
             elif key == self.timer_key and self.timer_key != self.tile_key:
-                set_key(self.deck, key, COLOR_TIMER_TITLE, "TIMER",
+                set_key(self.deck, key, COLOR_TIMER_TITLE, _t("TIMER"),
                         icon="timer")
             elif key == self.dev_reload_key and self.dev_reload_key >= 0:
                 set_key(self.deck, key, COLOR_DEV_RELOAD, "DEV\nRELOAD",
                         icon="dev_reload")
             elif key == self.sound_key and self.sound_key >= 0:
-                set_key(self.deck, key, COLOR_SOUND_TITLE, "SOUND",
+                set_key(self.deck, key, COLOR_SOUND_TITLE, _t("SOUND"),
                         icon="sound")
             elif key == self.layout_key and self.layout_key >= 0:
-                set_key(self.deck, key, COLOR_LAYOUT_TITLE, "LAYOUT",
+                set_key(self.deck, key, COLOR_LAYOUT_TITLE, _t("LAYOUT"),
                         icon="layout")
             elif key == self.a11y_key and self.a11y_key >= 0:
                 set_key(self.deck, key, COLOR_A11Y_TITLE, "A11Y",
@@ -2504,15 +2551,12 @@ class Tiler:
                 set_key(self.deck, key, COLOR_BT_TITLE, "BT", icon="bt")
             elif key == self.translator_key and self.translator_key >= 0:
                 set_key(
-                    self.deck, key, COLOR_TR_TITLE, "TRANSL",
+                    self.deck, key, COLOR_TR_TITLE, _t("TRANSL"),
                     icon="translator",
                 )
             elif key == self.mic_status_key and self.mic_status_key >= 0:
-                icon_name = mic_label.split("\n")[0]  # "MIC" prefix
-                icon = "mic_on" if "ON" in mic_label else (
-                    "mic_off" if "OFF" in mic_label else None
-                )
-                set_key(self.deck, key, mic_color, mic_label, icon=icon)
+                set_key(self.deck, key, mic_color, mic_label,
+                        icon=mic_icon)
             elif key in shortcut_slots:
                 slot = shortcut_slots[key]
                 set_key(self.deck, key, COLOR_LOAD_FILLED, f"*\n{slot}")
@@ -2535,22 +2579,25 @@ class Tiler:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
     def _mic_indicator(self):
-        """(color, label) tuple for the mic status icon."""
+        """(color, label, icon) tuple for the mic status icon. Icon is
+        resolved from the underlying mic state — not the translated
+        label — so a French OFF rendered as MUET still picks the
+        muted icon."""
         vol, muted = _wpctl_get(WPCTL_SOURCE)
         if vol is None:
-            return COLOR_BT_NA, "MIC\nN/A"
+            return COLOR_BT_NA, _t("MIC\nN/A"), None
         if muted:
-            return COLOR_MUTE_ON, "MIC\nOFF"
-        return COLOR_MUTE_OFF, "MIC\nON"
+            return COLOR_MUTE_ON, _t("MIC\nOFF"), "mic_off"
+        return COLOR_MUTE_OFF, _t("MIC\nON"), "mic_on"
 
     def _render_layout(self):
         lk = self.layout_keys
         if not lk:
             for key in range(self.total_keys):
                 if key == 0:
-                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 elif key == self.total_keys // 2:
-                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                    set_key(self.deck, key, COLOR_ERR, _t("DECK\nTOO\nSMALL"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
@@ -2558,9 +2605,10 @@ class Tiler:
         data = _layouts_load()
         slots = data.get("slots", {})
         # Each entry: (color, label, extra_draw_or_None)
-        assignments = {lk["back"]: (COLOR_BACK, "BACK", None)}
+        assignments = {lk["back"]: (COLOR_BACK, _t("BACK"), None)}
         for i, save_key in enumerate(lk["save"]):
-            assignments[save_key] = (COLOR_SAVE, f"SAVE\n{i + 1}", None)
+            assignments[save_key] = (
+                COLOR_SAVE, f"{_t('SAVE')}\n{i + 1}", None)
         for i, load_key in enumerate(lk["load"]):
             slot = slots.get(str(i + 1))
             if slot:
@@ -2578,7 +2626,7 @@ class Tiler:
                 )
             else:
                 assignments[load_key] = (
-                    COLOR_LOAD_EMPTY, f"LOAD {i + 1}\nEMPTY", None,
+                    COLOR_LOAD_EMPTY, f"LOAD {i + 1}\n{_t('EMPTY')}", None,
                 )
         for i, del_key in enumerate(lk["delete"]):
             if str(i + 1) in slots:
@@ -2597,11 +2645,11 @@ class Tiler:
         mid_key = self.total_keys // 2
         for key in range(self.total_keys):
             if key == 0:
-                set_key(self.deck, key, COLOR_CANCEL, "CANCEL")
+                set_key(self.deck, key, COLOR_CANCEL, _t("CANCEL"))
             elif key == self.total_keys - 1:
-                set_key(self.deck, key, COLOR_CONFIRM, "OK")
+                set_key(self.deck, key, COLOR_CONFIRM, _t("OK"))
             elif key == mid_key - 1 and self.cols >= 3:
-                set_key(self.deck, key, COLOR_EMPTY, "DELETE")
+                set_key(self.deck, key, COLOR_EMPTY, _t("DELETE"))
             elif key == mid_key and self.cols >= 3:
                 set_key(self.deck, key, COLOR_EMPTY, f"SLOT\n{slot}?")
             elif key == mid_key:
@@ -2613,10 +2661,10 @@ class Tiler:
         entries = list(reversed(_translator.load_history()))
         for key in range(self.total_keys):
             if key == 0:
-                set_key(self.deck, key, COLOR_BACK, "BACK")
+                set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 continue
             if key == self.total_keys - 1:
-                set_key(self.deck, key, COLOR_CANCEL, "CLEAR")
+                set_key(self.deck, key, COLOR_CANCEL, _t("CLEAR"))
                 continue
             idx = key - 1
             if idx < len(entries):
@@ -2631,9 +2679,9 @@ class Tiler:
         if not tk:
             for key in range(self.total_keys):
                 if key == 0:
-                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 elif key == self.total_keys // 2:
-                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                    set_key(self.deck, key, COLOR_ERR, _t("DECK\nTOO\nSMALL"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
@@ -2662,7 +2710,7 @@ class Tiler:
         else:
             llm_be_name = "NONE"
         assignments = {
-            tk["back"]: (COLOR_BACK, "BACK", None),
+            tk["back"]: (COLOR_BACK, _t("BACK"), None),
             tk["record"]: (rec_color, rec_label, rec_icon),
             tk["backend"]: (
                 COLOR_BACKEND, f"STT\n{backend_name[:6]}", None,
@@ -2695,21 +2743,21 @@ class Tiler:
         if not bk:
             for key in range(self.total_keys):
                 if key == 0:
-                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 elif key == self.total_keys // 2:
-                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                    set_key(self.deck, key, COLOR_ERR, _t("DECK\nTOO\nSMALL"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
         powered = _bt_powered()
         if powered is None:
-            toggle_color, toggle_label = COLOR_BT_NA, "BT\nN/A"
+            toggle_color, toggle_label = COLOR_BT_NA, _t("BT\nN/A")
         elif powered:
             toggle_color, toggle_label = COLOR_BT_ON, "BT\nON"
         else:
             toggle_color, toggle_label = COLOR_BT_OFF, "BT\nOFF"
         assignments = {
-            bk["back"]: (COLOR_BACK, "BACK"),
+            bk["back"]: (COLOR_BACK, _t("BACK")),
             bk["toggle"]: (toggle_color, toggle_label),
         }
         # Device slots only when BT is powered (else listing is empty anyway)
@@ -2736,9 +2784,9 @@ class Tiler:
         if not ak:
             for key in range(self.total_keys):
                 if key == 0:
-                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 elif key == self.total_keys // 2:
-                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                    set_key(self.deck, key, COLOR_ERR, _t("DECK\nTOO\nSMALL"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
@@ -2747,10 +2795,10 @@ class Tiler:
             f"LABELS\n{'ON' if _show_labels else 'OFF'}"
         )
         assignments = {
-            ak["back"]: (COLOR_BACK, "BACK"),
+            ak["back"]: (COLOR_BACK, _t("BACK")),
             ak["font_down"]: (COLOR_FONT_STEP, "FONT\n-"),
             ak["font_up"]: (COLOR_FONT_STEP, "FONT\n+"),
-            ak["font_reset"]: (COLOR_FONT_RESET, "RESET"),
+            ak["font_reset"]: (COLOR_FONT_RESET, _t("RESET")),
             self.total_keys // 2: (COLOR_EMPTY, scale_lbl),
         }
         if "labels_toggle" in ak:
@@ -2768,9 +2816,9 @@ class Tiler:
         if not sk:
             for key in range(self.total_keys):
                 if key == 0:
-                    set_key(self.deck, key, COLOR_BACK, "BACK")
+                    set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 elif key == self.total_keys // 2:
-                    set_key(self.deck, key, COLOR_ERR, "DECK\nTOO\nSMALL")
+                    set_key(self.deck, key, COLOR_ERR, _t("DECK\nTOO\nSMALL"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
@@ -2779,7 +2827,7 @@ class Tiler:
         mic_vol, mic_muted = _wpctl_get(WPCTL_SOURCE)
 
         labels = {
-            sk["back"]: (COLOR_BACK, "BACK"),
+            sk["back"]: (COLOR_BACK, _t("BACK")),
             sk["vol_down"]: (COLOR_VOL, f"VOL\n-{VOL_STEP_PCT}%"),
             sk["vol_up"]: (COLOR_VOL, f"VOL\n+{VOL_STEP_PCT}%"),
             sk["mic_down"]: (COLOR_MIC, f"MIC\n-{VOL_STEP_PCT}%"),
@@ -2792,12 +2840,12 @@ class Tiler:
             short = _wpctl_default_short("Sources") or "?"
             labels[sk["source"]] = (COLOR_MIC, f"SRC\n{short}")
         if out_muted:
-            labels[sk["out_mute"]] = (COLOR_MUTE_ON, "OUT\nMUTE")
+            labels[sk["out_mute"]] = (COLOR_MUTE_ON, _t("OUT\nMUTE"))
         else:
             out_lbl = f"OUT\n{out_vol}%" if out_vol is not None else "OUT"
             labels[sk["out_mute"]] = (COLOR_MUTE_OFF, out_lbl)
         if mic_muted:
-            labels[sk["mic_mute"]] = (COLOR_MUTE_ON, "MIC\nMUTE")
+            labels[sk["mic_mute"]] = (COLOR_MUTE_ON, _t("MIC\nMUTE"))
         else:
             mic_lbl = f"MIC\n{mic_vol}%" if mic_vol is not None else "MIC"
             labels[sk["mic_mute"]] = (COLOR_MUTE_OFF, mic_lbl)
@@ -2827,28 +2875,29 @@ class Tiler:
     def _render_timer_list(self):
         for key in range(self.total_keys):
             if key == 0:
-                set_key(self.deck, key, COLOR_BACK, "BACK")
+                set_key(self.deck, key, COLOR_BACK, _t("BACK"))
                 continue
             if key == self.total_keys - 1:
-                set_key(self.deck, key, COLOR_REFRESH, "RFSH")
+                set_key(self.deck, key, COLOR_REFRESH, _t("RFSH"))
                 continue
             if key == self.total_keys - 2:
-                set_key(self.deck, key, COLOR_RESET, "RESET\nALL")
+                set_key(self.deck, key, COLOR_RESET, _t("RESET\nALL"))
                 continue
             if key == self.total_keys - 3:
-                set_key(self.deck, key, COLOR_NEW, "NEW")
+                set_key(self.deck, key, COLOR_NEW, _t("NEW"))
                 continue
             if key == self.total_keys - 4:
-                set_key(self.deck, key, COLOR_EXPORT, "EXPT\nCSV")
+                set_key(self.deck, key, COLOR_EXPORT, _t("EXPT\nCSV"))
                 continue
             if key == self.total_keys - 5:
-                set_key(self.deck, key, COLOR_TIMER_PAUSED, "CLEAN\nDASH")
+                set_key(self.deck, key, COLOR_TIMER_PAUSED,
+                        _t("CLEAN\nDASH"))
                 continue
             timer_id = self.timer_key_map.get(key)
             if not timer_id:
                 # Empty slot — show hint if no timers exist at all
                 if not self.timers and key == 1:
-                    set_key(self.deck, key, COLOR_EMPTY, "NO\nTIMERS")
+                    set_key(self.deck, key, COLOR_EMPTY, _t("NO\nTIMERS"))
                 else:
                     set_key(self.deck, key, COLOR_EMPTY, "")
                 continue
@@ -2871,15 +2920,15 @@ class Tiler:
         mid_key = self.total_keys // 2
         for key in range(self.total_keys):
             if key == 0:
-                set_key(self.deck, key, COLOR_CANCEL, "CANCEL")
+                set_key(self.deck, key, COLOR_CANCEL, _t("CANCEL"))
             elif key == self.total_keys - 1:
-                set_key(self.deck, key, COLOR_CONFIRM, "OK")
+                set_key(self.deck, key, COLOR_CONFIRM, _t("OK"))
             elif key == mid_key - 1 and self.cols >= 3:
-                set_key(self.deck, key, COLOR_EMPTY, "RESET")
+                set_key(self.deck, key, COLOR_EMPTY, _t("RESET"))
             elif key == mid_key and self.cols >= 3:
-                set_key(self.deck, key, COLOR_EMPTY, "ALL?")
+                set_key(self.deck, key, COLOR_EMPTY, _t("ALL?"))
             elif key == mid_key:
-                set_key(self.deck, key, COLOR_EMPTY, "RESET\nALL?")
+                set_key(self.deck, key, COLOR_EMPTY, _t("RESET\nALL?"))
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
