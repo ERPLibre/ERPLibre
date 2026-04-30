@@ -68,6 +68,74 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         window.add(this._buildSyncPage(settings));
         window.add(this._buildLogPage(settings));
         window.add(this._buildHelpPage());
+        window.add(this._buildAboutPage());
+    }
+
+    _buildAboutPage() {
+        const page = new Adw.PreferencesPage({
+            title: 'About', icon_name: 'dialog-information-symbolic',
+        });
+
+        const erp = new Adw.PreferencesGroup({
+            title: 'ERPLibre',
+            description:
+                'Community fork of Odoo Community Edition under '
+                + 'AGPL-3.0+. Supports Odoo 12 through 18 (default 18.0) '
+                + 'and ships the Stream Deck tooling shown in this '
+                + 'extension.',
+        });
+        page.add(erp);
+        erp.add(this._linkRow('Project page', 'github.com/ERPLibre/ERPLibre',
+            'https://github.com/ERPLibre/ERPLibre'));
+        erp.add(this._linkRow('Documentation',
+            'erplibre.readthedocs.io',
+            'https://erplibre.readthedocs.io'));
+        erp.add(this._linkRow('Issue tracker',
+            'github.com/ERPLibre/ERPLibre/issues',
+            'https://github.com/ERPLibre/ERPLibre/issues'));
+
+        const tlc = new Adw.PreferencesGroup({
+            title: 'TechnoLibre',
+            description:
+                'Quebec-based open-source company maintaining ERPLibre '
+                + 'and the Stream Deck integration. Sponsors community '
+                + 'development and offers commercial support.',
+        });
+        page.add(tlc);
+        tlc.add(this._linkRow('Website', 'technolibre.ca',
+            'https://technolibre.ca'));
+        tlc.add(this._linkRow('Contact', 'mathben@technolibre.ca',
+            'mailto:mathben@technolibre.ca'));
+
+        const plugin = new Adw.PreferencesGroup({
+            title: 'Stream Deck integration',
+            description:
+                'GNOME shell extension + Python deck driver under '
+                + 'script/stream_deck/. Hooks Claude sessions, mpv, VLC, '
+                + 'gallery server and Mutter window tiling onto the '
+                + 'Elgato hardware.',
+        });
+        page.add(plugin);
+        plugin.add(this._linkRow('Source folder',
+            'script/stream_deck/gnome-extension/',
+            'https://github.com/ERPLibre/ERPLibre/tree/master/'
+                + 'script/stream_deck/gnome-extension'));
+        plugin.add(this._linkRow('License', 'AGPL-3.0+',
+            'https://www.gnu.org/licenses/agpl-3.0.html'));
+
+        return page;
+    }
+
+    _linkRow(title, subtitle, uri) {
+        const row = new Adw.ActionRow({title, subtitle});
+        const btn = new Gtk.LinkButton({
+            uri,
+            label: 'Open',
+            valign: Gtk.Align.CENTER,
+        });
+        row.add_suffix(btn);
+        row.set_activatable_widget(btn);
+        return row;
     }
 
     _buildHelpPage() {

@@ -17,7 +17,6 @@ import {buildTerminalArgv, findTerminal, spawnDetached}
 
 const GALLERY_PORT = 8042;
 const GALLERY_URL = `http://localhost:${GALLERY_PORT}`;
-const PROJECT_URL = 'https://github.com/ERPLibre/ERPLibre';
 const PROJECT_NAME = 'ERPLibre Stream Deck';
 
 function _notify(title, body) {
@@ -109,18 +108,6 @@ class ControllerIndicator extends PanelMenu.Button {
     }
 
     _buildMenu() {
-        const about = new PopupMenu.PopupMenuItem('About');
-        about.connect('activate', () => {
-            try {
-                Gio.AppInfo.launch_default_for_uri(PROJECT_URL, null);
-            } catch (_e) {
-                _notify(PROJECT_NAME, `Open ${PROJECT_URL} for project info.`);
-            }
-        });
-        this.menu.addMenuItem(about);
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-
         this._gallerySection = new PopupMenu.PopupSubMenuMenuItem(
             'Start gallery server…');
         this.menu.addMenuItem(this._gallerySection);
