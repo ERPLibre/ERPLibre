@@ -1293,6 +1293,7 @@ class Tiler:
         self.corner2 = None
         self.last_result = None  # "ok" or "err"
         self.result_time = 0
+        self.last_press_key = None  # which key triggered last_result
         self._claude_session_sid = None  # active session in MODE_CLAUDE_SESSION
         self._mpv_session_pid = None     # active mpv pid in MODE_MPV_SESSION
         self._tiling_last_touch = 0.0    # monotonic ts of last tiling input
@@ -1592,6 +1593,11 @@ class Tiler:
         if (self.last_result and time.monotonic() - self.result_time
                 < RESULT_FLASH_SEC):
             return
+
+        # Remember which key triggered whichever result the dispatch
+        # ends up setting, so the flash overlay paints only this key
+        # and its 4-neighbours instead of the whole deck.
+        self.last_press_key = key
 
         if self.mode == MODE_IDLE:
             self._handle_idle_key(key)
@@ -2266,17 +2272,19 @@ class Tiler:
     # ---------- Rendering ----------
 
     def render(self):
-        # Result flash
+        # Result flash. The pressed key + its 4-neighbours go green
+        # (or red on error) so the user gets clear acknowledgement
+        # without losing context on the rest of the deck.
         if self.last_result:
             elapsed = time.monotonic() - self.result_time
             if elapsed < RESULT_FLASH_SEC:
-                color = COLOR_OK if self.last_result == "ok" else COLOR_ERR
-                label = "OK!" if self.last_result == "ok" else "ERR"
-                for key in range(self.total_keys):
-                    set_key(self.deck, key, color, label)
+                self._render_mode()
+                self._overlay_flash()
                 return
             self.last_result = None
+        self._render_mode()
 
+    def _render_mode(self):
         if self.mode == MODE_IDLE:
             self._render_idle()
         elif self.mode == MODE_TILING:
@@ -2303,6 +2311,37 @@ class Tiler:
             self._render_claude_session()
         elif self.mode == MODE_MPV_SESSION:
             self._render_mpv_session()
+
+    def _overlay_flash(self):
+        if self.last_press_key is None:
+            # No specific key tracked (programmatic flash) — fall back
+            # to the old whole-deck behaviour so the feedback is still
+            # visible.
+            color = COLOR_OK if self.last_result == "ok" else COLOR_ERR
+            label = "OK!" if self.last_result == "ok" else "ERR"
+            for key in range(self.total_keys):
+                set_key(self.deck, key, color, label)
+            return
+        color = COLOR_OK if self.last_result == "ok" else COLOR_ERR
+        label = "OK!" if self.last_result == "ok" else "ERR"
+        keys = self._key_neighbors(self.last_press_key)
+        keys.add(self.last_press_key)
+        for k in keys:
+            if 0 <= k < self.total_keys:
+                set_key(self.deck, k, color, label)
+
+    def _key_neighbors(self, key):
+        if key is None or self.cols <= 0 or self.rows <= 0:
+            return set()
+        col = key % self.cols
+        row = key // self.cols
+        out = set()
+        for (dc, dr) in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            nc = col + dc
+            nr = row + dr
+            if 0 <= nc < self.cols and 0 <= nr < self.rows:
+                out.add(nr * self.cols + nc)
+        return out
 
     def _render_mpv_session(self):
         ms = self.mpv_session_keys or {}
