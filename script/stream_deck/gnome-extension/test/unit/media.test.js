@@ -155,3 +155,150 @@ test('normaliseMediaUrl: malformed URL falls back to lowercase', () => {
     assert.equal(normaliseMediaUrl('not a url'), 'not a url');
     assert.equal(normaliseMediaUrl('Random TEXT'), 'random text');
 });
+
+test('normaliseMediaUrl: vimeo numeric id with various paths', () => {
+    assert.equal(normaliseMediaUrl('https://vimeo.com/123456789'),
+        'vimeo:123456789');
+    assert.equal(normaliseMediaUrl('https://player.vimeo.com/video/123456789'),
+        'vimeo:123456789');
+    assert.equal(
+        normaliseMediaUrl('https://vimeo.com/showcase/abc/video/123456789'),
+        'vimeo:123456789');
+});
+
+test('normaliseMediaUrl: peertube watch / embed / w / bare uuid', () => {
+    const uuid = '12345678-1234-1234-1234-123456789012';
+    assert.equal(
+        normaliseMediaUrl(`https://peer.example.org/videos/watch/${uuid}`),
+        `peertube:peer.example.org:${uuid}`);
+    assert.equal(
+        normaliseMediaUrl(`https://peer.example.org/videos/embed/${uuid}`),
+        `peertube:peer.example.org:${uuid}`);
+    assert.equal(
+        normaliseMediaUrl('https://peer.example.org/w/abc'),
+        'peertube:peer.example.org:abc');
+});
+
+test('normaliseMediaUrl: dailymotion video / embed / dai.ly', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.dailymotion.com/video/x7tgad0'),
+        'dailymotion:x7tgad0');
+    assert.equal(
+        normaliseMediaUrl('https://www.dailymotion.com/embed/video/x7tgad0'),
+        'dailymotion:x7tgad0');
+    assert.equal(normaliseMediaUrl('https://dai.ly/x7tgad0'),
+        'dailymotion:x7tgad0');
+});
+
+test('normaliseMediaUrl: twitch vod and clips', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.twitch.tv/videos/123456789'),
+        'twitch:vod:123456789');
+    assert.equal(
+        normaliseMediaUrl('https://clips.twitch.tv/AbcDefSlug'),
+        'twitch:clip:AbcDefSlug');
+    assert.equal(
+        normaliseMediaUrl('https://twitch.tv/channel/clip/AbcDefSlug'),
+        'twitch:clip:AbcDefSlug');
+});
+
+test('normaliseMediaUrl: odysee channel + title', () => {
+    assert.equal(
+        normaliseMediaUrl('https://odysee.com/@chan:1/title:5'),
+        'odysee:@chan:title');
+});
+
+test('normaliseMediaUrl: rumble v-id', () => {
+    assert.equal(
+        normaliseMediaUrl('https://rumble.com/v3abc-some-slug.html'),
+        'rumble:3abc');
+});
+
+test('normaliseMediaUrl: tiktok long + short forms', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.tiktok.com/@user/video/12345'),
+        'tiktok:12345');
+    assert.equal(
+        normaliseMediaUrl('https://vm.tiktok.com/abcShort/'),
+        'tiktok:short:abcShort');
+});
+
+test('normaliseMediaUrl: instagram reel / p / tv', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.instagram.com/reel/CABCdef/'),
+        'instagram:reel:CABCdef');
+    assert.equal(
+        normaliseMediaUrl('https://www.instagram.com/p/CABCdef/'),
+        'instagram:p:CABCdef');
+});
+
+test('normaliseMediaUrl: facebook watch / videos / fb.watch', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.facebook.com/watch/?v=12345'),
+        'facebook:12345');
+    assert.equal(
+        normaliseMediaUrl('https://www.facebook.com/user/videos/12345/'),
+        'facebook:12345');
+    assert.equal(
+        normaliseMediaUrl('https://fb.watch/abcShort/'),
+        'facebook:short:abcShort');
+});
+
+test('normaliseMediaUrl: soundcloud track / set', () => {
+    assert.equal(
+        normaliseMediaUrl('https://soundcloud.com/Artist/MyTrack'),
+        'soundcloud:artist:mytrack');
+    assert.equal(
+        normaliseMediaUrl('https://soundcloud.com/Artist/sets/MyPlaylist'),
+        'soundcloud:set:artist:myplaylist');
+});
+
+test('normaliseMediaUrl: bandcamp track + album', () => {
+    assert.equal(
+        normaliseMediaUrl('https://artist.bandcamp.com/track/My-Song'),
+        'bandcamp:artist:track:my-song');
+    assert.equal(
+        normaliseMediaUrl('https://artist.bandcamp.com/album/My-Album'),
+        'bandcamp:artist:album:my-album');
+});
+
+test('normaliseMediaUrl: mixcloud user/show', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.mixcloud.com/User/My-Show/'),
+        'mixcloud:user:my-show');
+});
+
+test('normaliseMediaUrl: tidal track / album / playlist', () => {
+    assert.equal(
+        normaliseMediaUrl('https://tidal.com/track/12345'),
+        'tidal:track:12345');
+    assert.equal(
+        normaliseMediaUrl('https://tidal.com/browse/track/12345'),
+        'tidal:track:12345');
+    assert.equal(
+        normaliseMediaUrl('https://tidal.com/album/67890'),
+        'tidal:album:67890');
+});
+
+test('normaliseMediaUrl: deezer track with locale prefix', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.deezer.com/track/12345'),
+        'deezer:track:12345');
+    assert.equal(
+        normaliseMediaUrl('https://www.deezer.com/fr/track/12345'),
+        'deezer:track:12345');
+    assert.equal(
+        normaliseMediaUrl('https://www.deezer.com/en/album/67890'),
+        'deezer:album:67890');
+});
+
+test('normaliseMediaUrl: apple music album + track inside album', () => {
+    assert.equal(
+        normaliseMediaUrl(
+            'https://music.apple.com/us/album/some-slug/1234567890'),
+        'applemusic:album:1234567890');
+    assert.equal(
+        normaliseMediaUrl(
+            'https://music.apple.com/us/album/some-slug/1234567890?i=99999'),
+        'applemusic:album:1234567890:i:99999');
+});
