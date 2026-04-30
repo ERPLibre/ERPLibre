@@ -1397,13 +1397,25 @@ class Tiler:
 
     def _compute_idle_buttons(self):
         """Idle menu: TILE, TIMER, DEV RELOAD, SOUND, LAYOUT left-aligned
-        on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
+        on row 0. Items that overflow row 0 spill onto row 1 starting
+        at col 0 — only on decks with at least three rows so the mic
+        + layout-shortcut bottom row stays free."""
         order = [
             "tile", "timer", "dev_reload", "sound", "layout", "a11y",
             "bluetooth", "translator", "todo",
         ]
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
+        if self.rows >= 3:
+            next_overflow = self.cols
+            row1_end = self.cols * 2
+            for name in order:
+                if getattr(self, f"{name}_key") >= 0:
+                    continue
+                if next_overflow >= row1_end:
+                    break
+                setattr(self, f"{name}_key", next_overflow)
+                next_overflow += 1
 
         # Layout shortcuts: last row, aligned under LAYOUT, one per slot.
         self.layout_shortcut_keys = []
