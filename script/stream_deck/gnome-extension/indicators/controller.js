@@ -110,18 +110,18 @@ class ControllerIndicator extends PanelMenu.Button {
 
     _buildMenu() {
         this._gallerySection = new PopupMenu.PopupSubMenuMenuItem(
-            'Start gallery server…');
+            _('Start gallery server…'));
         this.menu.addMenuItem(this._gallerySection);
         this._populateGallerySubmenu();
 
         this._erplibreSection = new PopupMenu.PopupSubMenuMenuItem(
             'ERPLibre');
         this.menu.addMenuItem(this._erplibreSection);
-        this._populateSectionPlaceholder(this._erplibreSection, 'Loading…');
+        this._populateSectionPlaceholder(this._erplibreSection, _('Loading…'));
 
-        this._gamesSection = new PopupMenu.PopupSubMenuMenuItem('Games');
+        this._gamesSection = new PopupMenu.PopupSubMenuMenuItem(_('Games'));
         this.menu.addMenuItem(this._gamesSection);
-        this._populateSectionPlaceholder(this._gamesSection, 'Loading…');
+        this._populateSectionPlaceholder(this._gamesSection, _('Loading…'));
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
@@ -141,25 +141,26 @@ class ControllerIndicator extends PanelMenu.Button {
         const unknown = this._galleryOnline === null && !starting;
         let header;
         if (online) {
-            header = `● Running on ${GALLERY_URL}`;
+            header = _('● Running on {url}').replace('{url}', GALLERY_URL);
             this._gallerySection.label.text =
-                `Gallery server (running) ${GALLERY_URL}`;
+                _('Gallery server (running) {url}')
+                    .replace('{url}', GALLERY_URL);
         } else if (starting) {
-            header = `◐ Starting on ${GALLERY_URL}`;
+            header = _('◐ Starting on {url}').replace('{url}', GALLERY_URL);
             this._gallerySection.label.text =
-                'Gallery server (starting)…';
+                _('Gallery server (starting)…');
         } else if (unknown) {
-            header = '… Probing';
-            this._gallerySection.label.text = 'Start gallery server…';
+            header = _('… Probing');
+            this._gallerySection.label.text = _('Start gallery server…');
         } else {
-            header = '○ Offline';
-            this._gallerySection.label.text = 'Start gallery server…';
+            header = _('○ Offline');
+            this._gallerySection.label.text = _('Start gallery server…');
         }
         this._gallerySection.menu.addMenuItem(
             new PopupMenu.PopupMenuItem(header, {reactive: false}));
 
         if (online) {
-            const open = new PopupMenu.PopupMenuItem('Open in browser');
+            const open = new PopupMenu.PopupMenuItem(_('Open in browser'));
             open.connect('activate', () => {
                 try {
                     Gio.AppInfo.launch_default_for_uri(GALLERY_URL, null);
@@ -176,14 +177,15 @@ class ControllerIndicator extends PanelMenu.Button {
         if (!paths.length) {
             this._gallerySection.menu.addMenuItem(
                 new PopupMenu.PopupMenuItem(
-                    '(no paths configured — add one in pencil prefs)',
+                    _('(no paths configured — add one in pencil prefs)'),
                     {reactive: false}));
             return;
         }
         for (const p of paths) {
             const baseLabel = p.label && p.label.trim() !== ''
                 ? `${p.label} (${p.path})` : p.path;
-            const label = online ? `${baseLabel} — port busy` : baseLabel;
+            const label = online ? `${baseLabel} — ${_('port busy')}`
+                : baseLabel;
             const item = new PopupMenu.PopupMenuItem(label,
                 {reactive: !online});
             if (!online) {
@@ -198,7 +200,7 @@ class ControllerIndicator extends PanelMenu.Button {
         const terminal = await findTerminal();
         if (!terminal) {
             _notify(PROJECT_NAME,
-                'No terminal found. Install gnome-terminal, kgx or xterm.');
+                _('No terminal found. Install gnome-terminal, kgx or xterm.'));
             return;
         }
         const argv = buildTerminalArgv({
@@ -232,7 +234,7 @@ class ControllerIndicator extends PanelMenu.Button {
     }
 
     _refreshGames() {
-        this._populateGamesPlaceholder('Loading…');
+        this._populateGamesPlaceholder(_('Loading…'));
         const session = new Soup.Session();
         session.timeout = 3;
         const message = Soup.Message.new('GET', `${GALLERY_URL}/api/games`);
@@ -253,7 +255,7 @@ class ControllerIndicator extends PanelMenu.Button {
                     // HTTP failed — TCP probe distinguishes "starting"
                     // (port open but not serving yet) from "offline".
                     this._populateGamesPlaceholder(
-                        'Gallery offline (start gallery_server.py)');
+                        _('Gallery offline (start gallery_server.py)'));
                     this._probeGalleryTcp();
                 }
                 if (this._galleryOnline !== online) {
@@ -294,8 +296,8 @@ class ControllerIndicator extends PanelMenu.Button {
         const erplibre = sorted.filter(g => g.section === 'erplibre');
         const others = sorted.filter(g => g.section !== 'erplibre');
         this._fillSection(this._erplibreSection, erplibre,
-            'No ERPLibre tools');
-        this._fillSection(this._gamesSection, others, 'No games found');
+            _('No ERPLibre tools'));
+        this._fillSection(this._gamesSection, others, _('No games found'));
     }
 
     _fillSection(section, items, emptyLabel) {
@@ -326,7 +328,8 @@ class ControllerIndicator extends PanelMenu.Button {
                     sess.send_and_read_finish(result);
                 } catch (_e) {
                     _notify(PROJECT_NAME,
-                        `Could not launch ${gameId}: gallery offline?`);
+                        _('Could not launch {id}: gallery offline?')
+                            .replace('{id}', gameId));
                 }
             });
     }

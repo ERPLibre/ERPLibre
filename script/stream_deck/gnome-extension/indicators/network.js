@@ -120,12 +120,14 @@ class NetworkIndicator extends PanelMenu.Button {
         this.menu.removeAll();
         const lastTxt = this._scanResult.lastScan
             ? new Date(this._scanResult.lastScan).toLocaleTimeString()
-            : 'never';
+            : _('never');
         const cidr = this._scanResult.cidr || '?';
         this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-            `Subnet: ${cidr} · last scan ${lastTxt}`, {reactive: false}));
+            _('Subnet: {cidr} · last scan {at}')
+                .replace('{cidr}', cidr).replace('{at}', lastTxt),
+            {reactive: false}));
         const refresh = new PopupMenu.PopupMenuItem(
-            this._scanning ? '🔄 Scanning…' : '🔄 Refresh scan');
+            this._scanning ? _('🔄 Scanning…') : _('🔄 Refresh scan'));
         refresh.connect('activate', () => this._startScan());
         this.menu.addMenuItem(refresh);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -153,10 +155,11 @@ class NetworkIndicator extends PanelMenu.Button {
         }
         const real = hosts.filter(h => !isWildcardHost(h.alias));
         this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-            `— Configured (${real.length}) —`, {reactive: false}));
+            _('— Configured ({n}) —').replace('{n}', real.length),
+            {reactive: false}));
         if (real.length === 0) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no Host stanzas)', {reactive: false}));
+                _('(no Host stanzas)'), {reactive: false}));
             return;
         }
         for (const h of real) this.menu.addMenuItem(this._configuredRow(h));
@@ -164,25 +167,25 @@ class NetworkIndicator extends PanelMenu.Button {
 
     _configuredRow(host) {
         const sub = new PopupMenu.PopupSubMenuMenuItem(host.alias);
-        const ssh = new PopupMenu.PopupMenuItem('SSH terminal');
+        const ssh = new PopupMenu.PopupMenuItem(_('SSH terminal'));
         ssh.connect('activate', () => this._sshAlias(host.alias));
         sub.menu.addMenuItem(ssh);
         if (host.fields?.HostName) {
-            const cp = new PopupMenu.PopupMenuItem('Copy hostname');
+            const cp = new PopupMenu.PopupMenuItem(_('Copy hostname'));
             cp.connect('activate',
                 () => this._copy(host.fields.HostName));
             sub.menu.addMenuItem(cp);
         }
-        const sftp = new PopupMenu.PopupMenuItem('Open Files (sftp://)');
+        const sftp = new PopupMenu.PopupMenuItem(_('Open Files (sftp://)'));
         sftp.connect('activate',
             () => spawnDetached(buildBrowserArgv(`sftp://${host.alias}`),
                 {notify: _notify, title: 'Stream Deck'}));
         sub.menu.addMenuItem(sftp);
-        const det = new PopupMenu.PopupMenuItem('Show details');
+        const det = new PopupMenu.PopupMenuItem(_('Show details'));
         det.connect('activate', () => {
             const lines = Object.entries(host.fields)
                 .map(([k, v]) => `${k}: ${v}`).join('\n');
-            _notify(host.alias, lines || '(no fields)');
+            _notify(host.alias, lines || _('(no fields)'));
         });
         sub.menu.addMenuItem(det);
         return sub;
@@ -190,23 +193,24 @@ class NetworkIndicator extends PanelMenu.Button {
 
     _addScannedHosts() {
         this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-            `— Scanned (${this._scanResult.hosts.length}) —`,
+            _('— Scanned ({n}) —')
+                .replace('{n}', this._scanResult.hosts.length),
             {reactive: false}));
         for (const host of this._scanResult.hosts) {
             const sub = new PopupMenu.PopupSubMenuMenuItem(
                 `${host.hostname || host.ip} (${host.ip})`);
-            const ssh = new PopupMenu.PopupMenuItem('SSH terminal');
+            const ssh = new PopupMenu.PopupMenuItem(_('SSH terminal'));
             ssh.connect('activate', () => this._sshIp(host.ip));
             sub.menu.addMenuItem(ssh);
-            const cp = new PopupMenu.PopupMenuItem('Copy IP');
+            const cp = new PopupMenu.PopupMenuItem(_('Copy IP'));
             cp.connect('activate', () => this._copy(host.ip));
             sub.menu.addMenuItem(cp);
-            const sftp = new PopupMenu.PopupMenuItem('Open Files (sftp://)');
+            const sftp = new PopupMenu.PopupMenuItem(_('Open Files (sftp://)'));
             sftp.connect('activate', () => spawnDetached(
                 buildBrowserArgv(`sftp://${host.ip}`),
                 {notify: _notify, title: 'Stream Deck'}));
             sub.menu.addMenuItem(sftp);
-            const det = new PopupMenu.PopupMenuItem('Show details');
+            const det = new PopupMenu.PopupMenuItem(_('Show details'));
             det.connect('activate',
                 () => _notify(host.ip,
                     `hostname: ${host.hostname || '?'}, port22: open`));
@@ -252,7 +256,7 @@ class NetworkIndicator extends PanelMenu.Button {
             const cidr = cidrs.length > 0 ? cidrs[0]
                 : (await autoDetectCidrGjs());
             if (!cidr) {
-                _notify('Stream Deck', 'No network detected');
+                _notify('Stream Deck', _('No network detected'));
                 return;
             }
             const useNmap = this._settings.get_boolean('network-use-nmap')

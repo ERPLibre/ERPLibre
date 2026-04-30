@@ -1,7 +1,8 @@
+#
 msgid ""
 msgstr ""
-"Content-Type: text/plain; charset=UTF-8\n"
 "Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 
 msgid "Open prefs"
 msgstr "Open prefs"
@@ -124,8 +125,12 @@ msgstr "Edit path"
 msgid "Stream Deck"
 msgstr "Stream Deck"
 
-msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
-msgstr "Switch to the target terminal within 3 s — its window will be saved for this session."
+msgid ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
+msgstr ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
 
 msgid "Window saved."
 msgstr "Window saved."
@@ -144,3 +149,177 @@ msgstr "Action failed: "
 
 msgid "No terminal found. Install gnome-terminal, kgx or xterm."
 msgstr "No terminal found. Install gnome-terminal, kgx or xterm."
+
+msgid "(no Stream Deck found)"
+msgstr "(no Stream Deck found)"
+
+msgid "🔄 Re-scan USB"
+msgstr "🔄 Re-scan USB"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Open controller UI"
+msgstr "Open controller UI"
+
+msgid "Restart deck"
+msgstr "Restart deck"
+
+msgid "Show details"
+msgstr "Show details"
+
+msgid "never"
+msgstr "never"
+
+msgid "Subnet: {cidr} · last scan {at}"
+msgstr "Subnet: {cidr} · last scan {at}"
+
+msgid "🔄 Scanning…"
+msgstr "🔄 Scanning…"
+
+msgid "🔄 Refresh scan"
+msgstr "🔄 Refresh scan"
+
+msgid "— Configured ({n}) —"
+msgstr "— Configured ({n}) —"
+
+msgid "(no Host stanzas)"
+msgstr "(no Host stanzas)"
+
+msgid "SSH terminal"
+msgstr "SSH terminal"
+
+msgid "Copy hostname"
+msgstr "Copy hostname"
+
+msgid "Open Files (sftp://)"
+msgstr "Open Files (sftp://)"
+
+msgid "(no fields)"
+msgstr "(no fields)"
+
+msgid "— Scanned ({n}) —"
+msgstr "— Scanned ({n}) —"
+
+msgid "Copy IP"
+msgstr "Copy IP"
+
+msgid "No network detected"
+msgstr "No network detected"
+
+msgid "(no media — use + Add media)"
+msgstr "(no media — use + Add media)"
+
+msgid "— Videos ({n}) —"
+msgstr "— Videos ({n}) —"
+
+msgid "— Audio ({n}) —"
+msgstr "— Audio ({n}) —"
+
+msgid "+ Add media…"
+msgstr "+ Add media…"
+
+msgid "▶ Browser"
+msgstr "▶ Browser"
+
+msgid "▶ mpv"
+msgstr "▶ mpv"
+
+msgid "▶ VLC"
+msgstr "▶ VLC"
+
+msgid "▶ Spotify"
+msgstr "▶ Spotify"
+
+msgid "✎ Edit"
+msgstr "✎ Edit"
+
+msgid "— Local —"
+msgstr "— Local —"
+
+msgid "(no local instances)"
+msgstr "(no local instances)"
+
+msgid "— Remote —"
+msgstr "— Remote —"
+
+msgid "(no remote instances — use Add)"
+msgstr "(no remote instances — use Add)"
+
+msgid "+ Add remote instance…"
+msgstr "+ Add remote instance…"
+
+msgid "🔄 Re-scan local"
+msgstr "🔄 Re-scan local"
+
+msgid "Open URL"
+msgstr "Open URL"
+
+msgid "Start server"
+msgstr "Start server"
+
+msgid "Auto-login ({method})"
+msgstr "Auto-login ({method})"
+
+msgid "Copy username"
+msgstr "Copy username"
+
+msgid "Copy password"
+msgstr "Copy password"
+
+msgid "Open in KeePassXC"
+msgstr "Open in KeePassXC"
+
+msgid "Edit instance"
+msgstr "Edit instance"
+
+msgid "Start gallery server…"
+msgstr "Start gallery server…"
+
+msgid "Loading…"
+msgstr "Loading…"
+
+msgid "Games"
+msgstr "Games"
+
+msgid "● Running on {url}"
+msgstr "● Running on {url}"
+
+msgid "Gallery server (running) {url}"
+msgstr "Gallery server (running) {url}"
+
+msgid "◐ Starting on {url}"
+msgstr "◐ Starting on {url}"
+
+msgid "Gallery server (starting)…"
+msgstr "Gallery server (starting)…"
+
+msgid "… Probing"
+msgstr "… Probing"
+
+msgid "○ Offline"
+msgstr "○ Offline"
+
+msgid "Open in browser"
+msgstr "Open in browser"
+
+msgid "(no paths configured — add one in pencil prefs)"
+msgstr "(no paths configured — add one in pencil prefs)"
+
+msgid "port busy"
+msgstr "port busy"
+
+msgid "Gallery offline (start gallery_server.py)"
+msgstr "Gallery offline (start gallery_server.py)"
+
+msgid "No ERPLibre tools"
+msgstr "No ERPLibre tools"
+
+msgid "No games found"
+msgstr "No games found"
+
+msgid "Could not launch {id}: gallery offline?"
+msgstr "Could not launch {id}: gallery offline?"
+
+msgid "Active sessions"
+msgstr "Active sessions"

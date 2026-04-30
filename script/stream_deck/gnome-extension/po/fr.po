@@ -1,7 +1,8 @@
+#
 msgid ""
 msgstr ""
-"Content-Type: text/plain; charset=UTF-8\n"
 "Language: fr\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 
 msgid "Open prefs"
 msgstr "Ouvrir les préférences"
@@ -124,8 +125,12 @@ msgstr "Modifier le chemin"
 msgid "Stream Deck"
 msgstr "Stream Deck"
 
-msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
-msgstr "Basculez vers le bon terminal en 3 s — sa fenêtre sera enregistrée pour cette session."
+msgid ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
+msgstr ""
+"Basculez vers le bon terminal en 3 s — sa fenêtre sera enregistrée pour "
+"cette session."
 
 msgid "Window saved."
 msgstr "Fenêtre enregistrée."
@@ -144,3 +149,177 @@ msgstr "Action échouée : "
 
 msgid "No terminal found. Install gnome-terminal, kgx or xterm."
 msgstr "Aucun terminal trouvé. Installez gnome-terminal, kgx ou xterm."
+
+msgid "(no Stream Deck found)"
+msgstr "(aucun Stream Deck détecté)"
+
+msgid "🔄 Re-scan USB"
+msgstr "🔄 Re-scan USB"
+
+msgid "Status"
+msgstr "Statut"
+
+msgid "Open controller UI"
+msgstr "Ouvrir l'interface du contrôleur"
+
+msgid "Restart deck"
+msgstr "Redémarrer le deck"
+
+msgid "Show details"
+msgstr "Afficher les détails"
+
+msgid "never"
+msgstr "jamais"
+
+msgid "Subnet: {cidr} · last scan {at}"
+msgstr "Sous-réseau : {cidr} · dernier scan {at}"
+
+msgid "🔄 Scanning…"
+msgstr "🔄 Analyse en cours…"
+
+msgid "🔄 Refresh scan"
+msgstr "🔄 Relancer le scan"
+
+msgid "— Configured ({n}) —"
+msgstr "— Configurés ({n}) —"
+
+msgid "(no Host stanzas)"
+msgstr "(aucune entrée Host)"
+
+msgid "SSH terminal"
+msgstr "Terminal SSH"
+
+msgid "Copy hostname"
+msgstr "Copier le nom d'hôte"
+
+msgid "Open Files (sftp://)"
+msgstr "Ouvrir Fichiers (sftp://)"
+
+msgid "(no fields)"
+msgstr "(aucun champ)"
+
+msgid "— Scanned ({n}) —"
+msgstr "— Scannés ({n}) —"
+
+msgid "Copy IP"
+msgstr "Copier l'IP"
+
+msgid "No network detected"
+msgstr "Aucun réseau détecté"
+
+msgid "(no media — use + Add media)"
+msgstr "(aucun média — utilisez + Ajouter un média)"
+
+msgid "— Videos ({n}) —"
+msgstr "— Vidéos ({n}) —"
+
+msgid "— Audio ({n}) —"
+msgstr "— Audio ({n}) —"
+
+msgid "+ Add media…"
+msgstr "+ Ajouter un média…"
+
+msgid "▶ Browser"
+msgstr "▶ Navigateur"
+
+msgid "▶ mpv"
+msgstr "▶ mpv"
+
+msgid "▶ VLC"
+msgstr "▶ VLC"
+
+msgid "▶ Spotify"
+msgstr "▶ Spotify"
+
+msgid "✎ Edit"
+msgstr "✎ Modifier"
+
+msgid "— Local —"
+msgstr "— Local —"
+
+msgid "(no local instances)"
+msgstr "(aucune instance locale)"
+
+msgid "— Remote —"
+msgstr "— Distant —"
+
+msgid "(no remote instances — use Add)"
+msgstr "(aucune instance distante — utilisez Ajouter)"
+
+msgid "+ Add remote instance…"
+msgstr "+ Ajouter une instance distante…"
+
+msgid "🔄 Re-scan local"
+msgstr "🔄 Re-scan local"
+
+msgid "Open URL"
+msgstr "Ouvrir l'URL"
+
+msgid "Start server"
+msgstr "Démarrer le serveur"
+
+msgid "Auto-login ({method})"
+msgstr "Connexion auto ({method})"
+
+msgid "Copy username"
+msgstr "Copier le nom d'utilisateur"
+
+msgid "Copy password"
+msgstr "Copier le mot de passe"
+
+msgid "Open in KeePassXC"
+msgstr "Ouvrir dans KeePassXC"
+
+msgid "Edit instance"
+msgstr "Modifier l'instance"
+
+msgid "Start gallery server…"
+msgstr "Démarrer le serveur de galerie…"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Games"
+msgstr "Jeux"
+
+msgid "● Running on {url}"
+msgstr "● En cours sur {url}"
+
+msgid "Gallery server (running) {url}"
+msgstr "Serveur de galerie (en cours) {url}"
+
+msgid "◐ Starting on {url}"
+msgstr "◐ Démarrage sur {url}"
+
+msgid "Gallery server (starting)…"
+msgstr "Serveur de galerie (démarrage)…"
+
+msgid "… Probing"
+msgstr "… Sondage"
+
+msgid "○ Offline"
+msgstr "○ Hors ligne"
+
+msgid "Open in browser"
+msgstr "Ouvrir dans le navigateur"
+
+msgid "(no paths configured — add one in pencil prefs)"
+msgstr "(aucun chemin configuré — ajoutez-en un dans les prefs du crayon)"
+
+msgid "port busy"
+msgstr "port occupé"
+
+msgid "Gallery offline (start gallery_server.py)"
+msgstr "Galerie hors ligne (lancez gallery_server.py)"
+
+msgid "No ERPLibre tools"
+msgstr "Aucun outil ERPLibre"
+
+msgid "No games found"
+msgstr "Aucun jeu trouvé"
+
+msgid "Could not launch {id}: gallery offline?"
+msgstr "Impossible de lancer {id} : galerie hors ligne ?"
+
+msgid "Active sessions"
+msgstr "Sessions actives"

@@ -19,6 +19,7 @@ import {MasterPwDialog} from '../ui/master-pw-dialog.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip, BADGE_OK, BADGE_WARN, BADGE_ALERT}
     from '../lib/badges.js';
+import {_} from '../lib/i18n.js';
 
 const PROBE_TTL_MS = 30 * 1000;
 
@@ -175,12 +176,12 @@ class ErpLibreIndicator extends PanelMenu.Button {
         this.menu.removeAll();
         const remotes = parseList(this._settings.get_string('instances'));
 
-        const localHeader = new PopupMenu.PopupMenuItem('— Local —',
+        const localHeader = new PopupMenu.PopupMenuItem(_('— Local —'),
             {reactive: false});
         this.menu.addMenuItem(localHeader);
         if (this._localCache.length === 0) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no local instances)', {reactive: false}));
+                _('(no local instances)'), {reactive: false}));
         } else {
             for (const inst of this._localCache)
                 this.menu.addMenuItem(this._makeRow(inst, true));
@@ -188,22 +189,22 @@ class ErpLibreIndicator extends PanelMenu.Button {
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-        const remoteHeader = new PopupMenu.PopupMenuItem('— Remote —',
+        const remoteHeader = new PopupMenu.PopupMenuItem(_('— Remote —'),
             {reactive: false});
         this.menu.addMenuItem(remoteHeader);
         if (remotes.length === 0) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no remote instances — use Add)', {reactive: false}));
+                _('(no remote instances — use Add)'), {reactive: false}));
         } else {
             for (const inst of remotes)
                 this.menu.addMenuItem(this._makeRow(inst, false));
         }
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const add = new PopupMenu.PopupMenuItem('+ Add remote instance…');
+        const add = new PopupMenu.PopupMenuItem(_('+ Add remote instance…'));
         add.connect('activate', () => this._openAddDialog());
         this.menu.addMenuItem(add);
-        const rescan = new PopupMenu.PopupMenuItem('🔄 Re-scan local');
+        const rescan = new PopupMenu.PopupMenuItem(_('🔄 Re-scan local'));
         rescan.connect('activate', () => this._rescanThenRebuild());
         this.menu.addMenuItem(rescan);
     }
@@ -214,12 +215,12 @@ class ErpLibreIndicator extends PanelMenu.Button {
             : status === 'down' ? '🔴 '
             : '⚪ ';
         const sub = new PopupMenu.PopupSubMenuMenuItem(`${dot}${inst.name}`);
-        const open = new PopupMenu.PopupMenuItem('Open URL');
+        const open = new PopupMenu.PopupMenuItem(_('Open URL'));
         open.connect('activate', () => this._launchBrowser(inst));
         sub.menu.addMenuItem(open);
 
         if (isLocal) {
-            const start = new PopupMenu.PopupMenuItem('Start server');
+            const start = new PopupMenu.PopupMenuItem(_('Start server'));
             start.connect('activate', () => this._startServer(inst));
             sub.menu.addMenuItem(start);
         }
@@ -228,22 +229,23 @@ class ErpLibreIndicator extends PanelMenu.Button {
         if (hasKeepass) {
             if (inst.auto_login_method !== 'none') {
                 const login = new PopupMenu.PopupMenuItem(
-                    `Auto-login (${inst.auto_login_method})`);
+                    _('Auto-login ({method})')
+                        .replace('{method}', inst.auto_login_method));
                 login.connect('activate', () => this._autoLogin(inst));
                 sub.menu.addMenuItem(login);
             }
-            const cu = new PopupMenu.PopupMenuItem('Copy username');
+            const cu = new PopupMenu.PopupMenuItem(_('Copy username'));
             cu.connect('activate', () => this._copyAttr(inst, 'username'));
             sub.menu.addMenuItem(cu);
-            const cp = new PopupMenu.PopupMenuItem('Copy password');
+            const cp = new PopupMenu.PopupMenuItem(_('Copy password'));
             cp.connect('activate', () => this._copyAttr(inst, 'password'));
             sub.menu.addMenuItem(cp);
-            const ok = new PopupMenu.PopupMenuItem('Open in KeePassXC');
+            const ok = new PopupMenu.PopupMenuItem(_('Open in KeePassXC'));
             ok.connect('activate', () => this._openInKeepassXC(inst));
             sub.menu.addMenuItem(ok);
         }
 
-        const edit = new PopupMenu.PopupMenuItem('Edit instance');
+        const edit = new PopupMenu.PopupMenuItem(_('Edit instance'));
         edit.connect('activate', () => this._editEntry(inst, isLocal));
         sub.menu.addMenuItem(edit);
         return sub;

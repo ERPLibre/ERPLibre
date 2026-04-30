@@ -93,7 +93,7 @@ class MediaIndicator extends PanelMenu.Button {
         const films = parseList(this._settings.get_string('media'));
         if (!films.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no media — use + Add media)', {reactive: false}));
+                _('(no media — use + Add media)'), {reactive: false}));
         } else {
             const videos = films.filter(
                 f => normaliseKind(f.kind) === 'video');
@@ -101,7 +101,7 @@ class MediaIndicator extends PanelMenu.Button {
                 f => normaliseKind(f.kind) === 'audio');
             if (videos.length) {
                 this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                    `— Videos (${videos.length}) —`,
+                    _('— Videos ({n}) —').replace('{n}', videos.length),
                     {reactive: false}));
                 for (const film of videos)
                     this.menu.addMenuItem(this._makeRow(film));
@@ -111,14 +111,14 @@ class MediaIndicator extends PanelMenu.Button {
                     this.menu.addMenuItem(
                         new PopupMenu.PopupSeparatorMenuItem());
                 this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                    `— Audio (${audio.length}) —`,
+                    _('— Audio ({n}) —').replace('{n}', audio.length),
                     {reactive: false}));
                 for (const film of audio)
                     this.menu.addMenuItem(this._makeRow(film));
             }
         }
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const add = new PopupMenu.PopupMenuItem('+ Add media…');
+        const add = new PopupMenu.PopupMenuItem(_('+ Add media…'));
         add.connect('activate', () => this._openAddDialog());
         this.menu.addMenuItem(add);
 
@@ -140,26 +140,26 @@ class MediaIndicator extends PanelMenu.Button {
         const sub = new PopupMenu.PopupSubMenuMenuItem(
             `${prefix}${buildMediaLabel(film)}`);
 
-        const browserItem = new PopupMenu.PopupMenuItem('▶ Browser');
+        const browserItem = new PopupMenu.PopupMenuItem(_('▶ Browser'));
         browserItem.connect('activate', () => this._launch(film, 'browser'));
         sub.menu.addMenuItem(browserItem);
 
-        const mpvItem = new PopupMenu.PopupMenuItem('▶ mpv');
+        const mpvItem = new PopupMenu.PopupMenuItem(_('▶ mpv'));
         mpvItem.connect('activate', () => this._launch(film, 'mpv'));
         sub.menu.addMenuItem(mpvItem);
 
-        const vlcItem = new PopupMenu.PopupMenuItem('▶ VLC');
+        const vlcItem = new PopupMenu.PopupMenuItem(_('▶ VLC'));
         vlcItem.connect('activate', () => this._launch(film, 'vlc'));
         sub.menu.addMenuItem(vlcItem);
 
         if (isSpotifyUrl(film.url)) {
-            const spotifyItem = new PopupMenu.PopupMenuItem('▶ Spotify');
+            const spotifyItem = new PopupMenu.PopupMenuItem(_('▶ Spotify'));
             spotifyItem.connect('activate',
                 () => this._launch(film, 'spotify'));
             sub.menu.addMenuItem(spotifyItem);
         }
 
-        const editItem = new PopupMenu.PopupMenuItem('✎ Edit');
+        const editItem = new PopupMenu.PopupMenuItem(_('✎ Edit'));
         editItem.connect('activate', () => this._editEntry(film));
         sub.menu.addMenuItem(editItem);
 

@@ -100,13 +100,13 @@ class DeviceIndicator extends PanelMenu.Button {
         this.menu.removeAll();
         if (!this._cache.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                '(no Stream Deck found)', {reactive: false}));
+                _('(no Stream Deck found)'), {reactive: false}));
         } else {
             for (const d of this._cache)
                 this.menu.addMenuItem(this._row(d));
         }
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const rescan = new PopupMenu.PopupMenuItem('🔄 Re-scan USB');
+        const rescan = new PopupMenu.PopupMenuItem(_('🔄 Re-scan USB'));
         rescan.connect('activate', () => this._rescanThenRebuild());
         this.menu.addMenuItem(rescan);
         const prefs = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
@@ -118,22 +118,22 @@ class DeviceIndicator extends PanelMenu.Button {
         const sub = new PopupMenu.PopupSubMenuMenuItem(
             `${dev.product || 'Stream Deck'} (${dev.serial || '?'})`);
 
-        const status = new PopupMenu.PopupMenuItem('Status');
+        const status = new PopupMenu.PopupMenuItem(_('Status'));
         status.connect('activate', () => _notify(dev.product || 'Stream Deck',
             `Bus ${dev.bus} Device ${dev.device}\n` +
             `Vendor: ${dev.vendor_name}\n` +
             `Serial: ${dev.serial}`));
         sub.menu.addMenuItem(status);
 
-        const open = new PopupMenu.PopupMenuItem('Open controller UI');
+        const open = new PopupMenu.PopupMenuItem(_('Open controller UI'));
         open.connect('activate', () => this._launchController());
         sub.menu.addMenuItem(open);
 
-        const restart = new PopupMenu.PopupMenuItem('Restart deck');
+        const restart = new PopupMenu.PopupMenuItem(_('Restart deck'));
         restart.connect('activate', () => this._restart());
         sub.menu.addMenuItem(restart);
 
-        const det = new PopupMenu.PopupMenuItem('Show details');
+        const det = new PopupMenu.PopupMenuItem(_('Show details'));
         det.connect('activate', async () => {
             const {default: GLib2} = await import('gi://GLib');
             const [, stdout] = GLib2.spawn_command_line_sync(

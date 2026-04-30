@@ -1,7 +1,8 @@
+#
 msgid ""
 msgstr ""
-"Content-Type: text/plain; charset=UTF-8\n"
 "Project-Id-Version: streamdeck-tiler 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 
 msgid "Open prefs"
 msgstr ""
@@ -124,7 +125,9 @@ msgstr ""
 msgid "Stream Deck"
 msgstr ""
 
-msgid "Switch to the target terminal within 3 s — its window will be saved for this session."
+msgid ""
+"Switch to the target terminal within 3 s — its window will be saved for this"
+" session."
 msgstr ""
 
 msgid "Window saved."
@@ -143,4 +146,178 @@ msgid "Action failed: "
 msgstr ""
 
 msgid "No terminal found. Install gnome-terminal, kgx or xterm."
+msgstr ""
+
+msgid "(no Stream Deck found)"
+msgstr ""
+
+msgid "🔄 Re-scan USB"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Open controller UI"
+msgstr ""
+
+msgid "Restart deck"
+msgstr ""
+
+msgid "Show details"
+msgstr ""
+
+msgid "never"
+msgstr ""
+
+msgid "Subnet: {cidr} · last scan {at}"
+msgstr ""
+
+msgid "🔄 Scanning…"
+msgstr ""
+
+msgid "🔄 Refresh scan"
+msgstr ""
+
+msgid "— Configured ({n}) —"
+msgstr ""
+
+msgid "(no Host stanzas)"
+msgstr ""
+
+msgid "SSH terminal"
+msgstr ""
+
+msgid "Copy hostname"
+msgstr ""
+
+msgid "Open Files (sftp://)"
+msgstr ""
+
+msgid "(no fields)"
+msgstr ""
+
+msgid "— Scanned ({n}) —"
+msgstr ""
+
+msgid "Copy IP"
+msgstr ""
+
+msgid "No network detected"
+msgstr ""
+
+msgid "(no media — use + Add media)"
+msgstr ""
+
+msgid "— Videos ({n}) —"
+msgstr ""
+
+msgid "— Audio ({n}) —"
+msgstr ""
+
+msgid "+ Add media…"
+msgstr ""
+
+msgid "▶ Browser"
+msgstr ""
+
+msgid "▶ mpv"
+msgstr ""
+
+msgid "▶ VLC"
+msgstr ""
+
+msgid "▶ Spotify"
+msgstr ""
+
+msgid "✎ Edit"
+msgstr ""
+
+msgid "— Local —"
+msgstr ""
+
+msgid "(no local instances)"
+msgstr ""
+
+msgid "— Remote —"
+msgstr ""
+
+msgid "(no remote instances — use Add)"
+msgstr ""
+
+msgid "+ Add remote instance…"
+msgstr ""
+
+msgid "🔄 Re-scan local"
+msgstr ""
+
+msgid "Open URL"
+msgstr ""
+
+msgid "Start server"
+msgstr ""
+
+msgid "Auto-login ({method})"
+msgstr ""
+
+msgid "Copy username"
+msgstr ""
+
+msgid "Copy password"
+msgstr ""
+
+msgid "Open in KeePassXC"
+msgstr ""
+
+msgid "Edit instance"
+msgstr ""
+
+msgid "Start gallery server…"
+msgstr ""
+
+msgid "Loading…"
+msgstr ""
+
+msgid "Games"
+msgstr ""
+
+msgid "● Running on {url}"
+msgstr ""
+
+msgid "Gallery server (running) {url}"
+msgstr ""
+
+msgid "◐ Starting on {url}"
+msgstr ""
+
+msgid "Gallery server (starting)…"
+msgstr ""
+
+msgid "… Probing"
+msgstr ""
+
+msgid "○ Offline"
+msgstr ""
+
+msgid "Open in browser"
+msgstr ""
+
+msgid "(no paths configured — add one in pencil prefs)"
+msgstr ""
+
+msgid "port busy"
+msgstr ""
+
+msgid "Gallery offline (start gallery_server.py)"
+msgstr ""
+
+msgid "No ERPLibre tools"
+msgstr ""
+
+msgid "No games found"
+msgstr ""
+
+msgid "Could not launch {id}: gallery offline?"
+msgstr ""
+
+msgid "Active sessions"
 msgstr ""
