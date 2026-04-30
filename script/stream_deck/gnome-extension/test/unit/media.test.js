@@ -292,6 +292,79 @@ test('normaliseMediaUrl: deezer track with locale prefix', () => {
         'deezer:album:67890');
 });
 
+test('normaliseMediaUrl: tou.tv show + episode', () => {
+    assert.equal(
+        normaliseMediaUrl('https://ici.tou.tv/des-rumeurs-de-la-rue/S01E03'),
+        'toutv:des-rumeurs-de-la-rue:s01e03');
+    assert.equal(
+        normaliseMediaUrl('https://ici.tou.tv/des-rumeurs-de-la-rue'),
+        'toutv:des-rumeurs-de-la-rue');
+    // Older host without 'ici.' prefix.
+    assert.equal(
+        normaliseMediaUrl('https://tou.tv/show-slug/S2E5'),
+        'toutv:show-slug:s2e5');
+});
+
+test('normaliseMediaUrl: noovo emissions + videos', () => {
+    assert.equal(
+        normaliseMediaUrl(
+            'https://noovo.ca/emissions/occupation-double/saison-12/episode-3'),
+        'noovo:occupation-double:saison-12:episode-3');
+    assert.equal(
+        normaliseMediaUrl('https://noovo.ca/emissions/occupation-double'),
+        'noovo:occupation-double');
+    assert.equal(
+        normaliseMediaUrl('https://www.noovo.ca/videos/abc-clip'),
+        'noovo:video:abc-clip');
+});
+
+test('normaliseMediaUrl: telequebec show + episode', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.telequebec.tv/some-show'),
+        'telequebec:some-show');
+    assert.equal(
+        normaliseMediaUrl('https://www.telequebec.tv/some-show/episode-1'),
+        'telequebec:some-show:episode-1');
+});
+
+test('normaliseMediaUrl: tv5unis with or without /videos prefix', () => {
+    assert.equal(
+        normaliseMediaUrl('https://tv5unis.ca/videos/show/ep-1'),
+        'tv5unis:show:ep-1');
+    assert.equal(
+        normaliseMediaUrl('https://www.tv5unis.ca/some-show/ep-2'),
+        'tv5unis:some-show:ep-2');
+});
+
+test('normaliseMediaUrl: radio-canada ohdio balados', () => {
+    assert.equal(
+        normaliseMediaUrl(
+            'https://ici.radio-canada.ca/ohdio/balados/Some-Slug/episode-1'),
+        'ohdio:balados:some-slug:episode-1');
+    assert.equal(
+        normaliseMediaUrl(
+            'https://ohdio.ca/balados/some-slug'),
+        'ohdio:balados:some-slug');
+});
+
+test('normaliseMediaUrl: cbc gem show + episode', () => {
+    assert.equal(
+        normaliseMediaUrl('https://gem.cbc.ca/some-show/s01e01'),
+        'cbcgem:some-show:s01e01');
+    assert.equal(
+        normaliseMediaUrl('https://gem.cbc.ca/media/some-show/12345'),
+        'cbcgem:some-show:12345');
+});
+
+test('normaliseMediaUrl: crave drops fr/en locale prefix', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.crave.ca/fr/series/some-show'),
+        'crave:series:some-show');
+    assert.equal(
+        normaliseMediaUrl('https://www.crave.ca/en/series/some-show'),
+        'crave:series:some-show');
+});
+
 test('normaliseMediaUrl: apple music album + track inside album', () => {
     assert.equal(
         normaliseMediaUrl(

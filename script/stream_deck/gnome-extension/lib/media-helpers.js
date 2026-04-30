@@ -172,6 +172,94 @@ export function normaliseMediaUrl(url) {
     }
     if (host === 'fb.watch' && seg[0]) return `facebook:short:${seg[0]}`;
 
+    // ---- Quebec / Canadian streaming ----
+
+    // ICI Tou.tv — Radio-Canada. URL patterns:
+    //   ici.tou.tv/{show-slug}/S{n}E{n}
+    //   ici.tou.tv/{show-slug}        (show home)
+    //   tou.tv/{show-slug}/...        (older host)
+    if (host === 'ici.tou.tv' || host === 'tou.tv') {
+        if (seg[0]) {
+            const show = seg[0].toLowerCase();
+            const ep = seg[1]
+                ? `:${seg[1].toLowerCase()}`
+                : '';
+            return `toutv:${show}${ep}`;
+        }
+    }
+
+    // Noovo (Bell Média). URL patterns:
+    //   noovo.ca/emissions/{show}/saison-{n}/episode-{n}
+    //   noovo.ca/emissions/{show}
+    //   noovo.ca/videos/{slug}
+    if (host === 'noovo.ca' || host === 'www.noovo.ca') {
+        if (seg[0] === 'emissions' && seg[1]) {
+            const show = seg[1].toLowerCase();
+            const tail = seg.slice(2).join(':').toLowerCase();
+            return tail ? `noovo:${show}:${tail}` : `noovo:${show}`;
+        }
+        if (seg[0] === 'videos' && seg[1])
+            return `noovo:video:${seg[1].toLowerCase()}`;
+    }
+
+    // Télé-Québec. URL patterns:
+    //   telequebec.tv/{show-slug}
+    //   telequebec.tv/{show-slug}/{episode-slug}
+    if (host === 'telequebec.tv' || host === 'www.telequebec.tv') {
+        if (seg[0]) {
+            const tail = seg.slice(1).join(':').toLowerCase();
+            return tail
+                ? `telequebec:${seg[0].toLowerCase()}:${tail}`
+                : `telequebec:${seg[0].toLowerCase()}`;
+        }
+    }
+
+    // TV5 Unis (francophone Canada). URL patterns:
+    //   tv5unis.ca/videos/{show}/{episode}
+    //   tv5unis.ca/{show}/{episode}
+    if (host === 'tv5unis.ca' || host === 'www.tv5unis.ca') {
+        const idx = seg[0] === 'videos' ? 1 : 0;
+        if (seg[idx]) {
+            const tail = seg.slice(idx + 1).join(':').toLowerCase();
+            return tail
+                ? `tv5unis:${seg[idx].toLowerCase()}:${tail}`
+                : `tv5unis:${seg[idx].toLowerCase()}`;
+        }
+    }
+
+    // Radio-Canada OHdio (audio: balados, musique, première). URL:
+    //   ici.radio-canada.ca/ohdio/balados/{slug}/episode-...
+    //   ici.radio-canada.ca/ohdio/premiere/...
+    if ((host === 'ici.radio-canada.ca' || host === 'www.ici.radio-canada.ca'
+            || host === 'ohdio.ca')
+            && (seg[0] === 'ohdio' || host === 'ohdio.ca')) {
+        const tail = (host === 'ohdio.ca' ? seg : seg.slice(1))
+            .join(':').toLowerCase();
+        if (tail) return `ohdio:${tail}`;
+    }
+
+    // CBC Gem (federal but watched widely in Quebec). URL:
+    //   gem.cbc.ca/{show-slug}/s{n}e{n}
+    //   gem.cbc.ca/media/{show}/{id}
+    if (host === 'gem.cbc.ca') {
+        if (seg[0] === 'media' && seg[2])
+            return `cbcgem:${seg[1].toLowerCase()}:${seg[2]}`;
+        if (seg[0]) {
+            const tail = seg.slice(1).join(':').toLowerCase();
+            return tail
+                ? `cbcgem:${seg[0].toLowerCase()}:${tail}`
+                : `cbcgem:${seg[0].toLowerCase()}`;
+        }
+    }
+
+    // Crave (Bell). URL: crave.ca/{lang}/{type}/{slug}/{id}
+    if (host === 'crave.ca' || host === 'www.crave.ca') {
+        // Drop the optional /fr or /en locale prefix.
+        const start = (seg[0] === 'fr' || seg[0] === 'en') ? 1 : 0;
+        const tail = seg.slice(start).join(':').toLowerCase();
+        if (tail) return `crave:${tail}`;
+    }
+
     // ---- Audio ----
 
     if (host === 'open.spotify.com') {
