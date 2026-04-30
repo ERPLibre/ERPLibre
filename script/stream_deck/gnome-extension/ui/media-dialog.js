@@ -42,10 +42,18 @@ class MediaDialog extends ModalDialog {
         this._urlEntry.clutter_text?.connect?.('text-changed',
             () => this._maybeAutoKind());
         urlRow.add_child(this._urlEntry);
+        // Inline style mirrors the active kind button so the user
+        // sees a real button-shaped clickable target. Without a
+        // background the unstyled St.Button collapses to a flat
+        // label that does not feel pressable.
         const fillBtn = new St.Button({
             label: _('Auto-fill'),
-            style_class: 'streamdeck-tiler-btn',
-            style: 'padding: 2px 8px;',
+            reactive: true,
+            can_focus: true,
+            track_hover: true,
+            style: 'background: #3477b8; color: white;'
+                + ' padding: 4px 12px; border-radius: 4px;'
+                + ' min-width: 80px;',
         });
         fillBtn.connect('clicked', () => this._autoFillFromUrl());
         urlRow.add_child(fillBtn);
