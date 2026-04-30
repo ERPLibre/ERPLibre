@@ -346,6 +346,22 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         resetAllSettings(settings);
     }
 
+    _widenAdwClamp(widget) {
+        if (!widget) return false;
+        if (widget instanceof Adw.Clamp) {
+            // 32 768 is the GTK widget size cap; anything that big
+            // effectively disables the clamp horizontally.
+            widget.maximum_size = 32768;
+            return true;
+        }
+        let child = widget.get_first_child?.();
+        while (child) {
+            if (this._widenAdwClamp(child)) return true;
+            child = child.get_next_sibling?.();
+        }
+        return false;
+    }
+
     _refreshOrderList(list, settings) {
         const known = new Set(['controller','pencil','media','erplibre',
             'network','device','summary']);
@@ -697,6 +713,15 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             title: _('Log'),
             icon_name: 'document-properties-symbolic',
         });
+        // Adw.PreferencesPage clamps its content to ~600 px so the
+        // typical settings UI stays readable on wide monitors. The
+        // log viewer, however, benefits from every available pixel
+        // (long timestamps + messages otherwise wrap into a tall
+        // unreadable column). Walk the realised tree and bump the
+        // first Adw.Clamp we find to a near-infinite max so the
+        // viewer expands to the full window width.
+        page.connect('realize', () => this._widenAdwClamp(page));
+
         const group = new Adw.PreferencesGroup({
             title: _('Recent activity'),
             description: _('Last 200 entries from '
@@ -711,6 +736,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             wrap_mode: Gtk.WrapMode.WORD_CHAR,
             top_margin: 6, bottom_margin: 6,
             left_margin: 6, right_margin: 6,
+            hexpand: true,
         });
         const scroll = new Gtk.ScrolledWindow({
             hexpand: true, vexpand: true,
