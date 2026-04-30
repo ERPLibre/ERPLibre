@@ -41,3 +41,25 @@ export function assignSessionsToPaths(sessions, paths) {
     }
     return owners;
 }
+
+/**
+ * Filter kinds matched by the badge-click filter:
+ *   'alive'    — sessions actively connected (status === 'active' /
+ *                'working'); excludes anything in awaiting state.
+ *   'awaiting' — sessions waiting for the user (Stop hook fired or
+ *                Notification hook fired).
+ *   'notify'   — only sessions that fired the Notification hook.
+ *   null       — no filter, every session matches.
+ */
+export function sessionMatchesFilter(session, filter) {
+    if (!filter) return true;
+    const status = session?.status || '';
+    if (filter === 'alive')
+        return status === 'active' || status === 'working';
+    if (filter === 'awaiting')
+        return status === 'awaiting_stop'
+            || status === 'awaiting_notification';
+    if (filter === 'notify')
+        return status === 'awaiting_notification';
+    return true;
+}

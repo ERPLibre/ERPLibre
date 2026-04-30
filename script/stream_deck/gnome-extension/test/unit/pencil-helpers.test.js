@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {normPath, cwdMatchesPath, assignSessionsToPaths}
+import {normPath, cwdMatchesPath, assignSessionsToPaths,
+    sessionMatchesFilter}
     from '../../lib/pencil-helpers.js';
 
 test('normPath: strips trailing slashes', () => {
@@ -84,4 +85,37 @@ test('assignSessionsToPaths: trailing-slash on path normalised', () => {
         [{session_id: 'a', cwd: '/p/sub'}],
         [{path: '/p/'}]);
     assert.equal(m.get('a'), '/p');
+});
+
+test('sessionMatchesFilter: null filter passes everything', () => {
+    assert.equal(sessionMatchesFilter({status: 'active'}, null), true);
+    assert.equal(sessionMatchesFilter({status: 'awaiting_stop'}, null), true);
+    assert.equal(sessionMatchesFilter(undefined, null), true);
+});
+
+test('sessionMatchesFilter: alive matches active or working only', () => {
+    assert.equal(sessionMatchesFilter({status: 'active'},  'alive'), true);
+    assert.equal(sessionMatchesFilter({status: 'working'}, 'alive'), true);
+    assert.equal(sessionMatchesFilter({status: 'awaiting_stop'},
+        'alive'), false);
+    assert.equal(sessionMatchesFilter({status: 'awaiting_notification'},
+        'alive'), false);
+});
+
+test('sessionMatchesFilter: awaiting matches stop and notify', () => {
+    assert.equal(sessionMatchesFilter({status: 'awaiting_stop'},
+        'awaiting'), true);
+    assert.equal(sessionMatchesFilter({status: 'awaiting_notification'},
+        'awaiting'), true);
+    assert.equal(sessionMatchesFilter({status: 'active'},
+        'awaiting'), false);
+});
+
+test('sessionMatchesFilter: notify matches notification only', () => {
+    assert.equal(sessionMatchesFilter({status: 'awaiting_notification'},
+        'notify'), true);
+    assert.equal(sessionMatchesFilter({status: 'awaiting_stop'},
+        'notify'), false);
+    assert.equal(sessionMatchesFilter({status: 'working'},
+        'notify'), false);
 });

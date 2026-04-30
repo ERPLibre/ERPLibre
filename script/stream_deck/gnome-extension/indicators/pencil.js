@@ -63,7 +63,9 @@ try {
         BADGE_INFO, BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
     const {_} = await import('../lib/i18n.js');
-    const {normPath: _normPath, assignSessionsToPaths: _assignSessionsToPaths} =
+    const {normPath: _normPath,
+        assignSessionsToPaths: _assignSessionsToPaths,
+        sessionMatchesFilter: _sessionMatchesFilter} =
         await import('../lib/pencil-helpers.js');
 
     const _DOT_COLOR_BY_KIND = {
@@ -103,6 +105,7 @@ try {
                     : null;
                 this._claudeState = claudeState || null;
                 this._claudeIndex = null;
+                this._filter = null;
 
                 this._badged = makeBadgedIcon({St, Gio, Clutter, iconName});
                 this.add_child(this._badged.actor);
@@ -197,13 +200,21 @@ try {
                 const awaiting = awaitStop + awaitNotify;
                 const awaitKind = awaitNotify > 0
                     ? BADGE_ALERT : BADGE_WARN;
+                const setFilter = (k) => {
+                    this._filter = k;
+                    this._rebuildMenu();
+                };
                 this._badged.setBadges([
-                    {count: dirs, kind: BADGE_DEFAULT},
+                    {count: dirs, kind: BADGE_DEFAULT,
+                        onClick: () => setFilter(null)},
                     totalAlive > 0
-                        ? {count: totalAlive, kind: BADGE_OK}
+                        ? {count: totalAlive, kind: BADGE_OK,
+                            onClick: () => setFilter('alive')}
                         : null,
                     awaiting > 0
-                        ? {count: awaiting, kind: awaitKind}
+                        ? {count: awaiting, kind: awaitKind,
+                            onClick: () => setFilter(
+                                awaitNotify > 0 ? 'notify' : 'awaiting')}
                         : null,
                 ]);
             }
@@ -222,21 +233,41 @@ try {
                 this._sessionOwner = _assignSessionsToPaths(
                     allSessions, paths);
 
+                const filter = this._filter;
+                if (filter) {
+                    const labels = {
+                        alive: _('Active sessions'),
+                        awaiting: _('Awaiting answer'),
+                        notify: _('Needs attention'),
+                    };
+                    const clear = new PopupMenu.PopupMenuItem(
+                        `× ${labels[filter] || filter}`);
+                    clear.connect('activate', () => {
+                        this._filter = null;
+                        this._rebuildMenu();
+                    });
+                    this.menu.addMenuItem(clear);
+                    this.menu.addMenuItem(
+                        new PopupMenu.PopupSeparatorMenuItem());
+                }
+
                 if (!paths.length) {
                     this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                         _('(no paths configured — use Add path…)'),
                         {reactive: false}));
                 } else {
                     for (const entry of paths) {
+                        const sessionRows = this._makeSessionRows(entry);
+                        if (filter && sessionRows.length === 0) continue;
                         this.menu.addMenuItem(this._makeRow(entry));
-                        for (const item of this._makeSessionRows(entry)) {
+                        for (const item of sessionRows)
                             this.menu.addMenuItem(item);
-                        }
                     }
                 }
 
-                const orphans = allSessions.filter(
-                    s => !this._sessionOwner.has(s.session_id));
+                const orphans = allSessions
+                    .filter(s => !this._sessionOwner.has(s.session_id))
+                    .filter(s => _sessionMatchesFilter(s, filter));
                 if (orphans.length) {
                     this.menu.addMenuItem(
                         new PopupMenu.PopupSeparatorMenuItem());
@@ -366,8 +397,10 @@ try {
                 const allSessions = Array.from(
                     this._claudeIndex?.byPath?.values() || [])
                     .flatMap(b => b.sessions);
-                const ours = allSessions.filter(
-                    s => this._sessionOwner.get(s.session_id) === owner);
+                const ours = allSessions
+                    .filter(s =>
+                        this._sessionOwner.get(s.session_id) === owner)
+                    .filter(s => _sessionMatchesFilter(s, this._filter));
                 ours.sort((a, b) => (b.ts || 0) - (a.ts || 0));
                 for (const s of ours) {
                     rows.push(this._makeSessionItem(s));

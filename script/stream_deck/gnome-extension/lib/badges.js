@@ -135,7 +135,11 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName,
             if (!b) continue;
             const text = b.text ?? formatBadgeCount(b.count);
             if (text === '') continue;
-            visible.push({text, kind: b.kind || BADGE_DEFAULT});
+            visible.push({
+                text,
+                kind: b.kind || BADGE_DEFAULT,
+                onClick: typeof b.onClick === 'function' ? b.onClick : null,
+            });
             if (visible.length >= BADGE_VERTICAL_MAX) break;
         }
         for (const v of visible) {
@@ -145,6 +149,18 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName,
                 y_align: Clutter.ActorAlign.CENTER,
                 style: badgeStyleFor(v.kind),
             });
+            if (v.onClick) {
+                // Reactive label catches the press first (Clutter delivers
+                // events leaf → root) so the indicator can refresh its
+                // dropdown filter before the parent button toggles the
+                // menu open. Propagate the event so the menu still opens.
+                label.reactive = true;
+                label.track_hover = true;
+                label.connect('button-press-event', () => {
+                    try { v.onClick(); } catch (_e) {}
+                    return Clutter.EVENT_PROPAGATE;
+                });
+            }
             badgeBox.add_child(label);
         }
     }
