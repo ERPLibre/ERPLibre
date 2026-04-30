@@ -260,6 +260,61 @@ export function normaliseMediaUrl(url) {
         if (tail) return `crave:${tail}`;
     }
 
+    // Vrai (Québecor / Vidéotron). URL: vrai.ca/{show}/{episode...}
+    if (host === 'vrai.ca' || host === 'www.vrai.ca') {
+        if (seg[0]) {
+            const tail = seg.slice(1).join(':').toLowerCase();
+            return tail
+                ? `vrai:${seg[0].toLowerCase()}:${tail}`
+                : `vrai:${seg[0].toLowerCase()}`;
+        }
+    }
+
+    // TVA+ (Québecor) — modern host tvaplus.ca, legacy tva.ca/videos.
+    if (host === 'tvaplus.ca' || host === 'www.tvaplus.ca') {
+        if (seg[0]) {
+            const tail = seg.slice(1).join(':').toLowerCase();
+            return tail
+                ? `tvaplus:${seg[0].toLowerCase()}:${tail}`
+                : `tvaplus:${seg[0].toLowerCase()}`;
+        }
+    }
+    if ((host === 'tva.ca' || host === 'www.tva.ca')
+            && seg[0] === 'videos' && seg[1]) {
+        const tail = seg.join(':').toLowerCase();
+        return `tvaplus:${tail}`;
+    }
+
+    // ICI Musique (Radio-Canada streaming musical). URLs:
+    //   ici.radio-canada.ca/musique/...
+    //   icimusique.ca/...   (vanity host)
+    if (host === 'icimusique.ca' || host === 'www.icimusique.ca') {
+        const tail = seg.join(':').toLowerCase();
+        if (tail) return `icimusique:${tail}`;
+    }
+    if ((host === 'ici.radio-canada.ca'
+            || host === 'www.ici.radio-canada.ca')
+            && seg[0] === 'musique') {
+        const tail = seg.slice(1).join(':').toLowerCase();
+        if (tail) return `icimusique:${tail}`;
+    }
+
+    // Apple TV (movies + shows) — match the Apple Music style.
+    if (host === 'tv.apple.com') {
+        // /{country}/{type}/{slug}/{id}
+        const types = new Set(['movie', 'show', 'episode']);
+        for (let i = 0; i < seg.length - 1; i += 1) {
+            if (types.has(seg[i]) && seg[seg.length - 1])
+                return `appletv:${seg[i]}:${seg[seg.length - 1]}`;
+        }
+    }
+
+    // Twitch live channel (no episode id — bucket by channel).
+    if (host === 'twitch.tv' || host === 'www.twitch.tv') {
+        if (seg.length === 1 && seg[0])
+            return `twitch:live:${seg[0].toLowerCase()}`;
+    }
+
     // ---- Audio ----
 
     if (host === 'open.spotify.com') {

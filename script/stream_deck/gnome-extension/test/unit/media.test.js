@@ -356,6 +356,54 @@ test('normaliseMediaUrl: cbc gem show + episode', () => {
         'cbcgem:some-show:12345');
 });
 
+test('normaliseMediaUrl: vrai show + episode', () => {
+    assert.equal(
+        normaliseMediaUrl('https://vrai.ca/some-show'),
+        'vrai:some-show');
+    assert.equal(
+        normaliseMediaUrl('https://www.vrai.ca/some-show/saison-1/ep-3'),
+        'vrai:some-show:saison-1:ep-3');
+});
+
+test('normaliseMediaUrl: tvaplus modern + tva.ca/videos legacy', () => {
+    assert.equal(
+        normaliseMediaUrl('https://tvaplus.ca/series/some-show/ep-1'),
+        'tvaplus:series:some-show:ep-1');
+    assert.equal(
+        normaliseMediaUrl('https://www.tvaplus.ca/series/some-show'),
+        'tvaplus:series:some-show');
+    assert.equal(
+        normaliseMediaUrl('https://tva.ca/videos/some-clip-id'),
+        'tvaplus:videos:some-clip-id');
+});
+
+test('normaliseMediaUrl: icimusique vanity + radio-canada path', () => {
+    assert.equal(
+        normaliseMediaUrl('https://icimusique.ca/balado/Some-Show'),
+        'icimusique:balado:some-show');
+    assert.equal(
+        normaliseMediaUrl(
+            'https://ici.radio-canada.ca/musique/balado/some-show/ep-1'),
+        'icimusique:balado:some-show:ep-1');
+});
+
+test('normaliseMediaUrl: apple tv movie + show + episode', () => {
+    assert.equal(
+        normaliseMediaUrl(
+            'https://tv.apple.com/us/movie/some-slug/umc.cmc.abc'),
+        'appletv:movie:umc.cmc.abc');
+    assert.equal(
+        normaliseMediaUrl(
+            'https://tv.apple.com/ca/show/some-slug/umc.cmc.xyz'),
+        'appletv:show:umc.cmc.xyz');
+});
+
+test('normaliseMediaUrl: twitch live channel', () => {
+    assert.equal(
+        normaliseMediaUrl('https://www.twitch.tv/SomeStreamer'),
+        'twitch:live:somestreamer');
+});
+
 test('normaliseMediaUrl: crave drops fr/en locale prefix', () => {
     assert.equal(
         normaliseMediaUrl('https://www.crave.ca/fr/series/some-show'),
