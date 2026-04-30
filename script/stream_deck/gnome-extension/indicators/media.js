@@ -90,74 +90,49 @@ class MediaIndicator extends PanelMenu.Button {
     }
 
     _rebuildMenu() {
-        // removeAll() only purges PopupMenuItems registered through
-        // addMenuItem; the St.ScrollView we add directly to menu.box
-        // for the catalogue list is plain actor and survives the
-        // sweep, so nuke it explicitly first to avoid stacking up
-        // duplicates on every reopen.
-        if (this._mediaScrollView) {
-            try { this._mediaScrollView.destroy(); } catch (_e) {}
-            this._mediaScrollView = null;
-        }
         this.menu.removeAll();
+
+        // Pin the action buttons at the top so they stay reachable
+        // even when the catalogue is long enough to push the
+        // bottom of the dropdown past the screen edge. (Wrapping the
+        // rows in St.ScrollView caused submenu items to render with
+        // unreadable theme colours on some setups, so we keep the
+        // standard PopupMenu rendering and just rearrange.)
+        const add = new PopupMenu.PopupMenuItem(_('+ Add media…'));
+        add.connect('activate', () => this._openAddDialog());
+        this.menu.addMenuItem(add);
+        const prefsItem = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
+        prefsItem.connect('activate', () => this._openPrefs?.());
+        this.menu.addMenuItem(prefsItem);
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         const films = parseList(this._settings.get_string('media'));
         if (!films.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                 _('(no media — use + Add media)'), {reactive: false}));
-        } else {
-            // Wrap the per-row entries in a scrolled section capped at
-            // ~60% of the screen height so very long video / audio
-            // catalogues do not push the action buttons off-screen.
-            // The action items below stay outside the scroll area so
-            // they remain reachable regardless of the catalogue size.
-            const scrollView = new St.ScrollView({
-                style: 'max-height: 480px;',
-                overlay_scrollbars: true,
-                x_expand: true, y_expand: true,
-            });
-            try {
-                scrollView.set_policy(
-                    St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
-            } catch (_e) {}
-            const scrollSection = new PopupMenu.PopupMenuSection();
-            try { scrollView.add_actor(scrollSection.actor); }
-            catch (_e) {
-                try { scrollView.set_child(scrollSection.actor); }
-                catch (_e2) {}
-            }
-            this.menu.box.add_child(scrollView);
-            this._mediaScrollView = scrollView;
-
-            const videos = films.filter(
-                f => normaliseKind(f.kind) === 'video');
-            const audio = films.filter(
-                f => normaliseKind(f.kind) === 'audio');
-            if (videos.length) {
-                scrollSection.addMenuItem(new PopupMenu.PopupMenuItem(
-                    _('— Videos ({n}) —').replace('{n}', videos.length),
-                    {reactive: false}));
-                for (const film of videos)
-                    scrollSection.addMenuItem(this._makeRow(film));
-            }
-            if (audio.length) {
-                if (videos.length)
-                    scrollSection.addMenuItem(
-                        new PopupMenu.PopupSeparatorMenuItem());
-                scrollSection.addMenuItem(new PopupMenu.PopupMenuItem(
-                    _('— Audio ({n}) —').replace('{n}', audio.length),
-                    {reactive: false}));
-                for (const film of audio)
-                    scrollSection.addMenuItem(this._makeRow(film));
-            }
+            return;
         }
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const add = new PopupMenu.PopupMenuItem(_('+ Add media…'));
-        add.connect('activate', () => this._openAddDialog());
-        this.menu.addMenuItem(add);
-
-        const prefsItem = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
-        prefsItem.connect('activate', () => this._openPrefs?.());
-        this.menu.addMenuItem(prefsItem);
+        const videos = films.filter(
+            f => normaliseKind(f.kind) === 'video');
+        const audio = films.filter(
+            f => normaliseKind(f.kind) === 'audio');
+        if (videos.length) {
+            this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                _('— Videos ({n}) —').replace('{n}', videos.length),
+                {reactive: false}));
+            for (const film of videos)
+                this.menu.addMenuItem(this._makeRow(film));
+        }
+        if (audio.length) {
+            if (videos.length)
+                this.menu.addMenuItem(
+                    new PopupMenu.PopupSeparatorMenuItem());
+            this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                _('— Audio ({n}) —').replace('{n}', audio.length),
+                {reactive: false}));
+            for (const film of audio)
+                this.menu.addMenuItem(this._makeRow(film));
+        }
     }
 
     _isPlaying(filmId) {
