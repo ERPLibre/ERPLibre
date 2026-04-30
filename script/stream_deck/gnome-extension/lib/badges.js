@@ -15,11 +15,14 @@ export const BADGE_ALERT = 'alert';
 // icon.
 export const BADGE_VERTICAL_MAX = 3;
 
+// Tight base style so up-to-three vertically stacked badges still fit
+// inside a stock GNOME top bar (~32 px). Keep bold weight + white text
+// so the small font stays legible against the saturated colors.
 const STYLE_BASE =
-    'border-radius: 7px;' +
-    'padding: 0 4px;' +
-    'min-width: 10px;' +
-    'font-size: 9px;' +
+    'border-radius: 5px;' +
+    'padding: 0 3px;' +
+    'min-width: 8px;' +
+    'font-size: 8px;' +
     'font-weight: bold;' +
     'color: white;' +
     'text-align: center;';
