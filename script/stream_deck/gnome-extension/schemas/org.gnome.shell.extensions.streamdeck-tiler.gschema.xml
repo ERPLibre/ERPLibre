@@ -61,6 +61,14 @@
       <default>true</default>
       <summary>Show count badges on top-bar indicator icons</summary>
     </key>
+    <key name="badge-orientation" type="s">
+      <choices>
+        <choice value="vertical"/>
+        <choice value="horizontal"/>
+      </choices>
+      <default>"vertical"</default>
+      <summary>Stack count badges vertically beside the icon (default) or horizontally above it</summary>
+    </key>
     <key name="enable-claude-state-watch" type="b">
       <default>true</default>
       <summary>Watch ~/.local/state/streamdeck-tiler/claude/ for Claude session state files (used by the pencil badge)</summary>

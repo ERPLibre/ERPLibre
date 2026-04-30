@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {formatBadgeCount, pickHighestKind, badgeStyleFor,
+    normaliseOrientation, ORIENT_VERTICAL, ORIENT_HORIZONTAL,
     BADGE_DEFAULT, BADGE_WARN, BADGE_ALERT}
     from '../../lib/badges.js';
 
@@ -38,4 +39,12 @@ test('pickHighestKind: alert beats warn beats default', () => {
 
 test('badgeStyleFor returns the same string for unknown kinds', () => {
     assert.equal(badgeStyleFor('nope'), badgeStyleFor(BADGE_DEFAULT));
+});
+
+test('normaliseOrientation defaults to vertical', () => {
+    assert.equal(normaliseOrientation('vertical'), ORIENT_VERTICAL);
+    assert.equal(normaliseOrientation('horizontal'), ORIENT_HORIZONTAL);
+    assert.equal(normaliseOrientation(''), ORIENT_VERTICAL);
+    assert.equal(normaliseOrientation(undefined), ORIENT_VERTICAL);
+    assert.equal(normaliseOrientation('bogus'), ORIENT_VERTICAL);
 });

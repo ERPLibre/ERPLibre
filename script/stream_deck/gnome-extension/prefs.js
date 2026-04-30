@@ -226,6 +226,48 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const page = new Adw.PreferencesPage({
             title: 'Theming', icon_name: 'preferences-color-symbolic',
         });
+
+        const badgeGroup = new Adw.PreferencesGroup({
+            title: 'Badges',
+            description:
+                'Count badges shown beside each top-bar indicator icon.',
+        });
+        page.add(badgeGroup);
+
+        const enableRow = new Adw.SwitchRow({
+            title: 'Show count badges',
+            subtitle:
+                'Display the number of items beside each indicator icon.',
+        });
+        settings.bind('enable-icon-badges', enableRow, 'active',
+            Gio.SettingsBindFlags.DEFAULT);
+        badgeGroup.add(enableRow);
+
+        const orientRow = new Adw.ComboRow({
+            title: 'Stack direction',
+            subtitle:
+                'Vertical: stack beside icon, up to 3, centered when alone.\n'
+                + 'Horizontal: single row beside icon.',
+        });
+        const orientModel = new Gtk.StringList();
+        orientModel.append('Vertical');
+        orientModel.append('Horizontal');
+        orientRow.set_model(orientModel);
+        const ORIENTATIONS = ['vertical', 'horizontal'];
+        const _applyOrient = () => {
+            const value = settings.get_string('badge-orientation');
+            const idx = Math.max(0, ORIENTATIONS.indexOf(value));
+            if (orientRow.get_selected() !== idx) orientRow.set_selected(idx);
+        };
+        _applyOrient();
+        orientRow.connect('notify::selected', () => {
+            const value = ORIENTATIONS[orientRow.get_selected()] || 'vertical';
+            if (settings.get_string('badge-orientation') !== value)
+                settings.set_string('badge-orientation', value);
+        });
+        settings.connect('changed::badge-orientation', _applyOrient);
+        badgeGroup.add(orientRow);
+
         const group = new Adw.PreferencesGroup({title: 'Icon overrides'});
         page.add(group);
 

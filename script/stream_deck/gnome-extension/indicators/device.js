@@ -9,7 +9,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {detectStreamDecksGjs} from '../lib/usb.js';
 import {spawnDetached} from '../lib/spawn.js';
-import {makeBadgedIcon} from '../lib/badges.js';
+import {makeBadgedIcon, bindBadgeOrientation} from '../lib/badges.js';
 
 function _notify(title, body) {
     try { Main.notify(title, body); } catch (_e) {}
@@ -38,6 +38,7 @@ class DeviceIndicator extends PanelMenu.Button {
         this._sigBadges = this._settings.connect(
             'changed::enable-icon-badges',
             () => this._refreshBadge());
+        this._sigOrient = bindBadgeOrientation(this._badged, this._settings);
         this._resetTimer();
     }
 
@@ -48,6 +49,8 @@ class DeviceIndicator extends PanelMenu.Button {
         this._sigTimer = 0;
         if (this._sigBadges) this._settings.disconnect(this._sigBadges);
         this._sigBadges = 0;
+        if (this._sigOrient) this._settings.disconnect(this._sigOrient);
+        this._sigOrient = 0;
         super.destroy();
     }
 

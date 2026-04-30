@@ -13,7 +13,7 @@ import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
 import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind}
     from '../lib/media-helpers.js';
 import {MediaDialog} from '../ui/media-dialog.js';
-import {makeBadgedIcon} from '../lib/badges.js';
+import {makeBadgedIcon, bindBadgeOrientation} from '../lib/badges.js';
 import {logInfo, logWarn} from '../lib/log.js';
 import {writeMpvEntry, deleteMpvEntry, listMpvEntriesSync}
     from '../lib/mpv-state.js';
@@ -45,6 +45,7 @@ class MediaIndicator extends PanelMenu.Button {
         this._sigBadges = this._settings.connect(
             'changed::enable-icon-badges',
             () => this._refreshBadge());
+        this._sigOrient = bindBadgeOrientation(this._badged, this._settings);
         this._rebuildMenu();
         this._refreshBadge();
     }
@@ -52,6 +53,7 @@ class MediaIndicator extends PanelMenu.Button {
     destroy() {
         if (this._sig) this._settings.disconnect(this._sig);
         if (this._sigBadges) this._settings.disconnect(this._sigBadges);
+        if (this._sigOrient) this._settings.disconnect(this._sigOrient);
         super.destroy();
     }
 

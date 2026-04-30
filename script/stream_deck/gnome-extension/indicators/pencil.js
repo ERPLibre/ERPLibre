@@ -57,7 +57,8 @@ try {
     );
     const {PathDialog} = await import('../ui/path-dialog.js');
     const {RenameDialog} = await import('../ui/rename-dialog.js');
-    const {makeBadgedIcon, badgeStyleFor, BADGE_DEFAULT, BADGE_OK,
+    const {makeBadgedIcon, bindBadgeOrientation, badgeStyleFor,
+        BADGE_DEFAULT, BADGE_OK,
         BADGE_INFO, BADGE_WARN, BADGE_ALERT, formatBadgeCount} =
         await import('../lib/badges.js');
     const {_} = await import('../lib/i18n.js');
@@ -118,6 +119,8 @@ try {
                         'changed::enable-icon-badges',
                         () => this._refreshBadge()
                     );
+                    this._orientSig = bindBadgeOrientation(
+                        this._badged, this._settings);
                 }
 
                 if (this._claudeState) {
@@ -135,7 +138,8 @@ try {
 
             destroy() {
                 if (this._settings) {
-                    for (const k of ['_pathsSig', '_cmdSig', '_badgeSig']) {
+                    for (const k of ['_pathsSig', '_cmdSig', '_badgeSig',
+                        '_orientSig']) {
                         if (this[k]) {
                             this._settings.disconnect(this[k]);
                             this[k] = null;

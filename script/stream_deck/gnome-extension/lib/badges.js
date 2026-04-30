@@ -15,6 +15,13 @@ export const BADGE_ALERT = 'alert';
 // icon.
 export const BADGE_VERTICAL_MAX = 3;
 
+export const ORIENT_VERTICAL = 'vertical';
+export const ORIENT_HORIZONTAL = 'horizontal';
+
+export function normaliseOrientation(value) {
+    return value === ORIENT_HORIZONTAL ? ORIENT_HORIZONTAL : ORIENT_VERTICAL;
+}
+
 // Tight base style so up-to-three vertically stacked badges still fit
 // inside a stock GNOME top bar (~32 px). Keep bold weight + white text
 // so the small font stays legible against the saturated colors.
@@ -86,10 +93,10 @@ function _buildIcon(St, Gio, iconName) {
  *
  * GJS-only — pass already-loaded gi module defaults via `gi`.
  */
-export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
-    // Horizontal row: icon on the left, vertical badge stack on the
-    // right. Keeps the icon graphic untouched and lets up to three
-    // badges sit beside it (centered when there is only one).
+export function makeBadgedIcon({St, Gio, Clutter, iconName,
+    orientation = ORIENT_VERTICAL}) {
+    // Horizontal row: icon on the left, badge stack (vertical or
+    // horizontal) on the right. Keeps the icon graphic untouched.
     const root = new St.BoxLayout({
         style_class: 'system-status-icon',
         vertical: false,
@@ -101,15 +108,18 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
     let icon = _buildIcon(St, Gio, iconName);
     root.add_child(icon);
 
+    let currentOrientation = normaliseOrientation(orientation);
     const badgeBox = new St.BoxLayout({
-        vertical: true,
-        x_align: Clutter.ActorAlign.START,
+        vertical: currentOrientation === ORIENT_VERTICAL,
+        x_align: Clutter.ActorAlign.CENTER,
         y_align: Clutter.ActorAlign.CENTER,
         x_expand: false,
         y_expand: false,
         style: 'spacing: 1px; padding: 0;',
     });
     root.add_child(badgeBox);
+
+    let lastBadges = [];
 
     function setIcon(name) {
         if (!name) return;
@@ -118,10 +128,10 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
         icon = next;
     }
 
-    function setBadges(badges) {
+    function _render() {
         badgeBox.destroy_all_children();
         const visible = [];
-        for (const b of badges || []) {
+        for (const b of lastBadges) {
             if (!b) continue;
             const text = b.text ?? formatBadgeCount(b.count);
             if (text === '') continue;
@@ -139,5 +149,31 @@ export function makeBadgedIcon({St, Gio, Clutter, iconName}) {
         }
     }
 
-    return {actor: root, setBadges, setIcon};
+    function setBadges(badges) {
+        lastBadges = Array.isArray(badges) ? badges.slice() : [];
+        _render();
+    }
+
+    function setOrientation(value) {
+        const next = normaliseOrientation(value);
+        if (next === currentOrientation) return;
+        currentOrientation = next;
+        badgeBox.vertical = next === ORIENT_VERTICAL;
+        _render();
+    }
+
+    return {actor: root, setBadges, setIcon, setOrientation};
+}
+
+/**
+ * Wire a Gio.Settings 'badge-orientation' key to the badged icon.
+ * Applies the current value immediately and returns the signal id so
+ * the caller can disconnect on destroy.
+ */
+export function bindBadgeOrientation(badged, settings) {
+    if (!badged?.setOrientation || !settings) return 0;
+    const apply = () =>
+        badged.setOrientation(settings.get_string('badge-orientation'));
+    apply();
+    return settings.connect('changed::badge-orientation', apply);
 }

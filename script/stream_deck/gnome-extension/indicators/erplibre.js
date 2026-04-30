@@ -16,7 +16,8 @@ import {callKeepassCli, masterPasswordCache, cacheKey}
     from '../lib/keepass.js';
 import {InstanceDialog} from '../ui/instance-dialog.js';
 import {MasterPwDialog} from '../ui/master-pw-dialog.js';
-import {makeBadgedIcon, BADGE_OK, BADGE_WARN, BADGE_ALERT}
+import {makeBadgedIcon, bindBadgeOrientation,
+    BADGE_OK, BADGE_WARN, BADGE_ALERT}
     from '../lib/badges.js';
 
 const PROBE_TTL_MS = 30 * 1000;
@@ -52,12 +53,13 @@ class ErpLibreIndicator extends PanelMenu.Button {
         this._sigBadges = this._settings.connect(
             'changed::enable-icon-badges',
             () => this._refreshBadge());
+        this._sigOrient = bindBadgeOrientation(this._badged, this._settings);
         this._rescanThenRebuild();
     }
 
     destroy() {
         for (const s of [this._sigInstances, this._sigPattern, this._sigAuto,
-            this._sigBadges])
+            this._sigBadges, this._sigOrient])
             if (s) this._settings.disconnect(s);
         super.destroy();
     }

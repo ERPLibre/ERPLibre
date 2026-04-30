@@ -9,7 +9,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {detectStreamDecksGjs} from '../lib/usb.js';
-import {makeBadgedIcon} from '../lib/badges.js';
+import {makeBadgedIcon, bindBadgeOrientation} from '../lib/badges.js';
 import {parseList} from '../lib/settings.js';
 import {buildTerminalArgv, findTerminal, spawnDetached}
     from '../lib/spawn.js';
@@ -58,13 +58,15 @@ class ControllerIndicator extends PanelMenu.Button {
             this._sigPaths = this._settings.connect(
                 'changed::paths',
                 () => this._populateGallerySubmenu());
+            this._sigOrient = bindBadgeOrientation(
+                this._badged, this._settings);
         }
         this._rescanDecks();
     }
 
     destroy() {
         if (this._settings) {
-            for (const k of ['_sigBadges', '_sigPaths']) {
+            for (const k of ['_sigBadges', '_sigPaths', '_sigOrient']) {
                 if (this[k]) this._settings.disconnect(this[k]);
                 this[k] = 0;
             }
