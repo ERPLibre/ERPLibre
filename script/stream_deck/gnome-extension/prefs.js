@@ -16,6 +16,7 @@ import {defaultMediaEntry as defaultFilmEntry}
 // Labels resolved at fillPreferencesWindow() time so _() is wired.
 const INDICATOR_IDS = [
     'controller', 'pencil', 'media', 'erplibre', 'network', 'device',
+    'summary',
 ];
 
 export default class StreamDeckTilerPrefs extends ExtensionPreferences {
@@ -39,6 +40,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
             erplibre:   _('ERPLibre'),
             network:    _('Network'),
             device:     _('Device'),
+            summary:    _('Summary'),
         };
         for (const id of INDICATOR_IDS) {
             const row = new Adw.SwitchRow({
@@ -346,7 +348,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _refreshOrderList(list, settings) {
         const known = new Set(['controller','pencil','media','erplibre',
-            'network','device']);
+            'network','device','summary']);
         let order = settings.get_strv('button-order')
             .filter(id => known.has(id));
         for (const id of known)

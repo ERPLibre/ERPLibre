@@ -835,3 +835,6 @@ msgstr ""
 
 msgid "— Recents ({n}) —"
 msgstr ""
+
+msgid "Summary"
+msgstr ""

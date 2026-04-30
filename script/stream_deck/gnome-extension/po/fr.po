@@ -874,3 +874,6 @@ msgstr "Éditez via la boîte de dialogue Ajouter un média du bouton."
 
 msgid "— Recents ({n}) —"
 msgstr "— Récents ({n}) —"
+
+msgid "Summary"
+msgstr "Sommaire"

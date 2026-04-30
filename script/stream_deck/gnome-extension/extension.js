@@ -34,6 +34,8 @@ import {indicatorDescriptor as networkDescriptor}
     from './indicators/network.js';
 import {indicatorDescriptor as deviceDescriptor}
     from './indicators/device.js';
+import {indicatorDescriptor as summaryDescriptor}
+    from './indicators/summary.js';
 
 const TRACKER_UUID = 'tracker@aliakseiz.github.com';
 const MAIN_UUID = 'streamdeck-tiler@technolibre.ca';
@@ -193,7 +195,7 @@ export default class StreamDeckTilerExtension extends Extension {
 
         const watchKeys = ['paths','media','instances','icon-overrides',
             'enable-controller','enable-pencil','enable-media','enable-erplibre',
-            'enable-network','enable-device','button-order'];
+            'enable-network','enable-device','enable-summary','button-order'];
         for (const k of watchKeys) {
             const sig = this.#settings.connect(`changed::${k}`,
                 () => this._syncDebounceWrite());
@@ -216,6 +218,7 @@ export default class StreamDeckTilerExtension extends Extension {
         this.#registry.register(erplibreDescriptor);
         this.#registry.register(networkDescriptor);
         this.#registry.register(deviceDescriptor);
+        this.#registry.register(summaryDescriptor);
         // Future indicators register themselves here via subsequent plans.
 
         this._buildIndicators();

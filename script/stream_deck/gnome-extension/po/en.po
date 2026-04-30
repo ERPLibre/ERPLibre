@@ -871,3 +871,6 @@ msgstr "Edit via the Add media dialog from the panel button."
 
 msgid "— Recents ({n}) —"
 msgstr "— Recents ({n}) —"
+
+msgid "Summary"
+msgstr "Summary"

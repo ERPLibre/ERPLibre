@@ -11,10 +11,11 @@
     <key name="enable-erplibre"   type="b"><default>true</default><summary>Enable ERPLibre indicator</summary></key>
     <key name="enable-network"    type="b"><default>true</default><summary>Enable network indicator</summary></key>
     <key name="enable-device"     type="b"><default>true</default><summary>Enable device indicator</summary></key>
+    <key name="enable-summary"    type="b"><default>false</default><summary>Enable text-only summary indicator (compact "3↑ 1●" line in the top bar)</summary></key>
 
     <!-- Top-bar ordering -->
     <key name="button-order" type="as">
-      <default>['device','network','erplibre','media','pencil','controller']</default>
+      <default>['summary','device','network','erplibre','media','pencil','controller']</default>
       <summary>Order of indicators left to right in the top bar</summary>
     </key>
     <key name="panel-box" type="s">
