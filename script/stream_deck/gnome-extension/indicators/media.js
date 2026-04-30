@@ -90,6 +90,15 @@ class MediaIndicator extends PanelMenu.Button {
     }
 
     _rebuildMenu() {
+        // removeAll() only purges PopupMenuItems registered through
+        // addMenuItem; the St.ScrollView we add directly to menu.box
+        // for the catalogue list is plain actor and survives the
+        // sweep, so nuke it explicitly first to avoid stacking up
+        // duplicates on every reopen.
+        if (this._mediaScrollView) {
+            try { this._mediaScrollView.destroy(); } catch (_e) {}
+            this._mediaScrollView = null;
+        }
         this.menu.removeAll();
         const films = parseList(this._settings.get_string('media'));
         if (!films.length) {
@@ -117,6 +126,7 @@ class MediaIndicator extends PanelMenu.Button {
                 catch (_e2) {}
             }
             this.menu.box.add_child(scrollView);
+            this._mediaScrollView = scrollView;
 
             const videos = films.filter(
                 f => normaliseKind(f.kind) === 'video');
