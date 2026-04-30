@@ -163,6 +163,8 @@ _DECK_LABELS = {
         # Errors
         'NO\nEXT':    'EXT\nABS',
         'DECK\nTOO\nSMALL': 'DECK\nTROP\nPETIT',
+        # Project shortcuts
+        'TODO':       'TODO',
         # Claude session page
         'FOCUS':      'FOCUS',
         'ACCEPT\n↵':  'OK\n↵',
@@ -1398,7 +1400,7 @@ class Tiler:
         on row 0. Layout shortcuts on row 1, aligned under LAYOUT."""
         order = [
             "tile", "timer", "dev_reload", "sound", "layout", "a11y",
-            "bluetooth", "translator",
+            "bluetooth", "translator", "todo",
         ]
         for i, name in enumerate(order):
             setattr(self, f"{name}_key", i if i < self.cols else -1)
@@ -1426,6 +1428,51 @@ class Tiler:
         self._compute_claude_buttons()
         self._compute_claude_session_keys()
         self._compute_mpv_session_keys()
+
+    def _launch_todo_terminal(self):
+        """Open a gnome-terminal under the project root, activate the
+        ERPLibre venv, and run script/todo/todo.py — the same flow as
+        the ERPLibre indicator's TODO menu item, just exposed as a
+        deck button. Future iterations may drive todo.py directly via
+        an interactive subprocess to render the TUI as deck buttons,
+        but the structured-output parser is a separate engineering
+        scope (see ARCHITECTURE.md TODOs)."""
+        root = os.path.abspath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+        venv = os.path.join(root, ".venv.erplibre", "bin", "activate")
+        script = os.path.join(root, "script", "todo", "todo.py")
+        if not os.path.exists(script):
+            self._flag_err(f"todo.py not found at {script}")
+            self.render()
+            return
+        cmd = (f"source '{venv}' && python3 '{script}'"
+               if os.path.exists(venv)
+               else f"python3 '{script}'")
+        terminals = [
+            ["gnome-terminal", "--working-directory", root,
+                "--", "bash", "-lc", cmd],
+            ["kgx", "--working-directory", root,
+                "--", "bash", "-lc", cmd],
+            ["xterm", "-e", f"cd '{root}' && {cmd}"],
+        ]
+        for argv in terminals:
+            if shutil.which(argv[0]) is None:
+                continue
+            try:
+                subprocess.Popen(argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True)
+                self.last_result = "ok"
+                self.result_time = time.monotonic()
+                self.render()
+                return
+            except Exception as e:
+                print(f"todo terminal spawn failed: {e}",
+                    file=sys.stderr, flush=True)
+        self._flag_err("No terminal found (gnome-terminal / kgx / xterm)")
+        self.render()
 
     def _flag_err(self, reason):
         """Set the result-flash to 'err' AND surface `reason` in
@@ -1535,7 +1582,7 @@ class Tiler:
         for k in (self.tile_key, self.timer_key, self.dev_reload_key,
                   self.sound_key, self.layout_key, self.a11y_key,
                   self.bluetooth_key, self.translator_key,
-                  self.mic_status_key):
+                  self.todo_key, self.mic_status_key):
             if k >= 0:
                 used.add(k)
         used.update(self.layout_shortcut_keys or [])
@@ -1815,6 +1862,9 @@ class Tiler:
         if key == self.translator_key and self.translator_key >= 0:
             self.mode = MODE_TRANSLATOR
             self.render()
+            return
+        if key == self.todo_key and self.todo_key >= 0:
+            self._launch_todo_terminal()
             return
         if key == self.mic_status_key and self.mic_status_key >= 0:
             _wpctl_mute_toggle(WPCTL_SOURCE)
@@ -2554,6 +2604,8 @@ class Tiler:
                     self.deck, key, COLOR_TR_TITLE, _t("TRANSL"),
                     icon="translator",
                 )
+            elif key == self.todo_key and self.todo_key >= 0:
+                set_key(self.deck, key, COLOR_TIMER_TITLE, _t("TODO"))
             elif key == self.mic_status_key and self.mic_status_key >= 0:
                 set_key(self.deck, key, mic_color, mic_label,
                         icon=mic_icon)

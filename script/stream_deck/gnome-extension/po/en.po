@@ -907,3 +907,6 @@ msgstr "⚠ Could not extract anything from this URL."
 
 msgid "× Auto-fill failed: {err}"
 msgstr "× Auto-fill failed: {err}"
+
+msgid "TODO"
+msgstr "TODO"

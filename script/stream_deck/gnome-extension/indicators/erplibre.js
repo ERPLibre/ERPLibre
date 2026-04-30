@@ -223,6 +223,10 @@ class ErpLibreIndicator extends PanelMenu.Button {
             const start = new PopupMenu.PopupMenuItem(_('Start server'));
             start.connect('activate', () => this._startServer(inst));
             sub.menu.addMenuItem(start);
+
+            const todo = new PopupMenu.PopupMenuItem(_('TODO'));
+            todo.connect('activate', () => this._launchTodo(inst));
+            sub.menu.addMenuItem(todo);
         }
 
         const hasKeepass = inst.keepass_db && inst.keepass_entry;
@@ -262,6 +266,23 @@ class ErpLibreIndicator extends PanelMenu.Button {
         const argv = buildTerminalArgv({
             cwd: inst.local_path,
             command: 'make run',
+            terminal,
+        });
+        spawnDetached(argv, {notify: _notify, title: 'ERPLibre'});
+    }
+
+    async _launchTodo(inst) {
+        const terminal = await findTerminal();
+        if (!terminal) {
+            _notify('ERPLibre',
+                _('No terminal found. Install gnome-terminal, kgx '
+                    + 'or xterm.'));
+            return;
+        }
+        const argv = buildTerminalArgv({
+            cwd: inst.local_path,
+            command: 'source .venv.erplibre/bin/activate && '
+                + 'python3 ./script/todo/todo.py',
             terminal,
         });
         spawnDetached(argv, {notify: _notify, title: 'ERPLibre'});
