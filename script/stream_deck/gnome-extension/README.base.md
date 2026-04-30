@@ -22,6 +22,28 @@ Stream Deck Python helpers.
 
 Each indicator can be toggled in the preferences window.
 
+<!-- [en] -->
+
+## Screenshots
+
+`../screenshots/` holds the canonical screenshots referenced from
+this README. Run `../screenshots/capture.sh` while the extension is
+loaded (and a Stream Deck is plugged in for the deck shots) to
+regenerate them. The folder's own `README.md` lists every expected
+file and the conventions for cropping / naming.
+
+<!-- [fr] -->
+
+## Captures d'écran
+
+`../screenshots/` contient les captures d'écran référencées par ce
+README. Lancer `../screenshots/capture.sh` quand l'extension est
+chargée (et qu'un Stream Deck est branché pour les captures du
+boîtier) pour les regénérer. Le `README.md` du dossier liste chaque
+fichier attendu ainsi que les conventions de cadrage / nommage.
+
+<!-- [en] -->
+
 ## Preferences
 
 `gnome-extensions prefs streamdeck-tiler@technolibre.ca`

@@ -46,6 +46,8 @@ pyproject.toml
 requirements.txt
 requirement/ignore_requirements.txt
 screenshots
+!/script/stream_deck/screenshots
+!/script/stream_deck/screenshots/**
 screencasts
 private/todo/todo_override_private.json
 .erplibre.error.txt

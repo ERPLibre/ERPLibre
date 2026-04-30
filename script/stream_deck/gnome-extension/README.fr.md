@@ -1,4 +1,13 @@
 
+
+## Captures d'écran
+
+`../screenshots/` contient les captures d'écran référencées par ce
+README. Lancer `../screenshots/capture.sh` quand l'extension est
+chargée (et qu'un Stream Deck est branché pour les captures du
+boîtier) pour les regénérer. Le `README.md` du dossier liste chaque
+fichier attendu ainsi que les conventions de cadrage / nommage.
+
 # Stream Deck Tiler — Extension GNOME Shell
 
 Panneau à six indicateurs pour la barre du haut GNOME, plus une interface D-Bus utilisée par les helpers Python Stream Deck.
