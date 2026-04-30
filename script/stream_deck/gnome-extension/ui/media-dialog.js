@@ -3,7 +3,8 @@ import GObject from 'gi://GObject';
 import St from 'gi://St';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
-import {validatePositionInput, guessKind, normaliseKind}
+import {validatePositionInput, guessKind, normaliseKind,
+    extractMediaInfo}
     from '../lib/media-helpers.js';
 import {_} from '../lib/i18n.js';
 
@@ -25,15 +26,30 @@ class MediaDialog extends ModalDialog {
         box.add_child(new St.Label({text: title,
             style: 'font-weight: bold;'}));
 
-        this._nameEntry = new St.Entry({hint_text: _('Name (required)'),
-            text: entry?.name ?? ''});
+        this._nameEntry = new St.Entry({
+            hint_text: _('Name (auto-filled if empty)'),
+            text: entry?.name ?? '',
+        });
         box.add_child(this._nameEntry);
 
+        // URL row with an Auto-fill button on the right that parses
+        // the URL and populates Name + Episode from known platforms
+        // (tou.tv, noovo, vrai, vimeo, soundcloud, …).
+        const urlRow = new St.BoxLayout({vertical: false,
+            style: 'spacing: 4px;'});
         this._urlEntry = new St.Entry({hint_text: _('URL (required)'),
-            text: entry?.url ?? ''});
+            text: entry?.url ?? '', x_expand: true});
         this._urlEntry.clutter_text?.connect?.('text-changed',
             () => this._maybeAutoKind());
-        box.add_child(this._urlEntry);
+        urlRow.add_child(this._urlEntry);
+        const fillBtn = new St.Button({
+            label: _('Auto-fill'),
+            style_class: 'streamdeck-tiler-btn',
+            style: 'padding: 2px 8px;',
+        });
+        fillBtn.connect('clicked', () => this._autoFillFromUrl());
+        urlRow.add_child(fillBtn);
+        box.add_child(urlRow);
 
         // Kind selector — Video / Audio. Auto-detected from URL on
         // text-changed, but user can override before saving.
@@ -83,14 +99,18 @@ class MediaDialog extends ModalDialog {
     }
 
     _confirm() {
-        const name = this._nameEntry.get_text().trim();
+        let name = this._nameEntry.get_text().trim();
         const url = this._urlEntry.get_text().trim();
         const position = this._posEntry.get_text().trim();
-        if (!name || !url) return;
+        if (!url) return;
         if (!validatePositionInput(position)) {
             this._posError.set_text(_('Invalid position format'));
             return;
         }
+        // Name is optional — derive from URL when blank so the
+        // user can paste a link and hit Save without filling
+        // anything else in.
+        if (!name) name = extractMediaInfo(url).name || url;
         this._onConfirm({
             name, url,
             episode: this._epEntry.get_text(),
@@ -98,6 +118,18 @@ class MediaDialog extends ModalDialog {
             kind: normaliseKind(this._kind),
         });
         this.close();
+    }
+
+    _autoFillFromUrl() {
+        const url = this._urlEntry.get_text().trim();
+        if (!url) return;
+        const info = extractMediaInfo(url);
+        if (info.name && !this._nameEntry.get_text().trim()) {
+            this._nameEntry.set_text(info.name);
+        }
+        if (info.episode && !this._epEntry.get_text().trim()) {
+            this._epEntry.set_text(info.episode);
+        }
     }
 
     _setKind(kind) {

@@ -841,3 +841,9 @@ msgstr ""
 
 msgid "⏭ Next episode"
 msgstr ""
+
+msgid "Name (auto-filled if empty)"
+msgstr ""
+
+msgid "Auto-fill"
+msgstr ""

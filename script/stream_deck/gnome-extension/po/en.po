@@ -877,3 +877,9 @@ msgstr "Summary"
 
 msgid "⏭ Next episode"
 msgstr "⏭ Next episode"
+
+msgid "Name (auto-filled if empty)"
+msgstr "Name (auto-filled if empty)"
+
+msgid "Auto-fill"
+msgstr "Auto-fill"

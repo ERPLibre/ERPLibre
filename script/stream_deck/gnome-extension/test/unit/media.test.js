@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
     isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl,
-    nextEpisodeUrl, nextEpisodeLabel}
+    nextEpisodeUrl, nextEpisodeLabel, extractMediaInfo}
     from '../../lib/media-helpers.js';
 
 test('buildMediaLabel joins fields with bullets', () => {
@@ -472,6 +472,53 @@ test('nextEpisodeLabel: appends or replaces SnnEnn tag in name', () => {
         nextEpisodeLabel('Show — S01E03',
             'http://x/S01E03', 'http://x/S01E04'),
         'Show — S01E04');
+});
+
+test('extractMediaInfo: tou.tv show + SnnEnn marker', () => {
+    const r = extractMediaInfo(
+        'https://ici.tou.tv/des-rumeurs-de-la-rue/S01E03');
+    assert.equal(r.name, 'Des Rumeurs De La Rue');
+    assert.equal(r.episode, 'S01E03');
+});
+
+test('extractMediaInfo: noovo emissions saison-N/episode-N', () => {
+    const r = extractMediaInfo(
+        'https://noovo.ca/emissions/occupation-double/saison-12/episode-3');
+    assert.equal(r.name, 'Occupation Double');
+    assert.equal(r.episode, 'S12E3');
+});
+
+test('extractMediaInfo: vimeo + youtube use id as placeholder name', () => {
+    const v = extractMediaInfo('https://vimeo.com/123456789');
+    assert.equal(v.name, 'Vimeo — 123456789');
+    assert.equal(v.episode, '');
+    const y = extractMediaInfo('https://www.youtube.com/watch?v=abc123');
+    assert.equal(y.name, 'YouTube — abc123');
+    assert.equal(y.episode, '');
+});
+
+test('extractMediaInfo: soundcloud user — track', () => {
+    const r = extractMediaInfo(
+        'https://soundcloud.com/some-artist/cool-track');
+    assert.equal(r.name, 'Some Artist — Cool Track');
+});
+
+test('extractMediaInfo: bandcamp artist + track', () => {
+    const r = extractMediaInfo(
+        'https://artist.bandcamp.com/track/my-song');
+    assert.equal(r.name, 'Artist — My Song');
+});
+
+test('extractMediaInfo: empty url returns empty fields', () => {
+    const r = extractMediaInfo('');
+    assert.equal(r.name, '');
+    assert.equal(r.episode, '');
+});
+
+test('extractMediaInfo: generic URL falls back to last path segment', () => {
+    const r = extractMediaInfo(
+        'https://example.com/library/cool-documentary');
+    assert.equal(r.name, 'Cool Documentary');
 });
 
 test('nextEpisodeLabel: appends Ép. tag for episode-N pattern', () => {

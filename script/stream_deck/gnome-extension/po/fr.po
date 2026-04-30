@@ -880,3 +880,9 @@ msgstr "Sommaire"
 
 msgid "⏭ Next episode"
 msgstr "⏭ Prochain épisode"
+
+msgid "Name (auto-filled if empty)"
+msgstr "Nom (rempli automatiquement si vide)"
+
+msgid "Auto-fill"
+msgstr "Remplir auto"

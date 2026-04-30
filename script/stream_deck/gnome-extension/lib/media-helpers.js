@@ -387,6 +387,131 @@ export function normaliseMediaUrl(url) {
 }
 
 /**
+ * Best-effort metadata extraction from a media URL. Returns
+ * `{name, episode}` with either field possibly empty. Designed to
+ * power an Auto-fill button in the Add media dialog so the user can
+ * paste a URL and let the dialog populate the readable bits.
+ *
+ * The name comes from the show slug when one is in the path
+ * (tou.tv, noovo, vrai, telequebec, tv5unis, gem, soundcloud,
+ * bandcamp, etc.), otherwise from a hint of the host (Vimeo,
+ * YouTube, Spotify…). The episode marker is derived from
+ * S{n}E{n}, saison-N/episode-N or the trailing numeric id when no
+ * structured marker exists.
+ */
+export function extractMediaInfo(url) {
+    const raw = String(url || '').trim();
+    const result = {name: '', episode: ''};
+    if (!raw) return result;
+
+    // Compact and verbose episode markers — same regexes as
+    // nextEpisodeUrl but match-only.
+    const compact = /S(\d+)E(\d+)/i;
+    const verbose = /(?:saison|season)-?(\d+)(?:[-/]episode-?)(\d+)/i;
+    const cM = compact.exec(raw);
+    const vM = verbose.exec(raw);
+    if (cM) result.episode = `S${cM[1]}E${cM[2]}`.toUpperCase();
+    else if (vM) result.episode = `S${vM[1]}E${vM[2]}`;
+
+    let u;
+    try { u = new URL(raw); }
+    catch (_e) {
+        return result;
+    }
+
+    const host = (u.hostname || '').toLowerCase();
+    const seg = (u.pathname || '').split('/').filter(Boolean);
+
+    const slug = (s) => String(s || '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase())
+        .trim();
+
+    // Strip an episode-bearing trailing segment so the name comes
+    // from the show slug, not the episode marker.
+    const showSeg = (segments) => {
+        const cleaned = segments.filter(s =>
+            !compact.test(s) && !/^episode-?\d+/i.test(s)
+            && !/^saison-?\d+/i.test(s) && !/^season-?\d+/i.test(s));
+        return cleaned[0] || segments[0] || '';
+    };
+
+    if (host === 'ici.tou.tv' || host === 'tou.tv'
+            || host === 'vrai.ca' || host === 'www.vrai.ca'
+            || host === 'telequebec.tv' || host === 'www.telequebec.tv'
+            || host === 'gem.cbc.ca') {
+        result.name = slug(showSeg(seg));
+        return result;
+    }
+
+    if (host === 'noovo.ca' || host === 'www.noovo.ca') {
+        const start = (seg[0] === 'emissions' || seg[0] === 'videos') ? 1 : 0;
+        result.name = slug(showSeg(seg.slice(start)));
+        return result;
+    }
+
+    if (host === 'tv5unis.ca' || host === 'www.tv5unis.ca') {
+        const start = seg[0] === 'videos' ? 1 : 0;
+        result.name = slug(showSeg(seg.slice(start)));
+        return result;
+    }
+
+    if (host === 'tvaplus.ca' || host === 'www.tvaplus.ca'
+            || host === 'tva.ca' || host === 'www.tva.ca') {
+        const start = (seg[0] === 'series' || seg[0] === 'videos'
+            || seg[0] === 'emissions') ? 1 : 0;
+        result.name = slug(showSeg(seg.slice(start)));
+        return result;
+    }
+
+    if (host === 'soundcloud.com' || host === 'www.soundcloud.com') {
+        // /{user}/{track} or /{user}/sets/{playlist}
+        if (seg.length >= 2) {
+            const track = seg[1] === 'sets' ? (seg[2] || '') : seg[1];
+            const user = seg[0];
+            result.name = `${slug(user)} — ${slug(track)}`;
+        }
+        return result;
+    }
+
+    if (host.endsWith('.bandcamp.com')) {
+        const artist = host.replace(/\.bandcamp\.com$/, '');
+        const track = seg[1] || '';
+        result.name = track
+            ? `${slug(artist)} — ${slug(track)}`
+            : slug(artist);
+        return result;
+    }
+
+    if (host === 'open.spotify.com') {
+        result.name = `Spotify — ${slug(seg[1] || seg[0] || '')}`;
+        return result;
+    }
+
+    if (_YT_HOSTS.test(host)) {
+        // No real title without an API call. Use the video id as a
+        // placeholder the user can rename if desired.
+        const id = (host.endsWith('youtu.be')
+            ? seg[0] : (u.searchParams.get('v') || seg[1] || '')) || '';
+        if (id) result.name = `YouTube — ${id}`;
+        return result;
+    }
+
+    if (host === 'vimeo.com' || host === 'player.vimeo.com') {
+        const id = [...seg].reverse().find(s => /^\d+$/.test(s));
+        if (id) result.name = `Vimeo — ${id}`;
+        return result;
+    }
+
+    // Generic fallback: take the last meaningful segment.
+    const tail = [...seg].reverse().find(s => !compact.test(s)
+        && !/^episode-?\d+/i.test(s) && !/^saison-?\d+/i.test(s)
+        && !/^season-?\d+/i.test(s));
+    if (tail) result.name = slug(tail);
+    return result;
+}
+
+/**
  * Compute the URL of the episode that follows `url` by simple
  * pattern increment. Returns null when no recognised episode marker
  * is found. Pure helper, unit-tested.
