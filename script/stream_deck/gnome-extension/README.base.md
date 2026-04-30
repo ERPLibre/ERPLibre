@@ -219,3 +219,64 @@ Runs `glib-compile-schemas --strict --dry-run` plus `node --test test/unit/*.tes
 <!-- [fr] -->
 
 Exécute `glib-compile-schemas --strict --dry-run` puis `node --test test/unit/*.test.js`. La checklist manuelle est dans `test/manual.md`.
+
+<!-- [en] -->
+
+## Internationalisation
+
+The extension ships English (source) and French translations. GNOME
+shell auto-picks the right one based on the system `LANG` (e.g.
+`LANG=fr_CA.UTF-8`).
+
+### Files
+
+- `po/streamdeck-tiler.pot` — extraction template; regenerate after
+  adding new `_()` strings.
+- `po/en.po`, `po/fr.po` — per-language catalogues.
+- `locale/<lang>/LC_MESSAGES/streamdeck-tiler.mo` — compiled binary
+  catalogues read at runtime; gitignored, regenerated at install.
+
+### Adding a new language
+
+1. Copy `po/en.po` to `po/<lang>.po` (e.g. `po/de.po`).
+2. Translate every `msgstr "…"`.
+3. Run `make streamdeck_tiler_compile_locale` to rebuild the `.mo`
+   files.
+4. Reload the extension. GNOME will pick `<lang>` automatically when
+   the system locale matches.
+
+### Updating existing translations
+
+Edit `msgstr` lines in `po/<lang>.po`, then re-run
+`make streamdeck_tiler_compile_locale`.
+
+<!-- [fr] -->
+
+## Internationalisation
+
+L'extension est livrée en anglais (source) et en français. GNOME
+shell choisit automatiquement la bonne langue selon `LANG`
+(ex. `LANG=fr_CA.UTF-8`).
+
+### Fichiers
+
+- `po/streamdeck-tiler.pot` — gabarit d'extraction ; à régénérer
+  après l'ajout de chaînes `_()`.
+- `po/en.po`, `po/fr.po` — catalogues par langue.
+- `locale/<lang>/LC_MESSAGES/streamdeck-tiler.mo` — catalogues
+  binaires lus à l'exécution ; gitignorés, regénérés à
+  l'installation.
+
+### Ajouter une nouvelle langue
+
+1. Copier `po/en.po` vers `po/<lang>.po` (ex. `po/de.po`).
+2. Traduire chaque `msgstr "…"`.
+3. Exécuter `make streamdeck_tiler_compile_locale` pour reconstruire
+   les fichiers `.mo`.
+4. Recharger l'extension. GNOME choisit `<lang>` automatiquement
+   quand la locale système correspond.
+
+### Mettre à jour des traductions existantes
+
+Modifier les lignes `msgstr` dans `po/<lang>.po`, puis relancer
+`make streamdeck_tiler_compile_locale`.

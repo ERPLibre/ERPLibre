@@ -109,3 +109,32 @@ make test_gnome_extension
 
 
 Runs `glib-compile-schemas --strict --dry-run` plus `node --test test/unit/*.test.js`. The manual smoke checklist lives at `test/manual.md`.
+
+
+## Internationalisation
+
+The extension ships English (source) and French translations. GNOME
+shell auto-picks the right one based on the system `LANG` (e.g.
+`LANG=fr_CA.UTF-8`).
+
+### Files
+
+- `po/streamdeck-tiler.pot` — extraction template; regenerate after
+  adding new `_()` strings.
+- `po/en.po`, `po/fr.po` — per-language catalogues.
+- `locale/<lang>/LC_MESSAGES/streamdeck-tiler.mo` — compiled binary
+  catalogues read at runtime; gitignored, regenerated at install.
+
+### Adding a new language
+
+1. Copy `po/en.po` to `po/<lang>.po` (e.g. `po/de.po`).
+2. Translate every `msgstr "…"`.
+3. Run `make streamdeck_tiler_compile_locale` to rebuild the `.mo`
+   files.
+4. Reload the extension. GNOME will pick `<lang>` automatically when
+   the system locale matches.
+
+### Updating existing translations
+
+Edit `msgstr` lines in `po/<lang>.po`, then re-run
+`make streamdeck_tiler_compile_locale`.

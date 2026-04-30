@@ -118,6 +118,8 @@ streamdeck_tiler_install_extension:
 	@mkdir -p "$(STREAMDECK_TILER_EXT_BASE_DIR)"
 	@ln -sfn "$(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)" "$(STREAMDECK_TILER_EXT_DST)"
 	@glib-compile-schemas "$(STREAMDECK_TILER_EXT_SRC)/schemas/" 2>/dev/null || true
+	@python3 "$(STREAMDECK_TILER_EXT_SRC)/po/compile_locales.py" 2>/dev/null \
+		|| echo "(locale compile skipped — install python3-polib for translations)"
 	@echo "Symlinked $(STREAMDECK_TILER_EXT_DST) -> $(CURDIR)/$(STREAMDECK_TILER_EXT_SRC)"
 	@echo "Wayland: log out / log in to load new source (ES modules are cached)."
 	@echo "X11:     press Alt+F2, type r, Enter."
