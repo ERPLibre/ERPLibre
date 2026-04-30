@@ -1302,6 +1302,11 @@ class Tiler:
         self.timers = []  # list of dicts from _list_tracker_timers
         # Map: key index -> timer id (for timer list mode)
         self.timer_key_map = {}
+        # Timer ids the user has dismissed via Clean dashboard. The
+        # render loop purges any id whose timer is no longer running
+        # so a stop+start cycle resurfaces the timer on the idle
+        # screen automatically.
+        self._dashboard_hidden_timer_ids = set()
         # Layout delete pending slot id (used by confirm mode)
         self.layout_delete_pending = None
         # Translator state
@@ -1873,6 +1878,17 @@ class Tiler:
         if key == self.total_keys - 4:
             self._handle_export()
             return
+        if key == self.total_keys - 5:
+            # Hide every currently-running timer from the idle
+            # dashboard. They keep ticking in the tracker; the user
+            # just dismisses them from the main screen.
+            self._dashboard_hidden_timer_ids = {
+                t.get('id') for t in (self.timers or [])
+                if t.get('running') and t.get('id')}
+            self.last_result = "ok"
+            self.result_time = time.monotonic()
+            self.render()
+            return
         timer_id = self.timer_key_map.get(key)
         if not timer_id:
             return
@@ -2261,9 +2277,10 @@ class Tiler:
     def _refresh_timers(self):
         self.timers = _list_tracker_timers()
         self.timer_key_map = {}
-        # Keys for timers: 1 .. total-5
-        # (skip BACK=0, EXPORT=total-4, NEW=total-3, RESET=total-2, RFSH=total-1)
-        usable = list(range(1, self.total_keys - 4))
+        # Keys for timers: 1 .. total-6
+        # (skip BACK=0, CLEAN=total-5, EXPORT=total-4, NEW=total-3,
+        #  RESET=total-2, RFSH=total-1)
+        usable = list(range(1, self.total_keys - 5))
         for idx, timer in enumerate(self.timers):
             if idx >= len(usable):
                 break
@@ -2436,8 +2453,19 @@ class Tiler:
         session_keys = list(self.claude_keys or [])
         mpv_sessions = _load_mpv_sessions()
         claude_sessions = _load_claude_sessions()
+        # Purge dismissed-but-now-stopped timers so a fresh start
+        # surfaces them again next time.
+        running_ids = {
+            t.get('id') for t in (self.timers or []) if t.get('running')}
+        self._dashboard_hidden_timer_ids &= running_ids
+        running_timers = [
+            t for t in (self.timers or [])
+            if t.get('running')
+            and t.get('id') not in self._dashboard_hidden_timer_ids
+        ]
         mpv_by_key = {}
         claude_by_key = {}
+        timer_by_key = {}
         cursor = 0
         for s in mpv_sessions:
             if cursor >= len(session_keys):
@@ -2448,6 +2476,11 @@ class Tiler:
             if cursor >= len(session_keys):
                 break
             claude_by_key[session_keys[cursor]] = s
+            cursor += 1
+        for t in running_timers:
+            if cursor >= len(session_keys):
+                break
+            timer_by_key[session_keys[cursor]] = t
             cursor += 1
         for key in range(self.total_keys):
             if key == self.tile_key:
@@ -2492,6 +2525,10 @@ class Tiler:
                 s = claude_by_key[key]
                 set_key(self.deck, key, _claude_color(s),
                         _claude_label(s), icon="robot")
+            elif key in timer_by_key:
+                t = timer_by_key[key]
+                set_key(self.deck, key, COLOR_TIMER_RUNNING,
+                        _label_for_timer(t), icon="timer")
             elif key == 0 and not self.dbus_ok:
                 set_key(self.deck, key, COLOR_ERR, _t("NO\nEXT"))
             else:
@@ -2804,6 +2841,9 @@ class Tiler:
             if key == self.total_keys - 4:
                 set_key(self.deck, key, COLOR_EXPORT, "EXPT\nCSV")
                 continue
+            if key == self.total_keys - 5:
+                set_key(self.deck, key, COLOR_TIMER_PAUSED, "CLEAN\nDASH")
+                continue
             timer_id = self.timer_key_map.get(key)
             if not timer_id:
                 # Empty slot — show hint if no timers exist at all
@@ -2872,11 +2912,14 @@ class Tiler:
                         self._refresh_timers()
                         self.render()
                         last_timer_refresh = now
-                elif (self.mode == MODE_IDLE
-                        and self.mic_status_key >= 0):
-                    # Auto-refresh every 2s so mic mute toggled outside
-                    # the deck is reflected on the indicator.
+                elif self.mode == MODE_IDLE:
+                    # Auto-refresh every 2s so mic mute toggled
+                    # outside the deck shows on the indicator and
+                    # running timers update their mm:ss + appear /
+                    # disappear as the user starts / stops them in
+                    # the tracker.
                     if now - last_idle_refresh >= 2.0:
+                        self._refresh_timers()
                         self.render()
                         last_idle_refresh = now
                 elif (self.mode == MODE_TRANSLATOR
