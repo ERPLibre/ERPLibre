@@ -6,7 +6,7 @@
     <!-- Per-indicator toggles -->
     <key name="enable-controller" type="b"><default>true</default><summary>Enable controller indicator</summary></key>
     <key name="enable-pencil"     type="b"><default>true</default><summary>Enable pencil indicator</summary></key>
-    <key name="enable-film"       type="b"><default>true</default><summary>Enable film indicator (legacy alias for enable-media; kept for downgrade safety)</summary></key>
+    <key name="enable-film"       type="b"><default>true</default><summary>DEPRECATED — use enable-media. Kept so the v1→v2 schema migration can still read it on first launch and to avoid losing data on a downgrade.</summary></key>
     <key name="enable-media"      type="b"><default>true</default><summary>Enable media indicator (replaces enable-film since schema v2)</summary></key>
     <key name="enable-erplibre"   type="b"><default>true</default><summary>Enable ERPLibre indicator</summary></key>
     <key name="enable-network"    type="b"><default>true</default><summary>Enable network indicator</summary></key>
@@ -24,7 +24,7 @@
 
     <!-- Catalogues (JSON serialised) -->
     <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
-    <key name="films"        type="s"><default>"[]"</default><summary>Legacy media catalogue (JSON array). Replaced by `media` in schema v2; kept for downgrade safety.</summary></key>
+    <key name="films"        type="s"><default>"[]"</default><summary>DEPRECATED — use `media`. Kept so the v1→v2 migration can copy entries forward and so a downgrade does not lose data.</summary></key>
     <key name="media"        type="s"><default>"[]"</default><summary>Media catalogue (JSON array of video / audio entries with `kind` field)</summary></key>
     <key name="instances"    type="s"><default>"[]"</default><summary>ERPLibre instances catalogue (JSON array)</summary></key>
     <key name="recent-paths" type="s"><default>"[]"</default><summary>Recently opened paths (JSON array, capped at 10)</summary></key>

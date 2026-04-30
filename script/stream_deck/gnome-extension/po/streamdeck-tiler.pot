@@ -823,3 +823,12 @@ msgstr ""
 
 msgid ".venv.erplibre missing — falling back to xdotool"
 msgstr ""
+
+msgid "Media"
+msgstr ""
+
+msgid "Media catalogue"
+msgstr ""
+
+msgid "Edit via the Add media dialog from the panel button."
+msgstr ""

@@ -859,3 +859,12 @@ msgstr "{attr} copied"
 
 msgid ".venv.erplibre missing — falling back to xdotool"
 msgstr ".venv.erplibre missing — falling back to xdotool"
+
+msgid "Media"
+msgstr "Media"
+
+msgid "Media catalogue"
+msgstr "Media catalogue"
+
+msgid "Edit via the Add media dialog from the panel button."
+msgstr "Edit via the Add media dialog from the panel button."

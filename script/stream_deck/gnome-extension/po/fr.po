@@ -572,8 +572,8 @@ msgid ""
 "If the second corner is never picked, tiling mode returns to idle without "
 "touching the focused window."
 msgstr ""
-"Si le deuxième coin n'est jamais choisi, le mode tuilage revient à l'état au "
-"repos sans toucher à la fenêtre."
+"Si le deuxième coin n'est jamais choisi, le mode tuilage revient à l'état au"
+" repos sans toucher à la fenêtre."
 
 msgid "Sync"
 msgstr "Sync"
@@ -862,3 +862,12 @@ msgstr "{attr} copié"
 
 msgid ".venv.erplibre missing — falling back to xdotool"
 msgstr ".venv.erplibre absent — repli sur xdotool"
+
+msgid "Media"
+msgstr "Média"
+
+msgid "Media catalogue"
+msgstr "Catalogue média"
+
+msgid "Edit via the Add media dialog from the panel button."
+msgstr "Éditez via la boîte de dialogue Ajouter un média du bouton."

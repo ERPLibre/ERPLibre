@@ -15,7 +15,7 @@ import {defaultMediaEntry as defaultFilmEntry}
 
 // Labels resolved at fillPreferencesWindow() time so _() is wired.
 const INDICATOR_IDS = [
-    'controller', 'pencil', 'film', 'erplibre', 'network', 'device',
+    'controller', 'pencil', 'media', 'erplibre', 'network', 'device',
 ];
 
 export default class StreamDeckTilerPrefs extends ExtensionPreferences {
@@ -35,7 +35,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const labels = {
             controller: _('Controller'),
             pencil:     _('Pencil'),
-            film:       _('Film'),
+            media:      _('Media'),
             erplibre:   _('ERPLibre'),
             network:    _('Network'),
             device:     _('Device'),
@@ -345,7 +345,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
     }
 
     _refreshOrderList(list, settings) {
-        const known = new Set(['controller','pencil','film','erplibre',
+        const known = new Set(['controller','pencil','media','erplibre',
             'network','device']);
         let order = settings.get_strv('button-order')
             .filter(id => known.has(id));
@@ -447,7 +447,7 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
         const indicators = [
             ['controller', 'input-gaming-symbolic'],
             ['pencil',     'document-edit-symbolic'],
-            ['film',       'video-x-generic-symbolic'],
+            ['media',      'video-x-generic-symbolic'],
             ['erplibre',   'network-server-symbolic'],
             ['network',    'network-wired-symbolic'],
             ['device',     'input-tablet-symbolic'],
@@ -562,11 +562,12 @@ export default class StreamDeckTilerPrefs extends ExtensionPreferences {
 
     _buildFilmPage(settings) {
         const page = new Adw.PreferencesPage({
-            title: _('Film'), icon_name: 'video-x-generic-symbolic',
+            title: _('Media'), icon_name: 'video-x-generic-symbolic',
         });
         const group = new Adw.PreferencesGroup({
-            title: _('Films'),
-            description: _('Edit via the Add film dialog from the panel button.'),
+            title: _('Media catalogue'),
+            description: _('Edit via the Add media dialog from the panel '
+                + 'button.'),
         });
         page.add(group);
 
