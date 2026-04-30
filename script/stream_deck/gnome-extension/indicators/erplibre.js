@@ -324,7 +324,14 @@ class ErpLibreIndicator extends PanelMenu.Button {
 
     _registerTodoTerminal(logPath) {
         const wid = this._extension?.GetFocusedWindowId?.();
-        if (!wid) return;
+        console.log(
+            `[StreamDeckTiler] TODO register: focused window id=${wid}`);
+        if (!wid) {
+            _notify('ERPLibre',
+                _('Could not capture TODO terminal — focus a different '
+                    + 'window then re-open.'));
+            return;
+        }
         const stateBase = GLib.getenv('XDG_STATE_HOME')
             || `${GLib.get_home_dir()}/.local/state`;
         const dir = `${stateBase}/streamdeck-tiler`;
@@ -338,9 +345,15 @@ class ErpLibreIndicator extends PanelMenu.Button {
                     const parsed = JSON.parse(text);
                     if (Array.isArray(parsed)) entries = parsed;
                 }
-            } catch (_e) { entries = []; }
+            } catch (e) {
+                console.log(
+                    `[StreamDeckTiler] read TODO registry: ${e.message}`);
+                entries = [];
+            }
         }
         if (entries.some(e => String(e.window_id) === String(wid))) {
+            console.log(
+                `[StreamDeckTiler] TODO registry already has wid=${wid}`);
             return;
         }
         entries.push({
@@ -350,7 +363,22 @@ class ErpLibreIndicator extends PanelMenu.Button {
             log_path: logPath || '',
         });
         try { GLib.mkdir_with_parents(dir, 0o700); } catch (_e) {}
-        GLib.file_set_contents(regPath, JSON.stringify(entries));
+        try {
+            // Gio.File.replace_contents is the byte-array-safe path;
+            // GLib.file_set_contents from GJS sometimes truncates on
+            // non-empty payloads depending on binding versions.
+            const file = Gio.File.new_for_path(regPath);
+            const json = JSON.stringify(entries);
+            file.replace_contents(
+                new TextEncoder().encode(json),
+                null, false,
+                Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            console.log(
+                `[StreamDeckTiler] TODO registered ${wid} → ${regPath}`);
+        } catch (e) {
+            console.log(
+                `[StreamDeckTiler] write TODO registry: ${e.message}`);
+        }
     }
 
     async _withMasterPw(inst, action) {

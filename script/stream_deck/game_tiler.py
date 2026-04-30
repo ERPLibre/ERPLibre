@@ -1741,12 +1741,15 @@ class Tiler:
         _save_todo_terminals(self.todo_terminals)
 
     def _refresh_todo_terminals(self):
-        """Drop registrations whose windows have closed. Skip the
-        purge entirely when the extension's ListWindows answer comes
-        back empty or without ids — older extension builds did not
-        ship the ``id`` field, and a stale-looking 'no live windows'
-        snapshot would otherwise nuke a freshly-registered terminal
-        the user just opened."""
+        """Reload the terminal registry from disk so writes from the
+        gnome-extension side (ERPLibre indicator's TODO menu item)
+        surface here too, then drop registrations whose windows have
+        closed. Skip the purge entirely when ListWindows answers
+        empty or without ids — older extension builds did not ship
+        the ``id`` field, and a stale-looking 'no live windows'
+        snapshot would otherwise nuke a freshly-registered
+        terminal."""
+        self.todo_terminals = _load_todo_terminals()
         live = _list_mutter_window_ids()
         if not live:
             return
