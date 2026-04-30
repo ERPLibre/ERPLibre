@@ -913,3 +913,9 @@ msgstr "× Échec du remplissage : {err}"
 
 msgid "TODO"
 msgstr "TODO"
+
+msgid "today"
+msgstr "aujourd'hui"
+
+msgid "yesterday"
+msgstr "hier"

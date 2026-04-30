@@ -16,9 +16,28 @@ export function buildMediaLabel(entry) {
 }
 
 export function defaultMediaEntry({name = '', url = '', episode = '',
-    position = '', kind = ''} = {}) {
+    position = '', kind = '', last_played = ''} = {}) {
     return {id: uuid4(), name, url, episode, position,
-        kind: kind || guessKind(url)};
+        kind: kind || guessKind(url), last_played};
+}
+
+/**
+ * Render an ISO timestamp as a short locale-friendly day string. Used
+ * by the media dropdown to surface a last-played indicator on each
+ * row. Returns '' for empty / invalid input.
+ */
+export function formatLastPlayed(iso, now = new Date()) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const todayKey = (date) =>
+        `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        + `-${String(date.getDate()).padStart(2, '0')}`;
+    if (todayKey(d) === todayKey(now)) return 'today';
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (todayKey(d) === todayKey(yesterday)) return 'yesterday';
+    return todayKey(d);
 }
 
 export function validatePositionInput(text) {

@@ -874,3 +874,9 @@ msgstr ""
 
 msgid "TODO"
 msgstr ""
+
+msgid "today"
+msgstr ""
+
+msgid "yesterday"
+msgstr ""

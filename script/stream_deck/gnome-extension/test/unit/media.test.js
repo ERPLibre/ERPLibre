@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
     isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl,
-    nextEpisodeUrl, nextEpisodeLabel, extractMediaInfo}
+    nextEpisodeUrl, nextEpisodeLabel, extractMediaInfo,
+    formatLastPlayed}
     from '../../lib/media-helpers.js';
 
 test('buildMediaLabel joins fields with bullets', () => {
@@ -527,4 +528,40 @@ test('nextEpisodeLabel: appends Ép. tag for episode-N pattern', () => {
             'http://x/saison-1/episode-3',
             'http://x/saison-1/episode-4'),
         'Show — Ép. 4');
+});
+
+test('formatLastPlayed: empty / invalid input returns empty string', () => {
+    assert.equal(formatLastPlayed(''), '');
+    assert.equal(formatLastPlayed(null), '');
+    assert.equal(formatLastPlayed(undefined), '');
+    assert.equal(formatLastPlayed('not a date'), '');
+});
+
+test('formatLastPlayed: same day yields "today"', () => {
+    const now = new Date('2026-04-30T15:00:00Z');
+    const iso = '2026-04-30T08:30:00Z';
+    assert.equal(formatLastPlayed(iso, now), 'today');
+});
+
+test('formatLastPlayed: previous day yields "yesterday"', () => {
+    const now = new Date('2026-04-30T15:00:00Z');
+    const iso = '2026-04-29T22:00:00Z';
+    assert.equal(formatLastPlayed(iso, now), 'yesterday');
+});
+
+test('formatLastPlayed: older dates yield ISO short form', () => {
+    const now = new Date('2026-04-30T15:00:00Z');
+    const iso = '2026-04-15T10:00:00Z';
+    assert.equal(formatLastPlayed(iso, now), '2026-04-15');
+});
+
+test('defaultMediaEntry: stores empty last_played by default', () => {
+    const e = defaultMediaEntry({name: 'Foo', url: 'https://x'});
+    assert.equal(e.last_played, '');
+});
+
+test('defaultMediaEntry: preserves provided last_played', () => {
+    const e = defaultMediaEntry({name: 'Foo', url: 'https://x',
+        last_played: '2026-04-30T15:00:00Z'});
+    assert.equal(e.last_played, '2026-04-30T15:00:00Z');
 });

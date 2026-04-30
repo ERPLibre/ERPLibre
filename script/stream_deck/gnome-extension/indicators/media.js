@@ -11,7 +11,7 @@ import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
     formatPosition, spawnDetached} from '../lib/spawn.js';
 import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind,
-    nextEpisodeUrl, nextEpisodeLabel}
+    nextEpisodeUrl, nextEpisodeLabel, formatLastPlayed}
     from '../lib/media-helpers.js';
 import {MediaDialog} from '../ui/media-dialog.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
@@ -138,8 +138,9 @@ class MediaIndicator extends PanelMenu.Button {
     _makeRow(film) {
         const playing = this._isPlaying(film.id);
         const prefix = playing ? '▶ ' : '';
+        const lastTag = this._lastPlayedTag(film);
         const sub = new PopupMenu.PopupSubMenuMenuItem(
-            `${prefix}${buildMediaLabel(film)}`);
+            `${prefix}${buildMediaLabel(film)}${lastTag}`);
 
         const browserItem = new PopupMenu.PopupMenuItem(_('▶ Browser'));
         browserItem.connect('activate', () => this._launch(film, 'browser'));
@@ -196,6 +197,12 @@ class MediaIndicator extends PanelMenu.Button {
     }
 
     async _launch(film, player) {
+        // Stamp the click timestamp on the entry so the dropdown
+        // surfaces a "📅 last played" line even before the player
+        // returns. Captures every click — mpv / VLC / browser /
+        // Spotify — since the user's intent is "I started watching
+        // this", not "this player actually rendered frames".
+        this._stampLastPlayed(film);
         if (player === 'mpv') {
             await this._launchMpvTracked(film);
             return;
@@ -208,6 +215,28 @@ class MediaIndicator extends PanelMenu.Button {
         else
             argv = buildBrowserArgv(film.url);
         await spawnDetached(argv, {notify: _notify, title: 'Stream Deck'});
+    }
+
+    _lastPlayedTag(film) {
+        if (!film?.last_played) return '';
+        const raw = formatLastPlayed(film.last_played);
+        if (!raw) return '';
+        const human = raw === 'today'
+            ? _('today')
+            : raw === 'yesterday'
+                ? _('yesterday')
+                : raw;
+        return `\n📅 ${human}`;
+    }
+
+    _stampLastPlayed(film) {
+        if (!this._settings) return;
+        const films = parseList(this._settings.get_string('media'));
+        const idx = films.findIndex(f => f.id === film.id);
+        if (idx < 0) return;
+        films[idx] = {...films[idx],
+            last_played: new Date().toISOString()};
+        this._settings.set_string('media', serializeList(films));
     }
 
     async _launchMpvTracked(film) {
