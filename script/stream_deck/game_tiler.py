@@ -119,6 +119,25 @@ RESULT_FLASH_SEC = 0.5
 # any tiling key press.
 TILING_IDLE_TIMEOUT_SEC = 5.0
 
+# Lookup table for the few deck labels short enough to translate
+# without overflowing a 72×72 pixel button. Most labels stay in their
+# universal English/abbreviation form (TILE, OK, REC, STOP, BT, FOCUS,
+# A11Y, etc.) since translating them would either lose recognition
+# (TILE → TUILE) or no longer fit the rendered glyph budget.
+_DECK_LANG = os.environ.get('LANG', 'en').lower()[:2]
+_DECK_LABELS = {
+    'fr': {
+        'BACK':    'RETOUR',
+        'QUIT':    'QUITTER',
+        'KILL':    'TUER',
+        'NO\nEXT': 'EXT\nABS',
+    },
+}
+
+
+def _t(label):
+    return _DECK_LABELS.get(_DECK_LANG, {}).get(label, label)
+
 # Claude session indicator colours (mirrors GNOME extension badge palette).
 COLOR_CLAUDE_ACTIVE = (46, 125, 50)     # green
 COLOR_CLAUDE_WORKING = (0, 131, 143)    # cyan / teal
@@ -2285,11 +2304,11 @@ class Tiler:
 
         for key in range(self.total_keys):
             if key == ms.get('back'):
-                set_key(self.deck, key, COLOR_TITLE, 'BACK')
+                set_key(self.deck, key, COLOR_TITLE, _t('BACK'))
             elif key == ms.get('play_pause'):
                 set_key(self.deck, key, COLOR_MPV_ACTIVE, 'PLAY\nPAUSE')
             elif key == ms.get('quit'):
-                set_key(self.deck, key, COLOR_CANCEL, 'QUIT')
+                set_key(self.deck, key, COLOR_CANCEL, _t('QUIT'))
             elif key in chunk_by_key:
                 set_key(self.deck, key, COLOR_EMPTY,
                         _wrap_chunk(chunk_by_key[key]))
@@ -2326,7 +2345,7 @@ class Tiler:
 
         for key in range(self.total_keys):
             if key == cs.get('back'):
-                set_key(self.deck, key, COLOR_TITLE, 'BACK')
+                set_key(self.deck, key, COLOR_TITLE, _t('BACK'))
             elif key == cs.get('focus'):
                 set_key(self.deck, key, COLOR_VOL, 'FOCUS', icon='robot')
             elif 'accept' in cs and key == cs['accept']:
@@ -2337,7 +2356,7 @@ class Tiler:
                 set_key(self.deck, key, COLOR_LAYOUT_TITLE,
                         'SET\nWIN')
             elif 'kill' in cs and key == cs['kill']:
-                set_key(self.deck, key, COLOR_CANCEL, 'KILL')
+                set_key(self.deck, key, COLOR_CANCEL, _t('KILL'))
             elif key in chunk_by_key:
                 set_key(self.deck, key, COLOR_EMPTY,
                         _wrap_chunk(chunk_by_key[key]))
@@ -2412,7 +2431,7 @@ class Tiler:
                 set_key(self.deck, key, _claude_color(s),
                         _claude_label(s), icon="robot")
             elif key == 0 and not self.dbus_ok:
-                set_key(self.deck, key, COLOR_ERR, "NO\nEXT")
+                set_key(self.deck, key, COLOR_ERR, _t("NO\nEXT"))
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
