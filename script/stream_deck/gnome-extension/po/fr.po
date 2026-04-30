@@ -886,3 +886,27 @@ msgstr "Nom (rempli automatiquement si vide)"
 
 msgid "Auto-fill"
 msgstr "Remplir auto"
+
+msgid "Paste a URL first."
+msgstr "Collez d'abord une URL."
+
+msgid "Working…"
+msgstr "En cours…"
+
+msgid "name"
+msgstr "nom"
+
+msgid "episode"
+msgstr "épisode"
+
+msgid "✓ Filled {fields}."
+msgstr "✓ Rempli : {fields}."
+
+msgid "⚠ Already filled — clear the field first."
+msgstr "⚠ Déjà rempli — videz le champ avant."
+
+msgid "⚠ Could not extract anything from this URL."
+msgstr "⚠ Rien à extraire de cette URL."
+
+msgid "× Auto-fill failed: {err}"
+msgstr "× Échec du remplissage : {err}"

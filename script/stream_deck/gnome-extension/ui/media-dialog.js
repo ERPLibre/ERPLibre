@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import {ModalDialog} from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -46,8 +47,13 @@ class MediaDialog extends ModalDialog {
         // sees a real button-shaped clickable target. Without a
         // background the unstyled St.Button collapses to a flat
         // label that does not feel pressable.
-        const fillBtn = new St.Button({
-            label: _('Auto-fill'),
+        // Inline style mirrors the active kind button so the user
+        // sees a real button-shaped clickable target. Without a
+        // background the unstyled St.Button collapses to a flat
+        // label that does not feel pressable.
+        this._fillBtnLabel = _('Auto-fill');
+        this._fillBtn = new St.Button({
+            label: this._fillBtnLabel,
             reactive: true,
             can_focus: true,
             track_hover: true,
@@ -55,9 +61,17 @@ class MediaDialog extends ModalDialog {
                 + ' padding: 4px 12px; border-radius: 4px;'
                 + ' min-width: 80px;',
         });
-        fillBtn.connect('clicked', () => this._autoFillFromUrl());
-        urlRow.add_child(fillBtn);
+        this._fillBtn.connect('clicked', () => this._autoFillFromUrl());
+        urlRow.add_child(this._fillBtn);
         box.add_child(urlRow);
+
+        // Inline status line under the URL row: success summarises
+        // what got filled, failure tells the user nothing matched.
+        this._fillStatus = new St.Label({
+            text: '',
+            style: 'font-size: 0.85em; opacity: 0.85;',
+        });
+        box.add_child(this._fillStatus);
 
         // Kind selector — Video / Audio. Auto-detected from URL on
         // text-changed, but user can override before saving.
@@ -130,14 +144,79 @@ class MediaDialog extends ModalDialog {
 
     _autoFillFromUrl() {
         const url = this._urlEntry.get_text().trim();
-        if (!url) return;
-        const info = extractMediaInfo(url);
-        if (info.name && !this._nameEntry.get_text().trim()) {
-            this._nameEntry.set_text(info.name);
+        if (!url) {
+            this._setFillStatus('warn', _('Paste a URL first.'));
+            return;
         }
-        if (info.episode && !this._epEntry.get_text().trim()) {
-            this._epEntry.set_text(info.episode);
+
+        // Even though extraction is synchronous, flip the button to
+        // a working state so the user gets visual feedback that the
+        // click registered. The actual work happens after a tick so
+        // the UI repaints first.
+        if (this._fillTimerId) {
+            GLib.source_remove(this._fillTimerId);
+            this._fillTimerId = 0;
         }
+        this._fillBtn.set_label(_('Working…'));
+        this._fillBtn.reactive = false;
+        this._setFillStatus('info', '');
+
+        this._fillTimerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+            this._fillTimerId = 0;
+            try {
+                const info = extractMediaInfo(url);
+                const filled = [];
+                const skipped = [];
+                if (info.name) {
+                    if (!this._nameEntry.get_text().trim()) {
+                        this._nameEntry.set_text(info.name);
+                        filled.push(_('name'));
+                    } else {
+                        skipped.push(_('name'));
+                    }
+                }
+                if (info.episode) {
+                    if (!this._epEntry.get_text().trim()) {
+                        this._epEntry.set_text(info.episode);
+                        filled.push(_('episode'));
+                    } else {
+                        skipped.push(_('episode'));
+                    }
+                }
+                if (filled.length) {
+                    this._setFillStatus('ok',
+                        _('✓ Filled {fields}.')
+                            .replace('{fields}', filled.join(', ')));
+                } else if (skipped.length) {
+                    this._setFillStatus('warn',
+                        _('⚠ Already filled — clear the field first.'));
+                } else {
+                    this._setFillStatus('warn',
+                        _('⚠ Could not extract anything from this URL.'));
+                }
+            } catch (e) {
+                this._setFillStatus('err',
+                    _('× Auto-fill failed: {err}')
+                        .replace('{err}', e.message || String(e)));
+            } finally {
+                this._fillBtn.set_label(this._fillBtnLabel);
+                this._fillBtn.reactive = true;
+            }
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _setFillStatus(level, text) {
+        if (!this._fillStatus) return;
+        const colors = {
+            ok:   '#2e7d32',
+            warn: '#d4a017',
+            err:  '#c62828',
+            info: 'inherit',
+        };
+        this._fillStatus.style =
+            `font-size: 0.85em; color: ${colors[level] || 'inherit'};`;
+        this._fillStatus.set_text(text || '');
     }
 
     _setKind(kind) {
