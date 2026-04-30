@@ -96,26 +96,48 @@ class MediaIndicator extends PanelMenu.Button {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                 _('(no media — use + Add media)'), {reactive: false}));
         } else {
+            // Wrap the per-row entries in a scrolled section capped at
+            // ~60% of the screen height so very long video / audio
+            // catalogues do not push the action buttons off-screen.
+            // The action items below stay outside the scroll area so
+            // they remain reachable regardless of the catalogue size.
+            const scrollView = new St.ScrollView({
+                style: 'max-height: 480px;',
+                overlay_scrollbars: true,
+                x_expand: true, y_expand: true,
+            });
+            try {
+                scrollView.set_policy(
+                    St.PolicyType.NEVER, St.PolicyType.AUTOMATIC);
+            } catch (_e) {}
+            const scrollSection = new PopupMenu.PopupMenuSection();
+            try { scrollView.add_actor(scrollSection.actor); }
+            catch (_e) {
+                try { scrollView.set_child(scrollSection.actor); }
+                catch (_e2) {}
+            }
+            this.menu.box.add_child(scrollView);
+
             const videos = films.filter(
                 f => normaliseKind(f.kind) === 'video');
             const audio = films.filter(
                 f => normaliseKind(f.kind) === 'audio');
             if (videos.length) {
-                this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                scrollSection.addMenuItem(new PopupMenu.PopupMenuItem(
                     _('— Videos ({n}) —').replace('{n}', videos.length),
                     {reactive: false}));
                 for (const film of videos)
-                    this.menu.addMenuItem(this._makeRow(film));
+                    scrollSection.addMenuItem(this._makeRow(film));
             }
             if (audio.length) {
                 if (videos.length)
-                    this.menu.addMenuItem(
+                    scrollSection.addMenuItem(
                         new PopupMenu.PopupSeparatorMenuItem());
-                this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                scrollSection.addMenuItem(new PopupMenu.PopupMenuItem(
                     _('— Audio ({n}) —').replace('{n}', audio.length),
                     {reactive: false}));
                 for (const film of audio)
-                    this.menu.addMenuItem(this._makeRow(film));
+                    scrollSection.addMenuItem(this._makeRow(film));
             }
         }
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
