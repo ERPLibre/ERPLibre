@@ -871,3 +871,6 @@ msgstr "Catalogue média"
 
 msgid "Edit via the Add media dialog from the panel button."
 msgstr "Éditez via la boîte de dialogue Ajouter un média du bouton."
+
+msgid "— Recents ({n}) —"
+msgstr "— Récents ({n}) —"

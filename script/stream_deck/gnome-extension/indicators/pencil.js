@@ -290,6 +290,31 @@ try {
                         this.menu.addMenuItem(this._makeSessionItem(s));
                 }
 
+                if (!filter && this._settings) {
+                    const configured = new Set(paths.map(
+                        p => _normPath(p.path)));
+                    const recents = parseList(
+                        this._settings.get_string('recent-paths'))
+                        .filter(p => !configured.has(_normPath(p)))
+                        .slice(0, 5);
+                    if (recents.length) {
+                        this.menu.addMenuItem(
+                            new PopupMenu.PopupSeparatorMenuItem());
+                        this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
+                            _('— Recents ({n}) —')
+                                .replace('{n}', recents.length),
+                            {reactive: false}));
+                        for (const path of recents) {
+                            const item = new PopupMenu.PopupMenuItem(
+                                `↻ ${path}`);
+                            item.connect('activate',
+                                () => this._launch({path},
+                                    'claude --resume'));
+                            this.menu.addMenuItem(item);
+                        }
+                    }
+                }
+
                 this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
                 const addItem = new PopupMenu.PopupMenuItem(_('+ Add path…'));

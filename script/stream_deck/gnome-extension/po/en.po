@@ -868,3 +868,6 @@ msgstr "Media catalogue"
 
 msgid "Edit via the Add media dialog from the panel button."
 msgstr "Edit via the Add media dialog from the panel button."
+
+msgid "— Recents ({n}) —"
+msgstr "— Recents ({n}) —"
