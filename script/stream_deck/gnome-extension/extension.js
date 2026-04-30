@@ -239,6 +239,43 @@ export default class StreamDeckTilerExtension extends Extension {
         console.log('[StreamDeckTiler] enabled');
     }
 
+    /**
+     * Override the default `gnome-extensions prefs` spawn so that
+     * clicking "Open prefs" focuses an already-open prefs window
+     * instead of silently no-opping. If the existing window lives
+     * on another workspace we activate that workspace first so the
+     * user is brought to the window rather than the window being
+     * pulled out of the workspace it was placed in.
+     */
+    openPreferences() {
+        try {
+            const title = this.metadata?.name || 'Stream Deck Tiler';
+            const ts = global.get_current_time?.() || 0;
+            const windows = global.display?.list_all_windows?.() || [];
+            for (const w of windows) {
+                let t = '';
+                try { t = w.get_title?.() || ''; } catch (_e) {}
+                if (!t || !t.includes(title)) continue;
+                try {
+                    const ws = w.get_workspace?.();
+                    if (ws && ws !== global.workspace_manager
+                            ?.get_active_workspace?.()) {
+                        ws.activate(ts);
+                    }
+                    w.activate(ts);
+                    return;
+                } catch (e) {
+                    console.log(
+                        `[StreamDeckTiler] focus prefs failed: ${e.message}`);
+                }
+            }
+        } catch (e) {
+            console.log(
+                `[StreamDeckTiler] prefs lookup failed: ${e.message}`);
+        }
+        super.openPreferences();
+    }
+
     disable() {
         if (this.#dbus) {
             this.#dbus.unexport();
