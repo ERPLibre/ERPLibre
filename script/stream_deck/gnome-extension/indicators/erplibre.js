@@ -300,7 +300,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
                 });
                 if (result === null) {
                     masterPasswordCache.invalidate(key);
-                    _notify('ERPLibre', 'KeePassXC unlock failed');
+                    _notify('ERPLibre', _('KeePassXC unlock failed'));
                 }
                 resolve(result);
             });
@@ -313,7 +313,8 @@ class ErpLibreIndicator extends PanelMenu.Button {
         try {
             const Clipboard = St.Clipboard.get_default();
             Clipboard.set_text(St.ClipboardType.CLIPBOARD, value);
-            _notify('ERPLibre', `${attribute} copied`);
+            _notify('ERPLibre',
+                _('{attr} copied').replace('{attr}', attribute));
         } catch (_e) {}
     }
 
@@ -347,7 +348,7 @@ class ErpLibreIndicator extends PanelMenu.Button {
             '--url', inst.url, '--user', user, '--pass', pass];
         if (!GLib.file_test(venv, GLib.FileTest.IS_EXECUTABLE)) {
             _notify('ERPLibre',
-                `.venv.erplibre missing — falling back to xdotool`);
+                _('.venv.erplibre missing — falling back to xdotool'));
             this._autoLoginXdotool(inst, user, pass);
             return;
         }

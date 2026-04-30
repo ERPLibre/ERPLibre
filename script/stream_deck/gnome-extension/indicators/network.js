@@ -263,7 +263,8 @@ class NetworkIndicator extends PanelMenu.Button {
                 && GLib.find_program_in_path('nmap');
             const scanner = useNmap ? scanNmapGjs : scanNcGjs;
             const {hosts, error} = await scanner(cidr, this._cancellable);
-            if (error) _notify('Stream Deck', `Scan failed: ${error}`);
+            if (error) _notify('Stream Deck',
+                _('Scan failed: {err}').replace('{err}', error));
             for (const h of hosts) h.hostname = await reverseDnsGjs(h.ip);
             this._scanResult = {cidr, hosts, lastScan: Date.now()};
         } finally {

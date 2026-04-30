@@ -199,7 +199,8 @@ class MediaIndicator extends PanelMenu.Button {
         try {
             proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE);
         } catch (e) {
-            _notify('Stream Deck', `mpv spawn failed: ${e.message}`);
+            _notify('Stream Deck',
+                _('mpv spawn failed: {err}').replace('{err}', e.message));
             logWarn('film', `mpv spawn failed: ${e.message}`);
             return;
         }

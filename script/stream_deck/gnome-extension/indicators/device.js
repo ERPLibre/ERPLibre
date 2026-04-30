@@ -157,7 +157,7 @@ class DeviceIndicator extends PanelMenu.Button {
         const script = `${root}/${CONTROLLER_REL}`;
         if (!GLib.file_test(py, GLib.FileTest.IS_EXECUTABLE)) {
             _notify('Stream Deck',
-                'Python venv not found at .venv.erplibre');
+                _('Python venv not found at .venv.erplibre'));
             return;
         }
         spawnDetached([py, script], {notify: _notify, title: 'Stream Deck'});

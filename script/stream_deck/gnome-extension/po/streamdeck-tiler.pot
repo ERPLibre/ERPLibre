@@ -805,3 +805,21 @@ msgstr ""
 
 msgid "Invalid position format"
 msgstr ""
+
+msgid "Python venv not found at .venv.erplibre"
+msgstr ""
+
+msgid "Scan failed: {err}"
+msgstr ""
+
+msgid "mpv spawn failed: {err}"
+msgstr ""
+
+msgid "KeePassXC unlock failed"
+msgstr ""
+
+msgid "{attr} copied"
+msgstr ""
+
+msgid ".venv.erplibre missing — falling back to xdotool"
+msgstr ""

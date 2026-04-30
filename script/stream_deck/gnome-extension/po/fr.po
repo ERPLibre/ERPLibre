@@ -844,3 +844,21 @@ msgstr "Position (hh:mm:ss ou secondes)"
 
 msgid "Invalid position format"
 msgstr "Format de position invalide"
+
+msgid "Python venv not found at .venv.erplibre"
+msgstr "Venv Python introuvable dans .venv.erplibre"
+
+msgid "Scan failed: {err}"
+msgstr "Échec du scan : {err}"
+
+msgid "mpv spawn failed: {err}"
+msgstr "Échec du lancement mpv : {err}"
+
+msgid "KeePassXC unlock failed"
+msgstr "Échec du déverrouillage KeePassXC"
+
+msgid "{attr} copied"
+msgstr "{attr} copié"
+
+msgid ".venv.erplibre missing — falling back to xdotool"
+msgstr ".venv.erplibre absent — repli sur xdotool"
