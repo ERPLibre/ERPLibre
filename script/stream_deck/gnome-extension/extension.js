@@ -681,6 +681,12 @@ export default class StreamDeckTilerExtension extends Extension {
                 case 'quit_save':
                     payload = {command: ['quit-watch-later']};
                     break;
+                case 'vol_up':
+                    payload = {command: ['add', 'volume', 5]};
+                    break;
+                case 'vol_down':
+                    payload = {command: ['add', 'volume', -5]};
+                    break;
                 default:
                     try { payload = JSON.parse(command); }
                     catch (_e) { return false; }

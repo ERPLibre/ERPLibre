@@ -1465,13 +1465,17 @@ class Tiler:
 
     def _compute_mpv_session_keys(self):
         """Layout for the per-mpv action page. >= 3 cols required.
-        BACK / PLAY-PAUSE / QUIT (and BACK closes the deck view)."""
+        BACK / PLAY-PAUSE / QUIT on the first row; VOL- / VOL+ on
+        the second row when there's room."""
         if self.cols < 3:
             self.mpv_session_keys = None
             return
         self.mpv_session_keys = {
             "back": 0, "play_pause": 1, "quit": 2,
         }
+        if self.rows >= 2:
+            self.mpv_session_keys["vol_down"] = self.cols
+            self.mpv_session_keys["vol_up"] = self.cols + 1
 
     def _compute_claude_buttons(self):
         """Reserve free cells (rows 1+, after mic + layout shortcuts) for
@@ -1632,13 +1636,26 @@ class Tiler:
             self.render()
             return
         cmd = None
+        stay_on_page = False
         if key == ms.get("play_pause"): cmd = "play_pause"
         elif key == ms.get("quit"):     cmd = "quit"
+        elif key == ms.get("vol_down"):
+            cmd = "vol_down"
+            stay_on_page = True
+        elif key == ms.get("vol_up"):
+            cmd = "vol_up"
+            stay_on_page = True
         if not cmd:
             return
         ok = self._call_mpv_dbus(pid, cmd)
         self.last_result = "ok" if ok else "err"
         self.result_time = time.monotonic()
+        if stay_on_page:
+            # Volume nudges are repeatable — stay on the action page so
+            # the user can press the button again without re-entering
+            # the per-mpv mode.
+            self.render()
+            return
         self.mode = MODE_IDLE
         self.render()
 
@@ -2295,7 +2312,9 @@ class Tiler:
             if s.get('pid') == pid:
                 sess = s
                 break
-        action_keys = {ms.get('back'), ms.get('play_pause'), ms.get('quit')}
+        action_keys = {ms.get('back'), ms.get('play_pause'),
+                       ms.get('quit'), ms.get('vol_up'), ms.get('vol_down')}
+        action_keys.discard(None)
         text_keys = [k for k in range(self.total_keys)
                      if k not in action_keys]
         title = (sess or {}).get('title') or (sess or {}).get('url') or ''
@@ -2309,6 +2328,10 @@ class Tiler:
                 set_key(self.deck, key, COLOR_MPV_ACTIVE, 'PLAY\nPAUSE')
             elif key == ms.get('quit'):
                 set_key(self.deck, key, COLOR_CANCEL, _t('QUIT'))
+            elif key == ms.get('vol_down'):
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'VOL\n−')
+            elif key == ms.get('vol_up'):
+                set_key(self.deck, key, COLOR_MPV_ACTIVE, 'VOL\n+')
             elif key in chunk_by_key:
                 set_key(self.deck, key, COLOR_EMPTY,
                         _wrap_chunk(chunk_by_key[key]))
