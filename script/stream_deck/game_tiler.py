@@ -3481,8 +3481,17 @@ class Tiler:
                         last_timer_refresh = now
                 elif self.mode == MODE_TODO_SESSION:
                     # Re-poll the todo.py log so freshly-printed menus
-                    # become deck buttons within a second of appearing.
+                    # become deck buttons within a second of appearing,
+                    # and prune the registry so a closed terminal pops
+                    # the user back to idle automatically.
                     if now - last_idle_refresh >= 1.0:
+                        self._refresh_todo_terminals()
+                        wid = self._todo_session_window_id
+                        if wid and not any(
+                                str(t.get('window_id')) == str(wid)
+                                for t in (self.todo_terminals or [])):
+                            self._todo_session_window_id = None
+                            self.mode = MODE_IDLE
                         self.render()
                         last_idle_refresh = now
                 elif self.mode == MODE_IDLE:
