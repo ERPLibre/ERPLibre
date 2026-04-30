@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -312,6 +313,60 @@ def _get_focused_window_id():
         return _parse_gdbus_string_tuple(result.stdout) or ""
     except Exception:
         return ""
+
+
+_ANSI_RE = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]|\r')
+_TODO_MENU_RE = re.compile(r'^\s*\[(\d+)\]\s+(.+?)\s*$')
+
+
+def _strip_ansi(text):
+    return _ANSI_RE.sub('', text or '')
+
+
+def _parse_todo_menu(text):
+    """Return ``(items, prompt)`` where ``items`` is a list of
+    ``(digit_str, label)`` tuples for the most recent menu block in
+    ``text`` (todo.py output captured via ``script -f``), and
+    ``prompt`` is the trailing non-menu line that hints what the
+    next input should be (often 'Select: ' or similar).
+
+    The parser walks lines from the end and keeps consecutive
+    ``[N] label`` matches. The last menu may be preceded by free
+    text the user can ignore — we only surface the buttons."""
+    raw = _strip_ansi(text or '')
+    lines = raw.splitlines()
+    items = []
+    prompt = ''
+    saw_items = False
+    for line in reversed(lines):
+        m = _TODO_MENU_RE.match(line)
+        if m:
+            items.append((m.group(1), m.group(2)))
+            saw_items = True
+            continue
+        if not saw_items:
+            stripped = line.strip()
+            if stripped and not prompt:
+                prompt = stripped
+            continue
+        # First non-menu line above the block: stop walking.
+        break
+    items.reverse()
+    return items, prompt
+
+
+def _read_todo_log_tail(path, max_bytes=8192):
+    if not path or not os.path.exists(path):
+        return ''
+    try:
+        size = os.path.getsize(path)
+        with open(path, 'rb') as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            data = f.read()
+        return data.decode('utf-8', errors='replace')
+    except OSError:
+        return ''
 
 
 def _send_keys_to_window(window_id, text):
@@ -1459,6 +1514,7 @@ class Tiler:
         # Window-id capture for newly spawned TODO terminals: timestamp
         # set by _launch_todo_terminal, polled by the main loop.
         self._pending_todo_capture_at = 0.0
+        self._pending_todo_log_path = ''
         self.todo_terminals = _load_todo_terminals()
         self._tiling_last_touch = 0.0    # monotonic ts of last tiling input
         self.dbus_ok = _check_dbus_available()
@@ -1573,9 +1629,28 @@ class Tiler:
             self._flag_err(f"todo.py not found at {script}")
             self.render()
             return
-        cmd = (f"source '{venv}' && python3 '{script}'"
-               if os.path.exists(venv)
-               else f"python3 '{script}'")
+        # Wrap the python invocation through ``script -fqc`` so the
+        # interactive pty session is also mirrored to a log file the
+        # deck can tail. ``-u`` unbuffers Python so menu lines hit
+        # the log without waiting for the next input. Falls back to
+        # the bare command when ``script`` is missing — the per-
+        # terminal numpad still works without parsed menus.
+        inner = (f"source '{venv}' && python3 -u '{script}'"
+                 if os.path.exists(venv)
+                 else f"python3 -u '{script}'")
+        log_path = ''
+        if shutil.which("script"):
+            log_dir = os.path.join(
+                os.environ.get("XDG_STATE_HOME")
+                or os.path.expanduser("~/.local/state"),
+                "streamdeck-tiler", "todo")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(
+                log_dir, f"todo-{int(time.time())}.log")
+            cmd = (f"script -fqc {shlex.quote(inner)} "
+                   f"{shlex.quote(log_path)}")
+        else:
+            cmd = inner
         terminals = [
             ["gnome-terminal", "--working-directory", root,
                 "--", "bash", "-lc", cmd],
@@ -1596,6 +1671,7 @@ class Tiler:
                 # delay so the new gnome-terminal has time to settle
                 # and grab focus.
                 self._pending_todo_capture_at = time.monotonic() + 1.0
+                self._pending_todo_log_path = log_path
                 self.last_result = "ok"
                 self.result_time = time.monotonic()
                 self.render()
@@ -1626,7 +1702,11 @@ class Tiler:
                 "window_id": str(wid),
                 "name": f"TODO {n}",
                 "opened_at": time.time(),
+                "log_path": self._pending_todo_log_path or "",
             })
+        else:
+            existing["log_path"] = self._pending_todo_log_path or ""
+        self._pending_todo_log_path = ""
         _save_todo_terminals(self.todo_terminals)
 
     def _refresh_todo_terminals(self):
@@ -2662,13 +2742,29 @@ class Tiler:
                 return None
             digit_keys[d] = k
         keys["digits"] = digit_keys
+        # Slots usable for parsed menu items: row 1 onwards, capped at
+        # the numpad slot count so the layout stays predictable.
+        keys["item_slots"] = list(digit_keys.values())
         return keys
+
+    def _todo_active_term(self):
+        return next((t for t in (self.todo_terminals or [])
+                     if str(t.get("window_id"))
+                     == str(self._todo_session_window_id)), None)
+
+    def _todo_session_items(self):
+        """Read the captured todo.py log tail and surface the latest
+        ``[N] label`` block as deck button candidates. Returns
+        ``[(digit, label, key_index)]`` ordered for placement."""
+        term = self._todo_active_term()
+        log_path = term.get("log_path") if term else ''
+        if not log_path:
+            return []
+        items, _prompt = _parse_todo_menu(_read_todo_log_tail(log_path))
+        return items
 
     def _render_todo_session(self):
         ts = self._todo_session_keys()
-        term = next((t for t in (self.todo_terminals or [])
-                     if str(t.get("window_id"))
-                     == str(self._todo_session_window_id)), None)
         if not ts:
             for key in range(self.total_keys):
                 if key == 0:
@@ -2680,6 +2776,15 @@ class Tiler:
                     set_key(self.deck, key, COLOR_EMPTY, "")
             return
         digit_keys = ts["digits"]
+        # Parsed menu wins over numpad: each item is placed at the
+        # cell whose digit matches its [N] number — '1' → digit_keys
+        # ['1'], '5' → digit_keys['5'], '0' → digit_keys['0'].
+        items = self._todo_session_items()
+        item_by_key = {}
+        for digit, label in items:
+            cell = digit_keys.get(digit)
+            if cell is not None:
+                item_by_key[cell] = (digit, label)
         digit_to_key = {v: d for d, v in digit_keys.items()}
         for key in range(self.total_keys):
             if key == ts["back"]:
@@ -2690,12 +2795,14 @@ class Tiler:
                 set_key(self.deck, key, COLOR_VOL, _t("FOCUS"))
             elif key == ts["forget"]:
                 set_key(self.deck, key, COLOR_CANCEL, _t("FORGET"))
+            elif key in item_by_key:
+                digit, label = item_by_key[key]
+                short = (label or '')[:14]
+                set_key(self.deck, key, COLOR_TODO_TERMINAL,
+                        f"{digit}\n{short}")
             elif key in digit_to_key:
                 d = digit_to_key[key]
-                label = (term.get("name") if term and key == digit_keys["1"]
-                         else None)
                 set_key(self.deck, key, COLOR_TODO_TERMINAL, d)
-                _ = label  # reserved for future title overlay
             else:
                 set_key(self.deck, key, COLOR_EMPTY, "")
 
@@ -2753,7 +2860,9 @@ class Tiler:
         digit_to_key = {v: d for d, v in digit_keys.items()}
         if key in digit_to_key:
             d = digit_to_key[key]
-            ok = _send_keys_to_window(wid, d)
+            # Send the digit plus newline so todo.py's input() prompt
+            # advances on a single deck press.
+            ok = _send_keys_to_window(wid, f"{d}\n")
             self.last_result = "ok" if ok else "err"
             self.result_time = time.monotonic()
             self.render()
@@ -3326,6 +3435,12 @@ class Tiler:
                         self._refresh_timers()
                         self.render()
                         last_timer_refresh = now
+                elif self.mode == MODE_TODO_SESSION:
+                    # Re-poll the todo.py log so freshly-printed menus
+                    # become deck buttons within a second of appearing.
+                    if now - last_idle_refresh >= 1.0:
+                        self.render()
+                        last_idle_refresh = now
                 elif self.mode == MODE_IDLE:
                     # Auto-refresh every 2s so mic mute toggled
                     # outside the deck shows on the indicator and

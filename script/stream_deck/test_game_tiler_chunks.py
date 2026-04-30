@@ -170,5 +170,40 @@ class ClaudeLabelTest(unittest.TestCase):
         self.assertEqual(GT._claude_label({}, max_chars=18), "")
 
 
+class TodoMenuParseTest(unittest.TestCase):
+    def test_simple_block(self):
+        text = (
+            "Welcome to TODO\n"
+            "[1] Database\n"
+            "[2] Add-ons\n"
+            "[3] Quit\n"
+            "Select: ")
+        items, prompt = GT._parse_todo_menu(text)
+        self.assertEqual(items,
+            [("1", "Database"), ("2", "Add-ons"), ("3", "Quit")])
+        self.assertEqual(prompt, "Select:")
+
+    def test_strips_ansi(self):
+        text = (
+            "\x1b[31m[1] Red\x1b[0m\n"
+            "\x1b[32m[2] Green\x1b[0m\n"
+            "Choose: ")
+        items, _ = GT._parse_todo_menu(text)
+        self.assertEqual(items, [("1", "Red"), ("2", "Green")])
+
+    def test_ignores_logo_above_menu(self):
+        text = (
+            "###  ASCII LOGO ###\n"
+            "Random preamble\n"
+            "[1] First\n"
+            "[2] Second\n")
+        items, _ = GT._parse_todo_menu(text)
+        self.assertEqual(items, [("1", "First"), ("2", "Second")])
+
+    def test_empty_text(self):
+        self.assertEqual(GT._parse_todo_menu(""), ([], ""))
+        self.assertEqual(GT._parse_todo_menu(None), ([], ""))
+
+
 if __name__ == "__main__":
     unittest.main()
