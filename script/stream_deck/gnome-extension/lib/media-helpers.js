@@ -16,9 +16,26 @@ export function buildMediaLabel(entry) {
 }
 
 export function defaultMediaEntry({name = '', url = '', episode = '',
-    position = '', kind = '', last_played = ''} = {}) {
-    return {id: uuid4(), name, url, episode, position,
-        kind: kind || guessKind(url), last_played};
+    position = '', kind = '', last_played = '',
+    artist = '', album = '', year = '', genre = '',
+    rating = 0, play_count = 0, duration = '',
+    added_at = '', tags = []} = {}) {
+    // added_at is stamped on first creation so the library can sort
+    // by "recently added". Caller-provided values win so tests and
+    // migrations stay deterministic.
+    const stamp = added_at || new Date().toISOString();
+    return {
+        id: uuid4(),
+        name, url, episode, position,
+        kind: kind || guessKind(url),
+        last_played,
+        artist, album, year, genre,
+        rating: Number.isFinite(rating) ? rating : 0,
+        play_count: Number.isFinite(play_count) ? play_count : 0,
+        duration,
+        added_at: stamp,
+        tags: Array.isArray(tags) ? [...tags] : [],
+    };
 }
 
 /**
@@ -43,6 +60,171 @@ export function formatLastPlayed(iso, now = new Date()) {
 export function validatePositionInput(text) {
     if (typeof text !== 'string' || text === '') return true;
     return /^\d+(:\d+){0,2}$/.test(text.trim());
+}
+
+/**
+ * Convert a "hh:mm:ss" / "mm:ss" / "seconds" string to seconds. Returns
+ * 0 for empty / invalid input. Used to compare position against
+ * duration when building progress bars.
+ */
+export function positionToSeconds(text) {
+    const s = String(text || '').trim();
+    if (!s) return 0;
+    if (!/^\d+(:\d+){0,2}$/.test(s)) return 0;
+    const parts = s.split(':').map(p => parseInt(p, 10));
+    if (parts.some(n => !Number.isFinite(n))) return 0;
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
+
+/**
+ * Render a `▮▮▮▮▯ 78%` progress bar from a position / duration pair.
+ * Returns `''` when duration is missing or non-positive — the caller
+ * is expected to fall back to plain text. The bar uses 5 cells so it
+ * stays compact in a PopupMenu row.
+ */
+export function formatProgress(position, duration, cells = 5) {
+    const pos = positionToSeconds(position);
+    const dur = positionToSeconds(duration);
+    if (dur <= 0) return '';
+    const ratio = Math.max(0, Math.min(1, pos / dur));
+    const full = Math.round(ratio * cells);
+    const bar = '▮'.repeat(full) + '▯'.repeat(cells - full);
+    const pct = Math.round(ratio * 100);
+    return `${bar} ${pct}%`;
+}
+
+/**
+ * Group entries by an attribute. `key` may be `''` (single bucket),
+ * `'artist'`, `'album'`, `'genre'`, `'year'` or `'kind'`. Empty values
+ * land in an `''` bucket the caller can render as "(sans artiste)".
+ * Insertion order is preserved (Map iteration order = insertion).
+ */
+export function groupBy(entries, key) {
+    const out = new Map();
+    const list = Array.isArray(entries) ? entries : [];
+    if (!key) {
+        out.set('', [...list]);
+        return out;
+    }
+    for (const e of list) {
+        const raw = e?.[key];
+        const bucket = (typeof raw === 'string' ? raw.trim() : raw)
+            || '';
+        if (!out.has(bucket)) out.set(bucket, []);
+        out.get(bucket).push(e);
+    }
+    return out;
+}
+
+const _SORT_MODES = new Set(['last_played', 'alpha', 'play_count',
+    'rating', 'added']);
+
+function _alphaCmp(a, b) {
+    return String(a?.name || '').localeCompare(String(b?.name || ''),
+        undefined, {sensitivity: 'base'});
+}
+
+function _isoCmp(aIso, bIso) {
+    // Empty values sort last regardless of direction.
+    const a = aIso || '';
+    const b = bIso || '';
+    if (!a && !b) return 0;
+    if (!a) return 1;
+    if (!b) return -1;
+    return b.localeCompare(a);
+}
+
+/**
+ * Sort entries by one of the supported modes. Returns a new array,
+ * does not mutate the input. Unknown modes fall back to alphabetical.
+ *
+ *   last_played: most-recent first, empty `last_played` last.
+ *   alpha:       A→Z by name, locale-aware, accent-insensitive.
+ *   play_count:  highest first, ties → last_played → alpha.
+ *   rating:      highest first, ties → last_played → alpha.
+ *   added:       most-recent `added_at` first, empty last.
+ */
+export function sortEntries(entries, mode = 'last_played') {
+    const list = Array.isArray(entries) ? [...entries] : [];
+    const m = _SORT_MODES.has(mode) ? mode : 'alpha';
+    const tieBreak = (a, b) => {
+        const cmp = _isoCmp(a?.last_played, b?.last_played);
+        return cmp !== 0 ? cmp : _alphaCmp(a, b);
+    };
+    if (m === 'last_played') {
+        list.sort((a, b) => {
+            const cmp = _isoCmp(a?.last_played, b?.last_played);
+            return cmp !== 0 ? cmp : _alphaCmp(a, b);
+        });
+    } else if (m === 'added') {
+        list.sort((a, b) => {
+            const cmp = _isoCmp(a?.added_at, b?.added_at);
+            return cmp !== 0 ? cmp : _alphaCmp(a, b);
+        });
+    } else if (m === 'play_count') {
+        list.sort((a, b) => {
+            const av = Number.isFinite(a?.play_count) ? a.play_count : 0;
+            const bv = Number.isFinite(b?.play_count) ? b.play_count : 0;
+            return bv - av || tieBreak(a, b);
+        });
+    } else if (m === 'rating') {
+        list.sort((a, b) => {
+            const av = Number.isFinite(a?.rating) ? a.rating : 0;
+            const bv = Number.isFinite(b?.rating) ? b.rating : 0;
+            return bv - av || tieBreak(a, b);
+        });
+    } else {
+        list.sort(_alphaCmp);
+    }
+    return list;
+}
+
+const _UNFINISHED_STALE_DAYS = 7;
+
+function _isStale(iso, now, days) {
+    if (!iso) return true;
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return true;
+    return (now.getTime() - t) > days * 24 * 3600 * 1000;
+}
+
+/**
+ * Apply zero or more filter predicates to a list. All passed flags
+ * AND together. Match on `query` is a case-insensitive substring on
+ * `name`, `artist`, `album` and `tags`.
+ *
+ *   kind:        'video' | 'audio' (anything else disables the filter).
+ *   query:       substring (trimmed, lower-cased).
+ *   unwatched:   true → keep only entries without a last_played stamp.
+ *   unfinished:  true → keep entries with a non-empty position whose
+ *                last_played is older than 7 days (or never played).
+ *   favourites:  true → keep entries with rating >= 4.
+ */
+export function filterEntries(entries, opts = {}, now = new Date()) {
+    const list = Array.isArray(entries) ? entries : [];
+    const {kind, query, unwatched, unfinished, favourites} = opts;
+    const k = (kind === 'video' || kind === 'audio') ? kind : null;
+    const q = String(query || '').trim().toLowerCase();
+    return list.filter(e => {
+        if (!e) return false;
+        if (k && normaliseKind(e.kind) !== k) return false;
+        if (unwatched && e.last_played) return false;
+        if (unfinished) {
+            if (!e.position) return false;
+            if (!_isStale(e.last_played, now, _UNFINISHED_STALE_DAYS))
+                return false;
+        }
+        if (favourites && (Number(e.rating) || 0) < 4) return false;
+        if (q) {
+            const hay = [e.name, e.artist, e.album,
+                ...(Array.isArray(e.tags) ? e.tags : [])]
+                .map(v => String(v || '').toLowerCase()).join(' ');
+            if (!hay.includes(q)) return false;
+        }
+        return true;
+    });
 }
 
 const _AUDIO_EXT_RE = /\.(mp3|flac|ogg|opus|m4a|wav|aac|wma|aif{1,2})(\?|#|$)/i;
@@ -407,20 +589,23 @@ export function normaliseMediaUrl(url) {
 
 /**
  * Best-effort metadata extraction from a media URL. Returns
- * `{name, episode}` with either field possibly empty. Designed to
- * power an Auto-fill button in the Add media dialog so the user can
- * paste a URL and let the dialog populate the readable bits.
+ * `{name, episode, artist, album}` with any field possibly empty.
+ * Designed to power an Auto-fill button in the Add media dialog so
+ * the user can paste a URL and let the dialog populate the readable
+ * bits.
  *
  * The name comes from the show slug when one is in the path
  * (tou.tv, noovo, vrai, telequebec, tv5unis, gem, soundcloud,
  * bandcamp, etc.), otherwise from a hint of the host (Vimeo,
  * YouTube, Spotify…). The episode marker is derived from
  * S{n}E{n}, saison-N/episode-N or the trailing numeric id when no
- * structured marker exists.
+ * structured marker exists. `artist` / `album` are populated only
+ * for music platforms where the URL itself carries them
+ * (SoundCloud, Bandcamp, Mixcloud, Apple Music album).
  */
 export function extractMediaInfo(url) {
     const raw = String(url || '').trim();
-    const result = {name: '', episode: ''};
+    const result = {name: '', episode: '', artist: '', album: ''};
     if (!raw) return result;
 
     // Compact and verbose episode markers — same regexes as
@@ -486,8 +671,11 @@ export function extractMediaInfo(url) {
     if (host === 'soundcloud.com' || host === 'www.soundcloud.com') {
         // /{user}/{track} or /{user}/sets/{playlist}
         if (seg.length >= 2) {
-            const track = seg[1] === 'sets' ? (seg[2] || '') : seg[1];
+            const isSet = seg[1] === 'sets';
+            const track = isSet ? (seg[2] || '') : seg[1];
             const user = seg[0];
+            result.artist = slug(user);
+            if (isSet) result.album = slug(track);
             result.name = `${slug(user)} — ${slug(track)}`;
         }
         return result;
@@ -495,10 +683,34 @@ export function extractMediaInfo(url) {
 
     if (host.endsWith('.bandcamp.com')) {
         const artist = host.replace(/\.bandcamp\.com$/, '');
+        const isAlbum = seg[0] === 'album';
         const track = seg[1] || '';
+        result.artist = slug(artist);
+        if (isAlbum && track) result.album = slug(track);
         result.name = track
             ? `${slug(artist)} — ${slug(track)}`
             : slug(artist);
+        return result;
+    }
+
+    if (host === 'mixcloud.com' || host === 'www.mixcloud.com') {
+        if (seg.length >= 2) {
+            result.artist = slug(seg[0]);
+            result.name = `${slug(seg[0])} — ${slug(seg[1])}`;
+        }
+        return result;
+    }
+
+    if (host === 'music.apple.com') {
+        // /{country}/album/{slug}/{id}?i={trackid}
+        // /{country}/playlist/{slug}/{id}
+        const types = new Set(['album', 'playlist', 'song']);
+        const idx = seg.findIndex(s => types.has(s));
+        if (idx >= 0 && seg[idx + 1]) {
+            const albumSlug = slug(seg[idx + 1]);
+            if (seg[idx] === 'album') result.album = albumSlug;
+            result.name = `Apple Music — ${albumSlug}`;
+        }
         return result;
     }
 

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {buildMediaLabel, defaultMediaEntry, validatePositionInput,
     isSpotifyUrl, guessKind, normaliseKind, normaliseMediaUrl,
     nextEpisodeUrl, nextEpisodeLabel, extractMediaInfo,
-    formatLastPlayed}
+    formatLastPlayed,
+    positionToSeconds, formatProgress,
+    groupBy, sortEntries, filterEntries}
     from '../../lib/media-helpers.js';
 
 test('buildMediaLabel joins fields with bullets', () => {
@@ -564,4 +566,317 @@ test('defaultMediaEntry: preserves provided last_played', () => {
     const e = defaultMediaEntry({name: 'Foo', url: 'https://x',
         last_played: '2026-04-30T15:00:00Z'});
     assert.equal(e.last_played, '2026-04-30T15:00:00Z');
+});
+
+test('defaultMediaEntry: extra fields default to empty/zero', () => {
+    const e = defaultMediaEntry({name: 'Foo', url: 'https://x'});
+    assert.equal(e.artist, '');
+    assert.equal(e.album, '');
+    assert.equal(e.year, '');
+    assert.equal(e.genre, '');
+    assert.equal(e.rating, 0);
+    assert.equal(e.play_count, 0);
+    assert.equal(e.duration, '');
+    assert.deepEqual(e.tags, []);
+    // added_at is auto-stamped; just check it parses as a Date.
+    assert.ok(!isNaN(new Date(e.added_at).getTime()),
+        `expected a valid ISO date, got ${e.added_at}`);
+});
+
+test('defaultMediaEntry: caller-provided extras win', () => {
+    const e = defaultMediaEntry({
+        name: 'Bar', url: 'https://x',
+        artist: 'A', album: 'B', year: '2024', genre: 'rock',
+        rating: 4, play_count: 7, duration: '00:42:00',
+        added_at: '2026-04-30T15:00:00Z',
+        tags: ['fav', 'workout'],
+    });
+    assert.equal(e.artist, 'A');
+    assert.equal(e.album, 'B');
+    assert.equal(e.year, '2024');
+    assert.equal(e.genre, 'rock');
+    assert.equal(e.rating, 4);
+    assert.equal(e.play_count, 7);
+    assert.equal(e.duration, '00:42:00');
+    assert.equal(e.added_at, '2026-04-30T15:00:00Z');
+    assert.deepEqual(e.tags, ['fav', 'workout']);
+});
+
+test('defaultMediaEntry: rating + play_count guard against NaN', () => {
+    const e = defaultMediaEntry({
+        name: 'X', url: 'https://x',
+        rating: NaN, play_count: 'oops',
+    });
+    assert.equal(e.rating, 0);
+    assert.equal(e.play_count, 0);
+});
+
+test('defaultMediaEntry: tags is copied (no aliasing)', () => {
+    const src = ['a', 'b'];
+    const e = defaultMediaEntry({name: 'X', url: 'https://x', tags: src});
+    src.push('c');
+    assert.deepEqual(e.tags, ['a', 'b']);
+});
+
+// ---------------------------------------------------------------
+// positionToSeconds / formatProgress
+// ---------------------------------------------------------------
+
+test('positionToSeconds: parses hh:mm:ss / mm:ss / s', () => {
+    assert.equal(positionToSeconds('01:23:45'), 1 * 3600 + 23 * 60 + 45);
+    assert.equal(positionToSeconds('5:30'), 5 * 60 + 30);
+    assert.equal(positionToSeconds('120'), 120);
+    assert.equal(positionToSeconds(''), 0);
+    assert.equal(positionToSeconds('xx'), 0);
+    assert.equal(positionToSeconds(null), 0);
+});
+
+test('formatProgress: empty duration yields empty string', () => {
+    assert.equal(formatProgress('1:00', ''), '');
+    assert.equal(formatProgress('1:00', '0'), '');
+});
+
+test('formatProgress: clamps to 0..100%', () => {
+    assert.equal(formatProgress('0', '100'), '▯▯▯▯▯ 0%');
+    assert.equal(formatProgress('100', '100'), '▮▮▮▮▮ 100%');
+    // Position past duration should clamp, not overflow.
+    assert.equal(formatProgress('200', '100'), '▮▮▮▮▮ 100%');
+});
+
+test('formatProgress: midway renders partial fill', () => {
+    // 0:30 / 1:00 = 50%, 5 cells -> 3 (rounded from 2.5).
+    assert.equal(formatProgress('30', '60'), '▮▮▮▯▯ 50%');
+});
+
+// ---------------------------------------------------------------
+// groupBy
+// ---------------------------------------------------------------
+
+test('groupBy: empty key bucket = single group', () => {
+    const list = [{name: 'a'}, {name: 'b'}];
+    const m = groupBy(list, '');
+    assert.equal(m.size, 1);
+    assert.deepEqual(m.get(''), list);
+});
+
+test('groupBy: by artist, blank values bucket together', () => {
+    const list = [
+        {name: 'a', artist: 'Foo'},
+        {name: 'b', artist: '  '},
+        {name: 'c', artist: 'Foo'},
+        {name: 'd', artist: 'Bar'},
+        {name: 'e'},
+    ];
+    const m = groupBy(list, 'artist');
+    assert.deepEqual([...m.keys()], ['Foo', '', 'Bar']);
+    assert.equal(m.get('Foo').length, 2);
+    assert.equal(m.get('Bar').length, 1);
+    // Blank artist + missing artist share the same bucket.
+    assert.equal(m.get('').length, 2);
+});
+
+test('groupBy: handles non-array input safely', () => {
+    assert.equal(groupBy(null, 'artist').size, 0);
+    assert.equal(groupBy(undefined, 'artist').size, 0);
+});
+
+// ---------------------------------------------------------------
+// sortEntries
+// ---------------------------------------------------------------
+
+test('sortEntries: last_played desc, empty values last', () => {
+    const list = [
+        {name: 'a', last_played: '2026-04-01T00:00:00Z'},
+        {name: 'b', last_played: ''},
+        {name: 'c', last_played: '2026-04-15T00:00:00Z'},
+        {name: 'd'},
+    ];
+    const sorted = sortEntries(list, 'last_played').map(e => e.name);
+    assert.deepEqual(sorted, ['c', 'a', 'b', 'd']);
+});
+
+test('sortEntries: alpha is locale + case insensitive', () => {
+    const list = [{name: 'banana'}, {name: 'Apple'}, {name: 'éclair'}];
+    const sorted = sortEntries(list, 'alpha').map(e => e.name);
+    assert.deepEqual(sorted, ['Apple', 'banana', 'éclair']);
+});
+
+test('sortEntries: play_count desc, ties → last_played → alpha', () => {
+    const list = [
+        {name: 'a', play_count: 1, last_played: '2026-04-01'},
+        {name: 'b', play_count: 5, last_played: '2026-04-10'},
+        {name: 'c', play_count: 5, last_played: '2026-04-15'},
+        {name: 'd', play_count: 5, last_played: '2026-04-15'},
+    ];
+    const sorted = sortEntries(list, 'play_count').map(e => e.name);
+    // c and d tie on count + date → alpha picks c, d.
+    assert.deepEqual(sorted, ['c', 'd', 'b', 'a']);
+});
+
+test('sortEntries: rating desc, NaN treated as 0', () => {
+    const list = [
+        {name: 'a', rating: 5},
+        {name: 'b', rating: NaN},
+        {name: 'c', rating: 3},
+        {name: 'd'},
+    ];
+    const sorted = sortEntries(list, 'rating').map(e => e.name);
+    assert.deepEqual(sorted, ['a', 'c', 'b', 'd']);
+});
+
+test('sortEntries: unknown mode falls back to alpha', () => {
+    const list = [{name: 'b'}, {name: 'a'}];
+    assert.deepEqual(
+        sortEntries(list, 'wat').map(e => e.name),
+        ['a', 'b']);
+});
+
+test('sortEntries: does not mutate input', () => {
+    const list = [{name: 'b'}, {name: 'a'}];
+    const before = [...list];
+    sortEntries(list, 'alpha');
+    assert.deepEqual(list, before);
+});
+
+// ---------------------------------------------------------------
+// filterEntries
+// ---------------------------------------------------------------
+
+test('filterEntries: kind filter matches normalised kind', () => {
+    const list = [
+        {name: 'v1', kind: 'video'},
+        {name: 'a1', kind: 'audio'},
+        {name: 'x',  kind: 'something'},
+    ];
+    assert.equal(filterEntries(list, {kind: 'video'}).length, 2);
+    assert.equal(filterEntries(list, {kind: 'audio'}).length, 1);
+    assert.equal(filterEntries(list, {kind: 'oops'}).length, 3);
+});
+
+test('filterEntries: query is case-insensitive substring across fields', () => {
+    const list = [
+        {name: 'Foundation', artist: 'Asimov'},
+        {name: 'Dune',       artist: 'Herbert', album: 'Sci-Fi'},
+        {name: 'Other'},
+        {name: 'tagged',     tags: ['workout']},
+    ];
+    assert.equal(filterEntries(list, {query: 'asim'}).length, 1);
+    assert.equal(filterEntries(list, {query: 'sci'}).length, 1);
+    assert.equal(filterEntries(list, {query: 'WORK'}).length, 1);
+    assert.equal(filterEntries(list, {query: '   '}).length, 4);
+    assert.equal(filterEntries(list, {query: 'nope'}).length, 0);
+});
+
+test('filterEntries: unwatched keeps only entries without last_played', () => {
+    const list = [
+        {name: 'a'},
+        {name: 'b', last_played: ''},
+        {name: 'c', last_played: '2026-04-01'},
+    ];
+    assert.equal(filterEntries(list, {unwatched: true}).length, 2);
+});
+
+test('filterEntries: unfinished requires position + stale last_played', () => {
+    const now = new Date('2026-05-01T00:00:00Z');
+    const list = [
+        // position + stale → keep
+        {name: 'a', position: '5:00', last_played: '2026-04-01T00:00:00Z'},
+        // position + recent → drop
+        {name: 'b', position: '5:00', last_played: '2026-04-30T00:00:00Z'},
+        // no position → drop
+        {name: 'c', last_played: '2026-04-01T00:00:00Z'},
+        // position + never played → keep (treated as stale)
+        {name: 'd', position: '5:00'},
+    ];
+    const got = filterEntries(list, {unfinished: true}, now)
+        .map(e => e.name);
+    assert.deepEqual(got, ['a', 'd']);
+});
+
+test('filterEntries: favourites requires rating >= 4', () => {
+    const list = [
+        {name: 'a', rating: 5},
+        {name: 'b', rating: 4},
+        {name: 'c', rating: 3},
+        {name: 'd'},
+    ];
+    const got = filterEntries(list, {favourites: true}).map(e => e.name);
+    assert.deepEqual(got, ['a', 'b']);
+});
+
+test('filterEntries: flags compose with AND', () => {
+    const now = new Date('2026-05-01T00:00:00Z');
+    const list = [
+        {name: 'hit', kind: 'audio', rating: 5,
+            position: '1:00', last_played: '2026-04-01'},
+        {name: 'miss-kind', kind: 'video', rating: 5,
+            position: '1:00', last_played: '2026-04-01'},
+        {name: 'miss-rating', kind: 'audio', rating: 1,
+            position: '1:00', last_played: '2026-04-01'},
+    ];
+    const got = filterEntries(list, {
+        kind: 'audio', favourites: true, unfinished: true,
+    }, now).map(e => e.name);
+    assert.deepEqual(got, ['hit']);
+});
+
+// ---------------------------------------------------------------
+// extractMediaInfo: artist / album for music URLs
+// ---------------------------------------------------------------
+
+test('extractMediaInfo: result has artist + album fields by default', () => {
+    const r = extractMediaInfo('https://example.com/foo');
+    assert.equal(r.artist, '');
+    assert.equal(r.album, '');
+});
+
+test('extractMediaInfo: soundcloud track sets artist (no album)', () => {
+    const r = extractMediaInfo(
+        'https://soundcloud.com/some-artist/cool-track');
+    assert.equal(r.artist, 'Some Artist');
+    assert.equal(r.album, '');
+    // Name shape is unchanged for backwards compatibility.
+    assert.equal(r.name, 'Some Artist — Cool Track');
+});
+
+test('extractMediaInfo: soundcloud /sets/ populates album', () => {
+    const r = extractMediaInfo(
+        'https://soundcloud.com/some-artist/sets/summer-mix');
+    assert.equal(r.artist, 'Some Artist');
+    assert.equal(r.album, 'Summer Mix');
+});
+
+test('extractMediaInfo: bandcamp /track/ sets artist only', () => {
+    const r = extractMediaInfo(
+        'https://artist.bandcamp.com/track/my-song');
+    assert.equal(r.artist, 'Artist');
+    assert.equal(r.album, '');
+});
+
+test('extractMediaInfo: bandcamp /album/ sets artist + album', () => {
+    const r = extractMediaInfo(
+        'https://artist.bandcamp.com/album/great-record');
+    assert.equal(r.artist, 'Artist');
+    assert.equal(r.album, 'Great Record');
+    assert.equal(r.name, 'Artist — Great Record');
+});
+
+test('extractMediaInfo: mixcloud user/show', () => {
+    const r = extractMediaInfo(
+        'https://www.mixcloud.com/dj-foo/late-night-set/');
+    assert.equal(r.artist, 'Dj Foo');
+    assert.equal(r.name, 'Dj Foo — Late Night Set');
+});
+
+test('extractMediaInfo: apple music album sets album field', () => {
+    const r = extractMediaInfo(
+        'https://music.apple.com/us/album/great-record/12345?i=67890');
+    assert.equal(r.album, 'Great Record');
+    assert.equal(r.name, 'Apple Music — Great Record');
+});
+
+test('extractMediaInfo: video hosts do not populate music fields', () => {
+    const r = extractMediaInfo('https://vimeo.com/123456789');
+    assert.equal(r.artist, '');
+    assert.equal(r.album, '');
 });

@@ -98,6 +98,35 @@ class MediaDialog extends ModalDialog {
             text: entry?.episode ?? ''});
         box.add_child(this._epEntry);
 
+        // Library fields — optional, surface artist/album/year/genre
+        // so the library dialog can group/filter on them. Auto-fill
+        // also lands here for music URLs (Bandcamp, SoundCloud…).
+        this._artistEntry = new St.Entry({
+            hint_text: _('Artist / author'),
+            text: entry?.artist ?? '',
+        });
+        box.add_child(this._artistEntry);
+        this._albumEntry = new St.Entry({
+            hint_text: _('Album / season'),
+            text: entry?.album ?? '',
+        });
+        box.add_child(this._albumEntry);
+        const ygRow = new St.BoxLayout({vertical: false,
+            style: 'spacing: 4px;'});
+        this._yearEntry = new St.Entry({
+            hint_text: _('Year'),
+            text: entry?.year ?? '',
+            x_expand: true,
+        });
+        ygRow.add_child(this._yearEntry);
+        this._genreEntry = new St.Entry({
+            hint_text: _('Genre'),
+            text: entry?.genre ?? '',
+            x_expand: true,
+        });
+        ygRow.add_child(this._genreEntry);
+        box.add_child(ygRow);
+
         this._posEntry = new St.Entry({
             hint_text: _('Position (hh:mm:ss or seconds)'),
             text: entry?.position ?? '',
@@ -138,6 +167,10 @@ class MediaDialog extends ModalDialog {
             episode: this._epEntry.get_text(),
             position,
             kind: normaliseKind(this._kind),
+            artist: this._artistEntry.get_text().trim(),
+            album: this._albumEntry.get_text().trim(),
+            year: this._yearEntry.get_text().trim(),
+            genre: this._genreEntry.get_text().trim(),
         });
         this.close();
     }
@@ -181,6 +214,22 @@ class MediaDialog extends ModalDialog {
                         filled.push(_('episode'));
                     } else {
                         skipped.push(_('episode'));
+                    }
+                }
+                if (info.artist) {
+                    if (!this._artistEntry.get_text().trim()) {
+                        this._artistEntry.set_text(info.artist);
+                        filled.push(_('artist'));
+                    } else {
+                        skipped.push(_('artist'));
+                    }
+                }
+                if (info.album) {
+                    if (!this._albumEntry.get_text().trim()) {
+                        this._albumEntry.set_text(info.album);
+                        filled.push(_('album'));
+                    } else {
+                        skipped.push(_('album'));
                     }
                 }
                 if (filled.length) {

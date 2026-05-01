@@ -11,9 +11,11 @@ import {parseList, serializeList} from '../lib/settings.js';
 import {buildBrowserArgv, buildMpvArgv, buildVlcArgv, buildSpotifyArgv,
     formatPosition, spawnDetached} from '../lib/spawn.js';
 import {buildMediaLabel, defaultMediaEntry, isSpotifyUrl, normaliseKind,
-    nextEpisodeUrl, nextEpisodeLabel, formatLastPlayed}
+    nextEpisodeUrl, nextEpisodeLabel, formatLastPlayed,
+    sortEntries, filterEntries, formatProgress}
     from '../lib/media-helpers.js';
 import {MediaDialog} from '../ui/media-dialog.js';
+import {MediaLibraryDialog} from '../ui/media-library-dialog.js';
 import {makeBadgedIcon, bindBadgeOrientation, attachHoverTooltip,
     formatBadgeTooltip} from '../lib/badges.js';
 import {_} from '../lib/i18n.js';
@@ -45,6 +47,9 @@ class MediaIndicator extends PanelMenu.Button {
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen) this._rebuildMenu();
         });
+        this._sigTab = this._settings.connect(
+            'changed::media-active-tab',
+            () => this._rebuildMenu());
         this._sigBadges = this._settings.connect(
             'changed::enable-icon-badges',
             () => this._refreshBadge());
@@ -61,6 +66,7 @@ class MediaIndicator extends PanelMenu.Button {
 
     destroy() {
         if (this._sig) this._settings.disconnect(this._sig);
+        if (this._sigTab) this._settings.disconnect(this._sigTab);
         if (this._sigBadges) this._settings.disconnect(this._sigBadges);
         if (this._sigOrient) this._settings.disconnect(this._sigOrient);
         this._tip?.detach();
@@ -89,6 +95,17 @@ class MediaIndicator extends PanelMenu.Button {
         this._badged.setBadges([{count: films.length}]);
     }
 
+    _activeTab() {
+        const v = this._settings.get_string('media-active-tab');
+        return (v === 'video' || v === 'audio') ? v : 'all';
+    }
+
+    _setActiveTab(tab) {
+        const next = (tab === 'video' || tab === 'audio') ? tab : 'all';
+        if (this._activeTab() === next) return;
+        this._settings.set_string('media-active-tab', next);
+    }
+
     _rebuildMenu() {
         this.menu.removeAll();
 
@@ -101,41 +118,123 @@ class MediaIndicator extends PanelMenu.Button {
         const add = new PopupMenu.PopupMenuItem(_('+ Add media…'));
         add.connect('activate', () => this._openAddDialog());
         this.menu.addMenuItem(add);
+        const lib = new PopupMenu.PopupMenuItem(_('📚 Open library…'));
+        lib.connect('activate', () => this._openLibrary());
+        this.menu.addMenuItem(lib);
         const prefsItem = new PopupMenu.PopupMenuItem(_('⚙ Open prefs'));
         prefsItem.connect('activate', () => this._openPrefs?.());
         this.menu.addMenuItem(prefsItem);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         const films = parseList(this._settings.get_string('media'));
+        const videos = films.filter(
+            f => normaliseKind(f.kind) === 'video');
+        const audio = films.filter(
+            f => normaliseKind(f.kind) === 'audio');
+
+        // Tabs row — three PopupMenuItems with a leading marker on the
+        // active one. Inline St.Buttons inside a PopupMenu swallow
+        // keyboard navigation, so we stick with stock items. Override
+        // `activate` so clicking a tab swaps the filter without
+        // closing the dropdown — the default PopupMenuItem.activate
+        // calls itemActivated() which dismisses the menu.
+        const tab = this._activeTab();
+        const mark = (key) => tab === key ? '● ' : '○ ';
+        const makeTab = (key, label) => {
+            const item = new PopupMenu.PopupMenuItem(label);
+            item.activate = () => this._setActiveTab(key);
+            return item;
+        };
+        this.menu.addMenuItem(makeTab('all',
+            `${mark('all')}${_('All')} (${films.length})`));
+        this.menu.addMenuItem(makeTab('video',
+            `${mark('video')}${_('Films')} (${videos.length})`));
+        this.menu.addMenuItem(makeTab('audio',
+            `${mark('audio')}${_('Music')} (${audio.length})`));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         if (!films.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
                 _('(no media — use + Add media)'), {reactive: false}));
             return;
         }
-        const videos = films.filter(
-            f => normaliseKind(f.kind) === 'video');
-        const audio = films.filter(
-            f => normaliseKind(f.kind) === 'audio');
-        if (videos.length) {
+
+        const kindFilter = tab === 'all' ? undefined : tab;
+        const visible = filterEntries(films, {kind: kindFilter});
+        if (!visible.length) {
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                _('— Videos ({n}) —').replace('{n}', videos.length),
+                _('(empty — switch tab or add media)'),
                 {reactive: false}));
-            for (const film of videos)
-                this.menu.addMenuItem(this._makeRow(film));
+            return;
         }
-        if (audio.length) {
-            if (videos.length)
-                this.menu.addMenuItem(
-                    new PopupMenu.PopupSeparatorMenuItem());
+
+        const SECTION_CAP = 5;
+        const ALL_CAP = 10;
+        const seen = new Set();
+        const take = (entries, n) => {
+            const out = [];
+            for (const e of entries) {
+                if (seen.has(e.id)) continue;
+                out.push(e);
+                if (out.length >= n) break;
+            }
+            return out;
+        };
+        const renderSection = (title, entries) => {
+            if (!entries.length) return;
             this.menu.addMenuItem(new PopupMenu.PopupMenuItem(
-                _('— Audio ({n}) —').replace('{n}', audio.length),
-                {reactive: false}));
-            for (const film of audio)
+                title, {reactive: false}));
+            for (const film of entries) {
+                seen.add(film.id);
                 this.menu.addMenuItem(this._makeRow(film));
+            }
+        };
+
+        // Cache the playing-id set for the duration of this rebuild
+        // so every row through _makeRow / _isPlaying shares one read
+        // of the mpv-state directory instead of re-globbing per row.
+        this._playingCache = this._playingIds();
+        const playing = visible.filter(e => this._playingCache.has(e.id));
+        const recents = sortEntries(
+            visible.filter(e => e.last_played), 'last_played');
+        const unfinished = filterEntries(visible, {unfinished: true});
+        const favourites = sortEntries(
+            filterEntries(visible, {favourites: true}), 'last_played');
+
+        renderSection(_('▶ Now playing'), take(playing, SECTION_CAP));
+        renderSection(_('⏱ Recents'), take(recents, SECTION_CAP));
+        renderSection(_('↻ Continue watching'),
+            take(unfinished, SECTION_CAP));
+        renderSection(_('★ Favourites'), take(favourites, SECTION_CAP));
+
+        // Fallback "All" section keeps the dropdown useful for fresh
+        // catalogues whose entries have no last_played / rating yet.
+        // Drops in items not already surfaced in a smart section.
+        const remaining = take(sortEntries(visible, 'alpha'), ALL_CAP);
+        if (remaining.length) {
+            this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            renderSection(
+                _('— All ({n}) —').replace('{n}', visible.length),
+                remaining);
+            const overflow = visible.length - seen.size;
+            if (overflow > 0) {
+                const more = new PopupMenu.PopupMenuItem(
+                    _('… {n} more in library').replace('{n}', overflow));
+                more.connect('activate', () => this._openLibrary());
+                this.menu.addMenuItem(more);
+            }
         }
     }
 
+    _playingIds() {
+        try {
+            return new Set(listMpvEntriesSync(Gio, GLib)
+                .map(e => e.film_id));
+        } catch (_e) { return new Set(); }
+    }
+
     _isPlaying(filmId) {
+        if (this._playingCache) return this._playingCache.has(filmId);
         try {
             return listMpvEntriesSync(Gio, GLib).some(
                 e => e.film_id === filmId);
@@ -146,8 +245,10 @@ class MediaIndicator extends PanelMenu.Button {
         const playing = this._isPlaying(film.id);
         const prefix = playing ? '▶ ' : '';
         const lastTag = this._lastPlayedTag(film);
+        const prog = formatProgress(film.position, film.duration);
+        const progTag = prog ? `   ${prog}` : '';
         const sub = new PopupMenu.PopupSubMenuMenuItem(
-            `${prefix}${buildMediaLabel(film)}${lastTag}`);
+            `${prefix}${buildMediaLabel(film)}${progTag}${lastTag}`);
 
         const browserItem = new PopupMenu.PopupMenuItem(_('▶ Browser'));
         browserItem.connect('activate', () => this._launch(film, 'browser'));
@@ -241,8 +342,13 @@ class MediaIndicator extends PanelMenu.Button {
         const films = parseList(this._settings.get_string('media'));
         const idx = films.findIndex(f => f.id === film.id);
         if (idx < 0) return;
-        films[idx] = {...films[idx],
-            last_played: new Date().toISOString()};
+        const cur = films[idx];
+        const count = Number.isFinite(cur.play_count) ? cur.play_count : 0;
+        films[idx] = {
+            ...cur,
+            last_played: new Date().toISOString(),
+            play_count: count + 1,
+        };
         this._settings.set_string('media', serializeList(films));
     }
 
@@ -300,7 +406,11 @@ class MediaIndicator extends PanelMenu.Button {
         try {
             if (!film?.url || !film?.id) return;
             // mpv hashes the playback URL as upper-case MD5 hex and
-            // stores `start=<seconds>` in the watch-later file.
+            // stores `start=<seconds>` in the watch-later file. Some
+            // mpv builds also write `duration=<seconds>`; we capture
+            // it when present so the library can render a progress
+            // bar. The duration line is optional — leave it empty
+            // when missing rather than guessing.
             const hash = GLib.compute_checksum_for_string(
                 GLib.ChecksumType.MD5, film.url, -1).toUpperCase();
             const path = `${GLib.get_user_config_dir()}`
@@ -313,19 +423,37 @@ class MediaIndicator extends PanelMenu.Button {
             const [ok, contents] = GLib.file_get_contents(path);
             if (!ok) return;
             const text = new TextDecoder().decode(contents);
-            const m = text.match(/^start=([\d.]+)/m);
-            if (!m) return;
-            const seconds = Math.floor(parseFloat(m[1]));
-            if (!Number.isFinite(seconds) || seconds <= 0) return;
-            const formatted = formatPosition(seconds);
+            const startM = text.match(/^start=([\d.]+)/m);
+            const durM = text.match(/^duration=([\d.]+)/m);
+            const startSec = startM
+                ? Math.floor(parseFloat(startM[1])) : 0;
+            const durSec = durM
+                ? Math.floor(parseFloat(durM[1])) : 0;
             const list = parseList(this._settings.get_string('media'));
             const i = list.findIndex(e => e.id === film.id);
             if (i < 0) return;
-            if (list[i].position === formatted) return;
-            list[i].position = formatted;
+            const next = {...list[i]};
+            let changed = false;
+            if (Number.isFinite(startSec) && startSec > 0) {
+                const pos = formatPosition(startSec);
+                if (next.position !== pos) {
+                    next.position = pos;
+                    changed = true;
+                }
+            }
+            if (Number.isFinite(durSec) && durSec > 0) {
+                const dur = formatPosition(durSec);
+                if (next.duration !== dur) {
+                    next.duration = dur;
+                    changed = true;
+                }
+            }
+            if (!changed) return;
+            list[i] = next;
             this._settings.set_string('media', serializeList(list));
             logInfo('film',
-                `position updated for ${film.id} -> ${formatted}`);
+                `mpv state updated for ${film.id} pos=${next.position}`
+                + ` dur=${next.duration || '-'}`);
         } catch (e) {
             logWarn('film',
                 `position update failed: ${e.message || e}`);
@@ -361,6 +489,22 @@ class MediaIndicator extends PanelMenu.Button {
                     .filter(e => e.id !== entry.id);
                 this._settings.set_string('media', serializeList(list));
             },
+        });
+        dlg.open();
+    }
+
+    _deleteEntry(entry) {
+        const list = parseList(this._settings.get_string('media'))
+            .filter(e => e.id !== entry.id);
+        this._settings.set_string('media', serializeList(list));
+    }
+
+    _openLibrary() {
+        const dlg = new MediaLibraryDialog({
+            settings: this._settings,
+            onLaunch: (entry, player) => this._launch(entry, player),
+            onEdit: (entry) => this._editEntry(entry),
+            onDelete: (entry) => this._deleteEntry(entry),
         });
         dlg.open();
     }

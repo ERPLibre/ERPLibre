@@ -27,6 +27,37 @@
     <key name="paths"        type="s"><default>"[]"</default><summary>Paths catalogue (JSON array)</summary></key>
     <key name="films"        type="s"><default>"[]"</default><summary>DEPRECATED — use `media`. Kept so the v1→v2 migration can copy entries forward and so a downgrade does not lose data.</summary></key>
     <key name="media"        type="s"><default>"[]"</default><summary>Media catalogue (JSON array of video / audio entries with `kind` field)</summary></key>
+    <key name="media-active-tab" type="s">
+      <choices>
+        <choice value="all"/>
+        <choice value="video"/>
+        <choice value="audio"/>
+      </choices>
+      <default>"all"</default>
+      <summary>Active tab in the media applet dropdown</summary>
+    </key>
+    <key name="media-sort-mode" type="s">
+      <choices>
+        <choice value="last_played"/>
+        <choice value="alpha"/>
+        <choice value="play_count"/>
+        <choice value="rating"/>
+        <choice value="added"/>
+      </choices>
+      <default>"last_played"</default>
+      <summary>Sort order in the media library dialog</summary>
+    </key>
+    <key name="media-group-by" type="s">
+      <choices>
+        <choice value="none"/>
+        <choice value="artist"/>
+        <choice value="album"/>
+        <choice value="genre"/>
+        <choice value="year"/>
+      </choices>
+      <default>"none"</default>
+      <summary>Grouping mode in the media library dialog</summary>
+    </key>
     <key name="instances"    type="s"><default>"[]"</default><summary>ERPLibre instances catalogue (JSON array)</summary></key>
     <key name="recent-paths" type="s"><default>"[]"</default><summary>Recently opened paths (JSON array, capped at 10)</summary></key>
 
