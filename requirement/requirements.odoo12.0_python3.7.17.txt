@@ -153,7 +153,7 @@ requests==2.28.1
 boto3==1.33.13
 PyPDF2==1.27.9
 mako==1.2.2
-pyjwt==2.5.0
+pyjwt==2.12.0
 pygments==2.7.4
 setuptools==65.5.1
 Werkzeug==0.16.1
