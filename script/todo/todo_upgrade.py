@@ -511,7 +511,7 @@ class TodoUpgrade:
                 file_browser.run_main_frame()
             elif self.file_path == "remote":
                 status, self.file_path, default_database_name = (
-                    self.todo.download_database_backup_cli()
+                    self.todo.db_manager.download_database_backup_cli()
                 )
                 if status:
                     _logger.error(
