@@ -1797,20 +1797,27 @@ class SeleniumLib(object):
         self,
         container_id: str,
         chemin_png: str,
-    ) -> None:
+    ) -> bool:
         """
         Alternative : capture le SVG via screenshot Selenium, sans cairosvg.
         Avantage : pas de dépendance native.
         Inconvénient : qualité dépend de la résolution du navigateur.
         """
-        from selenium.webdriver.common.by import By
 
-        svg_element = self.driver.find_element(By.ID, container_id)
+        try:
+            svg_element = self.get_element(
+                by=By.ID, value=container_id, timeout=5
+            )
+        except Exception as e:
+            return False
+
+        if not svg_element:
+            return False
+
         # Scroller pour s'assurer que le SVG est visible
         self.driver.execute_script(
             "arguments[0].scrollIntoView({block: 'center'});", svg_element
         )
-        import time
 
         time.sleep(0.3)
         svg_element.screenshot(chemin_png)
@@ -1900,8 +1907,8 @@ class SeleniumLib(object):
 
         return lst_unique_file
 
-    def print_download_file_unique(self, dct_document):
-        dct_output = {"document": dct_document}
+    def print_download_file_unique(self, dct_document, detect_error=False):
+        dct_output = {"document": dct_document, "has_error": detect_error}
         print("=DATA=")
         print(json.dumps(dct_output))
         print("=ENDDATA=")
