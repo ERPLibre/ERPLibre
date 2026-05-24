@@ -500,6 +500,7 @@ class SeleniumLib(object):
                     )
                 )
             )
+            only_one = True
         elif is_visible:
             ele = wait.until(
                 EC.visibility_of_any_elements_located(
