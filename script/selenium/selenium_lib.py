@@ -1725,6 +1725,126 @@ class SeleniumLib(object):
 
         return day_btn
 
+    def extraire_svg_graphique_by_3d(
+        self,
+        container_id: str = "svgbox627",
+    ) -> Optional[str]:
+        """
+        Récupère le code SVG du graphique D3 tel que rendu dans le DOM.
+
+        Le SVG est généré dynamiquement par D3.js après chargement de la page,
+        donc on récupère le HTML *après* exécution, pas la source initiale.
+
+        Returns:
+            Le code SVG complet (avec namespace et styles inline) ou None si absent.
+        """
+        try:
+            # Récupérer le <svg> rendu via execute_script (outerHTML inclut les
+            # attributs et le contenu généré dynamiquement par D3).
+            svg_html = self.driver.execute_script(
+                """
+                var container = document.getElementById(arguments[0]);
+                if (!container) return null;
+                var svg = container.querySelector('svg');
+                return svg ? svg.outerHTML : null;
+            """,
+                container_id,
+            )
+
+            if not svg_html:
+                return None
+
+            return self._svg_autonome(svg_html)
+        except Exception:
+            return None
+
+    def _svg_autonome(self, svg_html: str) -> str:
+        """
+        Transforme un fragment SVG en document SVG autonome, viewable hors navigateur.
+
+        - Garantit le namespace xmlns
+        - Ajoute la déclaration XML
+        - Nettoie les attributs spécifiques à darkreader (extension de navigateur)
+        """
+        # import re
+
+        # Nettoyer les attributs injectés par l'extension Dark Reader, qui polluent
+        # le SVG sans valeur ajoutée et peuvent contenir des --darkreader-* invalides.
+        svg_html = re.sub(r'\s*--darkreader-[^;"]*;?', "", svg_html)
+        svg_html = re.sub(r'\s*data-darkreader-[^=]*="[^"]*"', "", svg_html)
+        svg_html = re.sub(
+            r'<style class="darkreader[^"]*"[^>]*>.*?</style>',
+            "",
+            svg_html,
+            flags=re.DOTALL,
+        )
+
+        # S'assurer du namespace SVG (D3 le met normalement, mais on vérifie)
+        if 'xmlns="http://www.w3.org/2000/svg"' not in svg_html:
+            svg_html = svg_html.replace(
+                "<svg ",
+                '<svg xmlns="http://www.w3.org/2000/svg" ',
+                1,
+            )
+
+        # Préfixer avec la déclaration XML pour un fichier .svg standalone
+        return (
+            '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+            + svg_html
+        )
+
+    def convertir_svg_en_png_via_selenium(
+        self,
+        container_id: str,
+        chemin_png: str,
+    ) -> None:
+        """
+        Alternative : capture le SVG via screenshot Selenium, sans cairosvg.
+        Avantage : pas de dépendance native.
+        Inconvénient : qualité dépend de la résolution du navigateur.
+        """
+        from selenium.webdriver.common.by import By
+
+        svg_element = self.driver.find_element(By.ID, container_id)
+        # Scroller pour s'assurer que le SVG est visible
+        self.driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});", svg_element
+        )
+        import time
+
+        time.sleep(0.3)
+        svg_element.screenshot(chemin_png)
+
+        return True
+
+    def telecharger_svg_graphique(
+        self,
+        chemin_sortie: str,
+        container_id: str = "svgbox627",
+    ) -> bool:
+        """
+        Télécharge le graphique en SVG dans un fichier.
+
+        Args:
+            driver: WebDriver positionné sur la page.
+            chemin_sortie: chemin du fichier .svg à créer.
+            container_id: id du conteneur du graphique (par défaut svgbox627).
+
+        Returns:
+            True si le fichier a été écrit, False si le graphique est absent.
+        """
+        svg = self.extraire_svg_graphique_by_3d(container_id)
+        if not svg:
+            return False
+
+        os.makedirs(
+            os.path.dirname(os.path.abspath(chemin_sortie)) or ".",
+            exist_ok=True,
+        )
+        with open(chemin_sortie, "w", encoding="utf-8") as f:
+            f.write(svg)
+        return True
+
     def get_init_list_file_unique(self):
         # init_list_file = set(os.listdir(self.default_download_dir_path))
         if self.config.use_network:
