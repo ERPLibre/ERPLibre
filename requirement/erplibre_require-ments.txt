@@ -19,6 +19,7 @@ isort
 pykeepass
 click
 aioshutil
+python-magic
 openai
 humanize
 requests
