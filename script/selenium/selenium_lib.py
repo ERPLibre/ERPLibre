@@ -313,6 +313,7 @@ class SeleniumLib(object):
                         command_executor=driver_url,
                     )
                 else:
+                    firefox_options.add_argument("-remote-allow-system-access")
                     self.driver = webdriver.Firefox(
                         options=firefox_options,
                         service=firefox_services,
@@ -373,7 +374,8 @@ class SeleniumLib(object):
             ):
                 self.driver.get("about:addons")
                 # Enable Dark Reader into incognito
-                self.click("/html/body/div/div[1]/categories-box/button[2]")
+                # Click Extensions
+                self.click('//button[@viewid="addons://list/extension"]')
                 self.click(
                     "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
                 )
