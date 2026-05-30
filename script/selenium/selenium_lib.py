@@ -482,6 +482,20 @@ class SeleniumLib(object):
         button.click()
         return button
 
+    def get_elements(
+        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+    ):
+        wait = WebDriverWait(self.driver, timeout)
+        elements = wait.until(
+            EC.visibility_of_any_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+        return elements
+
     def get_element(
         self,
         by: str = By.ID,
@@ -686,21 +700,39 @@ class SeleniumLib(object):
         with_index: bool = False,
         is_visible=True,
         index_of_list: int = 0,
+        support_multiple_click: bool = False,
     ):
+        # Exemple Detect button by text value
+        # Replace CLASS_NAME
+        # By.CSS_SELECTOR, "input.CLASS_NAME[value='Fermer']"
+
         # ele = self.driver.find_element(by, value)
         if element:
             ele = element
         else:
-            ele = self.get_element(by, value, timeout, is_visible=is_visible)
+            if support_multiple_click:
+                ele = self.get_elements(by, value, timeout)
+            else:
+                ele = self.get_element(
+                    by, value, timeout, is_visible=is_visible
+                )
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
                 viewport_ele = self.get_element(
                     viewport_ele_by, viewport_ele_value, timeout
                 )
-            self.scrollto_element(ele, viewport_ele=viewport_ele)
-            # ActionChains(self.driver).move_to_element(ele).click().perform()
-            ActionChains(self.driver).move_to_element(ele).perform()
+            if support_multiple_click:
+                for one_ele in ele:
+                    self.scrollto_element(one_ele, viewport_ele=viewport_ele)
+                    # ActionChains(self.driver).move_to_element(one_ele).click().perform()
+                    ActionChains(self.driver).move_to_element(
+                        one_ele
+                    ).perform()
+            else:
+                self.scrollto_element(ele, viewport_ele=viewport_ele)
+                # ActionChains(self.driver).move_to_element(ele).click().perform()
+                ActionChains(self.driver).move_to_element(ele).perform()
         time.sleep(self.config.selenium_default_delay)
         wait = WebDriverWait(self.driver, timeout)
         if element:
@@ -717,26 +749,59 @@ class SeleniumLib(object):
                 )
                 button = buttons[index_of_list]
             else:
-                button = wait.until(
-                    EC.element_to_be_clickable(
-                        (
-                            by,
-                            value,
+                if support_multiple_click:
+                    button = wait.until(
+                        EC.visibility_of_all_elements_located(
+                            (
+                                by,
+                                value,
+                            )
                         )
                     )
-                )
+                else:
+                    button = wait.until(
+                        EC.element_to_be_clickable(
+                            (
+                                by,
+                                value,
+                            )
+                        )
+                    )
+
         try:
-            button.click()
+            if support_multiple_click:
+                for btn in button:
+                    try:
+                        btn.click()
+                        # This button work!
+                        return btn
+                    except Exception as e:
+                        pass
+            else:
+                button.click()
         except ElementClickInterceptedException as e:
             try:
                 print(e)
-                self.driver.execute_script(
-                    "arguments[0].scrollIntoView(true);", button
-                )
-                button.click()
+                if support_multiple_click:
+                    for btn in button:
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView(true);", btn
+                        )
+                        btn.click()
+                else:
+                    self.driver.execute_script(
+                        "arguments[0].scrollIntoView(true);", button
+                    )
+                    button.click()
             except ElementClickInterceptedException as e:
                 print(e)
-                self.driver.execute_script("arguments[0].click();", button)
+                if support_multiple_click:
+                    for btn in button:
+                        self.driver.execute_script(
+                            "arguments[0].click();", btn
+                        )
+                else:
+                    self.driver.execute_script("arguments[0].click();", button)
         return button
 
     def click_canvas_form(
