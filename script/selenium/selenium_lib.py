@@ -70,8 +70,6 @@ MONTHS_FR = {
     "decembre": 12,
 }
 
-defaut_timeout = 60
-
 
 class SeleniumLib(object):
     def __init__(self, config):
@@ -81,6 +79,7 @@ class SeleniumLib(object):
         self.kdbx = None
         self.video_recorder = None
         self.default_copy_download_dir_path = None
+        self.defaut_timeout = 60
 
         date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         tmp_dir = tempfile.mkdtemp(
@@ -372,6 +371,7 @@ class SeleniumLib(object):
                 not self.config.not_private_mode
                 and not self.config.no_dark_mode
             ):
+                # self.driver.set_context("chrome")
                 self.driver.get("about:addons")
                 # Enable Dark Reader into incognito
                 # Click Extensions
@@ -469,7 +469,9 @@ class SeleniumLib(object):
                 word = ""
         return word
 
-    def click(self, xpath, timeout=defaut_timeout):
+    def click(self, xpath, timeout=None):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         button = wait.until(
             EC.element_to_be_clickable(
@@ -482,9 +484,9 @@ class SeleniumLib(object):
         button.click()
         return button
 
-    def get_elements(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
-    ):
+    def get_elements(self, by: str = By.ID, value: str = None, timeout=None):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         elements = wait.until(
             EC.visibility_of_any_elements_located(
@@ -500,11 +502,13 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout=defaut_timeout,
+        timeout=None,
         wait_clickable=False,
         wait_is_invisible=False,
         is_visible=True,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         only_one = False
         wait = WebDriverWait(self.driver, timeout)
         if wait_clickable:
@@ -550,8 +554,10 @@ class SeleniumLib(object):
         return ele[0]
 
     def get_element_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_element_located(
@@ -565,8 +571,10 @@ class SeleniumLib(object):
         return ele
 
     def get_elements_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_all_elements_located(
@@ -580,14 +588,18 @@ class SeleniumLib(object):
         return ele
 
     def get_text_from_element(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout: int = None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         ele = self.get_element(by, value, timeout=timeout)
         return ele.text
 
     def get_all_element(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.visibility_of_all_elements_located(
@@ -605,9 +617,11 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
         inject_cursor=False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         new_element = self.wait_new_element(
             by=by, value=value, delay_wait=delay_wait, timeout=timeout
         )
@@ -622,9 +636,11 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
         timeout_wait=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         element = None
         # TODO support timeout_wait
         while element is None:
@@ -641,8 +657,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         new_element = self.wait_add_new_element(
             by=by, value=value, delay_wait=delay_wait, timeout=timeout
         )
@@ -654,8 +672,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         all_element_init = self.get_all_element(by=by, value=value)
         len_all_element_init = len(all_element_init)
         len_all_element = len_all_element_init
@@ -673,8 +693,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         element_init = self.get_element(by=by, value=value, timeout=timeout)
         actual_number = int(element_init.text)
         number_goal = actual_number + 1
@@ -692,7 +714,7 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
@@ -702,6 +724,8 @@ class SeleniumLib(object):
         index_of_list: int = 0,
         support_multiple_click: bool = False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         # Exemple Detect button by text value
         # Replace CLASS_NAME
         # By.CSS_SELECTOR, "input.CLASS_NAME[value='Fermer']"
@@ -751,7 +775,8 @@ class SeleniumLib(object):
             else:
                 if support_multiple_click:
                     button = wait.until(
-                        EC.visibility_of_all_elements_located(
+                        # EC.visibility_of_all_elements_located(
+                        EC.presence_of_all_elements_located(
                             (
                                 by,
                                 value,
@@ -808,10 +833,11 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         form="carre",
     ):
-
+        if timeout is None:
+            timeout = self.defaut_timeout
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value, timeout)
         actions = ActionChains(self.driver)
@@ -832,13 +858,15 @@ class SeleniumLib(object):
         value: str = None,
         text_value: str = "",
         delay_after: int = -1,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
         clear_before: bool = False,
         click_before: bool = False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value)
         if not no_scroll:
@@ -1205,7 +1233,7 @@ class SeleniumLib(object):
                 " odoo_website_menu_click"
             )
         button = self.click_with_mouse_move(
-            By.LINK_TEXT, from_text, timeout=defaut_timeout
+            By.LINK_TEXT, from_text, timeout=self.defaut_timeout
         )
         return button
 
@@ -1347,8 +1375,10 @@ class SeleniumLib(object):
         return button
 
     def odoo_web_form_click_statusbar_button_status(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         try:
             status_button = self.click_with_mouse_move(
                 By.XPATH,
@@ -1393,8 +1423,10 @@ class SeleniumLib(object):
         toggle_data_menu("color_scheme.switch", enable_dark_mode)
 
     def odoo_web_form_click_statusbar_button_status_floating(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         status_button = self.click_with_mouse_move(
             By.XPATH,
             "//span[contains(@class, 'o_arrow_button') and contains(text(),"
@@ -1405,8 +1437,10 @@ class SeleniumLib(object):
         return status_button
 
     def odoo_web_form_click_statusbar_button_status_plus(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         status_button = self.click_with_mouse_move(
             By.XPATH,
             "//button[contains(@class, 'o_arrow_button') and"
