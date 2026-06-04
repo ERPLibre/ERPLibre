@@ -342,10 +342,6 @@ class SeleniumLib(object):
         # Ajout de l'enregistrement
         if self.config.record_mode:
             # Create recording
-            new_path = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), "..", "..")
-            )
-            sys.path.append(new_path)
             from script.selenium.selenium_video import VideoRecorder
 
             if not os.path.isdir(self.dirname_recording):
@@ -361,10 +357,16 @@ class SeleniumLib(object):
         if self.config.use_firefox_driver and not self.config.use_network:
             if not self.config.no_dark_mode:
                 self.driver.install_addon(
-                    "./script/selenium/darkreader-firefox.xpi", temporary=True
+                    os.path.join(
+                        new_path, "script/selenium/darkreader-firefox.xpi"
+                    ),
+                    temporary=True,
                 )
                 self.driver.install_addon(
-                    "./script/selenium/odoo_debug-4.0.xpi", temporary=True
+                    os.path.join(
+                        new_path, "script/selenium/odoo_debug-4.0.xpi"
+                    ),
+                    temporary=True,
                 )
 
             if (
