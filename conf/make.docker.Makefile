@@ -28,6 +28,10 @@ docker_show_databases:
 docker_show_logs_live:
 	docker compose logs -f
 
+.PHONY: docker_show_absolute_path
+docker_show_absolute_path:
+	docker inspect $(docker ps -q) --format '{{.Name}}{{range .Mounts}} | {{.Source}} → {{.Destination}}{{end}}'
+
 .PHONY: docker_show_process
 docker_show_process:
 	docker compose ps
