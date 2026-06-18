@@ -1101,8 +1101,13 @@ class SeleniumLib(object):
         # Switch to the new window and open new URL
         self.driver.switch_to.window(self.driver.window_handles[index])
 
-    def refresh(self):
+    def refresh(self, wait_ready=False):
         self.driver.refresh()
+        if wait_ready:
+            WebDriverWait(self.driver, 15).until(
+                lambda d: d.execute_script("return document.readyState")
+                == "complete"
+            )
 
     def check_bot_chat_and_close(self):
         try:
@@ -2012,9 +2017,11 @@ class SeleniumLib(object):
 
     def print_download_file_unique(self, dct_document, detect_error=False):
         dct_output = {"document": dct_document, "has_error": detect_error}
+        print()
         print("=DATA=")
         print(json.dumps(dct_output))
         print("=ENDDATA=")
+        print()
 
 
 def get_args(parser):
