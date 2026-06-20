@@ -2003,11 +2003,13 @@ class SeleniumLib(object):
             else:
                 return set()
         lst_unique_file = fichiers
-        print(len(fichiers))
-        print(fichiers)
         dct_document[filename] = os.path.join(
             self.default_download_dir_path, new_file_name
         )
+        print(len(fichiers))
+        print(fichiers)
+        print("--")
+        print(dct_document)
         if self.config.use_network:
             self.driver.download_file(
                 new_file_name, target_directory=self.default_download_dir_path
