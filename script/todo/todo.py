@@ -1479,6 +1479,7 @@ class TODO:
             },
             {"prompt_description": t("Restore from backup (.zip)")},
             {"prompt_description": t("Create backup (.zip)")},
+            {"prompt_description": t("Erase a database")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1493,6 +1494,8 @@ class TODO:
                 self.db_manager.restore_from_database()
             elif status == "3":
                 self.db_manager.create_backup_from_database()
+            elif status == "4":
+                self.db_manager.drop_database()
             else:
                 print(t("Command not found !"))
 
