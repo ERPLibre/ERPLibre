@@ -299,6 +299,52 @@ TRANSLATIONS = {
         "fr": "Faites des modifications sur les bases de données!",
         "en": "Make changes to databases!",
     },
+    # Database drop / erase
+    "Erase a database": {
+        "fr": "Effacer une base de données",
+        "en": "Erase a database",
+    },
+    "Erase a database — irreversible operation!": {
+        "fr": "Effacer une base de données — opération irréversible !",
+        "en": "Erase a database — irreversible operation!",
+    },
+    "Erase ALL databases (make db_drop_all)": {
+        "fr": "Effacer TOUTES les bases de données (make db_drop_all)",
+        "en": "Erase ALL databases (make db_drop_all)",
+    },
+    "Erase a single database": {
+        "fr": "Effacer une seule base de données",
+        "en": "Erase a single database",
+    },
+    "You are about to erase ALL databases. This cannot be undone.": {
+        "fr": (
+            "Tu es sur le point d'effacer TOUTES les bases de données."
+            " C'est irréversible."
+        ),
+        "en": "You are about to erase ALL databases. This cannot be undone.",
+    },
+    "You are about to erase the database '{database}'. This cannot be undone.": {
+        "fr": (
+            "Tu es sur le point d'effacer la base de données « {database} »."
+            " C'est irréversible."
+        ),
+        "en": (
+            "You are about to erase the database '{database}'."
+            " This cannot be undone."
+        ),
+    },
+    "Type 'oui' to confirm (default: no): ": {
+        "fr": "Tape « oui » pour confirmer (défaut : non) : ",
+        "en": "Type 'oui'/'yes' to confirm (default: no): ",
+    },
+    "Database deletion cancelled.": {
+        "fr": "Effacement de la base de données annulé.",
+        "en": "Database deletion cancelled.",
+    },
+    "No database selected.": {
+        "fr": "Aucune base de données sélectionnée.",
+        "en": "No database selected.",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",

@@ -54,6 +54,70 @@ class DatabaseManager:
             else:
                 print(t("cmd_not_found"))
 
+    def _confirm_drop(self, message: str) -> bool:
+        """Ask for an explicit 'oui'/'yes' confirmation, default is no."""
+        print(f"⚠️  {message}")
+        answer = (
+            input(t("Type 'oui' to confirm (default: no): ")).strip().lower()
+        )
+        return answer in ("oui", "yes")
+
+    def drop_database(self) -> None:
+        print(f"⚠️  {t('Erase a database — irreversible operation!')}")
+        choices = [
+            {
+                "prompt_description": t(
+                    "Erase ALL databases (make db_drop_all)"
+                )
+            },
+            {"prompt_description": t("Erase a single database")},
+        ]
+        help_info = self._fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                self._drop_all_databases()
+                return
+            elif status == "2":
+                self._drop_single_database()
+                return
+            else:
+                print(t("Command not found !"))
+
+    def _drop_all_databases(self) -> None:
+        if not self._confirm_drop(
+            t("You are about to erase ALL databases. This cannot be undone.")
+        ):
+            print(t("Database deletion cancelled."))
+            return
+        self._execute.exec_command_live(
+            "make db_drop_all",
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+    def _drop_single_database(self) -> None:
+        database_name = self.select_database()
+        if not database_name:
+            print(t("No database selected."))
+            return
+        message = t(
+            "You are about to erase the database '{database}'."
+            " This cannot be undone."
+        ).format(database=database_name)
+        if not self._confirm_drop(message):
+            print(t("Database deletion cancelled."))
+            return
+        self._execute.exec_command_live(
+            f"./odoo_bin.sh db --drop --database {database_name}",
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
     def restore_from_database(self, show_remote_list: bool = True) -> None:
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
