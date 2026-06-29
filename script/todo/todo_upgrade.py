@@ -2038,7 +2038,9 @@ class TodoUpgrade:
         if not has_existing_target_branch:
             cmd_git_clone = (
                 f"cd {target_addons_path} "
-                f"&& git checkout -b {branch_target} && cd ~-"
+                f"&& if git rev-parse --verify --quiet refs/heads/{branch_target}; then "
+                f"git checkout {branch_target}; else git checkout -b {branch_target}; fi "
+                f"&& cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_git_clone,
