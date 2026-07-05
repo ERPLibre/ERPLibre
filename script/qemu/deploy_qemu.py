@@ -29,11 +29,13 @@ import argparse
 import getpass
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import urllib.request
 from pathlib import Path
 
@@ -49,6 +51,7 @@ UBUNTU_VERSIONS: dict[str, tuple[str, str]] = {
     "24.10": ("oracular", "ubuntu24.10"),
     "25.04": ("plucky", "ubuntu25.04"),
     "25.10": ("questing", "ubuntu25.10"),
+    # "26.04": ("resolute", "ubuntu26.04"),
 }
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
@@ -69,7 +72,9 @@ class Runner:
         self.use_sudo = use_sudo
         self.dry_run = dry_run
 
-    def run(self, cmd: list[str], *, privileged: bool = False) -> None:
+    def run(
+        self, cmd: list[str], *, privileged: bool = False, check: bool = True
+    ) -> None:
         if privileged and self.use_sudo:
             cmd = ["sudo", *cmd]
         printable = " ".join(cmd)
@@ -77,7 +82,7 @@ class Runner:
             print(f"  [dry-run] {printable}")
             return
         print(f"  $ {printable}")
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=check)
 
 
 def need_tool(name: str) -> None:
@@ -92,7 +97,9 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
     """Télécharge l'image seulement si elle n'existe pas déjà (cache)."""
     if dest.exists() and dest.stat().st_size > 0:
         size_mb = dest.stat().st_size / 1024 / 1024
-        print(f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement ignoré : {dest}")
+        print(
+            f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement ignoré : {dest}"
+        )
         return
     if dry_run:
         print(f"  [dry-run] téléchargement {url} -> {dest}")
@@ -108,7 +115,9 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
             print(f"\r    {pct:3d}%", end="", flush=True)
 
     try:
-        urllib.request.urlretrieve(url, tmp, _progress)  # noqa: S310 (URL contrôlée)
+        urllib.request.urlretrieve(
+            url, tmp, _progress
+        )  # noqa: S310 (URL contrôlée)
     except Exception as exc:  # pragma: no cover - dépend du réseau
         tmp.unlink(missing_ok=True)
         sys.exit(f"\nÉchec du téléchargement : {exc}")
@@ -131,8 +140,11 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
         sys.exit(f"Impossible de récupérer SHA256SUMS : {exc}")
 
     expected = next(
-        (line.split()[0] for line in sums.splitlines()
-         if line.strip().endswith(filename)),
+        (
+            line.split()[0]
+            for line in sums.splitlines()
+            if line.strip().endswith(filename)
+        ),
         None,
     )
     if expected is None:
@@ -143,7 +155,9 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     if h.hexdigest() != expected:
-        sys.exit(f"SHA256 NON conforme !\n  attendu : {expected}\n  obtenu  : {h.hexdigest()}")
+        sys.exit(
+            f"SHA256 NON conforme !\n  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
+        )
     print("  SHA256 conforme.")
 
 
@@ -151,18 +165,23 @@ def hash_password(plain: str) -> str:
     """Hash SHA-512 crypt ($6$...) via crypt (< 3.13) ou openssl en repli."""
     try:
         import crypt  # supprimé en Python 3.13
+
         return crypt.crypt(plain, crypt.mksalt(crypt.METHOD_SHA512))
     except (ImportError, AttributeError):
         need_tool("openssl")
         out = subprocess.run(
             ["openssl", "passwd", "-6", "-stdin"],
-            input=plain + "\n", capture_output=True, text=True, check=True,
+            input=plain + "\n",
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return out.stdout.strip()
 
 
-def build_cloud_config(args: argparse.Namespace, pw_hash: str | None,
-                       ssh_keys: list[str]) -> str:
+def build_cloud_config(
+    args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
+) -> str:
     """Construit le contenu #cloud-config (user-data)."""
     lines: list[str] = ["#cloud-config", f"hostname: {args.hostname}"]
 
@@ -193,12 +212,15 @@ def build_cloud_config(args: argparse.Namespace, pw_hash: str | None,
 
     packages = ["qemu-guest-agent", *args.package]
     lines.append("packages:")
-    lines += [f"  - {p}" for p in dict.fromkeys(packages)]  # dédoublonne, ordre gardé
+    lines += [
+        f"  - {p}" for p in dict.fromkeys(packages)
+    ]  # dédoublonne, ordre gardé
     return "\n".join(lines) + "\n"
 
 
-def build_seed(cloud_cfg: str, hostname: str, seed_dest: Path,
-               runner: Runner) -> None:
+def build_seed(
+    cloud_cfg: str, hostname: str, seed_dest: Path, runner: Runner
+) -> None:
     """Génère le seed.iso (cidata) et le copie vers seed_dest."""
     meta_data = f"instance-id: {hostname}\nlocal-hostname: {hostname}\n"
 
@@ -219,45 +241,131 @@ def build_seed(cloud_cfg: str, hostname: str, seed_dest: Path,
             runner.run(["cloud-localds", str(local_iso), str(ud), str(md)])
         else:
             need_tool("genisoimage")
-            runner.run([
-                "genisoimage", "-output", str(local_iso),
-                "-volid", "cidata", "-joliet", "-rock", str(ud), str(md),
-            ])
+            runner.run(
+                [
+                    "genisoimage",
+                    "-output",
+                    str(local_iso),
+                    "-volid",
+                    "cidata",
+                    "-joliet",
+                    "-rock",
+                    str(ud),
+                    str(md),
+                ]
+            )
 
-        seed_dest.parent.mkdir(parents=True, exist_ok=True) if not runner.dry_run else None
+        (
+            seed_dest.parent.mkdir(parents=True, exist_ok=True)
+            if not runner.dry_run
+            else None
+        )
         runner.run(["cp", str(local_iso), str(seed_dest)], privileged=True)
 
 
-def prepare_disk(image: Path, disk: Path, size: str, runner: Runner,
-                 force: bool) -> None:
+def prepare_disk(
+    image: Path, disk: Path, size: str, runner: Runner, force: bool
+) -> None:
     """Convertit l'image cloud en qcow2 de travail puis redimensionne."""
     if disk.exists() and not force:
-        sys.exit(f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser.")
-    runner.run([
-        "qemu-img", "convert", "-f", "qcow2", "-O", "qcow2",
-        str(image), str(disk),
-    ], privileged=True)
+        sys.exit(
+            f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser."
+        )
+    runner.run(
+        [
+            "qemu-img",
+            "convert",
+            "-f",
+            "qcow2",
+            "-O",
+            "qcow2",
+            str(image),
+            str(disk),
+        ],
+        privileged=True,
+    )
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
-def virt_install(args: argparse.Namespace, disk: Path, seed: Path,
-                 osinfo: str, runner: Runner) -> None:
+def network_name(network_arg: str) -> str | None:
+    """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
+    for part in network_arg.split(","):
+        if part.strip().startswith("network="):
+            return part.split("=", 1)[1].strip()
+    return None
+
+
+def ensure_network(name: str | None, runner: Runner) -> None:
+    """Active le réseau libvirt (idempotent : tolère « déjà actif »)."""
+    if not name:
+        return
+    print(f"  Activation du réseau libvirt '{name}' (si nécessaire)")
+    runner.run(["virsh", "net-start", name], privileged=True, check=False)
+    runner.run(["virsh", "net-autostart", name], privileged=True, check=False)
+
+
+def virt_install(
+    args: argparse.Namespace,
+    disk: Path,
+    seed: Path,
+    osinfo: str,
+    runner: Runner,
+) -> None:
     cmd = [
         "virt-install",
-        "--name", args.name,
-        "--memory", str(args.memory),
-        "--vcpus", str(args.vcpus),
+        "--name",
+        args.name,
+        "--memory",
+        str(args.memory),
+        "--vcpus",
+        str(args.vcpus),
         "--import",
-        "--disk", f"path={disk},format=qcow2,bus=virtio",
-        "--disk", f"path={seed},device=cdrom",
-        "--osinfo", osinfo,
-        "--network", args.network,
-        "--graphics", args.graphics,
-        "--console", "pty,target_type=serial",
+        "--disk",
+        f"path={disk},format=qcow2,bus=virtio",
+        "--disk",
+        f"path={seed},device=cdrom",
+        "--osinfo",
+        osinfo,
+        "--network",
+        args.network,
+        "--graphics",
+        args.graphics,
+        "--console",
+        "pty,target_type=serial",
     ]
     if not args.attach_console:
         cmd.append("--noautoconsole")
     runner.run(cmd, privileged=True)
+
+
+def wait_for_ip(name: str, use_sudo: bool, timeout: int) -> str | None:
+    """Interroge les baux DHCP libvirt jusqu'à obtenir l'IPv4 de la VM."""
+    base = (["sudo"] if use_sudo else []) + [
+        "virsh",
+        "domifaddr",
+        name,
+        "--source",
+        "lease",
+    ]
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        res = subprocess.run(base, capture_output=True, text=True)
+        m = re.search(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
+        if m:
+            return m.group(1)
+        time.sleep(3)
+    return None
+
+
+def ssh_command(user: str, ip: str, has_key: bool) -> str:
+    """Commande SSH adaptée : clé -> connexion simple ; mot de passe seul ->
+    force le mot de passe pour éviter « Too many authentication failures »."""
+    if has_key:
+        return f"ssh {user}@{ip}"
+    return (
+        f"ssh -o IdentitiesOnly=yes -o PreferredAuthentications=password "
+        f"{user}@{ip}"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -272,65 +380,164 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=__doc__,
         epilog="Versions Ubuntu disponibles (--version) et URL de l'image cloud :\n"
-               + versions_help,
+        + versions_help,
     )
-    p.add_argument("image_path", type=Path,
-                   help="Chemin de cache de l'image cloud (.img). "
-                        "Si le fichier existe, il n'est PAS re-téléchargé.")
+    p.add_argument(
+        "image_path",
+        type=Path,
+        help="Chemin de cache de l'image cloud (.img). "
+        "Si le fichier existe, il n'est PAS re-téléchargé.",
+    )
 
     g_img = p.add_argument_group("Image")
-    g_img.add_argument("--version", default="24.04", choices=UBUNTU_VERSIONS,
-                       help="Version Ubuntu (défaut : 24.04). Voir la liste ci-dessous.")
-    g_img.add_argument("--codename", help="Force le nom de code (surcharge --version).")
-    g_img.add_argument("--arch", default="amd64",
-                       help="Architecture de l'image (défaut : amd64).")
-    g_img.add_argument("--verify", action="store_true",
-                       help="Vérifie l'empreinte SHA256 après téléchargement (recommandé).")
+    g_img.add_argument(
+        "--version",
+        default="24.04",
+        choices=UBUNTU_VERSIONS,
+        help="Version Ubuntu (défaut : 24.04). Voir la liste ci-dessous.",
+    )
+    g_img.add_argument(
+        "--codename", help="Force le nom de code (surcharge --version)."
+    )
+    g_img.add_argument(
+        "--arch",
+        default="amd64",
+        help="Architecture de l'image (défaut : amd64).",
+    )
+    g_img.add_argument(
+        "--verify",
+        action="store_true",
+        help="Vérifie l'empreinte SHA256 après téléchargement (recommandé).",
+    )
 
     g_vm = p.add_argument_group("VM")
     g_vm.add_argument("--name", required=True, help="Nom de la VM (virsh).")
-    g_vm.add_argument("--hostname", help="Nom d'hôte interne (défaut : --name).")
-    g_vm.add_argument("--memory", type=int, default=8192, help="RAM en Mo (défaut : 8192).")
-    g_vm.add_argument("--vcpus", type=int, default=4, help="Nombre de vCPU (défaut : 4).")
-    g_vm.add_argument("--disk-size", default="20G",
-                      help="Taille du disque virtuel, ex. 120G (défaut : 20G).")
-    g_vm.add_argument("--disk-dir", type=Path, default=Path("/var/lib/libvirt/images"),
-                      help="Répertoire du qcow2 de travail (défaut : /var/lib/libvirt/images).")
-    g_vm.add_argument("--seed-dir", type=Path,
-                      default=Path("/var/lib/libvirt/images/iso"),
-                      help="Répertoire du seed.iso (défaut : .../images/iso).")
-    g_vm.add_argument("--network", default="network=default,model=virtio",
-                      help="Argument --network de virt-install.")
-    g_vm.add_argument("--graphics", default="none", help="Argument --graphics (défaut : none).")
-    g_vm.add_argument("--osinfo", help="Force la valeur --osinfo (sinon déduite).")
-    g_vm.add_argument("--attach-console", action="store_true",
-                      help="Attache la console série (sinon --noautoconsole).")
+    g_vm.add_argument(
+        "--hostname", help="Nom d'hôte interne (défaut : --name)."
+    )
+    g_vm.add_argument(
+        "--memory", type=int, default=8192, help="RAM en Mo (défaut : 8192)."
+    )
+    g_vm.add_argument(
+        "--vcpus", type=int, default=4, help="Nombre de vCPU (défaut : 4)."
+    )
+    g_vm.add_argument(
+        "--disk-size",
+        default="20G",
+        help="Taille du disque virtuel, ex. 120G (défaut : 20G).",
+    )
+    g_vm.add_argument(
+        "--disk-dir",
+        type=Path,
+        default=Path("/var/lib/libvirt/images"),
+        help="Répertoire du qcow2 de travail (défaut : /var/lib/libvirt/images).",
+    )
+    g_vm.add_argument(
+        "--seed-dir",
+        type=Path,
+        default=Path("/var/lib/libvirt/images/iso"),
+        help="Répertoire du seed.iso (défaut : .../images/iso).",
+    )
+    g_vm.add_argument(
+        "--network",
+        default="network=default,model=virtio",
+        help="Argument --network de virt-install.",
+    )
+    g_vm.add_argument(
+        "--graphics",
+        default="none",
+        help="Argument --graphics (défaut : none).",
+    )
+    g_vm.add_argument(
+        "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
+    )
+    g_vm.add_argument(
+        "--attach-console",
+        action="store_true",
+        help="Attache la console série (sinon --noautoconsole).",
+    )
 
     g_cloud = p.add_argument_group("cloud-init")
-    g_cloud.add_argument("--user", default="erplibre", help="Utilisateur créé (défaut : erplibre).")
-    g_cloud.add_argument("--password", help="Mot de passe en clair (déconseillé : visible).")
-    g_cloud.add_argument("--ask-password", action="store_true",
-                         help="Demande le mot de passe de façon interactive (sûr).")
-    g_cloud.add_argument("--password-hash",
-                         help="Empreinte $6$... déjà calculée (openssl passwd -6).")
-    g_cloud.add_argument("--ssh-key", action="append", default=[], metavar="FICHIER",
-                         help="Fichier de clé publique SSH à injecter (répétable).")
-    g_cloud.add_argument("--locale", default="fr_CA.UTF-8", help="Locale (défaut : fr_CA.UTF-8).")
-    g_cloud.add_argument("--keyboard-layout", default="ca", help="Disposition clavier (défaut : ca).")
-    g_cloud.add_argument("--keyboard-variant", default="multix",
-                         help="Variante clavier (défaut : multix).")
-    g_cloud.add_argument("--package", action="append", default=[], metavar="PKG",
-                         help="Paquet APT additionnel (répétable).")
-    g_cloud.add_argument("--no-upgrade", action="store_true",
-                         help="N'exécute pas package_upgrade au premier boot.")
+    g_cloud.add_argument(
+        "--user",
+        default="erplibre",
+        help="Utilisateur créé (défaut : erplibre).",
+    )
+    g_cloud.add_argument(
+        "--password", help="Mot de passe en clair (déconseillé : visible)."
+    )
+    g_cloud.add_argument(
+        "--ask-password",
+        action="store_true",
+        help="Demande le mot de passe de façon interactive (sûr).",
+    )
+    g_cloud.add_argument(
+        "--password-hash",
+        help="Empreinte $6$... déjà calculée (openssl passwd -6).",
+    )
+    g_cloud.add_argument(
+        "--ssh-key",
+        action="append",
+        default=[],
+        metavar="FICHIER",
+        help="Fichier de clé publique SSH à injecter (répétable).",
+    )
+    g_cloud.add_argument(
+        "--locale",
+        default="fr_CA.UTF-8",
+        help="Locale (défaut : fr_CA.UTF-8).",
+    )
+    g_cloud.add_argument(
+        "--keyboard-layout",
+        default="ca",
+        help="Disposition clavier (défaut : ca).",
+    )
+    g_cloud.add_argument(
+        "--keyboard-variant",
+        default="multix",
+        help="Variante clavier (défaut : multix).",
+    )
+    g_cloud.add_argument(
+        "--package",
+        action="append",
+        default=[],
+        metavar="PKG",
+        help="Paquet APT additionnel (répétable).",
+    )
+    g_cloud.add_argument(
+        "--no-upgrade",
+        action="store_true",
+        help="N'exécute pas package_upgrade au premier boot.",
+    )
 
     g_run = p.add_argument_group("Exécution")
-    g_run.add_argument("--no-sudo", action="store_true",
-                       help="N'utilise pas sudo pour les étapes privilégiées.")
-    g_run.add_argument("--force", action="store_true",
-                       help="Écrase le qcow2 de travail existant.")
-    g_run.add_argument("--dry-run", action="store_true",
-                       help="Affiche les commandes et le user-data sans rien exécuter.")
+    g_run.add_argument(
+        "--no-sudo",
+        action="store_true",
+        help="N'utilise pas sudo pour les étapes privilégiées.",
+    )
+    g_run.add_argument(
+        "--force",
+        action="store_true",
+        help="Écrase le qcow2 de travail existant.",
+    )
+    g_run.add_argument(
+        "--no-wait-ip",
+        action="store_true",
+        help="N'attend pas l'attribution de l'IP à la fin.",
+    )
+    g_run.add_argument(
+        "--ip-timeout",
+        type=int,
+        default=90,
+        metavar="SEC",
+        help="Délai max d'attente de l'IP DHCP (défaut : 90 s).",
+    )
+    g_run.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Affiche les commandes et le user-data sans rien exécuter.",
+    )
     return p
 
 
@@ -370,12 +577,15 @@ def main() -> None:
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
     if not pw_hash and not ssh_keys:
-        print("ATTENTION : ni mot de passe ni clé SSH -> connexion impossible à la VM.\n"
-              "            Ajoutez --ssh-key, --ask-password ou --password-hash.\n",
-              file=sys.stderr)
+        print(
+            "ATTENTION : ni mot de passe ni clé SSH -> connexion impossible à la VM.\n"
+            "            Ajoutez --ssh-key, --ask-password ou --password-hash.\n",
+            file=sys.stderr,
+        )
 
-    runner = Runner(use_sudo=not args.no_sudo and os.geteuid() != 0,
-                    dry_run=args.dry_run)
+    runner = Runner(
+        use_sudo=not args.no_sudo and os.geteuid() != 0, dry_run=args.dry_run
+    )
     disk = args.disk_dir / f"{args.name}.qcow2"
     seed = args.seed_dir / f"{args.name}-seed.iso"
 
@@ -396,11 +606,33 @@ def main() -> None:
     build_seed(cloud_cfg, args.hostname, seed, runner)
 
     print(f"\n== 5/5 virt-install (--osinfo {osinfo}) ==")
+    ensure_network(network_name(args.network), runner)
     virt_install(args, disk, seed, osinfo, runner)
 
-    print(f"\nTerminé. Suivi/connexion :\n"
-          f"  virsh list --all\n"
-          f"  virsh console {args.name}   # Ctrl+] pour quitter")
+    has_key = bool(ssh_keys)
+    print("\nTerminé. Suivi :")
+    print("  virsh list --all")
+    print(f"  virsh console {args.name}   # Ctrl+] pour quitter")
+
+    if args.dry_run:
+        print("\n  Connexion SSH (IP attribuée au 1er boot) :")
+        print(f"    {ssh_command(args.user, '<IP>', has_key)}")
+        return
+    if args.no_wait_ip:
+        print(
+            f"\n  Récupérer l'IP : virsh domifaddr {args.name} --source lease"
+        )
+        return
+
+    print(f"\n  Attente de l'IP (bail DHCP, max {args.ip_timeout} s)…")
+    ip = wait_for_ip(args.name, runner.use_sudo, args.ip_timeout)
+    if ip:
+        print(f"  IP : {ip}")
+        print("  Connexion SSH :")
+        print(f"    {ssh_command(args.user, ip, has_key)}")
+    else:
+        print("  IP non obtenue dans le délai (cloud-init encore en cours ?).")
+        print(f"  Réessayez : virsh domifaddr {args.name} --source lease")
 
 
 if __name__ == "__main__":
