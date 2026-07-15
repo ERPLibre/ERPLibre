@@ -984,6 +984,99 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
+    # QEMU / KVM (libvirt) VM deployment
+    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
+        "fr": "QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
+        "en": "QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
+    },
+    "Deploy a QEMU/KVM virtual machine (libvirt)!": {
+        "fr": "Déployer une machine virtuelle QEMU/KVM (libvirt) !",
+        "en": "Deploy a QEMU/KVM virtual machine (libvirt)!",
+    },
+    "QEMU deploy script not found: ": {
+        "fr": "Script de déploiement QEMU introuvable : ",
+        "en": "QEMU deploy script not found: ",
+    },
+    "Deploy a new Ubuntu VM": {
+        "fr": "Déployer une nouvelle VM Ubuntu",
+        "en": "Deploy a new Ubuntu VM",
+    },
+    "Preview a deployment (dry-run, no sudo)": {
+        "fr": "Prévisualiser un déploiement (dry-run, sans sudo)",
+        "en": "Preview a deployment (dry-run, no sudo)",
+    },
+    "Download an Ubuntu cloud image only": {
+        "fr": "Télécharger seulement une image cloud Ubuntu",
+        "en": "Download an Ubuntu cloud image only",
+    },
+    "List VMs (virsh list --all)": {
+        "fr": "Lister les VM (virsh list --all)",
+        "en": "List VMs (virsh list --all)",
+    },
+    "Show a VM IP address": {
+        "fr": "Afficher l'adresse IP d'une VM",
+        "en": "Show a VM IP address",
+    },
+    "Ubuntu version:": {
+        "fr": "Version Ubuntu :",
+        "en": "Ubuntu version:",
+    },
+    "Choice (number or version, default: 24.04): ": {
+        "fr": "Choix (numéro ou version, défaut : 24.04) : ",
+        "en": "Choice (number or version, default: 24.04): ",
+    },
+    "Invalid selection, using 24.04": {
+        "fr": "Sélection invalide, utilisation de 24.04",
+        "en": "Invalid selection, using 24.04",
+    },
+    "VM name (required): ": {
+        "fr": "Nom de la VM (requis) : ",
+        "en": "VM name (required): ",
+    },
+    "VM name is required!": {
+        "fr": "Le nom de la VM est requis !",
+        "en": "VM name is required!",
+    },
+    "VM name: ": {
+        "fr": "Nom de la VM : ",
+        "en": "VM name: ",
+    },
+    "RAM in MB (default: 8192): ": {
+        "fr": "RAM en Mo (défaut : 8192) : ",
+        "en": "RAM in MB (default: 8192): ",
+    },
+    "vCPUs (default: 4): ": {
+        "fr": "vCPU (défaut : 4) : ",
+        "en": "vCPUs (default: 4): ",
+    },
+    "Disk size (default: 20G): ": {
+        "fr": "Taille du disque (défaut : 20G) : ",
+        "en": "Disk size (default: 20G): ",
+    },
+    "SSH public key path": {
+        "fr": "Chemin de la clé publique SSH",
+        "en": "SSH public key path",
+    },
+    "none": {
+        "fr": "aucune",
+        "en": "none",
+    },
+    "No SSH key found. Set a password instead? (Y/n): ": {
+        "fr": "Aucune clé SSH trouvée. Définir un mot de passe ? (O/n) : ",
+        "en": "No SSH key found. Set a password instead? (Y/n): ",
+    },
+    "Overwrite existing VM disk if present? (y/N): ": {
+        "fr": "Écraser le disque de la VM s'il existe ? (o/N) : ",
+        "en": "Overwrite existing VM disk if present? (y/N): ",
+    },
+    "Verify SHA256 after download? (y/N): ": {
+        "fr": "Vérifier le SHA256 après téléchargement ? (o/N) : ",
+        "en": "Verify SHA256 after download? (y/N): ",
+    },
+    "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
+        "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
+        "en": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
+    },
 }
 
 

@@ -8,6 +8,7 @@ import getpass
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -667,6 +668,11 @@ class TODO:
                     "Deploy - Install NTFY notification server"
                 )
             },
+            {
+                "prompt_description": t(
+                    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -703,8 +709,199 @@ class TODO:
                 self._deploy_ssh_install_nginx()
             elif status == "14":
                 self._deploy_ntfy_server()
+            elif status == "15":
+                self.prompt_execute_qemu()
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------ #
+    # QEMU / KVM (libvirt) VM deployment
+    # ------------------------------------------------------------------ #
+    def _qemu_script_path(self):
+        """Chemin absolu vers script/qemu/deploy_qemu.py."""
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "qemu",
+            "deploy_qemu.py",
+        )
+        return os.path.realpath(path)
+
+    def _qemu_default_ssh_key(self):
+        """Première clé publique SSH trouvée dans ~/.ssh, sinon ''."""
+        for name in ("id_ed25519.pub", "id_rsa.pub"):
+            path = os.path.expanduser(f"~/.ssh/{name}")
+            if os.path.exists(path):
+                return path
+        return ""
+
+    def _qemu_prompt_version(self):
+        """Demande la version Ubuntu ; retourne une chaîne (défaut 24.04)."""
+        versions = ["20.04", "22.04", "24.04", "24.10", "25.04", "25.10"]
+        print(f"\n{t('Ubuntu version:')}")
+        for i, v in enumerate(versions, 1):
+            suffix = " (LTS)" if v in ("20.04", "22.04", "24.04") else ""
+            print(f"  [{i}] {v}{suffix}")
+        sel = input(t("Choice (number or version, default: 24.04): ")).strip()
+        if not sel:
+            return "24.04"
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(versions):
+                return versions[idx]
+        except ValueError:
+            if sel in versions:
+                return sel
+        print(t("Invalid selection, using 24.04"))
+        return "24.04"
+
+    def prompt_execute_qemu(self):
+        print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
+        script_path = self._qemu_script_path()
+        if not os.path.isfile(script_path):
+            print(f"{t('QEMU deploy script not found: ')}{script_path}")
+            return False
+        choices = [
+            {"prompt_description": t("Deploy a new Ubuntu VM")},
+            {
+                "prompt_description": t(
+                    "Preview a deployment (dry-run, no sudo)"
+                )
+            },
+            {"prompt_description": t("Download an Ubuntu cloud image only")},
+            {"prompt_description": t("List VMs (virsh list --all)")},
+            {"prompt_description": t("Show a VM IP address")},
+        ]
+        config_entries = self.config_file.get_config("qemu_from_makefile")
+        if config_entries:
+            choices.extend(config_entries)
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._qemu_deploy_vm(dry_run=False)
+            elif status == "2":
+                self._qemu_deploy_vm(dry_run=True)
+            elif status == "3":
+                self._qemu_download_image()
+            elif status == "4":
+                self._qemu_list_vms()
+            elif status == "5":
+                self._qemu_show_ip()
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(choices):
+                        cmd_no_found = False
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print(t("Command not found !"))
+
+    def _qemu_deploy_vm(self, dry_run=False):
+        script_path = self._qemu_script_path()
+        name = input(t("VM name (required): ")).strip()
+        if not name:
+            print(t("VM name is required!"))
+            return
+        version = self._qemu_prompt_version()
+        memory = input(t("RAM in MB (default: 8192): ")).strip() or "8192"
+        vcpus = input(t("vCPUs (default: 4): ")).strip() or "4"
+        disk_size = input(t("Disk size (default: 20G): ")).strip() or "20G"
+
+        default_key = self._qemu_default_ssh_key()
+        key_hint = default_key or t("none")
+        ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
+        if not ssh_key:
+            ssh_key = default_key
+        if ssh_key:
+            # Résout ~ avec le HOME de l'utilisateur courant : le script tourne
+            # sous sudo (HOME=/root) et ne pourrait pas déduire ~ correctement.
+            ssh_key = os.path.expanduser(ssh_key)
+
+        use_password = False
+        if not ssh_key:
+            ans = (
+                input(t("No SSH key found. Set a password instead? (Y/n): "))
+                .strip()
+                .lower()
+            )
+            use_password = ans != "n"
+
+        force = False
+        if not dry_run:
+            ans = (
+                input(t("Overwrite existing VM disk if present? (y/N): "))
+                .strip()
+                .lower()
+            )
+            force = ans == "y"
+
+        parts = []
+        if not dry_run:
+            parts.append("sudo")
+        parts.append(script_path)
+        parts += ["--name", name, "--version", version]
+        parts += [
+            "--memory",
+            memory,
+            "--vcpus",
+            vcpus,
+            "--disk-size",
+            disk_size,
+        ]
+        if ssh_key:
+            parts += ["--ssh-key", ssh_key]
+        if use_password:
+            parts.append("--ask-password")
+        if force:
+            parts.append("--force")
+        if dry_run:
+            parts.append("--dry-run")
+        else:
+            parts.append("-y")  # accepte l'installation des dépendances
+
+        cmd = " ".join(shlex.quote(p) for p in parts)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_download_image(self):
+        script_path = self._qemu_script_path()
+        version = self._qemu_prompt_version()
+        ans = input(t("Verify SHA256 after download? (y/N): ")).strip().lower()
+        parts = [
+            "sudo",
+            script_path,
+            "--download-only",
+            "--version",
+            version,
+        ]
+        if ans == "y":
+            parts.append("--verify")
+        cmd = " ".join(shlex.quote(p) for p in parts)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_list_vms(self):
+        cmd = "sudo virsh list --all"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_show_ip(self):
+        name = input(t("VM name: ")).strip()
+        if not name:
+            print(t("VM name is required!"))
+            return
+        cmd = f"sudo virsh domifaddr {shlex.quote(name)} --source lease"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _deploy_clone_erplibre(self):
         default_path = os.path.expanduser("~/erplibre")
@@ -733,9 +930,7 @@ class TODO:
         print(
             f"\n{t('Deploy a local NTFY push notification server (Ubuntu/Arch)')}"
         )
-        port = (
-            input(t("NTFY server port (default: 8080): ")).strip() or "8080"
-        )
+        port = input(t("NTFY server port (default: 8080): ")).strip() or "8080"
         import socket
 
         hostname = socket.gethostname()
@@ -746,9 +941,7 @@ class TODO:
 
         default_url = f"http://{local_ip}:{port}"
         base_url = (
-            input(
-                f"{t('NTFY base URL')} (default: {default_url}): "
-            ).strip()
+            input(f"{t('NTFY base URL')} (default: {default_url}): ").strip()
             or default_url
         )
 
@@ -883,7 +1076,9 @@ class TODO:
 
     def _get_ssh_params(self):
         """Prompt for SSH connection parameters. Returns dict or None on cancel."""
-        host = click.prompt(t("Remote host (user@hostname or hostname): ")).strip()
+        host = click.prompt(
+            t("Remote host (user@hostname or hostname): ")
+        ).strip()
         if not host:
             print(t("SSH host is required!"))
             return None
@@ -892,13 +1087,13 @@ class TODO:
             or "erplibre"
         )
         port = click.prompt(t("SSH port (default: 22): ")).strip() or "22"
-        key = (
-            click.prompt(
-                t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
-            ).strip()
-        )
+        key = click.prompt(
+            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
+        ).strip()
         path = (
-            click.prompt(t("Remote path (default: ~/erplibre_deploy_2): ")).strip()
+            click.prompt(
+                t("Remote path (default: ~/erplibre_deploy_2): ")
+            ).strip()
             or "~/erplibre_deploy_2"
         )
         return {
