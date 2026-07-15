@@ -10,7 +10,16 @@ Reprend le workflow des notes :
 
 Exemples
 --------
-    # Déploiement minimal (clé SSH, aucun mot de passe)
+    # Le plus simple : image téléchargée automatiquement (chemin déduit de
+    # --version, mis en cache dans /var/lib/libvirt/images/iso) et outils
+    # manquants installés après confirmation.
+    sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
+        --ssh-key ~/.ssh/id_ed25519.pub
+
+    # Télécharger (et vérifier) une image, sans créer de VM
+    sudo ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
+
+    # Déploiement minimal en fournissant explicitement le chemin d'image
     sudo ./qemu-deploy.py /var/lib/libvirt/images/iso/noble.img \\
         --name test-vm --ssh-key ~/.ssh/id_ed25519.pub
 
@@ -56,10 +65,20 @@ UBUNTU_VERSIONS: dict[str, tuple[str, str]] = {
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
 
+# Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
+# --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
+# façon sous sudo (virt-install). Surchargez avec --image-dir au besoin.
+DEFAULT_IMAGE_DIR = Path("/var/lib/libvirt/images/iso")
+
 
 def image_url(codename: str, arch: str) -> str:
     """URL de l'image cloud « current » pour un nom de code + architecture."""
     return f"{CLOUD_IMG_BASE}/{codename}/current/{codename}-server-cloudimg-{arch}.img"
+
+
+def default_image_name(codename: str, arch: str) -> str:
+    """Nom de fichier local dérivé du nom de code + architecture."""
+    return f"{codename}-server-cloudimg-{arch}.img"
 
 
 # --------------------------------------------------------------------------- #
@@ -82,12 +101,291 @@ class Runner:
             print(f"  [dry-run] {printable}")
             return
         print(f"  $ {printable}")
-        subprocess.run(cmd, check=check)
+        try:
+            subprocess.run(cmd, check=check)
+        except subprocess.CalledProcessError as exc:
+            # Sortie propre plutôt qu'une trace Python illisible.
+            sys.exit(
+                f"\nÉchec de la commande (code {exc.returncode}) :\n"
+                f"  {printable}"
+            )
 
 
 def need_tool(name: str) -> None:
     if shutil.which(name) is None:
         sys.exit(f"Erreur : outil requis introuvable dans le PATH : {name!r}")
+
+
+# --------------------------------------------------------------------------- #
+# Détection et installation des dépendances système
+# --------------------------------------------------------------------------- #
+# Outils indispensables au déploiement complet (le mode --download-only n'en
+# requiert aucun).
+REQUIRED_TOOLS: tuple[str, ...] = ("qemu-img", "virt-install", "virsh")
+# Pour construire le seed cloud-init il faut AU MOINS un de ces outils.
+SEED_TOOLS: tuple[str, ...] = ("cloud-localds", "genisoimage")
+
+# outil -> nom de paquet, selon le gestionnaire de paquets détecté.
+TOOL_PACKAGES: dict[str, dict[str, str]] = {
+    "apt": {
+        "qemu-img": "qemu-utils",
+        "virt-install": "virtinst",
+        "virsh": "libvirt-clients",
+        "cloud-localds": "cloud-image-utils",
+        "genisoimage": "genisoimage",
+        "openssl": "openssl",
+    },
+    "dnf": {
+        "qemu-img": "qemu-img",
+        "virt-install": "virt-install",
+        "virsh": "libvirt-client",
+        "cloud-localds": "cloud-utils",
+        "genisoimage": "genisoimage",
+        "openssl": "openssl",
+    },
+    "pacman": {
+        "qemu-img": "qemu-img",
+        "virt-install": "virt-install",
+        "virsh": "libvirt",
+        "cloud-localds": "cloud-image-utils",
+        "genisoimage": "cdrtools",
+        "openssl": "openssl",
+    },
+    "zypper": {
+        "qemu-img": "qemu-tools",
+        "virt-install": "virt-install",
+        "virsh": "libvirt-client",
+        "cloud-localds": "cloud-utils-cloud-localds",
+        "genisoimage": "genisoimage",
+        "openssl": "openssl",
+    },
+    "brew": {
+        "qemu-img": "qemu",
+        "virt-install": "virt-manager",
+        "virsh": "libvirt",
+        "cloud-localds": "cdrtools",
+        "genisoimage": "cdrtools",
+        "openssl": "openssl",
+    },
+}
+
+# Paquets fournissant le démon libvirt + l'émulateur QEMU système. Ils sont
+# INDISPENSABLES pour exécuter la VM : virsh/virt-install (clients) seuls ne
+# créent pas le socket /var/run/libvirt/libvirt-sock.
+DAEMON_PACKAGES: dict[str, list[str]] = {
+    "apt": ["libvirt-daemon-system", "qemu-system-x86"],
+    "dnf": ["libvirt-daemon-kvm", "qemu-kvm"],
+    "pacman": ["libvirt", "qemu-desktop", "dnsmasq"],
+    "zypper": ["libvirt-daemon", "libvirt-daemon-qemu", "qemu-kvm"],
+    "brew": [],
+}
+
+# Gestionnaires de paquets, dans l'ordre de préférence :
+# (clé TOOL_PACKAGES, binaire à détecter, commande d'installation, sudo, refresh)
+PKG_MANAGERS: tuple[
+    tuple[str, str, list[str], bool, list[str] | None], ...
+] = (
+    (
+        "apt",
+        "apt-get",
+        ["apt-get", "install", "-y"],
+        True,
+        ["apt-get", "update"],
+    ),
+    ("dnf", "dnf", ["dnf", "install", "-y"], True, None),
+    (
+        "pacman",
+        "pacman",
+        ["pacman", "-S", "--needed", "--noconfirm"],
+        True,
+        None,
+    ),
+    (
+        "zypper",
+        "zypper",
+        ["zypper", "--non-interactive", "install"],
+        True,
+        None,
+    ),
+    ("brew", "brew", ["brew", "install"], False, None),
+)
+
+
+def detect_pkg_manager() -> (
+    tuple[str, list[str], bool, list[str] | None] | None
+):
+    """Retourne (clé, cmd d'install, use_sudo, cmd de refresh) ou None."""
+    for key, binary, install_cmd, use_sudo, refresh in PKG_MANAGERS:
+        if shutil.which(binary):
+            return key, install_cmd, use_sudo, refresh
+    return None
+
+
+def missing_tools() -> list[str]:
+    """Binaires requis absents du PATH (dont un outil de seed si aucun présent)."""
+    missing = [t for t in REQUIRED_TOOLS if shutil.which(t) is None]
+    if not any(shutil.which(t) for t in SEED_TOOLS):
+        missing.append(SEED_TOOLS[0])  # on installera cloud-localds
+    return missing
+
+
+def prompt_yes_no(question: str, default: bool = True) -> bool:
+    """Question oui/non. Lit /dev/tty pour rester visible même si stdout est
+    redirigé (cas d'un lancement depuis le menu todo)."""
+    suffix = " [O/n] " if default else " [o/N] "
+    prompt = question + suffix
+    try:
+        with open("/dev/tty", "r+") as tty:
+            tty.write(prompt)
+            tty.flush()
+            ans = tty.readline().strip().lower()
+    except OSError:
+        try:
+            ans = input(prompt).strip().lower()
+        except EOFError:
+            return default
+    if not ans:
+        return default
+    return ans in ("o", "oui", "y", "yes")
+
+
+def daemon_missing() -> bool:
+    """Vrai si le démon libvirt OU l'émulateur QEMU système est absent."""
+    libvirtd = shutil.which("libvirtd") or any(
+        os.path.exists(p) for p in ("/usr/sbin/libvirtd", "/usr/bin/libvirtd")
+    )
+    emulator = (
+        shutil.which("qemu-system-x86_64")
+        or shutil.which("qemu-system-x86")
+        or shutil.which("kvm")
+    )
+    return not (libvirtd and emulator)
+
+
+def libvirt_ready(use_sudo: bool) -> bool:
+    """Vrai si l'hyperviseur qemu:///system répond (démon libvirt démarré)."""
+    if shutil.which("virsh") is None:
+        return False
+    cmd = (["sudo"] if use_sudo else []) + [
+        "virsh",
+        "-c",
+        "qemu:///system",
+        "version",
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def ensure_libvirt_service(runner: Runner) -> None:
+    """S'assure que le démon libvirt tourne ; sinon le démarre puis vérifie."""
+    if libvirt_ready(runner.use_sudo):
+        return
+    if shutil.which("systemctl"):
+        print(
+            "  Démarrage du démon libvirt"
+            " (systemctl enable --now libvirtd)…"
+        )
+        runner.run(
+            ["systemctl", "enable", "--now", "libvirtd"],
+            privileged=True,
+            check=False,
+        )
+        runner.run(
+            ["systemctl", "start", "libvirtd.socket"],
+            privileged=True,
+            check=False,
+        )
+    # Le socket peut mettre un instant à apparaître.
+    for _ in range(10):
+        if libvirt_ready(runner.use_sudo):
+            return
+        time.sleep(1)
+    sys.exit(
+        "Erreur : impossible de se connecter à l'hyperviseur libvirt"
+        " (/var/run/libvirt/libvirt-sock).\n"
+        "  Le démon libvirtd n'est pas démarré. Essayez :\n"
+        "    sudo systemctl enable --now libvirtd\n"
+        "  puis vérifiez : sudo virsh -c qemu:///system version"
+    )
+
+
+def ensure_tools(runner: Runner, assume_yes: bool, no_install: bool) -> None:
+    """Vérifie outils, démon libvirt et émulateur ; installe/démarre ce qui
+    manque, puis vérifie la connexion à l'hyperviseur."""
+    missing = missing_tools()
+    need_daemon = daemon_missing()
+
+    # Tout est là et l'hyperviseur répond : rien à faire.
+    if not missing and not need_daemon and libvirt_ready(runner.use_sudo):
+        return
+
+    pm = detect_pkg_manager()
+    if pm is None:
+        sys.exit(
+            "  Gestionnaire de paquets non reconnu "
+            "(apt/dnf/pacman/zypper/brew).\n"
+            "  Installez manuellement : " + ", ".join(missing)
+        )
+    pm_key, install_cmd, use_sudo, refresh = pm
+
+    pkg_map = TOOL_PACKAGES[pm_key]
+    packages = [pkg_map.get(t, t) for t in missing]
+    if need_daemon:
+        packages += DAEMON_PACKAGES.get(pm_key, [])
+    packages = list(dict.fromkeys(packages))  # dédoublonne, ordre gardé
+
+    if packages:
+        label = list(missing)
+        if need_daemon:
+            label.append("démon libvirt / émulateur QEMU")
+        print("  Composants manquants : " + ", ".join(label))
+
+        if no_install:
+            sys.exit(
+                "  Installation automatique désactivée (--no-install-deps).\n"
+                "  Installez manuellement : " + " ".join(packages)
+            )
+
+        full_cmd = install_cmd + packages
+        printable = " ".join(full_cmd)
+        if use_sudo and runner.use_sudo:
+            printable = "sudo " + printable
+
+        print(f"  Gestionnaire détecté : {pm_key}")
+        print(f"  Commande d'installation : {printable}")
+
+        if not assume_yes and not prompt_yes_no(
+            "  Installer ces dépendances maintenant ?"
+        ):
+            sys.exit(
+                "  Installation refusée.\n  Commande manuelle : " + printable
+            )
+
+        if refresh:
+            runner.run(refresh, privileged=use_sudo, check=False)
+        runner.run(full_cmd, privileged=use_sudo)
+
+        still = missing_tools()
+        # Repli : si seul l'outil de seed manque encore (le nom du paquet
+        # cloud-localds varie selon la distro), tente genisoimage.
+        if still == [SEED_TOOLS[0]]:
+            alt = pkg_map.get("genisoimage", "genisoimage")
+            print(f"  Repli sur {alt} (autre outil de seed cloud-init)…")
+            runner.run(install_cmd + [alt], privileged=use_sudo, check=False)
+            still = missing_tools()
+        if still:
+            sys.exit(
+                "  Outils toujours absents après installation : "
+                + ", ".join(still)
+                + f"\n  Essayez manuellement : {printable}"
+            )
+        print("  Dépendances installées avec succès.")
+
+    # Démarre le démon (si nécessaire) et vérifie l'accès à l'hyperviseur.
+    ensure_libvirt_service(runner)
 
 
 # --------------------------------------------------------------------------- #
@@ -105,7 +403,14 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
         print(f"  [dry-run] téléchargement {url} -> {dest}")
         return
 
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        sys.exit(
+            f"\nPermission refusée pour écrire dans {dest.parent}.\n"
+            "  Relancez avec sudo, ou choisissez --image-dir vers un dossier"
+            " accessible en écriture."
+        )
     print(f"  Téléchargement {url}")
     tmp = dest.with_suffix(dest.suffix + ".part")
 
@@ -155,8 +460,12 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     if h.hexdigest() != expected:
+        image.unlink(
+            missing_ok=True
+        )  # évite la réutilisation du cache corrompu
         sys.exit(
-            f"SHA256 NON conforme !\n  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
+            f"SHA256 NON conforme ! Image supprimée : {image}\n"
+            f"  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
         )
     print("  SHA256 conforme.")
 
@@ -385,7 +694,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "image_path",
         type=Path,
-        help="Chemin de cache de l'image cloud (.img). "
+        nargs="?",
+        default=None,
+        help="Chemin de cache de l'image cloud (.img). Optionnel : si absent, "
+        "il est déduit de --version/--codename + --arch dans --image-dir. "
         "Si le fichier existe, il n'est PAS re-téléchargé.",
     )
 
@@ -405,13 +717,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Architecture de l'image (défaut : amd64).",
     )
     g_img.add_argument(
+        "--image-dir",
+        type=Path,
+        default=DEFAULT_IMAGE_DIR,
+        help="Répertoire de cache des images cloud quand image_path est "
+        f"omis (défaut : {DEFAULT_IMAGE_DIR}).",
+    )
+    g_img.add_argument(
         "--verify",
         action="store_true",
         help="Vérifie l'empreinte SHA256 après téléchargement (recommandé).",
     )
 
     g_vm = p.add_argument_group("VM")
-    g_vm.add_argument("--name", required=True, help="Nom de la VM (virsh).")
+    g_vm.add_argument(
+        "--name",
+        help="Nom de la VM (virsh). Requis pour déployer ; inutile avec "
+        "--download-only.",
+    )
     g_vm.add_argument(
         "--hostname", help="Nom d'hôte interne (défaut : --name)."
     )
@@ -538,6 +861,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Affiche les commandes et le user-data sans rien exécuter.",
     )
+    g_run.add_argument(
+        "--download-only",
+        action="store_true",
+        help="Télécharge (et vérifie si --verify) l'image cloud puis quitte, "
+        "sans créer de VM. --name n'est pas requis.",
+    )
+    g_run.add_argument(
+        "-y",
+        "--assume-yes",
+        action="store_true",
+        help="Accepte automatiquement l'installation des dépendances manquantes.",
+    )
+    g_run.add_argument(
+        "--no-install-deps",
+        action="store_true",
+        help="N'installe jamais les dépendances manquantes (échoue si absentes).",
+    )
     return p
 
 
@@ -566,13 +906,42 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
 
 def main() -> None:
     args = build_parser().parse_args()
-    args.hostname = args.hostname or args.name
 
     codename, default_osinfo = UBUNTU_VERSIONS[args.version]
     if args.codename:
         codename = args.codename
     osinfo = args.osinfo or default_osinfo
     url = image_url(codename, args.arch)
+
+    # Chemin de l'image : déduit automatiquement si non fourni.
+    if args.image_path is None:
+        args.image_path = args.image_dir / default_image_name(
+            codename, args.arch
+        )
+
+    runner = Runner(
+        use_sudo=not args.no_sudo and os.geteuid() != 0, dry_run=args.dry_run
+    )
+
+    # -- Mode téléchargement seul : aucun outil ni VM requis. --------------
+    if args.download_only:
+        print(
+            f"\n== Téléchargement image cloud ({args.version} / {codename}) =="
+        )
+        print(f"  Destination : {args.image_path}")
+        download_image(url, args.image_path, args.dry_run)
+        if args.verify:
+            verify_sha256(url, args.image_path, args.dry_run)
+        print("\nTerminé (téléchargement seul).")
+        return
+
+    # -- Déploiement complet -----------------------------------------------
+    if not args.name:
+        sys.exit(
+            "Erreur : --name est requis pour déployer une VM "
+            "(ou utilisez --download-only)."
+        )
+    args.hostname = args.hostname or args.name
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
@@ -583,15 +952,11 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    runner = Runner(
-        use_sudo=not args.no_sudo and os.geteuid() != 0, dry_run=args.dry_run
-    )
     disk = args.disk_dir / f"{args.name}.qcow2"
     seed = args.seed_dir / f"{args.name}-seed.iso"
 
     if not args.dry_run:
-        for tool in ("qemu-img", "virt-install"):
-            need_tool(tool)
+        ensure_tools(runner, args.assume_yes, args.no_install_deps)
 
     print(f"\n== 1/5 Image cloud ({args.version} / {codename}) ==")
     download_image(url, args.image_path, args.dry_run)
