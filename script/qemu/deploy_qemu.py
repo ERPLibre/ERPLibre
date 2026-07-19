@@ -56,7 +56,9 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -67,12 +69,13 @@ from pathlib import Path
 # DÉFAUT — la VM démarre au plus juste sans gaspiller la RAM de l'hôte.
 # --codename / --osinfo / --memory / --disk-size surchargent au besoin.
 # --------------------------------------------------------------------------- #
+# NB : les versions intermédiaires (non-LTS) sont RETIRÉES du miroir
+# cloud-images une fois EOL (leur /current/ renvoie 404). On ne garde donc
+# que les LTS + les intermédiaires encore publiées. À réviser au fil du temps.
 UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "20.04": ("focal", "ubuntu20.04", 2048, "5G"),
     "22.04": ("jammy", "ubuntu22.04", 2048, "10G"),
     "24.04": ("noble", "ubuntu24.04", 3072, "20G"),
-    "24.10": ("oracular", "ubuntu24.10", 3072, "20G"),
-    "25.04": ("plucky", "ubuntu25.04", 3072, "20G"),
     "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
 }
@@ -142,9 +145,12 @@ def image_candidates(
     pour Debian ; une seule URL pour Ubuntu/Fedora."""
     a = distro_arch(distro, arch)
     if distro == "ubuntu":
+        # /releases/<version>/release/ : présent pour toutes les versions
+        # publiées (redirige vers l'image datée), contrairement à /current/
+        # qui disparaît quand une version intermédiaire devient EOL.
         return [
-            f"{CLOUD_IMG_BASE}/{code}/current/"
-            f"{code}-server-cloudimg-{a}.img"
+            f"{CLOUD_IMG_BASE}/releases/{version}/release/"
+            f"ubuntu-{version}-server-cloudimg-{a}.img"
         ]
     if distro == "debian":
         return [
@@ -184,7 +190,7 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
     """Nom de fichier local pour le cache d'image."""
     a = distro_arch(distro, arch)
     if distro == "ubuntu":
-        return f"{code}-server-cloudimg-{a}.img"
+        return f"ubuntu-{version}-server-cloudimg-{a}.img"
     if distro == "debian":
         return f"debian-{version}-genericcloud-{a}.qcow2"
     return f"fedora-cloud-{version}-{a}.qcow2"
@@ -628,6 +634,7 @@ def download_image(
         )
     tmp = dest.with_suffix(dest.suffix + ".part")
     errors = []
+    had_404 = False
     for i, url in enumerate(urls, 1):
         tag = "" if len(urls) == 1 else f" (miroir {i}/{len(urls)})"
         print(f"  Téléchargement{tag} : {url}", flush=True)
@@ -635,15 +642,27 @@ def download_image(
             _download_one(url, tmp, timeout)
             tmp.replace(dest)
             return
-        except Exception as exc:  # réseau/timeout : on tente le miroir suivant
+        except urllib.error.HTTPError as exc:  # image absente sur ce miroir
+            tmp.unlink(missing_ok=True)
+            had_404 = had_404 or exc.code == 404
+            print(f"\n  Échec : HTTP {exc.code}", flush=True)
+            errors.append(f"{url} -> HTTP {exc.code}")
+        except Exception as exc:  # réseau/timeout : miroir suivant
             tmp.unlink(missing_ok=True)
             print(f"\n  Échec : {exc}", flush=True)
             errors.append(f"{url} -> {exc}")
+    hint = (
+        "\n  Image introuvable (404) : cette version est probablement EOL et"
+        " a été retirée du miroir. Choisissez une version LTS encore"
+        " supportée (voir --list-images)."
+        if had_404
+        else "\n  Vérifiez la connectivité (IPv6 ?), réessayez plus tard, ou"
+        " fournissez un chemin d'image local en argument positionnel."
+    )
     sys.exit(
         "\nÉchec du téléchargement depuis tous les miroirs :\n  "
         + "\n  ".join(errors)
-        + "\n  Vérifiez la connectivité (IPv6 ?), réessayez plus tard, ou "
-        "fournissez un chemin d'image local en argument positionnel."
+        + hint
     )
 
 
@@ -692,7 +711,11 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
 def hash_password(plain: str) -> str:
     """Hash SHA-512 crypt ($6$...) via crypt (< 3.13) ou openssl en repli."""
     try:
-        import crypt  # supprimé en Python 3.13
+        with warnings.catch_warnings():
+            # crypt est déprécié (retiré en 3.13) : on masque l'avertissement,
+            # le repli openssl couvre les versions récentes de Python.
+            warnings.simplefilter("ignore", DeprecationWarning)
+            import crypt
 
         return crypt.crypt(plain, crypt.mksalt(crypt.METHOD_SHA512))
     except (ImportError, AttributeError):
@@ -761,6 +784,20 @@ def build_cloud_config(
     return "\n".join(lines) + "\n"
 
 
+# network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
+# Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
+# reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
+NETWORK_CONFIG = (
+    "version: 2\n"
+    "ethernets:\n"
+    "  primary:\n"
+    "    match:\n"
+    '      name: "e*"\n'
+    "    dhcp4: true\n"
+    "    dhcp6: false\n"
+)
+
+
 def build_seed(
     cloud_cfg: str, hostname: str, seed_dest: Path, runner: Runner
 ) -> None:
@@ -771,17 +808,30 @@ def build_seed(
         tmp_path = Path(tmp)
         ud = tmp_path / "user-data"
         md = tmp_path / "meta-data"
+        nc = tmp_path / "network-config"
         local_iso = tmp_path / "seed.iso"
 
         if runner.dry_run:
             print("  [dry-run] user-data qui serait généré :")
             print(textwrap.indent(cloud_cfg, "      "))
+            print("  [dry-run] network-config :")
+            print(textwrap.indent(NETWORK_CONFIG, "      "))
         else:
             ud.write_text(cloud_cfg)
             md.write_text(meta_data)
+            nc.write_text(NETWORK_CONFIG)
 
         if runner.dry_run or shutil.which("cloud-localds"):
-            runner.run(["cloud-localds", str(local_iso), str(ud), str(md)])
+            runner.run(
+                [
+                    "cloud-localds",
+                    "--network-config",
+                    str(nc),
+                    str(local_iso),
+                    str(ud),
+                    str(md),
+                ]
+            )
         else:
             need_tool("genisoimage")
             runner.run(
@@ -795,6 +845,7 @@ def build_seed(
                     "-rock",
                     str(ud),
                     str(md),
+                    str(nc),
                 ]
             )
 

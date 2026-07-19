@@ -805,7 +805,7 @@ class TODO:
     # deploy_qemu.py ; ceci ne sert qu'au sélecteur interactif.
     _QEMU_DISTROS = {
         "ubuntu": (
-            ["20.04", "22.04", "24.04", "24.10", "25.04", "25.10", "26.04"],
+            ["20.04", "22.04", "24.04", "25.10", "26.04"],
             "24.04",
         ),
         "debian": (["11", "12", "13"], "12"),
