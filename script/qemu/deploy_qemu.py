@@ -735,8 +735,14 @@ def build_cloud_config(
         f"  layout: {args.keyboard_layout}",
         f"  variant: {args.keyboard_variant}",
     ]
-    lines.append("package_update: true")
-    lines.append(f"package_upgrade: {'false' if args.no_upgrade else 'true'}")
+    # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
+    # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
+    # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
+    # --apt-update réactive apt update (+ upgrade, sauf --no-upgrade).
+    do_update = args.apt_update
+    do_upgrade = args.apt_update and not args.no_upgrade
+    lines.append(f"package_update: {'true' if do_update else 'false'}")
+    lines.append(f"package_upgrade: {'true' if do_upgrade else 'false'}")
 
     # openssh-server : garantit un serveur SSH sur toutes les distros (les
     # images Debian genericcloud notamment ne l'ont pas toujours activé).
@@ -1101,6 +1107,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-upgrade",
         action="store_true",
         help="N'exécute pas package_upgrade au premier boot.",
+    )
+    g_cloud.add_argument(
+        "--apt-update",
+        action="store_true",
+        help="Exécute « apt update » au 1er boot (package_update). Désactivé "
+        "par défaut : évite que cloud-init se bloque sur un miroir lent/"
+        "injoignable (SSH est déjà présent dans les images cloud).",
     )
 
     g_run = p.add_argument_group("Exécution")
