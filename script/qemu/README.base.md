@@ -4,24 +4,30 @@
 <!---------------------------->
 
 <!-- [en] -->
-# QEMU/KVM — Ubuntu VM deployment
+# QEMU/KVM — Linux VM deployment (Ubuntu / Debian / Fedora)
 
-`deploy_qemu.py` deploys an Ubuntu VM (libvirt/KVM) from an official Ubuntu
-cloud image, using `qemu-img` + `cloud-init` + `virt-install`. It:
+`deploy_qemu.py` deploys a Linux VM (libvirt/KVM) from an official cloud
+image, using `qemu-img` + `cloud-init` + `virt-install`. Pick the
+distribution with `--distro` (`ubuntu` default, `debian`, `fedora`) and the
+release with `--version`; run `--list-images` to see the full catalogue with
+minimum specs. It:
 
-1. **Downloads the Ubuntu cloud image by itself** (cached, no double download).
+1. **Downloads the cloud image by itself** (cached, no double download).
 2. Converts it to a dedicated qcow2 working disk and resizes it.
 3. Generates `user-data` / `meta-data` and builds the `seed.iso` (cloud-init).
 4. Runs `virt-install` importing the disk + the seed as a CD-ROM.
 5. Waits for the DHCP lease and prints the SSH command.
 
 <!-- [fr] -->
-# QEMU/KVM — Déploiement de VM Ubuntu
+# QEMU/KVM — Déploiement de VM Linux (Ubuntu / Debian / Fedora)
 
-`deploy_qemu.py` déploie une VM Ubuntu (libvirt/KVM) à partir d'une image
-cloud Ubuntu officielle, via `qemu-img` + `cloud-init` + `virt-install`. Il :
+`deploy_qemu.py` déploie une VM Linux (libvirt/KVM) à partir d'une image
+cloud officielle, via `qemu-img` + `cloud-init` + `virt-install`. Choisissez
+la distribution avec `--distro` (`ubuntu` par défaut, `debian`, `fedora`) et
+la version avec `--version` ; `--list-images` affiche tout le catalogue avec
+les specs minimales. Il :
 
-1. **Télécharge lui-même l'image cloud Ubuntu** (mise en cache, sans double
+1. **Télécharge lui-même l'image cloud** (mise en cache, sans double
    téléchargement).
 2. La convertit en un disque de travail qcow2 dédié et le redimensionne.
 3. Génère `user-data` / `meta-data` et construit le `seed.iso` (cloud-init).
@@ -201,14 +207,16 @@ parameters and builds the command for you.
 
 ## Main options
 
-- `--version` — Ubuntu version (default `24.04`).
+- `--distro` — `ubuntu` (default), `debian` or `fedora`.
+- `--version` — release for the distro (default: the distro's default).
+- `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
 - `--download-only` — download the image then exit (no VM).
 - `--name` — VM name (required for deployment).
 - `--memory`, `--vcpus`, `--disk-size` — VM sizing. When omitted, `--memory`
-  and `--disk-size` default to the **minimum required by the chosen Ubuntu
-  version** (libosinfo values: 20.04 → 2048 MB/5G, 22.04 → 2048 MB/10G,
-  24.04+ → 3072 MB/20G); `--vcpus` defaults to 2.
+  and `--disk-size` default to the **minimum required by the chosen version**
+  (libosinfo values, see `--list-images`: Ubuntu 24.04+ → 3072 MB/20G, Debian
+  → 1024 MB/10G, Fedora → 2048 MB/15G); `--vcpus` defaults to 2.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentication.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.
@@ -231,15 +239,18 @@ vous.
 
 ## Principales options
 
-- `--version` — version Ubuntu (défaut `24.04`).
+- `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
+- `--version` — version de la distro (défaut : celle par défaut de la distro).
+- `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
   `/var/lib/libvirt/images/iso`).
 - `--download-only` — télécharge l'image puis quitte (sans VM).
 - `--name` — nom de la VM (requis pour le déploiement).
 - `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
-  `--memory` et `--disk-size` prennent le **minimum requis par la version
-  Ubuntu** choisie (valeurs libosinfo : 20.04 → 2048 Mo/5G, 22.04 →
-  2048 Mo/10G, 24.04+ → 3072 Mo/20G) ; `--vcpus` vaut 2 par défaut.
+  `--memory` et `--disk-size` prennent le **minimum requis par la version**
+  choisie (valeurs libosinfo, voir `--list-images` : Ubuntu 24.04+ →
+  3072 Mo/20G, Debian → 1024 Mo/10G, Fedora → 2048 Mo/15G) ; `--vcpus`
+  vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.

@@ -1,10 +1,13 @@
 
-# QEMU/KVM — Déploiement de VM Ubuntu
+# QEMU/KVM — Déploiement de VM Linux (Ubuntu / Debian / Fedora)
 
-`deploy_qemu.py` déploie une VM Ubuntu (libvirt/KVM) à partir d'une image
-cloud Ubuntu officielle, via `qemu-img` + `cloud-init` + `virt-install`. Il :
+`deploy_qemu.py` déploie une VM Linux (libvirt/KVM) à partir d'une image
+cloud officielle, via `qemu-img` + `cloud-init` + `virt-install`. Choisissez
+la distribution avec `--distro` (`ubuntu` par défaut, `debian`, `fedora`) et
+la version avec `--version` ; `--list-images` affiche tout le catalogue avec
+les specs minimales. Il :
 
-1. **Télécharge lui-même l'image cloud Ubuntu** (mise en cache, sans double
+1. **Télécharge lui-même l'image cloud** (mise en cache, sans double
    téléchargement).
 2. La convertit en un disque de travail qcow2 dédié et le redimensionne.
 3. Génère `user-data` / `meta-data` et construit le `seed.iso` (cloud-init).
@@ -115,15 +118,18 @@ vous.
 
 ## Principales options
 
-- `--version` — version Ubuntu (défaut `24.04`).
+- `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
+- `--version` — version de la distro (défaut : celle par défaut de la distro).
+- `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
   `/var/lib/libvirt/images/iso`).
 - `--download-only` — télécharge l'image puis quitte (sans VM).
 - `--name` — nom de la VM (requis pour le déploiement).
 - `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
-  `--memory` et `--disk-size` prennent le **minimum requis par la version
-  Ubuntu** choisie (valeurs libosinfo : 20.04 → 2048 Mo/5G, 22.04 →
-  2048 Mo/10G, 24.04+ → 3072 Mo/20G) ; `--vcpus` vaut 2 par défaut.
+  `--memory` et `--disk-size` prennent le **minimum requis par la version**
+  choisie (valeurs libosinfo, voir `--list-images` : Ubuntu 24.04+ →
+  3072 Mo/20G, Debian → 1024 Mo/10G, Fedora → 2048 Mo/15G) ; `--vcpus`
+  vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.

@@ -735,16 +735,48 @@ class TODO:
                 return path
         return ""
 
-    def _qemu_prompt_version(self):
-        """Demande la version Ubuntu ; retourne une chaîne (défaut 24.04)."""
-        versions = ["20.04", "22.04", "24.04", "24.10", "25.04", "25.10"]
-        print(f"\n{t('Ubuntu version:')}")
-        for i, v in enumerate(versions, 1):
-            suffix = " (LTS)" if v in ("20.04", "22.04", "24.04") else ""
-            print(f"  [{i}] {v}{suffix}")
-        sel = input(t("Choice (number or version, default: 24.04): ")).strip()
+    # distro -> (versions affichées, version par défaut). Source de vérité =
+    # deploy_qemu.py ; ceci ne sert qu'au sélecteur interactif.
+    _QEMU_DISTROS = {
+        "ubuntu": (
+            ["20.04", "22.04", "24.04", "24.10", "25.04", "25.10", "26.04"],
+            "24.04",
+        ),
+        "debian": (["11", "12", "13"], "12"),
+        "fedora": (["41", "42", "43", "44"], "42"),
+    }
+
+    def _qemu_prompt_distro(self):
+        """Demande la distribution (défaut : ubuntu)."""
+        distros = list(self._QEMU_DISTROS)
+        print(f"\n{t('Distribution:')}")
+        for i, d in enumerate(distros, 1):
+            print(f"  [{i}] {d}")
+        sel = input(t("Choice (number or name, default: ubuntu): ")).strip()
         if not sel:
-            return "24.04"
+            return "ubuntu"
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(distros):
+                return distros[idx]
+        except ValueError:
+            if sel in distros:
+                return sel
+        print(t("Invalid selection, using ubuntu"))
+        return "ubuntu"
+
+    def _qemu_prompt_version(self, distro):
+        """Demande la version pour la distro (défaut = version par défaut)."""
+        versions, default = self._QEMU_DISTROS.get(distro, ([], ""))
+        print(f"\n{t('Version for')} {distro} :")
+        for i, v in enumerate(versions, 1):
+            suffix = " *" if v == default else ""
+            print(f"  [{i}] {v}{suffix}")
+        sel = input(
+            f"{t('Choice (number or version, blank = default):')} "
+        ).strip()
+        if not sel:
+            return default
         try:
             idx = int(sel) - 1
             if 0 <= idx < len(versions):
@@ -752,8 +784,14 @@ class TODO:
         except ValueError:
             if sel in versions:
                 return sel
-        print(t("Invalid selection, using 24.04"))
-        return "24.04"
+        print(f"{t('Invalid selection, using')} {default}")
+        return default
+
+    def _qemu_list_images(self):
+        """Affiche la liste des distros/versions et leurs specs."""
+        cmd = f"{self._qemu_script_path()} --list-images"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def prompt_execute_qemu(self):
         print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
@@ -762,15 +800,16 @@ class TODO:
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
             return False
         choices = [
-            {"prompt_description": t("Deploy a new Ubuntu VM")},
+            {"prompt_description": t("Deploy a new VM")},
             {
                 "prompt_description": t(
                     "Preview a deployment (dry-run, no sudo)"
                 )
             },
-            {"prompt_description": t("Download an Ubuntu cloud image only")},
+            {"prompt_description": t("Download a cloud image only")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
+            {"prompt_description": t("List available images and specs")},
         ]
         config_entries = self.config_file.get_config("qemu_from_makefile")
         if config_entries:
@@ -792,6 +831,8 @@ class TODO:
                 self._qemu_list_vms()
             elif status == "5":
                 self._qemu_show_ip()
+            elif status == "6":
+                self._qemu_list_images()
             else:
                 cmd_no_found = True
                 try:
@@ -811,9 +852,10 @@ class TODO:
         if not name:
             print(t("VM name is required!"))
             return
-        version = self._qemu_prompt_version()
+        distro = self._qemu_prompt_distro()
+        version = self._qemu_prompt_version(distro)
         # Laisser vide => le script applique le minimum requis par la version
-        # Ubuntu choisie (libosinfo). On n'envoie alors pas le flag.
+        # choisie (libosinfo). On n'envoie alors pas le flag.
         memory = input(t("RAM in MB (blank = version minimum): ")).strip()
         vcpus = input(t("vCPUs (default: 2): ")).strip()
         disk_size = input(t("Disk size (blank = version minimum): ")).strip()
@@ -850,7 +892,7 @@ class TODO:
         if not dry_run:
             parts.append("sudo")
         parts.append(script_path)
-        parts += ["--name", name, "--version", version]
+        parts += ["--name", name, "--distro", distro, "--version", version]
         if memory:
             parts += ["--memory", memory]
         if vcpus:
@@ -874,12 +916,15 @@ class TODO:
 
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
-        version = self._qemu_prompt_version()
+        distro = self._qemu_prompt_distro()
+        version = self._qemu_prompt_version(distro)
         ans = input(t("Verify SHA256 after download? (y/N): ")).strip().lower()
         parts = [
             "sudo",
             script_path,
             "--download-only",
+            "--distro",
+            distro,
             "--version",
             version,
         ]

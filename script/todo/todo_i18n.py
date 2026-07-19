@@ -997,17 +997,17 @@ TRANSLATIONS = {
         "fr": "Script de déploiement QEMU introuvable : ",
         "en": "QEMU deploy script not found: ",
     },
-    "Deploy a new Ubuntu VM": {
-        "fr": "Déployer une nouvelle VM Ubuntu",
-        "en": "Deploy a new Ubuntu VM",
+    "Deploy a new VM": {
+        "fr": "Déployer une nouvelle VM",
+        "en": "Deploy a new VM",
     },
     "Preview a deployment (dry-run, no sudo)": {
         "fr": "Prévisualiser un déploiement (dry-run, sans sudo)",
         "en": "Preview a deployment (dry-run, no sudo)",
     },
-    "Download an Ubuntu cloud image only": {
-        "fr": "Télécharger seulement une image cloud Ubuntu",
-        "en": "Download an Ubuntu cloud image only",
+    "Download a cloud image only": {
+        "fr": "Télécharger seulement une image cloud",
+        "en": "Download a cloud image only",
     },
     "List VMs (virsh list --all)": {
         "fr": "Lister les VM (virsh list --all)",
@@ -1017,17 +1017,33 @@ TRANSLATIONS = {
         "fr": "Afficher l'adresse IP d'une VM",
         "en": "Show a VM IP address",
     },
-    "Ubuntu version:": {
-        "fr": "Version Ubuntu :",
-        "en": "Ubuntu version:",
+    "List available images and specs": {
+        "fr": "Lister les images disponibles et leurs specs",
+        "en": "List available images and specs",
     },
-    "Choice (number or version, default: 24.04): ": {
-        "fr": "Choix (numéro ou version, défaut : 24.04) : ",
-        "en": "Choice (number or version, default: 24.04): ",
+    "Distribution:": {
+        "fr": "Distribution :",
+        "en": "Distribution:",
     },
-    "Invalid selection, using 24.04": {
-        "fr": "Sélection invalide, utilisation de 24.04",
-        "en": "Invalid selection, using 24.04",
+    "Choice (number or name, default: ubuntu): ": {
+        "fr": "Choix (numéro ou nom, défaut : ubuntu) : ",
+        "en": "Choice (number or name, default: ubuntu): ",
+    },
+    "Invalid selection, using ubuntu": {
+        "fr": "Sélection invalide, utilisation d'ubuntu",
+        "en": "Invalid selection, using ubuntu",
+    },
+    "Version for": {
+        "fr": "Version pour",
+        "en": "Version for",
+    },
+    "Choice (number or version, blank = default):": {
+        "fr": "Choix (numéro ou version, vide = défaut) :",
+        "en": "Choice (number or version, blank = default):",
+    },
+    "Invalid selection, using": {
+        "fr": "Sélection invalide, utilisation de",
+        "en": "Invalid selection, using",
     },
     "VM name (required): ": {
         "fr": "Nom de la VM (requis) : ",

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Déploiement rapide de VM Ubuntu (cloud-image) avec qemu-img + cloud-init + virt-install.
+"""Déploiement rapide de VM Linux (Ubuntu/Debian/Fedora) via cloud-image + qemu-img + cloud-init + virt-install.
 
-Reprend le workflow des notes :
-  1. Télécharge l'image cloud Ubuntu (si absente du cache -> pas de double téléchargement).
+Choisissez la distribution avec --distro (ubuntu par défaut, debian, fedora)
+et la version avec --version. « --list-images » affiche tout le catalogue et
+les specs minimales. Reprend le workflow des notes :
+  1. Télécharge l'image cloud (si absente du cache -> pas de double téléchargement).
   2. Convertit/copie l'image en un qcow2 de travail dédié à la VM.
   3. Redimensionne le disque virtuel.
   4. Génère user-data / meta-data et construit le seed.iso (cidata).
@@ -11,10 +13,19 @@ Reprend le workflow des notes :
 Exemples
 --------
     # Le plus simple : image téléchargée automatiquement (chemin déduit de
-    # --version, mis en cache dans /var/lib/libvirt/images/iso) et outils
-    # manquants installés après confirmation.
+    # --distro/--version, mis en cache dans /var/lib/libvirt/images/iso) et
+    # outils manquants installés après confirmation.
     sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \\
         --ssh-key ~/.ssh/id_ed25519.pub
+
+    # Debian 12 / Fedora 42 (mêmes options, --distro change la source d'image)
+    sudo ./script/qemu/deploy_qemu.py --distro debian --version 12 \\
+        --name deb12 --ssh-key ~/.ssh/id_ed25519.pub
+    sudo ./script/qemu/deploy_qemu.py --distro fedora --version 42 \\
+        --name fed42 --ssh-key ~/.ssh/id_ed25519.pub
+
+    # Voir tout le catalogue (distros, versions, specs minimales)
+    ./script/qemu/deploy_qemu.py --list-images
 
     # Télécharger (et vérifier) une image, sans créer de VM
     sudo ./script/qemu/deploy_qemu.py --download-only --version 24.04 --verify
@@ -49,13 +60,12 @@ import urllib.request
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
-# Table des versions Ubuntu -> (nom de code, --osinfo, RAM min. Mo, disque min.)
-# Le nom de code sert à construire l'URL de l'image cloud. La RAM et le disque
-# minimaux proviennent de libosinfo (osinfo-db) : ce sont les seuils sous
-# lesquels virt-install émet un avertissement. Ils servent de valeurs PAR
-# DÉFAUT — une VM Ubuntu démarre avec ça sans gaspiller la RAM de l'hôte. Les
-# valeurs LTS sont stables ; --codename et --osinfo surchargent si la table
-# vieillit ; --memory / --disk-size surchargent le dimensionnement.
+# Registre des distributions : version -> (code, --osinfo, RAM min Mo, disque).
+# Le « code » est le nom de code (Ubuntu/Debian) ou le numéro de release
+# (Fedora). RAM/disque minimaux proviennent de libosinfo (osinfo-db) : ce sont
+# les seuils sous lesquels virt-install avertit. Ils servent de valeurs PAR
+# DÉFAUT — la VM démarre au plus juste sans gaspiller la RAM de l'hôte.
+# --codename / --osinfo / --memory / --disk-size surchargent au besoin.
 # --------------------------------------------------------------------------- #
 UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "20.04": ("focal", "ubuntu20.04", 2048, "5G"),
@@ -64,25 +74,172 @@ UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "24.10": ("oracular", "ubuntu24.10", 3072, "20G"),
     "25.04": ("plucky", "ubuntu25.04", 3072, "20G"),
     "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
-    # "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
+    "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
+}
+DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "11": ("bullseye", "debian11", 1024, "10G"),
+    "12": ("bookworm", "debian12", 1024, "10G"),
+    "13": ("trixie", "debian13", 1024, "10G"),
+}
+FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "41": ("41", "fedora41", 2048, "15G"),
+    "42": ("42", "fedora42", 2048, "15G"),
+    "43": ("43", "fedora43", 2048, "15G"),
+    "44": ("44", "fedora44", 2048, "15G"),
+}
+
+# distro -> (table des versions, version par défaut).
+DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
+    "ubuntu": (UBUNTU_VERSIONS, "24.04"),
+    "debian": (DEBIAN_VERSIONS, "12"),
+    "fedora": (FEDORA_VERSIONS, "42"),
+}
+
+# Traduction de l'arch générique (amd64/arm64) vers le nom propre à la distro.
+ARCH_ALIASES: dict[str, dict[str, str]] = {
+    "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
 }
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
+DEBIAN_CLOUD_BASE = "https://cloud.debian.org/images/cloud"
+FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
 # façon sous sudo (virt-install). Surchargez avec --image-dir au besoin.
 DEFAULT_IMAGE_DIR = Path("/var/lib/libvirt/images/iso")
 
+# Emplacements de la base osinfo-db (détection d'un --osinfo connu).
+OSINFO_DB_DIRS: tuple[str, ...] = (
+    "/usr/share/osinfo/os",
+    "/usr/local/share/osinfo/os",
+    os.path.expanduser("~/.local/share/osinfo/os"),
+)
 
-def image_url(codename: str, arch: str) -> str:
-    """URL de l'image cloud « current » pour un nom de code + architecture."""
-    return f"{CLOUD_IMG_BASE}/{codename}/current/{codename}-server-cloudimg-{arch}.img"
+
+def distro_arch(distro: str, arch: str) -> str:
+    """Nom d'architecture attendu par la distro (Fedora utilise x86_64)."""
+    return ARCH_ALIASES.get(distro, {}).get(arch, arch)
 
 
-def default_image_name(codename: str, arch: str) -> str:
-    """Nom de fichier local dérivé du nom de code + architecture."""
-    return f"{codename}-server-cloudimg-{arch}.img"
+def image_url(distro: str, code: str, arch: str, version: str) -> str:
+    """URL directe de l'image cloud (Ubuntu/Debian). Fedora est résolu à
+    part via resolve_fedora_url (pas de lien « latest » stable)."""
+    a = distro_arch(distro, arch)
+    if distro == "ubuntu":
+        return (
+            f"{CLOUD_IMG_BASE}/{code}/current/"
+            f"{code}-server-cloudimg-{a}.img"
+        )
+    if distro == "debian":
+        return (
+            f"{DEBIAN_CLOUD_BASE}/{code}/latest/"
+            f"debian-{version}-genericcloud-{a}.qcow2"
+        )
+    raise ValueError(f"URL directe indisponible pour la distro {distro!r}")
+
+
+def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
+    """Résout l'URL du qcow2 « Fedora Cloud Base Generic » depuis l'index
+    HTML des releases (Fedora ne publie pas de lien « latest »)."""
+    a = distro_arch("fedora", arch)
+    index = f"{FEDORA_BASE}/{version}/Cloud/{a}/images/"
+    pattern = re.compile(
+        rf"Fedora-Cloud-Base-Generic-{version}-[0-9.]+\.{a}\.qcow2"
+    )
+    if dry_run:
+        return index + f"Fedora-Cloud-Base-Generic-{version}-<build>.{a}.qcow2"
+    try:
+        with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+            html = resp.read().decode(errors="replace")
+    except Exception as exc:  # pragma: no cover - dépend du réseau
+        sys.exit(f"Impossible de lister les images Fedora {version} : {exc}")
+    names = sorted(set(pattern.findall(html)))
+    if not names:
+        sys.exit(
+            "Aucune image « Fedora-Cloud-Base-Generic » trouvée pour "
+            f"Fedora {version} ({a}) dans {index}"
+        )
+    return index + names[-1]
+
+
+def resolve_image_url(
+    distro: str, code: str, arch: str, version: str, dry_run: bool
+) -> str:
+    """URL de l'image cloud, tous distros confondus."""
+    if distro == "fedora":
+        return resolve_fedora_url(version, arch, dry_run)
+    return image_url(distro, code, arch, version)
+
+
+def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
+    """Nom de fichier local pour le cache d'image."""
+    a = distro_arch(distro, arch)
+    if distro == "ubuntu":
+        return f"{code}-server-cloudimg-{a}.img"
+    if distro == "debian":
+        return f"debian-{version}-genericcloud-{a}.qcow2"
+    return f"fedora-cloud-{version}-{a}.qcow2"
+
+
+def osinfo_known(short_id: str) -> bool:
+    """Vrai si l'id osinfo (ex. « ubuntu26.04 ») figure dans osinfo-db."""
+    needle = f"<short-id>{short_id}</short-id>"
+    for base in OSINFO_DB_DIRS:
+        if not os.path.isdir(base):
+            continue
+        for root, _dirs, files in os.walk(base):
+            for fn in files:
+                if not fn.endswith(".xml"):
+                    continue
+                try:
+                    with open(
+                        os.path.join(root, fn),
+                        encoding="utf-8",
+                        errors="replace",
+                    ) as fh:
+                        if needle in fh.read():
+                            return True
+                except OSError:
+                    continue
+    return False
+
+
+def osinfo_arg(osinfo: str) -> str:
+    """Valeur --osinfo résiliente à un osinfo-db périmé : si l'id est connu on
+    l'utilise ; sinon on bascule en détection best-effort au lieu d'échouer
+    (utile pour une distro plus récente que la base locale, ex. ubuntu26.04,
+    fedora43+)."""
+    if "=" in osinfo or "," in osinfo:
+        return osinfo  # forme avancée déjà fournie par l'utilisateur
+    if osinfo_known(osinfo):
+        return osinfo
+    print(
+        f"  osinfo « {osinfo} » inconnu de la base locale (osinfo-db) — repli "
+        "sur la détection auto (detect=on,require=off).\n"
+        "  Astuce : « sudo apt upgrade osinfo-db » pour des métadonnées à jour."
+    )
+    return "detect=on,require=off"
+
+
+def list_images() -> None:
+    """Affiche toutes les distros/versions et leurs specs (--list-images)."""
+    print("Images cloud disponibles (distro / version / specs) :\n")
+    for distro, (versions, default) in DISTROS.items():
+        print(f"  {distro}  (défaut : {default})")
+        for v, (code, osinfo, ram, disk) in versions.items():
+            star = "*" if v == default else " "
+            note = (
+                ""
+                if osinfo_known(osinfo)
+                else "  [osinfo local absent → auto]"
+            )
+            print(
+                f"   {star} {v:<7} {code:<10} osinfo={osinfo:<12} "
+                f"RAM≥{ram}Mo disque≥{disk}{note}"
+            )
+        print()
+    print("Exemple : deploy_qemu.py --distro debian --version 12 --name vm1")
 
 
 # --------------------------------------------------------------------------- #
@@ -417,11 +574,23 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
         )
     print(f"  Téléchargement {url}")
     tmp = dest.with_suffix(dest.suffix + ".part")
+    is_tty = sys.stdout.isatty()
+    last_pct = [-1]
 
     def _progress(block_num: int, block_size: int, total: int) -> None:
-        if total > 0:
-            pct = min(100, block_num * block_size * 100 // total)
+        # N'émet qu'au changement de pourcentage entier : sur un TTY, réécrit
+        # la même ligne (\r) ; sinon (sortie capturée par le menu todo) au plus
+        # 101 lignes au lieu de centaines de répétitions du même pourcentage.
+        if total <= 0:
+            return
+        pct = min(100, block_num * block_size * 100 // total)
+        if pct == last_pct[0]:
+            return
+        last_pct[0] = pct
+        if is_tty:
             print(f"\r    {pct:3d}%", end="", flush=True)
+        else:
+            print(f"    {pct:3d}%", flush=True)
 
     try:
         urllib.request.urlretrieve(
@@ -430,7 +599,8 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
     except Exception as exc:  # pragma: no cover - dépend du réseau
         tmp.unlink(missing_ok=True)
         sys.exit(f"\nÉchec du téléchargement : {exc}")
-    print()
+    if is_tty:
+        print()
     tmp.replace(dest)
 
 
@@ -608,13 +778,42 @@ def network_name(network_arg: str) -> str | None:
     return None
 
 
+def network_state(name: str, use_sudo: bool) -> tuple[bool, bool]:
+    """(actif, autostart) d'un réseau libvirt, via « virsh net-info »."""
+    cmd = (["sudo"] if use_sudo else []) + ["virsh", "net-info", name]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return (False, False)
+    active = bool(re.search(r"Active:\s*yes", res.stdout, re.IGNORECASE))
+    autostart = bool(re.search(r"Autostart:\s*yes", res.stdout, re.IGNORECASE))
+    return (active, autostart)
+
+
 def ensure_network(name: str | None, runner: Runner) -> None:
-    """Active le réseau libvirt (idempotent : tolère « déjà actif »)."""
+    """Active le réseau libvirt si besoin. On vérifie d'abord son état pour
+    éviter le faux « error: network is already active » de virsh quand il
+    tourne déjà (message purement bruyant, sans conséquence)."""
     if not name:
         return
-    print(f"  Activation du réseau libvirt '{name}' (si nécessaire)")
-    runner.run(["virsh", "net-start", name], privileged=True, check=False)
-    runner.run(["virsh", "net-autostart", name], privileged=True, check=False)
+    if runner.dry_run:
+        print(f"  [dry-run] réseau libvirt '{name}' activé si nécessaire")
+        runner.run(["virsh", "net-start", name], privileged=True, check=False)
+        runner.run(
+            ["virsh", "net-autostart", name], privileged=True, check=False
+        )
+        return
+    active, autostart = network_state(name, runner.use_sudo)
+    if active and autostart:
+        print(f"  Réseau libvirt '{name}' déjà actif.")
+        return
+    print(f"  Configuration du réseau libvirt '{name}'…")
+    if not active:
+        runner.run(["virsh", "net-start", name], privileged=True, check=False)
+    if not autostart:
+        runner.run(
+            ["virsh", "net-autostart", name], privileged=True, check=False
+        )
 
 
 def virt_install(
@@ -686,35 +885,42 @@ def ssh_command(user: str, ip: str, has_key: bool) -> str:
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     versions_help = "\n".join(
-        f"    {v:<7} {code:<10} RAM≥{ram:<5}Mo disque≥{disk:<4} "
-        f"{image_url(code, 'amd64')}"
-        for v, (code, _osinfo, ram, disk) in UBUNTU_VERSIONS.items()
+        f"    {distro:<7} {default:<7} (défaut)   versions : "
+        + ", ".join(versions)
+        for distro, (versions, default) in DISTROS.items()
     )
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=__doc__,
-        epilog="Versions Ubuntu disponibles (--version) et URL de l'image cloud :\n"
-        + versions_help,
+        epilog="Distros et versions (--distro / --version), specs via "
+        "--list-images :\n" + versions_help,
     )
     p.add_argument(
         "image_path",
         type=Path,
         nargs="?",
         default=None,
-        help="Chemin de cache de l'image cloud (.img). Optionnel : si absent, "
-        "il est déduit de --version/--codename + --arch dans --image-dir. "
+        help="Chemin de cache de l'image cloud. Optionnel : si absent, il est "
+        "déduit de --distro/--version/--codename + --arch dans --image-dir. "
         "Si le fichier existe, il n'est PAS re-téléchargé.",
     )
 
     g_img = p.add_argument_group("Image")
     g_img.add_argument(
-        "--version",
-        default="24.04",
-        choices=UBUNTU_VERSIONS,
-        help="Version Ubuntu (défaut : 24.04). Voir la liste ci-dessous.",
+        "--distro",
+        default="ubuntu",
+        choices=DISTROS,
+        help="Distribution : ubuntu, debian ou fedora (défaut : ubuntu).",
     )
     g_img.add_argument(
-        "--codename", help="Force le nom de code (surcharge --version)."
+        "--version",
+        default=None,
+        help="Version de la distro (défaut : la version par défaut de la "
+        "distro). Voir --list-images pour la liste complète.",
+    )
+    g_img.add_argument(
+        "--codename",
+        help="Force le nom de code / la release (surcharge --version).",
     )
     g_img.add_argument(
         "--arch",
@@ -747,8 +953,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--memory",
         type=int,
         default=None,
-        help="RAM en Mo (défaut : minimum requis par la version Ubuntu, "
-        "voir la liste ci-dessous).",
+        help="RAM en Mo (défaut : minimum requis par la version choisie, "
+        "voir --list-images).",
     )
     g_vm.add_argument(
         "--vcpus", type=int, default=2, help="Nombre de vCPU (défaut : 2)."
@@ -757,7 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--disk-size",
         default=None,
         help="Taille du disque virtuel, ex. 120G (défaut : minimum requis "
-        "par la version Ubuntu, voir la liste ci-dessous).",
+        "par la version choisie, voir --list-images).",
     )
     g_vm.add_argument(
         "--disk-dir",
@@ -888,6 +1094,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="N'installe jamais les dépendances manquantes (échoue si absentes).",
     )
+    g_run.add_argument(
+        "--list-images",
+        action="store_true",
+        help="Liste les distros/versions disponibles et leurs specs, "
+        "puis quitte.",
+    )
     return p
 
 
@@ -917,21 +1129,43 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
 def main() -> None:
     args = build_parser().parse_args()
 
-    codename, default_osinfo, min_ram, min_disk = UBUNTU_VERSIONS[args.version]
+    if args.list_images:
+        list_images()
+        return
+
+    versions, default_version = DISTROS[args.distro]
+    if args.version is None:
+        args.version = default_version
+    if args.version not in versions:
+        sys.exit(
+            f"Version {args.version!r} inconnue pour {args.distro}. "
+            f"Choix : {', '.join(versions)} (voir --list-images)."
+        )
+    code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
-        codename = args.codename
+        code = args.codename
     osinfo = args.osinfo or default_osinfo
     # Dimensionnement par défaut = minimum requis par la version (libosinfo).
     if args.memory is None:
         args.memory = min_ram
     if args.disk_size is None:
         args.disk_size = min_disk
-    url = image_url(codename, args.arch)
+    url = resolve_image_url(
+        args.distro, code, args.arch, args.version, args.dry_run
+    )
+    # --verify s'appuie sur un SHA256SUMS style Ubuntu ; Debian/Fedora
+    # publient des sommes dans un autre format -> on saute proprement.
+    do_verify = args.verify and args.distro == "ubuntu"
+    if args.verify and not do_verify:
+        print(
+            f"  Note : --verify n'est pris en charge que pour ubuntu "
+            f"(ignoré pour {args.distro})."
+        )
 
     # Chemin de l'image : déduit automatiquement si non fourni.
     if args.image_path is None:
         args.image_path = args.image_dir / default_image_name(
-            codename, args.arch
+            args.distro, code, args.arch, args.version
         )
 
     runner = Runner(
@@ -941,11 +1175,12 @@ def main() -> None:
     # -- Mode téléchargement seul : aucun outil ni VM requis. --------------
     if args.download_only:
         print(
-            f"\n== Téléchargement image cloud ({args.version} / {codename}) =="
+            f"\n== Téléchargement image cloud "
+            f"({args.distro} {args.version} / {code}) =="
         )
         print(f"  Destination : {args.image_path}")
         download_image(url, args.image_path, args.dry_run)
-        if args.verify:
+        if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
         print("\nTerminé (téléchargement seul).")
         return
@@ -973,9 +1208,9 @@ def main() -> None:
     if not args.dry_run:
         ensure_tools(runner, args.assume_yes, args.no_install_deps)
 
-    print(f"\n== 1/5 Image cloud ({args.version} / {codename}) ==")
+    print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
     download_image(url, args.image_path, args.dry_run)
-    if args.verify:
+    if do_verify:
         verify_sha256(url, args.image_path, args.dry_run)
 
     print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
@@ -985,9 +1220,10 @@ def main() -> None:
     cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
     build_seed(cloud_cfg, args.hostname, seed, runner)
 
-    print(f"\n== 5/5 virt-install (--osinfo {osinfo}) ==")
+    resolved_osinfo = osinfo_arg(osinfo)
+    print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
-    virt_install(args, disk, seed, osinfo, runner)
+    virt_install(args, disk, seed, resolved_osinfo, runner)
 
     has_key = bool(ssh_keys)
     print("\nTerminé. Suivi :")

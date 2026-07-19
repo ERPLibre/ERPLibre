@@ -1,10 +1,13 @@
 
-# QEMU/KVM — Ubuntu VM deployment
+# QEMU/KVM — Linux VM deployment (Ubuntu / Debian / Fedora)
 
-`deploy_qemu.py` deploys an Ubuntu VM (libvirt/KVM) from an official Ubuntu
-cloud image, using `qemu-img` + `cloud-init` + `virt-install`. It:
+`deploy_qemu.py` deploys a Linux VM (libvirt/KVM) from an official cloud
+image, using `qemu-img` + `cloud-init` + `virt-install`. Pick the
+distribution with `--distro` (`ubuntu` default, `debian`, `fedora`) and the
+release with `--version`; run `--list-images` to see the full catalogue with
+minimum specs. It:
 
-1. **Downloads the Ubuntu cloud image by itself** (cached, no double download).
+1. **Downloads the cloud image by itself** (cached, no double download).
 2. Converts it to a dedicated qcow2 working disk and resizes it.
 3. Generates `user-data` / `meta-data` and builds the `seed.iso` (cloud-init).
 4. Runs `virt-install` importing the disk + the seed as a CD-ROM.
@@ -108,14 +111,16 @@ parameters and builds the command for you.
 
 ## Main options
 
-- `--version` — Ubuntu version (default `24.04`).
+- `--distro` — `ubuntu` (default), `debian` or `fedora`.
+- `--version` — release for the distro (default: the distro's default).
+- `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
 - `--download-only` — download the image then exit (no VM).
 - `--name` — VM name (required for deployment).
 - `--memory`, `--vcpus`, `--disk-size` — VM sizing. When omitted, `--memory`
-  and `--disk-size` default to the **minimum required by the chosen Ubuntu
-  version** (libosinfo values: 20.04 → 2048 MB/5G, 22.04 → 2048 MB/10G,
-  24.04+ → 3072 MB/20G); `--vcpus` defaults to 2.
+  and `--disk-size` default to the **minimum required by the chosen version**
+  (libosinfo values, see `--list-images`: Ubuntu 24.04+ → 3072 MB/20G, Debian
+  → 1024 MB/10G, Fedora → 2048 MB/15G); `--vcpus` defaults to 2.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentication.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.
