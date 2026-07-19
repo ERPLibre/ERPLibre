@@ -1287,6 +1287,18 @@ TRANSLATIONS = {
         "fr": "Clonage d'ERPLibre sur chaque VM",
         "en": "Cloning ERPLibre on each VM",
     },
+    "Parallel deployments (default:": {
+        "fr": "Déploiements en parallèle (défaut :",
+        "en": "Parallel deployments (default:",
+    },
+    "Deploying": {
+        "fr": "Déploiement de",
+        "en": "Deploying",
+    },
+    "parallel jobs:": {
+        "fr": "tâches parallèles :",
+        "en": "parallel jobs:",
+    },
     "ERPLibre infra deployment done.": {
         "fr": "Déploiement de l'infra ERPLibre terminé.",
         "en": "ERPLibre infra deployment done.",

@@ -1433,7 +1433,17 @@ class TODO:
             input(t("Add each VM to ~/.ssh/config? (y/N): "))
         )
 
-        # 5) Confirmation puis déploiement séquentiel.
+        # Nombre de déploiements en parallèle (défaut : min(nb VM, 4)).
+        default_par = min(len(selected), 4)
+        raw = input(
+            f"{t('Parallel deployments (default:')} {default_par}): "
+        ).strip()
+        try:
+            parallelism = max(1, int(raw)) if raw else default_par
+        except ValueError:
+            parallelism = default_par
+
+        # 5) Confirmation puis déploiement (en parallèle).
         ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}")
         if not self._is_yes(ans):
             print(t("Cancelled."))
@@ -1441,10 +1451,11 @@ class TODO:
 
         script_path = self._qemu_script_path()
         deployed = []
+        jobs = []  # (name, parts) des VM à créer
         for d, v, _ram, _disk in selected:
             name = self._qemu_infra_name(d, v)
             if self._qemu_domain_exists(name):
-                print(f"\n⏭  {name}: {t('already exists, skipped.')}")
+                print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)
                 continue
             parts = [
@@ -1456,25 +1467,57 @@ class TODO:
                 v,
                 "--name",
                 name,
+                # Mot de passe console « erplibre » (+ clé SSH). --no-wait-ip :
+                # ne bloque pas 90s par VM, l'IP est collectée après coup.
+                "--password",
+                "erplibre",
+                "--no-wait-ip",
             ]
             if ssh_key:
                 parts += ["--ssh-key", ssh_key]
-            # Mot de passe console par défaut « erplibre » (login virsh
-            # console + SSH par mot de passe), en plus de la clé.
-            parts += ["--password", "erplibre"]
             if install_branch:
                 parts += ["--package", "git"]
             parts.append("-y")
-            cmd = " ".join(shlex.quote(p) for p in parts)
-            print(f"\n▶ {name}: {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            deployed.append(name)
-            if add_ssh_config:
+            jobs.append((name, parts))
+
+        if jobs:
+            from concurrent.futures import (
+                ThreadPoolExecutor,
+                as_completed,
+            )
+
+            workers = min(parallelism, len(jobs))
+            print(
+                f"\n{t('Deploying')} {len(jobs)} VM "
+                f"({t('parallel jobs:')} {workers})…"
+            )
+
+            def _run(job):
+                jname, jparts = job
+                res = subprocess.run(jparts, capture_output=True, text=True)
+                out = (res.stdout or "") + (res.stderr or "")
+                return jname, res.returncode, out
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_run, j) for j in jobs]
+                for fut in as_completed(futures):
+                    jname, rc, out = fut.result()
+                    mark = "✅" if rc == 0 else "❌"
+                    print(f"\n{mark} {jname} (rc={rc})")
+                    tail = [ln for ln in out.strip().splitlines() if ln][-4:]
+                    for ln in tail:
+                        print(f"    {ln}")
+                    if rc == 0:
+                        deployed.append(jname)
+
+        # 6) ~/.ssh/config (une fois les VM démarrées et l'IP attribuée).
+        if add_ssh_config:
+            for name in deployed:
                 ip = self._qemu_vm_ip(name)
                 if ip:
                     self._write_ssh_config_entry(name, "erplibre", ip)
 
-        # 6) Installation ERPLibre (clone) si demandée.
+        # 7) Installation ERPLibre (clone) si demandée.
         if install_branch:
             print(f"\n{t('Cloning ERPLibre on each VM')} ({install_branch})…")
             for name in deployed:
