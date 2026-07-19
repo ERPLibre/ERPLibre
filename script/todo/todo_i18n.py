@@ -1041,6 +1041,10 @@ TRANSLATIONS = {
         "fr": "Nom de la VM : ",
         "en": "VM name: ",
     },
+    "VM name or ID: ": {
+        "fr": "Nom ou ID de la VM : ",
+        "en": "VM name or ID: ",
+    },
     "RAM in MB (blank = version minimum): ": {
         "fr": "RAM en Mo (vide = minimum de la version) : ",
         "en": "RAM in MB (blank = version minimum): ",

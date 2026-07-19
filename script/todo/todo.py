@@ -895,7 +895,11 @@ class TODO:
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_show_ip(self):
-        name = input(t("VM name: ")).strip()
+        # Affiche d'abord les VM (avec leur ID) pour que l'utilisateur sache
+        # quel nom/ID saisir, puis demande lequel.
+        self._qemu_list_vms()
+        print()
+        name = input(t("VM name or ID: ")).strip()
         if not name:
             print(t("VM name is required!"))
             return
