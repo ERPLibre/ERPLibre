@@ -360,11 +360,18 @@ TOOL_PACKAGES: dict[str, dict[str, str]] = {
 # Paquets fournissant le démon libvirt + l'émulateur QEMU système. Ils sont
 # INDISPENSABLES pour exécuter la VM : virsh/virt-install (clients) seuls ne
 # créent pas le socket /var/run/libvirt/libvirt-sock.
+# On inclut le firmware UEFI (OVMF/edk2) : le boot par défaut est UEFI
+# (indispensable pour Debian 13+ ; les images récentes n'ont plus de BIOS).
 DAEMON_PACKAGES: dict[str, list[str]] = {
-    "apt": ["libvirt-daemon-system", "qemu-system-x86"],
-    "dnf": ["libvirt-daemon-kvm", "qemu-kvm"],
-    "pacman": ["libvirt", "qemu-desktop", "dnsmasq"],
-    "zypper": ["libvirt-daemon", "libvirt-daemon-qemu", "qemu-kvm"],
+    "apt": ["libvirt-daemon-system", "qemu-system-x86", "ovmf"],
+    "dnf": ["libvirt-daemon-kvm", "qemu-kvm", "edk2-ovmf"],
+    "pacman": ["libvirt", "qemu-desktop", "dnsmasq", "edk2-ovmf"],
+    "zypper": [
+        "libvirt-daemon",
+        "libvirt-daemon-qemu",
+        "qemu-kvm",
+        "qemu-ovmf-x86_64",
+    ],
     "brew": [],
 }
 
@@ -977,6 +984,12 @@ def virt_install(
         "--console",
         "pty,target_type=serial",
     ]
+    # Boot UEFI par défaut : Debian 13 (trixie) et les images cloud récentes
+    # n'embarquent plus le chargeur BIOS/GRUB-pc et partent en boucle
+    # « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour Ubuntu/Debian/
+    # Fedora. --bios force l'ancien BIOS si OVMF est indisponible.
+    if not args.bios:
+        cmd += ["--boot", "uefi"]
     if not args.attach_console:
         cmd.append("--noautoconsole")
     runner.run(cmd, privileged=True)
@@ -1126,6 +1139,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--attach-console",
         action="store_true",
         help="Attache la console série (sinon --noautoconsole).",
+    )
+    g_vm.add_argument(
+        "--bios",
+        action="store_true",
+        help="Force l'amorçage BIOS hérité au lieu d'UEFI (par défaut UEFI ; "
+        "n'utiliser que si le firmware OVMF est absent).",
     )
 
     g_cloud = p.add_argument_group("cloud-init")
