@@ -851,6 +851,11 @@ class TODO:
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
             {"prompt_description": t("List available images and specs")},
+            {
+                "prompt_description": t(
+                    "Deploy ERPLibre infra (one minimal VM per image)"
+                )
+            },
         ]
         config_entries = self.config_file.get_config("qemu_from_makefile")
         if config_entries:
@@ -874,6 +879,8 @@ class TODO:
                 self._qemu_show_ip()
             elif status == "6":
                 self._qemu_list_images()
+            elif status == "7":
+                self._qemu_deploy_infra()
             else:
                 cmd_no_found = True
                 try:
@@ -992,6 +999,299 @@ class TODO:
         cmd = f"sudo virsh domifaddr {shlex.quote(name)} --source lease"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    # ------------------------------------------------------------------ #
+    # QEMU : déploiement d'un parc « infra ERPLibre »
+    # ------------------------------------------------------------------ #
+    ERPLIBRE_GIT_URL = "https://github.com/erplibre/erplibre"
+
+    def _qemu_import_module(self):
+        """Importe deploy_qemu.py comme module (source de vérité des specs)."""
+        import importlib.util
+
+        path = self._qemu_script_path()
+        spec = importlib.util.spec_from_file_location("deploy_qemu", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    @staticmethod
+    def _qemu_infra_name(distro, version):
+        """Nom de VM stable pour le parc, ex. erplibre-ubuntu-2404."""
+        return f"erplibre-{distro}-{version.replace('.', '')}"
+
+    @staticmethod
+    def _parse_disk_gb(size):
+        """« 20G » -> 20 (Go, best effort)."""
+        m = re.match(r"\s*(\d+)", str(size))
+        return int(m.group(1)) if m else 0
+
+    @staticmethod
+    def _host_free_ram_mb():
+        """RAM disponible de l'hôte en Mo (MemAvailable), 0 si inconnu."""
+        try:
+            with open("/proc/meminfo") as fh:
+                for line in fh:
+                    if line.startswith("MemAvailable:"):
+                        return int(line.split()[1]) // 1024
+        except OSError:
+            pass
+        return 0
+
+    @staticmethod
+    def _parse_index_selection(raw, options):
+        """« 1 3 » ou « 1,3 » -> sous-liste d'options (indices 1-based)."""
+        chosen = []
+        for tok in re.split(r"[\s,]+", raw.strip()):
+            if not tok:
+                continue
+            try:
+                idx = int(tok) - 1
+            except ValueError:
+                if tok in options and tok not in chosen:
+                    chosen.append(tok)
+                continue
+            if 0 <= idx < len(options) and options[idx] not in chosen:
+                chosen.append(options[idx])
+        return chosen
+
+    def _qemu_domain_exists(self, name):
+        """Vrai si une VM libvirt de ce nom est déjà définie."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dominfo", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            return res.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _qemu_vm_ip(self, name, timeout=90):
+        """Attend puis renvoie l'IPv4 d'une VM (bail DHCP), sinon None."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domifaddr", name, "--source", "lease"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+            m = re.search(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
+            if m:
+                return m.group(1)
+            time.sleep(3)
+        return None
+
+    def _qemu_pick_branch(self):
+        """Liste les branches distantes d'ERPLibre et en fait choisir une."""
+        print(f"\n{t('Fetching ERPLibre branch list...')}")
+        branches = []
+        try:
+            res = subprocess.run(
+                ["git", "ls-remote", "--heads", self.ERPLIBRE_GIT_URL],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            for line in res.stdout.splitlines():
+                ref = line.split("\t")[-1]
+                if ref.startswith("refs/heads/"):
+                    branches.append(ref[len("refs/heads/") :])
+        except (OSError, subprocess.SubprocessError):
+            pass
+        default = (
+            "master"
+            if "master" in branches
+            else (branches[0] if branches else "master")
+        )
+        if not branches:
+            return (
+                input(f"{t('Branch (default:')} {default}): ").strip()
+                or default
+            )
+        branches.sort()
+        print(f"{t('Branches:')}")
+        for i, b in enumerate(branches, 1):
+            star = " *" if b == default else ""
+            print(f"  [{i}] {b}{star}")
+        sel = input(f"{t('Choice (number or name, default:')} {default}): ")
+        sel = sel.strip()
+        if not sel:
+            return default
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(branches):
+                return branches[idx]
+        except ValueError:
+            if sel in branches:
+                return sel
+        return default
+
+    def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
+        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM."""
+        ip = self._qemu_vm_ip(name)
+        if not ip:
+            print(f"  {name}: {t('no IP obtained, ERPLibre clone skipped.')}")
+            return
+        remote = (
+            "set -e; mkdir -p ~/git; "
+            "command -v git >/dev/null 2>&1 || "
+            "{ sudo apt-get install -y git || sudo dnf install -y git; }; "
+            "if [ -d ~/git/erplibre/.git ]; then "
+            "echo 'ERPLibre already present'; else "
+            f"git clone --branch {shlex.quote(branch)} "
+            f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi"
+        )
+        ssh_opts = (
+            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+            "-o ConnectTimeout=15"
+        )
+        cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
+        print(f"\n  📦 {name} ({ip}): {t('cloning ERPLibre')} ({branch})")
+        print(f"  {t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_deploy_infra(self):
+        print(f"🏗  {t('Deploy ERPLibre infra: one minimal VM per image')}")
+        try:
+            mod = self._qemu_import_module()
+        except Exception as exc:
+            print(f"{t('Cannot load QEMU catalog: ')}{exc}")
+            return
+        distros = list(mod.DISTROS)
+
+        # 1) Distributions (multi-sélection) ou catalogue complet.
+        print(f"\n{t('Distributions:')}")
+        for i, d in enumerate(distros, 1):
+            vers = ", ".join(mod.DISTROS[d][0])
+            print(f"  [{i}] {d} ({vers})")
+        print(f"  [all] {t('Whole catalog (every version)')}")
+        raw = input(t("Selection (numbers, or 'all', default: all): ")).strip()
+        catalog_all = raw.lower() in ("", "all", "*")
+        sel_distros = (
+            distros
+            if catalog_all
+            else self._parse_index_selection(raw.lower(), distros)
+        )
+        if not sel_distros:
+            print(t("Nothing selected."))
+            return
+
+        # 2) Versions par distro (multi-sélection) ; « all » si catalogue.
+        selected = []  # (distro, version, ram_mb, disk_str)
+        for d in sel_distros:
+            versions_map = mod.DISTROS[d][0]
+            vlist = list(versions_map)
+            if catalog_all:
+                chosen = vlist
+            else:
+                print(f"\n{t('Versions for')} {d} :")
+                for i, v in enumerate(vlist, 1):
+                    _c, _o, ram, disk = versions_map[v]
+                    print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk})")
+                print(f"  [all] {t('select all')}")
+                r = input(
+                    t("Selection (numbers, or 'all', default: all): ")
+                ).strip()
+                chosen = (
+                    vlist
+                    if r.lower() in ("", "all", "*")
+                    else self._parse_index_selection(r.lower(), vlist)
+                )
+            for v in chosen:
+                _c, _o, ram, disk = versions_map[v]
+                selected.append((d, v, ram, disk))
+        if not selected:
+            print(t("Nothing selected."))
+            return
+
+        # 3) Plan + estimation des ressources.
+        total_ram = sum(s[2] for s in selected)
+        total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
+        free_ram = self._host_free_ram_mb()
+        print(f"\n{t('Deployment plan')} ({len(selected)} VM) :")
+        for d, v, ram, disk in selected:
+            name = self._qemu_infra_name(d, v)
+            print(f"  - {name:<26} {d} {v:<7} RAM {ram}Mo  {t('disk')} {disk}")
+        print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
+        print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
+        if free_ram:
+            print(f"  {t('Host RAM available:')} {free_ram} Mo")
+            if total_ram > free_ram:
+                warn = t(
+                    "Total RAM exceeds host free RAM: not all VMs will run"
+                    " at once."
+                )
+                print(f"  ⚠ {warn}")
+
+        # Clé SSH (partagée par tout le parc).
+        default_key = self._qemu_default_ssh_key()
+        key_hint = default_key or t("none")
+        ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
+        if not ssh_key:
+            ssh_key = default_key
+        if ssh_key:
+            ssh_key = os.path.expanduser(ssh_key)
+
+        # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
+        install_branch = None
+        ans = (
+            input(
+                t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
+            )
+            .strip()
+            .lower()
+        )
+        if ans == "y":
+            install_branch = self._qemu_pick_branch()
+
+        # 5) Confirmation puis déploiement séquentiel.
+        ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}").strip().lower()
+        if ans != "y":
+            print(t("Cancelled."))
+            return
+
+        script_path = self._qemu_script_path()
+        deployed = []
+        for d, v, _ram, _disk in selected:
+            name = self._qemu_infra_name(d, v)
+            if self._qemu_domain_exists(name):
+                print(f"\n⏭  {name}: {t('already exists, skipped.')}")
+                deployed.append(name)
+                continue
+            parts = [
+                "sudo",
+                script_path,
+                "--distro",
+                d,
+                "--version",
+                v,
+                "--name",
+                name,
+            ]
+            if ssh_key:
+                parts += ["--ssh-key", ssh_key]
+            if install_branch:
+                parts += ["--package", "git"]
+            parts.append("-y")
+            cmd = " ".join(shlex.quote(p) for p in parts)
+            print(f"\n▶ {name}: {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            deployed.append(name)
+
+        # 6) Installation ERPLibre (clone) si demandée.
+        if install_branch:
+            print(f"\n{t('Cloning ERPLibre on each VM')} ({install_branch})…")
+            for name in deployed:
+                self._qemu_install_erplibre_vm(name, ssh_key, install_branch)
+
+        print(f"\n✅ {t('ERPLibre infra deployment done.')}")
+        print(f"   {t('Manage with:')} sudo virsh list --all")
 
     def _deploy_clone_erplibre(self):
         default_path = os.path.expanduser("~/erplibre")

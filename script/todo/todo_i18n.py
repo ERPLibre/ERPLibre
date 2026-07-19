@@ -1045,6 +1045,115 @@ TRANSLATIONS = {
         "fr": "Sélection invalide, utilisation de",
         "en": "Invalid selection, using",
     },
+    "select all": {
+        "fr": "tout sélectionner",
+        "en": "select all",
+    },
+    "Deploy ERPLibre infra (one minimal VM per image)": {
+        "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
+        "en": "Deploy ERPLibre infra (one minimal VM per image)",
+    },
+    "Deploy ERPLibre infra: one minimal VM per image": {
+        "fr": "Déployer l'infra ERPLibre : une VM minimale par image",
+        "en": "Deploy ERPLibre infra: one minimal VM per image",
+    },
+    "Cannot load QEMU catalog: ": {
+        "fr": "Impossible de charger le catalogue QEMU : ",
+        "en": "Cannot load QEMU catalog: ",
+    },
+    "Distributions:": {
+        "fr": "Distributions :",
+        "en": "Distributions:",
+    },
+    "Whole catalog (every version)": {
+        "fr": "Tout le catalogue (chaque version)",
+        "en": "Whole catalog (every version)",
+    },
+    "Selection (numbers, or 'all', default: all): ": {
+        "fr": "Sélection (numéros, ou « all », défaut : all) : ",
+        "en": "Selection (numbers, or 'all', default: all): ",
+    },
+    "Nothing selected.": {
+        "fr": "Rien de sélectionné.",
+        "en": "Nothing selected.",
+    },
+    "Deployment plan": {
+        "fr": "Plan de déploiement",
+        "en": "Deployment plan",
+    },
+    "disk": {
+        "fr": "disque",
+        "en": "disk",
+    },
+    "Total RAM (all running):": {
+        "fr": "RAM totale (toutes actives) :",
+        "en": "Total RAM (all running):",
+    },
+    "Total virtual disk (thin qcow2):": {
+        "fr": "Disque virtuel total (qcow2 thin) :",
+        "en": "Total virtual disk (thin qcow2):",
+    },
+    "Host RAM available:": {
+        "fr": "RAM disponible de l'hôte :",
+        "en": "Host RAM available:",
+    },
+    "Total RAM exceeds host free RAM: not all VMs will run at once.": {
+        "fr": "La RAM totale dépasse la RAM libre de l'hôte : les VM ne "
+        "tourneront pas toutes en même temps.",
+        "en": "Total RAM exceeds host free RAM: not all VMs will run at once.",
+    },
+    "Install ERPLibre into ~/git/erplibre on each VM? (y/N): ": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? (o/N) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on each VM? (y/N): ",
+    },
+    "Deploy these VMs now? (y/N): ": {
+        "fr": "Déployer ces VM maintenant ? (o/N) : ",
+        "en": "Deploy these VMs now? (y/N): ",
+    },
+    "Cancelled.": {
+        "fr": "Annulé.",
+        "en": "Cancelled.",
+    },
+    "already exists, skipped.": {
+        "fr": "existe déjà, ignorée.",
+        "en": "already exists, skipped.",
+    },
+    "Cloning ERPLibre on each VM": {
+        "fr": "Clonage d'ERPLibre sur chaque VM",
+        "en": "Cloning ERPLibre on each VM",
+    },
+    "ERPLibre infra deployment done.": {
+        "fr": "Déploiement de l'infra ERPLibre terminé.",
+        "en": "ERPLibre infra deployment done.",
+    },
+    "Manage with:": {
+        "fr": "Gérer avec :",
+        "en": "Manage with:",
+    },
+    "Fetching ERPLibre branch list...": {
+        "fr": "Récupération de la liste des branches ERPLibre...",
+        "en": "Fetching ERPLibre branch list...",
+    },
+    "Branch (default:": {
+        "fr": "Branche (défaut :",
+        "en": "Branch (default:",
+    },
+    "Branches:": {
+        "fr": "Branches :",
+        "en": "Branches:",
+    },
+    "Choice (number or name, default:": {
+        "fr": "Choix (numéro ou nom, défaut :",
+        "en": "Choice (number or name, default:",
+    },
+    "no IP obtained, ERPLibre clone skipped.": {
+        "fr": "aucune IP obtenue, clonage ERPLibre ignoré.",
+        "en": "no IP obtained, ERPLibre clone skipped.",
+    },
+    "cloning ERPLibre": {
+        "fr": "clonage d'ERPLibre",
+        "en": "cloning ERPLibre",
+    },
     "VM name (required): ": {
         "fr": "Nom de la VM (requis) : ",
         "en": "VM name (required): ",
