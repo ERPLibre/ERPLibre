@@ -219,15 +219,28 @@ def osinfo_known(short_id: str) -> bool:
     return False
 
 
-def osinfo_arg(osinfo: str) -> str:
-    """Valeur --osinfo résiliente à un osinfo-db périmé : si l'id est connu on
-    l'utilise ; sinon on bascule en détection best-effort au lieu d'échouer
-    (utile pour une distro plus récente que la base locale, ex. ubuntu26.04,
-    fedora43+)."""
+def osinfo_arg(osinfo: str, distro: str = "") -> str:
+    """Valeur --osinfo résiliente à un osinfo-db périmé. Si l'id est connu on
+    l'utilise ; sinon on retombe sur le DERNIER osinfo connu de la même distro
+    (meilleures perfs que « generic », pas d'avertissement) ; en dernier
+    recours, détection best-effort. Utile pour une version plus récente que la
+    base locale (ex. ubuntu26.04, fedora43+)."""
     if "=" in osinfo or "," in osinfo:
         return osinfo  # forme avancée déjà fournie par l'utilisateur
     if osinfo_known(osinfo):
         return osinfo
+    # Repli 1 : dernier osinfo connu de la même distro (ordre de la table).
+    versions = DISTROS.get(distro, ({}, ""))[0]
+    known = [v[1] for v in versions.values() if osinfo_known(v[1])]
+    if known:
+        fallback = known[-1]
+        print(
+            f"  osinfo « {osinfo} » inconnu (osinfo-db) — repli sur "
+            f"« {fallback} » (proche). « sudo apt upgrade osinfo-db » pour "
+            "l'entrée exacte."
+        )
+        return fallback
+    # Repli 2 : détection best-effort (évite l'échec, peut donner generic).
     print(
         f"  osinfo « {osinfo} » inconnu de la base locale (osinfo-db) — repli "
         "sur la détection auto (detect=on,require=off).\n"
@@ -1354,7 +1367,7 @@ def main() -> None:
     cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
     build_seed(cloud_cfg, args.hostname, seed, runner)
 
-    resolved_osinfo = osinfo_arg(osinfo)
+    resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
     virt_install(args, disk, seed, resolved_osinfo, runner)
