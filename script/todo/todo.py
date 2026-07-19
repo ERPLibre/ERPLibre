@@ -954,11 +954,15 @@ class TODO:
             # sous sudo (HOME=/root) et ne pourrait pas déduire ~ correctement.
             ssh_key = os.path.expanduser(ssh_key)
 
-        use_password = False
-        if not ssh_key:
-            ans = input(t("No SSH key found. Set a password instead? (Y/n): "))
-            # Défaut oui : tout sauf une réponse négative explicite vaut oui.
-            use_password = not self._is_no(ans)
+        # Mot de passe console (défaut « erplibre ») : permet la connexion par
+        # la console série (virsh console) EN PLUS de la clé SSH. Sans lui, le
+        # compte est verrouillé et la console refuse tout login.
+        password = (
+            input(
+                t("Console password for 'erplibre' (default: erplibre): ")
+            ).strip()
+            or "erplibre"
+        )
 
         force = False
         if not dry_run:
@@ -978,8 +982,8 @@ class TODO:
             parts += ["--disk-size", disk_size]
         if ssh_key:
             parts += ["--ssh-key", ssh_key]
-        if use_password:
-            parts.append("--ask-password")
+        if password:
+            parts += ["--password", password]
         if force:
             parts.append("--force")
         if dry_run:
@@ -989,7 +993,13 @@ class TODO:
 
         cmd = " ".join(shlex.quote(p) for p in parts)
         print(f"{t('Will execute:')} {cmd}")
+        if password:
+            print(f"🔑 {t('Console/SSH login:')} erplibre / {password}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+        # Proposer d'enregistrer la VM dans ~/.ssh/config (après le 1er boot).
+        if not dry_run:
+            self._qemu_offer_ssh_config(name, "erplibre")
 
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
@@ -1047,9 +1057,51 @@ class TODO:
             print(t("VM name is required!"))
             return
         print(f"\n💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
+        print(
+            f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
+        )
         cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_offer_ssh_config(self, name, user):
+        """Propose d'enregistrer la VM dans ~/.ssh/config (bloc Host name)."""
+        if not self._is_yes(input(t("Add this VM to ~/.ssh/config? (y/N): "))):
+            return
+        print(t("Waiting for the VM IP (DHCP lease)..."))
+        ip = self._qemu_vm_ip(name)
+        if not ip:
+            print(t("No IP yet; add it later once the VM has booted."))
+            return
+        self._write_ssh_config_entry(name, user, ip)
+
+    def _write_ssh_config_entry(self, host, user, ip):
+        """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config."""
+        cfg = os.path.expanduser("~/.ssh/config")
+        os.makedirs(os.path.dirname(cfg), exist_ok=True)
+        existing = ""
+        if os.path.exists(cfg):
+            with open(cfg, encoding="utf-8") as fh:
+                existing = fh.read()
+        # Retire un ancien bloc du même Host (jusqu'au prochain Host / EOF).
+        pattern = re.compile(
+            rf"(?ms)^[ \t]*Host[ \t]+{re.escape(host)}[ \t]*\n"
+            r"(?:[ \t]+.*\n?)*"
+        )
+        existing = pattern.sub("", existing).rstrip("\n")
+        block = (
+            f"Host {host}\n"
+            f"    HostName {ip}\n"
+            f"    User {user}\n"
+            # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
+            f"    StrictHostKeyChecking no\n"
+            f"    UserKnownHostsFile /dev/null\n"
+        )
+        content = (existing + "\n\n" + block) if existing else block
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(cfg, 0o600)
+        print(f"✅ {t('Added to ~/.ssh/config:')} ssh {host}")
 
     def _qemu_list_domains(self):
         """Noms des VM libvirt définies (via virsh)."""
@@ -1377,6 +1429,10 @@ class TODO:
         if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
 
+        add_ssh_config = self._is_yes(
+            input(t("Add each VM to ~/.ssh/config? (y/N): "))
+        )
+
         # 5) Confirmation puis déploiement séquentiel.
         ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}")
         if not self._is_yes(ans):
@@ -1403,6 +1459,9 @@ class TODO:
             ]
             if ssh_key:
                 parts += ["--ssh-key", ssh_key]
+            # Mot de passe console par défaut « erplibre » (login virsh
+            # console + SSH par mot de passe), en plus de la clé.
+            parts += ["--password", "erplibre"]
             if install_branch:
                 parts += ["--package", "git"]
             parts.append("-y")
@@ -1410,6 +1469,10 @@ class TODO:
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
             deployed.append(name)
+            if add_ssh_config:
+                ip = self._qemu_vm_ip(name)
+                if ip:
+                    self._write_ssh_config_entry(name, "erplibre", ip)
 
         # 6) Installation ERPLibre (clone) si demandée.
         if install_branch:
@@ -1418,6 +1481,7 @@ class TODO:
                 self._qemu_install_erplibre_vm(name, ssh_key, install_branch)
 
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
+        print(f"   {t('Default login:')} erplibre / erplibre")
         print(f"   {t('Manage with:')} sudo virsh list --all")
 
     def _deploy_clone_erplibre(self):

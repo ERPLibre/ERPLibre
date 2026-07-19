@@ -229,6 +229,43 @@ TRANSLATIONS = {
         "fr": "Pour quitter la console, appuyez sur Ctrl+] (puis Entrée).",
         "en": "To leave the console, press Ctrl+] (then Enter).",
     },
+    "Default login (if set at deploy): erplibre / erplibre": {
+        "fr": "Login par défaut (si défini au déploiement) : "
+        "erplibre / erplibre",
+        "en": "Default login (if set at deploy): erplibre / erplibre",
+    },
+    "Console password for 'erplibre' (default: erplibre): ": {
+        "fr": "Mot de passe console pour « erplibre » (défaut : erplibre) : ",
+        "en": "Console password for 'erplibre' (default: erplibre): ",
+    },
+    "Console/SSH login:": {
+        "fr": "Connexion console/SSH :",
+        "en": "Console/SSH login:",
+    },
+    "Default login:": {
+        "fr": "Login par défaut :",
+        "en": "Default login:",
+    },
+    "Add this VM to ~/.ssh/config? (y/N): ": {
+        "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N) : ",
+        "en": "Add this VM to ~/.ssh/config? (y/N): ",
+    },
+    "Add each VM to ~/.ssh/config? (y/N): ": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config ? (o/N) : ",
+        "en": "Add each VM to ~/.ssh/config? (y/N): ",
+    },
+    "Waiting for the VM IP (DHCP lease)...": {
+        "fr": "Attente de l'IP de la VM (bail DHCP)...",
+        "en": "Waiting for the VM IP (DHCP lease)...",
+    },
+    "No IP yet; add it later once the VM has booted.": {
+        "fr": "Pas encore d'IP ; à ajouter plus tard une fois la VM démarrée.",
+        "en": "No IP yet; add it later once the VM has booted.",
+    },
+    "Added to ~/.ssh/config:": {
+        "fr": "Ajouté à ~/.ssh/config :",
+        "en": "Added to ~/.ssh/config:",
+    },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",
