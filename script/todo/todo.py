@@ -27,7 +27,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
-from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
+from script.todo.todo_i18n import lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -293,7 +293,7 @@ class TODO:
             .strip()
             .lower()
         )
-        if first_installation_input == "y":
+        if self._is_yes(first_installation_input):
             cmd = "./script/version/update_env_version.py --install"
             self.execute.exec_command_live(cmd, source_erplibre=True)
             print("Wait after OS installation before continue.")
@@ -323,7 +323,7 @@ class TODO:
             pycharm_configuration_input = (
                 input("💬 Open Pycharm? (Y/N): ").strip().lower()
             )
-            if pycharm_configuration_input == "y":
+            if self._is_yes(pycharm_configuration_input):
                 pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
 
                 cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
@@ -921,12 +921,9 @@ class TODO:
 
         use_password = False
         if not ssh_key:
-            ans = (
-                input(t("No SSH key found. Set a password instead? (Y/n): "))
-                .strip()
-                .lower()
-            )
-            use_password = ans != "n"
+            ans = input(t("No SSH key found. Set a password instead? (Y/n): "))
+            # Défaut oui : tout sauf une réponse négative explicite vaut oui.
+            use_password = not self._is_no(ans)
 
         force = False
         if not dry_run:
@@ -1027,6 +1024,12 @@ class TODO:
     def _is_yes(ans):
         """Réponse affirmative, FR et EN (o/oui/y/yes)."""
         return ans.strip().lower() in ("y", "yes", "o", "oui")
+
+    @staticmethod
+    def _is_no(ans):
+        """Réponse négative explicite, FR et EN (n/no/non). Utile pour les
+        invites « défaut oui » où tout sauf « non » vaut oui."""
+        return ans.strip().lower() in ("n", "no", "non")
 
     @staticmethod
     def _host_free_ram_mb():
@@ -1932,10 +1935,8 @@ class TODO:
 
         if os.path.exists(dest_file):
             print(f"{t('File already exists: ')}{dest_file}")
-            overwrite = input(
-                t("Do you want to overwrite the file? (y/Y): ")
-            ).strip()
-            if overwrite not in ("y", "Y"):
+            overwrite = input(t("Do you want to overwrite the file? (y/Y): "))
+            if not self._is_yes(overwrite):
                 print(t("Nothing to do."))
                 return
 
@@ -2420,11 +2421,8 @@ class TODO:
             print(f"\n❌ {t('Tests failed with return code')} {status_code}")
 
         # Step 4: Cleanup
-        lang = get_lang()
-        keep_input = (
-            input(t("Keep the temporary database? (y/N): ")).strip().lower()
-        )
-        keep = keep_input in (("o", "oui") if lang == "fr" else ("y", "yes"))
+        keep_input = input(t("Keep the temporary database? (y/N): "))
+        keep = self._is_yes(keep_input)
         if keep:
             print(f"{t('Database kept')}: {db_name}")
         else:
@@ -2749,7 +2747,7 @@ class TODO:
         git_repo_update_input = input(
             "💬 Would you like to fetch all your git repositories, you need it (y/Y) : "
         )
-        if git_repo_update_input.strip().lower() == "y":
+        if self._is_yes(git_repo_update_input):
             status = self.execute.exec_command_live(
                 f"./script/manifest/update_manifest_local_dev.sh",
                 source_erplibre=False,
@@ -2867,7 +2865,7 @@ class TODO:
         do_personalize = input(
             "Do you want to personalize the mobile application (Y) : "
         )
-        if do_personalize.strip().lower() == "y":
+        if self._is_yes(do_personalize):
             project_name = (
                 input(
                     f'Your project name (Separate by space in title), default "{default_project_name}" : '
@@ -2892,19 +2890,14 @@ class TODO:
                 ).strip()
                 or default_project_note_subject
             )
-            do_debug = (
+            do_debug = self._is_yes(
                 input("Compilation with debug information, default No (Y) : ")
-                .strip()
-                .lower()
-                == "y"
             )
-            do_change_picture_menu = (
+            do_change_picture_menu = self._is_yes(
                 input(
-                    "Want to change picture from menu, you need android-studio (Y) : "
+                    "Want to change picture from menu, you need"
+                    " android-studio (Y) : "
                 )
-                .strip()
-                .lower()
-                == "y"
             )
 
         # Rename with script bash
