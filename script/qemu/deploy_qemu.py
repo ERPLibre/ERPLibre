@@ -740,7 +740,10 @@ def build_cloud_config(
         "users:",
         f"  - name: {args.user}",
         "    sudo: ALL=(ALL) NOPASSWD:ALL",
-        "    groups: users, admin",
+        # « sudo » existe sur Debian ET Ubuntu ; « admin » n'existe PAS sur
+        # Debian -> useradd -G ...,admin échoue et l'utilisateur n'est jamais
+        # créé (login/clé SSH KO). C'était la cause du « Debian ne marche pas ».
+        "    groups: users, sudo",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
@@ -945,8 +948,13 @@ def virt_install(
         "--import",
         "--disk",
         f"path={disk},format=qcow2,bus=virtio",
+        # Seed cloud-init attaché comme DISQUE virtio en lecture seule (et non
+        # en CD-ROM) : le pilote virtio-blk est dans l'initramfs, donc le
+        # volume « cidata » est visible dès init-local et cloud-init le lit.
+        # En CD-ROM, l'initramfs Debian ne charge pas sr_mod à temps -> le
+        # seed n'est pas vu et rien ne s'applique (Ubuntu, lui, tolère le CD).
         "--disk",
-        f"path={seed},device=cdrom",
+        f"path={seed},readonly=on,bus=virtio",
         "--osinfo",
         osinfo,
         "--network",
