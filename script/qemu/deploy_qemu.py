@@ -101,7 +101,15 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
 }
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
-DEBIAN_CLOUD_BASE = "https://cloud.debian.org/images/cloud"
+# Debian : cloud.debian.org est un redirecteur qui, selon le réseau, peut
+# renvoyer vers un miroir injoignable. On essaie donc plusieurs bases dans
+# l'ordre (le premier miroir qui répond gagne). Les deux acc.umu.se sont des
+# miroirs Debian officiels de repli.
+DEBIAN_CLOUD_BASES: tuple[str, ...] = (
+    "https://cloud.debian.org/images/cloud",
+    "https://gemmei.ftp.acc.umu.se/cdimage/cloud",
+    "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
+)
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
@@ -123,20 +131,29 @@ def distro_arch(distro: str, arch: str) -> str:
 
 
 def image_url(distro: str, code: str, arch: str, version: str) -> str:
-    """URL directe de l'image cloud (Ubuntu/Debian). Fedora est résolu à
-    part via resolve_fedora_url (pas de lien « latest » stable)."""
+    """URL directe (primaire) de l'image cloud (Ubuntu/Debian)."""
+    return image_candidates(distro, code, arch, version, dry_run=True)[0]
+
+
+def image_candidates(
+    distro: str, code: str, arch: str, version: str, dry_run: bool = False
+) -> list[str]:
+    """Liste ordonnée d'URL candidates pour l'image cloud. Plusieurs miroirs
+    pour Debian ; une seule URL pour Ubuntu/Fedora."""
     a = distro_arch(distro, arch)
     if distro == "ubuntu":
-        return (
+        return [
             f"{CLOUD_IMG_BASE}/{code}/current/"
             f"{code}-server-cloudimg-{a}.img"
-        )
+        ]
     if distro == "debian":
-        return (
-            f"{DEBIAN_CLOUD_BASE}/{code}/latest/"
-            f"debian-{version}-genericcloud-{a}.qcow2"
-        )
-    raise ValueError(f"URL directe indisponible pour la distro {distro!r}")
+        return [
+            f"{base}/{code}/latest/debian-{version}-genericcloud-{a}.qcow2"
+            for base in DEBIAN_CLOUD_BASES
+        ]
+    if distro == "fedora":
+        return [resolve_fedora_url(version, arch, dry_run)]
+    raise ValueError(f"URL indisponible pour la distro {distro!r}")
 
 
 def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
@@ -161,15 +178,6 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
             f"Fedora {version} ({a}) dans {index}"
         )
     return index + names[-1]
-
-
-def resolve_image_url(
-    distro: str, code: str, arch: str, version: str, dry_run: bool
-) -> str:
-    """URL de l'image cloud, tous distros confondus."""
-    if distro == "fedora":
-        return resolve_fedora_url(version, arch, dry_run)
-    return image_url(distro, code, arch, version)
 
 
 def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
@@ -552,16 +560,62 @@ def ensure_tools(runner: Runner, assume_yes: bool, no_install: bool) -> None:
 # --------------------------------------------------------------------------- #
 # Étapes
 # --------------------------------------------------------------------------- #
-def download_image(url: str, dest: Path, dry_run: bool) -> None:
-    """Télécharge l'image seulement si elle n'existe pas déjà (cache)."""
+# Délai (s) par opération réseau : au-delà, on abandonne le miroir courant.
+# Sans lui, un miroir injoignable ferait pendre le téléchargement à l'infini.
+DOWNLOAD_TIMEOUT = 30
+
+
+def _download_one(url: str, tmp: Path, timeout: int) -> None:
+    """Télécharge url -> tmp en streaming, avec timeout et barre de %.
+    Lève une exception en cas d'échec réseau (miroir suivant à essayer)."""
+    is_tty = sys.stdout.isatty()
+    last_pct = -1
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "erplibre-qemu-deploy"}
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        total = int(resp.headers.get("Content-Length", 0) or 0)
+        done = 0
+        with open(tmp, "wb") as fh:
+            while True:
+                chunk = resp.read(1 << 16)
+                if not chunk:
+                    break
+                fh.write(chunk)
+                done += len(chunk)
+                if total <= 0:
+                    continue
+                pct = min(100, done * 100 // total)
+                if pct == last_pct:
+                    continue
+                last_pct = pct
+                # TTY : une ligne réécrite (\r) ; sinon (capturé par le menu
+                # todo) au plus 101 lignes, jamais de flot infini.
+                if is_tty:
+                    print(f"\r    {pct:3d}%", end="", flush=True)
+                else:
+                    print(f"    {pct:3d}%", flush=True)
+    if is_tty:
+        print()
+
+
+def download_image(
+    urls, dest: Path, dry_run: bool, timeout: int = DOWNLOAD_TIMEOUT
+) -> None:
+    """Télécharge l'image (essaie chaque miroir dans l'ordre) si absente du
+    cache. Échoue proprement — jamais de blocage infini — grâce au timeout."""
+    if isinstance(urls, str):
+        urls = [urls]
     if dest.exists() and dest.stat().st_size > 0:
         size_mb = dest.stat().st_size / 1024 / 1024
         print(
-            f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement ignoré : {dest}"
+            f"  Image déjà présente ({size_mb:.0f} Mo), téléchargement"
+            f" ignoré : {dest}",
+            flush=True,
         )
         return
     if dry_run:
-        print(f"  [dry-run] téléchargement {url} -> {dest}")
+        print(f"  [dry-run] téléchargement {urls[0]} -> {dest}", flush=True)
         return
 
     try:
@@ -572,36 +626,25 @@ def download_image(url: str, dest: Path, dry_run: bool) -> None:
             "  Relancez avec sudo, ou choisissez --image-dir vers un dossier"
             " accessible en écriture."
         )
-    print(f"  Téléchargement {url}")
     tmp = dest.with_suffix(dest.suffix + ".part")
-    is_tty = sys.stdout.isatty()
-    last_pct = [-1]
-
-    def _progress(block_num: int, block_size: int, total: int) -> None:
-        # N'émet qu'au changement de pourcentage entier : sur un TTY, réécrit
-        # la même ligne (\r) ; sinon (sortie capturée par le menu todo) au plus
-        # 101 lignes au lieu de centaines de répétitions du même pourcentage.
-        if total <= 0:
+    errors = []
+    for i, url in enumerate(urls, 1):
+        tag = "" if len(urls) == 1 else f" (miroir {i}/{len(urls)})"
+        print(f"  Téléchargement{tag} : {url}", flush=True)
+        try:
+            _download_one(url, tmp, timeout)
+            tmp.replace(dest)
             return
-        pct = min(100, block_num * block_size * 100 // total)
-        if pct == last_pct[0]:
-            return
-        last_pct[0] = pct
-        if is_tty:
-            print(f"\r    {pct:3d}%", end="", flush=True)
-        else:
-            print(f"    {pct:3d}%", flush=True)
-
-    try:
-        urllib.request.urlretrieve(
-            url, tmp, _progress
-        )  # noqa: S310 (URL contrôlée)
-    except Exception as exc:  # pragma: no cover - dépend du réseau
-        tmp.unlink(missing_ok=True)
-        sys.exit(f"\nÉchec du téléchargement : {exc}")
-    if is_tty:
-        print()
-    tmp.replace(dest)
+        except Exception as exc:  # réseau/timeout : on tente le miroir suivant
+            tmp.unlink(missing_ok=True)
+            print(f"\n  Échec : {exc}", flush=True)
+            errors.append(f"{url} -> {exc}")
+    sys.exit(
+        "\nÉchec du téléchargement depuis tous les miroirs :\n  "
+        + "\n  ".join(errors)
+        + "\n  Vérifiez la connectivité (IPv6 ?), réessayez plus tard, ou "
+        "fournissez un chemin d'image local en argument positionnel."
+    )
 
 
 def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
@@ -613,7 +656,9 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
     filename = url.rsplit("/", 1)[1]
     print(f"  Vérification SHA256 via {sums_url}")
     try:
-        with urllib.request.urlopen(sums_url) as resp:  # noqa: S310
+        with urllib.request.urlopen(  # noqa: S310
+            sums_url, timeout=DOWNLOAD_TIMEOUT
+        ) as resp:
             sums = resp.read().decode()
     except Exception as exc:  # pragma: no cover
         sys.exit(f"Impossible de récupérer SHA256SUMS : {exc}")
@@ -693,11 +738,20 @@ def build_cloud_config(
     lines.append("package_update: true")
     lines.append(f"package_upgrade: {'false' if args.no_upgrade else 'true'}")
 
-    packages = ["qemu-guest-agent", *args.package]
+    # openssh-server : garantit un serveur SSH sur toutes les distros (les
+    # images Debian genericcloud notamment ne l'ont pas toujours activé).
+    packages = ["qemu-guest-agent", "openssh-server", *args.package]
     lines.append("packages:")
     lines += [
         f"  - {p}" for p in dict.fromkeys(packages)
     ]  # dédoublonne, ordre gardé
+    # Active et démarre SSH quel que soit le nom du service (ssh sur
+    # Debian/Ubuntu, sshd sur Fedora) — sans quoi la VM peut booter sans SSH.
+    lines += [
+        "runcmd:",
+        "  - systemctl enable --now ssh 2>/dev/null"
+        " || systemctl enable --now sshd 2>/dev/null || true",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -1127,6 +1181,13 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
 
 
 def main() -> None:
+    # Sortie ligne par ligne même quand stdout est un tube (menu todo) : sinon
+    # les en-têtes restent bufferisés et le déploiement paraît « gelé ».
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):
+        pass
+
     args = build_parser().parse_args()
 
     if args.list_images:
@@ -1150,9 +1211,10 @@ def main() -> None:
         args.memory = min_ram
     if args.disk_size is None:
         args.disk_size = min_disk
-    url = resolve_image_url(
+    urls = image_candidates(
         args.distro, code, args.arch, args.version, args.dry_run
     )
+    url = urls[0]
     # --verify s'appuie sur un SHA256SUMS style Ubuntu ; Debian/Fedora
     # publient des sommes dans un autre format -> on saute proprement.
     do_verify = args.verify and args.distro == "ubuntu"
@@ -1179,7 +1241,7 @@ def main() -> None:
             f"({args.distro} {args.version} / {code}) =="
         )
         print(f"  Destination : {args.image_path}")
-        download_image(url, args.image_path, args.dry_run)
+        download_image(urls, args.image_path, args.dry_run)
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
         print("\nTerminé (téléchargement seul).")
@@ -1209,7 +1271,7 @@ def main() -> None:
         ensure_tools(runner, args.assume_yes, args.no_install_deps)
 
     print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
-    download_image(url, args.image_path, args.dry_run)
+    download_image(urls, args.image_path, args.dry_run)
     if do_verify:
         verify_sha256(url, args.image_path, args.dry_run)
 
