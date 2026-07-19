@@ -153,6 +153,82 @@ TRANSLATIONS = {
         "fr": "Virtualisation & notifications",
         "en": "Virtualization & notifications",
     },
+    "Development": {
+        "fr": "Développement",
+        "en": "Development",
+    },
+    "Data": {
+        "fr": "Données",
+        "en": "Data",
+    },
+    "Sources & documentation": {
+        "fr": "Sources & documentation",
+        "en": "Sources & documentation",
+    },
+    "AI & automation": {
+        "fr": "IA & automatisation",
+        "en": "AI & automation",
+    },
+    "Deployment, network & security": {
+        "fr": "Déploiement, réseau & sécurité",
+        "en": "Deployment, network & security",
+    },
+    "Preferences": {
+        "fr": "Préférences",
+        "en": "Preferences",
+    },
+    "Deployment": {
+        "fr": "Déploiement",
+        "en": "Deployment",
+    },
+    "Manage": {
+        "fr": "Gérer",
+        "en": "Manage",
+    },
+    "Catalog": {
+        "fr": "Catalogue",
+        "en": "Catalog",
+    },
+    "Open the console on a VM": {
+        "fr": "Ouvrir la console d'une VM",
+        "en": "Open the console on a VM",
+    },
+    "Backup": {
+        "fr": "Sauvegarde",
+        "en": "Backup",
+    },
+    "Restore": {
+        "fr": "Restauration",
+        "en": "Restore",
+    },
+    "Danger zone": {
+        "fr": "Zone dangereuse",
+        "en": "Danger zone",
+    },
+    "Setup": {
+        "fr": "Installation",
+        "en": "Setup",
+    },
+    "Status": {
+        "fr": "Statut",
+        "en": "Status",
+    },
+    "Optimize": {
+        "fr": "Optimisation",
+        "en": "Optimize",
+    },
+    "Generate": {
+        "fr": "Génération",
+        "en": "Generate",
+    },
+    "Advanced": {
+        "fr": "Avancé",
+        "en": "Advanced",
+    },
+    "To leave the console, press Ctrl+] (then Enter).": {
+        "fr": "Pour quitter la console, appuyez sur Ctrl+] (puis Entrée).",
+        "en": "To leave the console, press Ctrl+] (then Enter).",
+    },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",
@@ -1221,6 +1297,10 @@ TRANSLATIONS = {
     "VM name or ID: ": {
         "fr": "Nom ou ID de la VM : ",
         "en": "VM name or ID: ",
+    },
+    "VM name or ID (or 'all'): ": {
+        "fr": "Nom ou ID de la VM (ou « all ») : ",
+        "en": "VM name or ID (or 'all'): ",
     },
     "RAM in MB (blank = version minimum): ": {
         "fr": "RAM en Mo (vide = minimum de la version) : ",

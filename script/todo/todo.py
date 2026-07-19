@@ -197,21 +197,33 @@ class TODO:
 
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
-[1] {t("Automation - Demonstration of developed features")}
-[2] {t("Code - Developer tools")}
-[3] {t("Config - Configuration file management")}
-[4] {t("Database - Database tools")}
-[5] {t("Doc - Documentation search")}
-[6] {t("Git - Git tools")}
-[7] {t("GPT code - AI assistant tools")}
-[8] {t("Language - Change language / Changer la langue")}
-[9] {t("Network - Network tools")}
-[10] {t("Process - Execution tools")}
-[11] {t("Run - Execute and install an instance")}
-[12] {t("Security - Dependency security audit")}
-[13] {t("Test - Test an Odoo module")}
-[14] {t("Update - Update all developed staging source code")}
-[15] {t("Deploy - Deploy ERPLibre locally")}
+
+── {t("Development")} ──
+[1] {t("Code - Developer tools")}
+[2] {t("Config - Configuration file management")}
+[3] {t("Run - Execute and install an instance")}
+[4] {t("Test - Test an Odoo module")}
+[5] {t("Process - Execution tools")}
+
+── {t("Data")} ──
+[6] {t("Database - Database tools")}
+
+── {t("Sources & documentation")} ──
+[7] {t("Git - Git tools")}
+[8] {t("Update - Update all developed staging source code")}
+[9] {t("Doc - Documentation search")}
+
+── {t("AI & automation")} ──
+[10] {t("GPT code - AI assistant tools")}
+[11] {t("Automation - Demonstration of developed features")}
+
+── {t("Deployment, network & security")} ──
+[12] {t("Deploy - Deploy ERPLibre locally")}
+[13] {t("Network - Network tools")}
+[14] {t("Security - Dependency security audit")}
+
+── {t("Preferences")} ──
+[15] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -220,63 +232,63 @@ class TODO:
             if status == "0":
                 return
             elif status == "1":
-                status = self.prompt_execute_function()
-                if status is not False:
-                    return
-            elif status == "2":
                 status = self.prompt_execute_code()
                 if status is not False:
                     return
-            elif status == "3":
+            elif status == "2":
                 status = self.prompt_execute_config()
                 if status is not False:
                     return
-            elif status == "4":
-                status = self.prompt_execute_database()
-                if status is not False:
-                    return
-            elif status == "5":
-                status = self.prompt_execute_doc()
-                if status is not False:
-                    return
-            elif status == "6":
-                status = self.prompt_execute_git()
-                if status is not False:
-                    return
-            elif status == "7":
-                status = self.prompt_execute_gpt_code()
-                if status is not False:
-                    return
-            elif status == "8":
-                status = self._change_language()
-                if status is not False:
-                    return
-            elif status == "9":
-                status = self.prompt_execute_network()
-                if status is not False:
-                    return
-            elif status == "10":
-                status = self.prompt_execute_process()
-                if status is not False:
-                    return
-            elif status == "11":
+            elif status == "3":
                 status = self.prompt_execute_instance()
                 if status is not False:
                     return
-            elif status == "12":
-                status = self.prompt_execute_security()
-                if status is not False:
-                    return
-            elif status == "13":
+            elif status == "4":
                 status = self.prompt_execute_test()
                 if status is not False:
                     return
-            elif status == "14":
+            elif status == "5":
+                status = self.prompt_execute_process()
+                if status is not False:
+                    return
+            elif status == "6":
+                status = self.prompt_execute_database()
+                if status is not False:
+                    return
+            elif status == "7":
+                status = self.prompt_execute_git()
+                if status is not False:
+                    return
+            elif status == "8":
                 status = self.prompt_execute_update()
                 if status is not False:
                     return
-            elif status == "15":
+            elif status == "9":
+                status = self.prompt_execute_doc()
+                if status is not False:
+                    return
+            elif status == "10":
+                status = self.prompt_execute_gpt_code()
+                if status is not False:
+                    return
+            elif status == "11":
+                status = self.prompt_execute_function()
+                if status is not False:
+                    return
+            elif status == "12":
                 status = self.prompt_execute_deploy()
+                if status is not False:
+                    return
+            elif status == "13":
+                status = self.prompt_execute_network()
+                if status is not False:
+                    return
+            elif status == "14":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "15":
+                status = self._change_language()
                 if status is not False:
                     return
             else:
@@ -854,6 +866,7 @@ class TODO:
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
             return False
         choices = [
+            {"section": t("Deployment")},
             {"prompt_description": t("Deploy a new VM")},
             {
                 "prompt_description": t(
@@ -861,15 +874,18 @@ class TODO:
                 )
             },
             {"prompt_description": t("Download a cloud image only")},
-            {"prompt_description": t("List VMs (virsh list --all)")},
-            {"prompt_description": t("Show a VM IP address")},
-            {"prompt_description": t("List available images and specs")},
             {
                 "prompt_description": t(
                     "Deploy ERPLibre infra (one minimal VM per image)"
                 )
             },
+            {"section": t("Manage")},
+            {"prompt_description": t("List VMs (virsh list --all)")},
+            {"prompt_description": t("Show a VM IP address")},
+            {"prompt_description": t("Open the console on a VM")},
             {"prompt_description": t("Delete VM(s)")},
+            {"section": t("Catalog")},
+            {"prompt_description": t("List available images and specs")},
         ]
         config_entries = self.config_file.get_config("qemu_from_makefile")
         if config_entries:
@@ -888,23 +904,27 @@ class TODO:
             elif status == "3":
                 self._qemu_download_image()
             elif status == "4":
-                self._qemu_list_vms()
-            elif status == "5":
-                self._qemu_show_ip()
-            elif status == "6":
-                self._qemu_list_images()
-            elif status == "7":
                 self._qemu_deploy_infra()
+            elif status == "5":
+                self._qemu_list_vms()
+            elif status == "6":
+                self._qemu_show_ip()
+            elif status == "7":
+                self._qemu_console()
             elif status == "8":
                 self._qemu_delete_vm()
+            elif status == "9":
+                self._qemu_list_images()
             else:
                 cmd_no_found = True
                 try:
                     int_cmd = int(status)
-                    if 0 < int_cmd <= len(choices):
+                    # Ignore les entrées de section pour mapper le numéro
+                    # affiché sur la bonne commande (config incluse).
+                    real = [c for c in choices if not c.get("section")]
+                    if 0 < int_cmd <= len(real):
                         cmd_no_found = False
-                        instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
+                        self.execute_from_configuration(real[int_cmd - 1])
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -998,14 +1018,36 @@ class TODO:
 
     def _qemu_show_ip(self):
         # Affiche d'abord les VM (avec leur ID) pour que l'utilisateur sache
-        # quel nom/ID saisir, puis demande lequel.
+        # quel nom/ID saisir, puis demande lequel (ou « all » pour toutes).
+        self._qemu_list_vms()
+        print()
+        name = input(t("VM name or ID (or 'all'): ")).strip()
+        if not name:
+            print(t("VM name is required!"))
+            return
+        if name.lower() in ("all", "tous", "*"):
+            targets = self._qemu_list_domains()
+            if not targets:
+                print(t("No VM found."))
+                return
+        else:
+            targets = [name]
+        for tgt in targets:
+            cmd = f"sudo virsh domifaddr {shlex.quote(tgt)} --source lease"
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_console(self):
+        # Liste les VM, demande laquelle, rappelle comment quitter (Ctrl+])
+        # puis ouvre la console série interactive.
         self._qemu_list_vms()
         print()
         name = input(t("VM name or ID: ")).strip()
         if not name:
             print(t("VM name is required!"))
             return
-        cmd = f"sudo virsh domifaddr {shlex.quote(name)} --source lease"
+        print(f"\n💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
+        cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -2140,13 +2182,16 @@ class TODO:
     def prompt_execute_database(self):
         print(f"🤖 {t('Make changes to databases!')}")
         choices = [
+            {"section": t("Backup")},
+            {"prompt_description": t("Create backup (.zip)")},
             {
                 "prompt_description": t(
                     "Download database to create backup (.zip)"
                 )
             },
+            {"section": t("Restore")},
             {"prompt_description": t("Restore from backup (.zip)")},
-            {"prompt_description": t("Create backup (.zip)")},
+            {"section": t("Danger zone")},
             {"prompt_description": t("Erase a database")},
         ]
         help_info = self.fill_help_info(choices)
@@ -2157,11 +2202,11 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self.db_manager.download_database_backup_cli()
-            elif status == "2":
-                self.db_manager.restore_from_database()
-            elif status == "3":
                 self.db_manager.create_backup_from_database()
+            elif status == "2":
+                self.db_manager.download_database_backup_cli()
+            elif status == "3":
+                self.db_manager.restore_from_database()
             elif status == "4":
                 self.db_manager.drop_database()
             else:
@@ -2199,12 +2244,15 @@ class TODO:
             f"🤖 {t('Manage RTK (Rust Token Killer) for token optimization!')}"
         )
         choices = [
+            {"section": t("Setup")},
             {"prompt_description": t("Install RTK")},
-            {"prompt_description": t("Check RTK version")},
-            {"prompt_description": t("Show cumulative token savings")},
-            {"prompt_description": t("Discover optimization opportunities")},
             {"prompt_description": t("Initialize global auto-rewrite hook")},
+            {"section": t("Status")},
+            {"prompt_description": t("Check RTK version")},
             {"prompt_description": t("Check RTK status")},
+            {"prompt_description": t("Show cumulative token savings")},
+            {"section": t("Optimize")},
+            {"prompt_description": t("Discover optimization opportunities")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -2216,15 +2264,15 @@ class TODO:
             elif status == "1":
                 self.rtk_install()
             elif status == "2":
-                self.rtk_check_version()
-            elif status == "3":
-                self.rtk_show_gain()
-            elif status == "4":
-                self.rtk_discover()
-            elif status == "5":
                 self.rtk_init_global()
-            elif status == "6":
+            elif status == "3":
+                self.rtk_check_version()
+            elif status == "4":
                 self.rtk_check_status()
+            elif status == "5":
+                self.rtk_show_gain()
+            elif status == "6":
+                self.rtk_discover()
             else:
                 print(t("Command not found !"))
 
@@ -2313,10 +2361,12 @@ class TODO:
     def prompt_execute_config(self):
         print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
         choices = [
+            {"section": t("Generate")},
             {"prompt_description": t("Generate all configuration")},
             {"prompt_description": t("Generate from pre-configuration")},
             {"prompt_description": t("Generate from backup file")},
             {"prompt_description": t("Generate from database")},
+            {"section": t("Advanced")},
             {"prompt_description": t("Setup queue job for parallelism")},
         ]
         help_info = self.fill_help_info(choices)
