@@ -49,18 +49,22 @@ import urllib.request
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
-# Table des versions Ubuntu -> (nom de code, valeur --osinfo/libosinfo)
-# Le nom de code sert à construire l'URL de l'image cloud. Les valeurs LTS sont
-# stables ; --codename et --osinfo permettent de surcharger si la table vieillit.
+# Table des versions Ubuntu -> (nom de code, --osinfo, RAM min. Mo, disque min.)
+# Le nom de code sert à construire l'URL de l'image cloud. La RAM et le disque
+# minimaux proviennent de libosinfo (osinfo-db) : ce sont les seuils sous
+# lesquels virt-install émet un avertissement. Ils servent de valeurs PAR
+# DÉFAUT — une VM Ubuntu démarre avec ça sans gaspiller la RAM de l'hôte. Les
+# valeurs LTS sont stables ; --codename et --osinfo surchargent si la table
+# vieillit ; --memory / --disk-size surchargent le dimensionnement.
 # --------------------------------------------------------------------------- #
-UBUNTU_VERSIONS: dict[str, tuple[str, str]] = {
-    "20.04": ("focal", "ubuntu20.04"),
-    "22.04": ("jammy", "ubuntu22.04"),
-    "24.04": ("noble", "ubuntu24.04"),
-    "24.10": ("oracular", "ubuntu24.10"),
-    "25.04": ("plucky", "ubuntu25.04"),
-    "25.10": ("questing", "ubuntu25.10"),
-    # "26.04": ("resolute", "ubuntu26.04"),
+UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "20.04": ("focal", "ubuntu20.04", 2048, "5G"),
+    "22.04": ("jammy", "ubuntu22.04", 2048, "10G"),
+    "24.04": ("noble", "ubuntu24.04", 3072, "20G"),
+    "24.10": ("oracular", "ubuntu24.10", 3072, "20G"),
+    "25.04": ("plucky", "ubuntu25.04", 3072, "20G"),
+    "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
+    # "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
 }
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
@@ -682,8 +686,9 @@ def ssh_command(user: str, ip: str, has_key: bool) -> str:
 # --------------------------------------------------------------------------- #
 def build_parser() -> argparse.ArgumentParser:
     versions_help = "\n".join(
-        f"    {v:<7} {code:<10} {image_url(code, 'amd64')}"
-        for v, (code, _osinfo) in UBUNTU_VERSIONS.items()
+        f"    {v:<7} {code:<10} RAM≥{ram:<5}Mo disque≥{disk:<4} "
+        f"{image_url(code, 'amd64')}"
+        for v, (code, _osinfo, ram, disk) in UBUNTU_VERSIONS.items()
     )
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -739,15 +744,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--hostname", help="Nom d'hôte interne (défaut : --name)."
     )
     g_vm.add_argument(
-        "--memory", type=int, default=8192, help="RAM en Mo (défaut : 8192)."
+        "--memory",
+        type=int,
+        default=None,
+        help="RAM en Mo (défaut : minimum requis par la version Ubuntu, "
+        "voir la liste ci-dessous).",
     )
     g_vm.add_argument(
-        "--vcpus", type=int, default=4, help="Nombre de vCPU (défaut : 4)."
+        "--vcpus", type=int, default=2, help="Nombre de vCPU (défaut : 2)."
     )
     g_vm.add_argument(
         "--disk-size",
-        default="20G",
-        help="Taille du disque virtuel, ex. 120G (défaut : 20G).",
+        default=None,
+        help="Taille du disque virtuel, ex. 120G (défaut : minimum requis "
+        "par la version Ubuntu, voir la liste ci-dessous).",
     )
     g_vm.add_argument(
         "--disk-dir",
@@ -907,10 +917,15 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
 def main() -> None:
     args = build_parser().parse_args()
 
-    codename, default_osinfo = UBUNTU_VERSIONS[args.version]
+    codename, default_osinfo, min_ram, min_disk = UBUNTU_VERSIONS[args.version]
     if args.codename:
         codename = args.codename
     osinfo = args.osinfo or default_osinfo
+    # Dimensionnement par défaut = minimum requis par la version (libosinfo).
+    if args.memory is None:
+        args.memory = min_ram
+    if args.disk_size is None:
+        args.disk_size = min_disk
     url = image_url(codename, args.arch)
 
     # Chemin de l'image : déduit automatiquement si non fourni.

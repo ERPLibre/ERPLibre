@@ -1041,17 +1041,17 @@ TRANSLATIONS = {
         "fr": "Nom de la VM : ",
         "en": "VM name: ",
     },
-    "RAM in MB (default: 8192): ": {
-        "fr": "RAM en Mo (défaut : 8192) : ",
-        "en": "RAM in MB (default: 8192): ",
+    "RAM in MB (blank = version minimum): ": {
+        "fr": "RAM en Mo (vide = minimum de la version) : ",
+        "en": "RAM in MB (blank = version minimum): ",
     },
-    "vCPUs (default: 4): ": {
-        "fr": "vCPU (défaut : 4) : ",
-        "en": "vCPUs (default: 4): ",
+    "vCPUs (default: 2): ": {
+        "fr": "vCPU (défaut : 2) : ",
+        "en": "vCPUs (default: 2): ",
     },
-    "Disk size (default: 20G): ": {
-        "fr": "Taille du disque (défaut : 20G) : ",
-        "en": "Disk size (default: 20G): ",
+    "Disk size (blank = version minimum): ": {
+        "fr": "Taille du disque (vide = minimum de la version) : ",
+        "en": "Disk size (blank = version minimum): ",
     },
     "SSH public key path": {
         "fr": "Chemin de la clé publique SSH",

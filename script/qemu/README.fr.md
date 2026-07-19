@@ -120,7 +120,10 @@ vous.
   `/var/lib/libvirt/images/iso`).
 - `--download-only` — télécharge l'image puis quitte (sans VM).
 - `--name` — nom de la VM (requis pour le déploiement).
-- `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM.
+- `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
+  `--memory` et `--disk-size` prennent le **minimum requis par la version
+  Ubuntu** choisie (valeurs libosinfo : 20.04 → 2048 Mo/5G, 22.04 →
+  2048 Mo/10G, 24.04+ → 3072 Mo/20G) ; `--vcpus` vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.

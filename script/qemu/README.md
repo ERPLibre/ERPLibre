@@ -112,7 +112,10 @@ parameters and builds the command for you.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
 - `--download-only` — download the image then exit (no VM).
 - `--name` — VM name (required for deployment).
-- `--memory`, `--vcpus`, `--disk-size` — VM sizing.
+- `--memory`, `--vcpus`, `--disk-size` — VM sizing. When omitted, `--memory`
+  and `--disk-size` default to the **minimum required by the chosen Ubuntu
+  version** (libosinfo values: 20.04 → 2048 MB/5G, 22.04 → 2048 MB/10G,
+  24.04+ → 3072 MB/20G); `--vcpus` defaults to 2.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentication.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.

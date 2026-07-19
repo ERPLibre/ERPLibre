@@ -812,9 +812,11 @@ class TODO:
             print(t("VM name is required!"))
             return
         version = self._qemu_prompt_version()
-        memory = input(t("RAM in MB (default: 8192): ")).strip() or "8192"
-        vcpus = input(t("vCPUs (default: 4): ")).strip() or "4"
-        disk_size = input(t("Disk size (default: 20G): ")).strip() or "20G"
+        # Laisser vide => le script applique le minimum requis par la version
+        # Ubuntu choisie (libosinfo). On n'envoie alors pas le flag.
+        memory = input(t("RAM in MB (blank = version minimum): ")).strip()
+        vcpus = input(t("vCPUs (default: 2): ")).strip()
+        disk_size = input(t("Disk size (blank = version minimum): ")).strip()
 
         default_key = self._qemu_default_ssh_key()
         key_hint = default_key or t("none")
@@ -849,14 +851,12 @@ class TODO:
             parts.append("sudo")
         parts.append(script_path)
         parts += ["--name", name, "--version", version]
-        parts += [
-            "--memory",
-            memory,
-            "--vcpus",
-            vcpus,
-            "--disk-size",
-            disk_size,
-        ]
+        if memory:
+            parts += ["--memory", memory]
+        if vcpus:
+            parts += ["--vcpus", vcpus]
+        if disk_size:
+            parts += ["--disk-size", disk_size]
         if ssh_key:
             parts += ["--ssh-key", ssh_key]
         if use_password:
