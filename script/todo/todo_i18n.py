@@ -141,6 +141,18 @@ TRANSLATIONS = {
         "fr": "Configurer sshfs",
         "en": "Configure sshfs",
     },
+    "Local": {
+        "fr": "Local",
+        "en": "Local",
+    },
+    "SSH (remote host)": {
+        "fr": "SSH (hôte distant)",
+        "en": "SSH (remote host)",
+    },
+    "Virtualization & notifications": {
+        "fr": "Virtualisation & notifications",
+        "en": "Virtualization & notifications",
+    },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",

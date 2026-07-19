@@ -555,15 +555,24 @@ class TODO:
         return header + t("Command:")
 
     def fill_help_info(self, choices):
+        # Une entrée {"section": "..."} affiche un titre de section SANS
+        # consommer de numéro : la numérotation reste continue sur les vraies
+        # commandes (compatible avec les elif codés en dur des menus).
         help_info = self._menu_header() + "\n"
         help_end = f"[0] {t('Back')}\n"
-        for i, instance in enumerate(choices):
+        n = 0
+        for instance in choices:
+            section = instance.get("section")
+            if section:
+                help_info += f"\n── {section} ──\n"
+                continue
+            n += 1
             desc_key = instance.get("prompt_description_key")
             if desc_key:
                 desc = t(desc_key)
             else:
                 desc = instance["prompt_description"]
-            help_info += f"[{i + 1}] " + desc + "\n"
+            help_info += f"[{n}] " + desc + "\n"
         help_info += help_end
         return help_info
 
@@ -692,8 +701,10 @@ class TODO:
     def prompt_execute_deploy(self):
         print(f"🤖 {t('Deploy ERPLibre to a local directory!')}")
         choices = [
+            {"section": t("Local")},
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
             {"prompt_description": t("Configure sshfs")},
+            {"section": t("SSH (remote host)")},
             {"prompt_description": t("SSH - Check connection")},
             {"prompt_description": t("SSH - Sync files (rsync)")},
             {"prompt_description": t("SSH - Install ERPLibre")},
@@ -705,6 +716,7 @@ class TODO:
             {"prompt_description": t("SSH - Run make target")},
             {"prompt_description": t("SSH - Install systemd service")},
             {"prompt_description": t("SSH - Configure nginx + SSL")},
+            {"section": t("Virtualization & notifications")},
             {
                 "prompt_description": t(
                     "Deploy - Install NTFY notification server"
