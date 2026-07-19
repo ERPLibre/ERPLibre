@@ -5,6 +5,7 @@
 import configparser
 import datetime
 import getpass
+import inspect
 import json
 import logging
 import os
@@ -122,7 +123,7 @@ class TODO:
         self._ask_language()
         print(t("Opening TODO ..."))
         print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
-        help_info = f"""{t("Command:")}
+        help_info = f"""{self._menu_header()}
 [1] {t("Execute")}
 [2] {t("Install")}
 [3] {t("Question")}
@@ -168,7 +169,7 @@ class TODO:
 
     def execute_prompt_ia(self):
         while True:
-            help_info = f"""{t("Command:")}
+            help_info = f"""{self._menu_header()}
 [0] {t("Back")}
 {t("Write your question ")}"""
             status = click.prompt(help_info)
@@ -194,7 +195,7 @@ class TODO:
             print()
 
     def prompt_execute(self):
-        help_info = f"""{t("Command:")}
+        help_info = f"""{self._menu_header()}
 [1] {t("Automation - Demonstration of developed features")}
 [2] {t("Code - Developer tools")}
 [3] {t("Config - Configuration file management")}
@@ -512,8 +513,48 @@ class TODO:
         if callback:
             callback(instance)
 
+    # Étiquettes du fil d'Ariane par méthode de menu. Le fil est dérivé de la
+    # pile d'appels (aucune méthode de menu à modifier). Labels courts et
+    # stables, pensés pour être copiés afin de situer précisément un menu.
+    _MENU_LABELS = {
+        "run": "TODO",
+        "prompt_execute": "Execute",
+        "execute_prompt_ia": "Question",
+        "prompt_install": "Install",
+        "prompt_execute_function": "Automation",
+        "prompt_execute_code": "Code",
+        "prompt_execute_config": "Config",
+        "prompt_execute_database": "Database",
+        "prompt_execute_doc": "Doc",
+        "prompt_execute_git": "Git",
+        "prompt_execute_git_local_server": "Git local server",
+        "prompt_execute_gpt_code": "GPT code",
+        "prompt_execute_process": "Process",
+        "prompt_execute_instance": "Run",
+        "prompt_execute_rtk": "RTK",
+        "prompt_execute_update": "Update",
+        "prompt_execute_deploy": "Deploy",
+        "prompt_execute_qemu": "QEMU/KVM",
+    }
+
+    def _menu_header(self):
+        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
+        la ligne « Commande : ». Le fil situe le menu courant et se copie pour
+        décrire sans ambiguïté où l'on se trouve."""
+        crumbs = []
+        for frame_info in reversed(inspect.stack()):
+            if frame_info.frame.f_locals.get("self") is not self:
+                continue
+            label = self._MENU_LABELS.get(frame_info.function)
+            if label and (not crumbs or crumbs[-1] != label):
+                crumbs.append(label)
+        header = ""
+        if crumbs:
+            header = "📍 " + " › ".join(crumbs) + "\n"
+        return header + t("Command:")
+
     def fill_help_info(self, choices):
-        help_info = t("Command:") + "\n"
+        help_info = self._menu_header() + "\n"
         help_end = f"[0] {t('Back')}\n"
         for i, instance in enumerate(choices):
             desc_key = instance.get("prompt_description_key")
