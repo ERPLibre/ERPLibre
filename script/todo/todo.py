@@ -1436,8 +1436,9 @@ class TODO:
             input(t("Add each VM to ~/.ssh/config? (y/N): "))
         )
 
-        # Nombre de déploiements en parallèle (défaut : min(nb VM, 4)).
-        default_par = min(len(selected), 4)
+        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de
+        # l'hôte (borné par le nombre de VM ; repli sur 4 si indéterminé).
+        default_par = min(len(selected), os.cpu_count() or 4)
         raw = input(
             f"{t('Parallel deployments (default:')} {default_par}): "
         ).strip()
