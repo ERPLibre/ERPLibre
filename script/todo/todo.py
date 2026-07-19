@@ -9,6 +9,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -929,12 +930,8 @@ class TODO:
 
         force = False
         if not dry_run:
-            ans = (
-                input(t("Overwrite existing VM disk if present? (y/N): "))
-                .strip()
-                .lower()
-            )
-            force = ans == "y"
+            ans = input(t("Overwrite existing VM disk if present? (y/N): "))
+            force = self._is_yes(ans)
 
         parts = []
         if not dry_run:
@@ -966,7 +963,7 @@ class TODO:
         script_path = self._qemu_script_path()
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
-        ans = input(t("Verify SHA256 after download? (y/N): ")).strip().lower()
+        ans = input(t("Verify SHA256 after download? (y/N): "))
         parts = [
             "sudo",
             script_path,
@@ -976,7 +973,7 @@ class TODO:
             "--version",
             version,
         ]
-        if ans == "y":
+        if self._is_yes(ans):
             parts.append("--verify")
         cmd = " ".join(shlex.quote(p) for p in parts)
         print(f"{t('Will execute:')} {cmd}")
@@ -1025,6 +1022,11 @@ class TODO:
         """« 20G » -> 20 (Go, best effort)."""
         m = re.match(r"\s*(\d+)", str(size))
         return int(m.group(1)) if m else 0
+
+    @staticmethod
+    def _is_yes(ans):
+        """Réponse affirmative, FR et EN (o/oui/y/yes)."""
+        return ans.strip().lower() in ("y", "yes", "o", "oui")
 
     @staticmethod
     def _host_free_ram_mb():
@@ -1240,19 +1242,15 @@ class TODO:
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install_branch = None
-        ans = (
-            input(
-                t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
-            )
-            .strip()
-            .lower()
+        ans = input(
+            t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
         )
-        if ans == "y":
+        if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
 
         # 5) Confirmation puis déploiement séquentiel.
-        ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}").strip().lower()
-        if ans != "y":
+        ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}")
+        if not self._is_yes(ans):
             print(t("Cancelled."))
             return
 
