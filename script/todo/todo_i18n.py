@@ -1049,6 +1049,46 @@ TRANSLATIONS = {
         "fr": "tout sélectionner",
         "en": "select all",
     },
+    "Delete VM(s)": {
+        "fr": "Effacer une ou plusieurs VM",
+        "en": "Delete VM(s)",
+    },
+    "No VM found.": {
+        "fr": "Aucune VM trouvée.",
+        "en": "No VM found.",
+    },
+    "Select VMs to delete:": {
+        "fr": "Sélectionner les VM à effacer :",
+        "en": "Select VMs to delete:",
+    },
+    "Selection (numbers, or 'all'): ": {
+        "fr": "Sélection (numéros, ou « all ») : ",
+        "en": "Selection (numbers, or 'all'): ",
+    },
+    "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
+        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N) : ",
+        "en": "Also delete disk images (qcow2 + seed ISO)? (y/N): ",
+    },
+    "Will delete:": {
+        "fr": "Sera effacé :",
+        "en": "Will delete:",
+    },
+    "disk images and seed ISOs": {
+        "fr": "les disques et les seed ISO",
+        "en": "disk images and seed ISOs",
+    },
+    "disks kept": {
+        "fr": "disques conservés",
+        "en": "disks kept",
+    },
+    "Confirm deletion? (y/N): ": {
+        "fr": "Confirmer l'effacement ? (o/N) : ",
+        "en": "Confirm deletion? (y/N): ",
+    },
+    "Deletion done.": {
+        "fr": "Effacement terminé.",
+        "en": "Deletion done.",
+    },
     "Deploy ERPLibre infra (one minimal VM per image)": {
         "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
         "en": "Deploy ERPLibre infra (one minimal VM per image)",

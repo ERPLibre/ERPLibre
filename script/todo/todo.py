@@ -857,6 +857,7 @@ class TODO:
                     "Deploy ERPLibre infra (one minimal VM per image)"
                 )
             },
+            {"prompt_description": t("Delete VM(s)")},
         ]
         config_entries = self.config_file.get_config("qemu_from_makefile")
         if config_entries:
@@ -882,6 +883,8 @@ class TODO:
                 self._qemu_list_images()
             elif status == "7":
                 self._qemu_deploy_infra()
+            elif status == "8":
+                self._qemu_delete_vm()
             else:
                 cmd_no_found = True
                 try:
@@ -993,6 +996,75 @@ class TODO:
         cmd = f"sudo virsh domifaddr {shlex.quote(name)} --source lease"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_list_domains(self):
+        """Noms des VM libvirt définies (via virsh)."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "list", "--all", "--name"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return [n for n in res.stdout.split() if n.strip()]
+
+    def _qemu_delete_vm(self):
+        """Efface une ou plusieurs VM (arrêt + undefine), disques en option."""
+        self._qemu_list_vms()
+        print()
+        names = self._qemu_list_domains()
+        if not names:
+            print(t("No VM found."))
+            return
+        print(f"\n{t('Select VMs to delete:')}")
+        for i, n in enumerate(names, 1):
+            print(f"  [{i}] {n}")
+        print(f"  [all] {t('select all')}")
+        raw = input(t("Selection (numbers, or 'all'): ")).strip()
+        if not raw:
+            print(t("Nothing selected."))
+            return
+        if raw.lower() in ("all", "*"):
+            chosen = list(names)
+        else:
+            chosen = self._parse_index_selection(raw.lower(), names)
+        if not chosen:
+            print(t("Nothing selected."))
+            return
+
+        del_disks = self._is_yes(
+            input(t("Also delete disk images (qcow2 + seed ISO)? (y/N): "))
+        )
+
+        print(f"\n{t('Will delete:')} {', '.join(chosen)}")
+        if del_disks:
+            print(f"  + {t('disk images and seed ISOs')}")
+        else:
+            print(f"  ({t('disks kept')})")
+        if not self._is_yes(input(t("Confirm deletion? (y/N): "))):
+            print(t("Cancelled."))
+            return
+
+        disk_dir = "/var/lib/libvirt/images"
+        seed_dir = "/var/lib/libvirt/images/iso"
+        for name in chosen:
+            q = shlex.quote(name)
+            # Éteindre si en cours, puis retirer la définition (+ nvram si
+            # UEFI ; repli sans l'option pour les vieilles versions de virsh).
+            cmd = (
+                f"sudo virsh destroy {q} 2>/dev/null; "
+                f"sudo virsh undefine {q} --nvram 2>/dev/null "
+                f"|| sudo virsh undefine {q}"
+            )
+            if del_disks:
+                disk = shlex.quote(f"{disk_dir}/{name}.qcow2")
+                seed = shlex.quote(f"{seed_dir}/{name}-seed.iso")
+                cmd += f"; sudo rm -f {disk} {seed}"
+            print(f"\n▶ {name}: {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        print(f"\n✅ {t('Deletion done.')}")
 
     # ------------------------------------------------------------------ #
     # QEMU : déploiement d'un parc « infra ERPLibre »
