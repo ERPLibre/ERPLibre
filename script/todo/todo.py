@@ -1083,10 +1083,13 @@ class TODO:
         if os.path.exists(cfg):
             with open(cfg, encoding="utf-8") as fh:
                 existing = fh.read()
-        # Retire un ancien bloc du même Host (jusqu'au prochain Host / EOF).
+        # Retire un ancien bloc du même Host (ses lignes indentées). Pas de
+        # drapeau DOTALL : « . » ne doit PAS traverser les sauts de ligne,
+        # sinon .* engloutirait tout jusqu'à la fin du fichier et effacerait
+        # les entrées suivantes.
         pattern = re.compile(
-            rf"(?ms)^[ \t]*Host[ \t]+{re.escape(host)}[ \t]*\n"
-            r"(?:[ \t]+.*\n?)*"
+            rf"(?m)^[ \t]*Host[ \t]+{re.escape(host)}[ \t]*\n"
+            r"(?:[ \t]+[^\n]*\n?)*"
         )
         existing = pattern.sub("", existing).rstrip("\n")
         block = (
