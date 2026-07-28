@@ -52,8 +52,14 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 # Dépendances de build (extensions Python, Odoo)
 #--------------------------------------------------
 echo -e "\n--- Installing fedora dependency --"
+# git-daemon : sur Fedora la sous-commande « git daemon » N'EST PAS dans le
+# paquet « git » de base (contrairement à Debian/Ubuntu/Arch). ERPLibre sert
+# son manifeste via un « git daemon » local (git://127.0.0.1:9418/) pendant
+# « repo sync » -> sans ce paquet : « git: 'daemon' is not a git command »
+# puis « Connection refused » et l'échec de la synchro du manifeste.
 ${DNF} \
-  git wget libxslt-devel libzip-devel openldap-devel cyrus-sasl-devel \
+  git git-daemon wget libxslt-devel libzip-devel openldap-devel \
+  cyrus-sasl-devel \
   libffi-devel bzip2-devel parallel swig cmake portaudio-devel \
   cups-devel xmlsec1 xmlsec1-openssl mariadb-connector-c-devel freetds-devel
 retVal=$?
