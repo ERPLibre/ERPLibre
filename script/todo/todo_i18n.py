@@ -1407,6 +1407,14 @@ TRANSLATIONS = {
         "fr": "aucune IP obtenue, installation ERPLibre ignorée.",
         "en": "no IP obtained, ERPLibre install skipped.",
     },
+    "waiting for SSH...": {
+        "fr": "attente du SSH...",
+        "en": "waiting for SSH...",
+    },
+    "SSH not reachable, ERPLibre install skipped.": {
+        "fr": "SSH injoignable, installation ERPLibre ignorée.",
+        "en": "SSH not reachable, ERPLibre install skipped.",
+    },
     "Parallel deployments (default:": {
         "fr": "Déploiements en parallèle (défaut :",
         "en": "Parallel deployments (default:",

@@ -1638,6 +1638,30 @@ class TODO:
     # Cible d'installation Odoo exécutée dans la VM (défaut ERPLibre 1.6.0).
     ERPLIBRE_ODOO_TARGET = "install_odoo_18"
 
+    @staticmethod
+    def _qemu_wait_ssh(ip, user="erplibre", timeout=180):
+        """Attend que le SSH réponde (le sshd peut mettre du temps à démarrer
+        après le boot, surtout sur Fedora). True si joignable."""
+        opts = (
+            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+            "-o ConnectTimeout=8 -o BatchMode=yes"
+        )
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                res = subprocess.run(
+                    f"ssh {opts} {user}@{ip} true",
+                    shell=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                res = None
+            if res is not None and res.returncode == 0:
+                return True
+            time.sleep(5)
+        return False
+
     def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
         """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
         exécute « make install_os » et « make install_odoo_18 »."""
@@ -1645,6 +1669,15 @@ class TODO:
         if not ip:
             print(
                 f"  {name}: {t('no IP obtained, ERPLibre install skipped.')}"
+            )
+            return
+        # Attend que le SSH soit prêt (évite « Connection refused » quand
+        # l'install démarre avant le sshd de la VM).
+        print(f"  {name} ({ip}): {t('waiting for SSH...')}")
+        if not self._qemu_wait_ssh(ip):
+            print(
+                f"  {name} ({ip}): "
+                f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
         remote = (
