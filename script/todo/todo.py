@@ -854,6 +854,32 @@ class TODO:
         print(f"{t('Invalid selection, using')} {default}")
         return default
 
+    # Distros publiant des images cloud s390x (IBM Z). Seul Ubuntu en publie
+    # (cohérent avec S390X_DISTROS de deploy_qemu.py).
+    _QEMU_S390X_DISTROS = ("ubuntu",)
+
+    def _qemu_prompt_arch(self, distro):
+        """Demande l'architecture. s390x n'est proposé que pour les distros qui
+        publient des images s390x (Ubuntu) ; il est ÉMULÉ (lent) sur x86."""
+        if distro not in self._QEMU_S390X_DISTROS:
+            return "amd64"
+        print(f"\n{t('Architecture:')}")
+        print(f"  [1] amd64 *")
+        print(f"  [2] s390x  ({t('IBM Z — emulated, slow on x86')})")
+        sel = (
+            input(f"{t('Choice (number or name, blank = amd64):')} ")
+            .strip()
+            .lower()
+        )
+        if sel in ("2", "s390x"):
+            warn = t(
+                "s390x is emulated (TCG): boot and install are much "
+                "slower than x86."
+            )
+            print(f"⚠  {warn}")
+            return "s390x"
+        return "amd64"
+
     def _qemu_list_images(self):
         """Affiche la liste des distros/versions et leurs specs."""
         cmd = f"{self._qemu_script_path()} --list-images"
@@ -948,6 +974,7 @@ class TODO:
         # Distro + version d'abord : permet de proposer un nom par défaut.
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
+        arch = self._qemu_prompt_arch(distro)
         default_name = self._qemu_infra_name(distro, version)
         name = (
             input(f"{t('VM name (default: ')}{default_name}): ").strip()
@@ -991,6 +1018,8 @@ class TODO:
             parts.append("sudo")
         parts.append(script_path)
         parts += ["--name", name, "--distro", distro, "--version", version]
+        if arch and arch != "amd64":
+            parts += ["--arch", arch]
         if memory:
             parts += ["--memory", memory]
         if vcpus:

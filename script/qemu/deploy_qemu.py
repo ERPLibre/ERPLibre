@@ -104,10 +104,21 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
 }
 
 # Traduction de l'arch générique (amd64/arm64) vers le nom propre à la distro.
+# s390x s'écrit « s390x » partout (identité), donc aucune entrée n'est requise.
 ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
+
+# Architectures « étrangères » à un hôte x86 : émulées en TCG (pas de KVM),
+# donc LENTES, avec une machine et un amorçage spécifiques (voir virt_install).
+FOREIGN_ARCHES: tuple[str, ...] = ("s390x",)
+
+# Distros publiant des images cloud s390x (IBM Z). Seul Ubuntu en publie :
+# Debian et Fedora n'ont pas de qcow2 cloud s390x ; Arch ne cible que
+# x86_64/aarch64. Vérifié en juillet 2026 (cloud-images.ubuntu.com : OK ;
+# cloud.debian.org & fedora-secondary : 404).
+S390X_DISTROS: tuple[str, ...] = ("ubuntu",)
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
@@ -388,6 +399,17 @@ DAEMON_PACKAGES: dict[str, list[str]] = {
     "brew": [],
 }
 
+# Émulateur QEMU système s390x (IBM Z). Requis UNIQUEMENT pour --arch s390x sur
+# un hôte non-s390x : virt-install a besoin du binaire qemu-system-s390x. Sur
+# apt, qemu-system-misc fournit tous les émulateurs non-x86 (dont s390x).
+S390X_EMULATOR_PACKAGES: dict[str, list[str]] = {
+    "apt": ["qemu-system-misc"],
+    "dnf": ["qemu-system-s390x"],
+    "pacman": ["qemu-emulators-full"],
+    "zypper": ["qemu-s390"],
+    "brew": [],
+}
+
 # Gestionnaires de paquets, dans l'ordre de préférence :
 # (clé TOOL_PACKAGES, binaire à détecter, commande d'installation, sudo, refresh)
 PKG_MANAGERS: tuple[
@@ -594,6 +616,52 @@ def ensure_tools(runner: Runner, assume_yes: bool, no_install: bool) -> None:
 
     # Démarre le démon (si nécessaire) et vérifie l'accès à l'hyperviseur.
     ensure_libvirt_service(runner)
+
+
+def ensure_s390x_emulator(
+    runner: Runner, assume_yes: bool, no_install: bool
+) -> None:
+    """Vérifie que qemu-system-s390x est présent (requis pour --arch s390x sur
+    un hôte x86) ; l'installe au besoin via le gestionnaire de paquets."""
+    if shutil.which("qemu-system-s390x"):
+        return
+    pm = detect_pkg_manager()
+    if pm is None:
+        sys.exit(
+            "  Émulateur s390x introuvable (qemu-system-s390x) et gestionnaire "
+            "de paquets non reconnu.\n  Installez-le manuellement."
+        )
+    pm_key, install_cmd, use_sudo, refresh = pm
+    packages = S390X_EMULATOR_PACKAGES.get(pm_key, [])
+    if not packages:
+        sys.exit(
+            "  Émulateur s390x introuvable (qemu-system-s390x) : installez le "
+            "paquet QEMU système s390x de votre distribution."
+        )
+    full_cmd = install_cmd + packages
+    printable = ("sudo " if use_sudo and runner.use_sudo else "") + " ".join(
+        full_cmd
+    )
+    print("  Émulateur s390x manquant (qemu-system-s390x).")
+    print(f"  Commande d'installation : {printable}")
+    if no_install:
+        sys.exit(
+            "  Installation automatique désactivée (--no-install-deps).\n"
+            "  Installez manuellement : " + printable
+        )
+    if not assume_yes and not prompt_yes_no(
+        "  Installer l'émulateur s390x maintenant ?"
+    ):
+        sys.exit("  Installation refusée.\n  Commande manuelle : " + printable)
+    if refresh:
+        runner.run(refresh, privileged=use_sudo, check=False)
+    runner.run(full_cmd, privileged=use_sudo)
+    if not shutil.which("qemu-system-s390x"):
+        sys.exit(
+            "  qemu-system-s390x toujours absent après installation.\n"
+            f"  Essayez manuellement : {printable}"
+        )
+    print("  Émulateur s390x installé avec succès.")
 
 
 # --------------------------------------------------------------------------- #
@@ -977,6 +1045,10 @@ def virt_install(
     osinfo: str,
     runner: Runner,
 ) -> None:
+    foreign = args.arch in FOREIGN_ARCHES
+    # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
+    # ttyS0. Ailleurs (x86), console série classique.
+    console_target = "sclp" if foreign else "serial"
     cmd = [
         "virt-install",
         "--name",
@@ -993,6 +1065,7 @@ def virt_install(
         # volume « cidata » est visible dès init-local et cloud-init le lit.
         # En CD-ROM, l'initramfs Debian ne charge pas sr_mod à temps -> le
         # seed n'est pas vu et rien ne s'applique (Ubuntu, lui, tolère le CD).
+        # Sur s390x, bus=virtio est mappé en virtio-ccw par libvirt.
         "--disk",
         f"path={seed},readonly=on,bus=virtio",
         "--osinfo",
@@ -1002,16 +1075,28 @@ def virt_install(
         "--graphics",
         args.graphics,
         "--console",
-        "pty,target_type=serial",
+        f"pty,target_type={console_target}",
     ]
-    # Boot UEFI par défaut : Debian 13 (trixie) et les images cloud récentes
-    # n'embarquent plus le chargeur BIOS/GRUB-pc et partent en boucle
-    # « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour Ubuntu/Debian/
-    # Fedora. --bios force l'ancien BIOS si OVMF est indisponible.
-    # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
-    # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot). Ubuntu/
-    # Debian/Fedora bootent aussi sans Secure Boot (shim signé non requis).
-    if not args.bios:
+    if foreign:
+        # s390x (IBM Z) sur hôte x86 : émulation TCG (--virt-type qemu, pas de
+        # KVM), machine s390-ccw-virtio, amorçage IPL/zipl depuis le disque
+        # (ni BIOS ni UEFI/OVMF -> aucun --boot). LENT (émulation logicielle).
+        cmd += [
+            "--arch",
+            "s390x",
+            "--machine",
+            "s390-ccw-virtio",
+            "--virt-type",
+            "qemu",
+        ]
+    elif not args.bios:
+        # Boot UEFI par défaut : Debian 13 (trixie) et les images cloud
+        # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
+        # boucle « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour
+        # Ubuntu/Debian/Fedora. --bios force l'ancien BIOS si OVMF est absent.
+        # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
+        # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
+        # Ubuntu/Debian/Fedora bootent aussi sans Secure Boot.
         cmd += [
             "--boot",
             "uefi,firmware.feature0.name=secure-boot,"
@@ -1097,7 +1182,8 @@ def build_parser() -> argparse.ArgumentParser:
     g_img.add_argument(
         "--arch",
         default="amd64",
-        help="Architecture de l'image (défaut : amd64).",
+        help="Architecture de l'image (défaut : amd64). s390x (IBM Z) n'est "
+        "disponible que pour Ubuntu et est ÉMULÉ (lent) sur un hôte x86.",
     )
     g_img.add_argument(
         "--image-dir",
@@ -1333,6 +1419,14 @@ def main() -> None:
             f"Version {args.version!r} inconnue pour {args.distro}. "
             f"Choix : {', '.join(versions)} (voir --list-images)."
         )
+    # s390x n'est publié en image cloud que par Ubuntu (voir S390X_DISTROS).
+    if args.arch == "s390x" and args.distro not in S390X_DISTROS:
+        sys.exit(
+            f"Architecture s390x indisponible pour {args.distro!r} : seul "
+            f"Ubuntu publie des images cloud s390x ({', '.join(S390X_DISTROS)})."
+            "\n  Debian/Fedora n'en publient pas ; Arch ne cible que "
+            "x86_64/aarch64."
+        )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
         code = args.codename
@@ -1404,6 +1498,14 @@ def main() -> None:
 
     if not args.dry_run:
         ensure_tools(runner, args.assume_yes, args.no_install_deps)
+        if args.arch in FOREIGN_ARCHES:
+            ensure_s390x_emulator(
+                runner, args.assume_yes, args.no_install_deps
+            )
+            print(
+                "  Note : s390x est ÉMULÉ (TCG) sur cet hôte — le boot et "
+                "l'installation seront nettement plus lents que x86."
+            )
 
     print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
     download_image(urls, args.image_path, args.dry_run)

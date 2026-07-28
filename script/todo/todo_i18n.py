@@ -1162,6 +1162,25 @@ TRANSLATIONS = {
         "fr": "Version pour",
         "en": "Version for",
     },
+    "Architecture:": {
+        "fr": "Architecture :",
+        "en": "Architecture:",
+    },
+    "IBM Z — emulated, slow on x86": {
+        "fr": "IBM Z — émulé, lent sur x86",
+        "en": "IBM Z — emulated, slow on x86",
+    },
+    "Choice (number or name, blank = amd64):": {
+        "fr": "Choix (numéro ou nom, vide = amd64) :",
+        "en": "Choice (number or name, blank = amd64):",
+    },
+    "s390x is emulated (TCG): boot and install are much "
+    "slower than x86.": {
+        "fr": "s390x est émulé (TCG) : le boot et l'installation sont bien "
+        "plus lents que x86.",
+        "en": "s390x is emulated (TCG): boot and install are much "
+        "slower than x86.",
+    },
     "Choice (number or version, blank = default):": {
         "fr": "Choix (numéro ou version, vide = défaut) :",
         "en": "Choice (number or version, blank = default):",
