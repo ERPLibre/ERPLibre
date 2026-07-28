@@ -1763,6 +1763,40 @@ class TODO:
         # Meilleur effort : le dernier bail (le plus récent) plutôt que le 1er.
         return cands[-1] if cands else None
 
+    def _qemu_vm_arch(self, name):
+        """Architecture d'une VM (jeton amd64/arm64/s390x) via virsh dumpxml."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dumpxml", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        m = re.search(r"<type[^>]*\barch='([^']+)'", res.stdout)
+        if not m:
+            return None
+        return {
+            "x86_64": "amd64",
+            "aarch64": "arm64",
+            "s390x": "s390x",
+        }.get(m.group(1), m.group(1))
+
+    def _qemu_vm_meta(self, name, mod):
+        """(distro, version, arch) d'une VM déduits de son nom + son arch. Le
+        nom suit _qemu_infra_name(distro, version, arch) : on retrouve donc
+        (distro, version) en testant les combinaisons du catalogue."""
+        arch = self._qemu_vm_arch(name) or "amd64"
+        try:
+            for d, (versions, _default) in mod.DISTROS.items():
+                for v in versions:
+                    if self._qemu_infra_name(d, v, arch) == name:
+                        return d, v, arch
+        except Exception:
+            pass
+        return None, None, arch
+
     def _qemu_pick_branch(self):
         """Liste les branches distantes d'ERPLibre et en fait choisir une."""
         print(f"\n{t('Fetching ERPLibre branch list...')}")
@@ -1928,12 +1962,29 @@ class TODO:
         )
 
         remote = self._qemu_erplibre_remote_cmd(branch)
+        try:
+            mod = self._qemu_import_module()
+        except Exception:
+            mod = None
         vms = []
         for name in names:
             print(f"  {name}: {t('resolving IP...')}")
             ip = self._qemu_vm_ip(name)
             if ip:
-                vms.append({"name": name, "ip": ip})
+                d, v, a = (
+                    self._qemu_vm_meta(name, mod)
+                    if mod
+                    else (None, None, None)
+                )
+                vms.append(
+                    {
+                        "name": name,
+                        "ip": ip,
+                        "distro": d,
+                        "version": v,
+                        "arch": a,
+                    }
+                )
             else:
                 print(f"  {name}: {t('no IP, skipped.')}")
         if not vms:

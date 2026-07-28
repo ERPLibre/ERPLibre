@@ -1201,6 +1201,10 @@ TRANSLATIONS = {
         "fr": "Toutes les architectures supportées",
         "en": "All supported architectures",
     },
+    "installation": {
+        "fr": "installation",
+        "en": "installation",
+    },
     "(includes emulated architectures — some VMs are slow)": {
         "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
         "en": "(includes emulated architectures — some VMs are slow)",

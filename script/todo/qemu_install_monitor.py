@@ -89,22 +89,50 @@ def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
     )
 
 
+def _log_header(vm: dict, branch: str, when: str) -> str:
+    """En-tête du log : date, VM, distribution, version, architecture, branche.
+    Permet d'identifier l'installation d'un coup d'œil (et de ne jamais laisser
+    le log vide pendant l'attente du boot)."""
+    distro = vm.get("distro") or "?"
+    version = vm.get("version") or ""
+    arch = vm.get("arch") or "?"
+    bar = "=" * 64
+    return (
+        f"{bar}\n"
+        f"  ERPLibre — {t('installation')}\n"
+        f"  Date         : {when}\n"
+        f"  VM           : {vm['name']}\n"
+        f"  Distribution : {distro} {version}\n"
+        f"  Architecture : {arch}\n"
+        f"  Branche      : {branch}\n"
+        f"  IP           : {vm['ip']}\n"
+        f"{bar}\n\n"
+    )
+
+
 def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
-    """vms : [{name, ip}]. Lance chaque install détachée, écrit un manifeste
-    et retourne son chemin. remote_cmd : script exécuté dans chaque VM."""
+    """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
+    détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
+    exécuté dans chaque VM."""
     sdir = session_dir()
     stamp = time.strftime("%Y%m%d-%H%M%S")
+    when = time.strftime("%Y-%m-%d %H:%M:%S")
     logdir = sdir / stamp
     logdir.mkdir(parents=True, exist_ok=True)
     entries = []
     for vm in vms:
         log_path = str(logdir / f"{vm['name']}.log")
-        Path(log_path).write_text("")  # log vide = état « en attente »
+        # En-tête d'emblée (date/distro/version/arch) : le log n'est jamais
+        # vide, l'utilisateur voit tout de suite QUOI s'installe.
+        Path(log_path).write_text(_log_header(vm, branch, when))
         _launch_one(vm["ip"], remote_cmd, log_path)
         entries.append(
             {
                 "name": vm["name"],
                 "ip": vm["ip"],
+                "distro": vm.get("distro"),
+                "version": vm.get("version"),
+                "arch": vm.get("arch"),
                 "log": log_path,
                 "ssh": f"ssh erplibre@{vm['ip']}",
             }
