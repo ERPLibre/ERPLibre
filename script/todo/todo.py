@@ -930,19 +930,32 @@ class TODO:
                 if cmd_no_found:
                     print(t("Command not found !"))
 
+    @staticmethod
+    def _normalize_disk_size(size):
+        """« 30 » -> « 30G » (unité par défaut Go). Laisse « 30G », « 1T »… ou
+        vide tels quels. Sans unité, qemu-img interpréterait des OCTETS."""
+        size = size.strip()
+        if re.fullmatch(r"\d+", size):
+            return size + "G"
+        return size
+
     def _qemu_deploy_vm(self, dry_run=False):
         script_path = self._qemu_script_path()
-        name = input(t("VM name (required): ")).strip()
-        if not name:
-            print(t("VM name is required!"))
-            return
+        # Distro + version d'abord : permet de proposer un nom par défaut.
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
+        default_name = self._qemu_infra_name(distro, version)
+        name = (
+            input(f"{t('VM name (default: ')}{default_name}): ").strip()
+            or default_name
+        )
         # Laisser vide => le script applique le minimum requis par la version
         # choisie (libosinfo). On n'envoie alors pas le flag.
         memory = input(t("RAM in MB (blank = version minimum): ")).strip()
         vcpus = input(t("vCPUs (default: 2): ")).strip()
-        disk_size = input(t("Disk size (blank = version minimum): ")).strip()
+        disk_size = self._normalize_disk_size(
+            input(t("Disk size (blank = version min; e.g. 30G, 1T): ")).strip()
+        )
 
         default_key = self._qemu_default_ssh_key()
         key_hint = default_key or t("none")
@@ -995,7 +1008,13 @@ class TODO:
         print(f"{t('Will execute:')} {cmd}")
         if password:
             print(f"🔑 {t('Console/SSH login:')} erplibre / {password}")
-        self.execute.exec_command_live(cmd, source_erplibre=False)
+        status = self.execute.exec_command_live(cmd, source_erplibre=False)
+
+        # Arrêt net sur erreur : sinon on enchaînait sur l'attente d'IP d'une
+        # VM jamais créée (blocage infini), l'utilisateur ne voyant rien.
+        if status != 0:
+            print(f"\n❌ {t('Deployment failed (see the error above).')}")
+            return
 
         # Proposer d'enregistrer la VM dans ~/.ssh/config (après le 1er boot).
         if not dry_run:

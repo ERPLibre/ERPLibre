@@ -1315,6 +1315,10 @@ def main() -> None:
         args.memory = min_ram
     if args.disk_size is None:
         args.disk_size = min_disk
+    # Un nombre nu (« 30 ») serait pris pour des OCTETS par qemu-img et ferait
+    # échouer le resize : on suppose des Go par défaut (« 30 » -> « 30G »).
+    if re.fullmatch(r"\d+", str(args.disk_size)):
+        args.disk_size = f"{args.disk_size}G"
     urls = image_candidates(
         args.distro, code, args.arch, args.version, args.dry_run
     )

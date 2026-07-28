@@ -1359,9 +1359,17 @@ TRANSLATIONS = {
         "fr": "vCPU (défaut : 2) : ",
         "en": "vCPUs (default: 2): ",
     },
-    "Disk size (blank = version minimum): ": {
-        "fr": "Taille du disque (vide = minimum de la version) : ",
-        "en": "Disk size (blank = version minimum): ",
+    "Disk size (blank = version min; e.g. 30G, 1T): ": {
+        "fr": "Taille du disque (vide = min. version ; ex. 30G, 1T) : ",
+        "en": "Disk size (blank = version min; e.g. 30G, 1T): ",
+    },
+    "VM name (default: ": {
+        "fr": "Nom de la VM (défaut : ",
+        "en": "VM name (default: ",
+    },
+    "Deployment failed (see the error above).": {
+        "fr": "Échec du déploiement (voir l'erreur ci-dessus).",
+        "en": "Deployment failed (see the error above).",
     },
     "SSH public key path": {
         "fr": "Chemin de la clé publique SSH",
