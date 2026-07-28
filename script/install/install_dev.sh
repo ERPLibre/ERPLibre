@@ -3,11 +3,11 @@
 if [[ "${OSTYPE}" == "linux-gnu" ]]; then
   source /etc/os-release
   if [[ "${ID}" == "ubuntu" ]]; then
-    if [[ "${VERSION_ID}" == "18.04" || "${VERSION_ID}" == "20.04" || "${VERSION_ID}" == "22.04" || "${VERSION_ID}" == "22.10" || "${VERSION_ID}" == "23.04" || "${VERSION_ID}" == "23.10" || "${VERSION_ID}" == "24.04" || "${VERSION_ID}" == "25.04" || "${VERSION_ID}" == "25.10" ]]; then
+    if [[ "${VERSION_ID}" == "18.04" || "${VERSION_ID}" == "20.04" || "${VERSION_ID}" == "22.04" || "${VERSION_ID}" == "22.10" || "${VERSION_ID}" == "23.04" || "${VERSION_ID}" == "23.10" || "${VERSION_ID}" == "24.04" || "${VERSION_ID}" == "25.04" || "${VERSION_ID}" == "25.10" || "${VERSION_ID}" == "26.04" ]]; then
       echo "\n---- linux-gnu installation process started ----"
       ./script/install/install_debian_dependency.sh
     else
-      echo "Your version is not supported, only support 18.04, 20.04 and 22.04 - 24.04, 25.04, 25.10 : ${VERSION_ID}"
+      echo "Your version is not supported, only support 18.04, 20.04 and 22.04 - 24.04, 25.04, 25.10, 26.04 : ${VERSION_ID}"
     fi
   elif [[ "${ID}" == "linuxmint" ]]; then
     if [[ "${VERSION_ID}" == "22.3" ]]; then
