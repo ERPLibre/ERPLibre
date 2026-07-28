@@ -1029,7 +1029,12 @@ class TODO:
             )
         ):
             branch = self._qemu_pick_branch()
-            self._qemu_install_erplibre_vm(name, ssh_key, branch)
+            if self._is_yes(
+                input(t("Interactive monitoring dashboard? (y/N): "))
+            ):
+                self._qemu_install_erplibre_monitored([name], branch)
+            else:
+                self._qemu_install_erplibre_vm(name, ssh_key, branch)
 
         # Proposer d'enregistrer la VM dans ~/.ssh/config (après le 1er boot).
         self._qemu_offer_ssh_config(name, "erplibre")
@@ -1662,25 +1667,10 @@ class TODO:
             time.sleep(5)
         return False
 
-    def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
-        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
-        exécute « make install_os » et « make install_odoo_18 »."""
-        ip = self._qemu_vm_ip(name)
-        if not ip:
-            print(
-                f"  {name}: {t('no IP obtained, ERPLibre install skipped.')}"
-            )
-            return
-        # Attend que le SSH soit prêt (évite « Connection refused » quand
-        # l'install démarre avant le sshd de la VM).
-        print(f"  {name} ({ip}): {t('waiting for SSH...')}")
-        if not self._qemu_wait_ssh(ip):
-            print(
-                f"  {name} ({ip}): "
-                f"{t('SSH not reachable, ERPLibre install skipped.')}"
-            )
-            return
-        remote = (
+    def _qemu_erplibre_remote_cmd(self, branch):
+        """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
+        puis clone + make install_os + make install_odoo_18)."""
+        return (
             "set -e; "
             # Outils d'amorçage (absents des images cloud minimales) :
             # curl, git, make. Supporte apt (Debian/Ubuntu) et dnf/yum
@@ -1702,6 +1692,60 @@ class TODO:
             "cd ~/git/erplibre && make install_os && "
             f"make {self.ERPLIBRE_ODOO_TARGET}"
         )
+
+    def _qemu_install_erplibre_monitored(self, names, branch):
+        """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
+        le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
+        """
+        from script.todo.qemu_install_monitor import (
+            launch_installs,
+            run_monitor,
+        )
+
+        remote = self._qemu_erplibre_remote_cmd(branch)
+        vms = []
+        for name in names:
+            print(f"  {name}: {t('resolving IP...')}")
+            ip = self._qemu_vm_ip(name)
+            if ip:
+                vms.append({"name": name, "ip": ip})
+            else:
+                print(f"  {name}: {t('no IP, skipped.')}")
+        if not vms:
+            print(t("No VM to install."))
+            return
+        manifest = launch_installs(vms, branch, remote)
+        print(f"\n🖥  {t('Opening the interactive monitor...')}")
+        try:
+            run_monitor(manifest)
+        except ImportError:
+            # textual absent : les installs tournent déjà (détachées), on ne
+            # plante pas — on indique juste où sont les logs.
+            print(f"  {t('Install textual for the dashboard (pip).')}")
+        print(
+            f"\n{t('Monitor closed. Installs keep running in the background.')}"
+        )
+        print(f"  {t('Logs:')} {os.path.dirname(manifest)}")
+
+    def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
+        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
+        exécute « make install_os » et « make install_odoo_18 » (streamé)."""
+        ip = self._qemu_vm_ip(name)
+        if not ip:
+            print(
+                f"  {name}: {t('no IP obtained, ERPLibre install skipped.')}"
+            )
+            return
+        # Attend que le SSH soit prêt (évite « Connection refused » quand
+        # l'install démarre avant le sshd de la VM).
+        print(f"  {name} ({ip}): {t('waiting for SSH...')}")
+        if not self._qemu_wait_ssh(ip):
+            print(
+                f"  {name} ({ip}): "
+                f"{t('SSH not reachable, ERPLibre install skipped.')}"
+            )
+            return
+        remote = self._qemu_erplibre_remote_cmd(branch)
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
@@ -1819,11 +1863,15 @@ class TODO:
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install_branch = None
+        install_monitor = False
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
         )
         if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
+            install_monitor = self._is_yes(
+                input(t("Interactive monitoring dashboard? (y/N): "))
+            )
 
         add_ssh_config = self._is_yes(
             input(t("Add each VM to ~/.ssh/config? (y/N): "))
@@ -1916,11 +1964,18 @@ class TODO:
 
         # 7) Installation ERPLibre (clone + make) si demandée.
         if install_branch:
-            print(
-                f"\n{t('Installing ERPLibre on each VM')} ({install_branch})…"
-            )
-            for name in deployed:
-                self._qemu_install_erplibre_vm(name, ssh_key, install_branch)
+            if install_monitor:
+                # Installs détachées en parallèle + dashboard Textual.
+                self._qemu_install_erplibre_monitored(deployed, install_branch)
+            else:
+                print(
+                    f"\n{t('Installing ERPLibre on each VM')} "
+                    f"({install_branch})…"
+                )
+                for name in deployed:
+                    self._qemu_install_erplibre_vm(
+                        name, ssh_key, install_branch
+                    )
 
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")

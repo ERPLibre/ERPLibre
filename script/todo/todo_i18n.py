@@ -1415,6 +1415,38 @@ TRANSLATIONS = {
         "fr": "SSH injoignable, installation ERPLibre ignorée.",
         "en": "SSH not reachable, ERPLibre install skipped.",
     },
+    "Interactive monitoring dashboard? (y/N): ": {
+        "fr": "Suivi interactif (dashboard) ? (o/N) : ",
+        "en": "Interactive monitoring dashboard? (y/N): ",
+    },
+    "resolving IP...": {
+        "fr": "résolution de l'IP...",
+        "en": "resolving IP...",
+    },
+    "no IP, skipped.": {
+        "fr": "pas d'IP, ignorée.",
+        "en": "no IP, skipped.",
+    },
+    "No VM to install.": {
+        "fr": "Aucune VM à installer.",
+        "en": "No VM to install.",
+    },
+    "Opening the interactive monitor...": {
+        "fr": "Ouverture du suivi interactif...",
+        "en": "Opening the interactive monitor...",
+    },
+    "Monitor closed. Installs keep running in the background.": {
+        "fr": "Suivi fermé. Les installations continuent en arrière-plan.",
+        "en": "Monitor closed. Installs keep running in the background.",
+    },
+    "Logs:": {
+        "fr": "Logs :",
+        "en": "Logs:",
+    },
+    "Install textual for the dashboard (pip).": {
+        "fr": "Installez textual pour le dashboard (pip).",
+        "en": "Install textual for the dashboard (pip).",
+    },
     "Parallel deployments (default:": {
         "fr": "Déploiements en parallèle (défaut :",
         "en": "Parallel deployments (default:",
