@@ -1019,9 +1019,20 @@ class TODO:
             print(f"\n❌ {t('Deployment failed (see the error above).')}")
             return
 
+        if dry_run:
+            return
+
+        # Option : installer ERPLibre (clone + make install_os + install_odoo).
+        if self._is_yes(
+            input(
+                t("Install ERPLibre into ~/git/erplibre on this VM? (y/N): ")
+            )
+        ):
+            branch = self._qemu_pick_branch()
+            self._qemu_install_erplibre_vm(name, ssh_key, branch)
+
         # Proposer d'enregistrer la VM dans ~/.ssh/config (après le 1er boot).
-        if not dry_run:
-            self._qemu_offer_ssh_config(name, "erplibre")
+        self._qemu_offer_ssh_config(name, "erplibre")
 
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
@@ -1624,27 +1635,38 @@ class TODO:
                 return sel
         return default
 
+    # Cible d'installation Odoo exécutée dans la VM (défaut ERPLibre 1.6.0).
+    ERPLIBRE_ODOO_TARGET = "install_odoo_18"
+
     def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
-        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM."""
+        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
+        exécute « make install_os » et « make install_odoo_18 »."""
         ip = self._qemu_vm_ip(name)
         if not ip:
-            print(f"  {name}: {t('no IP obtained, ERPLibre clone skipped.')}")
+            print(
+                f"  {name}: {t('no IP obtained, ERPLibre install skipped.')}"
+            )
             return
         remote = (
             "set -e; mkdir -p ~/git; "
             "command -v git >/dev/null 2>&1 || "
             "{ sudo apt-get install -y git || sudo dnf install -y git; }; "
-            "if [ -d ~/git/erplibre/.git ]; then "
-            "echo 'ERPLibre already present'; else "
+            "if [ ! -d ~/git/erplibre/.git ]; then "
             f"git clone --branch {shlex.quote(branch)} "
-            f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi"
+            f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
+            # Installation : dépendances système puis Odoo.
+            "cd ~/git/erplibre && make install_os && "
+            f"make {self.ERPLIBRE_ODOO_TARGET}"
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
         )
         cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
-        print(f"\n  📦 {name} ({ip}): {t('cloning ERPLibre')} ({branch})")
+        print(
+            f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} "
+            f"({branch}, make install_os + {self.ERPLIBRE_ODOO_TARGET})"
+        )
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1827,9 +1849,11 @@ class TODO:
                 if ip:
                     self._write_ssh_config_entry(name, "erplibre", ip)
 
-        # 7) Installation ERPLibre (clone) si demandée.
+        # 7) Installation ERPLibre (clone + make) si demandée.
         if install_branch:
-            print(f"\n{t('Cloning ERPLibre on each VM')} ({install_branch})…")
+            print(
+                f"\n{t('Installing ERPLibre on each VM')} ({install_branch})…"
+            )
             for name in deployed:
                 self._qemu_install_erplibre_vm(name, ssh_key, install_branch)
 

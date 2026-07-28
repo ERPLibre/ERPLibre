@@ -1383,6 +1383,22 @@ TRANSLATIONS = {
         "fr": "Clonage d'ERPLibre sur chaque VM",
         "en": "Cloning ERPLibre on each VM",
     },
+    "Installing ERPLibre on each VM": {
+        "fr": "Installation d'ERPLibre sur chaque VM",
+        "en": "Installing ERPLibre on each VM",
+    },
+    "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur cette VM ? (o/N) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ",
+    },
+    "installing ERPLibre": {
+        "fr": "installation d'ERPLibre",
+        "en": "installing ERPLibre",
+    },
+    "no IP obtained, ERPLibre install skipped.": {
+        "fr": "aucune IP obtenue, installation ERPLibre ignorée.",
+        "en": "no IP obtained, ERPLibre install skipped.",
+    },
     "Parallel deployments (default:": {
         "fr": "Déploiements en parallèle (défaut :",
         "en": "Parallel deployments (default:",
