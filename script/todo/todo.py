@@ -1643,6 +1643,9 @@ class TODO:
 
     # Cible d'installation Odoo exécutée dans la VM (défaut ERPLibre 1.6.0).
     ERPLIBRE_ODOO_TARGET = "install_odoo_18"
+    # Go ajoutés au disque quand on installe ERPLibre (le minimum d'image ne
+    # laisse que ~97 Mo libres après l'installation).
+    ERPLIBRE_EXTRA_DISK_GB = 5
 
     @staticmethod
     def _qemu_wait_ssh(ip, user="erplibre", timeout=180):
@@ -1942,7 +1945,7 @@ class TODO:
         script_path = self._qemu_script_path()
         deployed = []
         jobs = []  # (name, parts) des VM à créer
-        for d, v, _ram, _disk in selected:
+        for d, v, _ram, disk in selected:
             name = self._qemu_infra_name(d, v)
             if self._qemu_domain_exists(name):
                 print(f"⏭  {name}: {t('already exists, skipped.')}")
@@ -1966,7 +1969,13 @@ class TODO:
             if ssh_key:
                 parts += ["--ssh-key", ssh_key]
             if install_branch:
-                parts += ["--package", "git"]
+                # ERPLibre dépasse le minimum : +5 Go de disque (sinon il ne
+                # reste que ~97 Mo après l'installation). git/make sont posés
+                # par le bootstrap (pas via cloud-init, trop lent au boot).
+                bigger = (
+                    self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
+                )
+                parts += ["--disk-size", f"{bigger}G"]
             parts.append("-y")
             jobs.append((name, parts))
 

@@ -803,18 +803,19 @@ def build_cloud_config(
     lines.append(f"package_update: {'true' if do_update else 'false'}")
     lines.append(f"package_upgrade: {'true' if do_upgrade else 'false'}")
 
-    # Serveur SSH : garantit sa présence sur toutes les distros (les images
-    # Debian genericcloud notamment ne l'activent pas toujours). Le nom du
-    # paquet diffère : « openssh » sur Arch, « openssh-server » ailleurs —
-    # sans quoi cloud-init échoue (paquet introuvable -> status: error).
-    ssh_pkg = "openssh" if args.distro == "arch" else "openssh-server"
-    packages = ["qemu-guest-agent", ssh_pkg, *args.package]
-    lines.append("packages:")
-    lines += [
-        f"  - {p}" for p in dict.fromkeys(packages)
-    ]  # dédoublonne, ordre gardé
+    # On n'installe AUCUN paquet via cloud-init : cela exige le réseau au 1er
+    # boot et peut bloquer longtemps (dnf/apt/pacman lents sur réseau lent) —
+    # cloud-init reste alors « running » et tout ce qui suit attend. sshd est
+    # DÉJÀ présent dans toutes les images cloud (Ubuntu/Debian/Fedora/Arch) ;
+    # on l'active seulement (runcmd). Les outils nécessaires (curl/git/make…)
+    # sont installés — avec dépôts optimisés — par le bootstrap d'installation.
+    packages = list(dict.fromkeys(args.package))  # seulement --package
+    if packages:
+        lines.append("packages:")
+        lines += [f"  - {p}" for p in packages]
     # Active et démarre SSH quel que soit le nom du service (ssh sur
-    # Debian/Ubuntu, sshd sur Fedora) — sans quoi la VM peut booter sans SSH.
+    # Debian/Ubuntu, sshd sur Fedora/Arch) — sans quoi la VM peut booter
+    # sans SSH accessible.
     lines += [
         "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
