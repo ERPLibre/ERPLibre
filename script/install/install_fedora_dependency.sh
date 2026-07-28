@@ -18,7 +18,8 @@ DNF="sudo dnf install -y --refresh --skip-unavailable"
 # Outils de compilation (build Python via pyenv, extensions Python)
 #--------------------------------------------------
 echo -e "\n---- Groupe outils de développement ----"
-sudo dnf group install -y --skip-unavailable development-tools "C Development Tools and Libraries" \
+# Groupes par ID (le nom affiché « C Development Tools... » n'est pas matché).
+sudo dnf group install -y --skip-unavailable development-tools c-development \
   || sudo dnf install -y gcc gcc-c++ make automake patch
 
 #--------------------------------------------------
@@ -34,7 +35,11 @@ fi
 # Initialisation du cluster (Fedora ne le fait pas automatiquement).
 if [ ! -f /var/lib/pgsql/data/PG_VERSION ]; then
   echo -e "\n---- Initialisation du cluster PostgreSQL ----"
-  sudo postgresql-setup --initdb || true
+  # Nettoie un init partiel et FORCE une locale valide : les images cloud
+  # Fedora n'ont pas de LANG défini -> « initdb: invalid locale settings ».
+  sudo rm -rf /var/lib/pgsql/data
+  sudo PGSETUP_INITDB_OPTIONS="--locale=C.UTF-8 --encoding=UTF8" \
+    postgresql-setup --initdb || true
 fi
 sudo systemctl enable --now postgresql 2>/dev/null || true
 # PostGIS : optionnel (géospatial), ne bloque pas.
