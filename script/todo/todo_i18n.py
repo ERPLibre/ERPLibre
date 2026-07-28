@@ -1205,6 +1205,34 @@ TRANSLATIONS = {
         "fr": "installation",
         "en": "installation",
     },
+    "Resources per VM (x1 = catalog minimum):": {
+        "fr": "Ressources par VM (x1 = minimum catalogue) :",
+        "en": "Resources per VM (x1 = catalog minimum):",
+    },
+    "Host:": {
+        "fr": "Hôte :",
+        "en": "Host:",
+    },
+    "free": {
+        "fr": "libres",
+        "en": "free",
+    },
+    "free RAM unknown": {
+        "fr": "RAM libre inconnue",
+        "en": "free RAM unknown",
+    },
+    "> host free RAM": {
+        "fr": "> RAM libre de l'hôte",
+        "en": "> host free RAM",
+    },
+    "total RAM": {
+        "fr": "RAM totale",
+        "en": "total RAM",
+    },
+    "Choice (1-4, default 1):": {
+        "fr": "Choix (1-4, défaut 1) :",
+        "en": "Choice (1-4, default 1):",
+    },
     "(includes emulated architectures — some VMs are slow)": {
         "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
         "en": "(includes emulated architectures — some VMs are slow)",

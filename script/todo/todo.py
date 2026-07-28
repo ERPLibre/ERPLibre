@@ -2068,6 +2068,45 @@ class TODO:
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # vCPU de base (x1) par VM. Le multiplicateur monte de là.
+    _QEMU_BASE_VCPUS = 2
+
+    def _qemu_prompt_resource_mult(self, selected, host_cpu, free_ram):
+        """Multiplicateur de ressources par VM : x1 (minimum catalogue) .. x4.
+        Multiplie la RAM (base = minimum de la version) et les vCPU (base
+        _QEMU_BASE_VCPUS), en bornant les vCPU au nombre de cœurs de l'hôte et
+        en signalant si la RAM totale dépasse la RAM libre. Renvoie (mult,
+        base_vcpus)."""
+        base_ram = sum(s[2] for s in selected)  # RAM min totale (x1)
+        base_vcpus = self._QEMU_BASE_VCPUS
+        print(f"\n{t('Resources per VM (x1 = catalog minimum):')}")
+        cpu_txt = f"{host_cpu} vCPU"
+        ram_txt = (
+            f"~{free_ram} Mo {t('free')}"
+            if free_ram
+            else t("free RAM unknown")
+        )
+        print(f"  {t('Host:')} {cpu_txt}, {ram_txt}")
+        for n in (1, 2, 3, 4):
+            vcpus = min(base_vcpus * n, host_cpu)
+            total = base_ram * n
+            star = " *" if n == 1 else ""
+            warn = ""
+            if free_ram and total > free_ram:
+                warn = f"   ⚠ {t('> host free RAM')}"
+            print(
+                f"  [{n}] x{n}{star}  {vcpus} vCPU/VM, "
+                f"{t('total RAM')} ~{total} Mo{warn}"
+            )
+        sel = input(f"{t('Choice (1-4, default 1):')} ").strip()
+        try:
+            n = int(sel)
+            if 1 <= n <= 4:
+                return n, base_vcpus
+        except ValueError:
+            pass
+        return 1, base_vcpus
+
     def _qemu_deploy_infra(self):
         print(f"🏗  {t('Deploy ERPLibre infra: one minimal VM per image')}")
         try:
@@ -2208,16 +2247,28 @@ class TODO:
             print(t("Nothing selected."))
             return
 
-        # 3) Plan + estimation des ressources.
-        total_ram = sum(s[2] for s in selected)
-        total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
+        # 2b) Multiplicateur de ressources par VM (x1 = minimum .. x4) : monte
+        # la RAM et les vCPU selon ce que l'hôte peut fournir.
+        host_cpu = os.cpu_count() or 2
         free_ram = self._host_free_ram_mb()
-        print(f"\n{t('Deployment plan')} ({len(selected)} VM) :")
+        res_mult, base_vcpus = self._qemu_prompt_resource_mult(
+            selected, host_cpu, free_ram
+        )
+
+        def eff_res(ram):
+            """(RAM effective, vCPU) pour une VM selon le multiplicateur."""
+            return ram * res_mult, min(base_vcpus * res_mult, host_cpu)
+
+        # 3) Plan + estimation des ressources (avec le multiplicateur appliqué).
+        total_ram = sum(s[2] * res_mult for s in selected)
+        total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
+        print(f"\n{t('Deployment plan')} ({len(selected)} VM, x{res_mult}) :")
         for d, v, ram, disk, a in selected:
             name = self._qemu_infra_name(d, v, a)
+            eram, evcpus = eff_res(ram)
             print(
                 f"  - {name:<30} {d} {v:<7} [{a:<5}] "
-                f"RAM {ram}Mo  {t('disk')} {disk}"
+                f"{evcpus} vCPU  RAM {eram}Mo  {t('disk')} {disk}"
             )
         print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
         print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
@@ -2275,12 +2326,13 @@ class TODO:
         script_path = self._qemu_script_path()
         deployed = []
         jobs = []  # (name, parts) des VM à créer
-        for d, v, _ram, disk, a in selected:
+        for d, v, ram, disk, a in selected:
             name = self._qemu_infra_name(d, v, a)
             if self._qemu_domain_exists(name):
                 print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)
                 continue
+            eram, evcpus = eff_res(ram)
             parts = [
                 "sudo",
                 script_path,
@@ -2290,6 +2342,11 @@ class TODO:
                 v,
                 "--name",
                 name,
+                # Ressources selon le multiplicateur choisi (x1 = minimum).
+                "--memory",
+                str(eram),
+                "--vcpus",
+                str(evcpus),
                 # Mot de passe console « erplibre » (+ clé SSH). --no-wait-ip :
                 # ne bloque pas 90s par VM, l'IP est collectée après coup.
                 "--password",
