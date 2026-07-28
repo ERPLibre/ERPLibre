@@ -1673,6 +1673,13 @@ class TODO:
         puis clone + make install_os + make install_odoo_18)."""
         return (
             "set -e; "
+            # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
+            # tient le verrou apt/dnf/pacman -> sinon « unable to lock
+            # database » (Arch) / « Could not get lock » (apt). timeout pour ne
+            # pas bloquer indéfiniment si cloud-init traîne.
+            "command -v cloud-init >/dev/null 2>&1 && "
+            "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
+            "|| true; "
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -1693,6 +1700,10 @@ class TODO:
             "sudo dnf install -y --refresh $PKGS || "
             "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
             "elif command -v pacman >/dev/null 2>&1; then "
+            # Verrou pacman périmé (cloud-init interrompu) : le retirer SEULEMENT
+            # si aucun pacman ne tourne, sinon on attend qu'il se libère.
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
             # Arch : reflector sélectionne les miroirs HTTPS les plus rapides,
             # puis rafraîchit la base et installe.
             "sudo pacman -Sy --needed --noconfirm reflector || true; "
