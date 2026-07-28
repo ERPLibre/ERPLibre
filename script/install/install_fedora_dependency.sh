@@ -108,9 +108,13 @@ fi
 if [ "${EL_INSTALL_WKHTMLTOPDF}" = "True" ]; then
   if ! command -v wkhtmltopdf >/dev/null 2>&1; then
     echo -e "\n---- Installing wkhtml (best-effort) ----"
-    _url="https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox-0.12.6.1-3.fedora-38.x86_64.rpm"
-    sudo dnf install -y "${_url}" \
-      || echo "wkhtmltopdf non installé (optionnel) : ${_url}"
+    # wkhtmltopdf ne publie plus de build « fedora-* » ; le RPM AlmaLinux 9
+    # (EL9) est compatible Fedora (testé sur F42 : dnf résout les deps).
+    # Repli AlmaLinux 8 au besoin.
+    _base="https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3"
+    sudo dnf install -y "${_base}/wkhtmltox-0.12.6.1-3.almalinux9.x86_64.rpm" \
+      || sudo dnf install -y "${_base}/wkhtmltox-0.12.6.1-3.almalinux8.x86_64.rpm" \
+      || echo "wkhtmltopdf non installé (optionnel)."
   else
     echo -e "\n---- Already installed wkhtml ----"
   fi
