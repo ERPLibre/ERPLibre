@@ -766,6 +766,15 @@ def _download_one(url: str, tmp: Path, timeout: int) -> None:
                     print(f"    {pct:3d}%", flush=True)
     if is_tty:
         print()
+    # Vérifie la COMPLÉTUDE : si le serveur a annoncé une taille et qu'on a
+    # reçu moins (connexion coupée), le .part est TRONQUÉ. Sans ce contrôle,
+    # il était validé comme « complet » -> qcow2 valide mais VIDE (juste
+    # l'en-tête) -> VM qui ne boote pas, et cache empoisonné réutilisé ensuite.
+    if total > 0 and done < total:
+        raise OSError(
+            f"téléchargement incomplet : {done}/{total} octets reçus "
+            "(connexion interrompue)"
+        )
 
 
 def download_image(
@@ -1145,10 +1154,20 @@ def virt_install(
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
         cmd += ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
     elif args.arch == "arm64":
-        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF résolu par
-        # libvirt d'après --arch aarch64). Les images cloud arm64 n'ont pas de
-        # BIOS -> UEFI obligatoire.
-        cmd += ["--arch", "aarch64", "--machine", "virt", "--boot", "uefi"]
+        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF). Les images
+        # cloud arm64 n'ont pas de BIOS -> UEFI obligatoire. Secure Boot
+        # DÉSACTIVÉ (comme x86) : sinon libvirt sélectionne l'AAVMF « secure »
+        # à clés Microsoft enrôlées et la VM RESTE FIGÉE au firmware (aucun
+        # boot, aucune IP). secure-boot=no -> AAVMF non-SB, boot OK.
+        cmd += [
+            "--arch",
+            "aarch64",
+            "--machine",
+            "virt",
+            "--boot",
+            "uefi,firmware.feature0.name=secure-boot,"
+            "firmware.feature0.enabled=no",
+        ]
     elif not args.bios:
         # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
         # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
