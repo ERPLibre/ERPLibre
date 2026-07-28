@@ -1174,6 +1174,29 @@ TRANSLATIONS = {
         "fr": "IBM Z — émulé, lent sur x86 ; Ubuntu uniquement",
         "en": "IBM Z — emulated, slow on x86; Ubuntu only",
     },
+    "IBM Z — emulated, slow; Ubuntu only": {
+        "fr": "IBM Z — émulé, lent ; Ubuntu uniquement",
+        "en": "IBM Z — emulated, slow; Ubuntu only",
+    },
+    "ARM 64-bit — emulated, slow": {
+        "fr": "ARM 64 bits — émulé, lent",
+        "en": "ARM 64-bit — emulated, slow",
+    },
+    "emulated, slow": {
+        "fr": "émulé, lent",
+        "en": "emulated, slow",
+    },
+    "This architecture is emulated (TCG): boot and install are"
+    " much slower than the native one.": {
+        "fr": "Cette architecture est émulée (TCG) : le boot et l'installation"
+        " sont bien plus lents que l'architecture native.",
+        "en": "This architecture is emulated (TCG): boot and install are"
+        " much slower than the native one.",
+    },
+    "images for this arch only exist for:": {
+        "fr": "images pour cette architecture disponibles seulement pour :",
+        "en": "images for this arch only exist for:",
+    },
     "Choice (number or name, blank = native):": {
         "fr": "Choix (numéro ou nom, vide = native) :",
         "en": "Choice (number or name, blank = native):",

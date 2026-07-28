@@ -187,10 +187,11 @@ fi
 #--------------------------------------------------
 # Install Wkhtmltopdf if needed
 #--------------------------------------------------
-if [ "$(uname -m)" = "s390x" ]; then
-  # wkhtmltopdf ne publie pas de build s390x (WKHTMLTOX_X64 est de l'amd64).
-  # On saute proprement plutôt que d'avorter tout l'install.
-  echo "wkhtmltopdf : pas de build s390x, ignoré (optionnel)."
+if [ "$(uname -m)" != "x86_64" ]; then
+  # WKHTMLTOX_X64 pointe vers un .deb amd64 : sur toute autre architecture
+  # (s390x, arm64/aarch64…) gdebi échouerait. On saute proprement plutôt que
+  # d'avorter tout l'install (wkhtmltopdf est optionnel).
+  echo "wkhtmltopdf : pas de build pour $(uname -m), ignoré (optionnel)."
 elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   echo -e "\n---- Installing wkhtml ----"
   INSTALLED=$(dpkg -s wkhtmltox | grep installed)

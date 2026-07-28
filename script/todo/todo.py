@@ -854,31 +854,12 @@ class TODO:
         print(f"{t('Invalid selection, using')} {default}")
         return default
 
-    # Distros publiant des images cloud s390x (IBM Z). Seul Ubuntu en publie
-    # (cohérent avec S390X_DISTROS de deploy_qemu.py).
+    # Distros publiant des images cloud par architecture (cohérent avec
+    # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
     _QEMU_S390X_DISTROS = ("ubuntu",)
-
-    def _qemu_prompt_arch(self, distro):
-        """Demande l'architecture. s390x n'est proposé que pour les distros qui
-        publient des images s390x (Ubuntu) ; il est ÉMULÉ (lent) sur x86."""
-        if distro not in self._QEMU_S390X_DISTROS:
-            return "amd64"
-        print(f"\n{t('Architecture:')}")
-        print(f"  [1] amd64 *")
-        print(f"  [2] s390x  ({t('IBM Z — emulated, slow on x86')})")
-        sel = (
-            input(f"{t('Choice (number or name, blank = amd64):')} ")
-            .strip()
-            .lower()
-        )
-        if sel in ("2", "s390x"):
-            warn = t(
-                "s390x is emulated (TCG): boot and install are much "
-                "slower than x86."
-            )
-            print(f"⚠  {warn}")
-            return "s390x"
-        return "amd64"
+    _QEMU_ARM64_DISTROS = ("ubuntu", "debian", "fedora")
+    # Alias distro pour l'affichage (jeton générique -> nom courant).
+    _QEMU_ARCH_ALIAS = {"amd64": "x86_64", "arm64": "aarch64"}
 
     @staticmethod
     def _native_arch():
@@ -896,39 +877,74 @@ class TODO:
             "s390x": "s390x",
         }.get(machine, "amd64")
 
-    def _qemu_prompt_infra_arch(self):
-        """Demande l'architecture du parc (défaut : native de l'hôte). s390x
-        est proposé mais ÉMULÉ (lent) et limité à Ubuntu (seule distro avec
-        des images cloud s390x)."""
-        native = self._native_arch()
-        opts = [native]
-        if native != "s390x":
-            opts.append("s390x")  # émulé, disponible en plus du natif
+    def _qemu_arch_distros(self, arch):
+        """Distros supportant `arch` (None = toutes, cas amd64)."""
+        if arch == "s390x":
+            return self._QEMU_S390X_DISTROS
+        if arch == "arm64":
+            return self._QEMU_ARM64_DISTROS
+        return None
+
+    def _qemu_ask_arch(self, opts, native):
+        """Affiche les architectures `opts` (natif marqué d'un *) et renvoie le
+        choix. Toute arch non native est ÉMULÉE (TCG, lente)."""
         print(f"\n{t('Architecture:')}")
         for i, a in enumerate(opts, 1):
-            tag = f"  ({t('native')}) *" if a == native else ""
-            extra = ""
-            if a == "s390x":
-                extra = f"  ({t('IBM Z — emulated, slow on x86; Ubuntu only')})"
-            print(f"  [{i}] {a}{tag}{extra}")
+            alias = self._QEMU_ARCH_ALIAS.get(a)
+            label = f"{a} ({alias})" if alias else a
+            if a == native:
+                label += f" — {t('native')} *"
+            elif a == "s390x":
+                label += f"  ({t('IBM Z — emulated, slow; Ubuntu only')})"
+            elif a == "arm64":
+                label += f"  ({t('ARM 64-bit — emulated, slow')})"
+            else:
+                label += f"  ({t('emulated, slow')})"
+            print(f"  [{i}] {label}")
         sel = (
             input(f"{t('Choice (number or name, blank = native):')} ")
             .strip()
             .lower()
         )
-        if not sel:
-            return native
-        for i, a in enumerate(opts, 1):
-            if sel == str(i) or sel == a:
-                if a == "s390x":
-                    warn = t(
-                        "s390x is emulated (TCG): boot and install are much "
-                        "slower than x86."
-                    )
-                    print(f"⚠  {warn}")
-                return a
-        print(f"{t('Invalid selection, using')} {native}")
-        return native
+        chosen = native
+        if sel:
+            chosen = None
+            for i, a in enumerate(opts, 1):
+                if sel in (str(i), a, self._QEMU_ARCH_ALIAS.get(a)):
+                    chosen = a
+                    break
+            if chosen is None:
+                print(f"{t('Invalid selection, using')} {native}")
+                chosen = native
+        if chosen != native:
+            warn = t(
+                "This architecture is emulated (TCG): boot and install are"
+                " much slower than the native one."
+            )
+            print(f"⚠  {warn}")
+        return chosen
+
+    def _qemu_prompt_arch(self, distro):
+        """Architecture pour un déploiement de VM unique. Propose amd64, plus
+        arm64/s390x si la distro choisie publie ces images."""
+        opts = ["amd64"]
+        if distro in self._QEMU_ARM64_DISTROS:
+            opts.append("arm64")
+        if distro in self._QEMU_S390X_DISTROS:
+            opts.append("s390x")
+        if len(opts) == 1:
+            return "amd64"  # rien à demander
+        return self._qemu_ask_arch(opts, self._native_arch())
+
+    def _qemu_prompt_infra_arch(self):
+        """Architecture du parc (défaut : native de l'hôte, marquée d'un *).
+        Toute arch non native est émulée ; le catalogue est ensuite restreint
+        aux distros publiant cette arch."""
+        native = self._native_arch()
+        opts = ["amd64", "arm64", "s390x"]
+        if native not in opts:  # hôte exotique : garder le natif en tête
+            opts.insert(0, native)
+        return self._qemu_ask_arch(opts, native)
 
     def _qemu_list_images(self):
         """Affiche la liste des distros/versions et leurs specs."""
@@ -1913,16 +1929,18 @@ class TODO:
             return
         distros = list(mod.DISTROS)
 
-        # 0) Architecture du parc (défaut : native de l'hôte). s390x n'a des
-        # images cloud que pour Ubuntu -> on restreint le catalogue.
+        # 0) Architecture du parc (défaut : native de l'hôte). arm64 et s390x
+        # n'ont pas d'images pour toutes les distros -> on restreint le
+        # catalogue aux distros qui publient l'arch choisie.
         arch = self._qemu_prompt_infra_arch()
-        if arch == "s390x":
-            keep = [d for d in distros if d in self._QEMU_S390X_DISTROS]
+        allowed = self._qemu_arch_distros(arch)
+        if allowed is not None:
+            keep = [d for d in distros if d in allowed]
             dropped = [d for d in distros if d not in keep]
             if dropped:
                 print(
-                    f"  ⚠ {t('s390x images only exist for:')} "
-                    f"{', '.join(self._QEMU_S390X_DISTROS)} "
+                    f"  ⚠ {t('images for this arch only exist for:')} "
+                    f"{', '.join(allowed)} "
                     f"({t('ignored:')} {', '.join(dropped)})"
                 )
             distros = keep

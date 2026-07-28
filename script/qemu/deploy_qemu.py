@@ -110,15 +110,37 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
 
-# Architectures « étrangères » à un hôte x86 : émulées en TCG (pas de KVM),
-# donc LENTES, avec une machine et un amorçage spécifiques (voir virt_install).
-FOREIGN_ARCHES: tuple[str, ...] = ("s390x",)
+# Architectures non-x86 nécessitant une machine/un amorçage spécifiques (voir
+# virt_install). Émulées en TCG (pas de KVM), donc LENTES, quand elles
+# diffèrent de l'architecture de l'hôte.
+NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
-# Distros publiant des images cloud s390x (IBM Z). Seul Ubuntu en publie :
-# Debian et Fedora n'ont pas de qcow2 cloud s390x ; Arch ne cible que
-# x86_64/aarch64. Vérifié en juillet 2026 (cloud-images.ubuntu.com : OK ;
-# cloud.debian.org & fedora-secondary : 404).
+# Distros publiant des images cloud par architecture (vérifié juillet 2026) :
+# - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
+# - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
+#   aarch64 sur geo.mirror.pkgbuild.com).
 S390X_DISTROS: tuple[str, ...] = ("ubuntu",)
+ARM64_DISTROS: tuple[str, ...] = ("ubuntu", "debian", "fedora")
+# arch générique -> distros la publiant (pour valider --arch tôt).
+ARCH_DISTRO_SUPPORT: dict[str, tuple[str, ...]] = {
+    "s390x": S390X_DISTROS,
+    "arm64": ARM64_DISTROS,
+}
+
+
+def host_arch() -> str:
+    """Architecture de l'hôte en jeton générique (amd64/arm64/s390x)."""
+    try:
+        machine = os.uname().machine
+    except (AttributeError, OSError):
+        machine = ""
+    return {
+        "x86_64": "amd64",
+        "amd64": "amd64",
+        "aarch64": "arm64",
+        "arm64": "arm64",
+        "s390x": "s390x",
+    }.get(machine, "amd64")
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
@@ -399,17 +421,43 @@ DAEMON_PACKAGES: dict[str, list[str]] = {
     "brew": [],
 }
 
-# Émulateur QEMU système s390x (IBM Z). Requis UNIQUEMENT pour --arch s390x sur
-# un hôte non-s390x : virt-install a besoin du binaire qemu-system-s390x. NB :
-# sur apt, qemu-system-misc ne contient PAS s390x (alpha/avr/… seulement) —
-# c'est le paquet dédié qemu-system-s390x qui le fournit.
-S390X_EMULATOR_PACKAGES: dict[str, list[str]] = {
-    "apt": ["qemu-system-s390x"],
-    "dnf": ["qemu-system-s390x"],
-    "pacman": ["qemu-emulators-full"],
-    "zypper": ["qemu-s390"],
-    "brew": [],
+# Émulateurs QEMU système pour architectures non-x86, requis pour --arch
+# <arch> sur un hôte d'architecture différente (émulation TCG). Par arch puis
+# par gestionnaire de paquets. NB apt : qemu-system-misc ne contient PAS s390x
+# (alpha/avr/… seulement) -> paquet dédié qemu-system-s390x ; qemu-system-arm
+# fournit qemu-system-aarch64 ; l'arm64 exige aussi le firmware UEFI AAVMF.
+EMULATOR_PACKAGES: dict[str, dict[str, list[str]]] = {
+    "s390x": {
+        "apt": ["qemu-system-s390x"],
+        "dnf": ["qemu-system-s390x"],
+        "pacman": ["qemu-emulators-full"],
+        "zypper": ["qemu-s390"],
+        "brew": [],
+    },
+    "arm64": {
+        "apt": ["qemu-system-arm", "qemu-efi-aarch64"],
+        "dnf": ["qemu-system-aarch64", "edk2-aarch64"],
+        "pacman": ["qemu-emulators-full", "edk2-aarch64"],
+        "zypper": ["qemu-arm", "qemu-uefi-aarch64"],
+        "brew": [],
+    },
 }
+
+# Binaire émulateur par arch (détection de présence).
+EMULATOR_BINARY: dict[str, str] = {
+    "s390x": "qemu-system-s390x",
+    "arm64": "qemu-system-aarch64",
+}
+
+# Firmwares UEFI AAVMF possibles (arm64) : au moins un doit exister.
+AARCH64_FIRMWARE_PATHS: tuple[str, ...] = (
+    "/usr/share/AAVMF/AAVMF_CODE.fd",
+    "/usr/share/AAVMF/AAVMF_CODE.no-secboot.fd",
+    "/usr/share/edk2/aarch64/QEMU_EFI.fd",
+    "/usr/share/edk2/aarch64/QEMU_EFI-silent.fd",
+    "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+    "/usr/share/edk2-armvirt/aarch64/QEMU_EFI.fd",
+)
 
 # Gestionnaires de paquets, dans l'ordre de préférence :
 # (clé TOOL_PACKAGES, binaire à détecter, commande d'installation, sudo, refresh)
@@ -619,31 +667,43 @@ def ensure_tools(runner: Runner, assume_yes: bool, no_install: bool) -> None:
     ensure_libvirt_service(runner)
 
 
-def ensure_s390x_emulator(
-    runner: Runner, assume_yes: bool, no_install: bool
+def emulator_ready(arch: str) -> bool:
+    """Vrai si l'émulateur (et, pour arm64, un firmware UEFI AAVMF) est là."""
+    if shutil.which(EMULATOR_BINARY[arch]) is None:
+        return False
+    if arch == "arm64":
+        return any(os.path.exists(p) for p in AARCH64_FIRMWARE_PATHS)
+    return True
+
+
+def ensure_emulator(
+    arch: str, runner: Runner, assume_yes: bool, no_install: bool
 ) -> None:
-    """Vérifie que qemu-system-s390x est présent (requis pour --arch s390x sur
-    un hôte x86) ; l'installe au besoin via le gestionnaire de paquets."""
-    if shutil.which("qemu-system-s390x"):
+    """Vérifie l'émulateur QEMU système pour `arch` (et le firmware UEFI pour
+    arm64), requis quand on émule une architecture différente de l'hôte ;
+    l'installe au besoin via le gestionnaire de paquets."""
+    binary = EMULATOR_BINARY[arch]
+    if emulator_ready(arch):
         return
     pm = detect_pkg_manager()
     if pm is None:
         sys.exit(
-            "  Émulateur s390x introuvable (qemu-system-s390x) et gestionnaire "
-            "de paquets non reconnu.\n  Installez-le manuellement."
+            f"  Émulateur {arch} introuvable ({binary}) et gestionnaire de "
+            "paquets non reconnu.\n  Installez-le manuellement."
         )
     pm_key, install_cmd, use_sudo, refresh = pm
-    packages = S390X_EMULATOR_PACKAGES.get(pm_key, [])
+    packages = EMULATOR_PACKAGES.get(arch, {}).get(pm_key, [])
     if not packages:
         sys.exit(
-            "  Émulateur s390x introuvable (qemu-system-s390x) : installez le "
-            "paquet QEMU système s390x de votre distribution."
+            f"  Émulateur {arch} introuvable ({binary}) : installez le paquet "
+            "QEMU système correspondant de votre distribution "
+            "(+ firmware UEFI pour arm64)."
         )
     full_cmd = install_cmd + packages
     printable = ("sudo " if use_sudo and runner.use_sudo else "") + " ".join(
         full_cmd
     )
-    print("  Émulateur s390x manquant (qemu-system-s390x).")
+    print(f"  Émulateur {arch} manquant ({binary}).")
     print(f"  Commande d'installation : {printable}")
     if no_install:
         sys.exit(
@@ -651,18 +711,18 @@ def ensure_s390x_emulator(
             "  Installez manuellement : " + printable
         )
     if not assume_yes and not prompt_yes_no(
-        "  Installer l'émulateur s390x maintenant ?"
+        f"  Installer l'émulateur {arch} maintenant ?"
     ):
         sys.exit("  Installation refusée.\n  Commande manuelle : " + printable)
     if refresh:
         runner.run(refresh, privileged=use_sudo, check=False)
     runner.run(full_cmd, privileged=use_sudo)
-    if not shutil.which("qemu-system-s390x"):
+    if not emulator_ready(arch):
         sys.exit(
-            "  qemu-system-s390x toujours absent après installation.\n"
-            f"  Essayez manuellement : {printable}"
+            f"  Émulateur {arch} ({binary}) ou firmware toujours absent après "
+            f"installation.\n  Essayez manuellement : {printable}"
         )
-    print("  Émulateur s390x installé avec succès.")
+    print(f"  Émulateur {arch} installé avec succès.")
 
 
 # --------------------------------------------------------------------------- #
@@ -1046,10 +1106,11 @@ def virt_install(
     osinfo: str,
     runner: Runner,
 ) -> None:
-    foreign = args.arch in FOREIGN_ARCHES
+    # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
+    emulated = args.arch != host_arch()
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
-    # ttyS0. Ailleurs (x86), console série classique.
-    console_target = "sclp" if foreign else "serial"
+    # ttyS0. Ailleurs (x86/arm64), console série classique.
+    console_target = "sclp" if args.arch == "s390x" else "serial"
     cmd = [
         "virt-install",
         "--name",
@@ -1078,20 +1139,17 @@ def virt_install(
         "--console",
         f"pty,target_type={console_target}",
     ]
-    if foreign:
-        # s390x (IBM Z) sur hôte x86 : émulation TCG (--virt-type qemu, pas de
-        # KVM), machine s390-ccw-virtio, amorçage IPL/zipl depuis le disque
-        # (ni BIOS ni UEFI/OVMF -> aucun --boot). LENT (émulation logicielle).
-        cmd += [
-            "--arch",
-            "s390x",
-            "--machine",
-            "s390-ccw-virtio",
-            "--virt-type",
-            "qemu",
-        ]
+    if args.arch == "s390x":
+        # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
+        # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
+        cmd += ["--arch", "s390x", "--machine", "s390-ccw-virtio"]
+    elif args.arch == "arm64":
+        # arm64/aarch64 : machine « virt » + UEFI (firmware AAVMF résolu par
+        # libvirt d'après --arch aarch64). Les images cloud arm64 n'ont pas de
+        # BIOS -> UEFI obligatoire.
+        cmd += ["--arch", "aarch64", "--machine", "virt", "--boot", "uefi"]
     elif not args.bios:
-        # Boot UEFI par défaut : Debian 13 (trixie) et les images cloud
+        # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
         # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
         # boucle « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour
         # Ubuntu/Debian/Fedora. --bios force l'ancien BIOS si OVMF est absent.
@@ -1103,6 +1161,10 @@ def virt_install(
             "uefi,firmware.feature0.name=secure-boot,"
             "firmware.feature0.enabled=no",
         ]
+    if emulated:
+        # Architecture différente de l'hôte -> émulation logicielle TCG
+        # (pas de KVM). LENT.
+        cmd += ["--virt-type", "qemu"]
     if not args.attach_console:
         cmd.append("--noautoconsole")
     runner.run(cmd, privileged=True)
@@ -1183,8 +1245,9 @@ def build_parser() -> argparse.ArgumentParser:
     g_img.add_argument(
         "--arch",
         default="amd64",
-        help="Architecture de l'image (défaut : amd64). s390x (IBM Z) n'est "
-        "disponible que pour Ubuntu et est ÉMULÉ (lent) sur un hôte x86.",
+        help="Architecture de l'image (défaut : amd64). amd64/x86_64, "
+        "arm64/aarch64 (Ubuntu/Debian/Fedora) ou s390x (Ubuntu). Toute arch "
+        "différente de l'hôte est ÉMULÉE (TCG, lente).",
     )
     g_img.add_argument(
         "--image-dir",
@@ -1420,13 +1483,13 @@ def main() -> None:
             f"Version {args.version!r} inconnue pour {args.distro}. "
             f"Choix : {', '.join(versions)} (voir --list-images)."
         )
-    # s390x n'est publié en image cloud que par Ubuntu (voir S390X_DISTROS).
-    if args.arch == "s390x" and args.distro not in S390X_DISTROS:
+    # Certaines architectures ne sont publiées que par une partie des distros
+    # (voir ARCH_DISTRO_SUPPORT) : on valide tôt plutôt qu'échouer au download.
+    supported = ARCH_DISTRO_SUPPORT.get(args.arch)
+    if supported is not None and args.distro not in supported:
         sys.exit(
-            f"Architecture s390x indisponible pour {args.distro!r} : seul "
-            f"Ubuntu publie des images cloud s390x ({', '.join(S390X_DISTROS)})."
-            "\n  Debian/Fedora n'en publient pas ; Arch ne cible que "
-            "x86_64/aarch64."
+            f"Architecture {args.arch} indisponible pour {args.distro!r} : "
+            f"images cloud publiées seulement pour {', '.join(supported)}."
         )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
@@ -1499,13 +1562,17 @@ def main() -> None:
 
     if not args.dry_run:
         ensure_tools(runner, args.assume_yes, args.no_install_deps)
-        if args.arch in FOREIGN_ARCHES:
-            ensure_s390x_emulator(
-                runner, args.assume_yes, args.no_install_deps
+        # Émulation requise si l'arch diffère de l'hôte : installe l'émulateur
+        # QEMU système adéquat (+ firmware UEFI pour arm64) et prévient de la
+        # lenteur.
+        if args.arch in EMULATOR_BINARY and args.arch != host_arch():
+            ensure_emulator(
+                args.arch, runner, args.assume_yes, args.no_install_deps
             )
             print(
-                "  Note : s390x est ÉMULÉ (TCG) sur cet hôte — le boot et "
-                "l'installation seront nettement plus lents que x86."
+                f"  Note : {args.arch} est ÉMULÉ (TCG) sur cet hôte "
+                f"({host_arch()}) — le boot et l'installation seront "
+                "nettement plus lents que l'architecture native."
             )
 
     print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
