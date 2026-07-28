@@ -1690,47 +1690,68 @@ class TODO:
             return
         distros = list(mod.DISTROS)
 
-        # 1) Distributions (multi-sélection) ou catalogue complet.
+        # 1) Distributions : multi-sélection, catalogue complet, ou principal
+        # (la version par défaut de chaque distro, marquée d'un *).
         print(f"\n{t('Distributions:')}")
         for i, d in enumerate(distros, 1):
-            vers = ", ".join(mod.DISTROS[d][0])
+            default_v = mod.DISTROS[d][1]
+            vers = ", ".join(
+                (v + " *" if v == default_v else v) for v in mod.DISTROS[d][0]
+            )
             print(f"  [{i}] {d} ({vers})")
         print(f"  [all] {t('Whole catalog (every version)')}")
-        raw = input(t("Selection (numbers, or 'all', default: all): ")).strip()
-        catalog_all = raw.lower() in ("", "all", "*")
-        sel_distros = (
-            distros
-            if catalog_all
-            else self._parse_index_selection(raw.lower(), distros)
+        print(
+            f"  [principal] {t('The main version of each distro (marked *)')}"
         )
-        if not sel_distros:
-            print(t("Nothing selected."))
-            return
+        raw = (
+            input(
+                t("Selection (numbers, 'all' or 'principal', default: all): ")
+            )
+            .strip()
+            .lower()
+        )
+        catalog_all = raw in ("", "all", "*")
+        principal = raw in ("principal", "each", "p")
 
-        # 2) Versions par distro (multi-sélection) ; « all » si catalogue.
         selected = []  # (distro, version, ram_mb, disk_str)
-        for d in sel_distros:
-            versions_map = mod.DISTROS[d][0]
-            vlist = list(versions_map)
-            if catalog_all:
-                chosen = vlist
-            else:
-                print(f"\n{t('Versions for')} {d} :")
-                for i, v in enumerate(vlist, 1):
+        if principal:
+            # Une VM par distro : sa version par défaut.
+            for d in distros:
+                versions_map, default_v = mod.DISTROS[d]
+                _c, _o, ram, disk = versions_map[default_v]
+                selected.append((d, default_v, ram, disk))
+        else:
+            sel_distros = (
+                distros
+                if catalog_all
+                else self._parse_index_selection(raw, distros)
+            )
+            if not sel_distros:
+                print(t("Nothing selected."))
+                return
+            # 2) Versions par distro (multi-sélection) ; « all » si catalogue.
+            for d in sel_distros:
+                versions_map = mod.DISTROS[d][0]
+                vlist = list(versions_map)
+                if catalog_all:
+                    chosen = vlist
+                else:
+                    print(f"\n{t('Versions for')} {d} :")
+                    for i, v in enumerate(vlist, 1):
+                        _c, _o, ram, disk = versions_map[v]
+                        print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk})")
+                    print(f"  [all] {t('select all')}")
+                    r = input(
+                        t("Selection (numbers, or 'all', default: all): ")
+                    ).strip()
+                    chosen = (
+                        vlist
+                        if r.lower() in ("", "all", "*")
+                        else self._parse_index_selection(r.lower(), vlist)
+                    )
+                for v in chosen:
                     _c, _o, ram, disk = versions_map[v]
-                    print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk})")
-                print(f"  [all] {t('select all')}")
-                r = input(
-                    t("Selection (numbers, or 'all', default: all): ")
-                ).strip()
-                chosen = (
-                    vlist
-                    if r.lower() in ("", "all", "*")
-                    else self._parse_index_selection(r.lower(), vlist)
-                )
-            for v in chosen:
-                _c, _o, ram, disk = versions_map[v]
-                selected.append((d, v, ram, disk))
+                    selected.append((d, v, ram, disk))
         if not selected:
             print(t("Nothing selected."))
             return

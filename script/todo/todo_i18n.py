@@ -1330,6 +1330,14 @@ TRANSLATIONS = {
         "fr": "Tout le catalogue (chaque version)",
         "en": "Whole catalog (every version)",
     },
+    "The main version of each distro (marked *)": {
+        "fr": "La version principale de chaque distro (marquée *)",
+        "en": "The main version of each distro (marked *)",
+    },
+    "Selection (numbers, 'all' or 'principal', default: all): ": {
+        "fr": "Sélection (numéros, « all » ou « principal », défaut : all) : ",
+        "en": "Selection (numbers, 'all' or 'principal', default: all): ",
+    },
     "Selection (numbers, or 'all', default: all): ": {
         "fr": "Sélection (numéros, ou « all », défaut : all) : ",
         "en": "Selection (numbers, or 'all', default: all): ",
