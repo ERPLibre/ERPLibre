@@ -90,18 +90,26 @@ FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "43": ("43", "fedora43", 2048, "15G"),
     "44": ("44", "fedora44", 2048, "15G"),
 }
+# Arch est en rolling release : une seule « version » (latest).
+ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "latest": ("latest", "archlinux", 1024, "10G"),
+}
 
 # distro -> (table des versions, version par défaut).
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
     "fedora": (FEDORA_VERSIONS, "42"),
+    "arch": (ARCH_VERSIONS, "latest"),
 }
 
 # Traduction de l'arch générique (amd64/arm64) vers le nom propre à la distro.
 ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
+    "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
+
+ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
 # Debian : cloud.debian.org est un redirecteur qui, selon le réseau, peut
@@ -159,6 +167,9 @@ def image_candidates(
         ]
     if distro == "fedora":
         return [resolve_fedora_url(version, arch, dry_run)]
+    if distro == "arch":
+        # Rolling release : image « latest » officielle (cloud-init inclus).
+        return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
     raise ValueError(f"URL indisponible pour la distro {distro!r}")
 
 
@@ -193,6 +204,8 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"ubuntu-{version}-server-cloudimg-{a}.img"
     if distro == "debian":
         return f"debian-{version}-genericcloud-{a}.qcow2"
+    if distro == "arch":
+        return f"arch-linux-{a}-cloudimg.qcow2"
     return f"fedora-cloud-{version}-{a}.qcow2"
 
 

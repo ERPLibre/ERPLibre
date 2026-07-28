@@ -810,6 +810,7 @@ class TODO:
         ),
         "debian": (["11", "12", "13"], "12"),
         "fedora": (["41", "42", "43", "44"], "42"),
+        "arch": (["latest"], "latest"),
     }
 
     def _qemu_prompt_distro(self):
