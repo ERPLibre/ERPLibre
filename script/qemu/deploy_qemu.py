@@ -803,9 +803,12 @@ def build_cloud_config(
     lines.append(f"package_update: {'true' if do_update else 'false'}")
     lines.append(f"package_upgrade: {'true' if do_upgrade else 'false'}")
 
-    # openssh-server : garantit un serveur SSH sur toutes les distros (les
-    # images Debian genericcloud notamment ne l'ont pas toujours activé).
-    packages = ["qemu-guest-agent", "openssh-server", *args.package]
+    # Serveur SSH : garantit sa présence sur toutes les distros (les images
+    # Debian genericcloud notamment ne l'activent pas toujours). Le nom du
+    # paquet diffère : « openssh » sur Arch, « openssh-server » ailleurs —
+    # sans quoi cloud-init échoue (paquet introuvable -> status: error).
+    ssh_pkg = "openssh" if args.distro == "arch" else "openssh-server"
+    packages = ["qemu-guest-agent", ssh_pkg, *args.package]
     lines.append("packages:")
     lines += [
         f"  - {p}" for p in dict.fromkeys(packages)
