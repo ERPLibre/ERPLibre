@@ -20,6 +20,14 @@ import subprocess
 import time
 from pathlib import Path
 
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
+
 EXIT_MARKER = "__ERPLIBRE_EXIT__"
 SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -38,7 +46,8 @@ def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie."""
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
-    # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~12 min).
+    # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~20 min :
+    # une architecture ÉMULÉE, s390x/arm64 sur hôte x86, boote lentement).
     # Au 1er boot, cloud-init régénère les clés d'hôte et REDÉMARRE sshd : une
     # session SSH longue (ex. « cloud-init status --wait ») serait alors tuée
     # (« Connection closed by remote host », exit 255 — cas Fedora). Chaque
@@ -49,16 +58,27 @@ def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
         "if command -v cloud-init >/dev/null 2>&1; then "
         "cloud-init status 2>/dev/null || true; else echo nocloudinit; fi"
     )
+    log_q = shlex.quote(log_path)
+    # On écrit un message d'attente + un battement toutes les ~30 s : sinon le
+    # log reste VIDE pendant tout le boot émulé et paraît « bloqué ».
+    msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
+    msg_slow = t("(an emulated architecture can be slow; this is normal)")
+    msg_ready = t("VM ready - starting the ERPLibre install")
     wrapper = (
-        f"for i in $(seq 1 144); do "
+        f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
+        f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
+        f"for i in $(seq 1 240); do "
         f"st=$(ssh {SSH_OPTS} -o BatchMode=yes erplibre@{ip} "
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) break;; "
-        f"esac; sleep 5; done; "
+        f"esac; "
+        f'if [ $((i % 6)) -eq 0 ]; then echo "   ... $((i*5))s" >> {log_q}; fi; '
+        f"sleep 5; done; "
+        f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
         f"ssh {SSH_OPTS} erplibre@{ip} {shlex.quote(remote_cmd)} "
-        f"> {shlex.quote(log_path)} 2>&1; "
-        f'echo "{EXIT_MARKER} $?" >> {shlex.quote(log_path)}'
+        f">> {log_q} 2>&1; "
+        f'echo "{EXIT_MARKER} $?" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
     subprocess.Popen(

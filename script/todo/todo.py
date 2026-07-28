@@ -1041,7 +1041,7 @@ class TODO:
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
         arch = self._qemu_prompt_arch(distro)
-        default_name = self._qemu_infra_name(distro, version)
+        default_name = self._qemu_infra_name(distro, version, arch)
         name = (
             input(f"{t('VM name (default: ')}{default_name}): ").strip()
             or default_name
@@ -1608,10 +1608,16 @@ class TODO:
         spec.loader.exec_module(mod)
         return mod
 
-    @staticmethod
-    def _qemu_infra_name(distro, version):
-        """Nom de VM stable pour le parc, ex. erplibre-ubuntu-2404."""
-        return f"erplibre-{distro}-{version.replace('.', '')}"
+    @classmethod
+    def _qemu_infra_name(cls, distro, version, arch=None):
+        """Nom de VM stable pour le parc, ex. erplibre-ubuntu-2404. Ajoute un
+        suffixe d'architecture quand elle diffère de la native de l'hôte (ex.
+        erplibre-ubuntu-2604-s390x sur un hôte amd64) pour éviter les collisions
+        de noms entre archis et rendre l'archi visible."""
+        base = f"erplibre-{distro}-{version.replace('.', '')}"
+        if arch and arch != cls._native_arch():
+            base += f"-{arch}"
+        return base
 
     @staticmethod
     def _parse_disk_gb(size):
@@ -1743,7 +1749,7 @@ class TODO:
     ERPLIBRE_EXTRA_DISK_GB = 5
 
     @staticmethod
-    def _qemu_wait_ssh(ip, user="erplibre", timeout=720):
+    def _qemu_wait_ssh(ip, user="erplibre", timeout=1200):
         """Attend que sshd réponde ET que cloud-init soit TERMINÉ, via des
         connexions COURTES successives. Au 1er boot, cloud-init régénère les
         clés d'hôte et REDÉMARRE sshd : attendre la fin de cloud-init AVANT de
@@ -2049,7 +2055,7 @@ class TODO:
         free_ram = self._host_free_ram_mb()
         print(f"\n{t('Deployment plan')} ({len(selected)} VM) :")
         for d, v, ram, disk in selected:
-            name = self._qemu_infra_name(d, v)
+            name = self._qemu_infra_name(d, v, arch)
             print(f"  - {name:<26} {d} {v:<7} RAM {ram}Mo  {t('disk')} {disk}")
         print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
         print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
@@ -2108,7 +2114,7 @@ class TODO:
         deployed = []
         jobs = []  # (name, parts) des VM à créer
         for d, v, _ram, disk in selected:
-            name = self._qemu_infra_name(d, v)
+            name = self._qemu_infra_name(d, v, arch)
             if self._qemu_domain_exists(name):
                 print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)

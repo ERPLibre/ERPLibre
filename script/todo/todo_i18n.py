@@ -1197,6 +1197,18 @@ TRANSLATIONS = {
         "fr": "images pour cette architecture disponibles seulement pour :",
         "en": "images for this arch only exist for:",
     },
+    "Waiting for the VM to start (boot + cloud-init)": {
+        "fr": "En attente du démarrage de la VM (boot + cloud-init)",
+        "en": "Waiting for the VM to start (boot + cloud-init)",
+    },
+    "(an emulated architecture can be slow; this is normal)": {
+        "fr": "(une architecture émulée peut être lente ; c'est normal)",
+        "en": "(an emulated architecture can be slow; this is normal)",
+    },
+    "VM ready - starting the ERPLibre install": {
+        "fr": "VM prête — installation ERPLibre en cours",
+        "en": "VM ready - starting the ERPLibre install",
+    },
     "Choice (number or name, blank = native):": {
         "fr": "Choix (numéro ou nom, vide = native) :",
         "en": "Choice (number or name, blank = native):",
