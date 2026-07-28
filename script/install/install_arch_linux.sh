@@ -14,10 +14,14 @@
 EL_USER=${USER}
 
 # pacman résilient : --needed saute ce qui est déjà là, --noconfirm en non
-# interactif. On rafraîchit d'abord la base (best-effort : le remote cmd de
-# todo a déjà pu lancer reflector + -Syy).
+# interactif.
 PAC="sudo pacman -S --needed --noconfirm"
-sudo pacman -Sy --noconfirm || true
+# Mise à jour COMPLÈTE obligatoire : Arch est en rolling release et NE SUPPORTE
+# PAS les mises à jour partielles. Sur une image cloud dont la glibc est
+# ancienne, un « pacman -S <paquet récent> » lie le binaire à une glibc plus
+# récente que celle installée -> « /usr/bin/postgres: GLIBC_2.44 not found ».
+# « -Syu » met à jour glibc (et tout le système) pour rester cohérent.
+sudo pacman -Syu --noconfirm || true
 
 #--------------------------------------------------
 # Outils de compilation — CRITIQUE (build Python via pyenv, extensions Python)

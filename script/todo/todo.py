@@ -1754,11 +1754,13 @@ class TODO:
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
             # Arch : reflector sélectionne les miroirs HTTPS les plus rapides,
-            # puis rafraîchit la base et installe.
+            # puis MISE À JOUR COMPLÈTE (-Syu) : Arch (rolling) ne supporte pas
+            # les màj partielles ; sur une image cloud à la glibc ancienne, un
+            # « pacman -S <paquet récent> » casse avec « GLIBC_x.yy not found ».
             "sudo pacman -Sy --needed --noconfirm reflector || true; "
             "sudo reflector --latest 20 --protocol https --sort rate "
             "--save /etc/pacman.d/mirrorlist || true; "
-            "sudo pacman -Syy --noconfirm || true; "
+            "sudo pacman -Syu --noconfirm || true; "
             "sudo pacman -S --needed --noconfirm $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
