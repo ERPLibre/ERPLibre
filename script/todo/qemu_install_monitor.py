@@ -37,11 +37,25 @@ def session_dir() -> Path:
 def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie."""
+    # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
+    # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~12 min).
+    # Au 1er boot, cloud-init régénère les clés d'hôte et REDÉMARRE sshd : une
+    # session SSH longue (ex. « cloud-init status --wait ») serait alors tuée
+    # (« Connection closed by remote host », exit 255 — cas Fedora). Chaque
+    # itération étant une connexion neuve, un redémarrage de sshd ne casse que
+    # la tentative en cours. On imprime toujours l'état (|| true) pour matcher
+    # sur le TEXTE, « status: running » n'ayant pas de code de sortie fiable.
+    ci_probe = (
+        "if command -v cloud-init >/dev/null 2>&1; then "
+        "cloud-init status 2>/dev/null || true; else echo nocloudinit; fi"
+    )
     wrapper = (
-        # Attente du sshd (jusqu'à ~5 min) pour éviter « Connection refused ».
-        f"for i in $(seq 1 60); do "
-        f"ssh {SSH_OPTS} -o BatchMode=yes erplibre@{ip} true "
-        f">/dev/null 2>&1 && break; sleep 5; done; "
+        f"for i in $(seq 1 144); do "
+        f"st=$(ssh {SSH_OPTS} -o BatchMode=yes erplibre@{ip} "
+        f"{shlex.quote(ci_probe)} 2>/dev/null); "
+        f'case "$st" in '
+        f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) break;; "
+        f"esac; sleep 5; done; "
         f"ssh {SSH_OPTS} erplibre@{ip} {shlex.quote(remote_cmd)} "
         f"> {shlex.quote(log_path)} 2>&1; "
         f'echo "{EXIT_MARKER} $?" >> {shlex.quote(log_path)}'

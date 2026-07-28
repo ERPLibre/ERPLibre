@@ -1677,28 +1677,45 @@ class TODO:
     ERPLIBRE_EXTRA_DISK_GB = 5
 
     @staticmethod
-    def _qemu_wait_ssh(ip, user="erplibre", timeout=180):
-        """Attend que le SSH réponde (le sshd peut mettre du temps à démarrer
-        après le boot, surtout sur Fedora). True si joignable."""
+    def _qemu_wait_ssh(ip, user="erplibre", timeout=720):
+        """Attend que sshd réponde ET que cloud-init soit TERMINÉ, via des
+        connexions COURTES successives. Au 1er boot, cloud-init régénère les
+        clés d'hôte et REDÉMARRE sshd : attendre la fin de cloud-init AVANT de
+        lancer l'install évite qu'une session longue soit tuée (« Connection
+        closed by remote host », exit 255 — cas Fedora). True si prête."""
         opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=8 -o BatchMode=yes"
         )
+        # On imprime toujours l'état (|| true) pour matcher sur le TEXTE :
+        # « status: running » n'a pas de code de sortie fiable selon la version.
+        probe = (
+            "if command -v cloud-init >/dev/null 2>&1; then "
+            "cloud-init status 2>/dev/null || true; else echo nocloudinit; fi"
+        )
+        ready = ("done", "disabled", "error", "degraded", "nocloudinit")
         deadline = time.time() + timeout
+        ssh_up = False
         while time.time() < deadline:
             try:
                 res = subprocess.run(
-                    f"ssh {opts} {user}@{ip} true",
+                    f"ssh {opts} {user}@{ip} {shlex.quote(probe)}",
                     shell=True,
                     capture_output=True,
-                    timeout=15,
+                    timeout=20,
+                    text=True,
                 )
+                out = res.stdout or ""
             except (OSError, subprocess.SubprocessError):
-                res = None
-            if res is not None and res.returncode == 0:
+                out = ""
+            if out.strip():
+                ssh_up = True  # sshd a répondu
+            if any(k in out for k in ready):
                 return True
             time.sleep(5)
-        return False
+        # cloud-init pas confirmé fini dans le délai : on tente quand même si
+        # sshd répondait au moins (mieux qu'un abandon silencieux).
+        return ssh_up
 
     def _qemu_erplibre_remote_cmd(self, branch):
         """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
