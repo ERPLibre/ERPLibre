@@ -1270,6 +1270,46 @@ TRANSLATIONS = {
         "fr": "Effacer aussi les images de base en cache ? (o/N) : ",
         "en": "Also delete the cached base images? (y/N): ",
     },
+    "All cached base images (reusable):": {
+        "fr": "Toutes les images de base en cache (réutilisables) :",
+        "en": "All cached base images (reusable):",
+    },
+    "Delete ALL cached base images? (y/N): ": {
+        "fr": "Effacer TOUTES les images de base en cache ? (o/N) : ",
+        "en": "Delete ALL cached base images? (y/N): ",
+    },
+    "Ghost domains (defined but disk missing):": {
+        "fr": "Domaines fantômes (définis, disque manquant) :",
+        "en": "Ghost domains (defined but disk missing):",
+    },
+    "Undefine these ghost domains? (y/N): ": {
+        "fr": "Supprimer la définition de ces domaines ? (o/N) : ",
+        "en": "Undefine these ghost domains? (y/N): ",
+    },
+    "Stale codename-named Ubuntu images (duplicates):": {
+        "fr": "Images Ubuntu nommées par codename (doublons) :",
+        "en": "Stale codename-named Ubuntu images (duplicates):",
+    },
+    "Delete these duplicate images? (y/N): ": {
+        "fr": "Effacer ces images en double ? (o/N) : ",
+        "en": "Delete these duplicate images? (y/N): ",
+    },
+    "Orphan ~/.ssh/config entries:": {
+        "fr": "Entrées ~/.ssh/config orphelines :",
+        "en": "Orphan ~/.ssh/config entries:",
+    },
+    "Remove these ~/.ssh/config entries? (y/N): ": {
+        "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N) : ",
+        "en": "Remove these ~/.ssh/config entries? (y/N): ",
+    },
+    "Stale DHCP leases (no matching VM):": {
+        "fr": "Baux DHCP périmés (aucune VM correspondante) :",
+        "en": "Stale DHCP leases (no matching VM):",
+    },
+    "Clear these stale leases? (y/N): ": {
+        "fr": "Effacer ces baux périmés ? (o/N) : ",
+        "en": "Clear these stale leases? (y/N): ",
+    },
     "Deploy ERPLibre infra (one minimal VM per image)": {
         "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
         "en": "Deploy ERPLibre infra (one minimal VM per image)",

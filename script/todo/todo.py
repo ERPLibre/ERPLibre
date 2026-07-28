@@ -1238,37 +1238,70 @@ class TODO:
                 out.append((int(size), path))
         return out
 
+    def _cleanup_delete_files(self, title, items, prompt):
+        """items : [(taille, chemin)]. Liste, confirme, puis « sudo rm -f »."""
+        if not items:
+            return
+        total = sum(s for s, _ in items)
+        print(
+            f"\n{title} — {self._human_size(total)}, "
+            f"{len(items)} {t('files')} :"
+        )
+        for size, path in sorted(items, key=lambda o: -o[0]):
+            print(f"  {self._human_size(size):>9}  {path}")
+        if not self._is_yes(input(prompt)):
+            print(t("Cancelled."))
+            return
+        paths = " ".join(shlex.quote(p) for _, p in items)
+        cmd = f"sudo rm -f {paths}"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+        print(f"✅ {t('Cleanup done.')}")
+
+    def _qemu_domain_macs(self):
+        """MACs de toutes les VM définies (pour repérer les baux périmés)."""
+        macs = set()
+        for name in self._qemu_list_domains():
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domiflist", name],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            macs.update(
+                m.lower()
+                for m in re.findall(
+                    r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}", res.stdout
+                )
+            )
+        return macs
+
     def _qemu_cleanup(self):
-        """Repère les fichiers QEMU orphelins et propose de les effacer."""
+        """Repère les restes QEMU orphelins et propose de les effacer."""
         print(f"🧹 {t('Scanning for orphan QEMU files...')}")
         disk_dir = "/var/lib/libvirt/images"
         seed_dir = "/var/lib/libvirt/images/iso"
         nvram_dir = "/var/lib/libvirt/qemu/nvram"
         domains = set(self._qemu_list_domains())
 
+        # 1) Fichiers orphelins : disques / seeds / .part / nvram.
         orphans = []  # (taille, chemin, motif)
-        # Disques de travail sans domaine correspondant.
         for size, path in self._qemu_find_files(disk_dir, "*.qcow2"):
-            stem = os.path.basename(path)[: -len(".qcow2")]
-            if stem not in domains:
+            if os.path.basename(path)[: -len(".qcow2")] not in domains:
                 orphans.append((size, path, t("orphan disk")))
-        # Seeds cloud-init sans domaine.
         for size, path in self._qemu_find_files(seed_dir, "*-seed.iso"):
-            stem = os.path.basename(path)[: -len("-seed.iso")]
-            if stem not in domains:
+            if os.path.basename(path)[: -len("-seed.iso")] not in domains:
                 orphans.append((size, path, t("orphan seed")))
-        # Téléchargements interrompus.
         for size, path in self._qemu_find_files(seed_dir, "*.part"):
             orphans.append((size, path, t("partial download")))
-        # nvram UEFI sans domaine.
         for size, path in self._qemu_find_files(nvram_dir, "*"):
             stem = re.sub(r"(_VARS)?\.fd$", "", os.path.basename(path))
             if stem not in domains:
                 orphans.append((size, path, t("orphan UEFI nvram")))
-
-        if not orphans:
-            print(f"✅ {t('No orphan files found.')}")
-        else:
+        if orphans:
             total = sum(o[0] for o in orphans)
             print(f"\n{t('Orphan files:')}")
             for size, path, reason in sorted(orphans, key=lambda o: -o[0]):
@@ -1285,30 +1318,168 @@ class TODO:
                 print(f"✅ {t('Cleanup done.')}")
             else:
                 print(t("Cancelled."))
+        else:
+            print(f"✅ {t('No orphan files found.')}")
 
-        # Cache d'images de base (réutilisables) : proposé séparément car les
-        # effacer force un re-téléchargement au prochain déploiement.
+        # 2) Domaines fantômes (définis mais disque manquant).
+        self._cleanup_ghost_domains()
+        # 3) Doublons d'images nommées par codename (avant /releases/).
+        dups = [
+            (s, p)
+            for s, p in self._qemu_find_files(
+                seed_dir, "*-server-cloudimg-*.img"
+            )
+            if not os.path.basename(p).startswith("ubuntu-")
+        ]
+        self._cleanup_delete_files(
+            t("Stale codename-named Ubuntu images (duplicates):"),
+            dups,
+            t("Delete these duplicate images? (y/N): "),
+        )
+        # 4) Entrées ~/.ssh/config orphelines (erplibre-* sans VM).
+        self._cleanup_ssh_config(domains)
+        # 5) Baux DHCP périmés.
+        self._cleanup_stale_leases()
+        # 6) Tout le cache d'images de base (option lourde : re-téléchargement).
         cached = [
             (s, p)
             for s, p in self._qemu_find_files(seed_dir, "*")
             if not p.endswith("-seed.iso") and not p.endswith(".part")
         ]
-        if cached:
-            total = sum(s for s, _ in cached)
-            print(
-                f"\n{t('Cached base images (reusable):')} "
-                f"{self._human_size(total)}"
-            )
-            for size, path in sorted(cached, key=lambda o: -o[0]):
-                print(f"  {self._human_size(size):>9}  {path}")
-            if self._is_yes(
-                input(t("Also delete the cached base images? (y/N): "))
+        self._cleanup_delete_files(
+            t("All cached base images (reusable):"),
+            cached,
+            t("Delete ALL cached base images? (y/N): "),
+        )
+
+    def _cleanup_ghost_domains(self):
+        """VM définies dont plus aucun disque n'existe -> propose undefine."""
+        ghosts = []
+        for name in self._qemu_list_domains():
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domblklist", name, "--details"],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            srcs = []
+            for line in res.stdout.splitlines():
+                p = line.split()
+                if len(p) >= 4 and p[1] == "disk" and p[3] not in ("-", ""):
+                    srcs.append(p[3])
+            if srcs and all(
+                subprocess.run(
+                    ["sudo", "test", "-e", s], timeout=10
+                ).returncode
+                != 0
+                for s in srcs
             ):
-                paths = " ".join(shlex.quote(p) for _, p in cached)
-                cmd = f"sudo rm -f {paths}"
-                print(f"{t('Will execute:')} {cmd}")
-                self.execute.exec_command_live(cmd, source_erplibre=False)
-                print(f"✅ {t('Cleanup done.')}")
+                ghosts.append(name)
+        if not ghosts:
+            return
+        print(
+            f"\n{t('Ghost domains (defined but disk missing):')} "
+            f"{', '.join(ghosts)}"
+        )
+        if not self._is_yes(input(t("Undefine these ghost domains? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for name in ghosts:
+            q = shlex.quote(name)
+            cmd = (
+                f"sudo virsh destroy {q} 2>/dev/null; "
+                f"sudo virsh undefine {q} --nvram 2>/dev/null "
+                f"|| sudo virsh undefine {q}"
+            )
+            print(f"{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        print(f"✅ {t('Cleanup done.')}")
+
+    def _cleanup_ssh_config(self, domains):
+        """Retire les blocs « Host erplibre-* » sans VM correspondante (on ne
+        touche jamais aux autres hôtes SSH personnels)."""
+        cfg = os.path.expanduser("~/.ssh/config")
+        if not os.path.exists(cfg):
+            return
+        with open(cfg, encoding="utf-8") as fh:
+            content = fh.read()
+        hosts = re.findall(r"(?m)^[ \t]*Host[ \t]+(\S+)", content)
+        orphans = [
+            h for h in hosts if h.startswith("erplibre-") and h not in domains
+        ]
+        if not orphans:
+            return
+        print(f"\n{t('Orphan ~/.ssh/config entries:')} {', '.join(orphans)}")
+        if not self._is_yes(
+            input(t("Remove these ~/.ssh/config entries? (y/N): "))
+        ):
+            print(t("Cancelled."))
+            return
+        for h in orphans:
+            pat = re.compile(
+                rf"(?m)^[ \t]*Host[ \t]+{re.escape(h)}[ \t]*\n"
+                r"(?:[ \t]+[^\n]*\n?)*"
+            )
+            content = pat.sub("", content)
+        content = content.strip("\n")
+        content = content + "\n" if content else ""
+        with open(cfg, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(cfg, 0o600)
+        print(f"✅ {t('Cleanup done.')}")
+
+    def _cleanup_stale_leases(self):
+        """Baux DHCP libvirt dont la MAC n'appartient à aucune VM (best-effort :
+        les baux expirent d'eux-mêmes)."""
+        status = "/var/lib/libvirt/dnsmasq/virbr0.status"
+        try:
+            res = subprocess.run(
+                ["sudo", "cat", status],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            leases = json.loads(res.stdout or "[]")
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return
+        if not isinstance(leases, list) or not leases:
+            return
+        macs = self._qemu_domain_macs()
+        stale = [
+            ln
+            for ln in leases
+            if str(ln.get("mac-address", "")).lower() not in macs
+        ]
+        if not stale:
+            return
+        print(f"\n{t('Stale DHCP leases (no matching VM):')}")
+        for ln in stale:
+            print(
+                f"  {ln.get('ip-address', '?'):<16} "
+                f"{ln.get('mac-address', '?')}  {ln.get('hostname', '')}"
+            )
+        if not self._is_yes(input(t("Clear these stale leases? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        kept = [ln for ln in leases if ln not in stale]
+        tmp = os.path.join("/tmp", f"virbr0.status.{os.getpid()}.json")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(kept, fh)
+        cmd = (
+            f"sudo cp {shlex.quote(tmp)} {status} && "
+            "sudo pkill -HUP -F /var/lib/libvirt/dnsmasq/virbr0.pid "
+            "2>/dev/null || true"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        print(f"✅ {t('Cleanup done.')}")
 
     # ------------------------------------------------------------------ #
     # QEMU : déploiement d'un parc « infra ERPLibre »
