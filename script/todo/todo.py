@@ -1683,7 +1683,11 @@ class TODO:
             "sudo apt-get update -qq || true; "
             "sudo apt-get install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "
-            "sudo dnf install -y $PKGS; "
+            # --refresh (métadonnées à jour) ; retry avec « clean all » car les
+            # images cloud fraîches ratent parfois la vérif GPG/checksum d'un
+            # miroir (« Signature verification failed »).
+            "sudo dnf install -y --refresh $PKGS || "
+            "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets (apt/dnf/yum)'; "

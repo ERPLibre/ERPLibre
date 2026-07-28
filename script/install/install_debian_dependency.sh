@@ -5,6 +5,11 @@
 EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
 
+# apt-get qui ATTEND le verrou (jusqu'à 10 min) : sur une image cloud fraîche,
+# cloud-init / unattended-upgrades tiennent souvent le verrou apt au 1er boot
+# (« Could not get lock » -> échec de l'install). DPkg::Lock::Timeout patiente.
+APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
+
 ##
 ###  WKHTMLTOPDF download links
 ## === Ubuntu Focal x64 === (for other distributions please replace these two links,
@@ -55,25 +60,30 @@ echo -e "\n---- Update Server ----"
 
 if [ "18.04" == "${UBUNTU_VERSION}" ]; then
   # add-apt-repository can install add-apt-repository Ubuntu 18.x
-  sudo apt-get install software-properties-common curl -y
+  ${APT_GET} install software-properties-common curl -y
   # universe package is for Ubuntu 18.x
   sudo add-apt-repository universe
   # libpng12-0 dependency for wkhtmltopdf
   sudo add-apt-repository "deb http://mirrors.kernel.org/ubuntu/ xenial main"
-  sudo apt-get update
-  sudo apt-get upgrade -y
+  ${APT_GET} update
+  ${APT_GET} upgrade -y
 fi
 
 #--------------------------------------------------
 # Install PostgreSQL Server
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-sudo apt-get install postgresql libpq-dev postgis -y
+${APT_GET} install postgresql postgresql-contrib libpq-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get install postgresql installation error."
   exit 1
 fi
+# PostGIS : optionnel (géospatial). Le nom du paquet « postgis » n'existe pas
+# sur toutes les versions (Ubuntu 24.04) -> best-effort, ne bloque pas.
+${APT_GET} install postgis -y \
+  || ${APT_GET} install postgresql-postgis -y \
+  || echo "PostGIS non installé (optionnel)."
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User  ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
@@ -82,20 +92,20 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-sudo apt-get install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev shfmt xmlsec1 -y
+${APT_GET} install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev shfmt xmlsec1 -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."
   exit 1
 fi
-sudo apt-get install libmariadbd-dev freetds-dev -y
+${APT_GET} install libmariadbd-dev freetds-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get libmariadb installation error."
   exit 1
 fi
 if [ "18.04" == "${UBUNTU_VERSION}" ]; then
-  sudo apt-get install libpng12-0 -y
+  ${APT_GET} install libpng12-0 -y
   retVal=$?
   if [[ $retVal -ne 0 ]]; then
     echo "apt-get libpng installation error."
@@ -103,14 +113,14 @@ if [ "18.04" == "${UBUNTU_VERSION}" ]; then
   fi
 fi
 # Dependencies for pyenv
-sudo apt-get install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev -y
+${APT_GET} install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get pyenv dependencies installation error."
   exit 1
 fi
 # Dependencies for selenium
-sudo apt-get install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
+${APT_GET} install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get selenium dependencies installation error."
@@ -118,8 +128,8 @@ if [[ $retVal -ne 0 ]]; then
 fi
 
 echo -e "\n---- Installing nodeJS NPM and rtlcss for LTR support ----"
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
+${APT_GET} update
+${APT_GET} install -y ca-certificates curl gnupg
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
 
@@ -132,8 +142,8 @@ else
 fi
 
 echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
-sudo apt-get update
-sudo apt-get install nodejs -y
+${APT_GET} update
+${APT_GET} install nodejs -y
 
 sudo npm install npm@latest -g
 retVal=$?
