@@ -1214,6 +1214,62 @@ TRANSLATIONS = {
         "fr": "Effacement terminé.",
         "en": "Deletion done.",
     },
+    "Clean up QEMU (orphan files)": {
+        "fr": "Nettoyer QEMU (fichiers orphelins)",
+        "en": "Clean up QEMU (orphan files)",
+    },
+    "Scanning for orphan QEMU files...": {
+        "fr": "Recherche des fichiers QEMU orphelins...",
+        "en": "Scanning for orphan QEMU files...",
+    },
+    "orphan disk": {
+        "fr": "disque orphelin",
+        "en": "orphan disk",
+    },
+    "orphan seed": {
+        "fr": "seed orphelin",
+        "en": "orphan seed",
+    },
+    "partial download": {
+        "fr": "téléchargement interrompu",
+        "en": "partial download",
+    },
+    "orphan UEFI nvram": {
+        "fr": "nvram UEFI orpheline",
+        "en": "orphan UEFI nvram",
+    },
+    "No orphan files found.": {
+        "fr": "Aucun fichier orphelin trouvé.",
+        "en": "No orphan files found.",
+    },
+    "Orphan files:": {
+        "fr": "Fichiers orphelins :",
+        "en": "Orphan files:",
+    },
+    "Total:": {
+        "fr": "Total :",
+        "en": "Total:",
+    },
+    "files": {
+        "fr": "fichiers",
+        "en": "files",
+    },
+    "Delete these orphan files? (y/N): ": {
+        "fr": "Effacer ces fichiers orphelins ? (o/N) : ",
+        "en": "Delete these orphan files? (y/N): ",
+    },
+    "Cleanup done.": {
+        "fr": "Nettoyage terminé.",
+        "en": "Cleanup done.",
+    },
+    "Cached base images (reusable):": {
+        "fr": "Images de base en cache (réutilisables) :",
+        "en": "Cached base images (reusable):",
+    },
+    "Also delete the cached base images? (y/N): ": {
+        "fr": "Effacer aussi les images de base en cache ? (o/N) : ",
+        "en": "Also delete the cached base images? (y/N): ",
+    },
     "Deploy ERPLibre infra (one minimal VM per image)": {
         "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
         "en": "Deploy ERPLibre infra (one minimal VM per image)",

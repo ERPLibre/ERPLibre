@@ -884,6 +884,7 @@ class TODO:
             {"prompt_description": t("Show a VM IP address")},
             {"prompt_description": t("Open the console on a VM")},
             {"prompt_description": t("Delete VM(s)")},
+            {"prompt_description": t("Clean up QEMU (orphan files)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -914,6 +915,8 @@ class TODO:
             elif status == "8":
                 self._qemu_delete_vm()
             elif status == "9":
+                self._qemu_cleanup()
+            elif status == "10":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1193,6 +1196,119 @@ class TODO:
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
         print(f"\n✅ {t('Deletion done.')}")
+
+    @staticmethod
+    def _human_size(n):
+        """Octets -> taille lisible (Ko/Mo/Go…)."""
+        size = float(n)
+        for unit in ("o", "Ko", "Mo", "Go", "To"):
+            if size < 1024:
+                return f"{size:.0f} {unit}"
+            size /= 1024
+        return f"{size:.0f} Po"
+
+    @staticmethod
+    def _qemu_find_files(directory, pattern):
+        """(taille, chemin) des fichiers du répertoire (via sudo find)."""
+        try:
+            res = subprocess.run(
+                [
+                    "sudo",
+                    "find",
+                    directory,
+                    "-maxdepth",
+                    "1",
+                    "-type",
+                    "f",
+                    "-name",
+                    pattern,
+                    "-printf",
+                    "%s\t%p\n",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        out = []
+        for line in res.stdout.splitlines():
+            if "\t" in line:
+                size, path = line.split("\t", 1)
+                out.append((int(size), path))
+        return out
+
+    def _qemu_cleanup(self):
+        """Repère les fichiers QEMU orphelins et propose de les effacer."""
+        print(f"🧹 {t('Scanning for orphan QEMU files...')}")
+        disk_dir = "/var/lib/libvirt/images"
+        seed_dir = "/var/lib/libvirt/images/iso"
+        nvram_dir = "/var/lib/libvirt/qemu/nvram"
+        domains = set(self._qemu_list_domains())
+
+        orphans = []  # (taille, chemin, motif)
+        # Disques de travail sans domaine correspondant.
+        for size, path in self._qemu_find_files(disk_dir, "*.qcow2"):
+            stem = os.path.basename(path)[: -len(".qcow2")]
+            if stem not in domains:
+                orphans.append((size, path, t("orphan disk")))
+        # Seeds cloud-init sans domaine.
+        for size, path in self._qemu_find_files(seed_dir, "*-seed.iso"):
+            stem = os.path.basename(path)[: -len("-seed.iso")]
+            if stem not in domains:
+                orphans.append((size, path, t("orphan seed")))
+        # Téléchargements interrompus.
+        for size, path in self._qemu_find_files(seed_dir, "*.part"):
+            orphans.append((size, path, t("partial download")))
+        # nvram UEFI sans domaine.
+        for size, path in self._qemu_find_files(nvram_dir, "*"):
+            stem = re.sub(r"(_VARS)?\.fd$", "", os.path.basename(path))
+            if stem not in domains:
+                orphans.append((size, path, t("orphan UEFI nvram")))
+
+        if not orphans:
+            print(f"✅ {t('No orphan files found.')}")
+        else:
+            total = sum(o[0] for o in orphans)
+            print(f"\n{t('Orphan files:')}")
+            for size, path, reason in sorted(orphans, key=lambda o: -o[0]):
+                print(f"  {self._human_size(size):>9}  {path}  [{reason}]")
+            print(
+                f"\n  {t('Total:')} {self._human_size(total)} "
+                f"({len(orphans)} {t('files')})"
+            )
+            if self._is_yes(input(t("Delete these orphan files? (y/N): "))):
+                paths = " ".join(shlex.quote(o[1]) for o in orphans)
+                cmd = f"sudo rm -f {paths}"
+                print(f"{t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                print(f"✅ {t('Cleanup done.')}")
+            else:
+                print(t("Cancelled."))
+
+        # Cache d'images de base (réutilisables) : proposé séparément car les
+        # effacer force un re-téléchargement au prochain déploiement.
+        cached = [
+            (s, p)
+            for s, p in self._qemu_find_files(seed_dir, "*")
+            if not p.endswith("-seed.iso") and not p.endswith(".part")
+        ]
+        if cached:
+            total = sum(s for s, _ in cached)
+            print(
+                f"\n{t('Cached base images (reusable):')} "
+                f"{self._human_size(total)}"
+            )
+            for size, path in sorted(cached, key=lambda o: -o[0]):
+                print(f"  {self._human_size(size):>9}  {path}")
+            if self._is_yes(
+                input(t("Also delete the cached base images? (y/N): "))
+            ):
+                paths = " ".join(shlex.quote(p) for _, p in cached)
+                cmd = f"sudo rm -f {paths}"
+                print(f"{t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                print(f"✅ {t('Cleanup done.')}")
 
     # ------------------------------------------------------------------ #
     # QEMU : déploiement d'un parc « infra ERPLibre »
