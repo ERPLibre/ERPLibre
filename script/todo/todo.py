@@ -1677,13 +1677,22 @@ class TODO:
             # (Fedora). apt-get update car cloud-init n'a pas rafraîchi apt.
             "PKGS='curl git make'; "
             "if command -v apt-get >/dev/null 2>&1; then "
-            "sudo apt-get update -qq && sudo apt-get install -y $PKGS; "
+            # update best-effort (|| true) puis install OBLIGATOIRE : sans le
+            # « || true », un « apt-get update » en échec (réseau) sautait
+            # l'install sans erreur (liste &&) -> git/make absents ensuite.
+            "sudo apt-get update -qq || true; "
+            "sudo apt-get install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "
             "sudo dnf install -y $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets (apt/dnf/yum)'; "
             "exit 1; fi; "
+            # Vérifie explicitement que tout est là : erreur nette plutôt
+            # qu'un « command not found » cryptique plus loin.
+            "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
+            '{ echo "Outil manquant apres installation: $t '
+            '(reseau de la VM ?)"; exit 1; }; done; '
             "mkdir -p ~/git; "
             "if [ ! -d ~/git/erplibre/.git ]; then "
             f"git clone --branch {shlex.quote(branch)} "
@@ -1725,7 +1734,10 @@ class TODO:
         print(
             f"\n{t('Monitor closed. Installs keep running in the background.')}"
         )
-        print(f"  {t('Logs:')} {os.path.dirname(manifest)}")
+        logdir = os.path.dirname(manifest)
+        print(f"  {t('Logs:')} {logdir}")
+        # Commande prête à copier pour relire/partager tous les logs.
+        print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
     def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
         """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis

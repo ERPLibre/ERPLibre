@@ -133,6 +133,7 @@ def run_monitor(manifest_path: str) -> None:
             ("q", "quit", "Quitter (détaché)"),
             ("s", "ssh", "SSH"),
             ("f", "follow", "Suivre"),
+            ("c", "copy_log", "Copier log"),
         ]
 
         def __init__(self):
@@ -171,7 +172,10 @@ def run_monitor(manifest_path: str) -> None:
             vm = self._vm_by_name(self._selected)
             bar = self.query_one("#sshbar", Static)
             if vm:
-                bar.update(f"  {vm['ssh']}    (s = ouvrir SSH)")
+                bar.update(
+                    f"  {vm['ssh']}   (s = SSH · c = copier le log · "
+                    "Maj+glisser = sélectionner)"
+                )
 
         def _load_selected_log(self, reset=False):
             vm = self._vm_by_name(self._selected)
@@ -228,5 +232,21 @@ def run_monitor(manifest_path: str) -> None:
                 return
             with self.suspend():
                 os.system(f"ssh {SSH_OPTS} erplibre@{vm['ip']} || true")
+
+        def action_copy_log(self) -> None:
+            """Copie le log complet de la VM sélectionnée dans le
+            presse-papiers (OSC 52 ; marche aussi à travers SSH)."""
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+            try:
+                text = Path(vm["log"]).read_text(errors="replace")
+            except OSError:
+                return
+            self.copy_to_clipboard(text)
+            self.notify(
+                f"Log de {vm['name']} copié ({len(text)} car.)",
+                title="Presse-papiers",
+            )
 
     Monitor().run()

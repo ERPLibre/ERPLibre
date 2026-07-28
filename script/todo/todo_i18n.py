@@ -1443,6 +1443,10 @@ TRANSLATIONS = {
         "fr": "Logs :",
         "en": "Logs:",
     },
+    "Read the logs:": {
+        "fr": "Lire les logs :",
+        "en": "Read the logs:",
+    },
     "Install textual for the dashboard (pip).": {
         "fr": "Installez textual pour le dashboard (pip).",
         "en": "Install textual for the dashboard (pip).",
