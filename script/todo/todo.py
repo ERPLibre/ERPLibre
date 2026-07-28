@@ -1725,6 +1725,12 @@ class TODO:
             return
         manifest = launch_installs(vms, branch, remote)
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
+        # Affiche tous les chemins de log (pour les consulter/partager même si
+        # on quitte le dashboard avant la fin).
+        print(f"  {t('Log files:')}")
+        with open(manifest, encoding="utf-8") as _fh:
+            for entry in json.load(_fh)["vms"]:
+                print(f"    {entry['log']}")
         try:
             run_monitor(manifest)
         except ImportError:
