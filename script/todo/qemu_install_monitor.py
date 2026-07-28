@@ -127,7 +127,7 @@ def run_monitor(manifest_path: str) -> None:
         CSS = """
         DataTable { width: 40; border: solid $accent; }
         RichLog { border: solid $accent; }
-        #sshbar { height: 1; color: $text-muted; }
+        #sshbar { height: 2; color: $text-muted; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
@@ -173,8 +173,9 @@ def run_monitor(manifest_path: str) -> None:
             bar = self.query_one("#sshbar", Static)
             if vm:
                 bar.update(
-                    f"  {vm['ssh']}   (s = SSH · c = copier le log · "
-                    "Maj+glisser = sélectionner)"
+                    f"  {vm['ssh']}    (s = SSH · c = copier le log · "
+                    "Maj+glisser = sélectionner)\n"
+                    f"  Log : {vm['log']}"
                 )
 
         def _load_selected_log(self, reset=False):

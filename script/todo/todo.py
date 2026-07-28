@@ -1673,9 +1673,11 @@ class TODO:
         puis clone + make install_os + make install_odoo_18)."""
         return (
             "set -e; "
-            # Outils d'amorçage (absents des images cloud minimales) :
-            # curl, git, make. Supporte apt (Debian/Ubuntu) et dnf/yum
-            # (Fedora). apt-get update car cloud-init n'a pas rafraîchi apt.
+            # Outils d'amorçage (absents des images cloud minimales) : curl,
+            # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
+            # la VM soit la plus rapide possible (miroirs à jour / les plus
+            # rapides), puis installe. Supporte apt (Debian/Ubuntu), dnf/yum
+            # (Fedora) et pacman (Arch).
             "PKGS='curl git make'; "
             "if command -v apt-get >/dev/null 2>&1; then "
             # update best-effort (|| true) puis install OBLIGATOIRE : sans le
@@ -1684,15 +1686,24 @@ class TODO:
             "sudo apt-get update -qq || true; "
             "sudo apt-get install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "
-            # --refresh (métadonnées à jour) ; retry avec « clean all » car les
-            # images cloud fraîches ratent parfois la vérif GPG/checksum d'un
-            # miroir (« Signature verification failed »).
+            # makecache (dnf5 choisit les miroirs les plus rapides) puis
+            # install --refresh ; retry avec « clean all » car les images
+            # cloud fraîches ratent parfois la vérif GPG/checksum d'un miroir.
+            "sudo dnf -q makecache || true; "
             "sudo dnf install -y --refresh $PKGS || "
             "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            # Arch : reflector sélectionne les miroirs HTTPS les plus rapides,
+            # puis rafraîchit la base et installe.
+            "sudo pacman -Sy --needed --noconfirm reflector || true; "
+            "sudo reflector --latest 20 --protocol https --sort rate "
+            "--save /etc/pacman.d/mirrorlist || true; "
+            "sudo pacman -Syy --noconfirm || true; "
+            "sudo pacman -S --needed --noconfirm $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
-            "sudo yum install -y $PKGS; "
-            "else echo 'Aucun gestionnaire de paquets (apt/dnf/yum)'; "
-            "exit 1; fi; "
+            "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
+            "else echo 'Aucun gestionnaire de paquets "
+            "(apt/dnf/pacman/yum)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
