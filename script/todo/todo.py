@@ -1648,9 +1648,20 @@ class TODO:
             )
             return
         remote = (
-            "set -e; mkdir -p ~/git; "
-            "command -v git >/dev/null 2>&1 || "
-            "{ sudo apt-get install -y git || sudo dnf install -y git; }; "
+            "set -e; "
+            # Outils d'amorçage (absents des images cloud minimales) :
+            # curl, git, make. Supporte apt (Debian/Ubuntu) et dnf/yum
+            # (Fedora). apt-get update car cloud-init n'a pas rafraîchi apt.
+            "PKGS='curl git make'; "
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo apt-get update -qq && sudo apt-get install -y $PKGS; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            "sudo dnf install -y $PKGS; "
+            "elif command -v yum >/dev/null 2>&1; then "
+            "sudo yum install -y $PKGS; "
+            "else echo 'Aucun gestionnaire de paquets (apt/dnf/yum)'; "
+            "exit 1; fi; "
+            "mkdir -p ~/git; "
             "if [ ! -d ~/git/erplibre/.git ]; then "
             f"git clone --branch {shlex.quote(branch)} "
             f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
