@@ -880,6 +880,56 @@ class TODO:
             return "s390x"
         return "amd64"
 
+    @staticmethod
+    def _native_arch():
+        """Architecture native de l'hôte, en jeton de deploy_qemu.py
+        (amd64/arm64/s390x). Défaut amd64 si indéterminée."""
+        try:
+            machine = os.uname().machine
+        except (AttributeError, OSError):
+            machine = ""
+        return {
+            "x86_64": "amd64",
+            "amd64": "amd64",
+            "aarch64": "arm64",
+            "arm64": "arm64",
+            "s390x": "s390x",
+        }.get(machine, "amd64")
+
+    def _qemu_prompt_infra_arch(self):
+        """Demande l'architecture du parc (défaut : native de l'hôte). s390x
+        est proposé mais ÉMULÉ (lent) et limité à Ubuntu (seule distro avec
+        des images cloud s390x)."""
+        native = self._native_arch()
+        opts = [native]
+        if native != "s390x":
+            opts.append("s390x")  # émulé, disponible en plus du natif
+        print(f"\n{t('Architecture:')}")
+        for i, a in enumerate(opts, 1):
+            tag = f"  ({t('native')}) *" if a == native else ""
+            extra = ""
+            if a == "s390x":
+                extra = f"  ({t('IBM Z — emulated, slow on x86; Ubuntu only')})"
+            print(f"  [{i}] {a}{tag}{extra}")
+        sel = (
+            input(f"{t('Choice (number or name, blank = native):')} ")
+            .strip()
+            .lower()
+        )
+        if not sel:
+            return native
+        for i, a in enumerate(opts, 1):
+            if sel == str(i) or sel == a:
+                if a == "s390x":
+                    warn = t(
+                        "s390x is emulated (TCG): boot and install are much "
+                        "slower than x86."
+                    )
+                    print(f"⚠  {warn}")
+                return a
+        print(f"{t('Invalid selection, using')} {native}")
+        return native
+
     def _qemu_list_images(self):
         """Affiche la liste des distros/versions et leurs specs."""
         cmd = f"{self._qemu_script_path()} --list-images"
@@ -1863,8 +1913,26 @@ class TODO:
             return
         distros = list(mod.DISTROS)
 
-        # 1) Distributions : multi-sélection, catalogue complet, ou principal
-        # (la version par défaut de chaque distro, marquée d'un *).
+        # 0) Architecture du parc (défaut : native de l'hôte). s390x n'a des
+        # images cloud que pour Ubuntu -> on restreint le catalogue.
+        arch = self._qemu_prompt_infra_arch()
+        if arch == "s390x":
+            keep = [d for d in distros if d in self._QEMU_S390X_DISTROS]
+            dropped = [d for d in distros if d not in keep]
+            if dropped:
+                print(
+                    f"  ⚠ {t('s390x images only exist for:')} "
+                    f"{', '.join(self._QEMU_S390X_DISTROS)} "
+                    f"({t('ignored:')} {', '.join(dropped)})"
+                )
+            distros = keep
+            if not distros:
+                print(t("Nothing selected."))
+                return
+
+        # 1) Distributions : multi-sélection, catalogue complet, principal (la
+        # version par défaut de chaque distro, marquée d'un *), ou granulaire
+        # (liste à plat de TOUTES les versions, choix par virgules).
         print(f"\n{t('Distributions:')}")
         for i, d in enumerate(distros, 1):
             default_v = mod.DISTROS[d][1]
@@ -1876,18 +1944,46 @@ class TODO:
         print(
             f"  [principal] {t('The main version of each distro (marked *)')}"
         )
+        print(
+            f"  [granulaire] {t('Pick exact versions (comma-separated list)')}"
+        )
         raw = (
             input(
-                t("Selection (numbers, 'all' or 'principal', default: all): ")
+                t(
+                    "Selection (numbers, 'all', 'principal' or 'granulaire',"
+                    " default: all): "
+                )
             )
             .strip()
             .lower()
         )
         catalog_all = raw in ("", "all", "*")
         principal = raw in ("principal", "each", "p")
+        granular = raw in ("granulaire", "granular", "g")
 
         selected = []  # (distro, version, ram_mb, disk_str)
-        if principal:
+        if granular:
+            # Liste APLATIE de toutes les versions (distro + version) : on choisit
+            # des versions précises par leurs numéros, séparés par des virgules.
+            flat = []  # (distro, version, ram, disk, is_default)
+            for d in distros:
+                versions_map, default_v = mod.DISTROS[d]
+                for v, (_c, _o, ram, disk) in versions_map.items():
+                    flat.append((d, v, ram, disk, v == default_v))
+            print(f"\n{t('All versions:')}")
+            for i, (d, v, ram, disk, isdef) in enumerate(flat, 1):
+                star = " *" if isdef else ""
+                print(f"  [{i}] {d} {v}{star}  (RAM≥{ram}Mo, {disk})")
+            r = (
+                input(t("Selection (comma-separated numbers): "))
+                .strip()
+                .lower()
+            )
+            for d, v, ram, disk, _isdef in self._parse_index_selection(
+                r, flat
+            ):
+                selected.append((d, v, ram, disk))
+        elif principal:
             # Une VM par distro : sa version par défaut.
             for d in distros:
                 versions_map, default_v = mod.DISTROS[d]
@@ -2014,6 +2110,8 @@ class TODO:
                 "erplibre",
                 "--no-wait-ip",
             ]
+            if arch and arch != "amd64":
+                parts += ["--arch", arch]
             if ssh_key:
                 parts += ["--ssh-key", ssh_key]
             if install_branch:

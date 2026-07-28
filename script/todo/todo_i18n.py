@@ -1166,6 +1166,45 @@ TRANSLATIONS = {
         "fr": "Architecture :",
         "en": "Architecture:",
     },
+    "native": {
+        "fr": "native",
+        "en": "native",
+    },
+    "IBM Z — emulated, slow on x86; Ubuntu only": {
+        "fr": "IBM Z — émulé, lent sur x86 ; Ubuntu uniquement",
+        "en": "IBM Z — emulated, slow on x86; Ubuntu only",
+    },
+    "Choice (number or name, blank = native):": {
+        "fr": "Choix (numéro ou nom, vide = native) :",
+        "en": "Choice (number or name, blank = native):",
+    },
+    "Pick exact versions (comma-separated list)": {
+        "fr": "Choisir des versions précises (liste séparée par des virgules)",
+        "en": "Pick exact versions (comma-separated list)",
+    },
+    "Selection (numbers, 'all', 'principal' or 'granulaire',"
+    " default: all): ": {
+        "fr": "Sélection (numéros, « all », « principal » ou « granulaire »,"
+        " défaut : all) : ",
+        "en": "Selection (numbers, 'all', 'principal' or 'granulaire',"
+        " default: all): ",
+    },
+    "All versions:": {
+        "fr": "Toutes les versions :",
+        "en": "All versions:",
+    },
+    "Selection (comma-separated numbers): ": {
+        "fr": "Sélection (numéros séparés par des virgules) : ",
+        "en": "Selection (comma-separated numbers): ",
+    },
+    "s390x images only exist for:": {
+        "fr": "images s390x disponibles seulement pour :",
+        "en": "s390x images only exist for:",
+    },
+    "ignored:": {
+        "fr": "ignoré :",
+        "en": "ignored:",
+    },
     "IBM Z — emulated, slow on x86": {
         "fr": "IBM Z — émulé, lent sur x86",
         "en": "IBM Z — emulated, slow on x86",
