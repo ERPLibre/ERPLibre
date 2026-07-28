@@ -823,10 +823,13 @@ def build_cloud_config(
 # network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
 # Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
 # reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
+# La clé est « eth0 » car le renderer cloud-init d'Arch utilise la CLÉ comme
+# nom d'interface (en ignorant « match ») et l'image Arch nomme son NIC eth0 ;
+# Debian/Fedora/Ubuntu utilisent bien « match: name: e* » (leur en*).
 NETWORK_CONFIG = (
     "version: 2\n"
     "ethernets:\n"
-    "  primary:\n"
+    "  eth0:\n"
     "    match:\n"
     '      name: "e*"\n'
     "    dhcp4: true\n"
