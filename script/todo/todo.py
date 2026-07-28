@@ -1763,6 +1763,28 @@ class TODO:
         # Meilleur effort : le dernier bail (le plus récent) plutôt que le 1er.
         return cands[-1] if cands else None
 
+    def _qemu_resolve_ips(self, names):
+        """Résout les IP de plusieurs VM EN PARALLÈLE (le boot émulé est lent),
+        en affichant la progression au fur et à mesure. Renvoie {nom: ip|None}.
+        Évite l'attente EN SÉRIE et SANS sortie qui donnait l'impression d'un
+        blocage (dashboard qui « n'ouvre jamais »)."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        print(f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}")
+        result = {}
+        workers = min(len(names), (os.cpu_count() or 4)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {pool.submit(self._qemu_vm_ip, n): n for n in names}
+            for fut in as_completed(futs):
+                n = futs[fut]
+                try:
+                    ip = fut.result()
+                except Exception:
+                    ip = None
+                result[n] = ip
+                print(f"  {n}: {ip or t('no IP')}")
+        return result
+
     def _qemu_vm_arch(self, name):
         """Architecture d'une VM (jeton amd64/arm64/s390x) via virsh dumpxml."""
         try:
@@ -1952,10 +1974,10 @@ class TODO:
             f"make {self.ERPLIBRE_ODOO_TARGET}"
         )
 
-    def _qemu_install_erplibre_monitored(self, names, branch):
+    def _qemu_install_erplibre_monitored(self, names, branch, ip_map=None):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
-        """
+        `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE)."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -1966,10 +1988,11 @@ class TODO:
             mod = self._qemu_import_module()
         except Exception:
             mod = None
+        if ip_map is None:
+            ip_map = self._qemu_resolve_ips(names)
         vms = []
         for name in names:
-            print(f"  {name}: {t('resolving IP...')}")
-            ip = self._qemu_vm_ip(name)
+            ip = ip_map.get(name)
             if ip:
                 d, v, a = (
                     self._qemu_vm_meta(name, mod)
@@ -2012,10 +2035,12 @@ class TODO:
         # Commande prête à copier pour relire/partager tous les logs.
         print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
-    def _qemu_install_erplibre_vm(self, name, ssh_key, branch):
+    def _qemu_install_erplibre_vm(self, name, ssh_key, branch, ip=None):
         """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
-        exécute « make install_os » et « make install_odoo_18 » (streamé)."""
-        ip = self._qemu_vm_ip(name)
+        exécute « make install_os » et « make install_odoo_18 » (streamé).
+        `ip` : IP déjà résolue (sinon on la résout ici)."""
+        if ip is None:
+            ip = self._qemu_vm_ip(name)
         if not ip:
             print(
                 f"  {name}: {t('no IP obtained, ERPLibre install skipped.')}"
@@ -2316,10 +2341,16 @@ class TODO:
                     if rc == 0:
                         deployed.append(jname)
 
-        # 6) ~/.ssh/config (une fois les VM démarrées et l'IP attribuée).
+        # 6) Résolution des IP EN PARALLÈLE (réutilisée pour ssh_config +
+        # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
+        # émulée SANS sortie -> le dashboard « n'ouvrait jamais ».
+        ip_map = {}
+        if deployed and (add_ssh_config or install_branch):
+            ip_map = self._qemu_resolve_ips(deployed)
+
         if add_ssh_config:
             for name in deployed:
-                ip = self._qemu_vm_ip(name)
+                ip = ip_map.get(name)
                 if ip:
                     self._write_ssh_config_entry(name, "erplibre", ip)
 
@@ -2327,7 +2358,9 @@ class TODO:
         if install_branch:
             if install_monitor:
                 # Installs détachées en parallèle + dashboard Textual.
-                self._qemu_install_erplibre_monitored(deployed, install_branch)
+                self._qemu_install_erplibre_monitored(
+                    deployed, install_branch, ip_map
+                )
             else:
                 print(
                     f"\n{t('Installing ERPLibre on each VM')} "
@@ -2335,7 +2368,7 @@ class TODO:
                 )
                 for name in deployed:
                     self._qemu_install_erplibre_vm(
-                        name, ssh_key, install_branch
+                        name, ssh_key, install_branch, ip_map.get(name)
                     )
 
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
