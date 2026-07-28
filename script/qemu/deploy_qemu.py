@@ -1001,8 +1001,15 @@ def virt_install(
     # n'embarquent plus le chargeur BIOS/GRUB-pc et partent en boucle
     # « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour Ubuntu/Debian/
     # Fedora. --bios force l'ancien BIOS si OVMF est indisponible.
+    # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
+    # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot). Ubuntu/
+    # Debian/Fedora bootent aussi sans Secure Boot (shim signé non requis).
     if not args.bios:
-        cmd += ["--boot", "uefi"]
+        cmd += [
+            "--boot",
+            "uefi,firmware.feature0.name=secure-boot,"
+            "firmware.feature0.enabled=no",
+        ]
     if not args.attach_console:
         cmd.append("--noautoconsole")
     runner.run(cmd, privileged=True)
