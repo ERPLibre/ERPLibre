@@ -1678,24 +1678,83 @@ class TODO:
         except (OSError, subprocess.SubprocessError):
             return False
 
-    def _qemu_vm_ip(self, name, timeout=90):
-        """Attend puis renvoie l'IPv4 d'une VM (bail DHCP), sinon None."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                res = subprocess.run(
-                    ["sudo", "virsh", "domifaddr", name, "--source", "lease"],
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                )
-            except (OSError, subprocess.SubprocessError):
-                return None
-            m = re.search(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
-            if m:
-                return m.group(1)
-            time.sleep(3)
+    @staticmethod
+    def _qemu_lease_candidates(name):
+        """Toutes les IPv4 du bail DHCP de la VM. Il peut y en avoir PLUSIEURS :
+        au boot, l'image cloud demande d'abord une IP avec son hostname par
+        défaut (« ubuntu ») -> 1er bail ; puis cloud-init fixe le vrai hostname
+        et le client redemande -> 2e bail (IP différente). Le 1er devient
+        périmé (« No route to host »)."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "domifaddr", name, "--source", "lease"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        return re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
+
+    @staticmethod
+    def _qemu_ip_reachable(ip, port=22, timeout=3):
+        """Vrai si le port SSH répond (sshd up) : distingue le bail actif du
+        bail périmé sans dépendre du ping (souvent filtré)."""
+        import socket
+
+        try:
+            with socket.create_connection((ip, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _qemu_lease_ip_for_host(name, candidates):
+        """Parmi `candidates`, l'IP dont le bail dnsmasq porte le hostname de la
+        VM (le bail DÉFINITIF, pas le bail précoce « ubuntu »). None sinon."""
+        try:
+            res = subprocess.run(
+                [
+                    "sudo",
+                    "sh",
+                    "-c",
+                    "cat /var/lib/libvirt/dnsmasq/*.status 2>/dev/null",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        # Plusieurs tableaux JSON concaténés : on parse chaque objet {...}.
+        for obj in re.findall(r"\{[^{}]*\}", res.stdout or ""):
+            if re.search(rf'"hostname":\s*"{re.escape(name)}"', obj):
+                m = re.search(r'"ip-address":\s*"([\d.]+)"', obj)
+                if m and m.group(1) in candidates:
+                    return m.group(1)
         return None
+
+    def _qemu_vm_ip(self, name, timeout=600):
+        """IPv4 utilisable d'une VM. Gère le cas des baux multiples (hostname
+        changé au boot) : renvoie en priorité le bail dont le hostname == nom
+        de la VM, sinon une IP JOIGNABLE (sshd up), pour ne jamais retenir le
+        bail précoce périmé. Attend jusqu'à `timeout` (boot émulé lent)."""
+        deadline = time.time() + timeout
+        cands = []
+        while time.time() < deadline:
+            cands = self._qemu_lease_candidates(name)
+            if cands:
+                # 1) bail définitif (hostname == nom de la VM)
+                host_ip = self._qemu_lease_ip_for_host(name, cands)
+                if host_ip:
+                    return host_ip
+                # 2) sinon, une IP déjà joignable (sshd up)
+                for ip in cands:
+                    if self._qemu_ip_reachable(ip):
+                        return ip
+            time.sleep(3)
+        # Meilleur effort : le dernier bail (le plus récent) plutôt que le 1er.
+        return cands[-1] if cands else None
 
     def _qemu_pick_branch(self):
         """Liste les branches distantes d'ERPLibre et en fait choisir une."""

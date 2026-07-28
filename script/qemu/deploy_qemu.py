@@ -51,6 +51,7 @@ import hashlib
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -1170,8 +1171,21 @@ def virt_install(
     runner.run(cmd, privileged=True)
 
 
+def _ip_reachable(ip: str, port: int = 22, timeout: float = 3) -> bool:
+    """Vrai si le port SSH répond (distingue le bail actif du bail périmé)."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def wait_for_ip(name: str, use_sudo: bool, timeout: int) -> str | None:
-    """Interroge les baux DHCP libvirt jusqu'à obtenir l'IPv4 de la VM."""
+    """Interroge les baux DHCP libvirt jusqu'à obtenir l'IPv4 de la VM. Une VM
+    peut avoir PLUSIEURS baux (l'image demande d'abord une IP avec le hostname
+    par défaut « ubuntu », puis cloud-init fixe le vrai hostname -> 2e bail) :
+    on renvoie une IP JOIGNABLE (sshd up), sinon la plus récente, jamais
+    aveuglément la 1re (souvent le bail précoce périmé, « No route to host »)."""
     base = (["sudo"] if use_sudo else []) + [
         "virsh",
         "domifaddr",
@@ -1180,13 +1194,15 @@ def wait_for_ip(name: str, use_sudo: bool, timeout: int) -> str | None:
         "lease",
     ]
     deadline = time.time() + timeout
+    ips: list[str] = []
     while time.time() < deadline:
         res = subprocess.run(base, capture_output=True, text=True)
-        m = re.search(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
-        if m:
-            return m.group(1)
+        ips = re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
+        for ip in ips:
+            if _ip_reachable(ip):
+                return ip
         time.sleep(3)
-    return None
+    return ips[-1] if ips else None
 
 
 def ssh_command(user: str, ip: str, has_key: bool) -> str:
