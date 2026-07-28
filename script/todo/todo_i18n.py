@@ -1197,6 +1197,14 @@ TRANSLATIONS = {
         "fr": "images pour cette architecture disponibles seulement pour :",
         "en": "images for this arch only exist for:",
     },
+    "All supported architectures": {
+        "fr": "Toutes les architectures supportées",
+        "en": "All supported architectures",
+    },
+    "(includes emulated architectures — some VMs are slow)": {
+        "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
+        "en": "(includes emulated architectures — some VMs are slow)",
+    },
     "Waiting for the VM to start (boot + cloud-init)": {
         "fr": "En attente du démarrage de la VM (boot + cloud-init)",
         "en": "Waiting for the VM to start (boot + cloud-init)",

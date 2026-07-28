@@ -885,9 +885,10 @@ class TODO:
             return self._QEMU_ARM64_DISTROS
         return None
 
-    def _qemu_ask_arch(self, opts, native):
+    def _qemu_ask_arch(self, opts, native, allow_all=False):
         """Affiche les architectures `opts` (natif marqué d'un *) et renvoie le
-        choix. Toute arch non native est ÉMULÉE (TCG, lente)."""
+        choix. Si `allow_all`, propose aussi [all] = toutes les archis (renvoie
+        « all »). Toute arch non native est ÉMULÉE (TCG, lente)."""
         print(f"\n{t('Architecture:')}")
         for i, a in enumerate(opts, 1):
             alias = self._QEMU_ARCH_ALIAS.get(a)
@@ -901,21 +902,27 @@ class TODO:
             else:
                 label += f"  ({t('emulated, slow')})"
             print(f"  [{i}] {label}")
+        if allow_all:
+            print(f"  [all] {t('All supported architectures')}")
         sel = (
             input(f"{t('Choice (number or name, blank = native):')} ")
             .strip()
             .lower()
         )
-        chosen = native
-        if sel:
-            chosen = None
-            for i, a in enumerate(opts, 1):
-                if sel in (str(i), a, self._QEMU_ARCH_ALIAS.get(a)):
-                    chosen = a
-                    break
-            if chosen is None:
-                print(f"{t('Invalid selection, using')} {native}")
-                chosen = native
+        if not sel:
+            return native
+        if allow_all and sel in ("all", "*"):
+            note = t("(includes emulated architectures — some VMs are slow)")
+            print(f"⚠  {note}")
+            return "all"
+        chosen = None
+        for i, a in enumerate(opts, 1):
+            if sel in (str(i), a, self._QEMU_ARCH_ALIAS.get(a)):
+                chosen = a
+                break
+        if chosen is None:
+            print(f"{t('Invalid selection, using')} {native}")
+            return native
         if chosen != native:
             warn = t(
                 "This architecture is emulated (TCG): boot and install are"
@@ -944,7 +951,7 @@ class TODO:
         opts = ["amd64", "arm64", "s390x"]
         if native not in opts:  # hôte exotique : garder le natif en tête
             opts.insert(0, native)
-        return self._qemu_ask_arch(opts, native)
+        return self._qemu_ask_arch(opts, native, allow_all=True)
 
     def _qemu_list_images(self):
         """Affiche la liste des distros/versions et leurs specs."""
@@ -1994,28 +2001,42 @@ class TODO:
             return
         distros = list(mod.DISTROS)
 
-        # 0) Architecture du parc (défaut : native de l'hôte). arm64 et s390x
-        # n'ont pas d'images pour toutes les distros -> on restreint le
-        # catalogue aux distros qui publient l'arch choisie.
-        arch = self._qemu_prompt_infra_arch()
-        allowed = self._qemu_arch_distros(arch)
-        if allowed is not None:
-            keep = [d for d in distros if d in allowed]
-            dropped = [d for d in distros if d not in keep]
-            if dropped:
-                print(
-                    f"  ⚠ {t('images for this arch only exist for:')} "
-                    f"{', '.join(allowed)} "
-                    f"({t('ignored:')} {', '.join(dropped)})"
-                )
-            distros = keep
-            if not distros:
-                print(t("Nothing selected."))
-                return
+        # 0) Architecture du parc (défaut : native ; [all] = TOUTES les archis
+        # supportées). Pour une arch précise non-amd64, on restreint le
+        # catalogue aux distros qui la publient ; pour [all], chaque distro
+        # reçoit uniquement les archis QU'ELLE publie.
+        arch = self._qemu_prompt_infra_arch()  # amd64/arm64/s390x/all
+        if arch != "all":
+            allowed = self._qemu_arch_distros(arch)
+            if allowed is not None:
+                keep = [d for d in distros if d in allowed]
+                dropped = [d for d in distros if d not in keep]
+                if dropped:
+                    print(
+                        f"  ⚠ {t('images for this arch only exist for:')} "
+                        f"{', '.join(allowed)} "
+                        f"({t('ignored:')} {', '.join(dropped)})"
+                    )
+                distros = keep
+                if not distros:
+                    print(t("Nothing selected."))
+                    return
+
+        def arches_for(distro):
+            """Architectures à déployer pour cette distro selon le choix."""
+            if arch != "all":
+                return [arch]
+            out = ["amd64"]
+            if distro in self._QEMU_ARM64_DISTROS:
+                out.append("arm64")
+            if distro in self._QEMU_S390X_DISTROS:
+                out.append("s390x")
+            return out
 
         # 1) Distributions : multi-sélection, catalogue complet, principal (la
         # version par défaut de chaque distro, marquée d'un *), ou granulaire
-        # (liste à plat de TOUTES les versions, choix par virgules).
+        # (liste à plat de TOUTES les versions × archis, choix par virgules).
+        # Avec [all] archis, chaque version se décline en une VM par archi.
         print(f"\n{t('Distributions:')}")
         for i, d in enumerate(distros, 1):
             default_v = mod.DISTROS[d][1]
@@ -2044,34 +2065,36 @@ class TODO:
         principal = raw in ("principal", "each", "p")
         granular = raw in ("granulaire", "granular", "g")
 
-        selected = []  # (distro, version, ram_mb, disk_str)
+        selected = []  # (distro, version, ram_mb, disk_str, arch)
         if granular:
-            # Liste APLATIE de toutes les versions (distro + version) : on choisit
-            # des versions précises par leurs numéros, séparés par des virgules.
-            flat = []  # (distro, version, ram, disk, is_default)
+            # Liste APLATIE distro + version + ARCHITECTURE : on choisit des
+            # combinaisons précises par numéros séparés de virgules.
+            flat = []  # (distro, version, ram, disk, is_default, arch)
             for d in distros:
                 versions_map, default_v = mod.DISTROS[d]
                 for v, (_c, _o, ram, disk) in versions_map.items():
-                    flat.append((d, v, ram, disk, v == default_v))
+                    for a in arches_for(d):
+                        flat.append((d, v, ram, disk, v == default_v, a))
             print(f"\n{t('All versions:')}")
-            for i, (d, v, ram, disk, isdef) in enumerate(flat, 1):
+            for i, (d, v, ram, disk, isdef, a) in enumerate(flat, 1):
                 star = " *" if isdef else ""
-                print(f"  [{i}] {d} {v}{star}  (RAM≥{ram}Mo, {disk})")
+                print(f"  [{i}] {d} {v}{star} [{a}]  (RAM≥{ram}Mo, {disk})")
             r = (
                 input(t("Selection (comma-separated numbers): "))
                 .strip()
                 .lower()
             )
-            for d, v, ram, disk, _isdef in self._parse_index_selection(
+            for d, v, ram, disk, _isdef, a in self._parse_index_selection(
                 r, flat
             ):
-                selected.append((d, v, ram, disk))
+                selected.append((d, v, ram, disk, a))
         elif principal:
-            # Une VM par distro : sa version par défaut.
+            # Une VM par distro (version par défaut) × chaque archi supportée.
             for d in distros:
                 versions_map, default_v = mod.DISTROS[d]
                 _c, _o, ram, disk = versions_map[default_v]
-                selected.append((d, default_v, ram, disk))
+                for a in arches_for(d):
+                    selected.append((d, default_v, ram, disk, a))
         else:
             sel_distros = (
                 distros
@@ -2103,7 +2126,8 @@ class TODO:
                     )
                 for v in chosen:
                     _c, _o, ram, disk = versions_map[v]
-                    selected.append((d, v, ram, disk))
+                    for a in arches_for(d):
+                        selected.append((d, v, ram, disk, a))
         if not selected:
             print(t("Nothing selected."))
             return
@@ -2113,9 +2137,12 @@ class TODO:
         total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
         free_ram = self._host_free_ram_mb()
         print(f"\n{t('Deployment plan')} ({len(selected)} VM) :")
-        for d, v, ram, disk in selected:
-            name = self._qemu_infra_name(d, v, arch)
-            print(f"  - {name:<26} {d} {v:<7} RAM {ram}Mo  {t('disk')} {disk}")
+        for d, v, ram, disk, a in selected:
+            name = self._qemu_infra_name(d, v, a)
+            print(
+                f"  - {name:<30} {d} {v:<7} [{a:<5}] "
+                f"RAM {ram}Mo  {t('disk')} {disk}"
+            )
         print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
         print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
         if free_ram:
@@ -2172,8 +2199,8 @@ class TODO:
         script_path = self._qemu_script_path()
         deployed = []
         jobs = []  # (name, parts) des VM à créer
-        for d, v, _ram, disk in selected:
-            name = self._qemu_infra_name(d, v, arch)
+        for d, v, _ram, disk, a in selected:
+            name = self._qemu_infra_name(d, v, a)
             if self._qemu_domain_exists(name):
                 print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)
@@ -2193,8 +2220,8 @@ class TODO:
                 "erplibre",
                 "--no-wait-ip",
             ]
-            if arch and arch != "amd64":
-                parts += ["--arch", arch]
+            if a and a != "amd64":
+                parts += ["--arch", a]
             if ssh_key:
                 parts += ["--ssh-key", ssh_key]
             if install_branch:
