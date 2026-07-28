@@ -400,10 +400,11 @@ DAEMON_PACKAGES: dict[str, list[str]] = {
 }
 
 # Émulateur QEMU système s390x (IBM Z). Requis UNIQUEMENT pour --arch s390x sur
-# un hôte non-s390x : virt-install a besoin du binaire qemu-system-s390x. Sur
-# apt, qemu-system-misc fournit tous les émulateurs non-x86 (dont s390x).
+# un hôte non-s390x : virt-install a besoin du binaire qemu-system-s390x. NB :
+# sur apt, qemu-system-misc ne contient PAS s390x (alpha/avr/… seulement) —
+# c'est le paquet dédié qemu-system-s390x qui le fournit.
 S390X_EMULATOR_PACKAGES: dict[str, list[str]] = {
-    "apt": ["qemu-system-misc"],
+    "apt": ["qemu-system-s390x"],
     "dnf": ["qemu-system-s390x"],
     "pacman": ["qemu-emulators-full"],
     "zypper": ["qemu-s390"],
