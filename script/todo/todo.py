@@ -984,6 +984,7 @@ class TODO:
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
             {"prompt_description": t("Open the console on a VM")},
+            {"prompt_description": t("Resize a VM disk")},
             {"prompt_description": t("Delete VM(s)")},
             {"prompt_description": t("Clean up QEMU (orphan files)")},
             {"section": t("Catalog")},
@@ -1012,10 +1013,12 @@ class TODO:
             elif status == "6":
                 self._qemu_console()
             elif status == "7":
-                self._qemu_delete_vm()
+                self._qemu_resize_disk()
             elif status == "8":
-                self._qemu_cleanup()
+                self._qemu_delete_vm()
             elif status == "9":
+                self._qemu_cleanup()
+            elif status == "10":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1092,6 +1095,194 @@ class TODO:
             f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
         )
         cmd = f"sudo virsh console {shlex.quote(name)}"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    # ------------------------------------------------------------------ #
+    # Redimensionnement du disque d'une VM
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _qemu_domstate(name):
+        """État libvirt de la VM (« running », « shut off », …) ou ''."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "domstate", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return res.stdout.strip() if res.returncode == 0 else ""
+
+    @staticmethod
+    def _qemu_main_disk(name):
+        """Chemin du disque PRINCIPAL (qcow2) de la VM via domblklist. On
+        ignore le seed cloud-init (…-seed.iso, en lecture seule)."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "domblklist", name, "--details"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        disks = []
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            # Colonnes : Type Device Target Source
+            if len(parts) >= 4 and parts[1] == "disk" and parts[3] != "-":
+                disks.append(parts[3])
+        # Le disque de travail est le .qcow2 (le seed est un .iso).
+        for d in disks:
+            if d.endswith(".qcow2"):
+                return d
+        return disks[0] if disks else None
+
+    @staticmethod
+    def _qemu_disk_virtual_bytes(disk):
+        """Taille VIRTUELLE (octets) du disque via « qemu-img info --json »."""
+        try:
+            res = subprocess.run(
+                ["sudo", "qemu-img", "info", "--output=json", disk],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            data = json.loads(res.stdout)
+            return int(data.get("virtual-size", 0))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return 0
+
+    def _qemu_resize_disk(self):
+        """Redimensionne le disque d'une VM : affiche l'espace actuel, demande
+        +NG / -NG / taille cible, applique (à chaud si possible pour agrandir),
+        puis propose d'étendre le système de fichiers invité."""
+        self._qemu_list_vms()
+        print()
+        name = input(t("VM name to resize: ")).strip()
+        if not name:
+            print(t("VM name is required!"))
+            return
+        if not self._qemu_domain_exists(name):
+            print(f"{name}: {t('VM not found.')}")
+            return
+        disk = self._qemu_main_disk(name)
+        if not disk:
+            print(t("Main disk not found for this VM."))
+            return
+
+        # 1) Espace actuel (virtuel + réel) + df invité si joignable.
+        print(f"\n{t('Current disk:')} {disk}")
+        self.execute.exec_command_live(
+            f"sudo qemu-img info {shlex.quote(disk)}", source_erplibre=False
+        )
+        cur_bytes = self._qemu_disk_virtual_bytes(disk)
+        cur_gb = cur_bytes / (1 << 30)
+        print(f"{t('Current virtual size:')} {cur_gb:.1f} G")
+        state = self._qemu_domstate(name)
+        print(f"{t('VM state:')} {state or '?'}")
+
+        # 2) Nouvelle taille : +NG (agrandir), -NG (réduire) ou NG (cible).
+        guide = t(
+            "Enter +NG to grow, -NG to shrink, or NG for a target size "
+            "(e.g. +20G, -10G, 60G)."
+        )
+        print(f"\n{guide}")
+        raw = input(t("Resize: ")).strip().upper().replace("G", "")
+        try:
+            if raw.startswith("+"):
+                new_gb = cur_gb + float(raw[1:])
+            elif raw.startswith("-"):
+                new_gb = cur_gb - float(raw[1:])
+            else:
+                new_gb = float(raw)
+        except ValueError:
+            print(t("Invalid size."))
+            return
+        if new_gb <= 0:
+            print(t("Invalid size."))
+            return
+        new_gb = round(new_gb, 1)
+        if abs(new_gb - cur_gb) < 0.05:
+            print(t("No change."))
+            return
+        shrink = new_gb < cur_gb
+        print(
+            f"\n{t('New virtual size:')} {cur_gb:.1f} G -> {new_gb:.1f} G"
+        )
+
+        # 3) Application selon agrandir/réduire et l'état de la VM.
+        if shrink:
+            # DANGER : qcow2 --shrink ne réduit PAS le FS invité -> perte de
+            # données si le FS dépasse la cible. VM éteinte obligatoire.
+            danger = t(
+                "SHRINKING is DANGEROUS: the guest filesystem is NOT shrunk. "
+                "Data beyond the new size is LOST. Shrink the guest FS FIRST, "
+                "and only then shrink here."
+            )
+            print(f"⚠  {danger}")
+            if state != "shut off":
+                print(t("Shut the VM off before shrinking (virsh shutdown)."))
+                return
+            if not self._is_yes(
+                input(t("Type y to confirm you understand the risk (y/N): "))
+            ):
+                print(t("Cancelled."))
+                return
+            cmd = (
+                f"sudo qemu-img resize --shrink {shlex.quote(disk)} "
+                f"{new_gb:g}G"
+            )
+        elif state == "running":
+            # Agrandissement À CHAUD : le disque virtuel grossit, le FS invité
+            # devra être étendu ensuite.
+            cmd = (
+                f"sudo virsh blockresize {shlex.quote(name)} "
+                f"{shlex.quote(disk)} {new_gb:g}G"
+            )
+        else:
+            cmd = f"sudo qemu-img resize {shlex.quote(disk)} {new_gb:g}G"
+
+        print(f"{t('Will execute:')} {cmd}")
+        if self.execute.exec_command_live(cmd, source_erplibre=False) != 0:
+            print(f"❌ {t('Resize failed (see error above).')}")
+            return
+        print(f"✅ {t('Virtual disk resized.')}")
+
+        # 4) Étendre le FS invité (agrandissement seulement, VM joignable).
+        if not shrink and self._is_yes(
+            input(t("Grow the guest filesystem now (over SSH)? (y/N): "))
+        ):
+            self._qemu_grow_guest_fs(name)
+
+    def _qemu_grow_guest_fs(self, name):
+        """Étend la partition racine + le FS invité via SSH (growpart +
+        resize2fs/xfs_growfs/btrfs). Détecte le device et le type de FS."""
+        ip = self._qemu_vm_ip(name, timeout=120)
+        if not ip:
+            print(t("No IP; grow the guest FS manually once booted."))
+            return
+        remote = (
+            "set -e; "
+            "root=$(findmnt -no SOURCE /); "
+            "dev=$(lsblk -no PKNAME \"$root\" | head -1); "
+            "part=$(echo \"$root\" | grep -oE '[0-9]+$'); "
+            "sudo growpart /dev/$dev $part || true; "
+            "fstype=$(findmnt -no FSTYPE /); "
+            'case "$fstype" in '
+            "ext*) sudo resize2fs \"$root\";; "
+            "xfs) sudo xfs_growfs /;; "
+            "btrfs) sudo btrfs filesystem resize max /;; "
+            'esac; '
+            "df -h /"
+        )
+        opts = (
+            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+            "-o ConnectTimeout=15"
+        )
+        cmd = f"ssh {opts} erplibre@{ip} {shlex.quote(remote)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 

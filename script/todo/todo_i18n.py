@@ -1282,6 +1282,93 @@ TRANSLATIONS = {
         "fr": "suivi d'installation",
         "en": "install monitoring",
     },
+    "Resize a VM disk": {
+        "fr": "Redimensionner le disque d'une VM",
+        "en": "Resize a VM disk",
+    },
+    "VM name to resize: ": {
+        "fr": "Nom de la VM à redimensionner : ",
+        "en": "VM name to resize: ",
+    },
+    "VM not found.": {
+        "fr": "VM introuvable.",
+        "en": "VM not found.",
+    },
+    "Main disk not found for this VM.": {
+        "fr": "Disque principal introuvable pour cette VM.",
+        "en": "Main disk not found for this VM.",
+    },
+    "Current disk:": {
+        "fr": "Disque actuel :",
+        "en": "Current disk:",
+    },
+    "Current virtual size:": {
+        "fr": "Taille virtuelle actuelle :",
+        "en": "Current virtual size:",
+    },
+    "VM state:": {
+        "fr": "État de la VM :",
+        "en": "VM state:",
+    },
+    "Enter +NG to grow, -NG to shrink, or NG for a target size "
+    "(e.g. +20G, -10G, 60G).": {
+        "fr": "Entrez +NG pour agrandir, -NG pour réduire, ou NG pour une "
+        "taille cible (ex. +20G, -10G, 60G).",
+        "en": "Enter +NG to grow, -NG to shrink, or NG for a target size "
+        "(e.g. +20G, -10G, 60G).",
+    },
+    "Resize: ": {
+        "fr": "Redimensionner : ",
+        "en": "Resize: ",
+    },
+    "Invalid size.": {
+        "fr": "Taille invalide.",
+        "en": "Invalid size.",
+    },
+    "No change.": {
+        "fr": "Aucun changement.",
+        "en": "No change.",
+    },
+    "New virtual size:": {
+        "fr": "Nouvelle taille virtuelle :",
+        "en": "New virtual size:",
+    },
+    "SHRINKING is DANGEROUS: the guest filesystem is NOT shrunk. "
+    "Data beyond the new size is LOST. Shrink the guest FS FIRST, "
+    "and only then shrink here.": {
+        "fr": "RÉDUIRE est DANGEREUX : le système de fichiers invité n'est "
+        "PAS réduit. Les données au-delà de la nouvelle taille sont PERDUES. "
+        "Réduisez d'ABORD le FS invité, puis seulement ici.",
+        "en": "SHRINKING is DANGEROUS: the guest filesystem is NOT shrunk. "
+        "Data beyond the new size is LOST. Shrink the guest FS FIRST, "
+        "and only then shrink here.",
+    },
+    "Shut the VM off before shrinking (virsh shutdown).": {
+        "fr": "Éteignez la VM avant de réduire (virsh shutdown).",
+        "en": "Shut the VM off before shrinking (virsh shutdown).",
+    },
+    "Type y to confirm you understand the risk (y/N): ": {
+        "fr": "Tapez o pour confirmer que vous comprenez le risque "
+        "(o/N, défaut : non) : ",
+        "en": "Type y to confirm you understand the risk (y/N): ",
+    },
+    "Resize failed (see error above).": {
+        "fr": "Échec du redimensionnement (voir l'erreur ci-dessus).",
+        "en": "Resize failed (see error above).",
+    },
+    "Virtual disk resized.": {
+        "fr": "Disque virtuel redimensionné.",
+        "en": "Virtual disk resized.",
+    },
+    "Grow the guest filesystem now (over SSH)? (y/N): ": {
+        "fr": "Étendre le système de fichiers invité maintenant (via SSH) ? "
+        "(o/N, défaut : non) : ",
+        "en": "Grow the guest filesystem now (over SSH)? (y/N): ",
+    },
+    "No IP; grow the guest FS manually once booted.": {
+        "fr": "Pas d'IP ; étendez le FS invité manuellement après le boot.",
+        "en": "No IP; grow the guest FS manually once booted.",
+    },
     "completed": {
         "fr": "terminées",
         "en": "completed",
