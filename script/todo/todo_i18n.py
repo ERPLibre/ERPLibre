@@ -1633,6 +1633,10 @@ TRANSLATIONS = {
         "fr": "Déploiements en parallèle (défaut :",
         "en": "Parallel deployments (default:",
     },
+    "VMs": {
+        "fr": "VM",
+        "en": "VMs",
+    },
     "Deploying": {
         "fr": "Déploiement de",
         "en": "Deploying",

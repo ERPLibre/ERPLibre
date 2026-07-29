@@ -1642,13 +1642,15 @@ class TODO:
         # Meilleur effort : le dernier bail (le plus récent) plutôt que le 1er.
         return cands[-1] if cands else None
 
-    def _qemu_resolve_ips(self, names):
+    def _qemu_resolve_ips(self, names, labels=None):
         """Résout les IP de plusieurs VM EN PARALLÈLE (le boot émulé est lent),
         en affichant la progression au fur et à mesure. Renvoie {nom: ip|None}.
+        `labels` : {nom: « k/N »} pour préfixer chaque ligne d'un ID de suivi.
         Évite l'attente EN SÉRIE et SANS sortie qui donnait l'impression d'un
         blocage (dashboard qui « n'ouvre jamais »)."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
+        labels = labels or {}
         print(f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}")
         result = {}
         workers = min(len(names), (os.cpu_count() or 4)) or 1
@@ -1661,7 +1663,8 @@ class TODO:
                 except Exception:
                     ip = None
                 result[n] = ip
-                print(f"  {n}: {ip or t('no IP')}")
+                prefix = f"[{labels[n]}] " if n in labels else ""
+                print(f"  {prefix}{n}: {ip or t('no IP')}")
         return result
 
     def _qemu_vm_arch(self, name):
@@ -2256,37 +2259,48 @@ class TODO:
             input(t("Add each VM to ~/.ssh/config? (y/N): "))
         )
 
-        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de
-        # l'hôte (borné par le nombre de VM ; repli sur 4 si indéterminé).
-        default_par = min(len(selected), os.cpu_count() or 4)
+        # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
+        # parallélisme : on connaît alors le vrai nombre à déployer (affiché
+        # dans le prompt) et on peut numéroter chaque tâche.
+        pending = []  # (name, d, v, ram, disk, a)
+        deployed = []
+        for i, (d, v, ram, disk, a) in enumerate(selected):
+            name = names[i]
+            if self._qemu_domain_exists(name):
+                print(f"⏭  {name}: {t('already exists, skipped.')}")
+                deployed.append(name)
+            else:
+                pending.append((name, d, v, ram, disk, a))
+        n_jobs = len(pending)
+
+        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
+        # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
+        default_par = min(n_jobs, os.cpu_count() or 4) or 1
         raw = input(
-            f"{t('Parallel deployments (default:')} {default_par}): "
+            f"{t('Parallel deployments (default:')} {default_par}, "
+            f"{n_jobs} {t('VMs')}): "
         ).strip()
         try:
             parallelism = max(1, int(raw)) if raw else default_par
         except ValueError:
             parallelism = default_par
 
-        # 5) Confirmation puis déploiement (en parallèle).
+        # Confirmation puis déploiement (en parallèle).
         ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}")
         if not self._is_yes(ans):
             print(t("Cancelled."))
             return
 
-        deployed = []
-        jobs = []  # (name, parts) des VM à créer
-        for i, (d, v, ram, disk, a) in enumerate(selected):
-            name = names[i]
-            if self._qemu_domain_exists(name):
-                print(f"⏭  {name}: {t('already exists, skipped.')}")
-                deployed.append(name)
-                continue
+        # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
+        # si les résultats reviennent dans le désordre (exécution parallèle).
+        jobs = []  # (id, name, parts)
+        for k, (name, d, v, ram, disk, a) in enumerate(pending, 1):
             eram, evcpus = eff_res(ram)
             parts = self._qemu_build_deploy_parts(
                 d, v, a, name, eram, evcpus, disk,
                 ssh_key, install_branch, dry_run=False,
             )
-            jobs.append((name, parts))
+            jobs.append((f"{k}/{n_jobs}", name, parts))
 
         if jobs:
             from concurrent.futures import (
@@ -2301,17 +2315,17 @@ class TODO:
             )
 
             def _run(job):
-                jname, jparts = job
+                jid, jname, jparts = job
                 res = subprocess.run(jparts, capture_output=True, text=True)
                 out = (res.stdout or "") + (res.stderr or "")
-                return jname, res.returncode, out
+                return jid, jname, res.returncode, out
 
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = [pool.submit(_run, j) for j in jobs]
                 for fut in as_completed(futures):
-                    jname, rc, out = fut.result()
+                    jid, jname, rc, out = fut.result()
                     mark = "✅" if rc == 0 else "❌"
-                    print(f"\n{mark} {jname} (rc={rc})")
+                    print(f"\n{mark} [{jid}] {jname} (rc={rc})")
                     tail = [ln for ln in out.strip().splitlines() if ln][-4:]
                     for ln in tail:
                         print(f"    {ln}")
@@ -2323,7 +2337,11 @@ class TODO:
         # émulée SANS sortie -> le dashboard « n'ouvrait jamais ».
         ip_map = {}
         if deployed and (add_ssh_config or install_branch):
-            ip_map = self._qemu_resolve_ips(deployed)
+            labels = {
+                nm: f"{k}/{len(deployed)}"
+                for k, nm in enumerate(deployed, 1)
+            }
+            ip_map = self._qemu_resolve_ips(deployed, labels)
 
         if add_ssh_config:
             for name in deployed:
