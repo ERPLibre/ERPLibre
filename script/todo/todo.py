@@ -1434,6 +1434,7 @@ class TODO:
         )
 
         # 3) Application selon agrandir/réduire et l'état de la VM.
+        was_shut_down = False  # la VM a-t-elle été éteinte pour l'occasion ?
         if shrink:
             # DANGER : qcow2 --shrink ne réduit PAS le FS invité -> perte de
             # données si le FS dépasse la cible. VM éteinte obligatoire.
@@ -1454,6 +1455,7 @@ class TODO:
                     print(t("VM is still not off; aborting."))
                     return
                 state = "shut off"
+                was_shut_down = True
             if not self._is_yes(
                 input(t("Type y to confirm you understand the risk (y/N): "))
             ):
@@ -1484,6 +1486,18 @@ class TODO:
             input(t("Grow the guest filesystem now (over SSH)? (y/N): "))
         ):
             self._qemu_grow_guest_fs(name)
+
+        # 5) La VM a été éteinte pour l'opération : le noter et proposer de la
+        #    redémarrer (sinon, on ne demande rien).
+        if was_shut_down:
+            print(f"\nℹ  {t('The VM was shut down for the resize.')}")
+            if self._is_yes(
+                input(t("Start the VM now? (y/N): "))
+            ):
+                real = self._qemu_domname(name)
+                cmd = f"sudo virsh start {shlex.quote(real)}"
+                print(f"{t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_grow_guest_fs(self, name):
         """Étend la partition racine + le FS invité via SSH (growpart +

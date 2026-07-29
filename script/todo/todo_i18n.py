@@ -1436,6 +1436,14 @@ TRANSLATIONS = {
         "fr": "VM éteinte.",
         "en": "VM is off.",
     },
+    "The VM was shut down for the resize.": {
+        "fr": "La VM a été éteinte pour le redimensionnement.",
+        "en": "The VM was shut down for the resize.",
+    },
+    "Start the VM now? (y/N): ": {
+        "fr": "Démarrer la VM maintenant ? (o/N) : ",
+        "en": "Start the VM now? (y/N): ",
+    },
     "Graceful shutdown timed out. Force off (destroy)? (y/N): ": {
         "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ? (o/N) : ",
         "en": "Graceful shutdown timed out. Force off (destroy)? (y/N): ",
