@@ -911,10 +911,11 @@ class TODO:
     def _qemu_prompt_version(self, distro):
         """Demande la version pour la distro (défaut = version par défaut)."""
         versions, default = self._QEMU_DISTROS.get(distro, ([], ""))
-        print(f"\n{t('Version for')} {distro} :")
+        print(f"\n{t('Version for')} {distro.capitalize()} :")
         for i, v in enumerate(versions, 1):
             suffix = " *" if v == default else ""
-            print(f"  [{i}] {v}{suffix}")
+            stat = self._qemu_stat_avg("version", v, distro)
+            print(f"  [{i}] {v}{suffix}{stat}")
         sel = input(
             f"{t('Choice (number or version, blank = default):')} "
         ).strip()
@@ -978,14 +979,19 @@ class TODO:
             pass
         return ""
 
-    def _qemu_stat_avg(self, field, value):
+    def _qemu_stat_avg(self, field, value, distro=None):
         """Suffixe « · ~5m moy (3) » : durée d'install MOYENNE historique pour
-        cette archi/distro (fichier .venv.erplibre), ou '' si aucune donnée."""
+        cette archi/distro/version (fichier .venv.erplibre), ou '' si aucune
+        donnée. Pour field='version', `distro` est requis."""
         try:
             from script.todo import qemu_install_monitor as mon
 
-            fn = mon.avg_by_arch if field == "arch" else mon.avg_by_distro
-            secs, n = fn(value)
+            if field == "arch":
+                secs, n = mon.avg_by_arch(value)
+            elif field == "version":
+                secs, n = mon.avg_by_version(distro, value)
+            else:
+                secs, n = mon.avg_by_distro(value)
             if secs:
                 return f"  · ~{mon._fmt_secs(secs)} {t('avg')} ({n})"
         except Exception:
@@ -1582,32 +1588,61 @@ class TODO:
                 print(f"{t('Will execute:')} {cmd}")
                 self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # Commande d'extension du FS racine (partition + FS) réutilisée par SSH
+    # et par le repli console série.
+    _GROW_FS_REMOTE = (
+        "set -e; "
+        "root=$(findmnt -no SOURCE /); "
+        "dev=$(lsblk -no PKNAME \"$root\" | head -1); "
+        "part=$(echo \"$root\" | grep -oE '[0-9]+$'); "
+        "sudo growpart /dev/$dev $part || true; "
+        "fstype=$(findmnt -no FSTYPE /); "
+        'case "$fstype" in '
+        "ext*) sudo resize2fs \"$root\";; "
+        "xfs) sudo xfs_growfs /;; "
+        "btrfs) sudo btrfs filesystem resize max /;; "
+        'esac; '
+        "df -h /"
+    )
+
     def _qemu_grow_guest_fs(self, name):
-        """Étend la partition racine + le FS invité via SSH (growpart +
-        resize2fs/xfs_growfs/btrfs). Détecte le device et le type de FS."""
-        ip = self._qemu_vm_ip(name, timeout=120)
-        if not ip:
-            print(t("No IP; grow the guest FS manually once booted."))
+        """Étend la partition racine + le FS invité. Essaie SSH (IP résolue
+        avec BATTEMENT, le boot émulé étant lent) ; en cas d'absence d'IP ou
+        d'échec SSH, propose le repli par CONSOLE SÉRIE (commande à coller)."""
+        remote = self._GROW_FS_REMOTE
+        real = self._qemu_domname(name)
+        # Résolution d'IP robuste (parallèle + battement toutes les 30 s)
+        # plutôt qu'un simple timeout court qui abandonnait trop tôt.
+        ip = self._qemu_resolve_ips([real], timeout=300).get(real)
+        if ip:
+            opts = (
+                "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+                "-o ConnectTimeout=15"
+            )
+            cmd = f"ssh {opts} erplibre@{ip} {shlex.quote(remote)}"
+            print(f"{t('Will execute:')} {cmd}")
+            if self.execute.exec_command_live(cmd, source_erplibre=False) == 0:
+                return
+            print(f"⚠  {t('SSH grow failed; falling back to serial console.')}")
+        else:
+            print(t("No IP; falling back to serial console."))
+        self._qemu_grow_via_console(real, remote)
+
+    def _qemu_grow_via_console(self, name, remote):
+        """Repli console série : affiche la commande prête à coller puis ouvre
+        la console (login interactif erplibre/erplibre — pas d'automatisation
+        fiable de la saisie)."""
+        print(f"\n{t('Serial console fallback. Log in, then paste:')}")
+        print(f"\n  {remote}\n")
+        print(f"💡 {t('To leave the console, press Ctrl+] (then Enter).')}")
+        print(
+            f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
+        )
+        if not self._is_yes(
+            input(t("Open the serial console now? (y/N): "))
+        ):
             return
-        remote = (
-            "set -e; "
-            "root=$(findmnt -no SOURCE /); "
-            "dev=$(lsblk -no PKNAME \"$root\" | head -1); "
-            "part=$(echo \"$root\" | grep -oE '[0-9]+$'); "
-            "sudo growpart /dev/$dev $part || true; "
-            "fstype=$(findmnt -no FSTYPE /); "
-            'case "$fstype" in '
-            "ext*) sudo resize2fs \"$root\";; "
-            "xfs) sudo xfs_growfs /;; "
-            "btrfs) sudo btrfs filesystem resize max /;; "
-            'esac; '
-            "df -h /"
-        )
-        opts = (
-            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-            "-o ConnectTimeout=15"
-        )
-        cmd = f"ssh {opts} erplibre@{ip} {shlex.quote(remote)}"
+        cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -2804,10 +2839,11 @@ class TODO:
                 if catalog_all:
                     chosen = vlist
                 else:
-                    print(f"\n{t('Versions for')} {d} :")
+                    print(f"\n{t('Versions for')} {d.capitalize()} :")
                     for i, v in enumerate(vlist, 1):
                         _c, _o, ram, disk = versions_map[v]
-                        print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk})")
+                        stat = self._qemu_stat_avg("version", v, d)
+                        print(f"  [{i}] {v}  (RAM≥{ram}Mo, {disk}){stat}")
                     print(f"  [all] {t('select all')}")
                     r = input(
                         t("Selection (numbers, or 'all', default: all): ")

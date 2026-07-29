@@ -1171,8 +1171,12 @@ TRANSLATIONS = {
         "en": "Invalid selection, using ubuntu",
     },
     "Version for": {
-        "fr": "Version pour",
+        "fr": "Version des",
         "en": "Version for",
+    },
+    "Versions for": {
+        "fr": "Versions des",
+        "en": "Versions of",
     },
     "Architecture:": {
         "fr": "Architecture :",
@@ -1419,6 +1423,22 @@ TRANSLATIONS = {
     "Could not read current disk size; aborting.": {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
+    },
+    "SSH grow failed; falling back to serial console.": {
+        "fr": "Échec de l'extension via SSH ; repli sur la console série.",
+        "en": "SSH grow failed; falling back to serial console.",
+    },
+    "No IP; falling back to serial console.": {
+        "fr": "Pas d'IP ; repli sur la console série.",
+        "en": "No IP; falling back to serial console.",
+    },
+    "Serial console fallback. Log in, then paste:": {
+        "fr": "Repli console série. Connectez-vous, puis collez :",
+        "en": "Serial console fallback. Log in, then paste:",
+    },
+    "Open the serial console now? (y/N): ": {
+        "fr": "Ouvrir la console série maintenant ? (o/N) : ",
+        "en": "Open the serial console now? (y/N): ",
     },
     "The VM must be off. Shut it down and retry? (y/N): ": {
         "fr": "La VM doit être éteinte. L'éteindre et réessayer ? (o/N) : ",

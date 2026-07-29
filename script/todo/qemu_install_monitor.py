@@ -265,6 +265,16 @@ def avg_by_distro(distro, stats=None):
     return (sum(secs) / len(secs), len(secs)) if secs else (None, 0)
 
 
+def avg_by_version(distro, version, stats=None):
+    """(moyenne_secondes, nb_runs) pour cette (distro, version), ou (None, 0)."""
+    secs = [
+        r["seconds"]
+        for r in _runs(stats)
+        if r.get("distro") == distro and r.get("version") == version
+    ]
+    return (sum(secs) / len(secs), len(secs)) if secs else (None, 0)
+
+
 def last_run(stats=None):
     """Dernier run enregistré (dict) ou None."""
     runs = _runs(stats)
