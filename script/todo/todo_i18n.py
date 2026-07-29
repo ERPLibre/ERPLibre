@@ -190,20 +190,20 @@ TRANSLATIONS = {
         "en": "Preferences",
     },
     "Deployment": {
-        "fr": "Déploiement",
-        "en": "Deployment",
+        "fr": "🚀 Déploiement",
+        "en": "🚀 Deployment",
     },
     "Manage": {
-        "fr": "Gérer",
-        "en": "Manage",
+        "fr": "🛠 Gérer",
+        "en": "🛠 Manage",
     },
     "Catalog": {
-        "fr": "Catalogue",
-        "en": "Catalog",
+        "fr": "📚 Catalogue",
+        "en": "📚 Catalog",
     },
     "Open the console on a VM": {
-        "fr": "Ouvrir la console d'une VM",
-        "en": "Open the console on a VM",
+        "fr": "🖥 Ouvrir la console d'une VM",
+        "en": "🖥 Open the console on a VM",
     },
     "Backup": {
         "fr": "Sauvegarde",
@@ -1139,24 +1139,24 @@ TRANSLATIONS = {
         "en": "Deploy a new VM",
     },
     "Preview a deployment (dry-run, no sudo)": {
-        "fr": "Prévisualiser un déploiement (dry-run, sans sudo)",
-        "en": "Preview a deployment (dry-run, no sudo)",
+        "fr": "🔍 Prévisualiser un déploiement (dry-run, sans sudo)",
+        "en": "🔍 Preview a deployment (dry-run, no sudo)",
     },
     "Download a cloud image only": {
-        "fr": "Télécharger seulement une image cloud",
-        "en": "Download a cloud image only",
+        "fr": "⬇ Télécharger seulement une image cloud",
+        "en": "⬇ Download a cloud image only",
     },
     "List VMs (virsh list --all)": {
-        "fr": "Lister les VM (virsh list --all)",
-        "en": "List VMs (virsh list --all)",
+        "fr": "📋 Lister les VM (virsh list --all)",
+        "en": "📋 List VMs (virsh list --all)",
     },
     "Show a VM IP address": {
-        "fr": "Afficher l'adresse IP d'une VM",
-        "en": "Show a VM IP address",
+        "fr": "🌐 Afficher l'adresse IP d'une VM",
+        "en": "🌐 Show a VM IP address",
     },
     "List available images and specs": {
-        "fr": "Lister les images disponibles et leurs specs",
-        "en": "List available images and specs",
+        "fr": "🗂 Lister les images disponibles et leurs specs",
+        "en": "🗂 List available images and specs",
     },
     "Distribution:": {
         "fr": "Distribution :",
@@ -1246,8 +1246,8 @@ TRANSLATIONS = {
         "en": "Choice (1-4, default 1):",
     },
     "Deploy VM(s) (one or many)": {
-        "fr": "Déployer une ou plusieurs VM",
-        "en": "Deploy VM(s) (one or many)",
+        "fr": "🚀 Déployer une ou plusieurs VM",
+        "en": "🚀 Deploy VM(s) (one or many)",
     },
     "Deploy ERPLibre VM(s)!": {
         "fr": "Déployer une ou plusieurs VM ERPLibre !",
@@ -1373,8 +1373,8 @@ TRANSLATIONS = {
         "en": "Install textual for the telemetry TUI (pip).",
     },
     "Resize a VM disk": {
-        "fr": "Redimensionner le disque d'une VM",
-        "en": "Resize a VM disk",
+        "fr": "📐 Redimensionner le disque d'une VM",
+        "en": "📐 Resize a VM disk",
     },
     "VM name to resize: ": {
         "fr": "Nom de la VM à redimensionner : ",
@@ -1542,8 +1542,8 @@ TRANSLATIONS = {
         "en": "select all",
     },
     "Delete VM(s)": {
-        "fr": "Effacer une ou plusieurs VM",
-        "en": "Delete VM(s)",
+        "fr": "🗑 Effacer une ou plusieurs VM",
+        "en": "🗑 Delete VM(s)",
     },
     "No VM found.": {
         "fr": "Aucune VM trouvée.",
@@ -1582,8 +1582,8 @@ TRANSLATIONS = {
         "en": "Deletion done.",
     },
     "Clean up QEMU (orphan files)": {
-        "fr": "Nettoyer QEMU (fichiers orphelins)",
-        "en": "Clean up QEMU (orphan files)",
+        "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
+        "en": "🧹 Clean up QEMU (orphan files)",
     },
     "Scanning for orphan QEMU files...": {
         "fr": "Recherche des fichiers QEMU orphelins...",
