@@ -978,8 +978,23 @@ def build_cloud_config(
         " qemu-guest-agent) || (command -v dnf >/dev/null && dnf install -y"
         " qemu-guest-agent) || (command -v pacman >/dev/null && pacman -S"
         " --noconfirm qemu-guest-agent) || true",
-        "  - systemctl enable --now qemu-guest-agent 2>/dev/null"
-        " || systemctl enable --now qemu-ga 2>/dev/null || true",
+        # Autorise guest-exec (bloqué par défaut sur certaines distros).
+        # On VIDE la liste de blocage (block-rpcs/blacklist) plutôt que
+        # d'utiliser allow-rpcs (liste BLANCHE : casserait les autres RPC).
+        # Les deux clés couvrent les versions anciennes (blacklist) et
+        # récentes (block-rpcs) de qemu-ga.
+        "  - mkdir -p /etc/qemu && printf '[general]\\nblock-rpcs=\\n"
+        "blacklist=\\n' > /etc/qemu/qemu-ga.conf || true",
+        # Fedora/RHEL bloquent guest-exec via /etc/sysconfig/qemu-ga.
+        "  - [ -f /etc/sysconfig/qemu-ga ] && sed -i"
+        " 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/'"
+        " /etc/sysconfig/qemu-ga || true",
+        "  - systemctl enable qemu-guest-agent 2>/dev/null"
+        " || systemctl enable qemu-ga 2>/dev/null || true",
+        # restart (et non enable --now) : recharge la config si l'agent était
+        # déjà démarré par l'image cloud.
+        "  - systemctl restart qemu-guest-agent 2>/dev/null"
+        " || systemctl restart qemu-ga 2>/dev/null || true",
     ]
     return "\n".join(lines) + "\n"
 

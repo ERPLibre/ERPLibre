@@ -470,7 +470,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
 
     class Monitor(App):
         CSS = """
-        DataTable { width: 58; border: solid $accent; }
+        DataTable { width: 74; height: 1fr; overflow-x: auto; border: solid $accent; }
         RichLog { border: solid $accent; }
         #telemetry { height: 1; color: $text-muted; }
         #stats { height: 1; color: $accent; }
@@ -526,11 +526,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table = DataTable(id="vms", cursor_type="row")
             # Clés de colonnes explicites : update_cell() les référence.
             # La colonne « ⚠ » (erreurs détectées) est à GAUCHE d'« État ».
-            table.add_column("VM", key="vm")
-            table.add_column("⚠", key="err")
-            table.add_column("État", key="state")
-            table.add_column("Durée", key="elapsed")
-            table.add_column("Disque", key="disk")
+            # Largeurs FIXES pour les colonnes courtes -> l'État n'est plus
+            # tronqué (« ❌ effacée », « ⏸ en pause » lisibles) ; la table
+            # défile horizontalement (overflow-x) pour les noms de VM longs.
+            table.add_column("VM", key="vm", width=26)
+            table.add_column("⚠", key="err", width=4)
+            table.add_column("État", key="state", width=12)
+            table.add_column("Durée", key="elapsed", width=7)
+            table.add_column("Disque", key="disk", width=8)
             for vm in vms:
                 table.add_row(
                     vm["name"], "", "⏳", "--:--", "-", key=vm["name"]
@@ -835,16 +838,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not vm or not vm.get("ip"):
                 self.notify("Pas d'IP pour cette VM.", title="Web")
                 return
-            browser = cli_browser()
+            browser = self._choose_browser()
             if not browser:
-                browser = self._install_cli_browser()
-                if not browser:
-                    self.notify(
-                        "Aucun navigateur CLI disponible.",
-                        title="Web",
-                        severity="warning",
-                    )
-                    return
+                return
             url = f"http://{vm['ip']}:8069"
             with self.suspend():
                 print(f"→ {browser} {url}")
@@ -862,6 +858,40 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     input("Entrée pour revenir au suivi… ")
                 except EOFError:
                     pass
+
+        def _choose_browser(self):
+            """Offre la LISTE des navigateurs CLI installés et laisse choisir
+            lequel utiliser pour voir la page. Si aucun n'est installé, propose
+            d'en installer un. Renvoie le binaire choisi, ou None."""
+            available = [b for b in CLI_BROWSERS if shutil.which(b)]
+            if not available:
+                browser = self._install_cli_browser()
+                if not browser:
+                    self.notify(
+                        "Aucun navigateur CLI disponible.",
+                        title="Web",
+                        severity="warning",
+                    )
+                return browser
+            with self.suspend():
+                print("Quel navigateur utiliser pour voir la page ?")
+                for i, b in enumerate(available, 1):
+                    print(f"  [{i}] {b}{' *' if i == 1 else ''}")
+                print("  [i] Installer un autre navigateur")
+                sel = input(
+                    f"Choix (numéro, vide = {available[0]}) : "
+                ).strip().lower()
+                if sel == "i":
+                    return self._install_cli_browser()
+                if not sel:
+                    return available[0]
+                try:
+                    idx = int(sel) - 1
+                    if 0 <= idx < len(available):
+                        return available[idx]
+                except ValueError:
+                    pass
+                return available[0]
 
         def _install_cli_browser(self):
             """Demande QUEL navigateur CLI installer (w3m/lynx/links/elinks),

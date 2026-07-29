@@ -2533,12 +2533,48 @@ class TODO:
             pass
         return profiles[0]  # défaut : ERPLibre + Odoo 18
 
+    @staticmethod
+    def _qemu_odoo_service_cmd():
+        """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
+        service systemd (inspiré de script/systemd/install_daemon.sh) puis
+        l'active + démarre. N'est ajouté QUE pour les profils avec Odoo."""
+        return (
+            'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); '
+            'SVC_DIR="$HOME/git/erplibre"; '
+            "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
+            "[Unit]\n"
+            "Description=ERPLibre\n"
+            "Requires=postgresql.service\n"
+            "After=network.target network-online.target postgresql.service\n"
+            "\n"
+            "[Service]\n"
+            "Type=simple\n"
+            "User=$SVC_USER\n"
+            "Group=$SVC_GROUP\n"
+            "Restart=always\n"
+            "RestartSec=5\n"
+            "ExecStart=$SVC_DIR/run.sh\n"
+            "WorkingDirectory=$SVC_DIR\n"
+            "StandardOutput=journal+console\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=multi-user.target\n"
+            "UNIT\n"
+            "sudo systemctl daemon-reload; "
+            "sudo systemctl enable --now erplibre.service"
+        )
+
     def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None):
         """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
         puis clone + `final_cmd` dans ~/git/erplibre). `final_cmd` par défaut :
         install_os + install_odoo_18."""
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
+        # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
+        # enregistre Odoo comme service systemd (enable + start). Pas pour
+        # « ERPLibre seul », « mobile » ni « Déploiement ».
+        if "install_odoo" in final_cmd:
+            final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd()}"
         return (
             "set -e; "
             # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
