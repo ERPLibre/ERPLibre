@@ -265,6 +265,30 @@ def cli_browser() -> str | None:
     return None
 
 
+def virsh_domstates() -> dict:
+    """{nom: état} de tous les domaines libvirt (« virsh list --all »). Sert à
+    détecter une VM EN PAUSE ou EFFACÉE pendant le suivi. Un seul appel virsh
+    pour tout le parc (à interroger à intervalle LENT)."""
+    try:
+        res = subprocess.run(
+            ["sudo", "virsh", "list", "--all"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    states = {}
+    for line in res.stdout.splitlines():
+        parts = line.split()
+        # Ignore l'en-tête (« Id Name State ») et le séparateur (« ---- »,
+        # un seul token). Une VM éteinte a « - » en Id : à NE PAS ignorer.
+        if len(parts) < 3 or parts[0] == "Id":
+            continue
+        states[parts[1]] = " ".join(parts[2:])
+    return states
+
+
 # --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
@@ -316,6 +340,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Historique de durées (ETA) + dossier disque à surveiller.
             self._stats = load_stats()
             self._disk_dir = os.path.dirname(vm_disk_path(vms[0])) if vms else "/"
+            # État libvirt (running/paused/gone), rafraîchi à intervalle LENT.
+            self._domstate = {}
 
         @staticmethod
         def _fmt(secs):
@@ -362,6 +388,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # sélectionné toutes les 1 s (une seule lecture incrémentale).
             self.set_interval(2.0, self._tick_table)
             self.set_interval(1.0, self._tick_log)
+            # État libvirt (pause / effacée) : check LENT (appel virsh) toutes
+            # les 10 s ; le tableau applique le cache à chaque tick (2 s).
+            self.set_interval(10.0, self._tick_domstate)
+            self._tick_domstate()  # premier relevé immédiat
 
         # -- helpers -------------------------------------------------------- #
         def _vm_by_name(self, name):
@@ -415,6 +445,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     )
                     if name in self._final:
                         continue  # déjà terminé -> plus de lecture de statut
+                    # VM EFFACÉE pendant le suivi -> état terminal « effacé ».
+                    ds = self._domstate.get(name)
+                    if ds == "gone":
+                        self._final[name] = ("deleted", None, now - started)
+                        self._set_cell(
+                            table, name, "state", f"❌ {t('deleted')}"
+                        )
+                        continue
                     state, code = read_status(vm["log"])
                     if state in ("done", "failed"):
                         # Fige la durée + MÉMORISE pour l'ETA des prochaines.
@@ -427,6 +465,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         self._set_cell(table, name, "state", lbl)
                         self._set_cell(
                             table, name, "elapsed", self._fmt(elapsed)
+                        )
+                    elif ds == "paused":
+                        # VM EN PAUSE (virsh suspend) : l'install ne progresse
+                        # pas -> on l'indique (non terminal, peut reprendre).
+                        self._set_cell(
+                            table, name, "state", f"⏸ {t('paused')}"
                         )
                     else:
                         # running/pending : icône stable -> pas de churn. ETA
@@ -474,6 +518,16 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     self._load_selected_log()
                 except Exception:
                     pass
+
+        def _tick_domstate(self):
+            # Relevé LENT de l'état libvirt : une VM absente de « virsh list »
+            # est EFFACÉE (« gone ») ; sinon on garde son état (paused, …).
+            try:
+                states = virsh_domstates()
+                for vm in vms:
+                    self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+            except Exception:
+                pass
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:

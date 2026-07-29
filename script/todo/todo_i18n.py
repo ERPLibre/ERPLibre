@@ -1373,6 +1373,14 @@ TRANSLATIONS = {
         "fr": "terminées",
         "en": "completed",
     },
+    "deleted": {
+        "fr": "effacée",
+        "en": "deleted",
+    },
+    "paused": {
+        "fr": "pause",
+        "en": "paused",
+    },
     "Waiting for the VM to start (boot + cloud-init)": {
         "fr": "En attente du démarrage de la VM (boot + cloud-init)",
         "en": "Waiting for the VM to start (boot + cloud-init)",
