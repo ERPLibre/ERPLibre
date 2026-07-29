@@ -1281,6 +1281,54 @@ class TODO:
         return res.stdout.strip() if res.returncode == 0 else ""
 
     @staticmethod
+    def _qemu_domname(name):
+        """Nom canonique de la VM (si on a fourni un ID numérique, le
+        résout ; sinon renvoie tel quel). Utile car un ID disparaît une
+        fois la VM éteinte."""
+        if not str(name).isdigit():
+            return name
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "domname", str(name)],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return name
+        out = res.stdout.strip()
+        return out if res.returncode == 0 and out else name
+
+    def _qemu_shutdown_wait(self, name, timeout=120):
+        """Arrête la VM proprement (ACPI) et attend qu'elle soit « shut off ».
+        Si l'arrêt gracieux traîne, propose un arrêt forcé (destroy).
+        Renvoie True si la VM est bien éteinte."""
+        name = self._qemu_domname(name)
+        if self._qemu_domstate(name) == "shut off":
+            return True
+        cmd = f"sudo virsh shutdown {shlex.quote(name)}"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+        print(t("Waiting for the VM to shut down..."))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._qemu_domstate(name) == "shut off":
+                print(f"✅ {name}: {t('VM is off.')}")
+                return True
+            time.sleep(3)
+        # Arrêt gracieux trop long : proposer un arrêt forcé.
+        if self._is_yes(
+            input(t("Graceful shutdown timed out. Force off (destroy)? "
+                    "(y/N): "))
+        ):
+            cmd = f"sudo virsh destroy {shlex.quote(name)}"
+            print(f"{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            time.sleep(2)
+            return self._qemu_domstate(name) == "shut off"
+        return False
+
+    @staticmethod
     def _qemu_main_disk(name):
         """Chemin du disque PRINCIPAL (qcow2) de la VM via domblklist. On
         ignore le seed cloud-init (…-seed.iso, en lecture seule)."""
@@ -1396,8 +1444,16 @@ class TODO:
             )
             print(f"⚠  {danger}")
             if state != "shut off":
-                print(t("Shut the VM off before shrinking (virsh shutdown)."))
-                return
+                if not self._is_yes(
+                    input(t("The VM must be off. Shut it down and retry? "
+                            "(y/N): "))
+                ):
+                    print(t("Cancelled."))
+                    return
+                if not self._qemu_shutdown_wait(name):
+                    print(t("VM is still not off; aborting."))
+                    return
+                state = "shut off"
             if not self._is_yes(
                 input(t("Type y to confirm you understand the risk (y/N): "))
             ):

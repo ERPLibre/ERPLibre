@@ -1420,6 +1420,26 @@ TRANSLATIONS = {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
     },
+    "The VM must be off. Shut it down and retry? (y/N): ": {
+        "fr": "La VM doit être éteinte. L'éteindre et réessayer ? (o/N) : ",
+        "en": "The VM must be off. Shut it down and retry? (y/N): ",
+    },
+    "VM is still not off; aborting.": {
+        "fr": "La VM n'est toujours pas éteinte ; abandon.",
+        "en": "VM is still not off; aborting.",
+    },
+    "Waiting for the VM to shut down...": {
+        "fr": "Attente de l'arrêt de la VM…",
+        "en": "Waiting for the VM to shut down...",
+    },
+    "VM is off.": {
+        "fr": "VM éteinte.",
+        "en": "VM is off.",
+    },
+    "Graceful shutdown timed out. Force off (destroy)? (y/N): ": {
+        "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ? (o/N) : ",
+        "en": "Graceful shutdown timed out. Force off (destroy)? (y/N): ",
+    },
     "Show advanced info (vCPU, RAM, disk)? (y/N): ": {
         "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
         "en": "Show advanced info (vCPU, RAM, disk)? (y/N): ",
