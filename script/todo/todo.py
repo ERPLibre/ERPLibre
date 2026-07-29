@@ -1642,6 +1642,14 @@ class TODO:
         # Meilleur effort : le dernier bail (le plus récent) plutôt que le 1er.
         return cands[-1] if cands else None
 
+    @staticmethod
+    def _fmt_dur(secs):
+        """Durée lisible : « 45s » ou « 2m05s »."""
+        secs = int(secs)
+        if secs < 60:
+            return f"{secs}s"
+        return f"{secs // 60}m{secs % 60:02d}s"
+
     def _qemu_resolve_ips(self, names, labels=None):
         """Résout les IP de plusieurs VM EN PARALLÈLE (le boot émulé est lent),
         en affichant la progression au fur et à mesure. Renvoie {nom: ip|None}.
@@ -1653,18 +1661,33 @@ class TODO:
         labels = labels or {}
         print(f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}")
         result = {}
+        t0 = time.time()
         workers = min(len(names), (os.cpu_count() or 4)) or 1
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futs = {pool.submit(self._qemu_vm_ip, n): n for n in names}
-            for fut in as_completed(futs):
+            starts = {}
+            futs = {}
+            for n in names:
+                starts[n] = time.time()
+                futs[pool.submit(self._qemu_vm_ip, n)] = n
+            # done = ordre de complétion ; prefixe l'ID de suivi + la durée.
+            for done, fut in enumerate(as_completed(futs), 1):
                 n = futs[fut]
                 try:
                     ip = fut.result()
                 except Exception:
                     ip = None
                 result[n] = ip
-                prefix = f"[{labels[n]}] " if n in labels else ""
-                print(f"  {prefix}{n}: {ip or t('no IP')}")
+                tag = f"[{labels[n]}] " if n in labels else ""
+                dur = self._fmt_dur(time.time() - starts[n])
+                print(
+                    f"  [{done}/{len(names)}] {tag}{n}: "
+                    f"{ip or t('no IP')} ({dur})"
+                )
+        got = sum(1 for ip in result.values() if ip)
+        print(
+            f"  {t('IPs resolved:')} {got}/{len(names)} "
+            f"({self._fmt_dur(time.time() - t0)})"
+        )
         return result
 
     def _qemu_vm_arch(self, name):
@@ -2302,6 +2325,8 @@ class TODO:
             )
             jobs.append((f"{k}/{n_jobs}", name, parts))
 
+        deploy_start = time.time()
+        n_ok = 0
         if jobs:
             from concurrent.futures import (
                 ThreadPoolExecutor,
@@ -2316,21 +2341,33 @@ class TODO:
 
             def _run(job):
                 jid, jname, jparts = job
+                j0 = time.time()
                 res = subprocess.run(jparts, capture_output=True, text=True)
                 out = (res.stdout or "") + (res.stderr or "")
-                return jid, jname, res.returncode, out
+                return jid, jname, res.returncode, out, time.time() - j0
 
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = [pool.submit(_run, j) for j in jobs]
-                for fut in as_completed(futures):
-                    jid, jname, rc, out = fut.result()
+                # done = ordre de COMPLÉTION (les résultats reviennent dans le
+                # désordre) ; jid = ordre de préparation (stable). Durée par VM.
+                for done, fut in enumerate(as_completed(futures), 1):
+                    jid, jname, rc, out, secs = fut.result()
                     mark = "✅" if rc == 0 else "❌"
-                    print(f"\n{mark} [{jid}] {jname} (rc={rc})")
+                    print(
+                        f"\n[{done}/{len(jobs)}] {mark} [{jid}] {jname} "
+                        f"(rc={rc}, {self._fmt_dur(secs)})"
+                    )
                     tail = [ln for ln in out.strip().splitlines() if ln][-4:]
                     for ln in tail:
                         print(f"    {ln}")
                     if rc == 0:
                         deployed.append(jname)
+                        n_ok += 1
+            print(
+                f"\n{t('Deploy summary:')} {n_ok} OK, "
+                f"{len(jobs) - n_ok} {t('failed')}, "
+                f"{len(jobs)} {t('VMs')}, {self._fmt_dur(time.time() - deploy_start)}"
+            )
 
         # 6) Résolution des IP EN PARALLÈLE (réutilisée pour ssh_config +
         # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
@@ -2366,6 +2403,14 @@ class TODO:
                         name, ssh_key, install_branch, ip_map.get(name)
                     )
 
+        # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
+        # synchrone ; l'install monitorée est détachée, non comptée ici).
+        print(f"\n{'═' * 60}")
+        print(f"  {t('TOTAL summary')}")
+        print(f"  {t('VMs deployed:')} {n_ok}/{len(jobs) if jobs else 0}"
+              f"  ({t('total incl. existing:')} {len(deployed)})")
+        print(f"  {t('Total time:')} {self._fmt_dur(time.time() - deploy_start)}")
+        print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")
         print(f"   {t('Manage with:')} sudo virsh list --all")

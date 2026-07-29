@@ -1637,6 +1637,34 @@ TRANSLATIONS = {
         "fr": "VM",
         "en": "VMs",
     },
+    "Deploy summary:": {
+        "fr": "Bilan déploiement :",
+        "en": "Deploy summary:",
+    },
+    "failed": {
+        "fr": "en échec",
+        "en": "failed",
+    },
+    "IPs resolved:": {
+        "fr": "IP résolues :",
+        "en": "IPs resolved:",
+    },
+    "TOTAL summary": {
+        "fr": "Sommaire TOTAL",
+        "en": "TOTAL summary",
+    },
+    "VMs deployed:": {
+        "fr": "VM déployées :",
+        "en": "VMs deployed:",
+    },
+    "total incl. existing:": {
+        "fr": "total avec existantes :",
+        "en": "total incl. existing:",
+    },
+    "Total time:": {
+        "fr": "Temps total :",
+        "en": "Total time:",
+    },
     "Deploying": {
         "fr": "Déploiement de",
         "en": "Deploying",
