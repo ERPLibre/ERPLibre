@@ -1416,6 +1416,10 @@ TRANSLATIONS = {
         "fr": "État de la VM :",
         "en": "VM state:",
     },
+    "Could not read current disk size; aborting.": {
+        "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
+        "en": "Could not read current disk size; aborting.",
+    },
     "Enter +NG to grow, -NG to shrink, or NG for a target size "
     "(e.g. +20G, -10G, 60G).": {
         "fr": "Entrez +NG pour agrandir, -NG pour réduire, ou NG pour une "

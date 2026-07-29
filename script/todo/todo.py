@@ -1219,8 +1219,10 @@ class TODO:
     def _qemu_disk_virtual_bytes(disk):
         """Taille VIRTUELLE (octets) du disque via « qemu-img info --json »."""
         try:
+            # -U (--force-share) : lit même si la VM tourne (libvirt tient le
+            # lock d'écriture). Sans ça : « Failed to get shared write lock ».
             res = subprocess.run(
-                ["sudo", "qemu-img", "info", "--output=json", disk],
+                ["sudo", "qemu-img", "info", "-U", "--output=json", disk],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -1250,13 +1252,18 @@ class TODO:
 
         # 1) Espace actuel (virtuel + réel) + df invité si joignable.
         print(f"\n{t('Current disk:')} {disk}")
+        # -U : lecture sûre même VM allumée (sinon « shared write lock »).
         self.execute.exec_command_live(
-            f"sudo qemu-img info {shlex.quote(disk)}", source_erplibre=False
+            f"sudo qemu-img info -U {shlex.quote(disk)}", source_erplibre=False
         )
         cur_bytes = self._qemu_disk_virtual_bytes(disk)
         cur_gb = cur_bytes / (1 << 30)
-        print(f"{t('Current virtual size:')} {cur_gb:.1f} G")
         state = self._qemu_domstate(name)
+        if cur_bytes <= 0:
+            print(t("Could not read current disk size; aborting."))
+            print(f"{t('VM state:')} {state or '?'}")
+            return
+        print(f"{t('Current virtual size:')} {cur_gb:.1f} G")
         print(f"{t('VM state:')} {state or '?'}")
 
         # 2) Nouvelle taille : +NG (agrandir), -NG (réduire) ou NG (cible).
