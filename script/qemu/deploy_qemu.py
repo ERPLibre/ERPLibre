@@ -831,10 +831,21 @@ def download_image(
         else "\n  Vérifiez la connectivité (IPv6 ?), réessayez plus tard, ou"
         " fournissez un chemin d'image local en argument positionnel."
     )
+    # Chemin visé + commande prête à copier pour reprendre le téléchargement
+    # manuellement (reprise si un .part existe), puis relancer le déploiement
+    # (l'image complète en cache sera réutilisée). curl -C - reprend, -f
+    # échoue proprement sur une erreur HTTP.
+    resume = (
+        f"\n  Destination : {dest}"
+        f"\n  Reprendre le téléchargement manuellement :"
+        f"\n    sudo curl -fL -C - -o {dest} \\\n      {urls[0]}"
+        "\n  puis relancez le déploiement (l'image en cache sera réutilisée)."
+    )
     sys.exit(
         "\nÉchec du téléchargement depuis tous les miroirs :\n  "
         + "\n  ".join(errors)
         + hint
+        + resume
     )
 
 
