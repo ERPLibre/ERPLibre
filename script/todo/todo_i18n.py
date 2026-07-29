@@ -1245,6 +1245,35 @@ TRANSLATIONS = {
         "fr": "Choix (1-4, défaut 1) :",
         "en": "Choice (1-4, default 1):",
     },
+    "Deploy VM(s) (one or many)": {
+        "fr": "Déployer une ou plusieurs VM",
+        "en": "Deploy VM(s) (one or many)",
+    },
+    "Deploy ERPLibre VM(s)!": {
+        "fr": "Déployer une ou plusieurs VM ERPLibre !",
+        "en": "Deploy ERPLibre VM(s)!",
+    },
+    "VM names (default = auto):": {
+        "fr": "Noms des VM (défaut = auto) :",
+        "en": "VM names (default = auto):",
+    },
+    "Rename which VMs? (numbers, comma-separated; blank = none): ": {
+        "fr": "Renommer quelles VM ? (numéros séparés par des virgules ; "
+        "vide = aucune) : ",
+        "en": "Rename which VMs? (numbers, comma-separated; blank = none): ",
+    },
+    "->": {
+        "fr": "->",
+        "en": "->",
+    },
+    "Duplicate names detected; keeping as entered.": {
+        "fr": "Noms en double détectés ; conservés tels quels.",
+        "en": "Duplicate names detected; keeping as entered.",
+    },
+    "Preview (dry-run):": {
+        "fr": "Aperçu (dry-run) :",
+        "en": "Preview (dry-run):",
+    },
     "(includes emulated architectures — some VMs are slow)": {
         "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
         "en": "(includes emulated architectures — some VMs are slow)",

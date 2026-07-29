@@ -949,18 +949,6 @@ class TODO:
             print(f"⚠  {warn}")
         return chosen
 
-    def _qemu_prompt_arch(self, distro):
-        """Architecture pour un déploiement de VM unique. Propose amd64, plus
-        arm64/s390x si la distro choisie publie ces images."""
-        opts = ["amd64"]
-        if distro in self._QEMU_ARM64_DISTROS:
-            opts.append("arm64")
-        if distro in self._QEMU_S390X_DISTROS:
-            opts.append("s390x")
-        if len(opts) == 1:
-            return "amd64"  # rien à demander
-        return self._qemu_ask_arch(opts, self._native_arch())
-
     def _qemu_prompt_infra_arch(self):
         """Architecture du parc (défaut : native de l'hôte, marquée d'un *).
         Toute arch non native est émulée ; le catalogue est ensuite restreint
@@ -985,18 +973,13 @@ class TODO:
             return False
         choices = [
             {"section": t("Deployment")},
-            {"prompt_description": t("Deploy a new VM")},
+            {"prompt_description": t("Deploy VM(s) (one or many)")},
             {
                 "prompt_description": t(
                     "Preview a deployment (dry-run, no sudo)"
                 )
             },
             {"prompt_description": t("Download a cloud image only")},
-            {
-                "prompt_description": t(
-                    "Deploy ERPLibre infra (one minimal VM per image)"
-                )
-            },
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
@@ -1017,24 +1000,22 @@ class TODO:
             if status == "0":
                 return False
             elif status == "1":
-                self._qemu_deploy_vm(dry_run=False)
+                self._qemu_deploy(dry_run=False)
             elif status == "2":
-                self._qemu_deploy_vm(dry_run=True)
+                self._qemu_deploy(dry_run=True)
             elif status == "3":
                 self._qemu_download_image()
             elif status == "4":
-                self._qemu_deploy_infra()
-            elif status == "5":
                 self._qemu_list_vms()
-            elif status == "6":
+            elif status == "5":
                 self._qemu_show_ip()
-            elif status == "7":
+            elif status == "6":
                 self._qemu_console()
-            elif status == "8":
+            elif status == "7":
                 self._qemu_delete_vm()
-            elif status == "9":
+            elif status == "8":
                 self._qemu_cleanup()
-            elif status == "10":
+            elif status == "9":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1050,115 +1031,6 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print(t("Command not found !"))
-
-    @staticmethod
-    def _normalize_disk_size(size):
-        """« 30 » -> « 30G » (unité par défaut Go). Laisse « 30G », « 1T »… ou
-        vide tels quels. Sans unité, qemu-img interpréterait des OCTETS."""
-        size = size.strip()
-        if re.fullmatch(r"\d+", size):
-            return size + "G"
-        return size
-
-    def _qemu_deploy_vm(self, dry_run=False):
-        script_path = self._qemu_script_path()
-        # Distro + version d'abord : permet de proposer un nom par défaut.
-        distro = self._qemu_prompt_distro()
-        version = self._qemu_prompt_version(distro)
-        arch = self._qemu_prompt_arch(distro)
-        default_name = self._qemu_infra_name(distro, version, arch)
-        name = (
-            input(f"{t('VM name (default: ')}{default_name}): ").strip()
-            or default_name
-        )
-        # Laisser vide => le script applique le minimum requis par la version
-        # choisie (libosinfo). On n'envoie alors pas le flag.
-        memory = input(t("RAM in MB (blank = version minimum): ")).strip()
-        vcpus = input(t("vCPUs (default: 2): ")).strip()
-        disk_size = self._normalize_disk_size(
-            input(t("Disk size (blank = version min; e.g. 30G, 1T): ")).strip()
-        )
-
-        default_key = self._qemu_default_ssh_key()
-        key_hint = default_key or t("none")
-        ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
-        if not ssh_key:
-            ssh_key = default_key
-        if ssh_key:
-            # Résout ~ avec le HOME de l'utilisateur courant : le script tourne
-            # sous sudo (HOME=/root) et ne pourrait pas déduire ~ correctement.
-            ssh_key = os.path.expanduser(ssh_key)
-
-        # Mot de passe console (défaut « erplibre ») : permet la connexion par
-        # la console série (virsh console) EN PLUS de la clé SSH. Sans lui, le
-        # compte est verrouillé et la console refuse tout login.
-        password = (
-            input(
-                t("Console password for 'erplibre' (default: erplibre): ")
-            ).strip()
-            or "erplibre"
-        )
-
-        force = False
-        if not dry_run:
-            ans = input(t("Overwrite existing VM disk if present? (y/N): "))
-            force = self._is_yes(ans)
-
-        parts = []
-        if not dry_run:
-            parts.append("sudo")
-        parts.append(script_path)
-        parts += ["--name", name, "--distro", distro, "--version", version]
-        if arch and arch != "amd64":
-            parts += ["--arch", arch]
-        if memory:
-            parts += ["--memory", memory]
-        if vcpus:
-            parts += ["--vcpus", vcpus]
-        if disk_size:
-            parts += ["--disk-size", disk_size]
-        if ssh_key:
-            parts += ["--ssh-key", ssh_key]
-        if password:
-            parts += ["--password", password]
-        if force:
-            parts.append("--force")
-        if dry_run:
-            parts.append("--dry-run")
-        else:
-            parts.append("-y")  # accepte l'installation des dépendances
-
-        cmd = " ".join(shlex.quote(p) for p in parts)
-        print(f"{t('Will execute:')} {cmd}")
-        if password:
-            print(f"🔑 {t('Console/SSH login:')} erplibre / {password}")
-        status = self.execute.exec_command_live(cmd, source_erplibre=False)
-
-        # Arrêt net sur erreur : sinon on enchaînait sur l'attente d'IP d'une
-        # VM jamais créée (blocage infini), l'utilisateur ne voyant rien.
-        if status != 0:
-            print(f"\n❌ {t('Deployment failed (see the error above).')}")
-            return
-
-        if dry_run:
-            return
-
-        # Option : installer ERPLibre (clone + make install_os + install_odoo).
-        if self._is_yes(
-            input(
-                t("Install ERPLibre into ~/git/erplibre on this VM? (y/N): ")
-            )
-        ):
-            branch = self._qemu_pick_branch()
-            if self._is_yes(
-                input(t("Interactive monitoring dashboard? (y/N): "))
-            ):
-                self._qemu_install_erplibre_monitored([name], branch)
-            else:
-                self._qemu_install_erplibre_vm(name, ssh_key, branch)
-
-        # Proposer d'enregistrer la VM dans ~/.ssh/config (après le 1er boot).
-        self._qemu_offer_ssh_config(name, "erplibre")
 
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
@@ -1222,17 +1094,6 @@ class TODO:
         cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
-
-    def _qemu_offer_ssh_config(self, name, user):
-        """Propose d'enregistrer la VM dans ~/.ssh/config (bloc Host name)."""
-        if not self._is_yes(input(t("Add this VM to ~/.ssh/config? (y/N): "))):
-            return
-        print(t("Waiting for the VM IP (DHCP lease)..."))
-        ip = self._qemu_vm_ip(name)
-        if not ip:
-            print(t("No IP yet; add it later once the VM has booted."))
-            return
-        self._write_ssh_config_entry(name, user, ip)
 
     def _write_ssh_config_entry(self, host, user, ip):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config."""
@@ -2125,8 +1986,63 @@ class TODO:
             pass
         return 1, base_vcpus
 
-    def _qemu_deploy_infra(self):
-        print(f"🏗  {t('Deploy ERPLibre infra: one minimal VM per image')}")
+    def _qemu_customize_names(self, selected):
+        """Noms des VM (liste parallèle à `selected`). Défaut = nom auto
+        (_qemu_infra_name) ; on peut en renommer certains À LA DEMANDE, par
+        leurs numéros séparés de virgules (vide = garder tous les noms auto)."""
+        names = [
+            self._qemu_infra_name(d, v, a) for d, v, _r, _dk, a in selected
+        ]
+        print(f"\n{t('VM names (default = auto):')}")
+        for i, (nm, s) in enumerate(zip(names, selected), 1):
+            d, v, _r, _dk, a = s
+            print(f"  [{i}] {nm}   ({d} {v} [{a}])")
+        raw = input(
+            t("Rename which VMs? (numbers, comma-separated; blank = none): ")
+        ).strip()
+        for tok in re.split(r"[\s,]+", raw):
+            if not tok:
+                continue
+            try:
+                i = int(tok) - 1
+            except ValueError:
+                continue
+            if 0 <= i < len(names):
+                new = input(f"  {names[i]} {t('->')} ").strip()
+                if new:
+                    names[i] = new
+        if len(set(names)) != len(names):
+            print(f"  ⚠ {t('Duplicate names detected; keeping as entered.')}")
+        return names
+
+    def _qemu_build_deploy_parts(
+        self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
+    ):
+        """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
+        dry-run ET le déploiement réel)."""
+        parts = [] if dry_run else ["sudo"]
+        parts += [
+            self._qemu_script_path(),
+            "--distro", d, "--version", v, "--name", name,
+            "--memory", str(eram), "--vcpus", str(evcpus),
+            "--password", "erplibre",
+        ]
+        if not dry_run:
+            # --no-wait-ip : ne bloque pas 90s/VM, l'IP est collectée après.
+            parts.append("--no-wait-ip")
+        if arch and arch != "amd64":
+            parts += ["--arch", arch]
+        if ssh_key:
+            parts += ["--ssh-key", ssh_key]
+        if branch:
+            # ERPLibre dépasse le minimum : +5 Go de disque.
+            bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
+            parts += ["--disk-size", f"{bigger}G"]
+        parts.append("--dry-run" if dry_run else "-y")
+        return parts
+
+    def _qemu_deploy(self, dry_run=False):
+        print(f"🚀 {t('Deploy ERPLibre VM(s)!')}")
         try:
             mod = self._qemu_import_module()
         except Exception as exc:
@@ -2277,15 +2193,17 @@ class TODO:
             """(RAM effective, vCPU) pour une VM selon le multiplicateur."""
             return ram * res_mult, min(base_vcpus * res_mult, host_cpu)
 
+        # 2c) Noms des VM (auto par défaut, renommage granulaire à la demande).
+        names = self._qemu_customize_names(selected)
+
         # 3) Plan + estimation des ressources (avec le multiplicateur appliqué).
         total_ram = sum(s[2] * res_mult for s in selected)
         total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
         print(f"\n{t('Deployment plan')} ({len(selected)} VM, x{res_mult}) :")
-        for d, v, ram, disk, a in selected:
-            name = self._qemu_infra_name(d, v, a)
+        for i, (d, v, ram, disk, a) in enumerate(selected):
             eram, evcpus = eff_res(ram)
             print(
-                f"  - {name:<30} {d} {v:<7} [{a:<5}] "
+                f"  - {names[i]:<30} {d} {v:<7} [{a:<5}] "
                 f"{evcpus} vCPU  RAM {eram}Mo  {t('disk')} {disk}"
             )
         print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
@@ -2298,6 +2216,20 @@ class TODO:
                     " at once."
                 )
                 print(f"  ⚠ {warn}")
+
+        # Aperçu (dry-run) : montre les commandes deploy_qemu sans rien créer
+        # (ni sudo, ni installation), puis on s'arrête.
+        if dry_run:
+            default_key = self._qemu_default_ssh_key()
+            print(f"\n{t('Preview (dry-run):')}")
+            for i, (d, v, ram, disk, a) in enumerate(selected):
+                eram, evcpus = eff_res(ram)
+                parts = self._qemu_build_deploy_parts(
+                    d, v, a, names[i], eram, evcpus, disk,
+                    default_key, None, dry_run=True,
+                )
+                print("  " + " ".join(shlex.quote(p) for p in parts))
+            return
 
         # Clé SSH (partagée par tout le parc).
         default_key = self._qemu_default_ssh_key()
@@ -2341,49 +2273,19 @@ class TODO:
             print(t("Cancelled."))
             return
 
-        script_path = self._qemu_script_path()
         deployed = []
         jobs = []  # (name, parts) des VM à créer
-        for d, v, ram, disk, a in selected:
-            name = self._qemu_infra_name(d, v, a)
+        for i, (d, v, ram, disk, a) in enumerate(selected):
+            name = names[i]
             if self._qemu_domain_exists(name):
                 print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)
                 continue
             eram, evcpus = eff_res(ram)
-            parts = [
-                "sudo",
-                script_path,
-                "--distro",
-                d,
-                "--version",
-                v,
-                "--name",
-                name,
-                # Ressources selon le multiplicateur choisi (x1 = minimum).
-                "--memory",
-                str(eram),
-                "--vcpus",
-                str(evcpus),
-                # Mot de passe console « erplibre » (+ clé SSH). --no-wait-ip :
-                # ne bloque pas 90s par VM, l'IP est collectée après coup.
-                "--password",
-                "erplibre",
-                "--no-wait-ip",
-            ]
-            if a and a != "amd64":
-                parts += ["--arch", a]
-            if ssh_key:
-                parts += ["--ssh-key", ssh_key]
-            if install_branch:
-                # ERPLibre dépasse le minimum : +5 Go de disque (sinon il ne
-                # reste que ~97 Mo après l'installation). git/make sont posés
-                # par le bootstrap (pas via cloud-init, trop lent au boot).
-                bigger = (
-                    self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
-                )
-                parts += ["--disk-size", f"{bigger}G"]
-            parts.append("-y")
+            parts = self._qemu_build_deploy_parts(
+                d, v, a, name, eram, evcpus, disk,
+                ssh_key, install_branch, dry_run=False,
+            )
             jobs.append((name, parts))
 
         if jobs:
