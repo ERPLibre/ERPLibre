@@ -114,9 +114,10 @@ def _str_of(node) -> str | None:
     return None
 
 
-def _choice_labels(func) -> list:
-    """Libellés NUMÉROTÉS d'un menu « choices = [...] » (dans l'ordre, sections
-    exclues car non numérotées par fill_help_info)."""
+def _choice_entries(func) -> list:
+    """Entrées NUMÉROTÉES d'un menu « choices = [...] », dans l'ordre : chaque
+    commande est {« label », « section »}, la section étant le dernier marqueur
+    {"section": …} rencontré (fill_help_info ne numérote pas les sections)."""
     for node in ast.walk(func):
         if (
             isinstance(node, ast.Assign)
@@ -126,16 +127,23 @@ def _choice_labels(func) -> list:
             )
             and isinstance(node.value, ast.List)
         ):
-            labels = []
+            entries, section = [], None
             for el in node.value.elts:
                 if not isinstance(el, ast.Dict):
                     continue
+                d = {}
                 for k, v in zip(el.keys, el.values):
-                    if isinstance(k, ast.Constant) and k.value == "prompt_description":
-                        s = _str_of(v)
-                        if s:
-                            labels.append(s)
-            return labels
+                    if isinstance(k, ast.Constant):
+                        d[k.value] = _str_of(v)
+                if d.get("section"):
+                    section = d["section"]
+                    continue
+                lab = d.get("prompt_description") or d.get(
+                    "prompt_description_key"
+                )
+                if lab:
+                    entries.append({"label": lab, "section": section})
+            return entries
     return []
 
 
@@ -236,15 +244,20 @@ def build_code_tree(todo_path=None) -> dict | None:
         seen.add(method)
         func = methods[method]
         disp = _dispatch(func)
-        clabels = _choice_labels(func)
+        centries = _choice_entries(func)
         for num in sorted(disp):
             target, kwargs = disp[num]
             if target in labels:  # sous-menu
                 node["children"].append(build(target))
             else:  # commande (feuille) exécutable
+                entry = (
+                    centries[num - 1]
+                    if 0 <= num - 1 < len(centries)
+                    else None
+                )
                 lab = (
-                    clabels[num - 1]
-                    if 0 <= num - 1 < len(clabels)
+                    entry["label"]
+                    if entry
                     else target.lstrip("_").replace("_", " ")
                 )
                 node["children"].append(
@@ -254,6 +267,7 @@ def build_code_tree(todo_path=None) -> dict | None:
                         "children": [],
                         "method": target,
                         "kwargs": kwargs,
+                        "section": entry["section"] if entry else None,
                     }
                 )
         seen.discard(method)
@@ -480,6 +494,41 @@ def _fmt_uptime(secs):
 # Modes d'affichage du Kanban (F4 les fait défiler).
 KANBAN_MODES = ("columns", "swimlanes", "grid")
 
+# Les vues défilent avec F3 ; chaque vue affiche le NOM de la suivante.
+VIEWS = ("tree", "kanban", "list")
+VIEW_LABELS = {
+    "tree": "Arbre",
+    "kanban": "Kanban",
+    "list": "Liste",
+    "system": "Système",
+}
+
+
+def _disp(label: str) -> str:
+    """Libellé d'affichage d'une commande : passe par t() pour récupérer la
+    traduction ET l'icône (les valeurs i18n portent l'icône). Renvoie le
+    libellé inchangé s'il n'est pas une clé de traduction."""
+    return t(label) if label else label
+
+
+_SENTINEL = object()
+
+
+def _group_by_section(cmds):
+    """Itère les commandes en groupes (section, [cmds]) dans l'ordre, la
+    section pouvant être None (aucune)."""
+    groups, cur, bucket = [], _SENTINEL, []
+    for c in cmds:
+        sec = c.get("section")
+        if sec != cur:
+            if bucket:
+                groups.append((cur, bucket))
+            cur, bucket = sec, []
+        bucket.append(c)
+    if bucket:
+        groups.append((cur, bucket))
+    return groups
+
 
 def run_tui(run_app: bool = True, state: dict | None = None):
     """TUI de télémétrie : vue Arbre (issue du code) et vue Kanban (F3), la
@@ -523,9 +572,13 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         #summary { height: 1; color: $text-muted; }
         Tree { border: solid $accent; }
         #kanban { display: none; height: 1fr; }
+        #list { display: none; height: 1fr; }
         #system { display: none; height: 1fr; padding: 1 2; }
         .kcol { width: 40; border: solid $accent; margin: 0 1 0 0; }
         .ktitle { height: 1; color: $accent; }
+        .ksec { height: 1; color: $secondary; text-style: italic; }
+        .listmenu { height: 1; color: $accent; text-style: bold; }
+        .listsec { height: 1; color: $secondary; text-style: italic; }
         .lane { height: auto; }
         .lanetitle { height: 1; color: $secondary; }
         .kgrid { grid-size: 3; grid-gutter: 1; }
@@ -534,7 +587,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         BINDINGS = [
             ("q", "quit", "Quitter"),
             ("f2", "system", "Système"),
-            ("f3", "toggle_view", "Arbre/Kanban"),
+            ("f3", "toggle_view", "Vue"),
             ("f4", "kanban_layout", "Disposition Kanban"),
             ("e", "expand_all", "Tout déplier"),
             ("i", "install_sensors", "Installer capteurs"),
@@ -550,20 +603,59 @@ def run_tui(run_app: bool = True, state: dict | None = None):
 
         # -- helpers de construction de widgets ------------------------------ #
         def _col_widget(self, label, cnt, cmds):
-            items = [
-                CmdItem(
-                    f"· {c['label']}",
-                    c.get("method"),
-                    c.get("kwargs"),
-                    c.get("path"),
+            # Regroupe par section pour aider au choix ; icônes via _disp().
+            children = [Static(f"{label}  ({cnt})", classes="ktitle")]
+            for section, group in _group_by_section(cmds):
+                if section:
+                    children.append(
+                        Static(f"── {_disp(section)} ──", classes="ksec")
+                    )
+                children.append(
+                    ListView(
+                        *[
+                            CmdItem(
+                                f"· {_disp(c['label'])}",
+                                c.get("method"),
+                                c.get("kwargs"),
+                                c.get("path"),
+                            )
+                            for c in group
+                        ]
+                    )
                 )
-                for c in cmds
-            ]
-            return VerticalScroll(
-                Static(f"{label}  ({cnt})", classes="ktitle"),
-                ListView(*items),
-                classes="kcol",
-            )
+            return VerticalScroll(*children, classes="kcol")
+
+        def _list_view_widget(self):
+            # Vue Liste : tous les menus empilés verticalement, chaque menu
+            # avec ses sections et ses commandes (icônes), pour aider le choix.
+            blocks = []
+            for (label, path, cnt, cmds) in columns:
+                blocks.append(
+                    Static(f"▸ {path}  ({cnt})", classes="listmenu")
+                )
+                for section, group in _group_by_section(cmds):
+                    if section:
+                        blocks.append(
+                            Static(
+                                f"   ── {_disp(section)} ──", classes="listsec"
+                            )
+                        )
+                    blocks.append(
+                        ListView(
+                            *[
+                                CmdItem(
+                                    f"   · {_disp(c['label'])}",
+                                    c.get("method"),
+                                    c.get("kwargs"),
+                                    c.get("path"),
+                                )
+                                for c in group
+                            ]
+                        )
+                    )
+            if not blocks:
+                return Static(t("No command found."))
+            return VerticalScroll(*blocks)
 
         def _kanban_layout_widget(self):
             cols = [
@@ -604,6 +696,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             yield Static("", id="summary")
             yield Tree("📍 TODO", id="nav")
             yield Container(id="kanban")
+            yield Container(id="list")
             yield Static("", id="system")
             yield Footer()
 
@@ -619,11 +712,14 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         def _apply_visibility(self):
             self.query_one("#nav").display = self._mode == "tree"
             self.query_one("#kanban").display = self._mode == "kanban"
+            self.query_one("#list").display = self._mode == "list"
             self.query_one("#system").display = self._mode == "system"
 
         async def _restore(self):
             if self._mode == "kanban":
                 await self._enter_kanban()
+            elif self._mode == "list":
+                await self._enter_list()
             elif self._mode == "tree":
                 self._focus_tree_path(state.get("path"))
             self._apply_visibility()
@@ -634,6 +730,14 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             box = self.query_one("#kanban", Container)
             await box.remove_children()
             await box.mount(self._kanban_layout_widget())
+            self._apply_visibility()
+            self._focus_kanban_path(state.get("path"))
+
+        # -- vue Liste ------------------------------------------------------- #
+        async def _enter_list(self):
+            box = self.query_one("#list", Container)
+            await box.remove_children()
+            await box.mount(self._list_view_widget())
             self._apply_visibility()
             self._focus_kanban_path(state.get("path"))
 
@@ -667,15 +771,32 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 tree.move_cursor(node)
                 tree.scroll_to_node(node)
 
+        def _next_view(self):
+            cur = self._mode if self._mode in VIEWS else "tree"
+            return VIEWS[(VIEWS.index(cur) + 1) % len(VIEWS)]
+
+        def _update_f3_hint(self):
+            # Le footer F3 annonce la PROCHAINE vue (ex. « → Liste »).
+            nxt = VIEW_LABELS.get(self._next_view(), self._next_view())
+            try:
+                self.bind("f3", "toggle_view", description=f"→ {nxt}")
+                self.refresh_bindings()
+            except Exception:
+                pass
+
         def _update_summary(self):
             total = sum(paths.values())
             src = t("tree from code") if code_tree else t("visited paths only")
             extra = (
                 f" [{self._kanban_mode}]" if self._mode == "kanban" else ""
             )
+            cur_lbl = VIEW_LABELS.get(self._mode, self._mode)
+            nxt_lbl = VIEW_LABELS.get(self._next_view(), self._next_view())
+            self._update_f3_hint()
             self.query_one("#summary", Static).update(
                 f"  {total} {t('navigations')} · {len(paths)} {t('menus')} · "
-                f"{src} · {t('view')}: {self._mode}{extra} · "
+                f"{src} · {t('view')}: {cur_lbl}{extra} · "
+                f"F3 → {nxt_lbl} · "
                 f"{t('F2 system · F3/F4 views · Enter run')}"
             )
 
@@ -820,11 +941,14 @@ def run_tui(run_app: bool = True, state: dict | None = None):
 
         # -- actions --------------------------------------------------------- #
         async def action_toggle_view(self):
-            if self._mode == "tree":
-                self._mode = "kanban"
+            # Cycle Arbre -> Kanban -> Liste -> Arbre (depuis Système on
+            # revient dans le cycle sur la vue précédente).
+            cur = self._mode if self._mode in VIEWS else "tree"
+            self._mode = VIEWS[(VIEWS.index(cur) + 1) % len(VIEWS)]
+            if self._mode == "kanban":
                 await self._enter_kanban()
-            else:
-                self._mode = "tree"
+            elif self._mode == "list":
+                await self._enter_list()
             self._apply_visibility()
             self._update_summary()
 
