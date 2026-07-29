@@ -1278,6 +1278,14 @@ TRANSLATIONS = {
         "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
         "en": "(includes emulated architectures — some VMs are slow)",
     },
+    "install monitoring": {
+        "fr": "suivi d'installation",
+        "en": "install monitoring",
+    },
+    "completed": {
+        "fr": "terminées",
+        "en": "completed",
+    },
     "Waiting for the VM to start (boot + cloud-init)": {
         "fr": "En attente du démarrage de la VM (boot + cloud-init)",
         "en": "Waiting for the VM to start (boot + cloud-init)",

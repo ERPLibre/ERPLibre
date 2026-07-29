@@ -213,8 +213,24 @@ def run_monitor(manifest_path: str) -> None:
             self._selected = vms[0]["name"] if vms else None
             self._follow = True
             # Statuts TERMINAUX mémorisés : une VM finie n'est plus relue
-            # (réduit fortement l'I/O sur un gros parc).
+            # (réduit fortement l'I/O sur un gros parc). Valeur = (état, code,
+            # durée à la complétion).
             self._final = {}
+            # Cache des cellules AFFICHÉES : on n'appelle update_cell (donc on
+            # ne re-render) que si la valeur CHANGE -> plus de churn de rendu.
+            self._cells = {}
+
+        @staticmethod
+        def _fmt(secs):
+            mm, ss = divmod(int(secs), 60)
+            return f"{mm:02d}:{ss:02d}"
+
+        def _set_cell(self, table, name, col, value):
+            key = (name, col)
+            if self._cells.get(key) == value:
+                return
+            self._cells[key] = value
+            table.update_cell(name, col, value)
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -236,7 +252,10 @@ def run_monitor(manifest_path: str) -> None:
             yield Footer()
 
         def on_mount(self) -> None:
-            self.title = "ERPLibre — suivi d'installation"
+            # Le NOMBRE de VM figure dans le titre ; le sous-titre suit la
+            # progression (terminées / total + durée globale).
+            self.title = f"ERPLibre — {t('install monitoring')} ({len(vms)} VM)"
+            self.sub_title = f"0/{len(vms)} {t('completed')}"
             self._refresh_ssh()
             self._load_selected_log(reset=True)
             # Table toutes les 2 s (30 lectures de fin de log), suivi du log
@@ -285,24 +304,33 @@ def run_monitor(manifest_path: str) -> None:
             # ne doit pas tuer la boucle et figer l'interface.
             try:
                 table = self.query_one("#vms", DataTable)
+                now = time.time()
                 for vm in vms:
                     name = vm["name"]
                     if name in self._final:
                         continue  # déjà terminé -> plus aucune lecture
                     state, code = read_status(vm["log"])
-                    label = ICON[state]
-                    if state == "failed":
-                        label = f"❌ ({code})"
-                    elif state == "done":
-                        label = "✅"
-                    table.update_cell(name, "state", label)
-                    if state in ("running", "pending"):
-                        mm, ss = divmod(int(time.time() - started), 60)
-                        table.update_cell(
-                            name, "elapsed", f"{mm:02d}:{ss:02d}"
+                    if state in ("done", "failed"):
+                        # Fige la durée à la complétion (plus de churn ensuite).
+                        elapsed = now - started
+                        self._final[name] = (state, code, elapsed)
+                        lbl = "✅" if state == "done" else f"❌ ({code})"
+                        self._set_cell(table, name, "state", lbl)
+                        self._set_cell(
+                            table, name, "elapsed", self._fmt(elapsed)
                         )
                     else:
-                        self._final[name] = (state, code)
+                        # running/pending : icône stable -> _set_cell ne
+                        # re-render que si elle change (pas de churn). La durée
+                        # « live » est dans le sous-titre, pas répétée 16×.
+                        self._set_cell(table, name, "state", ICON[state])
+                # Sous-titre : compteur de VM terminées + durée globale (UNE
+                # seule mise à jour, au lieu de 16 cellules « Durée »).
+                done = len(self._final)
+                self.sub_title = (
+                    f"{done}/{len(vms)} {t('completed')} · "
+                    f"{self._fmt(now - started)}"
+                )
             except Exception:
                 pass
 
