@@ -974,10 +974,12 @@ def build_cloud_config(
         # disponible tout de suite, sans attendre le réseau). Tout est
         # « || true » : si l'installation échoue (réseau lent/absent), le boot
         # n'est pas bloqué. La plupart des images cloud l'incluent déjà.
-        "  - (command -v apt-get >/dev/null && apt-get install -y"
-        " qemu-guest-agent) || (command -v dnf >/dev/null && dnf install -y"
-        " qemu-guest-agent) || (command -v pacman >/dev/null && pacman -S"
-        " --noconfirm qemu-guest-agent) || true",
+        # timeout 300 : un miroir lent/absent ne doit JAMAIS bloquer cloud-init
+        # (sinon la VM reste « en attente de démarrage »). Non fatal (|| true).
+        "  - (command -v apt-get >/dev/null && timeout 300 apt-get install -y"
+        " qemu-guest-agent) || (command -v dnf >/dev/null && timeout 300 dnf"
+        " install -y qemu-guest-agent) || (command -v pacman >/dev/null &&"
+        " timeout 300 pacman -S --noconfirm qemu-guest-agent) || true",
         # Autorise guest-exec (bloqué par défaut sur certaines distros).
         # On VIDE la liste de blocage (block-rpcs/blacklist) plutôt que
         # d'utiliser allow-rpcs (liste BLANCHE : casserait les autres RPC).
@@ -986,7 +988,10 @@ def build_cloud_config(
         "  - mkdir -p /etc/qemu && printf '[general]\\nblock-rpcs=\\n"
         "blacklist=\\n' > /etc/qemu/qemu-ga.conf || true",
         # Fedora/RHEL bloquent guest-exec via /etc/sysconfig/qemu-ga.
-        "  - [ -f /etc/sysconfig/qemu-ga ] && sed -i"
+        # « test -f » et NON « [ -f … ] » : en YAML, «  - [ » démarre une
+        # séquence en flux -> user-data invalide -> cloud-init rejeté (aucun
+        # utilisateur créé, VM figée, login console impossible).
+        "  - test -f /etc/sysconfig/qemu-ga && sed -i"
         " 's/^BLACKLIST_RPC=.*/BLACKLIST_RPC=/'"
         " /etc/sysconfig/qemu-ga || true",
         "  - systemctl enable qemu-guest-agent 2>/dev/null"
