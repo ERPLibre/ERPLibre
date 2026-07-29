@@ -13,6 +13,7 @@ quitter le dashboard n'arrête rien, on peut le rouvrir pour ré-attacher.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shlex
@@ -175,6 +176,18 @@ def read_status(log_path: str) -> tuple[str, int | None]:
     return "running", None
 
 
+def _read_new(path: str, offset: int) -> tuple[str, int]:
+    """Lit le log à partir de `offset` (lecture incrémentale). Renvoie
+    (nouveau_texte, nouvel_offset). Bloquant -> à appeler dans un thread."""
+    try:
+        with open(path, "r", errors="replace") as fh:
+            fh.seek(offset)
+            data = fh.read()
+            return data, fh.tell()
+    except OSError:
+        return "", offset
+
+
 # --------------------------------------------------------------------------- #
 # Télémétrie, historique de durées (ETA), navigateur CLI
 # --------------------------------------------------------------------------- #
@@ -262,6 +275,44 @@ def cli_browser() -> str | None:
     for name in CLI_BROWSERS:
         if shutil.which(name):
             return name
+    return None
+
+
+def _os_id() -> str:
+    """ID de la distribution hôte (/etc/os-release), ex. « ubuntu », « fedora »."""
+    try:
+        for line in open("/etc/os-release", encoding="utf-8"):
+            if line.startswith("ID="):
+                return line.split("=", 1)[1].strip().strip('"').lower()
+    except OSError:
+        pass
+    return ""
+
+
+def browser_install_command() -> list | None:
+    """Commande d'installation d'un navigateur CLI (w3m, léger et présent
+    partout) adaptée à l'OS hôte : apt (Ubuntu/Debian), dnf (Fedora), pacman
+    (Arch). None si le gestionnaire est inconnu."""
+    apt = ["sudo", "apt-get", "install", "-y", "w3m"]
+    dnf = ["sudo", "dnf", "install", "-y", "w3m"]
+    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", "w3m"]
+    by_id = {
+        "ubuntu": apt,
+        "debian": apt,
+        "linuxmint": apt,
+        "fedora": dnf,
+        "arch": pac,
+    }
+    cmd = by_id.get(_os_id())
+    if cmd:
+        return cmd
+    # Repli : d'après le gestionnaire de paquets présent.
+    if shutil.which("apt-get"):
+        return apt
+    if shutil.which("dnf"):
+        return dnf
+    if shutil.which("pacman"):
+        return pac
     return None
 
 
@@ -391,7 +442,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # État libvirt (pause / effacée) : check LENT (appel virsh) toutes
             # les 10 s ; le tableau applique le cache à chaque tick (2 s).
             self.set_interval(10.0, self._tick_domstate)
-            self._tick_domstate()  # premier relevé immédiat
+            # Premier relevé domstate immédiat (async -> via worker).
+            self.run_worker(self._tick_domstate(), exclusive=False)
 
         # -- helpers -------------------------------------------------------- #
         def _vm_by_name(self, name):
@@ -408,6 +460,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 )
 
         def _load_selected_log(self, reset=False):
+            # Lecture SYNCHRONE (mount / changement de ligne). Le suivi périodique
+            # passe par _tick_log (async, I/O en thread).
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
@@ -415,37 +469,62 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if reset:
                 self._log.clear()
                 self._offsets[name] = 0
-            # Lecture INCRÉMENTALE (seek à l'offset) : on ne relit pas tout le
-            # fichier à chaque rafraîchissement.
-            try:
-                with open(vm["log"], "r", errors="replace") as fh:
-                    fh.seek(self._offsets.get(name, 0))
-                    new = fh.read()
-                    self._offsets[name] = fh.tell()
-            except OSError:
-                return
-            if new:
-                for line in new.splitlines():
-                    if EXIT_MARKER not in line:
-                        self._log.write(line)
+            new, off = _read_new(vm["log"], self._offsets.get(name, 0))
+            self._offsets[name] = off
+            for line in new.splitlines():
+                if EXIT_MARKER not in line:
+                    self._log.write(line)
 
-        def _tick_table(self):
-            # Protégé : une erreur I/O transitoire (disque plein, log effacé)
-            # ne doit pas tuer la boucle et figer l'interface.
+        def _collect_tele(self):
+            """(THREAD) chaîne de télémétrie hôte : CPU % + disque des images."""
+            try:
+                ncpu = os.cpu_count() or 1
+                load1 = os.getloadavg()[0]
+                du = shutil.disk_usage(self._disk_dir)
+                used_pct = int(du.used / du.total * 100) if du.total else 0
+                return (
+                    f"  ⚙ CPU {min(999, int(load1 / ncpu * 100))}% "
+                    f"(charge {load1:.1f}/{ncpu})   "
+                    f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
+                    f"{_fmt_size(du.total)} ({used_pct}%) · "
+                    f"libre {_fmt_size(du.free)}"
+                )
+            except Exception:
+                return ""
+
+        def _collect_table(self):
+            """(THREAD) statut + taille disque de chaque VM + télémétrie. AUCUNE
+            mise à jour d'UI ici : uniquement des I/O bloquantes déportées."""
+            disks, status = {}, {}
+            for vm in vms:
+                name = vm["name"]
+                disks[name] = _fmt_size(disk_actual_size(vm_disk_path(vm)))
+                if (
+                    name not in self._final
+                    and self._domstate.get(name) != "gone"
+                ):
+                    status[name] = read_status(vm["log"])
+            return disks, status, self._collect_tele()
+
+        async def _tick_table(self):
+            # I/O (lectures de logs, stat disque, /proc) DÉPORTÉES en thread ->
+            # la boucle d'événements Textual reste fluide même sous forte
+            # charge ou disque lent. Les mises à jour d'UI restent sur la boucle.
+            try:
+                disks, status, tele = await asyncio.to_thread(
+                    self._collect_table
+                )
+            except Exception:
+                return
             try:
                 table = self.query_one("#vms", DataTable)
                 now = time.time()
-                remaining = []  # ETA restant par VM en cours
+                remaining = []
                 for vm in vms:
                     name = vm["name"]
-                    # Disque réel du qcow2 (change lentement -> peu de churn).
-                    self._set_cell(
-                        table, name, "disk",
-                        _fmt_size(disk_actual_size(vm_disk_path(vm))),
-                    )
+                    self._set_cell(table, name, "disk", disks.get(name, "-"))
                     if name in self._final:
-                        continue  # déjà terminé -> plus de lecture de statut
-                    # VM EFFACÉE pendant le suivi -> état terminal « effacé ».
+                        continue
                     ds = self._domstate.get(name)
                     if ds == "gone":
                         self._final[name] = ("deleted", None, now - started)
@@ -453,9 +532,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                             table, name, "state", f"❌ {t('deleted')}"
                         )
                         continue
-                    state, code = read_status(vm["log"])
+                    st = status.get(name)
+                    if st is None:
+                        continue
+                    state, code = st
                     if state in ("done", "failed"):
-                        # Fige la durée + MÉMORISE pour l'ETA des prochaines.
                         elapsed = now - started
                         self._final[name] = (state, code, elapsed)
                         if state == "done":
@@ -467,67 +548,54 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                             table, name, "elapsed", self._fmt(elapsed)
                         )
                     elif ds == "paused":
-                        # VM EN PAUSE (virsh suspend) : l'install ne progresse
-                        # pas -> on l'indique (non terminal, peut reprendre).
                         self._set_cell(
                             table, name, "state", f"⏸ {t('paused')}"
                         )
                     else:
-                        # running/pending : icône stable -> pas de churn. ETA
-                        # = référence historique (par arch) - temps écoulé.
                         self._set_cell(table, name, "state", ICON[state])
                         ref = eta_reference(self._stats, vm.get("arch"))
                         if ref is not None:
                             remaining.append(max(0, ref - (now - started)))
-                # Sous-titre : compteur de VM terminées + durée globale.
                 done = len(self._final)
-                eta = ""
-                if remaining:
-                    # ETA du parc = la VM en cours la plus longue à finir.
-                    eta = f" · ETA ~{_fmt_secs(max(remaining))}"
+                eta = (
+                    f" · ETA ~{_fmt_secs(max(remaining))}" if remaining else ""
+                )
                 self.sub_title = (
                     f"{done}/{len(vms)} {t('completed')} · "
                     f"{self._fmt(now - started)}{eta}"
                 )
-                self._update_telemetry()
+                if tele:
+                    self.query_one("#telemetry", Static).update(tele)
             except Exception:
                 pass
 
-        def _update_telemetry(self):
-            """Barre de télémétrie hôte : CPU % (charge/CPU) + disque du
-            dossier des images (là où les qcow2 grossissent)."""
+        async def _tick_log(self):
+            if not self._follow:
+                return
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+            name = vm["name"]
             try:
-                ncpu = os.cpu_count() or 1
-                load1 = os.getloadavg()[0]
-                cpu_pct = min(999, int(load1 / ncpu * 100))
-                du = shutil.disk_usage(self._disk_dir)
-                used_pct = int(du.used / du.total * 100) if du.total else 0
-                txt = (
-                    f"  ⚙ CPU {cpu_pct}% (charge {load1:.1f}/{ncpu})   "
-                    f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
-                    f"{_fmt_size(du.total)} ({used_pct}%) · "
-                    f"libre {_fmt_size(du.free)}"
+                new, off = await asyncio.to_thread(
+                    _read_new, vm["log"], self._offsets.get(name, 0)
                 )
-                self.query_one("#telemetry", Static).update(txt)
             except Exception:
-                pass
+                return
+            self._offsets[name] = off
+            for line in new.splitlines():
+                if EXIT_MARKER not in line:
+                    self._log.write(line)
 
-        def _tick_log(self):
-            if self._follow:
-                try:
-                    self._load_selected_log()
-                except Exception:
-                    pass
-
-        def _tick_domstate(self):
-            # Relevé LENT de l'état libvirt : une VM absente de « virsh list »
-            # est EFFACÉE (« gone ») ; sinon on garde son état (paused, …).
+        async def _tick_domstate(self):
+            # Relevé LENT (subprocess virsh) DÉPORTÉ en thread : ne bloque plus
+            # la boucle. Une VM absente de « virsh list » est EFFACÉE (« gone »).
             try:
-                states = virsh_domstates()
-                for vm in vms:
-                    self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+                states = await asyncio.to_thread(virsh_domstates)
             except Exception:
-                pass
+                return
+            for vm in vms:
+                self._domstate[vm["name"]] = states.get(vm["name"], "gone")
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:
@@ -557,13 +625,36 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             browser = cli_browser()
             if not browser:
-                self.notify(
-                    "Aucun navigateur CLI trouvé. Installez-en un : "
-                    "w3m, lynx, links, elinks, browsh ou carbonyl.",
-                    title="Web",
-                    severity="warning",
-                )
-                return
+                # Aucun navigateur CLI : proposer de l'INSTALLER (commande
+                # adaptée à l'OS, affichée + validée avant exécution).
+                install = browser_install_command()
+                with self.suspend():
+                    if not install:
+                        print(
+                            "Aucun navigateur CLI et gestionnaire de paquets "
+                            "inconnu. Installez w3m/lynx/links/elinks/browsh."
+                        )
+                        input("Entrée pour revenir…")
+                    else:
+                        printable = " ".join(install)
+                        print(
+                            "Aucun navigateur CLI trouvé. Commande "
+                            "d'installation proposée :\n"
+                            f"  {printable}"
+                        )
+                        ans = input(
+                            "Installer maintenant ? (o/N) : "
+                        ).strip().lower()
+                        if ans in ("o", "oui", "y", "yes"):
+                            os.system(printable + " || true")
+                browser = cli_browser()
+                if not browser:
+                    self.notify(
+                        "Toujours aucun navigateur CLI disponible.",
+                        title="Web",
+                        severity="warning",
+                    )
+                    return
             url = f"http://{vm['ip']}:8069"
             with self.suspend():
                 os.system(f"{browser} {shlex.quote(url)} || true")
