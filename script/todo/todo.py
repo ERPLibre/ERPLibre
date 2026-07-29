@@ -578,13 +578,26 @@ class TODO:
         return header + t("Command:")
 
     def _todo_telemetry_tui(self):
-        """Ouvre le TUI arborescent de télémétrie de navigation."""
-        try:
-            from script.todo.todo_telemetry import run_tui
+        """Ouvre le TUI de télémétrie (arbre/Kanban). Si l'utilisateur choisit
+        une commande, on l'exécute au retour (hors du TUI)."""
+        from script.todo.todo_telemetry import run_tui
 
-            run_tui()
+        try:
+            action = run_tui()
         except ImportError:
             print(t("Install textual for the telemetry TUI (pip)."))
+            return
+        if not action:
+            return
+        method, kwargs = action
+        fn = getattr(self, method, None)
+        if not callable(fn):
+            print(f"{t('Command not found !')} ({method})")
+            return
+        try:
+            fn(**(kwargs or {}))
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
 
     def fill_help_info(self, choices):
         # Une entrée {"section": "..."} affiche un titre de section SANS

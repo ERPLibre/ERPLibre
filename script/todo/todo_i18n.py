@@ -1310,6 +1310,14 @@ TRANSLATIONS = {
         "fr": "chemins visités seulement",
         "en": "visited paths only",
     },
+    "Enter = run, F3 = view": {
+        "fr": "Entrée = exécuter, F3 = vue",
+        "en": "Enter = run, F3 = view",
+    },
+    "Command failed: ": {
+        "fr": "Échec de la commande : ",
+        "en": "Command failed: ",
+    },
     "Install textual for the telemetry TUI (pip).": {
         "fr": "Installez textual pour le TUI de télémétrie (pip).",
         "en": "Install textual for the telemetry TUI (pip).",

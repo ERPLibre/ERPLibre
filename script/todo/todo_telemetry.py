@@ -136,7 +136,9 @@ def _choice_labels(func) -> list:
 
 
 def _dispatch(func) -> dict:
-    """{numéro: nom_de_méthode} depuis les branches « status == "N": self.X() »."""
+    """{numéro: (nom_de_méthode, kwargs)} depuis « status == "N": self.X(...) ».
+    Les kwargs LITTÉRAUX (ex. dry_run=True) sont capturés pour pouvoir rejouer
+    la commande à l'identique depuis la télémétrie."""
     out = {}
     for node in ast.walk(func):
         if not isinstance(node, ast.If):
@@ -155,6 +157,7 @@ def _dispatch(func) -> dict:
             except (TypeError, ValueError):
                 continue
             for stmt in node.body:
+                found = None
                 for n in ast.walk(stmt):
                     if (
                         isinstance(n, ast.Call)
@@ -162,9 +165,16 @@ def _dispatch(func) -> dict:
                         and isinstance(n.func.value, ast.Name)
                         and n.func.value.id == "self"
                     ):
-                        out[num] = n.func.attr
+                        kwargs = {
+                            kw.arg: kw.value.value
+                            for kw in n.keywords
+                            if kw.arg
+                            and isinstance(kw.value, ast.Constant)
+                        }
+                        found = (n.func.attr, kwargs)
                         break
-                if num in out:
+                if found:
+                    out[num] = found
                     break
     return out
 
@@ -224,17 +234,23 @@ def build_code_tree(todo_path=None) -> dict | None:
         disp = _dispatch(func)
         clabels = _choice_labels(func)
         for num in sorted(disp):
-            target = disp[num]
+            target, kwargs = disp[num]
             if target in labels:  # sous-menu
                 node["children"].append(build(target))
-            else:  # commande (feuille)
+            else:  # commande (feuille) exécutable
                 lab = (
                     clabels[num - 1]
                     if 0 <= num - 1 < len(clabels)
                     else target.lstrip("_").replace("_", " ")
                 )
                 node["children"].append(
-                    {"label": lab, "is_menu": False, "children": []}
+                    {
+                        "label": lab,
+                        "is_menu": False,
+                        "children": [],
+                        "method": target,
+                        "kwargs": kwargs,
+                    }
                 )
         seen.discard(method)
         return node
@@ -242,69 +258,136 @@ def build_code_tree(todo_path=None) -> dict | None:
     return build("run")
 
 
+def _command_columns(tree, paths):
+    """Colonnes du Kanban : (label, chemin, count, [commandes]) pour CHAQUE
+    menu qui contient des commandes directes (parcours profondeur d'abord)."""
+    cols = []
+
+    def walk(node, path):
+        cmds = [c for c in node["children"] if not c["is_menu"]]
+        if cmds:
+            cols.append((node["label"], path, paths.get(path, 0), cmds))
+        for c in node["children"]:
+            if c["is_menu"]:
+                walk(c, f"{path} › {c['label']}")
+
+    if tree:
+        walk(tree, "TODO")
+    return cols
+
+
 def run_tui(run_app: bool = True):
-    """Ouvre le TUI arborescent. `run_app=False` renvoie l'app (tests)."""
+    """TUI de télémétrie : arbre (issu du code) + vue Kanban (F3), sélection
+    d'une commande = exécution. Renvoie (méthode, kwargs) à exécuter, ou None.
+    `run_app=False` renvoie l'app (tests)."""
     from textual.app import App, ComposeResult
-    from textual.widgets import Footer, Header, Static, Tree
+    from textual.containers import HorizontalScroll, VerticalScroll
+    from textual.widgets import (
+        Footer,
+        Header,
+        Label,
+        ListItem,
+        ListView,
+        Static,
+        Tree,
+    )
+
+    paths = load().get("paths", {})
+    code_tree = build_code_tree()
+
+    class CmdItem(ListItem):
+        """Carte Kanban portant la commande à exécuter."""
+
+        def __init__(self, label, method, kwargs):
+            super().__init__(Label(label))
+            self.cmd_method = method
+            self.cmd_kwargs = kwargs or {}
 
     class Telemetry(App):
         CSS = """
         #summary { height: 1; color: $text-muted; }
         Tree { border: solid $accent; }
+        #kanban { display: none; height: 1fr; }
+        .kcol { width: 40; border: solid $accent; margin: 0 1 0 0; }
+        .ktitle { height: 1; color: $accent; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter"),
-            ("r", "reset", "Réinitialiser"),
+            ("f3", "toggle_view", "Vue arbre/Kanban"),
             ("e", "expand_all", "Tout déplier"),
+            ("r", "reset", "Réinitialiser"),
         ]
+
+        def __init__(self):
+            super().__init__()
+            self._action = None
+            self._mode = "tree"
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
             yield Static("", id="summary")
             yield Tree("📍 TODO", id="nav")
+            with HorizontalScroll(id="kanban"):
+                for label, _path, cnt, cmds in _command_columns(
+                    code_tree, paths
+                ):
+                    with VerticalScroll(classes="kcol"):
+                        yield Static(f"{label}  ({cnt})", classes="ktitle")
+                        yield ListView(
+                            *[
+                                CmdItem(
+                                    f"· {c['label']}",
+                                    c.get("method"),
+                                    c.get("kwargs"),
+                                )
+                                for c in cmds
+                            ]
+                        )
             yield Footer()
 
         def on_mount(self):
             self.title = t("TODO navigation telemetry")
-            self._populate()
+            self._populate_tree()
+            self._update_summary()
 
-        def _populate(self):
-            data = load()
-            paths = data.get("paths", {})
+        def _update_summary(self):
             total = sum(paths.values())
+            src = t("tree from code") if code_tree else t("visited paths only")
+            self.query_one("#summary", Static).update(
+                f"  {total} {t('navigations')} · {len(paths)} {t('menus')} · "
+                f"{src} · {t('Enter = run, F3 = view')}"
+            )
+
+        def _populate_tree(self):
             tree = self.query_one("#nav", Tree)
             tree.clear()
-            code_tree = build_code_tree()
             if code_tree is not None:
-                # Structure RÉELLE issue du code + compteurs de visites.
-                cnt = paths.get("TODO", 0)
-                tree.root.set_label(f"📍 TODO  ({cnt})")
-                self._add_code(tree.root, code_tree["children"], "TODO", paths)
-                src = t("tree from code")
+                tree.root.set_label(f"📍 TODO  ({paths.get('TODO', 0)})")
+                self._add_code(tree.root, code_tree["children"], "TODO")
             else:
-                # Repli : arbre des seuls chemins visités.
                 nested = _nested(paths)
                 todo = nested.get("TODO", {"count": 0, "children": nested})
                 tree.root.set_label(f"📍 TODO  ({todo['count']})")
                 self._add_visited(tree.root, todo["children"])
-                src = t("visited paths only")
             tree.root.expand()
-            self.query_one("#summary", Static).update(
-                f"  {total} {t('navigations')} · {len(paths)} "
-                f"{t('menus')} · {src}"
-            )
 
-        def _add_code(self, tnode, children, parent_path, paths):
-            """Nœuds depuis le code : menus (avec compteur de visites) et
-            commandes (feuilles préfixées « · »)."""
+        def _add_code(self, tnode, children, parent_path):
             for c in children:
                 if c["is_menu"]:
                     path = f"{parent_path} › {c['label']}"
-                    cnt = paths.get(path, 0)
-                    child = tnode.add(f"{c['label']}  ({cnt})", expand=True)
-                    self._add_code(child, c["children"], path, paths)
+                    child = tnode.add(
+                        f"{c['label']}  ({paths.get(path, 0)})", expand=True
+                    )
+                    self._add_code(child, c["children"], path)
                 else:
-                    tnode.add_leaf(f"· {c['label']}")
+                    # Feuille EXÉCUTABLE : la méthode est portée en data.
+                    tnode.add_leaf(
+                        f"· {c['label']}",
+                        data={
+                            "method": c.get("method"),
+                            "kwargs": c.get("kwargs"),
+                        },
+                    )
 
         def _add_visited(self, tnode, children):
             for name, node in sorted(
@@ -313,15 +396,40 @@ def run_tui(run_app: bool = True):
                 child = tnode.add(f"{name}  ({node['count']})", expand=True)
                 self._add_visited(child, node["children"])
 
-        def action_reset(self):
-            reset()
-            self._populate()
-            self.notify(t("Telemetry reset."))
+        def _run(self, method, kwargs):
+            if not method:
+                return
+            self._action = (method, kwargs or {})
+            self.exit()
+
+        def on_tree_node_selected(self, event):
+            data = getattr(event.node, "data", None)
+            if isinstance(data, dict) and data.get("method"):
+                self._run(data["method"], data.get("kwargs"))
+
+        def on_list_view_selected(self, event):
+            if isinstance(event.item, CmdItem):
+                self._run(event.item.cmd_method, event.item.cmd_kwargs)
+
+        def action_toggle_view(self):
+            self._mode = "kanban" if self._mode == "tree" else "tree"
+            self.query_one("#nav").display = self._mode == "tree"
+            self.query_one("#kanban").display = self._mode == "kanban"
+            self._update_summary()
 
         def action_expand_all(self):
-            self.query_one("#nav", Tree).root.expand_all()
+            if self._mode == "tree":
+                self.query_one("#nav", Tree).root.expand_all()
+
+        def action_reset(self):
+            reset()
+            paths.clear()
+            self._populate_tree()
+            self._update_summary()
+            self.notify(t("Telemetry reset."))
 
     app = Telemetry()
     if run_app:
         app.run()
+        return app._action
     return app
