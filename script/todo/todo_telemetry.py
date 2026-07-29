@@ -276,12 +276,23 @@ def _command_columns(tree, paths):
     return cols
 
 
-def run_tui(run_app: bool = True):
-    """TUI de télémétrie : arbre (issu du code) + vue Kanban (F3), sélection
-    d'une commande = exécution. Renvoie (méthode, kwargs) à exécuter, ou None.
-    `run_app=False` renvoie l'app (tests)."""
+# Modes d'affichage du Kanban (F4 les fait défiler).
+KANBAN_MODES = ("columns", "swimlanes", "grid")
+
+
+def run_tui(run_app: bool = True, state: dict | None = None):
+    """TUI de télémétrie : vue Arbre (issue du code) et vue Kanban (F3), la
+    disposition du Kanban défilant par F4 (colonnes / swimlanes / grille).
+    Sélectionner une COMMANDE = l'exécuter. `state` restaure la vue + le
+    curseur au retour. Renvoie (action|None, state) ; run_app=False -> l'app."""
     from textual.app import App, ComposeResult
-    from textual.containers import HorizontalScroll, VerticalScroll
+    from textual.containers import (
+        Container,
+        Grid,
+        HorizontalScroll,
+        Vertical,
+        VerticalScroll,
+    )
     from textual.widgets import (
         Footer,
         Header,
@@ -294,14 +305,17 @@ def run_tui(run_app: bool = True):
 
     paths = load().get("paths", {})
     code_tree = build_code_tree()
+    columns = _command_columns(code_tree, paths)  # (label, path, cnt, cmds)
+    state = state or {}
 
     class CmdItem(ListItem):
-        """Carte Kanban portant la commande à exécuter."""
+        """Carte : commande à exécuter + son chemin (pour restaurer le curseur)."""
 
-        def __init__(self, label, method, kwargs):
+        def __init__(self, label, method, kwargs, path):
             super().__init__(Label(label))
             self.cmd_method = method
             self.cmd_kwargs = kwargs or {}
+            self.cmd_path = path
 
     class Telemetry(App):
         CSS = """
@@ -310,10 +324,14 @@ def run_tui(run_app: bool = True):
         #kanban { display: none; height: 1fr; }
         .kcol { width: 40; border: solid $accent; margin: 0 1 0 0; }
         .ktitle { height: 1; color: $accent; }
+        .lane { height: auto; }
+        .lanetitle { height: 1; color: $secondary; }
+        .kgrid { grid-size: 3; grid-gutter: 1; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter"),
-            ("f3", "toggle_view", "Vue arbre/Kanban"),
+            ("f3", "toggle_view", "Arbre/Kanban"),
+            ("f4", "kanban_layout", "Disposition Kanban"),
             ("e", "expand_all", "Tout déplier"),
             ("r", "reset", "Réinitialiser"),
         ]
@@ -321,47 +339,139 @@ def run_tui(run_app: bool = True):
         def __init__(self):
             super().__init__()
             self._action = None
-            self._mode = "tree"
+            self._mode = state.get("mode", "tree")
+            self._kanban_mode = state.get("kanban_mode", "columns")
+
+        # -- helpers de construction de widgets ------------------------------ #
+        def _col_widget(self, label, cnt, cmds):
+            items = [
+                CmdItem(
+                    f"· {c['label']}",
+                    c.get("method"),
+                    c.get("kwargs"),
+                    c.get("path"),
+                )
+                for c in cmds
+            ]
+            return VerticalScroll(
+                Static(f"{label}  ({cnt})", classes="ktitle"),
+                ListView(*items),
+                classes="kcol",
+            )
+
+        def _kanban_layout_widget(self):
+            cols = [
+                self._col_widget(label, cnt, cmds)
+                for (label, _p, cnt, cmds) in columns
+            ]
+            if not cols:
+                return Static(t("No command found."))
+            if self._kanban_mode == "grid":
+                return Grid(*cols, classes="kgrid")
+            if self._kanban_mode == "swimlanes":
+                # Une rangée (swimlane) par menu de NIVEAU 1 (Execute, …).
+                groups, order = {}, []
+                for (label, path, cnt, cmds) in columns:
+                    parts = path.split(" › ")
+                    g = parts[1] if len(parts) > 1 else "TODO"
+                    if g not in groups:
+                        groups[g] = []
+                        order.append(g)
+                    groups[g].append((label, cnt, cmds))
+                lanes = []
+                for g in order:
+                    lane_cols = [
+                        self._col_widget(lb, cn, cm) for (lb, cn, cm) in groups[g]
+                    ]
+                    lanes.append(
+                        Vertical(
+                            Static(f"━━ {g} ━━", classes="lanetitle"),
+                            HorizontalScroll(*lane_cols),
+                            classes="lane",
+                        )
+                    )
+                return VerticalScroll(*lanes)
+            return HorizontalScroll(*cols)  # columns
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
             yield Static("", id="summary")
             yield Tree("📍 TODO", id="nav")
-            with HorizontalScroll(id="kanban"):
-                for label, _path, cnt, cmds in _command_columns(
-                    code_tree, paths
-                ):
-                    with VerticalScroll(classes="kcol"):
-                        yield Static(f"{label}  ({cnt})", classes="ktitle")
-                        yield ListView(
-                            *[
-                                CmdItem(
-                                    f"· {c['label']}",
-                                    c.get("method"),
-                                    c.get("kwargs"),
-                                )
-                                for c in cmds
-                            ]
-                        )
+            yield Container(id="kanban")
             yield Footer()
 
         def on_mount(self):
             self.title = t("TODO navigation telemetry")
             self._populate_tree()
             self._update_summary()
+            # Restaure la vue / la disposition / le curseur au retour.
+            self.run_worker(self._restore())
+
+        async def _restore(self):
+            if self._mode == "kanban":
+                await self._enter_kanban()
+            else:
+                self.query_one("#nav").display = True
+                self.query_one("#kanban").display = False
+                self._focus_tree_path(state.get("path"))
+            self._update_summary()
+
+        # -- vue Kanban ------------------------------------------------------ #
+        async def _enter_kanban(self):
+            box = self.query_one("#kanban", Container)
+            await box.remove_children()
+            await box.mount(self._kanban_layout_widget())
+            self.query_one("#nav").display = False
+            box.display = True
+            self._focus_kanban_path(state.get("path"))
+
+        def _focus_kanban_path(self, path):
+            if not path:
+                return
+            for lv in self.query(ListView):
+                for i, item in enumerate(lv.children):
+                    if getattr(item, "cmd_path", None) == path:
+                        lv.index = i
+                        lv.focus()
+                        return
+
+        def _focus_tree_path(self, path):
+            if not path:
+                return
+            tree = self.query_one("#nav", Tree)
+
+            def walk(node):
+                d = getattr(node, "data", None)
+                if isinstance(d, dict) and d.get("path") == path:
+                    return node
+                for ch in node.children:
+                    found = walk(ch)
+                    if found:
+                        return found
+                return None
+
+            node = walk(tree.root)
+            if node is not None:
+                tree.move_cursor(node)
+                tree.scroll_to_node(node)
 
         def _update_summary(self):
             total = sum(paths.values())
             src = t("tree from code") if code_tree else t("visited paths only")
+            extra = (
+                f" [{self._kanban_mode}]" if self._mode == "kanban" else ""
+            )
             self.query_one("#summary", Static).update(
                 f"  {total} {t('navigations')} · {len(paths)} {t('menus')} · "
-                f"{src} · {t('Enter = run, F3 = view')}"
+                f"{src} · {t('view')}: {self._mode}{extra} · "
+                f"{t('Enter = run, F3/F4 = views')}"
             )
 
         def _populate_tree(self):
             tree = self.query_one("#nav", Tree)
             tree.clear()
             if code_tree is not None:
+                tree.root.data = {"path": "TODO"}
                 tree.root.set_label(f"📍 TODO  ({paths.get('TODO', 0)})")
                 self._add_code(tree.root, code_tree["children"], "TODO")
             else:
@@ -373,19 +483,22 @@ def run_tui(run_app: bool = True):
 
         def _add_code(self, tnode, children, parent_path):
             for c in children:
+                path = f"{parent_path} › {c['label']}"
                 if c["is_menu"]:
-                    path = f"{parent_path} › {c['label']}"
                     child = tnode.add(
-                        f"{c['label']}  ({paths.get(path, 0)})", expand=True
+                        f"{c['label']}  ({paths.get(path, 0)})",
+                        data={"path": path},
+                        expand=True,
                     )
                     self._add_code(child, c["children"], path)
                 else:
-                    # Feuille EXÉCUTABLE : la méthode est portée en data.
+                    # Feuille EXÉCUTABLE : méthode + chemin portés en data.
                     tnode.add_leaf(
                         f"· {c['label']}",
                         data={
                             "method": c.get("method"),
                             "kwargs": c.get("kwargs"),
+                            "path": path,
                         },
                     )
 
@@ -396,25 +509,48 @@ def run_tui(run_app: bool = True):
                 child = tnode.add(f"{name}  ({node['count']})", expand=True)
                 self._add_visited(child, node["children"])
 
-        def _run(self, method, kwargs):
+        # -- sélection / exécution ------------------------------------------- #
+        def _run(self, method, kwargs, path):
             if not method:
                 return
             self._action = (method, kwargs or {})
+            self._exit_state = {
+                "mode": self._mode,
+                "kanban_mode": self._kanban_mode,
+                "path": path,
+            }
             self.exit()
 
         def on_tree_node_selected(self, event):
-            data = getattr(event.node, "data", None)
-            if isinstance(data, dict) and data.get("method"):
-                self._run(data["method"], data.get("kwargs"))
+            d = getattr(event.node, "data", None)
+            if isinstance(d, dict) and d.get("method"):
+                self._run(d["method"], d.get("kwargs"), d.get("path"))
 
         def on_list_view_selected(self, event):
             if isinstance(event.item, CmdItem):
-                self._run(event.item.cmd_method, event.item.cmd_kwargs)
+                self._run(
+                    event.item.cmd_method,
+                    event.item.cmd_kwargs,
+                    event.item.cmd_path,
+                )
 
-        def action_toggle_view(self):
-            self._mode = "kanban" if self._mode == "tree" else "tree"
-            self.query_one("#nav").display = self._mode == "tree"
-            self.query_one("#kanban").display = self._mode == "kanban"
+        # -- actions --------------------------------------------------------- #
+        async def action_toggle_view(self):
+            if self._mode == "tree":
+                self._mode = "kanban"
+                await self._enter_kanban()
+            else:
+                self._mode = "tree"
+                self.query_one("#kanban").display = False
+                self.query_one("#nav").display = True
+            self._update_summary()
+
+        async def action_kanban_layout(self):
+            if self._mode != "kanban":
+                return
+            i = KANBAN_MODES.index(self._kanban_mode)
+            self._kanban_mode = KANBAN_MODES[(i + 1) % len(KANBAN_MODES)]
+            await self._enter_kanban()
             self._update_summary()
 
         def action_expand_all(self):
@@ -429,7 +565,8 @@ def run_tui(run_app: bool = True):
             self.notify(t("Telemetry reset."))
 
     app = Telemetry()
+    app._exit_state = state
     if run_app:
         app.run()
-        return app._action
+        return app._action, getattr(app, "_exit_state", state)
     return app

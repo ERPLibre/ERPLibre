@@ -1314,6 +1314,22 @@ TRANSLATIONS = {
         "fr": "Entrée = exécuter, F3 = vue",
         "en": "Enter = run, F3 = view",
     },
+    "Enter = run, F3/F4 = views": {
+        "fr": "Entrée = exécuter, F3/F4 = vues",
+        "en": "Enter = run, F3/F4 = views",
+    },
+    "view": {
+        "fr": "vue",
+        "en": "view",
+    },
+    "No command found.": {
+        "fr": "Aucune commande trouvée.",
+        "en": "No command found.",
+    },
+    "Back to telemetry (r) or quit (Enter)? ": {
+        "fr": "Revenir à la télémétrie (r) ou quitter (Entrée) ? ",
+        "en": "Back to telemetry (r) or quit (Enter)? ",
+    },
     "Command failed: ": {
         "fr": "Échec de la commande : ",
         "en": "Command failed: ",

@@ -578,26 +578,38 @@ class TODO:
         return header + t("Command:")
 
     def _todo_telemetry_tui(self):
-        """Ouvre le TUI de télémétrie (arbre/Kanban). Si l'utilisateur choisit
-        une commande, on l'exécute au retour (hors du TUI)."""
+        """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
+        exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
+        et la position du curseur sont restaurés) ou de quitter."""
         from script.todo.todo_telemetry import run_tui
 
-        try:
-            action = run_tui()
-        except ImportError:
-            print(t("Install textual for the telemetry TUI (pip)."))
-            return
-        if not action:
-            return
-        method, kwargs = action
-        fn = getattr(self, method, None)
-        if not callable(fn):
-            print(f"{t('Command not found !')} ({method})")
-            return
-        try:
-            fn(**(kwargs or {}))
-        except Exception as exc:
-            print(f"{t('Command failed: ')}{exc}")
+        state = None
+        while True:
+            try:
+                result = run_tui(state=state)
+            except ImportError:
+                print(t("Install textual for the telemetry TUI (pip)."))
+                return
+            if not result:
+                return
+            action, state = result
+            if not action:
+                return  # quitté sans choisir de commande
+            method, kwargs = action
+            fn = getattr(self, method, None)
+            if not callable(fn):
+                print(f"{t('Command not found !')} ({method})")
+            else:
+                try:
+                    fn(**(kwargs or {}))
+                except Exception as exc:
+                    print(f"{t('Command failed: ')}{exc}")
+            # Revenir (curseur restauré) ou quitter ?
+            ans = input(
+                f"\n{t('Back to telemetry (r) or quit (Enter)? ')}"
+            )
+            if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
+                return
 
     def fill_help_info(self, choices):
         # Une entrée {"section": "..."} affiche un titre de section SANS
