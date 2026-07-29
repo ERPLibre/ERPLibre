@@ -974,12 +974,15 @@ def build_cloud_config(
         # disponible tout de suite, sans attendre le réseau). Tout est
         # « || true » : si l'installation échoue (réseau lent/absent), le boot
         # n'est pas bloqué. La plupart des images cloud l'incluent déjà.
-        # timeout 300 : un miroir lent/absent ne doit JAMAIS bloquer cloud-init
-        # (sinon la VM reste « en attente de démarrage »). Non fatal (|| true).
-        "  - (command -v apt-get >/dev/null && timeout 300 apt-get install -y"
-        " qemu-guest-agent) || (command -v dnf >/dev/null && timeout 300 dnf"
-        " install -y qemu-guest-agent) || (command -v pacman >/dev/null &&"
-        " timeout 300 pacman -S --noconfirm qemu-guest-agent) || true",
+        # Rafraîchit d'abord l'index (les images cloud n'ont PAS de listes apt
+        # -> sinon « Unable to locate package »), puis installe. timeout : un
+        # miroir lent ne bloque JAMAIS cloud-init. Non fatal (|| true).
+        # Sous-shell ( ) et NON accolades { } : « { » est un indicateur YAML.
+        "  - (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
+        " || true; timeout 300 apt-get install -y qemu-guest-agent)) ||"
+        " (command -v dnf >/dev/null && timeout 300 dnf install -y"
+        " qemu-guest-agent) || (command -v pacman >/dev/null && timeout 300"
+        " pacman -Sy --noconfirm qemu-guest-agent) || true",
         # Autorise guest-exec (bloqué par défaut sur certaines distros).
         # On VIDE la liste de blocage (block-rpcs/blacklist) plutôt que
         # d'utiliser allow-rpcs (liste BLANCHE : casserait les autres RPC).
