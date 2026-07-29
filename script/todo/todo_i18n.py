@@ -1322,6 +1322,14 @@ TRANSLATIONS = {
         "fr": "vue",
         "en": "view",
     },
+    "avg": {
+        "fr": "moy",
+        "en": "avg",
+    },
+    "Last install:": {
+        "fr": "Dernière install :",
+        "en": "Last install:",
+    },
     "No command found.": {
         "fr": "Aucune commande trouvée.",
         "en": "No command found.",

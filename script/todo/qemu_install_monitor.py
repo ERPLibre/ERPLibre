@@ -192,8 +192,14 @@ def _read_new(path: str, offset: int) -> tuple[str, int]:
 # Télémétrie, historique de durées (ETA), navigateur CLI
 # --------------------------------------------------------------------------- #
 def _stats_path() -> Path:
-    """Fichier d'historique persistant (durées d'installation par arch)."""
-    return session_dir() / "stats.json"
+    """Fichier d'historique persistant des installations. DÉDIÉ dans
+    .venv.erplibre du dépôt (repli sur ~/.erplibre si le venv est absent)."""
+    try:
+        venv = Path(__file__).resolve().parents[2] / ".venv.erplibre"
+        venv.mkdir(parents=True, exist_ok=True)
+        return venv / "qemu_install_stats.json"
+    except OSError:
+        return session_dir() / "stats.json"
 
 
 def load_stats() -> dict:
@@ -203,32 +209,66 @@ def load_stats() -> dict:
         return {}
 
 
-def record_duration(arch: str, secs: float) -> None:
-    """Mémorise la durée d'une install (par architecture) pour estimer l'ETA
-    des prochaines. On garde les 20 dernières valeurs par arch."""
+def record_duration(distro, version, arch, secs) -> None:
+    """Enregistre une install (distro + version + archi + durée + horodatage)
+    dans l'historique, pour l'ETA et les moyennes par archi/distro. Garde les
+    500 derniers runs."""
     data = load_stats()
-    durations = data.setdefault("durations", {})
-    key = arch or "unknown"
-    lst = durations.setdefault(key, [])
-    lst.append(int(secs))
-    durations[key] = lst[-20:]
+    runs = data.setdefault("runs", [])
+    runs.append(
+        {
+            "distro": distro or "?",
+            "version": version or "?",
+            "arch": arch or "?",
+            "seconds": int(secs),
+            "ts": int(time.time()),
+        }
+    )
+    data["runs"] = runs[-500:]
     try:
-        _stats_path().write_text(json.dumps(data))
+        _stats_path().write_text(json.dumps(data, ensure_ascii=False))
     except OSError:
         pass
 
 
-def eta_reference(stats: dict, arch: str) -> int | None:
-    """Durée d'install de RÉFÉRENCE (médiane) pour cette arch, d'après
-    l'historique ; repli sur toutes archis confondues. None si aucun historique."""
-    durations = stats.get("durations", {}) or {}
-    lst = durations.get(arch or "unknown") or []
-    if not lst:
-        lst = [x for v in durations.values() for x in v]
-    if not lst:
+def _runs(stats=None):
+    return (stats or load_stats()).get("runs", []) or []
+
+
+def eta_reference(stats, arch):
+    """Durée d'install de RÉFÉRENCE (médiane) pour cette archi ; repli toutes
+    archis confondues. None si aucun historique."""
+    runs = _runs(stats)
+    secs = [r["seconds"] for r in runs if r.get("arch") == arch]
+    if not secs:
+        secs = [r["seconds"] for r in runs]
+    if not secs:
         return None
-    s = sorted(lst)
+    s = sorted(secs)
     return s[len(s) // 2]
+
+
+def _avg(field, value, stats=None):
+    secs = [r["seconds"] for r in _runs(stats) if r.get(field) == value]
+    return (sum(secs) / len(secs)) if secs else None
+
+
+def avg_by_arch(arch, stats=None):
+    """(moyenne_secondes, nb_runs) pour cette archi, ou (None, 0)."""
+    secs = [r["seconds"] for r in _runs(stats) if r.get("arch") == arch]
+    return (sum(secs) / len(secs), len(secs)) if secs else (None, 0)
+
+
+def avg_by_distro(distro, stats=None):
+    """(moyenne_secondes, nb_runs) pour cette distro, ou (None, 0)."""
+    secs = [r["seconds"] for r in _runs(stats) if r.get("distro") == distro]
+    return (sum(secs) / len(secs), len(secs)) if secs else (None, 0)
+
+
+def last_run(stats=None):
+    """Dernier run enregistré (dict) ou None."""
+    runs = _runs(stats)
+    return runs[-1] if runs else None
 
 
 def _fmt_size(nbytes) -> str:
@@ -540,7 +580,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         elapsed = now - started
                         self._final[name] = (state, code, elapsed)
                         if state == "done":
-                            record_duration(vm.get("arch"), elapsed)
+                            record_duration(
+                                vm.get("distro"),
+                                vm.get("version"),
+                                vm.get("arch"),
+                                elapsed,
+                            )
                             self._stats = load_stats()
                         lbl = "✅" if state == "done" else f"❌ ({code})"
                         self._set_cell(table, name, "state", lbl)

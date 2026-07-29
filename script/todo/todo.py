@@ -947,6 +947,37 @@ class TODO:
             return self._QEMU_ARM64_DISTROS
         return None
 
+    def _qemu_last_run_line(self):
+        """Ligne « dernière install » (distro version [arch] en durée), depuis
+        l'historique (.venv.erplibre) ; '' si aucune donnée."""
+        try:
+            from script.todo import qemu_install_monitor as mon
+
+            r = mon.last_run()
+            if r:
+                return (
+                    f"  ℹ {t('Last install:')} {r.get('distro')} "
+                    f"{r.get('version')} [{r.get('arch')}] — "
+                    f"{mon._fmt_secs(r.get('seconds', 0))}"
+                )
+        except Exception:
+            pass
+        return ""
+
+    def _qemu_stat_avg(self, field, value):
+        """Suffixe « · ~5m moy (3) » : durée d'install MOYENNE historique pour
+        cette archi/distro (fichier .venv.erplibre), ou '' si aucune donnée."""
+        try:
+            from script.todo import qemu_install_monitor as mon
+
+            fn = mon.avg_by_arch if field == "arch" else mon.avg_by_distro
+            secs, n = fn(value)
+            if secs:
+                return f"  · ~{mon._fmt_secs(secs)} {t('avg')} ({n})"
+        except Exception:
+            pass
+        return ""
+
     def _qemu_ask_arch(self, opts, native, allow_all=False):
         """Affiche les architectures `opts` (natif marqué d'un *) et renvoie le
         choix. Si `allow_all`, propose aussi [all] = toutes les archis (renvoie
@@ -963,7 +994,7 @@ class TODO:
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:
                 label += f"  ({t('emulated, slow')})"
-            print(f"  [{i}] {label}")
+            print(f"  [{i}] {label}{self._qemu_stat_avg('arch', a)}")
         if allow_all:
             print(f"  [all] {t('All supported architectures')}")
         sel = (
@@ -2408,6 +2439,10 @@ class TODO:
             print(f"{t('Cannot load QEMU catalog: ')}{exc}")
             return
         distros = list(mod.DISTROS)
+        # Rappel de la dernière installation enregistrée (si historique).
+        last = self._qemu_last_run_line()
+        if last:
+            print(last)
 
         # 0) Architecture du parc (défaut : native ; [all] = TOUTES les archis
         # supportées). Pour une arch précise non-amd64, on restreint le
@@ -2451,7 +2486,7 @@ class TODO:
             vers = ", ".join(
                 (v + " *" if v == default_v else v) for v in mod.DISTROS[d][0]
             )
-            print(f"  [{i}] {d} ({vers})")
+            print(f"  [{i}] {d} ({vers}){self._qemu_stat_avg('distro', d)}")
         print(f"  [all] {t('Whole catalog (every version)')}")
         print(
             f"  [principal] {t('The main version of each distro (marked *)')}"
