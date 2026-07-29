@@ -148,14 +148,23 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
 
 
 def read_status(log_path: str) -> tuple[str, int | None]:
-    """(état, code) d'un log : pending / running / done / failed."""
+    """(état, code) d'un log : pending / running / done / failed. Ne lit que
+    la FIN du fichier (le marqueur de sortie est sur la dernière ligne) : lire
+    tout le log de 30 VM chaque seconde saturait la boucle d'événements du TUI
+    (lag, interface figée quand l'I/O ralentit)."""
     try:
-        data = Path(log_path).read_text(errors="replace")
+        size = os.path.getsize(log_path)
+        if size == 0:
+            return "pending", None
+        with open(log_path, "rb") as fh:
+            if size > 4096:
+                fh.seek(-4096, os.SEEK_END)
+            tail = fh.read().decode(errors="replace")
     except OSError:
         return "pending", None
-    if not data.strip():
+    if not tail.strip():
         return "pending", None
-    for line in reversed(data.splitlines()):
+    for line in reversed(tail.splitlines()):
         if EXIT_MARKER in line:
             try:
                 code = int(line.split()[-1])
@@ -203,6 +212,9 @@ def run_monitor(manifest_path: str) -> None:
             self._offsets = {vm["name"]: 0 for vm in vms}
             self._selected = vms[0]["name"] if vms else None
             self._follow = True
+            # Statuts TERMINAUX mémorisés : une VM finie n'est plus relue
+            # (réduit fortement l'I/O sur un gros parc).
+            self._final = {}
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -213,7 +225,10 @@ def run_monitor(manifest_path: str) -> None:
             table.add_column("Durée", key="elapsed")
             for vm in vms:
                 table.add_row(vm["name"], "⏳", "00:00", key=vm["name"])
-            self._log = RichLog(id="log", highlight=False, markup=False)
+            # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
+            self._log = RichLog(
+                id="log", highlight=False, markup=False, max_lines=5000
+            )
             with Horizontal():
                 yield table
                 yield self._log
@@ -224,7 +239,10 @@ def run_monitor(manifest_path: str) -> None:
             self.title = "ERPLibre — suivi d'installation"
             self._refresh_ssh()
             self._load_selected_log(reset=True)
-            self.set_interval(1.0, self._tick)
+            # Table toutes les 2 s (30 lectures de fin de log), suivi du log
+            # sélectionné toutes les 1 s (une seule lecture incrémentale).
+            self.set_interval(2.0, self._tick_table)
+            self.set_interval(1.0, self._tick_log)
 
         # -- helpers -------------------------------------------------------- #
         def _vm_by_name(self, name):
@@ -244,39 +262,56 @@ def run_monitor(manifest_path: str) -> None:
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
+            name = vm["name"]
             if reset:
                 self._log.clear()
-                self._offsets[vm["name"]] = 0
+                self._offsets[name] = 0
+            # Lecture INCRÉMENTALE (seek à l'offset) : on ne relit pas tout le
+            # fichier à chaque rafraîchissement.
             try:
-                data = Path(vm["log"]).read_text(errors="replace")
+                with open(vm["log"], "r", errors="replace") as fh:
+                    fh.seek(self._offsets.get(name, 0))
+                    new = fh.read()
+                    self._offsets[name] = fh.tell()
             except OSError:
                 return
-            off = self._offsets[vm["name"]]
-            new = data[off:]
             if new:
                 for line in new.splitlines():
                     if EXIT_MARKER not in line:
                         self._log.write(line)
-                self._offsets[vm["name"]] = len(data)
 
-        def _tick(self):
-            table = self.query_one("#vms", DataTable)
-            for vm in vms:
-                state, code = read_status(vm["log"])
-                elapsed = time.time() - started
-                mm, ss = divmod(int(elapsed), 60)
-                label = ICON[state]
-                if state == "failed":
-                    label = f"❌ ({code})"
-                elif state == "done":
-                    label = "✅"
-                table.update_cell(vm["name"], "state", label)
-                if state in ("running", "pending"):
-                    table.update_cell(
-                        vm["name"], "elapsed", f"{mm:02d}:{ss:02d}"
-                    )
+        def _tick_table(self):
+            # Protégé : une erreur I/O transitoire (disque plein, log effacé)
+            # ne doit pas tuer la boucle et figer l'interface.
+            try:
+                table = self.query_one("#vms", DataTable)
+                for vm in vms:
+                    name = vm["name"]
+                    if name in self._final:
+                        continue  # déjà terminé -> plus aucune lecture
+                    state, code = read_status(vm["log"])
+                    label = ICON[state]
+                    if state == "failed":
+                        label = f"❌ ({code})"
+                    elif state == "done":
+                        label = "✅"
+                    table.update_cell(name, "state", label)
+                    if state in ("running", "pending"):
+                        mm, ss = divmod(int(time.time() - started), 60)
+                        table.update_cell(
+                            name, "elapsed", f"{mm:02d}:{ss:02d}"
+                        )
+                    else:
+                        self._final[name] = (state, code)
+            except Exception:
+                pass
+
+        def _tick_log(self):
             if self._follow:
-                self._load_selected_log()
+                try:
+                    self._load_selected_log()
+                except Exception:
+                    pass
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:
