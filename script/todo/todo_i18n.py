@@ -28,20 +28,20 @@ TRANSLATIONS = {
         "en": "Command:",
     },
     "Execute": {
-        "fr": "Exécution",
-        "en": "Execute",
+        "fr": "🧰 Exécution",
+        "en": "🧰 Execute",
     },
     "Install": {
-        "fr": "Installation",
-        "en": "Install",
+        "fr": "📦 Installation",
+        "en": "📦 Install",
     },
     "Question": {
-        "fr": "Question",
-        "en": "Question",
+        "fr": "❓ Question",
+        "en": "❓ Question",
     },
     "Fork - Open TODO in a new tab": {
-        "fr": "Fork - Ouvre TODO dans une nouvelle tabulation",
-        "en": "Fork - Open TODO in a new tab",
+        "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
+        "en": "🔀 Fork - Open TODO in a new tab",
     },
     "Quit": {
         "fr": "Quitter",
@@ -114,8 +114,8 @@ TRANSLATIONS = {
         "en": "Deploy ERPLibre to a local directory!",
     },
     "Clone ERPLibre locally (git clone)": {
-        "fr": "Cloner ERPLibre localement (git clone)",
-        "en": "Clone ERPLibre locally (git clone)",
+        "fr": "📥 Cloner ERPLibre localement (git clone)",
+        "en": "📥 Clone ERPLibre locally (git clone)",
     },
     "Target directory path (default: ~/erplibre): ": {
         "fr": "Chemin du répertoire cible (défaut: ~/erplibre) : ",
@@ -138,24 +138,24 @@ TRANSLATIONS = {
         "en": "Error cloning ERPLibre: ",
     },
     "Configure sshfs": {
-        "fr": "Configurer sshfs",
-        "en": "Configure sshfs",
+        "fr": "📁 Configurer sshfs",
+        "en": "📁 Configure sshfs",
     },
     "Local": {
-        "fr": "Local",
-        "en": "Local",
+        "fr": "💻 Local",
+        "en": "💻 Local",
     },
     "SSH (remote host)": {
         "fr": "SSH (hôte distant)",
         "en": "SSH (remote host)",
     },
     "Remote & services": {
-        "fr": "Distant & services",
-        "en": "Remote & services",
+        "fr": "🌐 Distant & services",
+        "en": "🌐 Remote & services",
     },
     "SSH (remote host)...": {
-        "fr": "SSH (hôte distant)…",
-        "en": "SSH (remote host)...",
+        "fr": "🔐 SSH (hôte distant)…",
+        "en": "🔐 SSH (remote host)...",
     },
     "Deploy ERPLibre to a remote host over SSH!": {
         "fr": "Déployer ERPLibre sur un hôte distant via SSH !",
@@ -194,16 +194,16 @@ TRANSLATIONS = {
         "en": "🚀 Deployment",
     },
     "Manage": {
-        "fr": "🛠 Gérer",
-        "en": "🛠 Manage",
+        "fr": "🛠  Gérer",
+        "en": "🛠  Manage",
     },
     "Catalog": {
         "fr": "📚 Catalogue",
         "en": "📚 Catalog",
     },
     "Open the console on a VM": {
-        "fr": "🖥 Ouvrir la console d'une VM",
-        "en": "🖥 Open the console on a VM",
+        "fr": "🖥  Ouvrir la console d'une VM",
+        "en": "🖥  Open the console on a VM",
     },
     "Backup": {
         "fr": "Sauvegarde",
@@ -915,48 +915,48 @@ TRANSLATIONS = {
         "en": "SSH deployment tools!",
     },
     "SSH - Check connection": {
-        "fr": "SSH - Vérifier la connexion",
-        "en": "SSH - Check connection",
+        "fr": "🔌 SSH - Vérifier la connexion",
+        "en": "🔌 SSH - Check connection",
     },
     "SSH - Sync files (rsync)": {
-        "fr": "SSH - Synchroniser les fichiers (rsync)",
-        "en": "SSH - Sync files (rsync)",
+        "fr": "🔄 SSH - Synchroniser les fichiers (rsync)",
+        "en": "🔄 SSH - Sync files (rsync)",
     },
     "SSH - Install ERPLibre": {
-        "fr": "SSH - Installer ERPLibre",
-        "en": "SSH - Install ERPLibre",
+        "fr": "📦 SSH - Installer ERPLibre",
+        "en": "📦 SSH - Install ERPLibre",
     },
     "SSH - Start Odoo": {
-        "fr": "SSH - Démarrer Odoo",
-        "en": "SSH - Start Odoo",
+        "fr": "🟢 SSH - Démarrer Odoo",
+        "en": "🟢 SSH - Start Odoo",
     },
     "SSH - Stop Odoo": {
-        "fr": "SSH - Arrêter Odoo",
-        "en": "SSH - Stop Odoo",
+        "fr": "🔴 SSH - Arrêter Odoo",
+        "en": "🔴 SSH - Stop Odoo",
     },
     "SSH - Restart Odoo": {
-        "fr": "SSH - Redémarrer Odoo",
-        "en": "SSH - Restart Odoo",
+        "fr": "🔁 SSH - Redémarrer Odoo",
+        "en": "🔁 SSH - Restart Odoo",
     },
     "SSH - Service status": {
-        "fr": "SSH - Statut du service",
-        "en": "SSH - Service status",
+        "fr": "📊 SSH - Statut du service",
+        "en": "📊 SSH - Service status",
     },
     "SSH - View logs": {
-        "fr": "SSH - Voir les logs",
-        "en": "SSH - View logs",
+        "fr": "📜 SSH - Voir les logs",
+        "en": "📜 SSH - View logs",
     },
     "SSH - Run make target": {
-        "fr": "SSH - Exécuter une cible make",
-        "en": "SSH - Run make target",
+        "fr": "🧰 SSH - Exécuter une cible make",
+        "en": "🧰 SSH - Run make target",
     },
     "SSH - Install systemd service": {
-        "fr": "SSH - Installer le service systemd",
-        "en": "SSH - Install systemd service",
+        "fr": "🧩 SSH - Installer le service systemd",
+        "en": "🧩 SSH - Install systemd service",
     },
     "SSH - Configure nginx + SSL": {
-        "fr": "SSH - Configurer nginx + SSL",
-        "en": "SSH - Configure nginx + SSL",
+        "fr": "🔒 SSH - Configurer nginx + SSL",
+        "en": "🔒 SSH - Configure nginx + SSL",
     },
     "Remote host (user@hostname or hostname): ": {
         "fr": "Hôte distant (user@hostname ou hostname) : ",
@@ -1090,8 +1090,8 @@ TRANSLATIONS = {
     },
     # NTFY section
     "Deploy - Install NTFY notification server": {
-        "fr": "Déployer - Installer le serveur de notifications NTFY",
-        "en": "Deploy - Install NTFY notification server",
+        "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
+        "en": "🔔 Deploy - Install NTFY notification server",
     },
     "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
         "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
@@ -1123,8 +1123,8 @@ TRANSLATIONS = {
     },
     # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
-        "fr": "QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
-        "en": "QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
+        "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
+        "en": "💻 QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
     },
     "Deploy a QEMU/KVM virtual machine (libvirt)!": {
         "fr": "Déployer une machine virtuelle QEMU/KVM (libvirt) !",
@@ -1143,8 +1143,8 @@ TRANSLATIONS = {
         "en": "🔍 Preview a deployment (dry-run, no sudo)",
     },
     "Download a cloud image only": {
-        "fr": "⬇ Télécharger seulement une image cloud",
-        "en": "⬇ Download a cloud image only",
+        "fr": "⬇  Télécharger seulement une image cloud",
+        "en": "⬇  Download a cloud image only",
     },
     "List VMs (virsh list --all)": {
         "fr": "📋 Lister les VM (virsh list --all)",
@@ -1155,8 +1155,8 @@ TRANSLATIONS = {
         "en": "🌐 Show a VM IP address",
     },
     "List available images and specs": {
-        "fr": "🗂 Lister les images disponibles et leurs specs",
-        "en": "🗂 List available images and specs",
+        "fr": "🗂  Lister les images disponibles et leurs specs",
+        "en": "🗂  List available images and specs",
     },
     "Distribution:": {
         "fr": "Distribution :",
@@ -1283,8 +1283,8 @@ TRANSLATIONS = {
         "en": "install monitoring",
     },
     "Navigation telemetry (TUI)": {
-        "fr": "Télémétrie de navigation (TUI)",
-        "en": "Navigation telemetry (TUI)",
+        "fr": "📊 Télémétrie de navigation (TUI)",
+        "en": "📊 Navigation telemetry (TUI)",
     },
     "TODO navigation telemetry": {
         "fr": "TODO — télémétrie de navigation",
