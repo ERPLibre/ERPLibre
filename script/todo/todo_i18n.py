@@ -1330,6 +1330,40 @@ TRANSLATIONS = {
         "fr": "Revenir à la télémétrie (r) ou quitter (Entrée) ? ",
         "en": "Back to telemetry (r) or quit (Enter)? ",
     },
+    "F2 system · F3/F4 views · Enter run": {
+        "fr": "F2 système · F3/F4 vues · Entrée exécute",
+        "en": "F2 system · F3/F4 views · Enter run",
+    },
+    "State": {"fr": "État", "en": "State"},
+    "uptime": {"fr": "actif depuis", "en": "uptime"},
+    "load": {"fr": "charge", "en": "load"},
+    "cores": {"fr": "cœurs", "en": "cores"},
+    "Memory": {"fr": "Mémoire", "en": "Memory"},
+    "Disk": {"fr": "Disque", "en": "Disk"},
+    "Network": {"fr": "Réseau", "en": "Network"},
+    "Battery": {"fr": "Batterie", "en": "Battery"},
+    "Temperature": {"fr": "Température", "en": "Temperature"},
+    "max": {"fr": "max", "en": "max"},
+    "lm-sensors absent — press i to install": {
+        "fr": "lm-sensors absent — appuyez sur i pour installer",
+        "en": "lm-sensors absent — press i to install",
+    },
+    "Sensors already available.": {
+        "fr": "Capteurs déjà disponibles.",
+        "en": "Sensors already available.",
+    },
+    "Unknown package manager for lm-sensors.": {
+        "fr": "Gestionnaire de paquets inconnu pour lm-sensors.",
+        "en": "Unknown package manager for lm-sensors.",
+    },
+    "Proposed install command:": {
+        "fr": "Commande d'installation proposée :",
+        "en": "Proposed install command:",
+    },
+    "Install lm-sensors now? (y/N): ": {
+        "fr": "Installer lm-sensors maintenant ? (o/N) : ",
+        "en": "Install lm-sensors now? (y/N): ",
+    },
     "Command failed: ": {
         "fr": "Échec de la commande : ",
         "en": "Command failed: ",

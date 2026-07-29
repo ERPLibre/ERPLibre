@@ -13,8 +13,12 @@ DIAGRAMME arborescent des fonctionnalités dans un TUI Textual, trié par usage.
 from __future__ import annotations
 
 import ast
+import asyncio
+import glob
 import json
 import os
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -276,6 +280,203 @@ def _command_columns(tree, paths):
     return cols
 
 
+# --------------------------------------------------------------------------- #
+# Télémétrie SYSTÈME (vue F2)
+# --------------------------------------------------------------------------- #
+def _os_id() -> str:
+    try:
+        for line in open("/etc/os-release", encoding="utf-8"):
+            if line.startswith("ID="):
+                return line.split("=", 1)[1].strip().strip('"').lower()
+    except OSError:
+        pass
+    return ""
+
+
+def sensors_install_command():
+    """Commande d'installation de lm-sensors selon l'OS (nos 4 systèmes)."""
+    apt = ["sudo", "apt-get", "install", "-y", "lm-sensors"]
+    dnf = ["sudo", "dnf", "install", "-y", "lm_sensors"]
+    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", "lm_sensors"]
+    cmd = {
+        "ubuntu": apt,
+        "debian": apt,
+        "linuxmint": apt,
+        "fedora": dnf,
+        "arch": pac,
+    }.get(_os_id())
+    if cmd:
+        return cmd
+    if shutil.which("apt-get"):
+        return apt
+    if shutil.which("dnf"):
+        return dnf
+    if shutil.which("pacman"):
+        return pac
+    return None
+
+
+def _first_int(path):
+    try:
+        return int(open(path).read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _cpu_sample():
+    try:
+        with open("/proc/stat") as f:
+            vals = [int(x) for x in f.readline().split()[1:]]
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)
+        return idle, sum(vals)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _net_sample():
+    rx = tx = 0
+    try:
+        with open("/proc/net/dev") as f:
+            for line in f.readlines()[2:]:
+                iface, _, rest = line.partition(":")
+                if iface.strip() in ("lo", ""):
+                    continue
+                cols = rest.split()
+                if len(cols) >= 9:
+                    rx += int(cols[0])
+                    tx += int(cols[8])
+    except (OSError, ValueError):
+        return None
+    return rx, tx
+
+
+def _mem():
+    info = {}
+    try:
+        for line in open("/proc/meminfo"):
+            k, _, v = line.partition(":")
+            info[k] = int(v.split()[0]) * 1024
+    except (OSError, ValueError):
+        return None
+    total = info.get("MemTotal", 0)
+    avail = info.get("MemAvailable", info.get("MemFree", 0))
+    return total, total - avail
+
+
+def _battery():
+    for base in glob.glob("/sys/class/power_supply/BAT*"):
+        cap = _first_int(os.path.join(base, "capacity"))
+        try:
+            status = open(os.path.join(base, "status")).read().strip()
+        except OSError:
+            status = ""
+        if cap is not None:
+            return cap, status
+    return None
+
+
+def read_temperature():
+    """(source, [°C]) ou None. /sys/class/thermal d'abord (sans dépendance),
+    puis lm-sensors si présent."""
+    temps = []
+    for zt in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+        v = _first_int(zt)
+        if v and v > 0:
+            temps.append(round(v / 1000.0, 1))
+    if temps:
+        return "sysfs", temps
+    if shutil.which("sensors"):
+        try:
+            out = subprocess.run(
+                ["sensors", "-u"], capture_output=True, text=True, timeout=5
+            ).stdout
+            for line in out.splitlines():
+                line = line.strip()
+                if "_input:" in line:
+                    try:
+                        temps.append(round(float(line.split(":")[1]), 1))
+                    except (ValueError, IndexError):
+                        pass
+            temps = [x for x in temps if x > 0]
+            if temps:
+                return "sensors", temps
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return None
+
+
+def system_snapshot(prev, full=True):
+    """Instantané des métriques système. `prev` = (cpu, net, t) pour calculer
+    les taux CPU/réseau par delta. `full=False` saute la température (évite le
+    subprocess sensors quand la vue système n'est pas affichée). Renvoie
+    (métriques, nouveau_prev)."""
+    now = time.time()
+    cpu, net = _cpu_sample(), _net_sample()
+    pcpu, pnet, pt = prev or (None, None, None)
+    m = {}
+    if cpu and pcpu and cpu[1] > pcpu[1]:
+        m["cpu"] = max(
+            0, min(100, round(100 * (1 - (cpu[0] - pcpu[0]) / (cpu[1] - pcpu[1]))))
+        )
+    else:
+        m["cpu"] = None
+    if net and pnet and pt and now > pt:
+        dt = now - pt
+        m["net"] = ((net[0] - pnet[0]) / dt, (net[1] - pnet[1]) / dt)
+    else:
+        m["net"] = None
+    m["mem"] = _mem()
+    try:
+        du = shutil.disk_usage("/")
+        m["disk"] = (du.total, du.used, du.free)
+    except OSError:
+        m["disk"] = None
+    m["battery"] = _battery()
+    m["temp"] = read_temperature() if full else None
+    try:
+        m["uptime"] = float(open("/proc/uptime").read().split()[0])
+    except (OSError, ValueError):
+        m["uptime"] = None
+    try:
+        m["load"] = os.getloadavg()
+    except OSError:
+        m["load"] = None
+    m["ncpu"] = os.cpu_count() or 1
+    return m, (cpu, net, now)
+
+
+def _fmt_size(nbytes):
+    if nbytes is None:
+        return "-"
+    for unit, div in (("T", 1 << 40), ("G", 1 << 30), ("M", 1 << 20)):
+        if nbytes >= div:
+            return f"{nbytes / div:.1f}{unit}"
+    return f"{nbytes // 1024}K"
+
+
+def _fmt_rate(bps):
+    if bps is None:
+        return "?"
+    for unit, div in (("Go/s", 1 << 30), ("Mo/s", 1 << 20), ("Ko/s", 1 << 10)):
+        if bps >= div:
+            return f"{bps / div:.1f} {unit}"
+    return f"{int(bps)} o/s"
+
+
+def _fmt_uptime(secs):
+    if not secs:
+        return "?"
+    secs = int(secs)
+    d, r = divmod(secs, 86400)
+    h, r = divmod(r, 3600)
+    mnt = r // 60
+    if d:
+        return f"{d}j {h}h"
+    if h:
+        return f"{h}h{mnt:02d}"
+    return f"{mnt}min"
+
+
 # Modes d'affichage du Kanban (F4 les fait défiler).
 KANBAN_MODES = ("columns", "swimlanes", "grid")
 
@@ -322,17 +523,21 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         #summary { height: 1; color: $text-muted; }
         Tree { border: solid $accent; }
         #kanban { display: none; height: 1fr; }
+        #system { display: none; height: 1fr; padding: 1 2; }
         .kcol { width: 40; border: solid $accent; margin: 0 1 0 0; }
         .ktitle { height: 1; color: $accent; }
         .lane { height: auto; }
         .lanetitle { height: 1; color: $secondary; }
         .kgrid { grid-size: 3; grid-gutter: 1; }
+        .kbig { row-span: 3; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter"),
+            ("f2", "system", "Système"),
             ("f3", "toggle_view", "Arbre/Kanban"),
             ("f4", "kanban_layout", "Disposition Kanban"),
             ("e", "expand_all", "Tout déplier"),
+            ("i", "install_sensors", "Installer capteurs"),
             ("r", "reset", "Réinitialiser"),
         ]
 
@@ -341,6 +546,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             self._action = None
             self._mode = state.get("mode", "tree")
             self._kanban_mode = state.get("kanban_mode", "columns")
+            self._sys_prev = None
 
         # -- helpers de construction de widgets ------------------------------ #
         def _col_widget(self, label, cnt, cmds):
@@ -398,22 +604,29 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             yield Static("", id="summary")
             yield Tree("📍 TODO", id="nav")
             yield Container(id="kanban")
+            yield Static("", id="system")
             yield Footer()
 
         def on_mount(self):
             self.title = t("TODO navigation telemetry")
             self._populate_tree()
             self._update_summary()
+            # Télémétrie système rafraîchie toutes les 2 s (deltas CPU/réseau).
+            self.set_interval(2.0, self._tick_system)
             # Restaure la vue / la disposition / le curseur au retour.
             self.run_worker(self._restore())
+
+        def _apply_visibility(self):
+            self.query_one("#nav").display = self._mode == "tree"
+            self.query_one("#kanban").display = self._mode == "kanban"
+            self.query_one("#system").display = self._mode == "system"
 
         async def _restore(self):
             if self._mode == "kanban":
                 await self._enter_kanban()
-            else:
-                self.query_one("#nav").display = True
-                self.query_one("#kanban").display = False
+            elif self._mode == "tree":
                 self._focus_tree_path(state.get("path"))
+            self._apply_visibility()
             self._update_summary()
 
         # -- vue Kanban ------------------------------------------------------ #
@@ -421,8 +634,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             box = self.query_one("#kanban", Container)
             await box.remove_children()
             await box.mount(self._kanban_layout_widget())
-            self.query_one("#nav").display = False
-            box.display = True
+            self._apply_visibility()
             self._focus_kanban_path(state.get("path"))
 
         def _focus_kanban_path(self, path):
@@ -464,8 +676,139 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             self.query_one("#summary", Static).update(
                 f"  {total} {t('navigations')} · {len(paths)} {t('menus')} · "
                 f"{src} · {t('view')}: {self._mode}{extra} · "
-                f"{t('Enter = run, F3/F4 = views')}"
+                f"{t('F2 system · F3/F4 views · Enter run')}"
             )
+
+        # -- vue Système (F2) ----------------------------------------------- #
+        async def _tick_system(self):
+            # I/O système déportées en thread (comme le dashboard) ; on saute
+            # la température (subprocess sensors) tant que la vue n'est pas
+            # affichée.
+            try:
+                m, self._sys_prev = await asyncio.to_thread(
+                    system_snapshot, self._sys_prev, self._mode == "system"
+                )
+            except Exception:
+                return
+            if self._mode == "system":
+                self.query_one("#system", Static).update(
+                    self._render_system(m)
+                )
+
+        def _render_system(self, m):
+            lines = []
+            load = (
+                " · " + t("load") + " "
+                + "/".join(f"{x:.1f}" for x in m["load"])
+                if m["load"]
+                else ""
+            )
+            lines.append(
+                f"  🖥  {t('State')}      : {t('uptime')} "
+                f"{_fmt_uptime(m['uptime'])}{load}"
+            )
+            cpu = m["cpu"]
+            lines.append(
+                f"  ⚙  CPU        : {cpu if cpu is not None else '?'} %"
+                f"  ({m['ncpu']} {t('cores')})"
+            )
+            if m["mem"]:
+                tot, used = m["mem"]
+                pct = int(used / tot * 100) if tot else 0
+                lines.append(
+                    f"  🧠 {t('Memory')}    : {_fmt_size(used)} / "
+                    f"{_fmt_size(tot)}  ({pct} %)"
+                )
+            if m["disk"]:
+                tot, used, free = m["disk"]
+                pct = int(used / tot * 100) if tot else 0
+                lines.append(
+                    f"  💽 {t('Disk')} /    : {_fmt_size(used)} / "
+                    f"{_fmt_size(tot)}  ({pct} %) · {t('free')} "
+                    f"{_fmt_size(free)}"
+                )
+            if m["net"]:
+                rx, tx = m["net"]
+                lines.append(
+                    f"  🌐 {t('Network')}   : ↓ {_fmt_rate(rx)}   "
+                    f"↑ {_fmt_rate(tx)}"
+                )
+            if m["battery"]:
+                cap, status = m["battery"]
+                lines.append(
+                    f"  🔋 {t('Battery')}   : {cap} % ({status})"
+                )
+            temp = m["temp"]
+            if temp:
+                lines.append(
+                    f"  🌡  {t('Temperature')} : {max(temp[1]):.0f}°C "
+                    f"({t('max')})"
+                )
+            else:
+                lines.append(
+                    f"  🌡  {t('Temperature')} : "
+                    f"{t('lm-sensors absent — press i to install')}"
+                )
+            return "\n".join(lines)
+
+        # -- actions --------------------------------------------------------- #
+        def action_system(self):
+            self._mode = "system"
+            self._apply_visibility()
+            self.run_worker(self._tick_system())  # rafraîchit tout de suite
+            self._update_summary()
+
+        def action_install_sensors(self):
+            if self._mode != "system":
+                return
+            if read_temperature() is not None:
+                self.notify(t("Sensors already available."))
+                return
+            cmd = sensors_install_command()
+            if not cmd:
+                self.notify(
+                    t("Unknown package manager for lm-sensors."),
+                    severity="warning",
+                )
+                return
+            printable = " ".join(cmd)
+            with self.suspend():
+                print(f"{t('Proposed install command:')}")
+                print(f"  {printable}")
+                print("  sudo sensors-detect --auto")
+                ans = input(
+                    t("Install lm-sensors now? (y/N): ")
+                ).strip().lower()
+                if ans in ("o", "oui", "y", "yes"):
+                    os.system(printable + " || true")
+                    os.system("sudo sensors-detect --auto || true")
+            self.run_worker(self._tick_system())
+
+        def on_click(self, event):
+            # Grille (mosaïque) : clic sur le TITRE d'une case -> l'agrandir
+            # (row-span sur toute la hauteur) ; re-clic -> taille normale.
+            if self._mode != "kanban" or self._kanban_mode != "grid":
+                return
+            w = getattr(event, "widget", None)
+            if w is None or "ktitle" not in getattr(w, "classes", ()):
+                return
+            card = w
+            while card is not None and "kcol" not in getattr(
+                card, "classes", ()
+            ):
+                card = card.parent
+            if card is not None:
+                card.toggle_class("kbig")
+
+        # -- actions --------------------------------------------------------- #
+        async def action_toggle_view(self):
+            if self._mode == "tree":
+                self._mode = "kanban"
+                await self._enter_kanban()
+            else:
+                self._mode = "tree"
+            self._apply_visibility()
+            self._update_summary()
 
         def _populate_tree(self):
             tree = self.query_one("#nav", Tree)
@@ -533,17 +876,6 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                     event.item.cmd_kwargs,
                     event.item.cmd_path,
                 )
-
-        # -- actions --------------------------------------------------------- #
-        async def action_toggle_view(self):
-            if self._mode == "tree":
-                self._mode = "kanban"
-                await self._enter_kanban()
-            else:
-                self._mode = "tree"
-                self.query_one("#kanban").display = False
-                self.query_one("#nav").display = True
-            self._update_summary()
 
         async def action_kanban_layout(self):
             if self._mode != "kanban":
