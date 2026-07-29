@@ -329,13 +329,23 @@ def _os_id() -> str:
     return ""
 
 
-def browser_install_command() -> list | None:
-    """Commande d'installation d'un navigateur CLI (w3m, léger et présent
-    partout) adaptée à l'OS hôte : apt (Ubuntu/Debian), dnf (Fedora), pacman
-    (Arch). None si le gestionnaire est inconnu."""
-    apt = ["sudo", "apt-get", "install", "-y", "w3m"]
-    dnf = ["sudo", "dnf", "install", "-y", "w3m"]
-    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", "w3m"]
+# Navigateurs CLI installables via apt/dnf/pacman (nom de paquet = binaire).
+# browsh/carbonyl ne sont pas dans les dépôts standard -> non proposés ici.
+INSTALLABLE_BROWSERS = (
+    ("w3m", "w3m — léger, rend un peu de HTML"),
+    ("lynx", "lynx — navigateur texte"),
+    ("links", "links — texte / graphique"),
+    ("elinks", "elinks — texte, onglets"),
+)
+
+
+def browser_install_command(browser="w3m") -> list | None:
+    """Commande d'installation du navigateur CLI `browser` adaptée à l'OS hôte :
+    apt (Ubuntu/Debian), dnf (Fedora), pacman (Arch). None si gestionnaire
+    inconnu."""
+    apt = ["sudo", "apt-get", "install", "-y", browser]
+    dnf = ["sudo", "dnf", "install", "-y", browser]
+    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", browser]
     by_id = {
         "ubuntu": apt,
         "debian": apt,
@@ -346,7 +356,6 @@ def browser_install_command() -> list | None:
     cmd = by_id.get(_os_id())
     if cmd:
         return cmd
-    # Repli : d'après le gestionnaire de paquets présent.
     if shutil.which("apt-get"):
         return apt
     if shutil.which("dnf"):
@@ -670,39 +679,67 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             browser = cli_browser()
             if not browser:
-                # Aucun navigateur CLI : proposer de l'INSTALLER (commande
-                # adaptée à l'OS, affichée + validée avant exécution).
-                install = browser_install_command()
-                with self.suspend():
-                    if not install:
-                        print(
-                            "Aucun navigateur CLI et gestionnaire de paquets "
-                            "inconnu. Installez w3m/lynx/links/elinks/browsh."
-                        )
-                        input("Entrée pour revenir…")
-                    else:
-                        printable = " ".join(install)
-                        print(
-                            "Aucun navigateur CLI trouvé. Commande "
-                            "d'installation proposée :\n"
-                            f"  {printable}"
-                        )
-                        ans = input(
-                            "Installer maintenant ? (o/N) : "
-                        ).strip().lower()
-                        if ans in ("o", "oui", "y", "yes"):
-                            os.system(printable + " || true")
-                browser = cli_browser()
+                browser = self._install_cli_browser()
                 if not browser:
                     self.notify(
-                        "Toujours aucun navigateur CLI disponible.",
+                        "Aucun navigateur CLI disponible.",
                         title="Web",
                         severity="warning",
                     )
                     return
             url = f"http://{vm['ip']}:8069"
             with self.suspend():
-                os.system(f"{browser} {shlex.quote(url)} || true")
+                print(f"→ {browser} {url}")
+                rc = os.system(f"{browser} {shlex.quote(url)}")
+                # Diagnostic : sinon le navigateur « clignote » et revient au
+                # TUI sans qu'on voie l'erreur (souvent Odoo pas démarré).
+                print(f"\n[{browser}] terminé (code {rc}).")
+                if rc != 0:
+                    print(
+                        "La page ne s'est peut-être pas affichée : Odoo n'est "
+                        "pas démarré sur :8069, ou réseau/pare-feu. Vérifie que "
+                        "le service Odoo tourne dans la VM (make run / systemd)."
+                    )
+                try:
+                    input("Entrée pour revenir au suivi… ")
+                except EOFError:
+                    pass
+
+        def _install_cli_browser(self):
+            """Demande QUEL navigateur CLI installer (w3m/lynx/links/elinks),
+            affiche la commande, l'exécute après validation. Renvoie le binaire
+            désormais disponible, ou None."""
+            with self.suspend():
+                print("Aucun navigateur CLI installé. Lequel installer ?")
+                for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
+                    print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
+                sel = input("Choix (numéro, vide = w3m) : ").strip()
+                browser = INSTALLABLE_BROWSERS[0][0]
+                try:
+                    idx = int(sel) - 1
+                    if 0 <= idx < len(INSTALLABLE_BROWSERS):
+                        browser = INSTALLABLE_BROWSERS[idx][0]
+                except ValueError:
+                    pass
+                cmd = browser_install_command(browser)
+                if not cmd:
+                    print(
+                        "Gestionnaire de paquets inconnu : installez "
+                        f"« {browser} » manuellement."
+                    )
+                    input("Entrée… ")
+                    return None
+                printable = " ".join(cmd)
+                print(f"Commande : {printable}")
+                ans = input(
+                    "Installer maintenant ? (o/N) : "
+                ).strip().lower()
+                if ans not in ("o", "oui", "y", "yes"):
+                    return None
+                rc = os.system(printable)
+                print(f"\nInstallation terminée (code {rc}).")
+                input("Entrée pour continuer… ")
+            return cli_browser()
 
         def action_copy_log(self) -> None:
             """Copie le log complet de la VM sélectionnée dans le
