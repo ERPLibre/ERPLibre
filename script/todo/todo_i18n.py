@@ -1432,6 +1432,18 @@ TRANSLATIONS = {
         "fr": "Attente de l'arrêt de la VM…",
         "en": "Waiting for the VM to shut down...",
     },
+    "timeout": {
+        "fr": "délai max",
+        "en": "timeout",
+    },
+    "shutting down": {
+        "fr": "arrêt en cours",
+        "en": "shutting down",
+    },
+    "remaining": {
+        "fr": "restantes",
+        "en": "remaining",
+    },
     "VM is off.": {
         "fr": "VM éteinte.",
         "en": "VM is off.",

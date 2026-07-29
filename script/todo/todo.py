@@ -596,6 +596,20 @@ class TODO:
             if not action:
                 return  # quitté sans choisir de commande
             method, kwargs = action
+            # Fil d'Ariane : la commande étant lancée DEPUIS la télémétrie (et
+            # non via la navigation), aucun menu n'a affiché le chemin. On le
+            # montre ici (dernier segment traduit + icône) et on l'enregistre.
+            path = state.get("path") if isinstance(state, dict) else None
+            if path:
+                segs = path.split(" › ")
+                segs[-1] = t(segs[-1])
+                print(f"\n📍 {' › '.join(segs)}")
+                try:
+                    from script.todo import todo_telemetry
+
+                    todo_telemetry.record(path)
+                except Exception:
+                    pass
             fn = getattr(self, method, None)
             if not callable(fn):
                 print(f"{t('Command not found !')} ({method})")
@@ -1359,22 +1373,32 @@ class TODO:
         return out if res.returncode == 0 and out else name
 
     def _qemu_shutdown_wait(self, name, timeout=120):
-        """Arrête la VM proprement (ACPI) et attend qu'elle soit « shut off ».
-        Si l'arrêt gracieux traîne, propose un arrêt forcé (destroy).
+        """Arrête la VM par SIGNAL (ACPI power-button, puis agent invité) et
+        attend qu'elle soit « shut off » en affichant le temps restant du
+        timeout. Si l'arrêt gracieux traîne, propose un arrêt forcé (destroy).
         Renvoie True si la VM est bien éteinte."""
         name = self._qemu_domname(name)
         if self._qemu_domstate(name) == "shut off":
             return True
-        cmd = f"sudo virsh shutdown {shlex.quote(name)}"
+        # --mode acpi,agent : envoie le SIGNAL d'extinction (bouton ACPI) puis
+        # tente l'agent invité si présent — plus fiable qu'un arrêt brutal.
+        cmd = f"sudo virsh shutdown {shlex.quote(name)} --mode acpi,agent"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
-        print(t("Waiting for the VM to shut down..."))
+        print(f"{t('Waiting for the VM to shut down...')} "
+              f"({t('timeout')}: {timeout} s)")
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._qemu_domstate(name) == "shut off":
-                print(f"✅ {name}: {t('VM is off.')}")
+                # Efface la ligne de compte à rebours puis confirme.
+                print(f"\r{' ' * 40}\r✅ {name}: {t('VM is off.')}")
                 return True
-            time.sleep(3)
+            remaining = int(deadline - time.time())
+            print(f"\r  ⏳ {t('shutting down')}… "
+                  f"{remaining:>3d} s {t('remaining')}",
+                  end="", flush=True)
+            time.sleep(2)
+        print()  # newline après le compte à rebours
         # Arrêt gracieux trop long : proposer un arrêt forcé.
         if self._is_yes(
             input(t("Graceful shutdown timed out. Force off (destroy)? "
