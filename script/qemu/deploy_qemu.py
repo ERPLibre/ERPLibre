@@ -970,6 +970,16 @@ def build_cloud_config(
         "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
         " || systemctl enable --now sshd 2>/dev/null || true",
+        # qemu-guest-agent : installé + activé APRÈS sshd (donc SSH reste
+        # disponible tout de suite, sans attendre le réseau). Tout est
+        # « || true » : si l'installation échoue (réseau lent/absent), le boot
+        # n'est pas bloqué. La plupart des images cloud l'incluent déjà.
+        "  - (command -v apt-get >/dev/null && apt-get install -y"
+        " qemu-guest-agent) || (command -v dnf >/dev/null && dnf install -y"
+        " qemu-guest-agent) || (command -v pacman >/dev/null && pacman -S"
+        " --noconfirm qemu-guest-agent) || true",
+        "  - systemctl enable --now qemu-guest-agent 2>/dev/null"
+        " || systemctl enable --now qemu-ga 2>/dev/null || true",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1159,6 +1169,11 @@ def virt_install(
         args.graphics,
         "--console",
         f"pty,target_type={console_target}",
+        # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
+        # virsh de piloter la VM SANS réseau (ex. étendre le FS invité après
+        # un redimensionnement de disque). Inoffensif si l'agent est absent.
+        "--channel",
+        "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le

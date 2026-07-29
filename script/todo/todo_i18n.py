@@ -1424,6 +1424,50 @@ TRANSLATIONS = {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
     },
+    "click to expand": {
+        "fr": "cliquer pour déplier",
+        "en": "click to expand",
+    },
+    "No error detected.": {
+        "fr": "Aucune erreur détectée.",
+        "en": "No error detected.",
+    },
+    "No running VM to pause.": {
+        "fr": "Aucune VM en cours à mettre en pause.",
+        "en": "No running VM to pause.",
+    },
+    "No paused VM to resume.": {
+        "fr": "Aucune VM en pause à reprendre.",
+        "en": "No paused VM to resume.",
+    },
+    "resumed": {
+        "fr": "reprise(s)",
+        "en": "resumed",
+    },
+    "SSH grow failed; trying the guest agent.": {
+        "fr": "Échec SSH ; tentative via l'agent invité.",
+        "en": "SSH grow failed; trying the guest agent.",
+    },
+    "No IP; trying the guest agent (no network).": {
+        "fr": "Pas d'IP ; tentative via l'agent invité (sans réseau).",
+        "en": "No IP; trying the guest agent (no network).",
+    },
+    "Guest filesystem grown via guest agent.": {
+        "fr": "FS invité étendu via l'agent invité.",
+        "en": "Guest filesystem grown via guest agent.",
+    },
+    "Guest agent grow failed; falling back to console.": {
+        "fr": "Échec de l'agent invité ; repli sur la console.",
+        "en": "Guest agent grow failed; falling back to console.",
+    },
+    "Guest agent unavailable; falling back to serial console.": {
+        "fr": "Agent invité indisponible ; repli sur la console série.",
+        "en": "Guest agent unavailable; falling back to serial console.",
+    },
+    "Running via guest agent (no network)…": {
+        "fr": "Exécution via l'agent invité (sans réseau)…",
+        "en": "Running via guest agent (no network)…",
+    },
     "SSH grow failed; falling back to serial console.": {
         "fr": "Échec de l'extension via SSH ; repli sur la console série.",
         "en": "SSH grow failed; falling back to serial console.",

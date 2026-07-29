@@ -1611,7 +1611,7 @@ class TODO:
         d'échec SSH, propose le repli par CONSOLE SÉRIE (commande à coller)."""
         remote = self._GROW_FS_REMOTE
         real = self._qemu_domname(name)
-        # Résolution d'IP robuste (parallèle + battement toutes les 30 s)
+        # 1) SSH : IP résolue avec BATTEMENT (parallèle, boot émulé lent)
         # plutôt qu'un simple timeout court qui abandonnait trop tôt.
         ip = self._qemu_resolve_ips([real], timeout=300).get(real)
         if ip:
@@ -1623,10 +1623,85 @@ class TODO:
             print(f"{t('Will execute:')} {cmd}")
             if self.execute.exec_command_live(cmd, source_erplibre=False) == 0:
                 return
-            print(f"⚠  {t('SSH grow failed; falling back to serial console.')}")
+            print(f"⚠  {t('SSH grow failed; trying the guest agent.')}")
         else:
-            print(t("No IP; falling back to serial console."))
+            print(t("No IP; trying the guest agent (no network)."))
+        # 2) Agent invité (virtio, SANS réseau) — nécessite qemu-guest-agent
+        # dans la VM (installé au déploiement) + guest-exec autorisé.
+        res = self._qemu_guest_exec(real, remote)
+        if res is not None:
+            rc, out = res
+            if out.strip():
+                print(out.rstrip())
+            if rc == 0:
+                print(f"✅ {t('Guest filesystem grown via guest agent.')}")
+                return
+            print(f"⚠  {t('Guest agent grow failed; falling back to console.')}")
+        else:
+            print(t("Guest agent unavailable; falling back to serial console."))
+        # 3) Console série (commande prête à coller, login interactif).
         self._qemu_grow_via_console(real, remote)
+
+    def _qemu_guest_exec(self, name, script, wait=180):
+        """Exécute `script` (sh -c) DANS la VM via l'AGENT INVITÉ (canal
+        virtio, sans réseau). Renvoie (code_sortie, sortie) ou None si l'agent
+        est indisponible / guest-exec refusé."""
+        import base64
+
+        def agent(payload):
+            try:
+                res = subprocess.run(
+                    [
+                        "sudo", "virsh", "qemu-agent-command",
+                        name, json.dumps(payload),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+            if res.returncode != 0:
+                return None
+            try:
+                return json.loads(res.stdout).get("return")
+            except ValueError:
+                return None
+
+        if agent({"execute": "guest-ping"}) is None:
+            return None
+        start = agent(
+            {
+                "execute": "guest-exec",
+                "arguments": {
+                    "path": "/bin/sh",
+                    "arg": ["-c", script],
+                    "capture-output": True,
+                },
+            }
+        )
+        if not start or "pid" not in start:
+            return None
+        pid = start["pid"]
+        deadline = time.time() + wait
+        print(t("Running via guest agent (no network)…"))
+        while time.time() < deadline:
+            st = agent(
+                {"execute": "guest-exec-status", "arguments": {"pid": pid}}
+            )
+            if st and st.get("exited"):
+                out = ""
+                for k in ("out-data", "err-data"):
+                    if st.get(k):
+                        try:
+                            out += base64.b64decode(st[k]).decode(
+                                errors="replace"
+                            )
+                        except Exception:
+                            pass
+                return st.get("exitcode", 0), out
+            time.sleep(2)
+        return None
 
     def _qemu_grow_via_console(self, name, remote):
         """Repli console série : affiche la commande prête à coller puis ouvre

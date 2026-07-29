@@ -176,6 +176,54 @@ def read_status(log_path: str) -> tuple[str, int | None]:
     return "running", None
 
 
+# Listes d'ignore reprises de script/test/run_parallel_test.py (erreurs/
+# avertissements connus et bénins) : on réutilise la MÊME logique de détection
+# que la suite de tests ERPLibre pour analyser les logs d'installation.
+_LST_IGNORE_WARNING = (
+    "have the same label:",
+    "odoo.addons.code_generator.extractor_module_file: Ignore next error about"
+    " ALTER TABLE DROP CONSTRAINT.",
+)
+_LST_IGNORE_ERROR = (
+    "fetchmail_notify_error_to_sender",
+    'odoo.sql_db: bad query: ALTER TABLE "db_backup" DROP CONSTRAINT'
+    ' "db_backup_db_backup_name_unique"',
+    'ERROR: constraint "db_backup_db_backup_name_unique" of relation'
+    ' "db_backup" does not exist',
+    'odoo.sql_db: bad query: ALTER TABLE "db_backup" DROP CONSTRAINT'
+    ' "db_backup_db_backup_days_to_keep_positive"',
+    'ERROR: constraint "db_backup_db_backup_days_to_keep_positive" of relation'
+    ' "db_backup" does not exist',
+    "odoo.addons.code_generator.extractor_module_file: Ignore next error about"
+    " ALTER TABLE DROP CONSTRAINT.",
+)
+
+
+def scan_log_errors(log_path: str) -> tuple[int, int]:
+    """(nb_erreurs, nb_avertissements) dans un log d'installation, en
+    réutilisant la détection de la suite de tests ERPLibre : sous-chaîne
+    « error »/« warning » (insensible à la casse) moins les listes d'ignore.
+    Lit le fichier COMPLET (appelé une seule fois, à la complétion d'une VM)."""
+    try:
+        text = Path(log_path).read_text(errors="replace")
+    except OSError:
+        return 0, 0
+    nerr = nwarn = 0
+    for line in text.splitlines():
+        low = line.lower()
+        if EXIT_MARKER in line:
+            continue
+        if "error" in low and not any(
+            ig in line for ig in _LST_IGNORE_ERROR
+        ):
+            nerr += 1
+        if "warning" in low and not any(
+            ig in line for ig in _LST_IGNORE_WARNING
+        ):
+            nwarn += 1
+    return nerr, nwarn
+
+
 def _read_new(path: str, offset: int) -> tuple[str, int]:
     """Lit le log à partir de `offset` (lecture incrémentale). Renvoie
     (nouveau_texte, nouvel_offset). Bloquant -> à appeler dans un thread."""
@@ -425,6 +473,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         DataTable { width: 58; border: solid $accent; }
         RichLog { border: solid $accent; }
         #telemetry { height: 1; color: $text-muted; }
+        #stats { height: 1; color: $accent; }
+        #statsdetail { display: none; height: auto; color: $text-muted; }
         #sshbar { height: 2; color: $text-muted; }
         """
         BINDINGS = [
@@ -433,6 +483,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("w", "web", "Web (navigateur CLI)"),
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
+            ("p", "pause_all", "Pause tout"),
+            ("o", "resume_all", "Reprendre tout"),
         ]
 
         def __init__(self):
@@ -452,6 +504,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._disk_dir = os.path.dirname(vm_disk_path(vms[0])) if vms else "/"
             # État libvirt (running/paused/gone), rafraîchi à intervalle LENT.
             self._domstate = {}
+            # Erreurs détectées dans le log à la complétion : {nom: (err, warn)}.
+            self._errcount = {}
+            # Sommaire de stats déplié (clic) ou non.
+            self._stats_open = False
 
         @staticmethod
         def _fmt(secs):
@@ -469,12 +525,16 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             yield Header(show_clock=True)
             table = DataTable(id="vms", cursor_type="row")
             # Clés de colonnes explicites : update_cell() les référence.
+            # La colonne « ⚠ » (erreurs détectées) est à GAUCHE d'« État ».
             table.add_column("VM", key="vm")
+            table.add_column("⚠", key="err")
             table.add_column("État", key="state")
             table.add_column("Durée", key="elapsed")
             table.add_column("Disque", key="disk")
             for vm in vms:
-                table.add_row(vm["name"], "⏳", "--:--", "-", key=vm["name"])
+                table.add_row(
+                    vm["name"], "", "⏳", "--:--", "-", key=vm["name"]
+                )
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
             self._log = RichLog(
                 id="log", highlight=False, markup=False, max_lines=5000
@@ -484,6 +544,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 yield self._log
             # Barre de télémétrie hôte (CPU, disque, ETA parc).
             yield Static("", id="telemetry")
+            # Sommaire de stats en CHIFFRES (cliquable -> détail).
+            yield Static("", id="stats")
+            yield Static("", id="statsdetail")
             yield Static("", id="sshbar")
             yield Footer()
 
@@ -554,7 +617,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _collect_table(self):
             """(THREAD) statut + taille disque de chaque VM + télémétrie. AUCUNE
             mise à jour d'UI ici : uniquement des I/O bloquantes déportées."""
-            disks, status = {}, {}
+            disks, status, errors = {}, {}, {}
             for vm in vms:
                 name = vm["name"]
                 disks[name] = _fmt_size(disk_actual_size(vm_disk_path(vm)))
@@ -562,19 +625,26 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     name not in self._final
                     and self._domstate.get(name) != "gone"
                 ):
-                    status[name] = read_status(vm["log"])
-            return disks, status, self._collect_tele()
+                    st = read_status(vm["log"])
+                    status[name] = st
+                    # À la complétion (succès OU échec), on ANALYSE le log
+                    # complet pour signaler les erreurs — même un « succès »
+                    # peut contenir des erreurs passées inaperçues.
+                    if st[0] in ("done", "failed") and name not in errors:
+                        errors[name] = scan_log_errors(vm["log"])
+            return disks, status, self._collect_tele(), errors
 
         async def _tick_table(self):
             # I/O (lectures de logs, stat disque, /proc) DÉPORTÉES en thread ->
             # la boucle d'événements Textual reste fluide même sous forte
             # charge ou disque lent. Les mises à jour d'UI restent sur la boucle.
             try:
-                disks, status, tele = await asyncio.to_thread(
+                disks, status, tele, errors = await asyncio.to_thread(
                     self._collect_table
                 )
             except Exception:
                 return
+            self._errcount.update(errors)
             try:
                 table = self.query_one("#vms", DataTable)
                 now = time.time()
@@ -611,6 +681,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         self._set_cell(
                             table, name, "elapsed", self._fmt(elapsed)
                         )
+                        # Colonne ⚠ (à gauche d'État) : erreurs détectées dans
+                        # le log, y compris pour un « succès ».
+                        self._set_cell(
+                            table, name, "err",
+                            self._err_label(self._errcount.get(name)),
+                        )
                     elif ds == "paused":
                         self._set_cell(
                             table, name, "state", f"⏸ {t('paused')}"
@@ -630,8 +706,80 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 )
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
+                self._update_stats()
             except Exception:
                 pass
+
+        @staticmethod
+        def _err_label(counts):
+            """Libellé de la colonne ⚠ : « ⚠N » si erreurs, « ⚡N » si seulement
+            des avertissements, « ✓ » si log propre."""
+            if not counts:
+                return ""
+            nerr, nwarn = counts
+            if nerr:
+                return f"⚠{nerr}"
+            if nwarn:
+                return f"⚡{nwarn}"
+            return "✓"
+
+        def _stats_counts(self):
+            """Compte par catégorie (terminées, échecs, erreurs, etc.)."""
+            done = fail = deleted = err_vms = warn_vms = 0
+            for name, (state, _code, _el) in self._final.items():
+                if state == "done":
+                    done += 1
+                elif state == "failed":
+                    fail += 1
+                elif state == "deleted":
+                    deleted += 1
+                counts = self._errcount.get(name)
+                if counts:
+                    if counts[0]:
+                        err_vms += 1
+                    elif counts[1]:
+                        warn_vms += 1
+            running = paused = 0
+            for vm in vms:
+                if vm["name"] in self._final:
+                    continue
+                if self._domstate.get(vm["name"]) == "paused":
+                    paused += 1
+                else:
+                    running += 1
+            return {
+                "total": len(vms), "done": done, "fail": fail,
+                "deleted": deleted, "running": running, "paused": paused,
+                "err_vms": err_vms, "warn_vms": warn_vms,
+            }
+
+        def _update_stats(self):
+            c = self._stats_counts()
+            line = (
+                f"  📊 {c['total']} VM · ✅ {c['done']} · ❌ {c['fail']} · "
+                f"⏳ {c['running']} · ⏸ {c['paused']} · 🗑 {c['deleted']} · "
+                f"⚠ {c['err_vms']} · ⚡ {c['warn_vms']}   "
+                f"({t('click to expand')})"
+            )
+            self.query_one("#stats", Static).update(line)
+            if self._stats_open:
+                self.query_one("#statsdetail", Static).update(
+                    self._render_stats_detail()
+                )
+
+        def _render_stats_detail(self):
+            """Détail déplié : VM avec erreurs/avertissements + moyennes hist."""
+            lines = []
+            for name, (state, code, el) in self._final.items():
+                counts = self._errcount.get(name)
+                if counts and (counts[0] or counts[1]):
+                    lines.append(
+                        f"    • {name}: ⚠{counts[0]} erreurs, "
+                        f"⚡{counts[1]} avert. ({self._fmt(el)})"
+                    )
+            if not lines:
+                lines.append(f"    {t('No error detected.')}")
+            return "\n".join(lines)
 
         async def _tick_log(self):
             if not self._follow:
@@ -766,6 +914,58 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 f"Log de {vm['name']} copié ({len(text)} car.)",
                 title="Presse-papiers",
             )
+
+        def on_click(self, event) -> None:
+            # Clic sur le sommaire de stats -> déplie / replie le détail.
+            w = getattr(event, "widget", None)
+            if w is not None and getattr(w, "id", None) == "stats":
+                self._stats_open = not self._stats_open
+                self.query_one("#statsdetail").display = self._stats_open
+                self._update_stats()
+
+        # -- pause / reprise de tout le parc -------------------------------- #
+        @staticmethod
+        def _virsh_bulk(action, names):
+            for n in names:
+                try:
+                    subprocess.run(
+                        ["sudo", "virsh", action, n],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    pass
+
+        def action_pause_all(self) -> None:
+            """Met en PAUSE (virsh suspend) toutes les VM en cours d'exécution.
+            L'install reprend là où elle en était après « Reprendre »."""
+            self.run_worker(self._bulk_worker("suspend"), exclusive=False)
+
+        def action_resume_all(self) -> None:
+            """REPREND (virsh resume) toutes les VM en pause ; le suivi des
+            logs continue automatiquement (offsets conservés)."""
+            self.run_worker(self._bulk_worker("resume"), exclusive=False)
+
+        async def _bulk_worker(self, action):
+            want = "running" if action == "suspend" else "paused"
+            targets = [
+                vm["name"]
+                for vm in vms
+                if self._domstate.get(vm["name"]) == want
+            ]
+            if not targets:
+                self.notify(
+                    t("No running VM to pause.")
+                    if action == "suspend"
+                    else t("No paused VM to resume.")
+                )
+                return
+            await asyncio.to_thread(self._virsh_bulk, action, targets)
+            verb = t("paused") if action == "suspend" else t("resumed")
+            self.notify(f"{len(targets)} VM {verb}.")
+            # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
+            self.run_worker(self._tick_domstate(), exclusive=False)
 
     app = Monitor()
     if run_app:
