@@ -259,12 +259,12 @@ TRANSLATIONS = {
         "en": "Default login:",
     },
     "Add this VM to ~/.ssh/config? (y/N): ": {
-        "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N) : ",
-        "en": "Add this VM to ~/.ssh/config? (y/N): ",
+        "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N, défaut : non) : ",
+        "en": "Add this VM to ~/.ssh/config? (y/N, default: no): ",
     },
     "Add each VM to ~/.ssh/config? (y/N): ": {
-        "fr": "Ajouter chaque VM à ~/.ssh/config ? (o/N) : ",
-        "en": "Add each VM to ~/.ssh/config? (y/N): ",
+        "fr": "Ajouter chaque VM à ~/.ssh/config ? (o/N, défaut : non) : ",
+        "en": "Add each VM to ~/.ssh/config? (y/N, default: no): ",
     },
     "Waiting for the VM IP (DHCP lease)...": {
         "fr": "Attente de l'IP de la VM (bail DHCP)...",
@@ -762,8 +762,8 @@ TRANSLATIONS = {
         "en": "Cleaning up temporary database",
     },
     "Keep the temporary database? (y/N): ": {
-        "fr": "Conserver la base de données temporaire? (o/N) : ",
-        "en": "Keep the temporary database? (y/N): ",
+        "fr": "Conserver la base de données temporaire? (o/N, défaut : non) : ",
+        "en": "Keep the temporary database? (y/N, default: no): ",
     },
     "Database kept": {
         "fr": "Base de données conservée",
@@ -1365,8 +1365,8 @@ TRANSLATIONS = {
         "en": "Selection (numbers, or 'all'): ",
     },
     "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
-        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N) : ",
-        "en": "Also delete disk images (qcow2 + seed ISO)? (y/N): ",
+        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",
+        "en": "Also delete disk images (qcow2 + seed ISO)? (y/N, default: no): ",
     },
     "Will delete:": {
         "fr": "Sera effacé :",
@@ -1381,8 +1381,8 @@ TRANSLATIONS = {
         "en": "disks kept",
     },
     "Confirm deletion? (y/N): ": {
-        "fr": "Confirmer l'effacement ? (o/N) : ",
-        "en": "Confirm deletion? (y/N): ",
+        "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
+        "en": "Confirm deletion? (y/N, default: no): ",
     },
     "Deletion done.": {
         "fr": "Effacement terminé.",
@@ -1429,8 +1429,8 @@ TRANSLATIONS = {
         "en": "files",
     },
     "Delete these orphan files? (y/N): ": {
-        "fr": "Effacer ces fichiers orphelins ? (o/N) : ",
-        "en": "Delete these orphan files? (y/N): ",
+        "fr": "Effacer ces fichiers orphelins ? (o/N, défaut : non) : ",
+        "en": "Delete these orphan files? (y/N, default: no): ",
     },
     "Cleanup done.": {
         "fr": "Nettoyage terminé.",
@@ -1441,48 +1441,48 @@ TRANSLATIONS = {
         "en": "Cached base images (reusable):",
     },
     "Also delete the cached base images? (y/N): ": {
-        "fr": "Effacer aussi les images de base en cache ? (o/N) : ",
-        "en": "Also delete the cached base images? (y/N): ",
+        "fr": "Effacer aussi les images de base en cache ? (o/N, défaut : non) : ",
+        "en": "Also delete the cached base images? (y/N, default: no): ",
     },
     "All cached base images (reusable):": {
         "fr": "Toutes les images de base en cache (réutilisables) :",
         "en": "All cached base images (reusable):",
     },
     "Delete ALL cached base images? (y/N): ": {
-        "fr": "Effacer TOUTES les images de base en cache ? (o/N) : ",
-        "en": "Delete ALL cached base images? (y/N): ",
+        "fr": "Effacer TOUTES les images de base en cache ? (o/N, défaut : non) : ",
+        "en": "Delete ALL cached base images? (y/N, default: no): ",
     },
     "Ghost domains (defined but disk missing):": {
         "fr": "Domaines fantômes (définis, disque manquant) :",
         "en": "Ghost domains (defined but disk missing):",
     },
     "Undefine these ghost domains? (y/N): ": {
-        "fr": "Supprimer la définition de ces domaines ? (o/N) : ",
-        "en": "Undefine these ghost domains? (y/N): ",
+        "fr": "Supprimer la définition de ces domaines ? (o/N, défaut : non) : ",
+        "en": "Undefine these ghost domains? (y/N, default: no): ",
     },
     "Stale codename-named Ubuntu images (duplicates):": {
         "fr": "Images Ubuntu nommées par codename (doublons) :",
         "en": "Stale codename-named Ubuntu images (duplicates):",
     },
     "Delete these duplicate images? (y/N): ": {
-        "fr": "Effacer ces images en double ? (o/N) : ",
-        "en": "Delete these duplicate images? (y/N): ",
+        "fr": "Effacer ces images en double ? (o/N, défaut : non) : ",
+        "en": "Delete these duplicate images? (y/N, default: no): ",
     },
     "Orphan ~/.ssh/config entries:": {
         "fr": "Entrées ~/.ssh/config orphelines :",
         "en": "Orphan ~/.ssh/config entries:",
     },
     "Remove these ~/.ssh/config entries? (y/N): ": {
-        "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N) : ",
-        "en": "Remove these ~/.ssh/config entries? (y/N): ",
+        "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N, défaut : non) : ",
+        "en": "Remove these ~/.ssh/config entries? (y/N, default: no): ",
     },
     "Stale DHCP leases (no matching VM):": {
         "fr": "Baux DHCP périmés (aucune VM correspondante) :",
         "en": "Stale DHCP leases (no matching VM):",
     },
     "Clear these stale leases? (y/N): ": {
-        "fr": "Effacer ces baux périmés ? (o/N) : ",
-        "en": "Clear these stale leases? (y/N): ",
+        "fr": "Effacer ces baux périmés ? (o/N, défaut : non) : ",
+        "en": "Clear these stale leases? (y/N, default: no): ",
     },
     "Deploy ERPLibre infra (one minimal VM per image)": {
         "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
@@ -1546,12 +1546,12 @@ TRANSLATIONS = {
         "en": "Total RAM exceeds host free RAM: not all VMs will run at once.",
     },
     "Install ERPLibre into ~/git/erplibre on each VM? (y/N): ": {
-        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? (o/N) : ",
-        "en": "Install ERPLibre into ~/git/erplibre on each VM? (y/N): ",
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? (o/N, défaut : non) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on each VM? (y/N, default: no): ",
     },
     "Deploy these VMs now? (y/N): ": {
-        "fr": "Déployer ces VM maintenant ? (o/N) : ",
-        "en": "Deploy these VMs now? (y/N): ",
+        "fr": "Déployer ces VM maintenant ? (o/N, défaut : non) : ",
+        "en": "Deploy these VMs now? (y/N, default: no): ",
     },
     "Cancelled.": {
         "fr": "Annulé.",
@@ -1570,8 +1570,8 @@ TRANSLATIONS = {
         "en": "Installing ERPLibre on each VM",
     },
     "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ": {
-        "fr": "Installer ERPLibre dans ~/git/erplibre sur cette VM ? (o/N) : ",
-        "en": "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ",
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur cette VM ? (o/N, défaut : non) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on this VM? (y/N, default: no): ",
     },
     "installing ERPLibre": {
         "fr": "installation d'ERPLibre",
@@ -1590,8 +1590,8 @@ TRANSLATIONS = {
         "en": "SSH not reachable, ERPLibre install skipped.",
     },
     "Interactive monitoring dashboard? (y/N): ": {
-        "fr": "Suivi interactif (dashboard) ? (o/N) : ",
-        "en": "Interactive monitoring dashboard? (y/N): ",
+        "fr": "Suivi interactif (dashboard) ? (o/N, défaut : non) : ",
+        "en": "Interactive monitoring dashboard? (y/N, default: no): ",
     },
     "resolving IP...": {
         "fr": "résolution de l'IP...",
@@ -1730,12 +1730,12 @@ TRANSLATIONS = {
         "en": "No SSH key found. Set a password instead? (Y/n): ",
     },
     "Overwrite existing VM disk if present? (y/N): ": {
-        "fr": "Écraser le disque de la VM s'il existe ? (o/N) : ",
-        "en": "Overwrite existing VM disk if present? (y/N): ",
+        "fr": "Écraser le disque de la VM s'il existe ? (o/N, défaut : non) : ",
+        "en": "Overwrite existing VM disk if present? (y/N, default: no): ",
     },
     "Verify SHA256 after download? (y/N): ": {
-        "fr": "Vérifier le SHA256 après téléchargement ? (o/N) : ",
-        "en": "Verify SHA256 after download? (y/N): ",
+        "fr": "Vérifier le SHA256 après téléchargement ? (o/N, défaut : non) : ",
+        "en": "Verify SHA256 after download? (y/N, default: no): ",
     },
     "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
         "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
