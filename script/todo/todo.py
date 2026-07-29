@@ -2092,9 +2092,62 @@ class TODO:
         # sshd répondait au moins (mieux qu'un abandon silencieux).
         return ssh_up
 
-    def _qemu_erplibre_remote_cmd(self, branch):
+    # Paquets QEMU/libvirt pour le profil « Déploiement » (nos 3 gestionnaires).
+    _QEMU_QEMU_PKGS = (
+        "(sudo apt-get install -y qemu-kvm libvirt-daemon-system virtinst "
+        "cloud-image-utils 2>/dev/null || sudo dnf install -y qemu-kvm "
+        "libvirt virt-install cloud-utils 2>/dev/null || sudo pacman -S "
+        "--needed --noconfirm qemu-desktop libvirt virt-install 2>/dev/null "
+        "|| true)"
+    )
+
+    def _qemu_pick_install_profile(self):
+        """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
+        finale exécutée dans ~/git/erplibre)."""
+        profiles = [
+            (
+                f"ERPLibre + Odoo {v}",
+                f"make install_os && make install_odoo_{v}",
+            )
+            for v in ("18", "17", "16", "15", "14", "13", "12")
+        ]
+        profiles += [
+            (
+                t("ERPLibre + all Odoo versions"),
+                "make install_os && make install_odoo_all_version",
+            ),
+            (
+                t("ERPLibre only (no Odoo)"),
+                "make install_os && ./script/install/install_erplibre.sh",
+            ),
+            (
+                t("ERPLibre mobile (home)"),
+                "make install_os && ./mobile/install_and_run.sh",
+            ),
+            (
+                t("ERPLibre Deployment (+ QEMU + dev)"),
+                "make install_os && make install_dev && "
+                + self._QEMU_QEMU_PKGS,
+            ),
+        ]
+        print(f"\n{t('What to install on the VM(s)?')}")
+        for i, (label, _cmd) in enumerate(profiles, 1):
+            print(f"  [{i}] {label}{' *' if i == 1 else ''}")
+        sel = input(t("Choice (number, blank = Odoo 18): ")).strip()
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(profiles):
+                return profiles[idx]
+        except ValueError:
+            pass
+        return profiles[0]  # défaut : ERPLibre + Odoo 18
+
+    def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None):
         """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
-        puis clone + make install_os + make install_odoo_18)."""
+        puis clone + `final_cmd` dans ~/git/erplibre). `final_cmd` par défaut :
+        install_os + install_odoo_18."""
+        if not final_cmd:
+            final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
         return (
             "set -e; "
             # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
@@ -2150,21 +2203,23 @@ class TODO:
             "if [ ! -d ~/git/erplibre/.git ]; then "
             f"git clone --branch {shlex.quote(branch)} "
             f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-            # Installation : dépendances système puis Odoo.
-            "cd ~/git/erplibre && make install_os && "
-            f"make {self.ERPLIBRE_ODOO_TARGET}"
+            # Installation : commande finale selon le profil choisi.
+            f"cd ~/git/erplibre && {final_cmd}"
         )
 
-    def _qemu_install_erplibre_monitored(self, names, branch, ip_map=None):
+    def _qemu_install_erplibre_monitored(
+        self, names, branch, ip_map=None, final_cmd=None
+    ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
-        `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE)."""
+        `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
+        `final_cmd` : commande d'install selon le profil choisi."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
         )
 
-        remote = self._qemu_erplibre_remote_cmd(branch)
+        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd)
         try:
             mod = self._qemu_import_module()
         except Exception:
@@ -2216,10 +2271,12 @@ class TODO:
         # Commande prête à copier pour relire/partager tous les logs.
         print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
-    def _qemu_install_erplibre_vm(self, name, ssh_key, branch, ip=None):
+    def _qemu_install_erplibre_vm(
+        self, name, ssh_key, branch, ip=None, final_cmd=None
+    ):
         """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
-        exécute « make install_os » et « make install_odoo_18 » (streamé).
-        `ip` : IP déjà résolue (sinon on la résout ici)."""
+        exécute la commande d'install du profil choisi (streamé). `ip` : IP
+        déjà résolue ; `final_cmd` : commande d'install."""
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -2236,7 +2293,7 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
-        remote = self._qemu_erplibre_remote_cmd(branch)
+        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd)
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
@@ -2244,7 +2301,7 @@ class TODO:
         cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
         print(
             f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} "
-            f"({branch}, make install_os + {self.ERPLIBRE_ODOO_TARGET})"
+            f"({branch})"
         )
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -2545,11 +2602,13 @@ class TODO:
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install_branch = None
         install_monitor = False
+        install_cmd = None  # commande finale selon le profil choisi
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
         )
         if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
+            _label, install_cmd = self._qemu_pick_install_profile()
             install_monitor = self._is_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
@@ -2667,7 +2726,7 @@ class TODO:
             if install_monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
-                    deployed, install_branch, ip_map
+                    deployed, install_branch, ip_map, install_cmd
                 )
             else:
                 print(
@@ -2676,7 +2735,11 @@ class TODO:
                 )
                 for name in deployed:
                     self._qemu_install_erplibre_vm(
-                        name, ssh_key, install_branch, ip_map.get(name)
+                        name,
+                        ssh_key,
+                        install_branch,
+                        ip_map.get(name),
+                        install_cmd,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
