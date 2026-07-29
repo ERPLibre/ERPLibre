@@ -1302,6 +1302,14 @@ TRANSLATIONS = {
         "fr": "Télémétrie réinitialisée.",
         "en": "Telemetry reset.",
     },
+    "tree from code": {
+        "fr": "arbre issu du code",
+        "en": "tree from code",
+    },
+    "visited paths only": {
+        "fr": "chemins visités seulement",
+        "en": "visited paths only",
+    },
     "Install textual for the telemetry TUI (pip).": {
         "fr": "Installez textual pour le TUI de télémétrie (pip).",
         "en": "Install textual for the telemetry TUI (pip).",
