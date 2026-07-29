@@ -1420,6 +1420,22 @@ TRANSLATIONS = {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
     },
+    "Show advanced info (vCPU, RAM, disk)? (y/N): ": {
+        "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
+        "en": "Show advanced info (vCPU, RAM, disk)? (y/N): ",
+    },
+    "Storage": {
+        "fr": "Stockage",
+        "en": "Storage",
+    },
+    "total": {
+        "fr": "au total",
+        "en": "total",
+    },
+    "used": {
+        "fr": "utilisés",
+        "en": "used",
+    },
     "Enter +NG to grow, -NG to shrink, or NG for a target size "
     "(e.g. +20G, -10G, 60G).": {
         "fr": "Entrez +NG pour agrandir, -NG pour réduire, ou NG pour une "

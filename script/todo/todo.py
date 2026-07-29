@@ -1082,7 +1082,7 @@ class TODO:
             elif status == "3":
                 self._qemu_download_image()
             elif status == "4":
-                self._qemu_list_vms()
+                self._qemu_list_vms(ask_advanced=True)
             elif status == "5":
                 self._qemu_show_ip()
             elif status == "6":
@@ -1130,10 +1130,100 @@ class TODO:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
-    def _qemu_list_vms(self):
+    def _qemu_list_vms(self, ask_advanced=False):
         cmd = "sudo virsh list --all"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+        if ask_advanced and self._is_yes(
+            input(t("Show advanced info (vCPU, RAM, disk)? (y/N): "))
+        ):
+            self._qemu_list_vms_advanced()
+
+    @staticmethod
+    def _qemu_dominfo(name):
+        """(vcpus, max_mem_kib) via « virsh dominfo », ou (0, 0)."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dominfo", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 0, 0
+        vcpus, mem = 0, 0
+        for line in res.stdout.splitlines():
+            if line.startswith("CPU(s):"):
+                try:
+                    vcpus = int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+            elif line.startswith("Max memory:"):
+                # « 4194304 KiB »
+                try:
+                    mem = int(line.split(":", 1)[1].split()[0])
+                except (ValueError, IndexError):
+                    pass
+        return vcpus, mem
+
+    @staticmethod
+    def _qemu_disk_sizes(disk):
+        """(taille virtuelle, taille réelle sur disque) en octets, via
+        qemu-img info -U (lit même VM allumée). (0, 0) si échec."""
+        try:
+            res = subprocess.run(
+                ["sudo", "qemu-img", "info", "-U", "--output=json", disk],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            data = json.loads(res.stdout)
+            return (
+                int(data.get("virtual-size", 0)),
+                int(data.get("actual-size", 0)),
+            )
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return 0, 0
+
+    def _qemu_list_vms_advanced(self):
+        """Tableau détaillé par VM : état, vCPU, RAM allouée, disque (virtuel
+        + réel), plus l'espace total disponible du stockage des images."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(f"\n{t('No VM found.')}")
+            return
+        g = 1 << 30
+        header = (
+            f"\n{'VM':<28} {'État':<10} {'vCPU':>4} {'RAM':>8} "
+            f"{'Disque':>9} {'Réel':>9}"
+        )
+        print(header)
+        print("─" * len(header.strip()))
+        disk_dirs = set()
+        for name in names:
+            state = self._qemu_domstate(name) or "?"
+            vcpus, mem_kib = self._qemu_dominfo(name)
+            disk = self._qemu_main_disk(name)
+            virt, actual = self._qemu_disk_sizes(disk) if disk else (0, 0)
+            if disk:
+                disk_dirs.add(os.path.dirname(disk))
+            ram_g = (mem_kib * 1024) / g if mem_kib else 0
+            print(
+                f"{name:<28.28} {state:<10.10} {vcpus:>4} "
+                f"{ram_g:>7.1f}G {virt / g:>8.1f}G {actual / g:>8.1f}G"
+            )
+        # Espace total disponible sur le(s) stockage(s) des disques.
+        for d in sorted(disk_dirs) or ["/var/lib/libvirt/images"]:
+            try:
+                usage = shutil.disk_usage(d)
+            except OSError:
+                continue
+            print(
+                f"\n{t('Storage')} {d} : "
+                f"{usage.free / g:.1f}G {t('free')} / "
+                f"{usage.total / g:.1f}G {t('total')} "
+                f"({usage.used / g:.1f}G {t('used')})"
+            )
 
     def _qemu_show_ip(self):
         # Affiche d'abord les VM (avec leur ID) pour que l'utilisateur sache
