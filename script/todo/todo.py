@@ -547,6 +547,7 @@ class TODO:
         "prompt_execute_rtk": "RTK",
         "prompt_execute_update": "Update",
         "prompt_execute_deploy": "Deploy",
+        "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
     }
 
@@ -716,19 +717,8 @@ class TODO:
             {"section": t("Local")},
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
             {"prompt_description": t("Configure sshfs")},
-            {"section": t("SSH (remote host)")},
-            {"prompt_description": t("SSH - Check connection")},
-            {"prompt_description": t("SSH - Sync files (rsync)")},
-            {"prompt_description": t("SSH - Install ERPLibre")},
-            {"prompt_description": t("SSH - Start Odoo")},
-            {"prompt_description": t("SSH - Stop Odoo")},
-            {"prompt_description": t("SSH - Restart Odoo")},
-            {"prompt_description": t("SSH - Service status")},
-            {"prompt_description": t("SSH - View logs")},
-            {"prompt_description": t("SSH - Run make target")},
-            {"prompt_description": t("SSH - Install systemd service")},
-            {"prompt_description": t("SSH - Configure nginx + SSL")},
-            {"section": t("Virtualization & notifications")},
+            {"section": t("Remote & services")},
+            {"prompt_description": t("SSH (remote host)...")},
             {
                 "prompt_description": t(
                     "Deploy - Install NTFY notification server"
@@ -752,31 +742,59 @@ class TODO:
             elif status == "2":
                 self._configure_sshfs()
             elif status == "3":
-                self._deploy_ssh_check()
+                self.prompt_execute_deploy_ssh()
             elif status == "4":
-                self._deploy_ssh_push()
-            elif status == "5":
-                self._deploy_ssh_install()
-            elif status == "6":
-                self._deploy_ssh_run()
-            elif status == "7":
-                self._deploy_ssh_stop()
-            elif status == "8":
-                self._deploy_ssh_restart()
-            elif status == "9":
-                self._deploy_ssh_status()
-            elif status == "10":
-                self._deploy_ssh_logs()
-            elif status == "11":
-                self._deploy_ssh_make()
-            elif status == "12":
-                self._deploy_ssh_install_systemd()
-            elif status == "13":
-                self._deploy_ssh_install_nginx()
-            elif status == "14":
                 self._deploy_ntfy_server()
-            elif status == "15":
+            elif status == "5":
                 self.prompt_execute_qemu()
+            else:
+                print(t("Command not found !"))
+
+    def prompt_execute_deploy_ssh(self):
+        """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
+        print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
+        choices = [
+            {"prompt_description": t("SSH - Check connection")},
+            {"prompt_description": t("SSH - Sync files (rsync)")},
+            {"prompt_description": t("SSH - Install ERPLibre")},
+            {"prompt_description": t("SSH - Start Odoo")},
+            {"prompt_description": t("SSH - Stop Odoo")},
+            {"prompt_description": t("SSH - Restart Odoo")},
+            {"prompt_description": t("SSH - Service status")},
+            {"prompt_description": t("SSH - View logs")},
+            {"prompt_description": t("SSH - Run make target")},
+            {"prompt_description": t("SSH - Install systemd service")},
+            {"prompt_description": t("SSH - Configure nginx + SSL")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._deploy_ssh_check()
+            elif status == "2":
+                self._deploy_ssh_push()
+            elif status == "3":
+                self._deploy_ssh_install()
+            elif status == "4":
+                self._deploy_ssh_run()
+            elif status == "5":
+                self._deploy_ssh_stop()
+            elif status == "6":
+                self._deploy_ssh_restart()
+            elif status == "7":
+                self._deploy_ssh_status()
+            elif status == "8":
+                self._deploy_ssh_logs()
+            elif status == "9":
+                self._deploy_ssh_make()
+            elif status == "10":
+                self._deploy_ssh_install_systemd()
+            elif status == "11":
+                self._deploy_ssh_install_nginx()
             else:
                 print(t("Command not found !"))
 

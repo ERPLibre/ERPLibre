@@ -149,6 +149,18 @@ TRANSLATIONS = {
         "fr": "SSH (hôte distant)",
         "en": "SSH (remote host)",
     },
+    "Remote & services": {
+        "fr": "Distant & services",
+        "en": "Remote & services",
+    },
+    "SSH (remote host)...": {
+        "fr": "SSH (hôte distant)…",
+        "en": "SSH (remote host)...",
+    },
+    "Deploy ERPLibre to a remote host over SSH!": {
+        "fr": "Déployer ERPLibre sur un hôte distant via SSH !",
+        "en": "Deploy ERPLibre to a remote host over SSH!",
+    },
     "Virtualization & notifications": {
         "fr": "Virtualisation & notifications",
         "en": "Virtualization & notifications",
