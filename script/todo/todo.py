@@ -129,6 +129,7 @@ class TODO:
 [2] {t("Install")}
 [3] {t("Question")}
 [4] {t("Fork - Open TODO in a new tab")}
+[5] {t("Navigation telemetry (TUI)")}
 [0] {t("Quit")}
 """
         while True:
@@ -160,6 +161,8 @@ class TODO:
                 # )
                 cmd = "make todo"
                 self.execute.exec_command_live(cmd, source_erplibre=True)
+            elif status == "5":
+                self._todo_telemetry_tui()
             # elif status == "3" or status == "install":
             #     print("install")
             else:
@@ -565,7 +568,23 @@ class TODO:
         header = ""
         if crumbs:
             header = "📍 " + " › ".join(crumbs) + "\n"
+            # Télémétrie de navigation (best-effort, ne casse jamais le menu).
+            try:
+                from script.todo import todo_telemetry
+
+                todo_telemetry.record(" › ".join(crumbs))
+            except Exception:
+                pass
         return header + t("Command:")
+
+    def _todo_telemetry_tui(self):
+        """Ouvre le TUI arborescent de télémétrie de navigation."""
+        try:
+            from script.todo.todo_telemetry import run_tui
+
+            run_tui()
+        except ImportError:
+            print(t("Install textual for the telemetry TUI (pip)."))
 
     def fill_help_info(self, choices):
         # Une entrée {"section": "..."} affiche un titre de section SANS

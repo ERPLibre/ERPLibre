@@ -1282,6 +1282,30 @@ TRANSLATIONS = {
         "fr": "suivi d'installation",
         "en": "install monitoring",
     },
+    "Navigation telemetry (TUI)": {
+        "fr": "Télémétrie de navigation (TUI)",
+        "en": "Navigation telemetry (TUI)",
+    },
+    "TODO navigation telemetry": {
+        "fr": "TODO — télémétrie de navigation",
+        "en": "TODO navigation telemetry",
+    },
+    "navigations": {
+        "fr": "navigations",
+        "en": "navigations",
+    },
+    "menus": {
+        "fr": "menus",
+        "en": "menus",
+    },
+    "Telemetry reset.": {
+        "fr": "Télémétrie réinitialisée.",
+        "en": "Telemetry reset.",
+    },
+    "Install textual for the telemetry TUI (pip).": {
+        "fr": "Installez textual pour le TUI de télémétrie (pip).",
+        "en": "Install textual for the telemetry TUI (pip).",
+    },
     "Resize a VM disk": {
         "fr": "Redimensionner le disque d'une VM",
         "en": "Resize a VM disk",
