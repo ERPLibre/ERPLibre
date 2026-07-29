@@ -1134,10 +1134,69 @@ class TODO:
         cmd = "sudo virsh list --all"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
-        if ask_advanced and self._is_yes(
-            input(t("Show advanced info (vCPU, RAM, disk)? (y/N): "))
-        ):
+        if not ask_advanced:
+            return
+        # Menu contextuel : infos avancées, ou changer l'état de VM.
+        print(f"\n{t('What do you want to do?')}")
+        print(f"  [1] {t('Advanced info (vCPU, RAM, disk)')}")
+        print(f"  [2] {t('Change the state of one or more VMs')}")
+        print(f"  [{t('Enter')}] {t('Nothing')}")
+        choice = input(t("Choice: ")).strip()
+        if choice == "1":
             self._qemu_list_vms_advanced()
+        elif choice == "2":
+            self._qemu_change_state()
+
+    def _qemu_change_state(self):
+        """Démarre (« ouvrir ») ou éteint (« fermer ») une liste de VM saisie
+        séparée par des virgules, avec DOUBLE validation."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(f"\n{t('No VM found.')}")
+            return
+        print(f"\n{t('Available VMs:')} {', '.join(names)}")
+        raw = input(t("VMs to change (comma-separated): ")).strip()
+        targets = [n.strip() for n in raw.split(",") if n.strip()]
+        if not targets:
+            print(t("Nothing selected."))
+            return
+        # Résoudre les ID -> noms et valider l'existence.
+        resolved, unknown = [], []
+        known = set(names)
+        for tgt in targets:
+            real = self._qemu_domname(tgt)
+            (resolved if real in known else unknown).append(real)
+        if unknown:
+            print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
+            return
+        # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
+        print(f"\n{t('Target state:')}")
+        print(f"  [1] {t('Open (start)')}")
+        print(f"  [2] {t('Close (shut down)')}")
+        st = input(t("Choice: ")).strip()
+        if st == "1":
+            action, verb = "start", t("start")
+        elif st == "2":
+            action, verb = "shutdown", t("shut down")
+        else:
+            print(t("Cancelled."))
+            return
+        # DOUBLE validation avant d'appliquer.
+        summary = f"{verb} -> {', '.join(resolved)}"
+        if not self._is_yes(
+            input(f"{t('Apply:')} {summary} ? (o/N) : ")
+        ):
+            print(t("Cancelled."))
+            return
+        if not self._is_yes(
+            input(t("Confirm for real? (y/N): "))
+        ):
+            print(t("Cancelled."))
+            return
+        for real in resolved:
+            cmd = f"sudo virsh {action} {shlex.quote(real)}"
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
 
     @staticmethod
     def _qemu_dominfo(name):

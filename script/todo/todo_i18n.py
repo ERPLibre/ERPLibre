@@ -1452,6 +1452,70 @@ TRANSLATIONS = {
         "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
         "en": "Show advanced info (vCPU, RAM, disk)? (y/N): ",
     },
+    "What do you want to do?": {
+        "fr": "Que voulez-vous faire ?",
+        "en": "What do you want to do?",
+    },
+    "Advanced info (vCPU, RAM, disk)": {
+        "fr": "Infos avancées (vCPU, RAM, disque)",
+        "en": "Advanced info (vCPU, RAM, disk)",
+    },
+    "Change the state of one or more VMs": {
+        "fr": "Changer l'état d'une ou plusieurs VM",
+        "en": "Change the state of one or more VMs",
+    },
+    "Enter": {
+        "fr": "Entrée",
+        "en": "Enter",
+    },
+    "Nothing": {
+        "fr": "Rien",
+        "en": "Nothing",
+    },
+    "Choice: ": {
+        "fr": "Choix : ",
+        "en": "Choice: ",
+    },
+    "Available VMs:": {
+        "fr": "VM disponibles :",
+        "en": "Available VMs:",
+    },
+    "VMs to change (comma-separated): ": {
+        "fr": "VM à modifier (séparées par des virgules) : ",
+        "en": "VMs to change (comma-separated): ",
+    },
+    "Unknown VM(s):": {
+        "fr": "VM inconnue(s) :",
+        "en": "Unknown VM(s):",
+    },
+    "Target state:": {
+        "fr": "État cible :",
+        "en": "Target state:",
+    },
+    "Open (start)": {
+        "fr": "Ouvrir (démarrer)",
+        "en": "Open (start)",
+    },
+    "Close (shut down)": {
+        "fr": "Fermer (éteindre)",
+        "en": "Close (shut down)",
+    },
+    "start": {
+        "fr": "démarrer",
+        "en": "start",
+    },
+    "shut down": {
+        "fr": "éteindre",
+        "en": "shut down",
+    },
+    "Apply:": {
+        "fr": "Appliquer :",
+        "en": "Apply:",
+    },
+    "Confirm for real? (y/N): ": {
+        "fr": "Confirmer pour de vrai ? (o/N) : ",
+        "en": "Confirm for real? (y/N): ",
+    },
     "Storage": {
         "fr": "Stockage",
         "en": "Storage",
