@@ -782,7 +782,25 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 if ans in ("o", "oui", "y", "yes"):
                     os.system(printable + " || true")
                     os.system("sudo sensors-detect --auto || true")
-            self.run_worker(self._tick_system())
+            # Rafraîchit IMMÉDIATEMENT la vue système : on ré-échantillonne
+            # (température incluse) et on réécrit la case pour que le message
+            # « installer » disparaisse si les capteurs sont désormais lisibles.
+            self._sys_prev = None
+            try:
+                m, self._sys_prev = system_snapshot(self._sys_prev, full=True)
+                self.query_one("#system", Static).update(
+                    self._render_system(m)
+                )
+            except Exception:
+                pass
+            self.refresh()
+            if read_temperature() is not None:
+                self.notify(t("Sensors now available."))
+            else:
+                self.notify(
+                    t("Still no temperature (reboot/modprobe may be needed)."),
+                    severity="warning",
+                )
 
         def on_click(self, event):
             # Grille (mosaïque) : clic sur le TITRE d'une case -> l'agrandir

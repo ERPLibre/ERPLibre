@@ -1352,6 +1352,14 @@ TRANSLATIONS = {
         "fr": "Capteurs déjà disponibles.",
         "en": "Sensors already available.",
     },
+    "Sensors now available.": {
+        "fr": "Capteurs désormais disponibles.",
+        "en": "Sensors now available.",
+    },
+    "Still no temperature (reboot/modprobe may be needed).": {
+        "fr": "Toujours pas de température (redémarrage/modprobe requis ?).",
+        "en": "Still no temperature (reboot/modprobe may be needed).",
+    },
     "Unknown package manager for lm-sensors.": {
         "fr": "Gestionnaire de paquets inconnu pour lm-sensors.",
         "en": "Unknown package manager for lm-sensors.",
