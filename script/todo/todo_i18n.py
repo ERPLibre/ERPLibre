@@ -1649,6 +1649,10 @@ TRANSLATIONS = {
         "fr": "IP résolues :",
         "en": "IPs resolved:",
     },
+    "still waiting for": {
+        "fr": "encore en attente de",
+        "en": "still waiting for",
+    },
     "TOTAL summary": {
         "fr": "Sommaire TOTAL",
         "en": "TOTAL summary",

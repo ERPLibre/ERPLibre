@@ -1566,26 +1566,50 @@ class TODO:
 
     @staticmethod
     def _qemu_lease_candidates(name):
-        """Toutes les IPv4 du bail DHCP de la VM. Il peut y en avoir PLUSIEURS :
-        au boot, l'image cloud demande d'abord une IP avec son hostname par
-        défaut (« ubuntu ») -> 1er bail ; puis cloud-init fixe le vrai hostname
-        et le client redemande -> 2e bail (IP différente). Le 1er devient
-        périmé (« No route to host »)."""
-        try:
-            res = subprocess.run(
-                ["sudo", "virsh", "domifaddr", name, "--source", "lease"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return []
-        return re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout)
+        """Toutes les IPv4 candidates de la VM, agrégées de PLUSIEURS sources :
+        - lease : base DHCP de dnsmasq (peut manquer sous forte charge, ou
+          contenir plusieurs baux : bail précoce « ubuntu » périmé + bail
+          définitif) ;
+        - agent : qemu-guest-agent DANS la VM (voit l'IP réelle même quand le
+          bail dnsmasq est absent) ;
+        - arp : table ARP de l'hôte (VM active sur le réseau).
+        On combine pour ne jamais rater une IP que le bail seul manquerait
+        (cas observé : 30 VM émulées, bail dnsmasq vide alors que la VM a une
+        IP)."""
+        ips = []
+        for source in ("lease", "agent", "arp"):
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            for ip in re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout):
+                # Ignore la loopback (remontée par --source agent).
+                if ip != "127.0.0.1" and ip not in ips:
+                    ips.append(ip)
+        return ips
 
     @staticmethod
-    def _qemu_ip_reachable(ip, port=22, timeout=3):
-        """Vrai si le port SSH répond (sshd up) : distingue le bail actif du
-        bail périmé sans dépendre du ping (souvent filtré)."""
+    def _qemu_ip_reachable(ip, port=22, timeout=2):
+        """Vrai si la VM répond sur cette IP (bail ACTIF, pas périmé). On teste
+        le PING d'abord : il répond dès que le réseau de la VM est up, BIEN
+        AVANT sshd — sinon on attendait le sshd (lent en émulation) et la
+        résolution semblait « bloquée » alors que la VM a déjà son IP. Repli
+        TCP:port si l'ICMP est filtré."""
+        try:
+            res = subprocess.run(
+                ["ping", "-c", "1", "-W", str(int(timeout)), ip],
+                capture_output=True,
+                timeout=timeout + 1,
+            )
+            if res.returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            pass
         import socket
 
         try:
@@ -1650,39 +1674,56 @@ class TODO:
             return f"{secs}s"
         return f"{secs // 60}m{secs % 60:02d}s"
 
-    def _qemu_resolve_ips(self, names, labels=None):
+    def _qemu_resolve_ips(self, names, labels=None, timeout=300):
         """Résout les IP de plusieurs VM EN PARALLÈLE (le boot émulé est lent),
         en affichant la progression au fur et à mesure. Renvoie {nom: ip|None}.
         `labels` : {nom: « k/N »} pour préfixer chaque ligne d'un ID de suivi.
-        Évite l'attente EN SÉRIE et SANS sortie qui donnait l'impression d'un
-        blocage (dashboard qui « n'ouvre jamais »)."""
+        `timeout` : délai max PAR VM (borne l'attente d'une VM sans IP). Un
+        BATTEMENT toutes les 30 s liste les VM encore en attente -> jamais de
+        silence prolongé qui donne l'impression d'un blocage."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import TimeoutError as _FTimeout
 
         labels = labels or {}
         print(f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}")
         result = {}
         t0 = time.time()
+        starts = {}
         workers = min(len(names), (os.cpu_count() or 4)) or 1
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            starts = {}
             futs = {}
             for n in names:
                 starts[n] = time.time()
-                futs[pool.submit(self._qemu_vm_ip, n)] = n
-            # done = ordre de complétion ; prefixe l'ID de suivi + la durée.
-            for done, fut in enumerate(as_completed(futs), 1):
-                n = futs[fut]
+                futs[pool.submit(self._qemu_vm_ip, n, timeout)] = n
+            pending = set(futs)
+            done = 0
+            while pending:
                 try:
-                    ip = fut.result()
-                except Exception:
-                    ip = None
-                result[n] = ip
-                tag = f"[{labels[n]}] " if n in labels else ""
-                dur = self._fmt_dur(time.time() - starts[n])
-                print(
-                    f"  [{done}/{len(names)}] {tag}{n}: "
-                    f"{ip or t('no IP')} ({dur})"
-                )
+                    for fut in as_completed(list(pending), timeout=30):
+                        pending.discard(fut)
+                        n = futs[fut]
+                        try:
+                            ip = fut.result()
+                        except Exception:
+                            ip = None
+                        result[n] = ip
+                        done += 1
+                        tag = f"[{labels[n]}] " if n in labels else ""
+                        dur = self._fmt_dur(time.time() - starts[n])
+                        print(
+                            f"  [{done}/{len(names)}] {tag}{n}: "
+                            f"{ip or t('no IP')} ({dur})"
+                        )
+                except _FTimeout:
+                    # Battement : VM encore en attente (boot/DHCP lent).
+                    waiting = [futs[f] for f in pending]
+                    shown = ", ".join(waiting[:5])
+                    if len(waiting) > 5:
+                        shown += "…"
+                    print(
+                        f"  ⏳ {t('still waiting for')} {len(waiting)} VM "
+                        f"({self._fmt_dur(time.time() - t0)}): {shown}"
+                    )
         got = sum(1 for ip in result.values() if ip)
         print(
             f"  {t('IPs resolved:')} {got}/{len(names)} "
