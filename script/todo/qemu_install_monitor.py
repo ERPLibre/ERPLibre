@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -175,10 +176,101 @@ def read_status(log_path: str) -> tuple[str, int | None]:
 
 
 # --------------------------------------------------------------------------- #
+# Télémétrie, historique de durées (ETA), navigateur CLI
+# --------------------------------------------------------------------------- #
+def _stats_path() -> Path:
+    """Fichier d'historique persistant (durées d'installation par arch)."""
+    return session_dir() / "stats.json"
+
+
+def load_stats() -> dict:
+    try:
+        return json.loads(_stats_path().read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def record_duration(arch: str, secs: float) -> None:
+    """Mémorise la durée d'une install (par architecture) pour estimer l'ETA
+    des prochaines. On garde les 20 dernières valeurs par arch."""
+    data = load_stats()
+    durations = data.setdefault("durations", {})
+    key = arch or "unknown"
+    lst = durations.setdefault(key, [])
+    lst.append(int(secs))
+    durations[key] = lst[-20:]
+    try:
+        _stats_path().write_text(json.dumps(data))
+    except OSError:
+        pass
+
+
+def eta_reference(stats: dict, arch: str) -> int | None:
+    """Durée d'install de RÉFÉRENCE (médiane) pour cette arch, d'après
+    l'historique ; repli sur toutes archis confondues. None si aucun historique."""
+    durations = stats.get("durations", {}) or {}
+    lst = durations.get(arch or "unknown") or []
+    if not lst:
+        lst = [x for v in durations.values() for x in v]
+    if not lst:
+        return None
+    s = sorted(lst)
+    return s[len(s) // 2]
+
+
+def _fmt_size(nbytes) -> str:
+    """Octets -> « 1.2G » / « 345M » / « 12K »."""
+    if nbytes is None:
+        return "-"
+    for unit, div in (("T", 1 << 40), ("G", 1 << 30), ("M", 1 << 20)):
+        if nbytes >= div:
+            return f"{nbytes / div:.1f}{unit}"
+    return f"{nbytes // 1024}K"
+
+
+def _fmt_secs(secs) -> str:
+    """Secondes -> « 45s » / « 12m » / « 1h05 »."""
+    secs = int(secs)
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    return f"{secs // 3600}h{(secs % 3600) // 60:02d}"
+
+
+def vm_disk_path(vm: dict) -> str:
+    """Chemin du qcow2 de la VM (défaut libvirt si non fourni)."""
+    return vm.get("disk") or f"/var/lib/libvirt/images/{vm['name']}.qcow2"
+
+
+def disk_actual_size(path: str) -> int | None:
+    """Taille RÉELLEMENT occupée du qcow2 (creux) via st_blocks."""
+    try:
+        st = os.stat(path)
+        return int(getattr(st, "st_blocks", 0)) * 512
+    except OSError:
+        return None
+
+
+# Navigateurs web en ligne de commande, par ordre de préférence (rendu JS
+# d'abord — utile pour l'UI Odoo — puis navigateurs texte classiques).
+CLI_BROWSERS = ("browsh", "carbonyl", "w3m", "links", "elinks", "lynx")
+
+
+def cli_browser() -> str | None:
+    """Premier navigateur CLI disponible dans le PATH, sinon None."""
+    for name in CLI_BROWSERS:
+        if shutil.which(name):
+            return name
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
-def run_monitor(manifest_path: str) -> None:
-    """Ouvre le dashboard Textual sur un manifeste d'installation."""
+def run_monitor(manifest_path: str, run_app: bool = True):
+    """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
+    à False renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal
     from textual.widgets import DataTable, Footer, Header, RichLog, Static
@@ -196,13 +288,15 @@ def run_monitor(manifest_path: str) -> None:
 
     class Monitor(App):
         CSS = """
-        DataTable { width: 40; border: solid $accent; }
+        DataTable { width: 58; border: solid $accent; }
         RichLog { border: solid $accent; }
+        #telemetry { height: 1; color: $text-muted; }
         #sshbar { height: 2; color: $text-muted; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
             ("s", "ssh", "SSH"),
+            ("w", "web", "Web (navigateur CLI)"),
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
         ]
@@ -219,6 +313,9 @@ def run_monitor(manifest_path: str) -> None:
             # Cache des cellules AFFICHÉES : on n'appelle update_cell (donc on
             # ne re-render) que si la valeur CHANGE -> plus de churn de rendu.
             self._cells = {}
+            # Historique de durées (ETA) + dossier disque à surveiller.
+            self._stats = load_stats()
+            self._disk_dir = os.path.dirname(vm_disk_path(vms[0])) if vms else "/"
 
         @staticmethod
         def _fmt(secs):
@@ -239,8 +336,9 @@ def run_monitor(manifest_path: str) -> None:
             table.add_column("VM", key="vm")
             table.add_column("État", key="state")
             table.add_column("Durée", key="elapsed")
+            table.add_column("Disque", key="disk")
             for vm in vms:
-                table.add_row(vm["name"], "⏳", "00:00", key=vm["name"])
+                table.add_row(vm["name"], "⏳", "--:--", "-", key=vm["name"])
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
             self._log = RichLog(
                 id="log", highlight=False, markup=False, max_lines=5000
@@ -248,6 +346,8 @@ def run_monitor(manifest_path: str) -> None:
             with Horizontal():
                 yield table
                 yield self._log
+            # Barre de télémétrie hôte (CPU, disque, ETA parc).
+            yield Static("", id="telemetry")
             yield Static("", id="sshbar")
             yield Footer()
 
@@ -272,8 +372,8 @@ def run_monitor(manifest_path: str) -> None:
             bar = self.query_one("#sshbar", Static)
             if vm:
                 bar.update(
-                    f"  {vm['ssh']}    (s = SSH · c = copier le log · "
-                    "Maj+glisser = sélectionner)\n"
+                    f"  {vm['ssh']}    (s = SSH · w = web :8069 · "
+                    "c = copier le log · Maj+glisser = sélectionner)\n"
                     f"  Log : {vm['log']}"
                 )
 
@@ -305,32 +405,66 @@ def run_monitor(manifest_path: str) -> None:
             try:
                 table = self.query_one("#vms", DataTable)
                 now = time.time()
+                remaining = []  # ETA restant par VM en cours
                 for vm in vms:
                     name = vm["name"]
+                    # Disque réel du qcow2 (change lentement -> peu de churn).
+                    self._set_cell(
+                        table, name, "disk",
+                        _fmt_size(disk_actual_size(vm_disk_path(vm))),
+                    )
                     if name in self._final:
-                        continue  # déjà terminé -> plus aucune lecture
+                        continue  # déjà terminé -> plus de lecture de statut
                     state, code = read_status(vm["log"])
                     if state in ("done", "failed"):
-                        # Fige la durée à la complétion (plus de churn ensuite).
+                        # Fige la durée + MÉMORISE pour l'ETA des prochaines.
                         elapsed = now - started
                         self._final[name] = (state, code, elapsed)
+                        if state == "done":
+                            record_duration(vm.get("arch"), elapsed)
+                            self._stats = load_stats()
                         lbl = "✅" if state == "done" else f"❌ ({code})"
                         self._set_cell(table, name, "state", lbl)
                         self._set_cell(
                             table, name, "elapsed", self._fmt(elapsed)
                         )
                     else:
-                        # running/pending : icône stable -> _set_cell ne
-                        # re-render que si elle change (pas de churn). La durée
-                        # « live » est dans le sous-titre, pas répétée 16×.
+                        # running/pending : icône stable -> pas de churn. ETA
+                        # = référence historique (par arch) - temps écoulé.
                         self._set_cell(table, name, "state", ICON[state])
-                # Sous-titre : compteur de VM terminées + durée globale (UNE
-                # seule mise à jour, au lieu de 16 cellules « Durée »).
+                        ref = eta_reference(self._stats, vm.get("arch"))
+                        if ref is not None:
+                            remaining.append(max(0, ref - (now - started)))
+                # Sous-titre : compteur de VM terminées + durée globale.
                 done = len(self._final)
+                eta = ""
+                if remaining:
+                    # ETA du parc = la VM en cours la plus longue à finir.
+                    eta = f" · ETA ~{_fmt_secs(max(remaining))}"
                 self.sub_title = (
                     f"{done}/{len(vms)} {t('completed')} · "
-                    f"{self._fmt(now - started)}"
+                    f"{self._fmt(now - started)}{eta}"
                 )
+                self._update_telemetry()
+            except Exception:
+                pass
+
+        def _update_telemetry(self):
+            """Barre de télémétrie hôte : CPU % (charge/CPU) + disque du
+            dossier des images (là où les qcow2 grossissent)."""
+            try:
+                ncpu = os.cpu_count() or 1
+                load1 = os.getloadavg()[0]
+                cpu_pct = min(999, int(load1 / ncpu * 100))
+                du = shutil.disk_usage(self._disk_dir)
+                used_pct = int(du.used / du.total * 100) if du.total else 0
+                txt = (
+                    f"  ⚙ CPU {cpu_pct}% (charge {load1:.1f}/{ncpu})   "
+                    f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
+                    f"{_fmt_size(du.total)} ({used_pct}%) · "
+                    f"libre {_fmt_size(du.free)}"
+                )
+                self.query_one("#telemetry", Static).update(txt)
             except Exception:
                 pass
 
@@ -359,6 +493,27 @@ def run_monitor(manifest_path: str) -> None:
             with self.suspend():
                 os.system(f"ssh {SSH_OPTS} erplibre@{vm['ip']} || true")
 
+        def action_web(self) -> None:
+            """Ouvre l'UI web de la VM (Odoo :8069) dans un navigateur CLI
+            (browsh/carbonyl/w3m/links/elinks/lynx). Surtout utile une fois
+            l'installation TERMINÉE."""
+            vm = self._vm_by_name(self._selected)
+            if not vm or not vm.get("ip"):
+                self.notify("Pas d'IP pour cette VM.", title="Web")
+                return
+            browser = cli_browser()
+            if not browser:
+                self.notify(
+                    "Aucun navigateur CLI trouvé. Installez-en un : "
+                    "w3m, lynx, links, elinks, browsh ou carbonyl.",
+                    title="Web",
+                    severity="warning",
+                )
+                return
+            url = f"http://{vm['ip']}:8069"
+            with self.suspend():
+                os.system(f"{browser} {shlex.quote(url)} || true")
+
         def action_copy_log(self) -> None:
             """Copie le log complet de la VM sélectionnée dans le
             presse-papiers (OSC 52 ; marche aussi à travers SSH)."""
@@ -375,4 +530,7 @@ def run_monitor(manifest_path: str) -> None:
                 title="Presse-papiers",
             )
 
-    Monitor().run()
+    app = Monitor()
+    if run_app:
+        app.run()
+    return app
