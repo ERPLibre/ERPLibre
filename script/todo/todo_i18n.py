@@ -52,62 +52,62 @@ TRANSLATIONS = {
         "en": "Command not found !",
     },
     "Back": {
-        "fr": "Retour",
-        "en": "Back",
+        "fr": "🔙 Retour",
+        "en": "🔙 Back",
     },
     # Execute submenu
     "Run - Execute and install an instance": {
-        "fr": "Run - Exécuter et installer une instance",
-        "en": "Run - Execute and install an instance",
+        "fr": "🏃 Run - Exécuter et installer une instance",
+        "en": "🏃 Run - Execute and install an instance",
     },
     "Automation - Demonstration of developed features": {
-        "fr": "Automatisation - Demonstration des fonctions développées",
-        "en": "Automation - Demonstration of developed features",
+        "fr": "🦾 Automatisation - Demonstration des fonctions développées",
+        "en": "🦾 Automation - Demonstration of developed features",
     },
     "Update - Update all developed staging source code": {
-        "fr": "Mise à jour - Update all developed staging source code",
-        "en": "Update - Update all developed staging source code",
+        "fr": "🔃 Mise à jour - Update all developed staging source code",
+        "en": "🔃 Update - Update all developed staging source code",
     },
     "Code - Developer tools": {
-        "fr": "Code - Outil pour développeur",
-        "en": "Code - Developer tools",
+        "fr": "💻 Code - Outil pour développeur",
+        "en": "💻 Code - Developer tools",
     },
     "Doc - Documentation search": {
-        "fr": "Doc - Recherche de documentation",
-        "en": "Doc - Documentation search",
+        "fr": "📖 Doc - Recherche de documentation",
+        "en": "📖 Doc - Documentation search",
     },
     "Database - Database tools": {
-        "fr": "Database - Outils sur les bases de données",
-        "en": "Database - Database tools",
+        "fr": "💾 Database - Outils sur les bases de données",
+        "en": "💾 Database - Database tools",
     },
     "Process - Execution tools": {
-        "fr": "Process - Outils sur les executions",
-        "en": "Process - Execution tools",
+        "fr": "📟 Process - Outils sur les executions",
+        "en": "📟 Process - Execution tools",
     },
     "Config - Configuration file management": {
-        "fr": "Config - Traitement du fichier de configuration",
-        "en": "Config - Configuration file management",
+        "fr": "🔧 Config - Traitement du fichier de configuration",
+        "en": "🔧 Config - Configuration file management",
     },
     "Network - Network tools": {
-        "fr": "Réseau - Outil réseautique",
-        "en": "Network - Network tools",
+        "fr": "📡 Réseau - Outil réseautique",
+        "en": "📡 Network - Network tools",
     },
     "Security - Dependency security audit": {
-        "fr": "Sécurité - Audit de sécurité des dépendances",
-        "en": "Security - Dependency security audit",
+        "fr": "🔒 Sécurité - Audit de sécurité des dépendances",
+        "en": "🔒 Security - Dependency security audit",
     },
     "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "RTK - CLI proxy to reduce LLM token consumption",
     },
     "Language - Change language / Changer la langue": {
-        "fr": "Langue - Changer la langue / Change language",
-        "en": "Language - Change language / Changer la langue",
+        "fr": "🌍 Langue - Changer la langue / Change language",
+        "en": "🌍 Language - Change language / Changer la langue",
     },
     # Deploy section
     "Deploy - Deploy ERPLibre locally": {
-        "fr": "Déploiement - Déployer ERPLibre localement",
-        "en": "Deploy - Deploy ERPLibre locally",
+        "fr": "🚀 Déploiement - Déployer ERPLibre localement",
+        "en": "🚀 Deploy - Deploy ERPLibre locally",
     },
     "Deploy ERPLibre to a local directory!": {
         "fr": "Déployer ERPLibre dans un répertoire local!",
@@ -166,28 +166,28 @@ TRANSLATIONS = {
         "en": "Virtualization & notifications",
     },
     "Development": {
-        "fr": "Développement",
-        "en": "Development",
+        "fr": "🧰 Développement",
+        "en": "🧰 Development",
     },
     "Data": {
-        "fr": "Données",
-        "en": "Data",
+        "fr": "📊 Données",
+        "en": "📊 Data",
     },
     "Sources & documentation": {
-        "fr": "Sources & documentation",
-        "en": "Sources & documentation",
+        "fr": "📚 Sources & documentation",
+        "en": "📚 Sources & documentation",
     },
     "AI & automation": {
-        "fr": "IA & automatisation",
-        "en": "AI & automation",
+        "fr": "🧠 IA & automatisation",
+        "en": "🧠 AI & automation",
     },
     "Deployment, network & security": {
-        "fr": "Déploiement, réseau & sécurité",
-        "en": "Deployment, network & security",
+        "fr": "🌐 Déploiement, réseau & sécurité",
+        "en": "🌐 Deployment, network & security",
     },
     "Preferences": {
-        "fr": "Préférences",
-        "en": "Preferences",
+        "fr": "🎨 Préférences",
+        "en": "🎨 Preferences",
     },
     "Deployment": {
         "fr": "🚀 Déploiement",
@@ -698,8 +698,8 @@ TRANSLATIONS = {
     },
     # Test section
     "Test - Test an Odoo module": {
-        "fr": "Test - Tester un module Odoo",
-        "en": "Test - Test an Odoo module",
+        "fr": "🧪 Test - Tester un module Odoo",
+        "en": "🧪 Test - Test an Odoo module",
     },
     "Test an Odoo module on a temporary database!": {
         "fr": "Tester un module Odoo sur une base de données temporaire!",
@@ -783,8 +783,8 @@ TRANSLATIONS = {
     },
     # Git section
     "Git - Git tools": {
-        "fr": "Git - Outils Git",
-        "en": "Git - Git tools",
+        "fr": "🌿 Git - Outils Git",
+        "en": "🌿 Git - Git tools",
     },
     "Git management tools!": {
         "fr": "Outils de gestion Git!",
@@ -1021,8 +1021,8 @@ TRANSLATIONS = {
     },
     # GPT code section
     "GPT code - AI assistant tools": {
-        "fr": "GPT code - Outils d'assistant IA",
-        "en": "GPT code - AI assistant tools",
+        "fr": "🤖 GPT code - Outils d'assistant IA",
+        "en": "🤖 GPT code - AI assistant tools",
     },
     "AI assistant tools for development!": {
         "fr": "Outils d'assistant IA pour le développement!",
