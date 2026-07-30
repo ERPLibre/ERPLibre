@@ -709,6 +709,11 @@ def main():
     update.validate_version()
 
     _logger.info("Validate environment")
+    # exit_code : propagé à sys.exit() -> une install qui ÉCHOUE renvoie un
+    # code non nul (avant, main() ne sortait jamais en erreur : le suivi
+    # d'installation affichait ✅ même quand poetry/pyenv plantaient).
+    # Rappel os.system : 0 = succès ; toute autre valeur = échec.
+    exit_code = 0
     status = 0
     if (
         update.config.install_dev
@@ -718,16 +723,22 @@ def main():
         status = update.validate_environment()
     if update.config.install:
         status = update.install_system()
+        if status not in (0, True, None):
+            exit_code = 1
     if (
         update.config.force_install
         or update.config.install_dev
         or update.config.partial_install
         or update.config.is_in_switch
     ) and not status:
-        update.update_environment()
+        rc = update.update_environment()
+        if rc not in (0, True, None):
+            exit_code = 1
     update.print_log()
 
-    if update.config.install_dev:
+    # Étapes post-install : uniquement si l'installation a RÉUSSI (sinon
+    # .venv.erplibre est absent -> cascade d'erreurs inutiles).
+    if update.config.install_dev and exit_code == 0:
         # Update pycharm configuration
         update.pycharm_update()
 
@@ -736,6 +747,8 @@ def main():
             "./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py"
         )
         os.system("./script/generate_config.sh")
+
+    return exit_code
         # TODO ignore this if installation fail
 
         # TODO this cause an error at first execution, need to source ./.venv.erplibre/bin/activate and rerun
@@ -756,4 +769,4 @@ def die(cond, message, code=1):
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
