@@ -1488,6 +1488,26 @@ TRANSLATIONS = {
         "fr": "🧪 Tester une VM (ouvrir Odoo dans un navigateur CLI)",
         "en": "🧪 Test a VM (open Odoo in a CLI browser)",
     },
+    "Reopen install monitoring (last run / history)": {
+        "fr": "📈 Rouvrir le suivi d'installation (dernier run / historique)",
+        "en": "📈 Reopen install monitoring (last run / history)",
+    },
+    "No install run found in history.": {
+        "fr": "Aucun run d'installation dans l'historique.",
+        "en": "No install run found in history.",
+    },
+    "Install runs (most recent first):": {
+        "fr": "Runs d'installation (du plus récent) :",
+        "en": "Install runs (most recent first):",
+    },
+    "Choice (number, blank = last): ": {
+        "fr": "Choix (numéro, vide = le dernier) : ",
+        "en": "Choice (number, blank = last): ",
+    },
+    "Invalid selection.": {
+        "fr": "Sélection invalide.",
+        "en": "Invalid selection.",
+    },
     "Resolving VM IP...": {
         "fr": "Résolution de l'IP de la VM…",
         "en": "Resolving VM IP...",

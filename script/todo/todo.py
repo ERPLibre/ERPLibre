@@ -1087,6 +1087,11 @@ class TODO:
                     "Test a VM (open Odoo in a CLI browser)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Reopen install monitoring (last run / history)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1121,6 +1126,8 @@ class TODO:
             elif status == "10":
                 self._qemu_test_vm()
             elif status == "11":
+                self._qemu_reopen_monitor()
+            elif status == "12":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1382,6 +1389,46 @@ class TODO:
                 "or network/firewall."
             )
             print(f"⚠  {msg}")
+
+    def _qemu_reopen_monitor(self):
+        """Rouvre le suivi d'installation (dashboard) sur un run PASSÉ : le
+        dernier par défaut, ou un choix dans l'historique. Utile quand le
+        dashboard s'est fermé et qu'on veut reprendre l'analyse."""
+        from script.todo import qemu_install_monitor as mon
+
+        runs = mon.list_install_runs()
+        if not runs:
+            print(t("No install run found in history."))
+            return
+        print(f"\n{t('Install runs (most recent first):')}")
+        for i, r in enumerate(runs, 1):
+            names = ", ".join(v.get("name", "?") for v in r["vms"])
+            star = " *" if i == 1 else ""
+            print(
+                f"  [{i}] {r['label']} — {len(r['vms'])} VM{star}\n"
+                f"        {names}"
+            )
+        sel = input(
+            t("Choice (number, blank = last): ")
+        ).strip()
+        run = runs[0]
+        if sel:
+            try:
+                idx = int(sel) - 1
+                if 0 <= idx < len(runs):
+                    run = runs[idx]
+                else:
+                    print(t("Invalid selection."))
+                    return
+            except ValueError:
+                print(t("Invalid selection."))
+                return
+        try:
+            mon.run_monitor(run["manifest"])
+        except ImportError:
+            print(t("Install textual for the dashboard (pip)."))
+        except Exception as exc:
+            print(f"{t('Command failed: ')}{exc}")
 
     def _qemu_choose_cli_browser(self):
         """Offre la LISTE des navigateurs CLI installés, plus une option pour

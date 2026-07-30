@@ -44,6 +44,34 @@ def session_dir() -> Path:
     return base
 
 
+def list_install_runs() -> list:
+    """Runs d'installation passés (chacun a un session.json), TRIÉS du plus
+    récent au plus ancien. Chaque entrée : dict {label, manifest, mtime,
+    vms, branch}. Permet de ROUVRIR le suivi d'un run (le dashboard s'étant
+    fermé sur un bug, on reprend l'analyse)."""
+    runs = []
+    for d in sorted(session_dir().glob("*/"), reverse=True):
+        manifest = d / "session.json"
+        if not manifest.is_file():
+            continue
+        try:
+            data = json.loads(manifest.read_text())
+            mtime = manifest.stat().st_mtime
+        except (OSError, ValueError):
+            continue
+        runs.append(
+            {
+                "label": d.name.rstrip("/"),
+                "manifest": str(manifest),
+                "mtime": mtime,
+                "vms": data.get("vms", []),
+                "branch": data.get("branch", ""),
+            }
+        )
+    runs.sort(key=lambda r: r["mtime"], reverse=True)
+    return runs
+
+
 def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie."""
