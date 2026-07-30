@@ -687,11 +687,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # défile horizontalement (overflow-x) pour les noms de VM longs.
             # « # » : numéro de séquence de la VM (première colonne).
             table.add_column("#", key="seq", width=3)
-            table.add_column("VM", key="vm", width=26)
+            table.add_column("VM", key="vm", width=22)
             table.add_column("⚠", key="err", width=4)
-            # width=10 : juste assez pour le plus long libellé (« ❌ effacée »),
-            # sans la marge inutile de 12 qui faisait paraître la colonne large.
-            table.add_column("État", key="state", width=10)
+            # width=8 : le plus long libellé restant est « ⏸ pause » (7) —
+            # « effacée » (10) est remplacé par l'icône 🗑 (voir plus bas).
+            table.add_column("État", key="state", width=8)
             # « Odoo » : l'UI web répond-elle sur :8069 ? (🟢 up / — down)
             table.add_column("Odoo", key="odoo", width=6)
             table.add_column("Durée", key="elapsed", width=7)
@@ -844,9 +844,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     ds = self._domstate.get(name)
                     if ds == "gone":
                         self._final[name] = ("deleted", None, now - started)
-                        self._set_cell(
-                            table, name, "state", f"❌ {t('deleted')}"
-                        )
+                        # Icône seule (VM effacée) : évite « ❌ effacée » (10
+                        # cellules) qui forçait une colonne État large.
+                        self._set_cell(table, name, "state", "🗑")
                         continue
                     st = status.get(name)
                     if st is None:
