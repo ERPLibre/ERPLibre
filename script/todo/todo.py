@@ -1625,6 +1625,7 @@ class TODO:
 
         # 3) Application selon agrandir/réduire et l'état de la VM.
         was_shut_down = False  # la VM a-t-elle été éteinte pour l'occasion ?
+        cmd = None  # commande d'AGRANDISSEMENT (la réduction a son propre flux)
         if shrink:
             # DANGER : qcow2 --shrink ne réduit PAS le FS invité -> perte de
             # données si le FS dépasse la cible. VM éteinte obligatoire.
@@ -1651,10 +1652,15 @@ class TODO:
             ):
                 print(t("Cancelled."))
                 return
-            cmd = (
-                f"sudo qemu-img resize --shrink {shlex.quote(disk)} "
-                f"{new_gb:g}G"
-            )
+            # Réduction SÛRE via virt-resize (réduit FS + partition + GPT).
+            # On opère sur une COPIE : l'original n'est remplacé qu'en cas de
+            # SUCCÈS -> aucune corruption possible. (Le brut « qemu-img resize
+            # --shrink » tronquait le conteneur sans réduire le FS/partition
+            # -> GPT de secours perdue, racine tronquée -> dracut-initqueue en
+            # échec, OS non bootable.)
+            if not self._qemu_safe_shrink(name, disk, new_gb):
+                self._qemu_offer_start(name, was_shut_down)
+                return
         elif state == "running":
             # Agrandissement À CHAUD : le disque virtuel grossit, le FS invité
             # devra être étendu ensuite.
@@ -1665,30 +1671,125 @@ class TODO:
         else:
             cmd = f"sudo qemu-img resize {shlex.quote(disk)} {new_gb:g}G"
 
-        print(f"{t('Will execute:')} {cmd}")
-        if self.execute.exec_command_live(cmd, source_erplibre=False) != 0:
-            print(f"❌ {t('Resize failed (see error above).')}")
-            return
-        print(f"✅ {t('Virtual disk resized.')}")
-
-        # 4) Étendre le FS invité (agrandissement seulement, VM joignable).
-        if not shrink and self._is_yes(
-            input(t("Grow the guest filesystem now (over SSH)? (y/N): "))
-        ):
-            self._qemu_grow_guest_fs(name)
-
-        # 5) La VM a été éteinte pour l'opération : le noter et proposer de la
-        #    redémarrer (sinon, on ne demande rien).
-        if was_shut_down:
-            print(f"\nℹ  {t('The VM was shut down for the resize.')}")
+        # 4) Agrandissement : exécuter la commande + proposer d'étendre le FS.
+        if cmd is not None:
+            print(f"{t('Will execute:')} {cmd}")
+            if self.execute.exec_command_live(cmd, source_erplibre=False) != 0:
+                print(f"❌ {t('Resize failed (see error above).')}")
+                return
+            print(f"✅ {t('Virtual disk resized.')}")
             if self._is_yes(
-                input(t("Start the VM now? (y/N): "))
+                input(t("Grow the guest filesystem now (over SSH)? (y/N): "))
             ):
-                # `name` est déjà le nom canonique (résolu au début) : un
-                # « virsh start <id> » échouerait car l'ID a disparu.
-                cmd = f"sudo virsh start {shlex.quote(name)}"
-                print(f"{t('Will execute:')} {cmd}")
-                self.execute.exec_command_live(cmd, source_erplibre=False)
+                self._qemu_grow_guest_fs(name)
+
+        # 5) La VM a été éteinte pour l'opération : proposer de la redémarrer.
+        self._qemu_offer_start(name, was_shut_down)
+
+    def _qemu_offer_start(self, name, was_shut_down):
+        """Si la VM a été éteinte pour l'opération, le noter et proposer de la
+        redémarrer (sinon ne rien demander)."""
+        if not was_shut_down:
+            return
+        print(f"\nℹ  {t('The VM was shut down for the resize.')}")
+        if self._is_yes(input(t("Start the VM now? (y/N): "))):
+            # `name` est déjà le nom canonique : « virsh start <id> »
+            # échouerait car l'ID disparaît quand la VM est éteinte.
+            cmd = f"sudo virsh start {shlex.quote(name)}"
+            print(f"{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_safe_shrink(self, name, disk, new_gb):
+        """Réduit le disque SANS casser l'OS : virt-resize (libguestfs) réduit
+        le système de fichiers + la partition + la GPT. On écrit dans une
+        NOUVELLE image ; l'originale n'est remplacée qu'en cas de succès (en cas
+        d'échec/refus, le disque d'origine est laissé INTACT). Renvoie True si
+        la réduction a réussi."""
+        if not (
+            shutil.which("virt-resize") and shutil.which("virt-filesystems")
+        ):
+            print(f"\n{t('Safe shrink needs libguestfs (virt-resize).')}")
+            if not self._is_yes(
+                input(t("Install libguestfs-tools now? (y/N): "))
+            ) or not self._qemu_install_libguestfs():
+                print(t("Shrink aborted; disk left intact."))
+                return False
+        part = self._qemu_largest_partition(disk)
+        if not part:
+            print(t("Could not detect the partition to shrink; aborting."))
+            return False
+        new_disk = f"{disk}.resized"
+        bak = f"{disk}.bak"
+        subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
+        print(
+            f"\n{t('Shrinking guest FS + partition via virt-resize')} "
+            f"({part} -> {new_gb:g}G)…"
+        )
+        create = subprocess.run(
+            ["sudo", "qemu-img", "create", "-f", "qcow2", new_disk,
+             f"{new_gb:g}G"]
+        )
+        if create.returncode != 0:
+            print(f"❌ {t('Resize failed (see error above).')}")
+            subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
+            return False
+        # virt-resize copie old -> new en réduisant le FS de `part`.
+        rc = subprocess.run(
+            ["sudo", "virt-resize", "--shrink", part, disk, new_disk]
+        ).returncode
+        if rc != 0:
+            print(f"❌ {t('virt-resize failed; original disk left intact.')}")
+            subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
+            return False
+        # Succès : on sauvegarde l'original et on met la nouvelle image au
+        # MÊME chemin (la définition libvirt reste valide).
+        subprocess.run(["sudo", "mv", "-f", disk, bak], check=False)
+        subprocess.run(["sudo", "mv", "-f", new_disk, disk], check=False)
+        print(f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}")
+        return True
+
+    @staticmethod
+    def _qemu_largest_partition(disk):
+        """Nom (côté invité, ex. /dev/sda1) de la plus GROSSE partition du
+        disque via virt-filesystems — celle qui porte la racine à réduire."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virt-filesystems", "-a", disk, "--partitions",
+                 "--long", "-b"],
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        best, best_sz = None, -1
+        for line in res.stdout.splitlines():
+            parts = line.split()
+            if not parts or not parts[0].startswith("/dev/"):
+                continue
+            # Colonnes : Name Type MBR Size Parent -> Size = plus grand entier.
+            size = max(
+                (int(p) for p in parts if p.isdigit()), default=-1
+            )
+            if size > best_sz:
+                best, best_sz = parts[0], size
+        return best
+
+    def _qemu_install_libguestfs(self):
+        """Installe libguestfs-tools (apt/dnf/pacman). Renvoie True si
+        virt-resize est ensuite disponible."""
+        if shutil.which("apt-get"):
+            cmd = "sudo apt-get install -y libguestfs-tools"
+        elif shutil.which("dnf"):
+            cmd = "sudo dnf install -y guestfs-tools libguestfs-tools"
+        elif shutil.which("pacman"):
+            cmd = "sudo pacman -S --needed --noconfirm libguestfs"
+        else:
+            print(t("Unknown package manager; install it manually."))
+            return False
+        print(f"{t('Will execute:')} {cmd}")
+        os.system(cmd)
+        return shutil.which("virt-resize") is not None
 
     # Commande d'extension du FS racine (partition + FS) réutilisée par SSH
     # et par le repli console série.

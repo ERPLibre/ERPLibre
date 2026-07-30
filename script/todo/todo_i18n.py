@@ -1424,6 +1424,34 @@ TRANSLATIONS = {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
     },
+    "Safe shrink needs libguestfs (virt-resize).": {
+        "fr": "La réduction sûre nécessite libguestfs (virt-resize).",
+        "en": "Safe shrink needs libguestfs (virt-resize).",
+    },
+    "Install libguestfs-tools now? (y/N): ": {
+        "fr": "Installer libguestfs-tools maintenant ? (o/N) : ",
+        "en": "Install libguestfs-tools now? (y/N): ",
+    },
+    "Shrink aborted; disk left intact.": {
+        "fr": "Réduction annulée ; disque laissé intact.",
+        "en": "Shrink aborted; disk left intact.",
+    },
+    "Could not detect the partition to shrink; aborting.": {
+        "fr": "Partition à réduire introuvable ; abandon.",
+        "en": "Could not detect the partition to shrink; aborting.",
+    },
+    "Shrinking guest FS + partition via virt-resize": {
+        "fr": "Réduction du FS invité + partition via virt-resize",
+        "en": "Shrinking guest FS + partition via virt-resize",
+    },
+    "virt-resize failed; original disk left intact.": {
+        "fr": "virt-resize a échoué ; disque d'origine laissé intact.",
+        "en": "virt-resize failed; original disk left intact.",
+    },
+    "Disk safely shrunk. Backup kept at:": {
+        "fr": "Disque réduit en toute sécurité. Sauvegarde conservée :",
+        "en": "Disk safely shrunk. Backup kept at:",
+    },
     "click to expand": {
         "fr": "cliquer pour déplier",
         "en": "click to expand",
