@@ -73,27 +73,32 @@ from pathlib import Path
 # NB : les versions intermédiaires (non-LTS) sont RETIRÉES du miroir
 # cloud-images une fois EOL (leur /current/ renvoie 404). On ne garde donc
 # que les LTS + les intermédiaires encore publiées. À réviser au fil du temps.
+# Disque MINIMUM = 20G partout : un ERPLibre + Odoo installé occupe ~11G, et
+# l'installation (caches pip, sync repo, sources Odoo) en consomme plus en
+# transitoire. Un VM à 10G tombait « Poetry installation error » (disque
+# plein). Le qcow2 est CREUX (sparse) : une taille virtuelle plus grande ne
+# consomme rien tant qu'elle n'est pas remplie -> 20G sans surcoût réel.
 UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "20.04": ("focal", "ubuntu20.04", 2048, "5G"),
-    "22.04": ("jammy", "ubuntu22.04", 2048, "10G"),
+    "20.04": ("focal", "ubuntu20.04", 2048, "20G"),
+    "22.04": ("jammy", "ubuntu22.04", 2048, "20G"),
     "24.04": ("noble", "ubuntu24.04", 3072, "20G"),
     "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
 }
 DEBIAN_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "11": ("bullseye", "debian11", 1024, "10G"),
-    "12": ("bookworm", "debian12", 1024, "10G"),
-    "13": ("trixie", "debian13", 1024, "10G"),
+    "11": ("bullseye", "debian11", 1024, "20G"),
+    "12": ("bookworm", "debian12", 1024, "20G"),
+    "13": ("trixie", "debian13", 1024, "20G"),
 }
 FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "41": ("41", "fedora41", 2048, "15G"),
-    "42": ("42", "fedora42", 2048, "15G"),
-    "43": ("43", "fedora43", 2048, "15G"),
-    "44": ("44", "fedora44", 2048, "15G"),
+    "41": ("41", "fedora41", 2048, "20G"),
+    "42": ("42", "fedora42", 2048, "20G"),
+    "43": ("43", "fedora43", 2048, "20G"),
+    "44": ("44", "fedora44", 2048, "20G"),
 }
 # Arch est en rolling release : une seule « version » (latest).
 ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "latest": ("latest", "archlinux", 1024, "10G"),
+    "latest": ("latest", "archlinux", 1024, "20G"),
 }
 
 # distro -> (table des versions, version par défaut).
