@@ -1460,6 +1460,30 @@ TRANSLATIONS = {
         "fr": "Aucune erreur détectée.",
         "en": "No error detected.",
     },
+    "Auto-refresh: ON": {
+        "fr": "Rafraîchissement auto : ACTIVÉ",
+        "en": "Auto-refresh: ON",
+    },
+    "Auto-refresh: OFF": {
+        "fr": "Rafraîchissement auto : COUPÉ",
+        "en": "Auto-refresh: OFF",
+    },
+    "turn off": {
+        "fr": "couper",
+        "en": "turn off",
+    },
+    "turn on": {
+        "fr": "activer",
+        "en": "turn on",
+    },
+    "refresh once": {
+        "fr": "rafraîchir",
+        "en": "refresh once",
+    },
+    "Refreshed.": {
+        "fr": "Rafraîchi.",
+        "en": "Refreshed.",
+    },
     "Test a VM (open Odoo in a CLI browser)": {
         "fr": "🧪 Tester une VM (ouvrir Odoo dans un navigateur CLI)",
         "en": "🧪 Test a VM (open Odoo in a CLI browser)",

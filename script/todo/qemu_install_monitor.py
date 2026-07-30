@@ -545,6 +545,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         DataTable { width: 74; height: 1fr; overflow-x: auto; border: solid $accent; }
         RichLog { border: solid $accent; }
         #telemetry { height: 1; color: $text-muted; }
+        #autobar { height: 1; color: $warning; }
         #stats { height: 1; color: $accent; }
         #statsdetail { display: none; height: auto; color: $text-muted; }
         #sshbar { height: 2; color: $text-muted; }
@@ -563,6 +564,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
             ("d", "details", "Détails erreurs"),
+            ("a", "toggle_auto", "Auto-refresh on/off"),
+            ("r", "refresh_now", "Rafraîchir"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -588,6 +591,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._errcount = {}
             # Sommaire de stats déplié (clic) ou non.
             self._stats_open = False
+            # Rafraîchissement automatique COUPÉ par défaut : sur un gros parc,
+            # les ticks périodiques (logs/table/domstate) causent du lag quand
+            # on lit les logs. On l'active à la demande (touche « a ») ; sinon
+            # « r » rafraîchit une seule fois.
+            self._auto_refresh = False
 
         @staticmethod
         def _fmt(secs):
@@ -625,6 +633,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             with Horizontal():
                 yield table
                 yield self._log
+            # Indicateur d'auto-refresh (a = on/off · r = rafraîchir).
+            yield Static("", id="autobar")
             # Barre de télémétrie hôte (CPU, disque, ETA parc).
             yield Static("", id="telemetry")
             # Sommaire de stats en CHIFFRES (cliquable -> détail).
@@ -640,15 +650,17 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self.sub_title = f"0/{len(vms)} {t('completed')}"
             self._refresh_ssh()
             self._load_selected_log(reset=True)
-            # Table toutes les 2 s (30 lectures de fin de log), suivi du log
-            # sélectionné toutes les 1 s (une seule lecture incrémentale).
+            self._update_autobar()
+            # Ticks périodiques : ils ne font RIEN tant que l'auto-refresh est
+            # coupé (wrappers gardés). On garde les intervalles en place pour
+            # ne pas avoir à les (re)créer au moment du toggle.
             self.set_interval(2.0, self._tick_table)
             self.set_interval(1.0, self._tick_log)
-            # État libvirt (pause / effacée) : check LENT (appel virsh) toutes
-            # les 10 s ; le tableau applique le cache à chaque tick (2 s).
             self.set_interval(10.0, self._tick_domstate)
-            # Premier relevé domstate immédiat (async -> via worker).
-            self.run_worker(self._tick_domstate(), exclusive=False)
+            # Un SEUL relevé initial (table + domstate) pour afficher l'état
+            # courant à l'ouverture, même auto-refresh coupé.
+            self.run_worker(self._do_domstate(), exclusive=False)
+            self.run_worker(self._do_table(), exclusive=False)
 
         # -- helpers -------------------------------------------------------- #
         def _vm_by_name(self, name):
@@ -661,6 +673,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 bar.update(
                     f"  {vm['ssh']}    (s = SSH · w = web :8069 · "
                     "c = copier le log · d = détails erreurs · "
+                    "a = auto-refresh · r = rafraîchir · "
                     "Maj+glisser = sélectionner)\n"
                     f"  Log : {vm['log']}"
                 )
@@ -719,6 +732,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             return disks, status, self._collect_tele(), errors
 
         async def _tick_table(self):
+            if self._auto_refresh:
+                await self._do_table()
+
+        async def _do_table(self):
             # I/O (lectures de logs, stat disque, /proc) DÉPORTÉES en thread ->
             # la boucle d'événements Textual reste fluide même sous forte
             # charge ou disque lent. Les mises à jour d'UI restent sur la boucle.
@@ -866,6 +883,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             return "\n".join(lines)
 
         async def _tick_log(self):
+            if self._auto_refresh:
+                await self._do_log()
+
+        async def _do_log(self):
             if not self._follow:
                 return
             vm = self._vm_by_name(self._selected)
@@ -884,6 +905,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     self._log.write(line)
 
         async def _tick_domstate(self):
+            if self._auto_refresh:
+                await self._do_domstate()
+
+        async def _do_domstate(self):
             # Relevé LENT (subprocess virsh) DÉPORTÉ en thread : ne bloque plus
             # la boucle. Une VM absente de « virsh list » est EFFACÉE (« gone »).
             try:
@@ -892,6 +917,33 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             for vm in vms:
                 self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+
+        # -- auto-refresh (a = on/off · r = rafraîchir une fois) ------------- #
+        def _update_autobar(self):
+            if self._auto_refresh:
+                msg = f"  ▶ {t('Auto-refresh: ON')}  (a = {t('turn off')})"
+            else:
+                msg = (
+                    f"  ⏸ {t('Auto-refresh: OFF')}  "
+                    f"(a = {t('turn on')} · r = {t('refresh once')})"
+                )
+            self.query_one("#autobar", Static).update(msg)
+
+        def action_toggle_auto(self) -> None:
+            self._auto_refresh = not self._auto_refresh
+            self._update_autobar()
+            if self._auto_refresh:
+                # Rafraîchit tout de suite en activant.
+                self.run_worker(self._do_domstate(), exclusive=False)
+                self.run_worker(self._do_table(), exclusive=False)
+                self.run_worker(self._do_log(), exclusive=False)
+
+        def action_refresh_now(self) -> None:
+            # Une seule actualisation, même auto-refresh coupé.
+            self.run_worker(self._do_domstate(), exclusive=False)
+            self.run_worker(self._do_table(), exclusive=False)
+            self.run_worker(self._do_log(), exclusive=False)
+            self.notify(t("Refreshed."))
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:
@@ -1084,8 +1136,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             await asyncio.to_thread(self._virsh_bulk, action, targets)
             verb = t("paused") if action == "suspend" else t("resumed")
             self.notify(f"{len(targets)} VM {verb}.")
-            # Rafraîchit tout de suite l'état libvirt (pause/reprise visible).
-            self.run_worker(self._tick_domstate(), exclusive=False)
+            # Rafraîchit tout de suite l'état libvirt (pause/reprise visible),
+            # même si l'auto-refresh est coupé -> _do_domstate (forcé).
+            self.run_worker(self._do_domstate(), exclusive=False)
+            self.run_worker(self._do_table(), exclusive=False)
 
     app = Monitor()
     if run_app:
