@@ -1424,6 +1424,25 @@ TRANSLATIONS = {
         "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
         "en": "Could not read current disk size; aborting.",
     },
+    "Host free space:": {
+        "fr": "Espace libre hôte :",
+        "en": "Host free space:",
+    },
+    "max sustainable total (before host full):": {
+        "fr": "max soutenable au total (avant hôte plein) :",
+        "en": "max sustainable total (before host full):",
+    },
+    "Beyond host capacity by ~%.1f G — overcommit.": {
+        "fr": "Dépasse la capacité de l'hôte de ~%.1f G — surallocation.",
+        "en": "Beyond host capacity by ~%.1f G — overcommit.",
+    },
+    "The qcow2 is thin: fine until the VM fills it, then the "
+    "host disk runs out. Max sustainable: ~%.1f G.": {
+        "fr": "Le qcow2 est creux : OK tant que la VM ne remplit pas, sinon "
+        "l'hôte tombe à court. Max soutenable : ~%.1f G.",
+        "en": "The qcow2 is thin: fine until the VM fills it, then the "
+        "host disk runs out. Max sustainable: ~%.1f G.",
+    },
     "Safe shrink needs libguestfs (virt-resize).": {
         "fr": "La réduction sûre nécessite libguestfs (virt-resize).",
         "en": "Safe shrink needs libguestfs (virt-resize).",

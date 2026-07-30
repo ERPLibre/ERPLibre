@@ -1656,6 +1656,25 @@ class TODO:
         print(f"{t('Current virtual size:')} {cur_gb:.1f} G")
         print(f"{t('VM state:')} {state or '?'}")
 
+        # Espace HÔTE : le qcow2 est creux (sparse), donc on PEUT fixer une
+        # taille virtuelle plus grande que l'espace réel — mais si la VM la
+        # remplit, l'hôte tombe à court. Max « soutenable » ≈ taille réelle
+        # actuelle + espace libre de l'hôte. On l'AFFICHE (avertissement, pas
+        # de blocage) pour guider le choix.
+        g = 1 << 30
+        _virt, actual = self._qemu_disk_sizes(disk)
+        try:
+            free = shutil.disk_usage(os.path.dirname(disk)).free
+        except OSError:
+            free = 0
+        max_safe_gb = (actual + free) / g if free else 0
+        if max_safe_gb:
+            print(
+                f"{t('Host free space:')} {free / g:.1f} G  ·  "
+                f"{t('max sustainable total (before host full):')} "
+                f"~{max_safe_gb:.1f} G"
+            )
+
         # 2) Nouvelle taille : +NG (agrandir), -NG (réduire) ou NG (cible).
         guide = t(
             "Enter +NG to grow, -NG to shrink, or NG for a target size "
@@ -1684,6 +1703,18 @@ class TODO:
         print(
             f"\n{t('New virtual size:')} {cur_gb:.1f} G -> {new_gb:.1f} G"
         )
+        # Avertissement (NON bloquant) : agrandir au-delà de ce que l'hôte
+        # peut soutenir -> surallocation, l'hôte se remplira si la VM utilise
+        # tout l'espace.
+        if not shrink and max_safe_gb and new_gb > max_safe_gb:
+            over = new_gb - max_safe_gb
+            msg1 = t("Beyond host capacity by ~%.1f G — overcommit.") % over
+            msg2 = t(
+                "The qcow2 is thin: fine until the VM fills it, then the "
+                "host disk runs out. Max sustainable: ~%.1f G."
+            ) % max_safe_gb
+            print(f"⚠  {msg1}")
+            print(f"   {msg2}")
 
         # 3) Application selon agrandir/réduire et l'état de la VM.
         was_shut_down = False  # la VM a-t-elle été éteinte pour l'occasion ?
