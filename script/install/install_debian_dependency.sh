@@ -20,12 +20,16 @@ UBUNTU_VERSION=$(lsb_release -rs)
 DEBIAN_VERSION=$(lsb_release -cs)
 OS=$(lsb_release -si)
 if [[ "${OS}" == "Ubuntu" ]]; then
-  if [ "25.10" == "${UBUNTU_VERSION}" ] || [ "25.04" == "${UBUNTU_VERSION}" ] || [ "24.04" == "${UBUNTU_VERSION}" ] || [ "24.10" == "${UBUNTU_VERSION}" ] || [ "23.10" == "${UBUNTU_VERSION}" ] || [ "23.04" == "${UBUNTU_VERSION}" ] || [ "22.10" == "${UBUNTU_VERSION}" ] || [ "22.04" == "${UBUNTU_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
-  elif [ "20.04" == "${UBUNTU_VERSION}" ]; then
+  if [ "20.04" == "${UBUNTU_VERSION}" ]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
   elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
+  else
+    # 22.04+ (jusqu'à 26.04 et au-delà) : wkhtmltopdf ne publie pas de build
+    # par version ; le .deb « jammy » est le plus récent et fonctionne. Un
+    # « else » (au lieu d'énumérer les versions) évite une URL VIDE sur une
+    # version récente (26.04) -> gdebi appelé sans fichier -> échec.
+    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
   fi
 elif [[ "${OS}" == "Linuxmint" ]]; then
   if [ "22.3" == "${UBUNTU_VERSION}" ]; then
@@ -205,15 +209,21 @@ elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
   if [ "" == "${INSTALLED}" ]; then
     echo -e "\n---- Install wkhtml and place shortcuts on correct place ----"
     _url=${WKHTMLTOX_X64}
-    sudo wget ${_url}
-    sudo gdebi --n $(basename ${_url})
-    retVal=$?
-    if [[ $retVal -ne 0 ]]; then
-      echo "gdebi install wkhtmltopdf installation error."
-      exit 1
+    if [ -z "${_url}" ]; then
+      # Aucune URL (version non mappée) : wkhtmltopdf est OPTIONNEL, on saute
+      # proprement plutôt que d'appeler gdebi sans fichier (« Usage: gdebi »).
+      echo "wkhtmltopdf : aucune URL pour cette version, ignoré (optionnel)."
+    else
+      sudo wget ${_url}
+      sudo gdebi --n $(basename ${_url})
+      retVal=$?
+      if [[ $retVal -ne 0 ]]; then
+        echo "gdebi install wkhtmltopdf installation error."
+        exit 1
+      fi
+      sudo ln -fs /usr/local/bin/wkhtmltopdf /usr/bin
+      sudo ln -fs /usr/local/bin/wkhtmltoimage /usr/bin
     fi
-    sudo ln -fs /usr/local/bin/wkhtmltopdf /usr/bin
-    sudo ln -fs /usr/local/bin/wkhtmltoimage /usr/bin
   else
     echo -e "\n---- Already installed wkhtml ----"
   fi
