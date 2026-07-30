@@ -2687,12 +2687,16 @@ class TODO:
         return ssh_up
 
     # Paquets QEMU/libvirt pour le profil « Déploiement » (nos 3 gestionnaires).
+    # Paquets SYSTÈME du profil « ERPLibre Déploiement » : QEMU/libvirt/
+    # virtinst + libguestfs (virt-resize/virt-filesystems, requis pour la
+    # RÉDUCTION SÛRE de disque). Ce sont des binaires système (OCaml) : ils ne
+    # peuvent PAS vivre dans .venv.erplibre (venv Python) — d'où leur place ici.
     _QEMU_QEMU_PKGS = (
         "(sudo apt-get install -y qemu-kvm libvirt-daemon-system virtinst "
-        "cloud-image-utils 2>/dev/null || sudo dnf install -y qemu-kvm "
-        "libvirt virt-install cloud-utils 2>/dev/null || sudo pacman -S "
-        "--needed --noconfirm qemu-desktop libvirt virt-install 2>/dev/null "
-        "|| true)"
+        "cloud-image-utils libguestfs-tools 2>/dev/null || sudo dnf install "
+        "-y qemu-kvm libvirt virt-install cloud-utils guestfs-tools "
+        "2>/dev/null || sudo pacman -S --needed --noconfirm qemu-desktop "
+        "libvirt virt-install libguestfs 2>/dev/null || true)"
     )
 
     def _qemu_pick_install_profile(self):
