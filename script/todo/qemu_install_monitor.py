@@ -685,6 +685,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Largeurs FIXES pour les colonnes courtes -> l'État n'est plus
             # tronqué (« ❌ effacée », « ⏸ en pause » lisibles) ; la table
             # défile horizontalement (overflow-x) pour les noms de VM longs.
+            # « # » : numéro de séquence de la VM (première colonne).
+            table.add_column("#", key="seq", width=3)
             table.add_column("VM", key="vm", width=26)
             table.add_column("⚠", key="err", width=4)
             table.add_column("État", key="state", width=12)
@@ -692,9 +694,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table.add_column("Odoo", key="odoo", width=6)
             table.add_column("Durée", key="elapsed", width=7)
             table.add_column("Disque", key="disk", width=8)
-            for vm in vms:
+            for i, vm in enumerate(vms, 1):
                 table.add_row(
-                    vm["name"], "", "⏳", "—", "--:--", "-", key=vm["name"]
+                    str(i), vm["name"], "", "⏳", "—", "--:--", "-",
+                    key=vm["name"],
                 )
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
             self._log = RichLog(
@@ -882,9 +885,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 eta = (
                     f" · ETA ~{_fmt_secs(max(remaining))}" if remaining else ""
                 )
+                # Max de durée : la VM TERMINÉE la plus lente (pire cas).
+                max_dur = max(
+                    (el for _s, _c, el in self._final.values()), default=0
+                )
+                maxd = f" · max {self._fmt(max_dur)}" if max_dur else ""
                 self.sub_title = (
                     f"{done}/{len(vms)} {t('completed')} · "
-                    f"{self._fmt(now - started)}{eta}"
+                    f"{self._fmt(now - started)}{eta}{maxd}"
                 )
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
