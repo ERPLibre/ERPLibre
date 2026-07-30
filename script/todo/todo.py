@@ -3066,6 +3066,16 @@ class TODO:
         return (
             'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); '
             'SVC_DIR="$HOME/git/erplibre"; '
+            # SELinux (Fedora) INTERDIT à un service système d'exécuter des
+            # binaires sous /home (run.sh ET le python du venv) -> le service
+            # échoue en « status=203/EXEC ». On fait tourner l'ExecStart dans
+            # le domaine unconfined (autorisé à exécuter /home) UNIQUEMENT si
+            # SELinux est actif (ligne vide sinon, inoffensive).
+            'SELINUX_LINE=""; '
+            "if command -v getenforce >/dev/null 2>&1 && "
+            '[ "$(getenforce)" != "Disabled" ]; then '
+            'SELINUX_LINE="SELinuxContext=unconfined_u:unconfined_r:'
+            'unconfined_t:s0"; fi; '
             "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
             "[Unit]\n"
             "Description=ERPLibre\n"
@@ -3081,6 +3091,7 @@ class TODO:
             "ExecStart=$SVC_DIR/run.sh\n"
             "WorkingDirectory=$SVC_DIR\n"
             "StandardOutput=journal+console\n"
+            "$SELINUX_LINE\n"
             "\n"
             "[Install]\n"
             "WantedBy=multi-user.target\n"
@@ -3116,11 +3127,15 @@ class TODO:
             # (Fedora) et pacman (Arch).
             "PKGS='curl git make'; "
             "if command -v apt-get >/dev/null 2>&1; then "
+            # DPkg::Lock::Timeout=600 : au 1er boot, cloud-init (install de
+            # qemu-guest-agent) et/ou apt-daily.service tiennent le verrou apt.
+            # Sans attente, « apt-get install » échouait aussitôt (« Could not
+            # get lock … held by process »). On ATTEND le verrou jusqu'à 10 min.
             # update best-effort (|| true) puis install OBLIGATOIRE : sans le
             # « || true », un « apt-get update » en échec (réseau) sautait
             # l'install sans erreur (liste &&) -> git/make absents ensuite.
-            "sudo apt-get update -qq || true; "
-            "sudo apt-get install -y $PKGS; "
+            "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq || true; "
+            "sudo apt-get -o DPkg::Lock::Timeout=600 install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "
             # makecache (dnf5 choisit les miroirs les plus rapides) puis
             # install --refresh ; retry avec « clean all » car les images

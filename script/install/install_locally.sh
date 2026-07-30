@@ -96,6 +96,11 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         retVal=$?
         if [[ $retVal -ne 0 ]]; then
             echo "Poetry installation error with status ${retVal}"
+            # Par défaut « -q » masque la CAUSE (ex. échec de build d'une
+            # dépendance git/VCS). On rejoue en verbeux pour la capturer dans
+            # le log -> diagnostic possible sans EL_VERBOSE.
+            echo "---- Poetry: rejeu verbeux pour diagnostic ----"
+            poetry install --no-root -v 2>&1 || true
             exit 1
         fi
     fi

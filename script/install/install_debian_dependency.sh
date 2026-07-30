@@ -36,10 +36,14 @@ elif [[ "${OS}" == "Linuxmint" ]]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
   fi
 elif [[ "${OS}" == "Debian" ]]; then
-  if [ "bookworm" == "${DEBIAN_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
-  else
+  if [ "bullseye" == "${DEBIAN_VERSION}" ]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bullseye_amd64.deb
+  else
+    # bookworm (12), trixie (13) et au-delà : wkhtmltopdf ne publie pas de
+    # build au-delà de « bookworm » -> on prend bookworm (le plus récent).
+    # Le build « bullseye » (Debian 11) échouait à s'installer sur trixie
+    # (gdebi : dépendances incompatibles).
+    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
   fi
 elif [[ "${OS}" == *"Ubuntu"* ]]; then
   echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
@@ -218,11 +222,15 @@ elif [ ${EL_INSTALL_WKHTMLTOPDF} = "True" ]; then
       sudo gdebi --n $(basename ${_url})
       retVal=$?
       if [[ $retVal -ne 0 ]]; then
-        echo "gdebi install wkhtmltopdf installation error."
-        exit 1
+        # wkhtmltopdf est OPTIONNEL (rapports PDF). NON bloquant : sur Debian
+        # 13 (trixie) le .deb dépendait de libssl1.1 (absent) et « exit 1 »
+        # faisait échouer TOUT install_os -> Odoo jamais installé. On avertit
+        # et on continue (comme Arch qui poursuit sans wkhtmltopdf).
+        echo "wkhtmltopdf : installation échouée, ignoré (optionnel — pas de PDF)."
+      else
+        sudo ln -fs /usr/local/bin/wkhtmltopdf /usr/bin
+        sudo ln -fs /usr/local/bin/wkhtmltoimage /usr/bin
       fi
-      sudo ln -fs /usr/local/bin/wkhtmltopdf /usr/bin
-      sudo ln -fs /usr/local/bin/wkhtmltoimage /usr/bin
     fi
   else
     echo -e "\n---- Already installed wkhtml ----"
