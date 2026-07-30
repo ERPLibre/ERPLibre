@@ -1448,6 +1448,14 @@ TRANSLATIONS = {
         "fr": "Aucun navigateur CLI installé. Lequel installer ?",
         "en": "No CLI browser installed. Which to install?",
     },
+    "Which browser to install?": {
+        "fr": "Quel navigateur installer ?",
+        "en": "Which browser to install?",
+    },
+    "Install another browser": {
+        "fr": "Installer un autre navigateur",
+        "en": "Install another browser",
+    },
     "Choice (number, blank = w3m): ": {
         "fr": "Choix (numéro, vide = w3m) : ",
         "en": "Choice (number, blank = w3m): ",

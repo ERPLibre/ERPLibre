@@ -1384,43 +1384,20 @@ class TODO:
             print(f"⚠  {msg}")
 
     def _qemu_choose_cli_browser(self):
-        """Offre la LISTE des navigateurs CLI installés (ou propose d'en
-        installer un) et renvoie celui choisi, sinon None."""
-        from script.todo.qemu_install_monitor import (
-            CLI_BROWSERS,
-            INSTALLABLE_BROWSERS,
-            browser_install_command,
-        )
+        """Offre la LISTE des navigateurs CLI installés, plus une option pour
+        en INSTALLER un autre, et renvoie celui choisi, sinon None."""
+        from script.todo.qemu_install_monitor import CLI_BROWSERS
 
         available = [b for b in CLI_BROWSERS if shutil.which(b)]
         if not available:
-            print(t("No CLI browser installed. Which to install?"))
-            for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
-                print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
-            sel = input(t("Choice (number, blank = w3m): ")).strip()
-            browser = INSTALLABLE_BROWSERS[0][0]
-            try:
-                idx = int(sel) - 1
-                if 0 <= idx < len(INSTALLABLE_BROWSERS):
-                    browser = INSTALLABLE_BROWSERS[idx][0]
-            except ValueError:
-                pass
-            cmd = browser_install_command(browser)
-            if not cmd:
-                print(t("Unknown package manager; install it manually."))
-                return None
-            printable = " ".join(cmd)
-            print(f"{t('Command:')} {printable}")
-            if not self._is_yes(input(t("Install now? (y/N): "))):
-                return None
-            os.system(printable)
-            return browser if shutil.which(browser) else None
-        if len(available) == 1:
-            return available[0]
+            return self._qemu_install_cli_browser()
         print(f"\n{t('Which browser to view the page?')}")
         for i, b in enumerate(available, 1):
             print(f"  [{i}] {b}{' *' if i == 1 else ''}")
-        sel = input(t("Choice (number, blank = first): ")).strip()
+        print(f"  [i] {t('Install another browser')}")
+        sel = input(t("Choice (number, blank = first): ")).strip().lower()
+        if sel == "i":
+            return self._qemu_install_cli_browser()
         if not sel:
             return available[0]
         try:
@@ -1430,6 +1407,37 @@ class TODO:
         except ValueError:
             pass
         return available[0]
+
+    def _qemu_install_cli_browser(self):
+        """Demande QUEL navigateur CLI installer, affiche la commande adaptée
+        à l'OS, l'exécute après validation. Renvoie le binaire installé ou
+        None."""
+        from script.todo.qemu_install_monitor import (
+            INSTALLABLE_BROWSERS,
+            browser_install_command,
+        )
+
+        print(f"\n{t('Which browser to install?')}")
+        for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
+            print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
+        sel = input(t("Choice (number, blank = w3m): ")).strip()
+        browser = INSTALLABLE_BROWSERS[0][0]
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(INSTALLABLE_BROWSERS):
+                browser = INSTALLABLE_BROWSERS[idx][0]
+        except ValueError:
+            pass
+        cmd = browser_install_command(browser)
+        if not cmd:
+            print(t("Unknown package manager; install it manually."))
+            return None
+        printable = " ".join(cmd)
+        print(f"{t('Command:')} {printable}")
+        if not self._is_yes(input(t("Install now? (y/N): "))):
+            return None
+        os.system(printable)
+        return browser if shutil.which(browser) else None
 
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM
