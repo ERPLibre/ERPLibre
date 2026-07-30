@@ -2346,6 +2346,12 @@ class TODO:
         return ans.strip().lower() in ("y", "yes", "o", "oui")
 
     @staticmethod
+    def _is_yes_default_yes(ans):
+        """Comme _is_yes mais le DÉFAUT (réponse vide) est OUI."""
+        a = ans.strip().lower()
+        return a == "" or a in ("y", "yes", "o", "oui")
+
+    @staticmethod
     def _is_no(ans):
         """Réponse négative explicite, FR et EN (n/no/non). Utile pour les
         invites « défaut oui » où tout sauf « non » vaut oui."""
@@ -3248,7 +3254,7 @@ class TODO:
         if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
             _label, install_cmd = self._qemu_pick_install_profile()
-            install_monitor = self._is_yes(
+            install_monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
 

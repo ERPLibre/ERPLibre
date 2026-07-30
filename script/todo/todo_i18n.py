@@ -2102,8 +2102,8 @@ TRANSLATIONS = {
         "en": "ERPLibre Deployment (+ QEMU + dev)",
     },
     "Interactive monitoring dashboard? (y/N): ": {
-        "fr": "Suivi interactif (dashboard) ? (o/N, défaut : non) : ",
-        "en": "Interactive monitoring dashboard? (y/N, default: no): ",
+        "fr": "Suivi interactif (dashboard) ? (O/n, défaut : oui) : ",
+        "en": "Interactive monitoring dashboard? (Y/n, default: yes): ",
     },
     "resolving IP...": {
         "fr": "résolution de l'IP...",
