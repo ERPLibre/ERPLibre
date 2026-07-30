@@ -689,7 +689,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table.add_column("#", key="seq", width=3)
             table.add_column("VM", key="vm", width=26)
             table.add_column("⚠", key="err", width=4)
-            table.add_column("État", key="state", width=12)
+            # width=10 : juste assez pour le plus long libellé (« ❌ effacée »),
+            # sans la marge inutile de 12 qui faisait paraître la colonne large.
+            table.add_column("État", key="state", width=10)
             # « Odoo » : l'UI web répond-elle sur :8069 ? (🟢 up / — down)
             table.add_column("Odoo", key="odoo", width=6)
             table.add_column("Durée", key="elapsed", width=7)
