@@ -161,6 +161,10 @@ DEBIAN_CLOUD_BASES: tuple[str, ...] = (
     "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
 )
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
+# Serveur MAÎTRE (pas de redirection MirrorManager) : repli fiable quand le
+# redirecteur envoie sur un miroir incomplet (fréquent en déploiement
+# PARALLÈLE : chaque requête peut tomber sur un miroir différent/désynchronisé).
+FEDORA_BASE_MASTER = "https://dl.fedoraproject.org/pub/fedora/linux/releases"
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
@@ -214,26 +218,38 @@ def image_candidates(
 
 def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     """Résout l'URL du qcow2 « Fedora Cloud Base Generic » depuis l'index
-    HTML des releases (Fedora ne publie pas de lien « latest »)."""
+    HTML des releases (Fedora ne publie pas de lien « latest »). ROBUSTE :
+    plusieurs tentatives sur le redirecteur puis repli sur le serveur maître
+    (dl.fedoraproject.org) — sinon, en déploiement parallèle, une requête
+    tombée sur un miroir incomplet faisait échouer la VM (« image introuvable »)
+    alors que l'image existe bel et bien."""
     a = distro_arch("fedora", arch)
-    index = f"{FEDORA_BASE}/{version}/Cloud/{a}/images/"
     pattern = re.compile(
         rf"Fedora-Cloud-Base-Generic-{version}-[0-9.]+\.{a}\.qcow2"
     )
     if dry_run:
+        index = f"{FEDORA_BASE}/{version}/Cloud/{a}/images/"
         return index + f"Fedora-Cloud-Base-Generic-{version}-<build>.{a}.qcow2"
-    try:
-        with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
-            html = resp.read().decode(errors="replace")
-    except Exception as exc:  # pragma: no cover - dépend du réseau
-        sys.exit(f"Impossible de lister les images Fedora {version} : {exc}")
-    names = sorted(set(pattern.findall(html)))
-    if not names:
-        sys.exit(
-            "Aucune image « Fedora-Cloud-Base-Generic » trouvée pour "
-            f"Fedora {version} ({a}) dans {index}"
-        )
-    return index + names[-1]
+    # On essaie le redirecteur (2 fois : chaque requête peut viser un miroir
+    # différent) puis le serveur maître (toujours complet).
+    bases = [FEDORA_BASE, FEDORA_BASE, FEDORA_BASE_MASTER]
+    last_err = ""
+    for base in bases:
+        index = f"{base}/{version}/Cloud/{a}/images/"
+        try:
+            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+                html = resp.read().decode(errors="replace")
+        except Exception as exc:  # pragma: no cover - dépend du réseau
+            last_err = str(exc)
+            continue
+        names = sorted(set(pattern.findall(html)))
+        if names:
+            return index + names[-1]
+    sys.exit(
+        "Aucune image « Fedora-Cloud-Base-Generic » trouvée pour "
+        f"Fedora {version} ({a}) après plusieurs miroirs"
+        + (f" (dernière erreur : {last_err})" if last_err else "")
+    )
 
 
 def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
@@ -1241,7 +1257,17 @@ def virt_install(
         cmd += ["--virt-type", "qemu"]
     if not args.attach_console:
         cmd.append("--noautoconsole")
-    runner.run(cmd, privileged=True)
+    # virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
+    # sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
+    # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
+    # force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
+    # que le journal s'écrive silencieusement.
+    log_env = [
+        "env",
+        "XDG_CACHE_HOME=/var/tmp/erplibre-virtinst",
+        "HOME=/var/tmp/erplibre-virtinst",
+    ]
+    runner.run(log_env + cmd, privileged=True)
 
 
 def _ip_reachable(ip: str, port: int = 22, timeout: float = 3) -> bool:
