@@ -489,6 +489,9 @@ def virsh_domstates() -> dict:
             capture_output=True,
             text=True,
             timeout=15,
+            # LC_ALL=C : sortie en ANGLAIS (« running »/« paused »/« shut off »
+            # + en-tête « Id Name State ») quelle que soit la locale de l'hôte.
+            env={**os.environ, "LC_ALL": "C", "LANG": "C"},
         )
     except (OSError, subprocess.SubprocessError):
         return {}

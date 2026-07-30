@@ -1241,6 +1241,7 @@ class TODO:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                env=TODO._qemu_c_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return 0, 0
@@ -1490,6 +1491,17 @@ class TODO:
     # Redimensionnement du disque d'une VM
     # ------------------------------------------------------------------ #
     @staticmethod
+    def _qemu_c_env():
+        """Environnement forçant LC_ALL=C : la sortie des outils (virsh,
+        sgdisk, resize2fs, dumpe2fs…) reste en ANGLAIS quelle que soit la
+        locale de l'hôte. Sinon « running » devient « en cours d'exécution »
+        (fr) et les comparaisons/parsing d'état cassent."""
+        env = dict(os.environ)
+        env["LC_ALL"] = "C"
+        env["LANG"] = "C"
+        return env
+
+    @staticmethod
     def _qemu_domstate(name):
         """État libvirt de la VM (« running », « shut off », …) ou ''."""
         try:
@@ -1498,6 +1510,7 @@ class TODO:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                env=TODO._qemu_c_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return ""
@@ -1516,6 +1529,7 @@ class TODO:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                env=TODO._qemu_c_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return name
@@ -1571,6 +1585,7 @@ class TODO:
                 capture_output=True,
                 text=True,
                 timeout=15,
+                env=TODO._qemu_c_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return None
@@ -2001,7 +2016,7 @@ class TODO:
         info = {"type": "", "uuid": "", "name": ""}
         res = subprocess.run(
             ["sudo", "sgdisk", "-i", n, dev],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             low = line.lower()
@@ -2017,7 +2032,7 @@ class TODO:
     def _qemu_fs_blocksize(part):
         res = subprocess.run(
             ["sudo", "dumpe2fs", "-h", part],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             if line.startswith("Block size:"):
@@ -2031,7 +2046,7 @@ class TODO:
     def _qemu_fs_blocks(part):
         res = subprocess.run(
             ["sudo", "dumpe2fs", "-h", part],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             if line.startswith("Block count:"):
@@ -2046,7 +2061,7 @@ class TODO:
         """Taille minimale (blocs) du FS via « resize2fs -P »."""
         res = subprocess.run(
             ["sudo", "resize2fs", "-P", part],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=TODO._qemu_c_env(),
         )
         for tok in res.stdout.replace(":", " ").split():
             if tok.isdigit():
@@ -2454,6 +2469,7 @@ class TODO:
                     capture_output=True,
                     text=True,
                     timeout=15,
+                    env=self._qemu_c_env(),
                 )
             except (OSError, subprocess.SubprocessError):
                 continue
