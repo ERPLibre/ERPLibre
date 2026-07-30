@@ -3157,14 +3157,17 @@ class TODO:
             # (Fedora) et pacman (Arch).
             "PKGS='curl git make'; "
             "if command -v apt-get >/dev/null 2>&1; then "
-            # DPkg::Lock::Timeout=600 : au 1er boot, cloud-init (install de
-            # qemu-guest-agent) et/ou apt-daily.service tiennent le verrou apt.
-            # Sans attente, « apt-get install » échouait aussitôt (« Could not
-            # get lock … held by process »). On ATTEND le verrou jusqu'à 10 min.
-            # update best-effort (|| true) puis install OBLIGATOIRE : sans le
-            # « || true », un « apt-get update » en échec (réseau) sautait
-            # l'install sans erreur (liste &&) -> git/make absents ensuite.
-            "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq || true; "
+            # Au 1er boot, cloud-init (install qemu-guest-agent) et/ou
+            # apt-daily.service tiennent le verrou apt. IMPORTANT :
+            # « DPkg::Lock::Timeout » NE couvre PAS le verrou
+            # /var/lib/apt/lists/lock -> « apt-get update » échouait AUSSITÔT
+            # (« Could not get lock … lists/lock ») -> lists vides -> « Unable
+            # to locate package git ». On RÉESSAIE donc update jusqu'à ce que
+            # le verrou se libère (et les lists soient peuplées), borné à ~5 min.
+            "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
+            "n=$((n+1)); [ $n -ge 30 ] && break; "
+            'echo "apt verrouille (tentative $n), attente 10s..."; sleep 10; '
+            "done; "
             "sudo apt-get -o DPkg::Lock::Timeout=600 install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "
             # makecache (dnf5 choisit les miroirs les plus rapides) puis
