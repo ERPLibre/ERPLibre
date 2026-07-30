@@ -1794,6 +1794,22 @@ TRANSLATIONS = {
         "fr": "État cible :",
         "en": "Target state:",
     },
+    "Target environment?": {
+        "fr": "Environnement cible ?",
+        "en": "Target environment?",
+    },
+    "Development (~/git/erplibre, SELinux relaxed)": {
+        "fr": "Développement (~/git/erplibre, SELinux relâché)",
+        "en": "Development (~/git/erplibre, SELinux relaxed)",
+    },
+    "Production (/opt/erplibre, SELinux enforced)": {
+        "fr": "Production (/opt/erplibre, SELinux confiné)",
+        "en": "Production (/opt/erplibre, SELinux enforced)",
+    },
+    "Choice (1-2, default 1): ": {
+        "fr": "Choix (1-2, défaut 1) : ",
+        "en": "Choice (1-2, default 1): ",
+    },
     "Open (start)": {
         "fr": "Ouvrir (démarrer)",
         "en": "Open (start)",

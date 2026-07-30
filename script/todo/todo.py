@@ -3017,6 +3017,16 @@ class TODO:
         "libvirt virt-install libguestfs 2>/dev/null || true)"
     )
 
+    def _qemu_ask_prod(self):
+        """Environnement cible : dev (défaut) ou prod. En PROD : ERPLibre est
+        installé dans /opt/erplibre (au lieu de ~/git/erplibre) et le service
+        systemd reste CONFINÉ par SELinux (pas d'unconfined)."""
+        print(f"\n{t('Target environment?')}")
+        print(f"  [1] {t('Development (~/git/erplibre, SELinux relaxed)')} *")
+        print(f"  [2] {t('Production (/opt/erplibre, SELinux enforced)')}")
+        sel = input(t("Choice (1-2, default 1): ")).strip()
+        return sel == "2"
+
     def _qemu_pick_install_profile(self):
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
         finale exécutée dans ~/git/erplibre)."""
@@ -3059,24 +3069,43 @@ class TODO:
         return profiles[0]  # défaut : ERPLibre + Odoo 18
 
     @staticmethod
-    def _qemu_odoo_service_cmd():
+    @staticmethod
+    def _qemu_install_dir(prod):
+        """Répertoire d'installation ERPLibre dans la VM : /opt/erplibre en
+        PROD (hors /home -> service SELinux confiné possible), sinon
+        ~/git/erplibre (dev)."""
+        return "/opt/erplibre" if prod else "$HOME/git/erplibre"
+
+    def _qemu_odoo_service_cmd(self, prod=False):
         """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
-        service systemd (inspiré de script/systemd/install_daemon.sh) puis
-        l'active + démarre. N'est ajouté QUE pour les profils avec Odoo."""
+        service systemd puis l'active. N'est ajouté QUE pour les profils Odoo.
+
+        DEV : ERPLibre sous ~/home ; si SELinux est actif (Fedora), on lève le
+        confinement du service (unconfined) — un service système ne peut pas
+        exécuter du user_home_t. Acceptable pour une VM de dev.
+        PROD : ERPLibre sous /opt/erplibre (hors user_home_t) -> le service
+        reste CONFINÉ par SELinux ; on restaure les contextes (restorecon)."""
+        svc_dir = self._qemu_install_dir(prod)
+        if prod:
+            pre = (
+                "command -v restorecon >/dev/null 2>&1 && "
+                "sudo restorecon -R /opt/erplibre >/dev/null 2>&1 || true; "
+            )
+            selinux_shell = 'SELINUX_LINE=""; '  # confiné : pas d'unconfined
+        else:
+            pre = ""
+            selinux_shell = (
+                'SELINUX_LINE=""; '
+                "if command -v getenforce >/dev/null 2>&1 && "
+                '[ "$(getenforce)" != "Disabled" ]; then '
+                'SELINUX_LINE="SELinuxContext=unconfined_u:unconfined_r:'
+                'unconfined_t:s0"; fi; '
+            )
         return (
-            'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); '
-            'SVC_DIR="$HOME/git/erplibre"; '
-            # SELinux (Fedora) INTERDIT à un service système d'exécuter des
-            # binaires sous /home (run.sh ET le python du venv) -> le service
-            # échoue en « status=203/EXEC ». On fait tourner l'ExecStart dans
-            # le domaine unconfined (autorisé à exécuter /home) UNIQUEMENT si
-            # SELinux est actif (ligne vide sinon, inoffensive).
-            'SELINUX_LINE=""; '
-            "if command -v getenforce >/dev/null 2>&1 && "
-            '[ "$(getenforce)" != "Disabled" ]; then '
-            'SELINUX_LINE="SELinuxContext=unconfined_u:unconfined_r:'
-            'unconfined_t:s0"; fi; '
-            "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
+            f'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); SVC_DIR="{svc_dir}"; '
+            + pre
+            + selinux_shell
+            + "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
             "[Unit]\n"
             "Description=ERPLibre\n"
             "Requires=postgresql.service\n"
@@ -3100,17 +3129,18 @@ class TODO:
             "sudo systemctl enable --now erplibre.service"
         )
 
-    def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None):
+    def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None, prod=False):
         """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
-        puis clone + `final_cmd` dans ~/git/erplibre). `final_cmd` par défaut :
-        install_os + install_odoo_18."""
+        puis clone + `final_cmd`). `final_cmd` par défaut : install_os +
+        install_odoo_18. `prod` : installe dans /opt/erplibre (au lieu de
+        ~/git/erplibre) + service SELinux confiné."""
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
         if "install_odoo" in final_cmd:
-            final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd()}"
+            final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd(prod)}"
         return (
             "set -e; "
             # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
@@ -3166,27 +3196,42 @@ class TODO:
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
             '{ echo "Outil manquant apres installation: $t '
             '(reseau de la VM ?)"; exit 1; }; done; '
-            "mkdir -p ~/git; "
-            "if [ ! -d ~/git/erplibre/.git ]; then "
-            f"git clone --branch {shlex.quote(branch)} "
-            f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-            # Installation : commande finale selon le profil choisi.
-            f"cd ~/git/erplibre && {final_cmd}"
+            # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
+            # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
+            + (
+                (
+                    "sudo mkdir -p /opt; "
+                    "if [ ! -d /opt/erplibre/.git ]; then "
+                    f"sudo git clone --branch {shlex.quote(branch)} "
+                    f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
+                    "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
+                    f"cd /opt/erplibre && {final_cmd}"
+                )
+                if prod
+                else (
+                    "mkdir -p ~/git; "
+                    "if [ ! -d ~/git/erplibre/.git ]; then "
+                    f"git clone --branch {shlex.quote(branch)} "
+                    f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
+                    f"cd ~/git/erplibre && {final_cmd}"
+                )
+            )
         )
 
     def _qemu_install_erplibre_monitored(
-        self, names, branch, ip_map=None, final_cmd=None
+        self, names, branch, ip_map=None, final_cmd=None, prod=False
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
-        `final_cmd` : commande d'install selon le profil choisi."""
+        `final_cmd` : commande d'install selon le profil choisi.
+        `prod` : install /opt/erplibre + service SELinux confiné."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
         )
 
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd)
+        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
         try:
             mod = self._qemu_import_module()
         except Exception:
@@ -3239,11 +3284,11 @@ class TODO:
         print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
     def _qemu_install_erplibre_vm(
-        self, name, ssh_key, branch, ip=None, final_cmd=None
+        self, name, ssh_key, branch, ip=None, final_cmd=None, prod=False
     ):
-        """Clone ERPLibre (branche donnée) dans ~/git/erplibre de la VM puis
-        exécute la commande d'install du profil choisi (streamé). `ip` : IP
-        déjà résolue ; `final_cmd` : commande d'install."""
+        """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
+        d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
+        `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné."""
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -3260,7 +3305,7 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd)
+        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
@@ -3574,12 +3619,14 @@ class TODO:
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install_branch = None
         install_monitor = False
+        install_prod = False  # dev (~/git, SELinux dev) vs prod (/opt, confiné)
         install_cmd = None  # commande finale selon le profil choisi
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
         )
         if self._is_yes(ans):
             install_branch = self._qemu_pick_branch()
+            install_prod = self._qemu_ask_prod()
             _label, install_cmd = self._qemu_pick_install_profile()
             install_monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
@@ -3698,7 +3745,8 @@ class TODO:
             if install_monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
-                    deployed, install_branch, ip_map, install_cmd
+                    deployed, install_branch, ip_map, install_cmd,
+                    install_prod,
                 )
             else:
                 print(
@@ -3712,6 +3760,7 @@ class TODO:
                         install_branch,
                         ip_map.get(name),
                         install_cmd,
+                        install_prod,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
