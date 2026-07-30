@@ -1448,6 +1448,42 @@ TRANSLATIONS = {
         "fr": "Sauvegarde du disque avant réduction…",
         "en": "Backing up the disk before shrinking…",
     },
+    "Back up the disk before shrinking? (Y/n): ": {
+        "fr": "Sauvegarder le disque avant réduction ? (O/n, défaut : oui) : ",
+        "en": "Back up the disk before shrinking? (Y/n, default: yes): ",
+    },
+    "No backup: a failure could leave the disk broken.": {
+        "fr": "Sans sauvegarde : un échec pourrait rendre le disque inutilisable.",
+        "en": "No backup: a failure could leave the disk broken.",
+    },
+    "Disk safely shrunk.": {
+        "fr": "Disque réduit en toute sécurité.",
+        "en": "Disk safely shrunk.",
+    },
+    "No backup to restore; run fsck on the disk before use.": {
+        "fr": "Pas de sauvegarde à restaurer ; lancez fsck avant utilisation.",
+        "en": "No backup to restore; run fsck on the disk before use.",
+    },
+    "A disk backup was kept:": {
+        "fr": "Une sauvegarde du disque a été conservée :",
+        "en": "A disk backup was kept:",
+    },
+    "Delete this backup now? (y/N): ": {
+        "fr": "Effacer cette sauvegarde maintenant ? (o/N) : ",
+        "en": "Delete this backup now? (y/N): ",
+    },
+    "Backup deleted.": {
+        "fr": "Sauvegarde effacée.",
+        "en": "Backup deleted.",
+    },
+    "Backup kept (delete later via Clean up QEMU).": {
+        "fr": "Sauvegarde conservée (à effacer plus tard via Nettoyer QEMU).",
+        "en": "Backup kept (delete later via Clean up QEMU).",
+    },
+    "disk backup (resize)": {
+        "fr": "sauvegarde de disque (redim.)",
+        "en": "disk backup (resize)",
+    },
     "Backup failed; aborting.": {
         "fr": "Échec de la sauvegarde ; abandon.",
         "en": "Backup failed; aborting.",

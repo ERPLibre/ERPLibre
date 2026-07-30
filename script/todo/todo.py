@@ -1699,12 +1699,8 @@ class TODO:
             ):
                 print(t("Cancelled."))
                 return
-            # Réduction SÛRE via virt-resize (réduit FS + partition + GPT).
-            # On opère sur une COPIE : l'original n'est remplacé qu'en cas de
-            # SUCCÈS -> aucune corruption possible. (Le brut « qemu-img resize
-            # --shrink » tronquait le conteneur sans réduire le FS/partition
-            # -> GPT de secours perdue, racine tronquée -> dracut-initqueue en
-            # échec, OS non bootable.)
+            # Réduction SÛRE (qemu-nbd : réduit FS + partition + GPT, avec
+            # sauvegarde optionnelle restaurée en cas d'échec).
             if not self._qemu_safe_shrink(name, disk, new_gb):
                 self._qemu_offer_start(name, was_shut_down)
                 return
@@ -1730,8 +1726,23 @@ class TODO:
             ):
                 self._qemu_grow_guest_fs(name)
 
-        # 5) La VM a été éteinte pour l'opération : proposer de la redémarrer.
+        # 5) La VM a été éteinte pour l'opération : proposer de la redémarrer
+        #    (l'utilisateur peut ainsi TESTER avant de décider du backup).
         self._qemu_offer_start(name, was_shut_down)
+
+        # 6) Réduction réussie AVEC sauvegarde : proposer de l'effacer une fois
+        #    la VM testée (défaut : NON -> on garde le backup par prudence).
+        bak = getattr(self, "_shrink_backup", None)
+        if shrink and bak and os.path.exists(bak):
+            print(f"\n{t('A disk backup was kept:')} {bak}")
+            if self._is_yes(
+                input(t("Delete this backup now? (y/N): "))
+            ):
+                subprocess.run(["sudo", "rm", "-f", bak], check=False)
+                print(t("Backup deleted."))
+            else:
+                print(t("Backup kept (delete later via Clean up QEMU)."))
+            self._shrink_backup = None
 
     def _qemu_offer_start(self, name, was_shut_down):
         """Si la VM a été éteinte pour l'opération, le noter et proposer de la
@@ -1771,13 +1782,22 @@ class TODO:
             )
             return False
         target = int(round(new_gb * (1 << 30)))
-        bak = f"{disk}.bak"
-        print(f"\n{t('Backing up the disk before shrinking…')}")
-        if subprocess.run(
-            ["sudo", "cp", "--reflink=auto", "--sparse=always", disk, bak]
-        ).returncode != 0:
-            print(t("Backup failed; aborting."))
-            return False
+        # Sauvegarde OPTIONNELLE (défaut OUI) : permet de restaurer en cas
+        # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
+        self._shrink_backup = None
+        bak = None
+        if self._is_yes_default_yes(
+            input(t("Back up the disk before shrinking? (Y/n): "))
+        ):
+            bak = f"{disk}.bak"
+            print(f"\n{t('Backing up the disk before shrinking…')}")
+            if subprocess.run(
+                ["sudo", "cp", "--reflink=auto", "--sparse=always", disk, bak]
+            ).returncode != 0:
+                print(t("Backup failed; aborting."))
+                return False
+        else:
+            print(f"⚠  {t('No backup: a failure could leave the disk broken.')}")
         subprocess.run(["sudo", "modprobe", "nbd", "max_part=16"], check=False)
         dev = None
         try:
@@ -1865,20 +1885,30 @@ class TODO:
                     )
                 self._qemu_nbd_disconnect(dev)
                 dev = None
-            print(f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}")
+            self._shrink_backup = bak  # proposé à la suppression après le boot
+            if bak:
+                print(
+                    f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}"
+                )
+            else:
+                print(f"✅ {t('Disk safely shrunk.')}")
             return True
         finally:
             if dev:
                 self._qemu_nbd_disconnect(dev)
 
     def _qemu_shrink_revert(self, bak, disk, changed):
-        """Restaure le disque depuis la sauvegarde .bak si on l'a modifié
-        (changed) ; sinon retire juste la sauvegarde inutile. Renvoie False
-        (la réduction a échoué)."""
-        if changed:
+        """Restaure le disque depuis la sauvegarde si on l'a modifié (changed)
+        et qu'une sauvegarde existe ; sinon retire la sauvegarde inutile.
+        Renvoie False (la réduction a échoué)."""
+        if changed and bak:
             print(t("Restoring the original disk from backup…"))
             subprocess.run(["sudo", "mv", "-f", bak, disk], check=False)
-        else:
+        elif changed and not bak:
+            print(
+                f"⚠  {t('No backup to restore; run fsck on the disk before use.')}"
+            )
+        elif bak:
             subprocess.run(["sudo", "rm", "-f", bak], check=False)
         return False
 
@@ -2360,6 +2390,9 @@ class TODO:
             stem = re.sub(r"(_VARS)?\.fd$", "", os.path.basename(path))
             if stem not in domains:
                 orphans.append((size, path, t("orphan UEFI nvram")))
+        # Sauvegardes de disque laissées par un redimensionnement (.qcow2.bak).
+        for size, path in self._qemu_find_files(disk_dir, "*.qcow2.bak"):
+            orphans.append((size, path, t("disk backup (resize)")))
         if orphans:
             total = sum(o[0] for o in orphans)
             print(f"\n{t('Orphan files:')}")
