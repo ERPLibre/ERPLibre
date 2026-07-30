@@ -92,12 +92,19 @@ sudo su - postgres -c "createuser -s ${EL_USER}" 2>/dev/null || true
 # Install Dependencies
 #--------------------------------------------------
 echo -e "\n--- Installing debian dependency --"
-${APT_GET} install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev shfmt xmlsec1 -y
+${APT_GET} install git build-essential wget libxslt-dev libzip-dev libldap2-dev libsasl2-dev gdebi-core libffi-dev libbz2-dev parallel pysassc swig cmake portaudio19-dev libcups2-dev xmlsec1 -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "apt-get debian tool installation error."
   exit 1
 fi
+# shfmt : ABSENT des dépôts Ubuntu < 22.04. Il était dans le lot critique
+# ci-dessus -> un seul paquet introuvable faisait échouer TOUT l'apt-get
+# (donc pas de build-essential/gcc -> pyenv ne pouvait plus compiler Python).
+# C'est un simple formateur shell (dev), non requis pour exécuter ERPLibre :
+# on l'installe SÉPARÉMENT et en best-effort (jamais fatal).
+${APT_GET} install shfmt -y \
+  || echo "shfmt indisponible dans les dépôts (Ubuntu < 22.04 ?) — ignoré."
 ${APT_GET} install libmariadbd-dev freetds-dev -y
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
