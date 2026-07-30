@@ -292,6 +292,32 @@ def _read_new(path: str, offset: int) -> tuple[str, int]:
         return "", offset
 
 
+def _read_tail(
+    path: str, max_bytes: int = 131072, max_lines: int = 1000
+) -> tuple[str, int]:
+    """Lit uniquement la FIN du log (dernier `max_bytes`, tronqué à
+    `max_lines` lignes) et renvoie (texte, TAILLE TOTALE du fichier). Utilisé
+    au CHANGEMENT de VM : lire+réafficher le fichier ENTIER (offset 0) gelait
+    l'UI sur les gros logs (250 Ko / milliers de lignes). L'offset renvoyé =
+    taille totale -> le suivi incrémental (_tick_log) continue depuis la fin."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            if size > max_bytes:
+                fh.seek(-max_bytes, os.SEEK_END)
+            raw = fh.read()
+        text = raw.decode(errors="replace")
+        # Si on a coupé au milieu d'une ligne, jeter la 1re ligne partielle.
+        if size > max_bytes and "\n" in text:
+            text = text.split("\n", 1)[1]
+        lines = text.splitlines()
+        if len(lines) > max_lines:
+            lines = lines[-max_lines:]
+        return "\n".join(lines), size
+    except OSError:
+        return "", 0
+
+
 # --------------------------------------------------------------------------- #
 # Télémétrie, historique de durées (ETA), navigateur CLI
 # --------------------------------------------------------------------------- #
@@ -619,6 +645,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._errcount = {}
             # Sommaire de stats déplié (clic) ou non.
             self._stats_open = False
+            # Debounce du changement de VM : la sélection défile vite au
+            # clavier ; on ne recharge le log qu'une fois le curseur STABILISÉ.
+            self._pending_sel = None
+            self._sel_timer = None
 
         @staticmethod
         def _fmt(secs):
@@ -697,15 +727,22 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 )
 
         def _load_selected_log(self, reset=False):
-            # Lecture SYNCHRONE (mount / changement de ligne). Le suivi périodique
-            # passe par _tick_log (async, I/O en thread).
+            # Au reset (changement de VM), on ne lit QUE LA FIN du log
+            # (_read_tail) et on cale l'offset sur la taille totale : le suivi
+            # incrémental (_tick_log) continue depuis la fin. Lire+réafficher
+            # le fichier ENTIER gelait l'UI sur les gros logs.
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
             name = vm["name"]
             if reset:
                 self._log.clear()
-                self._offsets[name] = 0
+                text, size = _read_tail(vm["log"])
+                self._offsets[name] = size
+                for line in text.splitlines():
+                    if EXIT_MARKER not in line:
+                        self._log.write(line)
+                return
             new, off = _read_new(vm["log"], self._offsets.get(name, 0))
             self._offsets[name] = off
             for line in new.splitlines():
@@ -926,11 +963,26 @@ def run_monitor(manifest_path: str, run_app: bool = True):
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:
+            # DEBOUNCE : RowHighlighted se déclenche à CHAQUE mouvement du
+            # curseur. Recharger le log à chaque pas (surtout en maintenant la
+            # flèche) enchaînait les rechargements -> gros lag. On diffère de
+            # 0,25 s et on ne charge que la DERNIÈRE VM sélectionnée.
             name = event.row_key.value
-            if name and name != self._selected:
-                self._selected = name
-                self._refresh_ssh()
-                self._load_selected_log(reset=True)
+            if not name or name == self._selected:
+                return
+            self._pending_sel = name
+            if self._sel_timer is not None:
+                self._sel_timer.stop()
+            self._sel_timer = self.set_timer(0.25, self._apply_pending_sel)
+
+        def _apply_pending_sel(self) -> None:
+            name = self._pending_sel
+            self._sel_timer = None
+            if not name or name == self._selected:
+                return
+            self._selected = name
+            self._refresh_ssh()
+            self._load_selected_log(reset=True)
 
         def action_follow(self) -> None:
             self._follow = not self._follow
