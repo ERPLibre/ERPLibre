@@ -1432,6 +1432,49 @@ TRANSLATIONS = {
         "fr": "Aucune erreur détectée.",
         "en": "No error detected.",
     },
+    "Test a VM (open Odoo in a CLI browser)": {
+        "fr": "🧪 Tester une VM (ouvrir Odoo dans un navigateur CLI)",
+        "en": "🧪 Test a VM (open Odoo in a CLI browser)",
+    },
+    "Resolving VM IP...": {
+        "fr": "Résolution de l'IP de la VM…",
+        "en": "Resolving VM IP...",
+    },
+    "No IP found for this VM.": {
+        "fr": "Aucune IP trouvée pour cette VM.",
+        "en": "No IP found for this VM.",
+    },
+    "No CLI browser installed. Which to install?": {
+        "fr": "Aucun navigateur CLI installé. Lequel installer ?",
+        "en": "No CLI browser installed. Which to install?",
+    },
+    "Choice (number, blank = w3m): ": {
+        "fr": "Choix (numéro, vide = w3m) : ",
+        "en": "Choice (number, blank = w3m): ",
+    },
+    "Unknown package manager; install it manually.": {
+        "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
+        "en": "Unknown package manager; install it manually.",
+    },
+    "Install now? (y/N): ": {
+        "fr": "Installer maintenant ? (o/N) : ",
+        "en": "Install now? (y/N): ",
+    },
+    "Which browser to view the page?": {
+        "fr": "Quel navigateur pour voir la page ?",
+        "en": "Which browser to view the page?",
+    },
+    "Choice (number, blank = first): ": {
+        "fr": "Choix (numéro, vide = le premier) : ",
+        "en": "Choice (number, blank = first): ",
+    },
+    "Page may not have loaded: Odoo not started on :8069, "
+    "or network/firewall.": {
+        "fr": "La page ne s'est peut-être pas affichée : Odoo n'est pas "
+        "démarré sur :8069, ou réseau/pare-feu.",
+        "en": "Page may not have loaded: Odoo not started on :8069, "
+        "or network/firewall.",
+    },
     "errors": {
         "fr": "erreurs",
         "en": "errors",

@@ -1082,6 +1082,11 @@ class TODO:
             {"prompt_description": t("Resize a VM disk")},
             {"prompt_description": t("Delete VM(s)")},
             {"prompt_description": t("Clean up QEMU (orphan files)")},
+            {
+                "prompt_description": t(
+                    "Test a VM (open Odoo in a CLI browser)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1114,6 +1119,8 @@ class TODO:
             elif status == "9":
                 self._qemu_cleanup()
             elif status == "10":
+                self._qemu_test_vm()
+            elif status == "11":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1341,6 +1348,87 @@ class TODO:
         cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_test_vm(self):
+        """Teste une VM : résout son IP puis ouvre Odoo (:8069) dans un
+        navigateur web EN LIGNE DE COMMANDE choisi par l'utilisateur."""
+        self._qemu_list_vms()
+        print()
+        name = input(t("VM name or ID: ")).strip()
+        if not name:
+            print(t("VM name is required!"))
+            return
+        real = self._qemu_domname(name)
+        if not self._qemu_domain_exists(real):
+            print(f"{real}: {t('VM not found.')}")
+            return
+        print(f"\n{t('Resolving VM IP...')}")
+        ip = self._qemu_vm_ip(real, timeout=120)
+        if not ip:
+            print(t("No IP found for this VM."))
+            return
+        browser = self._qemu_choose_cli_browser()
+        if not browser:
+            return
+        url = f"http://{ip}:8069"
+        print(f"→ {browser} {url}")
+        rc = self.execute.exec_command_live(
+            f"{browser} {shlex.quote(url)}", source_erplibre=False
+        )
+        if rc != 0:
+            msg = t(
+                "Page may not have loaded: Odoo not started on :8069, "
+                "or network/firewall."
+            )
+            print(f"⚠  {msg}")
+
+    def _qemu_choose_cli_browser(self):
+        """Offre la LISTE des navigateurs CLI installés (ou propose d'en
+        installer un) et renvoie celui choisi, sinon None."""
+        from script.todo.qemu_install_monitor import (
+            CLI_BROWSERS,
+            INSTALLABLE_BROWSERS,
+            browser_install_command,
+        )
+
+        available = [b for b in CLI_BROWSERS if shutil.which(b)]
+        if not available:
+            print(t("No CLI browser installed. Which to install?"))
+            for i, (b, desc) in enumerate(INSTALLABLE_BROWSERS, 1):
+                print(f"  [{i}] {desc}{' *' if i == 1 else ''}")
+            sel = input(t("Choice (number, blank = w3m): ")).strip()
+            browser = INSTALLABLE_BROWSERS[0][0]
+            try:
+                idx = int(sel) - 1
+                if 0 <= idx < len(INSTALLABLE_BROWSERS):
+                    browser = INSTALLABLE_BROWSERS[idx][0]
+            except ValueError:
+                pass
+            cmd = browser_install_command(browser)
+            if not cmd:
+                print(t("Unknown package manager; install it manually."))
+                return None
+            printable = " ".join(cmd)
+            print(f"{t('Command:')} {printable}")
+            if not self._is_yes(input(t("Install now? (y/N): "))):
+                return None
+            os.system(printable)
+            return browser if shutil.which(browser) else None
+        if len(available) == 1:
+            return available[0]
+        print(f"\n{t('Which browser to view the page?')}")
+        for i, b in enumerate(available, 1):
+            print(f"  [{i}] {b}{' *' if i == 1 else ''}")
+        sel = input(t("Choice (number, blank = first): ")).strip()
+        if not sel:
+            return available[0]
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(available):
+                return available[idx]
+        except ValueError:
+            pass
+        return available[0]
 
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM
