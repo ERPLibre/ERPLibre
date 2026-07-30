@@ -1569,6 +1569,10 @@ class TODO:
         if not self._qemu_domain_exists(name):
             print(f"{name}: {t('VM not found.')}")
             return
+        # Résout tout de suite le NOM canonique (VM encore allumée -> l'ID est
+        # résoluble). Après extinction, un ID numérique disparaît : « virsh
+        # start 32 » échouerait. On travaille désormais avec le nom.
+        name = self._qemu_domname(name)
         disk = self._qemu_main_disk(name)
         if not disk:
             print(t("Main disk not found for this VM."))
@@ -1680,8 +1684,9 @@ class TODO:
             if self._is_yes(
                 input(t("Start the VM now? (y/N): "))
             ):
-                real = self._qemu_domname(name)
-                cmd = f"sudo virsh start {shlex.quote(real)}"
+                # `name` est déjà le nom canonique (résolu au début) : un
+                # « virsh start <id> » échouerait car l'ID a disparu.
+                cmd = f"sudo virsh start {shlex.quote(name)}"
                 print(f"{t('Will execute:')} {cmd}")
                 self.execute.exec_command_live(cmd, source_erplibre=False)
 
