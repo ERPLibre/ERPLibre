@@ -3080,26 +3080,28 @@ class TODO:
         """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
         service systemd puis l'active. N'est ajouté QUE pour les profils Odoo.
 
-        DEV : ERPLibre sous ~/home ; si SELinux est actif (Fedora), on lève le
-        confinement du service (unconfined) — un service système ne peut pas
-        exécuter du user_home_t. Acceptable pour une VM de dev.
+        DEV : ERPLibre sous ~/home. Un service système ne peut PAS exécuter
+        du user_home_t sous SELinux, et « SELinuxContext=unconfined » ne suffit
+        pas (transition init_t -> unconfined_t refusée -> toujours 203/EXEC).
+        Sur une VM de dev jetable, on passe donc SELinux en PERMISSIF (relâché).
         PROD : ERPLibre sous /opt/erplibre (hors user_home_t) -> le service
         reste CONFINÉ par SELinux ; on restaure les contextes (restorecon)."""
         svc_dir = self._qemu_install_dir(prod)
+        selinux_shell = 'SELINUX_LINE=""; '  # pas de SELinuxContext (inefficace)
         if prod:
             pre = (
                 "command -v restorecon >/dev/null 2>&1 && "
                 "sudo restorecon -R /opt/erplibre >/dev/null 2>&1 || true; "
             )
-            selinux_shell = 'SELINUX_LINE=""; '  # confiné : pas d'unconfined
         else:
-            pre = ""
-            selinux_shell = (
-                'SELINUX_LINE=""; '
+            # DEV : SELinux permissif (persistant) si actif -> le service peut
+            # exécuter run.sh/venv sous /home.
+            pre = (
                 "if command -v getenforce >/dev/null 2>&1 && "
-                '[ "$(getenforce)" != "Disabled" ]; then '
-                'SELINUX_LINE="SELinuxContext=unconfined_u:unconfined_r:'
-                'unconfined_t:s0"; fi; '
+                '[ "$(getenforce)" = "Enforcing" ]; then '
+                "sudo setenforce 0 || true; "
+                "sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' "
+                "/etc/selinux/config 2>/dev/null || true; fi; "
             )
         return (
             f'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); SVC_DIR="{svc_dir}"; '
