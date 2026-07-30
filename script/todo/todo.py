@@ -1838,7 +1838,9 @@ class TODO:
             if rc != 0:
                 print(t("Partition rewrite failed; reverting."))
                 return self._qemu_shrink_revert(bak, disk, changed=True)
-            subprocess.run(["sudo", "partprobe", dev], check=False)
+            subprocess.run(
+                ["sudo", "partprobe", dev], check=False, capture_output=True
+            )
             # Détache puis tronque le conteneur qcow2.
             self._qemu_nbd_disconnect(dev)
             dev = None
@@ -1853,7 +1855,9 @@ class TODO:
             dev = self._qemu_nbd_connect(disk)
             if dev:
                 subprocess.run(["sudo", "sgdisk", "-e", dev], check=False)
-                subprocess.run(["sudo", "partprobe", dev], check=False)
+                subprocess.run(
+                ["sudo", "partprobe", dev], check=False, capture_output=True
+            )
                 p2 = self._qemu_root_part(dev)[0]
                 if p2:
                     subprocess.run(
@@ -1880,7 +1884,9 @@ class TODO:
 
     @staticmethod
     def _qemu_nbd_connect(disk):
-        """Attache `disk` à un /dev/nbdN libre et renvoie le chemin, ou None."""
+        """Attache `disk` à un /dev/nbdN libre et renvoie le chemin, ou None.
+        Attend que les sous-périphériques de partition (nbdNpM) APPARAISSENT
+        (sinon lsblk/resize2fs ne voient rien juste après le connect)."""
         for i in range(16):
             dev = f"/dev/nbd{i}"
             # /sys/block/nbdN/pid absent => device libre.
@@ -1890,11 +1896,20 @@ class TODO:
                 ["sudo", "qemu-nbd", "-c", dev, disk],
                 capture_output=True, text=True,
             ).returncode
-            if rc == 0:
+            if rc != 0:
+                continue
+            base = f"nbd{i}"
+            for _ in range(15):
+                subprocess.run(
+                ["sudo", "partprobe", dev], check=False, capture_output=True
+            )
                 time.sleep(1)
-                subprocess.run(["sudo", "partprobe", dev], check=False)
-                time.sleep(1)
-                return dev
+                if any(
+                    os.path.exists(f"/sys/class/block/{base}p{n}")
+                    for n in range(1, 32)
+                ):
+                    break
+            return dev
         return None
 
     @staticmethod
@@ -1905,25 +1920,29 @@ class TODO:
     @staticmethod
     def _qemu_root_part(dev):
         """(partition la plus grosse, secteur de début, type FS) du disque nbd.
-        (None, 0, '') si introuvable."""
+        (None, 0, '') si introuvable. Format lsblk -P (paires) : robuste aux
+        colonnes VIDES — juste après le connect, FSTYPE peut être vide, et un
+        parsing positionnel décalait/ignorait alors toutes les partitions."""
+        import re
+
         try:
             res = subprocess.run(
-                ["lsblk", "-bnro", "NAME,SIZE,FSTYPE,TYPE", dev],
+                ["lsblk", "-Pbno", "NAME,SIZE,TYPE,FSTYPE", dev],
                 capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.SubprocessError):
             return None, 0, ""
         best, best_sz, best_fs = None, -1, ""
         for line in res.stdout.splitlines():
-            cols = line.split()
-            if len(cols) < 4 or cols[-1] != "part":
+            d = dict(re.findall(r'(\w+)="([^"]*)"', line))
+            if d.get("TYPE") != "part":
                 continue
-            name, size = cols[0], int(cols[1])
-            fstype = cols[2] if len(cols) >= 4 and cols[2] != "part" else ""
-            if len(cols) == 3:  # pas de FSTYPE -> décalage
-                fstype = ""
+            try:
+                size = int(d.get("SIZE") or 0)
+            except ValueError:
+                size = 0
             if size > best_sz:
-                best, best_sz, best_fs = name, size, fstype
+                best, best_sz, best_fs = d.get("NAME"), size, d.get("FSTYPE", "")
         if not best:
             return None, 0, ""
         part = f"/dev/{best}"
@@ -1934,6 +1953,7 @@ class TODO:
         except OSError:
             start = 0
         if not best_fs:
+            # FSTYPE pas encore en cache : sonder directement avec blkid.
             best_fs = subprocess.run(
                 ["sudo", "blkid", "-o", "value", "-s", "TYPE", part],
                 capture_output=True, text=True,
