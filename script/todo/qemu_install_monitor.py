@@ -18,6 +18,7 @@ import json
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -278,6 +279,17 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         ):
             nwarn += 1
     return nerr, nwarn
+
+
+def _port_open(ip: str, port: int = 8069, timeout: float = 0.5) -> bool:
+    """Vrai si un TCP connect réussit (l'UI web Odoo écoute sur :8069)."""
+    if not ip:
+        return False
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def _read_new(path: str, offset: int) -> tuple[str, int]:
@@ -645,6 +657,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._errcount = {}
             # Sommaire de stats déplié (clic) ou non.
             self._stats_open = False
+            # VM dont l'UI Odoo (:8069) répond déjà : une fois détectée « up »,
+            # on ne re-teste plus (Odoo ne redescend pas en cours d'install).
+            self._odoo_up = set()
             # Debounce du changement de VM : la sélection défile vite au
             # clavier ; on ne recharge le log qu'une fois le curseur STABILISÉ.
             self._pending_sel = None
@@ -673,11 +688,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table.add_column("VM", key="vm", width=26)
             table.add_column("⚠", key="err", width=4)
             table.add_column("État", key="state", width=12)
+            # « Odoo » : l'UI web répond-elle sur :8069 ? (🟢 up / — down)
+            table.add_column("Odoo", key="odoo", width=6)
             table.add_column("Durée", key="elapsed", width=7)
             table.add_column("Disque", key="disk", width=8)
             for vm in vms:
                 table.add_row(
-                    vm["name"], "", "⏳", "--:--", "-", key=vm["name"]
+                    vm["name"], "", "⏳", "—", "--:--", "-", key=vm["name"]
                 )
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
             self._log = RichLog(
@@ -769,7 +786,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _collect_table(self):
             """(THREAD) statut + taille disque de chaque VM + télémétrie. AUCUNE
             mise à jour d'UI ici : uniquement des I/O bloquantes déportées."""
-            disks, status, errors = {}, {}, {}
+            disks, status, errors, odoo = {}, {}, {}, {}
             for vm in vms:
                 name = vm["name"]
                 disks[name] = _fmt_size(disk_actual_size(vm_disk_path(vm)))
@@ -784,19 +801,27 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     # peut contenir des erreurs passées inaperçues.
                     if st[0] in ("done", "failed") and name not in errors:
                         errors[name] = scan_log_errors(vm["log"])
-            return disks, status, self._collect_tele(), errors
+                # Odoo up ? On ne teste que celles pas encore confirmées up
+                # et non effacées (test TCP court sur :8069).
+                if name not in self._odoo_up and self._domstate.get(
+                    name
+                ) != "gone":
+                    if _port_open(vm.get("ip"), 8069):
+                        odoo[name] = True
+            return disks, status, self._collect_tele(), errors, odoo
 
         async def _tick_table(self):
             # I/O (lectures de logs, stat disque, /proc) DÉPORTÉES en thread ->
             # la boucle d'événements Textual reste fluide même sous forte
             # charge ou disque lent. Les mises à jour d'UI restent sur la boucle.
             try:
-                disks, status, tele, errors = await asyncio.to_thread(
+                disks, status, tele, errors, odoo = await asyncio.to_thread(
                     self._collect_table
                 )
             except Exception:
                 return
             self._errcount.update(errors)
+            self._odoo_up.update(odoo)
             try:
                 table = self.query_one("#vms", DataTable)
                 now = time.time()
@@ -804,6 +829,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 for vm in vms:
                     name = vm["name"]
                     self._set_cell(table, name, "disk", disks.get(name, "-"))
+                    # Colonne Odoo : 🟢 dès que :8069 répond, sinon « — ».
+                    self._set_cell(
+                        table, name, "odoo",
+                        "🟢" if name in self._odoo_up else "—",
+                    )
                     if name in self._final:
                         continue
                     ds = self._domstate.get(name)
