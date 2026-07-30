@@ -1440,6 +1440,66 @@ TRANSLATIONS = {
         "fr": "Partition à réduire introuvable ; abandon.",
         "en": "Could not detect the partition to shrink; aborting.",
     },
+    "Missing tools for safe shrink:": {
+        "fr": "Outils manquants pour la réduction sûre :",
+        "en": "Missing tools for safe shrink:",
+    },
+    "Backing up the disk before shrinking…": {
+        "fr": "Sauvegarde du disque avant réduction…",
+        "en": "Backing up the disk before shrinking…",
+    },
+    "Backup failed; aborting.": {
+        "fr": "Échec de la sauvegarde ; abandon.",
+        "en": "Backup failed; aborting.",
+    },
+    "Could not attach the disk (nbd); aborting.": {
+        "fr": "Impossible d'attacher le disque (nbd) ; abandon.",
+        "en": "Could not attach the disk (nbd); aborting.",
+    },
+    "Only ext2/3/4 can be shrunk safely; aborting.": {
+        "fr": "Seul ext2/3/4 peut être réduit en sécurité ; abandon.",
+        "en": "Only ext2/3/4 can be shrunk safely; aborting.",
+    },
+    "Target size too small for this layout; aborting.": {
+        "fr": "Taille cible trop petite pour cette disposition ; abandon.",
+        "en": "Target size too small for this layout; aborting.",
+    },
+    "Not enough used-space margin to shrink; aborting.": {
+        "fr": "Espace utilisé trop proche de la cible ; abandon.",
+        "en": "Not enough used-space margin to shrink; aborting.",
+    },
+    "Shrinking guest ext filesystem": {
+        "fr": "Réduction du système de fichiers ext invité",
+        "en": "Shrinking guest ext filesystem",
+    },
+    "resize2fs failed; reverting.": {
+        "fr": "resize2fs a échoué ; restauration.",
+        "en": "resize2fs failed; reverting.",
+    },
+    "Internal size check failed; reverting.": {
+        "fr": "Contrôle de taille interne échoué ; restauration.",
+        "en": "Internal size check failed; reverting.",
+    },
+    "Shrinking the partition…": {
+        "fr": "Réduction de la partition…",
+        "en": "Shrinking the partition…",
+    },
+    "Partition rewrite failed; reverting.": {
+        "fr": "Réécriture de la partition échouée ; restauration.",
+        "en": "Partition rewrite failed; reverting.",
+    },
+    "Shrinking the qcow2 container…": {
+        "fr": "Réduction du conteneur qcow2…",
+        "en": "Shrinking the qcow2 container…",
+    },
+    "Container shrink failed; reverting.": {
+        "fr": "Réduction du conteneur échouée ; restauration.",
+        "en": "Container shrink failed; reverting.",
+    },
+    "Restoring the original disk from backup…": {
+        "fr": "Restauration du disque d'origine depuis la sauvegarde…",
+        "en": "Restoring the original disk from backup…",
+    },
     "Shrinking guest FS + partition via virt-resize": {
         "fr": "Réduction du FS invité + partition via virt-resize",
         "en": "Shrinking guest FS + partition via virt-resize",

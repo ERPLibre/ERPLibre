@@ -1746,97 +1746,262 @@ class TODO:
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # Outils requis pour la réduction sûre (tous « base » : e2fsprogs, gdisk,
+    # util-linux, qemu-utils) — PAS libguestfs (souvent cassé : appliance
+    # supermin sans noyau dans /boot).
+    _SHRINK_TOOLS = (
+        "qemu-nbd", "e2fsck", "resize2fs", "sgdisk", "partprobe",
+        "lsblk", "dumpe2fs", "blockdev",
+    )
+    _SECT = 512
+    _MiB = 1024 * 1024
+
     def _qemu_safe_shrink(self, name, disk, new_gb):
-        """Réduit le disque SANS casser l'OS : virt-resize (libguestfs) réduit
-        le système de fichiers + la partition + la GPT. On écrit dans une
-        NOUVELLE image ; l'originale n'est remplacée qu'en cas de succès (en cas
-        d'échec/refus, le disque d'origine est laissé INTACT). Renvoie True si
-        la réduction a réussi."""
-        if not (
-            shutil.which("virt-resize") and shutil.which("virt-filesystems")
-        ):
-            print(f"\n{t('Safe shrink needs libguestfs (virt-resize).')}")
-            if not self._is_yes(
-                input(t("Install libguestfs-tools now? (y/N): "))
-            ) or not self._qemu_install_libguestfs():
-                print(t("Shrink aborted; disk left intact."))
-                return False
-        part = self._qemu_largest_partition(disk)
-        if not part:
-            print(t("Could not detect the partition to shrink; aborting."))
+        """Réduit le disque SANS casser l'OS, via qemu-nbd + resize2fs +
+        sgdisk (sans libguestfs) : on réduit le FS (ext), puis la partition,
+        puis le conteneur qcow2, puis on répare la GPT de secours. Une COPIE
+        .bak est faite AVANT ; en cas d'échec on RESTAURE -> jamais de
+        corruption. ext2/3/4 uniquement. Renvoie True si réduit."""
+        import math
+
+        missing = [b for b in self._SHRINK_TOOLS if not shutil.which(b)]
+        if missing:
+            print(
+                f"{t('Missing tools for safe shrink:')} {', '.join(missing)}"
+            )
             return False
-        new_disk = f"{disk}.resized"
+        target = int(round(new_gb * (1 << 30)))
         bak = f"{disk}.bak"
-        subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
-        print(
-            f"\n{t('Shrinking guest FS + partition via virt-resize')} "
-            f"({part} -> {new_gb:g}G)…"
-        )
-        create = subprocess.run(
-            ["sudo", "qemu-img", "create", "-f", "qcow2", new_disk,
-             f"{new_gb:g}G"]
-        )
-        if create.returncode != 0:
-            print(f"❌ {t('Resize failed (see error above).')}")
-            subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
+        print(f"\n{t('Backing up the disk before shrinking…')}")
+        if subprocess.run(
+            ["sudo", "cp", "--reflink=auto", "--sparse=always", disk, bak]
+        ).returncode != 0:
+            print(t("Backup failed; aborting."))
             return False
-        # virt-resize copie old -> new en réduisant le FS de `part`.
-        rc = subprocess.run(
-            ["sudo", "virt-resize", "--shrink", part, disk, new_disk]
-        ).returncode
-        if rc != 0:
-            print(f"❌ {t('virt-resize failed; original disk left intact.')}")
-            subprocess.run(["sudo", "rm", "-f", new_disk], check=False)
-            return False
-        # Succès : on sauvegarde l'original et on met la nouvelle image au
-        # MÊME chemin (la définition libvirt reste valide).
-        subprocess.run(["sudo", "mv", "-f", disk, bak], check=False)
-        subprocess.run(["sudo", "mv", "-f", new_disk, disk], check=False)
-        print(f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}")
-        return True
+        subprocess.run(["sudo", "modprobe", "nbd", "max_part=16"], check=False)
+        dev = None
+        try:
+            dev = self._qemu_nbd_connect(disk)
+            if not dev:
+                print(t("Could not attach the disk (nbd); aborting."))
+                return self._qemu_shrink_revert(bak, disk, changed=False)
+            part, start, fstype = self._qemu_root_part(dev)
+            if not part:
+                print(t("Could not detect the partition to shrink; aborting."))
+                return self._qemu_shrink_revert(bak, disk, changed=False)
+            if not fstype.startswith("ext"):
+                print(
+                    f"{t('Only ext2/3/4 can be shrunk safely; aborting.')}"
+                    f" ({fstype})"
+                )
+                return self._qemu_shrink_revert(bak, disk, changed=False)
+            n = self._qemu_part_number(dev, part)
+            info = self._qemu_part_info(dev, n)
+            # fsck AVANT toute opération.
+            subprocess.run(["sudo", "e2fsck", "-f", "-y", part], check=False)
+            bs = self._qemu_fs_blocksize(part)
+            # Cibles (octets), en gardant 2 Mio pour la GPT de secours + marge.
+            part_start_b = start * self._SECT
+            max_fs_b = target - part_start_b - 4 * self._MiB
+            if max_fs_b <= 0:
+                print(t("Target size too small for this layout; aborting."))
+                return self._qemu_shrink_revert(bak, disk, changed=False)
+            min_blocks = self._qemu_fs_min_blocks(part)
+            if min_blocks and min_blocks * bs > max_fs_b:
+                print(t("Not enough used-space margin to shrink; aborting."))
+                return self._qemu_shrink_revert(bak, disk, changed=False)
+            fs_target_mib = max_fs_b // self._MiB
+            print(
+                f"\n{t('Shrinking guest ext filesystem')} {part} "
+                f"-> {fs_target_mib} MiB…"
+            )
+            if subprocess.run(
+                ["sudo", "resize2fs", part, f"{fs_target_mib}M"]
+            ).returncode != 0:
+                print(t("resize2fs failed; reverting."))
+                return self._qemu_shrink_revert(bak, disk, changed=True)
+            # Fin de partition = début + taille RÉELLE du FS + 1 Mio, alignée.
+            fs_bytes = self._qemu_fs_blocks(part) * bs
+            new_end = start + int(math.ceil((fs_bytes + self._MiB) / self._SECT))
+            new_end = ((new_end + 2047) // 2048) * 2048 - 1  # align 2048
+            if (new_end + 34) * self._SECT > target:
+                print(t("Internal size check failed; reverting."))
+                return self._qemu_shrink_revert(bak, disk, changed=True)
+            # Réécrit la partition (mêmes type/UUID/nom -> PARTUUID préservé).
+            print(f"{t('Shrinking the partition…')} ({part})")
+            subprocess.run(["sudo", "sgdisk", "-d", n, dev], check=False)
+            rc = subprocess.run(
+                ["sudo", "sgdisk", "-n", f"{n}:{start}:{new_end}",
+                 "-t", f"{n}:{info['type']}", "-u", f"{n}:{info['uuid']}",
+                 "-c", f"{n}:{info['name']}", dev]
+            ).returncode
+            if rc != 0:
+                print(t("Partition rewrite failed; reverting."))
+                return self._qemu_shrink_revert(bak, disk, changed=True)
+            subprocess.run(["sudo", "partprobe", dev], check=False)
+            # Détache puis tronque le conteneur qcow2.
+            self._qemu_nbd_disconnect(dev)
+            dev = None
+            print(f"{t('Shrinking the qcow2 container…')} {new_gb:g}G")
+            if subprocess.run(
+                ["sudo", "qemu-img", "resize", "--shrink", disk,
+                 f"{new_gb:g}G"]
+            ).returncode != 0:
+                print(t("Container shrink failed; reverting."))
+                return self._qemu_shrink_revert(bak, disk, changed=True)
+            # Répare la GPT de secours (fin du disque) + fsck final.
+            dev = self._qemu_nbd_connect(disk)
+            if dev:
+                subprocess.run(["sudo", "sgdisk", "-e", dev], check=False)
+                subprocess.run(["sudo", "partprobe", dev], check=False)
+                p2 = self._qemu_root_part(dev)[0]
+                if p2:
+                    subprocess.run(
+                        ["sudo", "e2fsck", "-f", "-y", p2], check=False
+                    )
+                self._qemu_nbd_disconnect(dev)
+                dev = None
+            print(f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}")
+            return True
+        finally:
+            if dev:
+                self._qemu_nbd_disconnect(dev)
+
+    def _qemu_shrink_revert(self, bak, disk, changed):
+        """Restaure le disque depuis la sauvegarde .bak si on l'a modifié
+        (changed) ; sinon retire juste la sauvegarde inutile. Renvoie False
+        (la réduction a échoué)."""
+        if changed:
+            print(t("Restoring the original disk from backup…"))
+            subprocess.run(["sudo", "mv", "-f", bak, disk], check=False)
+        else:
+            subprocess.run(["sudo", "rm", "-f", bak], check=False)
+        return False
 
     @staticmethod
-    def _qemu_largest_partition(disk):
-        """Nom (côté invité, ex. /dev/sda1) de la plus GROSSE partition du
-        disque via virt-filesystems — celle qui porte la racine à réduire."""
+    def _qemu_nbd_connect(disk):
+        """Attache `disk` à un /dev/nbdN libre et renvoie le chemin, ou None."""
+        for i in range(16):
+            dev = f"/dev/nbd{i}"
+            # /sys/block/nbdN/pid absent => device libre.
+            if os.path.exists(f"/sys/block/nbd{i}/pid"):
+                continue
+            rc = subprocess.run(
+                ["sudo", "qemu-nbd", "-c", dev, disk],
+                capture_output=True, text=True,
+            ).returncode
+            if rc == 0:
+                time.sleep(1)
+                subprocess.run(["sudo", "partprobe", dev], check=False)
+                time.sleep(1)
+                return dev
+        return None
+
+    @staticmethod
+    def _qemu_nbd_disconnect(dev):
+        subprocess.run(["sudo", "qemu-nbd", "-d", dev], check=False)
+        time.sleep(1)
+
+    @staticmethod
+    def _qemu_root_part(dev):
+        """(partition la plus grosse, secteur de début, type FS) du disque nbd.
+        (None, 0, '') si introuvable."""
         try:
             res = subprocess.run(
-                ["sudo", "virt-filesystems", "-a", disk, "--partitions",
-                 "--long", "-b"],
-                capture_output=True,
-                text=True,
-                timeout=180,
+                ["lsblk", "-bnro", "NAME,SIZE,FSTYPE,TYPE", dev],
+                capture_output=True, text=True, timeout=30,
             )
         except (OSError, subprocess.SubprocessError):
-            return None
-        best, best_sz = None, -1
+            return None, 0, ""
+        best, best_sz, best_fs = None, -1, ""
         for line in res.stdout.splitlines():
-            parts = line.split()
-            if not parts or not parts[0].startswith("/dev/"):
+            cols = line.split()
+            if len(cols) < 4 or cols[-1] != "part":
                 continue
-            # Colonnes : Name Type MBR Size Parent -> Size = plus grand entier.
-            size = max(
-                (int(p) for p in parts if p.isdigit()), default=-1
-            )
+            name, size = cols[0], int(cols[1])
+            fstype = cols[2] if len(cols) >= 4 and cols[2] != "part" else ""
+            if len(cols) == 3:  # pas de FSTYPE -> décalage
+                fstype = ""
             if size > best_sz:
-                best, best_sz = parts[0], size
-        return best
+                best, best_sz, best_fs = name, size, fstype
+        if not best:
+            return None, 0, ""
+        part = f"/dev/{best}"
+        try:
+            start = int(
+                open(f"/sys/class/block/{best}/start").read().strip()
+            )
+        except OSError:
+            start = 0
+        if not best_fs:
+            best_fs = subprocess.run(
+                ["sudo", "blkid", "-o", "value", "-s", "TYPE", part],
+                capture_output=True, text=True,
+            ).stdout.strip()
+        return part, start, best_fs
 
-    def _qemu_install_libguestfs(self):
-        """Installe libguestfs-tools (apt/dnf/pacman). Renvoie True si
-        virt-resize est ensuite disponible."""
-        if shutil.which("apt-get"):
-            cmd = "sudo apt-get install -y libguestfs-tools"
-        elif shutil.which("dnf"):
-            cmd = "sudo dnf install -y guestfs-tools libguestfs-tools"
-        elif shutil.which("pacman"):
-            cmd = "sudo pacman -S --needed --noconfirm libguestfs"
-        else:
-            print(t("Unknown package manager; install it manually."))
-            return False
-        print(f"{t('Will execute:')} {cmd}")
-        os.system(cmd)
-        return shutil.which("virt-resize") is not None
+    @staticmethod
+    def _qemu_part_number(dev, part):
+        """Numéro de partition (ex. « 1 ») depuis /dev/nbd0p1."""
+        return part[len(dev):].lstrip("p")
+
+    @staticmethod
+    def _qemu_part_info(dev, n):
+        """{type, uuid, name} d'une partition via « sgdisk -i »."""
+        info = {"type": "", "uuid": "", "name": ""}
+        res = subprocess.run(
+            ["sudo", "sgdisk", "-i", n, dev],
+            capture_output=True, text=True,
+        )
+        for line in res.stdout.splitlines():
+            low = line.lower()
+            if low.startswith("partition guid code"):
+                info["type"] = line.split(":", 1)[1].split()[0]
+            elif low.startswith("partition unique guid"):
+                info["uuid"] = line.split(":", 1)[1].strip()
+            elif low.startswith("partition name"):
+                info["name"] = line.split(":", 1)[1].strip().strip("'")
+        return info
+
+    @staticmethod
+    def _qemu_fs_blocksize(part):
+        res = subprocess.run(
+            ["sudo", "dumpe2fs", "-h", part],
+            capture_output=True, text=True,
+        )
+        for line in res.stdout.splitlines():
+            if line.startswith("Block size:"):
+                try:
+                    return int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+        return 4096
+
+    @staticmethod
+    def _qemu_fs_blocks(part):
+        res = subprocess.run(
+            ["sudo", "dumpe2fs", "-h", part],
+            capture_output=True, text=True,
+        )
+        for line in res.stdout.splitlines():
+            if line.startswith("Block count:"):
+                try:
+                    return int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+        return 0
+
+    @staticmethod
+    def _qemu_fs_min_blocks(part):
+        """Taille minimale (blocs) du FS via « resize2fs -P »."""
+        res = subprocess.run(
+            ["sudo", "resize2fs", "-P", part],
+            capture_output=True, text=True,
+        )
+        for tok in res.stdout.replace(":", " ").split():
+            if tok.isdigit():
+                return int(tok)
+        return 0
 
     # Commande d'extension du FS racine (partition + FS) réutilisée par SSH
     # et par le repli console série.
