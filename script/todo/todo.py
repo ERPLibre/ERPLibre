@@ -1372,9 +1372,10 @@ class TODO:
             return
         url = f"http://{ip}:8069"
         print(f"→ {browser} {url}")
-        rc = self.execute.exec_command_live(
-            f"{browser} {shlex.quote(url)}", source_erplibre=False
-        )
+        # os.system (et NON exec_command_live) : un navigateur texte a besoin
+        # du VRAI TTY interactif. exec_command_live redirige la sortie dans un
+        # tube -> le navigateur ne fait qu'imprimer sans réagir au clavier.
+        rc = os.system(f"{browser} {shlex.quote(url)}")
         if rc != 0:
             msg = t(
                 "Page may not have loaded: Odoo not started on :8069, "
