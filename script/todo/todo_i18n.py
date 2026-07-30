@@ -1270,6 +1270,27 @@ TRANSLATIONS = {
         "fr": "->",
         "en": "->",
     },
+    "VMs (default = no change):": {
+        "fr": "VM (défaut = aucune modification) :",
+        "en": "VMs (default = no change):",
+    },
+    "Modify which VMs? (numbers, comma-separated; blank = none): ": {
+        "fr": "Modifier quelles VM ? (numéros séparés par des virgules ; "
+        "vide = aucune) : ",
+        "en": "Modify which VMs? (numbers, comma-separated; blank = none): ",
+    },
+    "new name (blank = keep):": {
+        "fr": "nouveau nom (vide = garder) :",
+        "en": "new name (blank = keep):",
+    },
+    "New disk size in G, blank = keep": {
+        "fr": "Nouvelle taille disque en G, vide = garder",
+        "en": "New disk size in G, blank = keep",
+    },
+    "New RAM in MB, blank = keep": {
+        "fr": "Nouvelle RAM en Mo, vide = garder",
+        "en": "New RAM in MB, blank = keep",
+    },
     "Duplicate names detected; keeping as entered.": {
         "fr": "Noms en double détectés ; conservés tels quels.",
         "en": "Duplicate names detected; keeping as entered.",

@@ -3362,19 +3362,28 @@ class TODO:
             pass
         return 1, base_vcpus
 
-    def _qemu_customize_names(self, selected):
-        """Noms des VM (liste parallèle à `selected`). Défaut = nom auto
-        (_qemu_infra_name) ; on peut en renommer certains À LA DEMANDE, par
-        leurs numéros séparés de virgules (vide = garder tous les noms auto)."""
+    def _qemu_customize_vms(self, selected):
+        """Personnalise chaque VM avant déploiement : NOM, taille de DISQUE et
+        RAM. `selected` = liste de (d, v, ram, disk, a) où ram (Mo) et disk
+        (« 20G ») sont les valeurs FINALES (multiplicateur déjà appliqué).
+        Renvoie (names, selected_maj). Défaut : rien ne change."""
         names = [
             self._qemu_infra_name(d, v, a) for d, v, _r, _dk, a in selected
         ]
-        print(f"\n{t('VM names (default = auto):')}")
-        for i, (nm, s) in enumerate(zip(names, selected), 1):
-            d, v, _r, _dk, a = s
-            print(f"  [{i}] {nm}   ({d} {v} [{a}])")
+        sel = [list(s) for s in selected]  # mutable (d, v, ram, disk, a)
+
+        def show():
+            print(f"\n{t('VMs (default = no change):')}")
+            for i, (nm, s) in enumerate(zip(names, sel), 1):
+                d, v, ram, disk, a = s
+                print(
+                    f"  [{i}] {nm}   ({d} {v} [{a}])  "
+                    f"RAM {ram}Mo  {t('disk')} {disk}"
+                )
+
+        show()
         raw = input(
-            t("Rename which VMs? (numbers, comma-separated; blank = none): ")
+            t("Modify which VMs? (numbers, comma-separated; blank = none): ")
         ).strip()
         for tok in re.split(r"[\s,]+", raw):
             if not tok:
@@ -3383,13 +3392,34 @@ class TODO:
                 i = int(tok) - 1
             except ValueError:
                 continue
-            if 0 <= i < len(names):
-                new = input(f"  {names[i]} {t('->')} ").strip()
-                if new:
-                    names[i] = new
+            if not (0 <= i < len(sel)):
+                continue
+            # Pour la VM i : nom, disque, RAM (vide = garder la valeur).
+            new = input(
+                f"  {names[i]} — {t('new name (blank = keep):')} "
+            ).strip()
+            if new:
+                names[i] = new
+            dk = input(
+                f"  {t('New disk size in G, blank = keep')} "
+                f"({sel[i][3]}): "
+            ).strip().upper().rstrip("G")
+            if dk:
+                try:
+                    sel[i][3] = f"{int(float(dk))}G"
+                except ValueError:
+                    print(f"    ⚠ {t('Invalid size.')}")
+            rm = input(
+                f"  {t('New RAM in MB, blank = keep')} ({sel[i][2]}): "
+            ).strip()
+            if rm:
+                try:
+                    sel[i][2] = int(rm)
+                except ValueError:
+                    print(f"    ⚠ {t('Invalid size.')}")
         if len(set(names)) != len(names):
             print(f"  ⚠ {t('Duplicate names detected; keeping as entered.')}")
-        return names
+        return names, [tuple(s) for s in sel]
 
     def _qemu_build_deploy_parts(
         self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
@@ -3569,23 +3599,26 @@ class TODO:
         res_mult, base_vcpus = self._qemu_prompt_resource_mult(
             selected, host_cpu, free_ram
         )
+        # On CUIT le multiplicateur dans `selected` (RAM finale) et on fixe un
+        # nombre de vCPU uniforme -> la personnalisation par VM (RAM absolue)
+        # n'est plus ambiguë. vCPU n'est pas éditable par VM (choix global).
+        evcpus = min(base_vcpus * res_mult, host_cpu)
+        selected = [
+            (d, v, ram * res_mult, disk, a)
+            for (d, v, ram, disk, a) in selected
+        ]
 
-        def eff_res(ram):
-            """(RAM effective, vCPU) pour une VM selon le multiplicateur."""
-            return ram * res_mult, min(base_vcpus * res_mult, host_cpu)
+        # 2c) Personnalisation par VM : nom, disque, RAM (à la demande).
+        names, selected = self._qemu_customize_vms(selected)
 
-        # 2c) Noms des VM (auto par défaut, renommage granulaire à la demande).
-        names = self._qemu_customize_names(selected)
-
-        # 3) Plan + estimation des ressources (avec le multiplicateur appliqué).
-        total_ram = sum(s[2] * res_mult for s in selected)
+        # 3) Plan + estimation des ressources.
+        total_ram = sum(s[2] for s in selected)
         total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
         print(f"\n{t('Deployment plan')} ({len(selected)} VM, x{res_mult}) :")
         for i, (d, v, ram, disk, a) in enumerate(selected):
-            eram, evcpus = eff_res(ram)
             print(
                 f"  - {names[i]:<30} {d} {v:<7} [{a:<5}] "
-                f"{evcpus} vCPU  RAM {eram}Mo  {t('disk')} {disk}"
+                f"{evcpus} vCPU  RAM {ram}Mo  {t('disk')} {disk}"
             )
         print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
         print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
@@ -3604,9 +3637,8 @@ class TODO:
             default_key = self._qemu_default_ssh_key()
             print(f"\n{t('Preview (dry-run):')}")
             for i, (d, v, ram, disk, a) in enumerate(selected):
-                eram, evcpus = eff_res(ram)
                 parts = self._qemu_build_deploy_parts(
-                    d, v, a, names[i], eram, evcpus, disk,
+                    d, v, a, names[i], ram, evcpus, disk,
                     default_key, None, dry_run=True,
                 )
                 print("  " + " ".join(shlex.quote(p) for p in parts))
@@ -3677,9 +3709,8 @@ class TODO:
         # si les résultats reviennent dans le désordre (exécution parallèle).
         jobs = []  # (id, name, parts)
         for k, (name, d, v, ram, disk, a) in enumerate(pending, 1):
-            eram, evcpus = eff_res(ram)
             parts = self._qemu_build_deploy_parts(
-                d, v, a, name, eram, evcpus, disk,
+                d, v, a, name, ram, evcpus, disk,
                 ssh_key, install_branch, dry_run=False,
             )
             jobs.append((f"{k}/{n_jobs}", name, parts))
