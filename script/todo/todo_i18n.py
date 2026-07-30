@@ -1432,6 +1432,18 @@ TRANSLATIONS = {
         "fr": "Aucune erreur détectée.",
         "en": "No error detected.",
     },
+    "errors": {
+        "fr": "erreurs",
+        "en": "errors",
+    },
+    "warnings": {
+        "fr": "avertissements",
+        "en": "warnings",
+    },
+    "Esc to close": {
+        "fr": "Échap pour fermer",
+        "en": "Esc to close",
+    },
     "No running VM to pause.": {
         "fr": "Aucune VM en cours à mettre en pause.",
         "en": "No running VM to pause.",

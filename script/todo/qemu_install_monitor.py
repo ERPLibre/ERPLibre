@@ -199,6 +199,34 @@ _LST_IGNORE_ERROR = (
 )
 
 
+def scan_log_error_lines(log_path: str, cap: int = 500) -> tuple[list, list]:
+    """(lignes_erreur, lignes_avertissement) d'un log, même détection que
+    scan_log_errors mais on RETIENT les lignes (bornées à `cap`) pour les
+    afficher. Chaque ligne est préfixée de son numéro (1-indexé)."""
+    try:
+        text = Path(log_path).read_text(errors="replace")
+    except OSError:
+        return [], []
+    errs, warns = [], []
+    for i, line in enumerate(text.splitlines(), 1):
+        if EXIT_MARKER in line:
+            continue
+        low = line.lower()
+        if (
+            "error" in low
+            and not any(ig in line for ig in _LST_IGNORE_ERROR)
+            and len(errs) < cap
+        ):
+            errs.append(f"{i}: {line}")
+        if (
+            "warning" in low
+            and not any(ig in line for ig in _LST_IGNORE_WARNING)
+            and len(warns) < cap
+        ):
+            warns.append(f"{i}: {line}")
+    return errs, warns
+
+
 def scan_log_errors(log_path: str) -> tuple[int, int]:
     """(nb_erreurs, nb_avertissements) dans un log d'installation, en
     réutilisant la détection de la suite de tests ERPLibre : sous-chaîne
@@ -454,12 +482,56 @@ def run_monitor(manifest_path: str, run_app: bool = True):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
     à False renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
-    from textual.containers import Horizontal
+    from textual.containers import Horizontal, Vertical
+    from textual.screen import ModalScreen
     from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
     manifest = json.loads(Path(manifest_path).read_text())
     started = manifest.get("started", time.time())
     vms = manifest["vms"]
+
+    class ErrorLinesScreen(ModalScreen):
+        """Petite fenêtre modale : liste les LIGNES d'erreurs/avertissements
+        d'une VM pour les lire (défilable). Échap / q pour fermer."""
+
+        BINDINGS = [
+            ("escape", "dismiss", "Fermer"),
+            ("q", "dismiss", "Fermer"),
+        ]
+
+        def __init__(self, vm_name, errs, warns):
+            super().__init__()
+            self._vm = vm_name
+            self._errs = errs
+            self._warns = warns
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="errbox"):
+                yield Static(
+                    f"  {self._vm} — ⚠ {len(self._errs)} "
+                    f"{t('errors')} · ⚡ {len(self._warns)} {t('warnings')}"
+                    f"   ({t('Esc to close')})",
+                    id="errtitle",
+                )
+                yield RichLog(
+                    id="errlog", highlight=False, markup=False, wrap=True
+                )
+
+        def on_mount(self) -> None:
+            log = self.query_one("#errlog", RichLog)
+            if self._errs:
+                log.write(f"── {t('errors').capitalize()} ──")
+                for line in self._errs:
+                    log.write(line)
+            if self._warns:
+                log.write(f"── {t('warnings').capitalize()} ──")
+                for line in self._warns:
+                    log.write(line)
+            if not self._errs and not self._warns:
+                log.write(t("No error detected."))
+
+        def action_dismiss(self) -> None:
+            self.dismiss()
 
     ICON = {
         "pending": "⏳",
@@ -476,6 +548,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         #stats { height: 1; color: $accent; }
         #statsdetail { display: none; height: auto; color: $text-muted; }
         #sshbar { height: 2; color: $text-muted; }
+        ErrorLinesScreen { align: center middle; }
+        #errbox {
+            width: 80%; height: 70%;
+            border: thick $accent; background: $surface;
+        }
+        #errtitle { height: 1; color: $accent; text-style: bold; }
+        #errlog { height: 1fr; border: solid $accent; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
@@ -483,6 +562,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("w", "web", "Web (navigateur CLI)"),
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
+            ("d", "details", "Détails erreurs"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -580,7 +660,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if vm:
                 bar.update(
                     f"  {vm['ssh']}    (s = SSH · w = web :8069 · "
-                    "c = copier le log · Maj+glisser = sélectionner)\n"
+                    "c = copier le log · d = détails erreurs · "
+                    "Maj+glisser = sélectionner)\n"
                     f"  Log : {vm['log']}"
                 )
 
@@ -944,6 +1025,15 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 f"Log de {vm['name']} copié ({len(text)} car.)",
                 title="Presse-papiers",
             )
+
+        def action_details(self) -> None:
+            """Ouvre une petite fenêtre avec les LIGNES d'erreurs/avertissements
+            de la VM sélectionnée (scan à la demande -> toujours à jour)."""
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+            errs, warns = scan_log_error_lines(vm["log"])
+            self.push_screen(ErrorLinesScreen(vm["name"], errs, warns))
 
         def on_click(self, event) -> None:
             # Clic sur le sommaire de stats -> déplie / replie le détail.
