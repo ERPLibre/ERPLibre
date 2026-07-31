@@ -768,6 +768,7 @@ class TodoUpgrade:
                 self.write_config()
 
         print("✅ -> Restore database")
+        already_update_state_1 = False
 
         if not self.dct_progression.get("state_1_update_all"):
             print(
@@ -785,7 +786,9 @@ class TodoUpgrade:
                     f"./script/addons/update_addons_all.sh {database_name}",
                     single_source_odoo=True,
                 )
+
                 if not status:
+                    already_update_state_1 = True
                     self.dct_progression["state_1_update_all"] = True
                     self.write_config()
 
@@ -879,7 +882,7 @@ class TodoUpgrade:
         print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
-        if not self.dct_progression.get("state_2_update_all"):
+        if not self.dct_progression.get("state_2_update_all") and not already_update_state_1:
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_addons_all.sh {database_name}",
                 single_source_odoo=True,
