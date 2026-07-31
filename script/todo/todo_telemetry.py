@@ -210,12 +210,192 @@ def _menu_labels(cls) -> dict:
     return {}
 
 
+def _config_list(config_key, todo_dir):
+    """Entrées d'une liste de config de todo.json (ex. « code_from_makefile »),
+    cherchée à n'importe quel niveau. [] si absente."""
+    try:
+        data = json.loads(
+            (Path(todo_dir) / "todo.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return []
+    found = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k == config_key and isinstance(v, list):
+                    found.extend(v)
+                walk(v)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+
+    walk(data)
+    return found
+
+
+def _len_choices_offset(comp):
+    """K pour « str(len(choices)) » -> 0 et « str(len(choices) - N) » -> N ;
+    None si le nœud n'est pas de cette forme."""
+    if not (
+        isinstance(comp, ast.Call)
+        and isinstance(comp.func, ast.Name)
+        and comp.func.id == "str"
+        and comp.args
+    ):
+        return None
+    arg = comp.args[0]
+
+    def is_len_choices(x):
+        return (
+            isinstance(x, ast.Call)
+            and isinstance(x.func, ast.Name)
+            and x.func.id == "len"
+            and x.args
+            and isinstance(x.args[0], ast.Name)
+            and x.args[0].id == "choices"
+        )
+
+    if is_len_choices(arg):
+        return 0
+    if (
+        isinstance(arg, ast.BinOp)
+        and isinstance(arg.op, ast.Sub)
+        and is_len_choices(arg.left)
+        and isinstance(arg.right, ast.Constant)
+    ):
+        return int(arg.right.value)
+    return None
+
+
+def _dispatch_len(func) -> dict:
+    """{K: méthode} pour « status == str(len(choices) - K): self.M() »."""
+    out = {}
+    for node in ast.walk(func):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if not (
+            isinstance(test, ast.Compare)
+            and isinstance(test.left, ast.Name)
+            and test.left.id == "status"
+            and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq)
+        ):
+            continue
+        k = _len_choices_offset(test.comparators[0])
+        if k is None:
+            continue
+        method = None
+        for stmt in node.body:
+            for n in ast.walk(stmt):
+                if (
+                    isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and isinstance(n.func.value, ast.Name)
+                    and n.func.value.id == "self"
+                ):
+                    method = n.func.attr
+                    break
+            if method:
+                break
+        if method:
+            out[k] = method
+    return out
+
+
+def _choices_children(func, todo_dir):
+    """Commandes d'un menu bâti par « choices » (config_file.get_config +
+    choices.append/extend) avec dispatch « str(len(choices)-N) ». Renvoie une
+    liste de (label, méthode, kwargs) dans l'ordre affiché, ou None si le motif
+    ne s'applique pas. Les entrées de CONFIG rejouent via
+    execute_from_configuration ; les entrées APPENDÉES via leur méthode."""
+    def _dict_label(dnode):
+        d = {}
+        for k, v in zip(dnode.keys, dnode.values):
+            if isinstance(k, ast.Constant):
+                d[k.value] = _str_of(v)
+        return d.get("prompt_description") or d.get("prompt_description_key")
+
+    # On collecte affectations et append AVEC leur n° de ligne pour rejouer
+    # dans l'ORDRE (les entrées « menu_entry = {…}; choices.append(menu_entry) »
+    # réutilisent la même variable -> il faut suivre la dernière valeur).
+    config_key = None
+    events = []  # (lineno, kind, payload)
+    for node in ast.walk(func):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+        ):
+            var = node.targets[0].id
+            val = node.value
+            if isinstance(val, ast.Dict):
+                events.append((node.lineno, "assign", (var, val)))
+            elif (
+                var == "choices"
+                and isinstance(val, ast.Call)
+                and isinstance(val.func, ast.Attribute)
+                and val.func.attr == "get_config"
+                and val.args
+                and isinstance(val.args[0], ast.Constant)
+            ):
+                config_key = val.args[0].value
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "choices"
+            and node.args
+        ):
+            events.append((node.lineno, "append", node.args[0]))
+    events.sort(key=lambda e: e[0])
+    var_dict, appended = {}, []
+    for _ln, kind, payload in events:
+        if kind == "assign":
+            var_dict[payload[0]] = payload[1]
+        else:  # append : arg = Dict littéral ou Name (variable)
+            arg = payload
+            dnode = (
+                arg
+                if isinstance(arg, ast.Dict)
+                else var_dict.get(arg.id)
+                if isinstance(arg, ast.Name)
+                else None
+            )
+            if dnode is not None:
+                lab = _dict_label(dnode)
+                if lab:
+                    appended.append(lab)
+    if config_key is None and not appended:
+        return None
+    children = []
+    for entry in _config_list(config_key, todo_dir) if config_key else []:
+        lab = (
+            entry.get("prompt_description_key")
+            or entry.get("prompt_description")
+            or "?"
+        )
+        children.append((lab, "execute_from_configuration", {"instance": entry}))
+    len_disp = _dispatch_len(func)
+    n_config = len(children)  # figé : `children` grossit dans la boucle
+    n_total = n_config + len(appended)
+    for j, lab in enumerate(appended):
+        pos = n_config + j  # 0-based dans la liste globale (stable)
+        method = len_disp.get(n_total - 1 - pos)  # None si non mappé
+        children.append((lab, method, {}))
+    return children
+
+
 def build_code_tree(todo_path=None) -> dict | None:
     """Construit l'arbre des menus/commandes EN LISANT le code de todo.py
     (AST). Chaque menu (méthode de _MENU_LABELS) devient un nœud ; ses branches
     « status == N » deviennent des sous-menus (si la cible est un menu) ou des
     commandes (feuilles). None si l'analyse échoue."""
     p = Path(todo_path) if todo_path else (Path(__file__).parent / "todo.py")
+    todo_dir = p.parent  # todo.json est à côté de todo.py
     try:
         mod = ast.parse(p.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
@@ -270,6 +450,25 @@ def build_code_tree(todo_path=None) -> dict | None:
                         "section": entry["section"] if entry else None,
                     }
                 )
+        # Menus bâtis par « choices » (get_config + append) sans dispatch
+        # littéral « status == "N" » : Code, Update, Git, Database…
+        if not disp:
+            for lab, tmethod, tkwargs in (
+                _choices_children(func, todo_dir) or []
+            ):
+                if tmethod in labels:  # une entrée qui ouvre un sous-menu
+                    node["children"].append(build(tmethod))
+                else:
+                    node["children"].append(
+                        {
+                            "label": lab,
+                            "is_menu": False,
+                            "children": [],
+                            "method": tmethod,
+                            "kwargs": tkwargs,
+                            "section": None,
+                        }
+                    )
         seen.discard(method)
         return node
 
