@@ -10,10 +10,11 @@ import shutil
 import sys
 import zipfile
 from uuid import uuid4
-from script.todo.version_manager import get_odoo_version
 
 import click
 import todo_file_browser
+
+from script.todo.version_manager import get_odoo_version
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -767,6 +768,28 @@ class TodoUpgrade:
                 self.write_config()
 
         print("✅ -> Restore database")
+
+        if not self.dct_progression.get("state_1_update_all"):
+            print(
+                "[1] Update all addons before neutralize (already neutralize by odoo if supported)"
+            )
+            wait_continue = (
+                input(
+                    "💬 Do you need to upgrade before a database neutralization, press to ignore : "
+                )
+                .strip()
+                .lower()
+            )
+            if wait_continue == "1":
+                status, cmd_executed = self.todo_upgrade_execute(
+                    f"./script/addons/update_addons_all.sh {database_name}",
+                    single_source_odoo=True,
+                )
+                if not status:
+                    self.dct_progression["state_1_update_all"] = True
+                    self.write_config()
+
+            print("✅ -> Update database before neutralize by module")
 
         print("✅ -> Neutralize database")
         if do_neutralize:
