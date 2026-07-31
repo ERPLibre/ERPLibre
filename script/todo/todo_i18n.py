@@ -580,20 +580,20 @@ TRANSLATIONS = {
         "en": "Open ERPLibre with TODO 🤖",
     },
     "Update all erplibre_base on database test": {
-        "fr": "Mise à jour de tous les erplibre_base sur la base de données test",
-        "en": "Update all erplibre_base on database test",
+        "fr": "🔄 Mise à jour de tous les erplibre_base sur la base de données test",
+        "en": "🔄 Update all erplibre_base on database test",
     },
     "Show code status": {
-        "fr": "Afficher le statut du code",
-        "en": "Show code status",
+        "fr": "🔍 Afficher le statut du code",
+        "en": "🔍 Show code status",
     },
     "Stash all code": {
-        "fr": "Remiser tout le code",
-        "en": "Stash all code",
+        "fr": "📦 Remiser tout le code",
+        "en": "📦 Stash all code",
     },
     "Format modified code": {
-        "fr": "Formater le code modifié",
-        "en": "Format modified code",
+        "fr": "🎨 Formater le code modifié",
+        "en": "🎨 Format modified code",
     },
     # todo.py hardcoded prompt_descriptions
     "Mobile - Compile and run software": {
@@ -601,24 +601,24 @@ TRANSLATIONS = {
         "en": "Mobile - Compile and run software",
     },
     "Upgrade Odoo - Migration Database": {
-        "fr": "Mise à jour Odoo - Migration de base de données",
-        "en": "Upgrade Odoo - Migration Database",
+        "fr": "🚚 Mise à jour Odoo - Migration de base de données",
+        "en": "🚚 Upgrade Odoo - Migration Database",
     },
     "Upgrade Poetry - Dependency of Odoo": {
-        "fr": "Mise à jour Poetry - Dépendances d'Odoo",
-        "en": "Upgrade Poetry - Dependency of Odoo",
+        "fr": "📦 Mise à jour Poetry - Dépendances d'Odoo",
+        "en": "📦 Upgrade Poetry - Dependency of Odoo",
     },
     "Open SHELL": {
-        "fr": "Ouvrir le SHELL",
-        "en": "Open SHELL",
+        "fr": "🐚 Ouvrir le SHELL",
+        "en": "🐚 Open SHELL",
     },
     "Upgrade Module": {
-        "fr": "Mise à jour de module",
-        "en": "Upgrade Module",
+        "fr": "🧩 Mise à jour de module",
+        "en": "🧩 Upgrade Module",
     },
     "Debug": {
-        "fr": "Débogage",
-        "en": "Debug",
+        "fr": "🐛 Débogage",
+        "en": "🐛 Debug",
     },
     "Migration module coverage": {
         "fr": "Couverture de migration des modules",
