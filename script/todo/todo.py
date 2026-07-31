@@ -3965,7 +3965,12 @@ class TODO:
         mount_point = f"/tmp/sshfs_{safe_name}_{timestamp}"
         os.makedirs(mount_point, exist_ok=True)
 
-        cmd = f"sshfs {target} {mount_point}"
+        # -o follow_symlinks : sshfs résout les liens symboliques CÔTÉ SERVEUR.
+        # Indispensable pour les dépôts google-repo (ERPLibre) : leur .git est
+        # une chaîne de symlinks relatifs profonds (.repo/projects -> project-
+        # objects) que git ne peut pas traverser sur un montage sshfs par
+        # défaut (« erreur à la lecture de .git » -> git status/commit KO).
+        cmd = f"sshfs -o follow_symlinks {target} {mount_point}"
         print(f"{t('Mounting sshfs on: ')}{mount_point}")
         print(f"{t('Will execute:')} {cmd}")
         try:
