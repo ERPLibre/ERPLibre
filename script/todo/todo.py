@@ -213,20 +213,19 @@ class TODO:
 
 ── {t("Sources & documentation")} ──
 [7] {t("Git - Git tools")}
-[8] {t("Update - Update all developed staging source code")}
-[9] {t("Doc - Documentation search")}
+[8] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[10] {t("GPT code - AI assistant tools")}
-[11] {t("Automation - Demonstration of developed features")}
+[9] {t("GPT code - AI assistant tools")}
+[10] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[12] {t("Deploy - Deploy ERPLibre locally")}
-[13] {t("Network - Network tools")}
-[14] {t("Security - Dependency security audit")}
+[11] {t("Deploy - Deploy ERPLibre locally")}
+[12] {t("Network - Network tools")}
+[13] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[15] {t("Language - Change language / Changer la langue")}
+[14] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -263,34 +262,30 @@ class TODO:
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_update()
-                if status is not False:
-                    return
-            elif status == "9":
                 status = self.prompt_execute_doc()
                 if status is not False:
                     return
-            elif status == "10":
+            elif status == "9":
                 status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
-            elif status == "11":
+            elif status == "10":
                 status = self.prompt_execute_function()
                 if status is not False:
                     return
-            elif status == "12":
+            elif status == "11":
                 status = self.prompt_execute_deploy()
                 if status is not False:
                     return
-            elif status == "13":
+            elif status == "12":
                 status = self.prompt_execute_network()
                 if status is not False:
                     return
-            elif status == "14":
+            elif status == "13":
                 status = self.prompt_execute_security()
                 if status is not False:
                     return
-            elif status == "15":
+            elif status == "14":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -4181,6 +4176,16 @@ class TODO:
             }
         )
 
+        # Déplacé depuis le menu Execute : mise à jour de tout le code source
+        # de dev en staging (sous-menu de mise à jour).
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Update - Update all developed staging source code"
+                ),
+            }
+        )
+
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -4189,10 +4194,12 @@ class TODO:
             if status == "0":
                 return False
             elif status == str(len(choices)):
-                self.debug_ide()
+                self.prompt_execute_update()
             elif status == str(len(choices) - 1):
-                self.upgrade_module()
+                self.debug_ide()
             elif status == str(len(choices) - 2):
+                self.upgrade_module()
+            elif status == str(len(choices) - 3):
                 self.open_shell_on_database()
             else:
                 cmd_no_found = True
