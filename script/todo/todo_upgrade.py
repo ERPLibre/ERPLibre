@@ -1634,6 +1634,11 @@ class TodoUpgrade:
                     database_name_upgrade, f"before_{next_version}"
                 )
 
+                # Take the copies that cannot survive this bump out of the way,
+                # otherwise the data migration dies on them. Offered, not
+                # forced: their arch is a real customization.
+                self.neutralize_cow_views(database_name_upgrade, next_version)
+
                 status, cmd_executed = self.todo_upgrade_execute(
                     cmd_upgrade,
                     new_env={
@@ -1860,6 +1865,41 @@ class TodoUpgrade:
             f" -d {database_name} -l {label}",
             wait_at_error=False,
         )
+
+    def neutralize_cow_views(self, database_name, next_version):
+        """Offer to neutralize the COW views that would break this bump.
+
+        Renaming their key unpairs them from the module view, so the upgrade
+        stops choking on them. Nothing is deleted and the operation is
+        reversible (neutralize_cow_views.py --restore), but the choice belongs
+        to the user: those copies carry real customizations.
+        """
+        cmd = (
+            f"{PYTHON_BIN} ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database_name} -t odoo{next_version}.0"
+        )
+        status, cmd_executed, output = self.todo_upgrade_execute(
+            cmd, get_output=True, wait_at_error=False
+        )
+        if "No website COW view to neutralize" in "\n".join(output or []):
+            return
+
+        answer = (
+            input(
+                "💬 Neutralize these copies so the upgrade can proceed?"
+                " Their arch is kept and the change is reversible."
+                " (Y/n) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer == "n":
+            print(
+                "⚠️ -> Skipped. The data migration will very likely stop on"
+                " these views."
+            )
+            return
+        self.todo_upgrade_execute(f"{cmd} --apply", wait_at_error=False)
 
     def diff_cow_views(self, database_name, label_before, label_after):
         """Print what the version bump did to the website COW views."""
