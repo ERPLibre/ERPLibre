@@ -1651,12 +1651,21 @@ class TodoUpgrade:
                 # half-migrated database. Stop here instead: the state stays
                 # unset, so a rerun replays this version.
                 if status:
+                    # The intermediate database is now half migrated and must
+                    # not be reused: drop the clone flag so the rerun rebuilds
+                    # it from the pristine source. Without this the replay
+                    # would restart OpenUpgrade on top of the broken clone.
+                    lst_clone_odoo[index] = False
+                    self.dct_progression["state_4_clone_odoo_lst"] = (
+                        lst_clone_odoo
+                    )
+                    self.write_config()
                     print(
                         f"❌ -> Database migration to Odoo{next_version} FAILED"
                         f" (status {status}). Stopping before version"
                         f" {next_version + 1} to avoid migrating a broken"
                         " database. Fix the cause, then relaunch: this version"
-                        " will be replayed."
+                        f" replays from a fresh clone of '{database_name}'."
                     )
                     return
 
