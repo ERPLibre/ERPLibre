@@ -810,8 +810,9 @@ class TodoUpgrade:
             # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
             # Puis faire un retry de la commande, sinon rien
 
-            self.dct_progression["state_1_neutralize_database"] = True
-            self.write_config()
+            # Only record the step when it actually succeeded. The previous
+            # unconditional assignment made the test below dead code: a failed
+            # neutralization was remembered as done and skipped on resume.
             if not status:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
@@ -1029,7 +1030,20 @@ class TodoUpgrade:
 
                 # Duplicate database
                 cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
-                self.todo_upgrade_execute(cmd_clone_database)
+                status, cmd_executed = self.todo_upgrade_execute(
+                    cmd_clone_database
+                )
+
+                # Everything downstream runs against this clone: if it failed,
+                # do not mark it done (a rerun would skip the clone and migrate
+                # a missing or truncated database).
+                if status:
+                    print(
+                        f"❌ -> Clone to Odoo{next_version} FAILED (status"
+                        f" {status}). Stopping: '{database_name_upgrade}' is"
+                        " not usable."
+                    )
+                    return
 
                 lst_clone_odoo[index] = True
                 self.dct_progression["state_4_clone_odoo_lst"] = lst_clone_odoo
@@ -1508,10 +1522,21 @@ class TodoUpgrade:
                     f"fix_migration_odoo{(next_version-1)*10}_to_odoo{next_version*10}.py",
                 )
                 if os.path.exists(file_path_fix_migration):
-                    self.todo_upgrade_execute(
+                    status, cmd_executed = self.todo_upgrade_execute(
                         f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
                         single_source_odoo=True,
                     )
+
+                    # A fix that did not run must not be recorded as applied,
+                    # otherwise the rerun skips it and OpenUpgrade hits the very
+                    # problem the fix exists to prevent.
+                    if status:
+                        print(
+                            f"❌ -> Fix migration Odoo{next_version} FAILED"
+                            f" (status {status}):"
+                            f" {file_path_fix_migration}"
+                        )
+                        return
 
                     lst_fix_migration_odoo[index] = file_path_fix_migration
                     self.dct_progression["state_4_fix_migration_odoo_lst"] = (
@@ -1571,13 +1596,26 @@ class TodoUpgrade:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
-                self.todo_upgrade_execute(
+                status, cmd_executed = self.todo_upgrade_execute(
                     cmd_upgrade,
                     new_env={
                         "OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"
                     },
                 )
-                # TODO detect error
+
+                # This is THE data migration. Recording it as done when it
+                # failed used to send the loop to the next version on top of a
+                # half-migrated database. Stop here instead: the state stays
+                # unset, so a rerun replays this version.
+                if status:
+                    print(
+                        f"❌ -> Database migration to Odoo{next_version} FAILED"
+                        f" (status {status}). Stopping before version"
+                        f" {next_version + 1} to avoid migrating a broken"
+                        " database. Fix the cause, then relaunch: this version"
+                        " will be replayed."
+                    )
+                    return
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
@@ -1920,7 +1958,10 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
-        if status and wait_at_error:
+        # None means « the command never reported a status » -> treat it as a
+        # failure, never as a success (defence in depth: exec_command_live now
+        # always sets one, but a silent None must not skip this prompt).
+        if (status is None or status) and wait_at_error:
             print("[1] to redo the command")
             wait_status = (
                 input(
