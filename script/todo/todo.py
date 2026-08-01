@@ -3078,7 +3078,10 @@ class TODO:
     # Sans le groupe, virt-install retombe sur qemu:///session où « default »
     # n'existe pas : la VM échoue alors que tous les paquets sont installés.
     # L'ancien one-liner finissait par « || true » et masquait ses erreurs.
-    _QEMU_QEMU_PKGS = "./script/qemu/deploy_qemu.py --setup-host --assume-yes"
+    _QEMU_QEMU_PKGS = (
+        "./script/qemu/deploy_qemu.py --setup-host --assume-yes"
+        " --reboot-if-needed"
+    )
 
     def _qemu_ask_prod(self):
         """Environnement cible : dev (défaut) ou prod. En PROD : ERPLibre est

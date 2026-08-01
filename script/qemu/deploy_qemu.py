@@ -689,7 +689,30 @@ def kernel_modules_stale() -> str:
     )
 
 
-def setup_host(runner: Runner, assume_yes: bool, no_install: bool) -> None:
+def schedule_reboot(runner: Runner) -> None:
+    """Programme un redémarrage DIFFÉRÉ et détaché de la session courante.
+
+    Un « systemctl reboot » immédiat tuerait le SSH de l'installation, et
+    l'orchestrateur compterait la VM en échec alors que tout s'est bien passé.
+    On laisse donc quelques secondes pour que la commande distante rende la
+    main proprement.
+    """
+    if shutil.which("systemd-run"):
+        runner.run(
+            ["systemd-run", "--on-active=5", "systemctl", "reboot"],
+            privileged=True,
+            check=False,
+        )
+        return
+    runner.run(["shutdown", "-r", "+1"], privileged=True, check=False)
+
+
+def setup_host(
+    runner: Runner,
+    assume_yes: bool,
+    no_install: bool,
+    reboot_if_needed: bool = False,
+) -> None:
     """Prépare l'hôte à faire tourner des VM : paquets, démon, groupe, réseau.
 
     Point d'entrée unique du profil d'installation « ERPLibre Déploiement ».
@@ -725,6 +748,21 @@ def setup_host(runner: Runner, assume_yes: bool, no_install: bool) -> None:
         f"{'actif' if active else 'INACTIF'}"
         f" / {'autostart' if autostart else 'PAS autostart'}"
     )
+    if not active and stale:
+        # Le réseau est déjà « autostart » : après le redémarrage, libvirt le
+        # monte tout seul avec les modules du nouveau noyau. Un seul reboot
+        # suffit donc à rendre l'hôte utilisable, sans repasser par ici.
+        if reboot_if_needed:
+            print(
+                "\n↻ Redémarrage programmé (dans quelques secondes) : c'est la"
+                " SEULE façon de retrouver les modules du noyau.\n"
+                "  Au retour, le réseau « default » démarrera seul"
+                " (autostart déjà actif)."
+            )
+            schedule_reboot(runner)
+            return
+        sys.exit(f"Erreur : l'hôte n'est pas prêt.\n  {stale}")
+
     if not (ok and active):
         sys.exit(
             "Erreur : l'hôte n'est pas prêt.\n"
@@ -1428,10 +1466,18 @@ def virt_install(
     # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
     # force un cache/HOME ÉCRIVABLE via « env VAR=… » (traverse sudo) pour
     # que le journal s'écrive silencieusement.
+    # Chemin propre à l'UID : un répertoire partagé finit créé par root lors
+    # d'un premier passage sous sudo, puis devient illisible pour l'utilisateur
+    # (« Error setting up logfile: No write access to … /virt-manager »).
+    cache_dir = f"/var/tmp/erplibre-virtinst-{os.getuid()}"
+    try:
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+    except OSError:
+        pass
     log_env = [
         "env",
-        "XDG_CACHE_HOME=/var/tmp/erplibre-virtinst",
-        "HOME=/var/tmp/erplibre-virtinst",
+        f"XDG_CACHE_HOME={cache_dir}",
+        f"HOME={cache_dir}",
     ]
     runner.run(log_env + cmd, privileged=True)
 
@@ -1718,6 +1764,12 @@ def build_parser() -> argparse.ArgumentParser:
         "réseau default) puis quitte. Ne déploie aucune VM.",
     )
     g_run.add_argument(
+        "--reboot-if-needed",
+        action="store_true",
+        help="Avec --setup-host : redémarre si le noyau a été mis à jour "
+        "depuis le démarrage (sinon libvirt ne peut pas créer virbr0).",
+    )
+    g_run.add_argument(
         "--list-images",
         action="store_true",
         help="Liste les distros/versions disponibles et leurs specs, "
@@ -1773,6 +1825,7 @@ def main() -> None:
             ),
             args.assume_yes,
             args.no_install_deps,
+            args.reboot_if_needed,
         )
         return
 
