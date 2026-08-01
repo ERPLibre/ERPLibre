@@ -44,6 +44,12 @@ FILENAME_ODOO_VERSION = ".odoo-version"
 LOCAL_MANIFEST = os.path.join(
     ".repo", "local_manifests", "erplibre_manifest.xml"
 )
+# Module lists for a version bump. The shared, versioned defaults live under
+# script/; the per-database lists live under private/ (mirroring script/, like
+# script/todo/todo.json -> private/todo/todo_override.json). Which modules must
+# be dropped depends on the database, so that choice is never versioned.
+PATH_MIGRATION_GLOBAL = os.path.join("script", "odoo", "migration")
+PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
 
 
 class TodoUpgrade:
@@ -828,18 +834,20 @@ class TodoUpgrade:
         )
 
         if not is_state_4_reach_open_upgrade:
-            lst_module_to_uninstall = []
-            uninstall_module_list_file = os.path.join(
-                "script",
-                "odoo",
-                "migration",
-                f"uninstall_module_list_odoo{start_version * 10}_to_odoo{(start_version + 1) * 10}.txt",
+            lst_module_to_uninstall, lst_uninstall_reason = (
+                self.read_uninstall_module_list(start_version, database_name)
             )
-            if os.path.exists(uninstall_module_list_file):
-                with open(uninstall_module_list_file, "r") as f:
-                    lst_module_to_uninstall = [
-                        a.strip() for a in f.readline().split()
-                    ]
+            if lst_uninstall_reason:
+                # Show WHY each module goes away: which modules must be dropped
+                # depends on the database, and a removal without a stated reason
+                # is a decision nobody can review later.
+                print("✨ Modules to uninstall before migration :")
+                for name, reason, origin in lst_uninstall_reason:
+                    print(
+                        f"   - {name}"
+                        + (f" — {reason}" if reason else " — ⚠️ no reason given")
+                        + f"  [{origin}]"
+                    )
 
             if config_state_1_uninstall_module:
                 lst_module_to_uninstall = (
@@ -1801,6 +1809,61 @@ class TodoUpgrade:
             "target_module_path": target_path_to_check,
         }
         return dct_module
+
+    @staticmethod
+    def parse_module_list_file(file_path):
+        """Read a module list file, return [(module, reason), ...].
+
+        Accepted syntax, one module per line with an optional justification:
+
+            queue_job          # blocks 12->13, trigger queue_job_notify
+            mgmtsystem_hazard  # not ported to 13.0
+
+        Commas and several names per line are also accepted, so a list copied
+        from a command line works as-is. Blank lines and full-line comments are
+        ignored.
+
+        The previous parser was « f.readline().split() »: it kept only the FIRST
+        line, so a multi-line list was silently truncated, and a comma-separated
+        list collapsed into one bogus module name.
+        """
+        lst_module = []
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                content, _, reason = line.partition("#")
+                for module_name in content.replace(",", " ").split():
+                    lst_module.append((module_name, reason.strip()))
+        return lst_module
+
+    def read_uninstall_module_list(self, start_version, database_name):
+        """Modules to uninstall before migrating start_version -> next.
+
+        Reads the per-database private list first, then the shared versioned
+        defaults; duplicates are dropped, keeping the first occurrence.
+
+        Returns (lst_module, lst_detail) where lst_detail carries
+        (module, reason, origin_file) so the caller can justify each removal.
+        """
+        file_name = (
+            f"uninstall_module_list_odoo{start_version * 10}"
+            f"_to_odoo{(start_version + 1) * 10}.txt"
+        )
+        lst_path = [
+            os.path.join(PATH_MIGRATION_PRIVATE, database_name, file_name),
+            os.path.join(PATH_MIGRATION_GLOBAL, file_name),
+        ]
+
+        lst_module = []
+        lst_detail = []
+        for file_path in lst_path:
+            if not os.path.exists(file_path):
+                continue
+            for module_name, reason in self.parse_module_list_file(file_path):
+                if module_name in lst_module:
+                    continue
+                lst_module.append(module_name)
+                lst_detail.append((module_name, reason, file_path))
+        return lst_module, lst_detail
 
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
