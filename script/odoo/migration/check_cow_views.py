@@ -23,11 +23,19 @@ cannot find it in the parent, and the whole upgrade stops on::
 
 So the rule is:
 
-    a COW view breaks when its module counterpart changes ``mode``
-    between version N and version N+1.
+    a COW view breaks when the shape its arch must have changes between
+    version N and version N+1.
 
-That is predictable *before* starting a multi-hour migration: the current mode
-is in the database, and the target mode is declared in the target version
+The discriminant is NOT ``mode``. What decides the required shape is whether
+the target declares an ``inherit_id``: if it does, the arch must be inheritance
+specs (``<data>``, ``<xpath>``, ``position=``); if it does not, the arch must be
+a standalone template. Comparing ``mode`` alone misses a real case: a view
+moving from a root template to ``inherit_id`` + ``primary="True"`` keeps
+``mode='primary'`` on both sides yet still has to change shape, and the copy
+still breaks.
+
+That is predictable *before* starting a multi-hour migration: the stored arch is
+in the database, and the required shape is declared in the target version
 sources. This script compares the two and reports the views at risk.
 
 It only reads: no database write, no source modification.
@@ -35,21 +43,29 @@ It only reads: no database write, no source modification.
 
 import argparse
 import glob
+import json
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-# A view whose module counterpart cannot be found is reported separately: it is
-# usually a view of a module that does not exist in the target version.
+# A view whose module counterpart cannot be found at all.
 MODE_UNKNOWN = "unknown"
+
+# arch_db is text up to 15.0 and jsonb from 16.0 ({"en_US": "<data>..."}).
+RE_XML_DECLARATION = re.compile(r"<\?xml.*?\?>", re.DOTALL)
+RE_FIRST_TAG = re.compile(r"<\s*([A-Za-z_][\w.:-]*)")
+# Tags that carry inheritance specs rather than a standalone template.
+SPEC_ROOT_TAG = ("data", "xpath")
 
 
 def query_cow_views(database):
-    """Return [(id, key, mode, website_id)] for every website COW view."""
+    """Return [(id, key, mode, website_id, arch)] for every website COW view."""
     sql = (
-        "SELECT id, COALESCE(key, ''), mode, website_id FROM ir_ui_view"
-        " WHERE website_id IS NOT NULL ORDER BY id;"
+        "SELECT id, COALESCE(key, ''), mode, website_id,"
+        " replace(left(COALESCE(arch_db::text, ''), 400), chr(10), ' ')"
+        " FROM ir_ui_view WHERE website_id IS NOT NULL ORDER BY id;"
     )
     result = subprocess.run(
         ["psql", "-d", database, "-tAF", "|", "-c", sql],
@@ -64,9 +80,59 @@ def query_cow_views(database):
     for line in result.stdout.splitlines():
         if not line.strip():
             continue
-        view_id, key, mode, website_id = line.split("|")
-        lst_view.append((int(view_id), key, mode, website_id))
+        view_id, key, mode, website_id, arch = line.split("|", 4)
+        lst_view.append((int(view_id), key, mode, website_id, arch))
     return lst_view
+
+
+def arch_is_inheritance_spec(arch):
+    """True when the arch holds inheritance specs, not a standalone template.
+
+    This is the real discriminant, not ``mode``. A view declared with an
+    ``inherit_id`` must hold specs (``<data>``, ``<xpath>``, or an element with
+    a ``position``); a root view holds a full template (``<t t-name=...>``,
+    ``<form>``, ...). A copy that keeps the wrong form for what the target
+    version expects is exactly what raises « cannot be located in parent view ».
+    """
+    if not arch:
+        return None
+    # From 16.0 arch_db is jsonb: take any translation, the structure is shared.
+    if arch.lstrip().startswith("{"):
+        try:
+            translations = json.loads(arch)
+            arch = next(iter(translations.values()), "")
+        except (ValueError, StopIteration):
+            # Truncated jsonb: fall through and look at the raw text.
+            pass
+    arch = RE_XML_DECLARATION.sub("", arch or "")
+    match = RE_FIRST_TAG.search(arch)
+    if not match:
+        return None
+    if match.group(1).lower() in SPEC_ROOT_TAG:
+        return True
+    # <field name="x" position="after"> style specs.
+    return "position=" in arch[: match.end() + 200]
+
+
+def load_renamed_modules(odoo_version):
+    """Return {old_module: new_module} from the target OpenUpgrade apriori.py.
+
+    Without this a module renamed upstream looks absent, and every view of that
+    module is misreported as « module gone » instead of being checked.
+    """
+    pattern = os.path.join(odoo_version, "**", "apriori.py")
+    for file_path in sorted(glob.glob(pattern, recursive=True)):
+        data_vars = {}
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                exec(f.read(), data_vars)  # noqa: S102 - upstream data file
+        except Exception:
+            # A broken or exotic apriori.py must not stop the whole report.
+            continue
+        renamed = data_vars.get("renamed_modules")
+        if isinstance(renamed, dict) and renamed:
+            return renamed
+    return {}
 
 
 def find_module_dir(odoo_version, module_name):
@@ -83,12 +149,14 @@ def find_module_dir(odoo_version, module_name):
     return None
 
 
-def declared_mode(module_dir, template_id):
-    """Return 'primary', 'extension' or None for a view declared in sources.
+def declared_view_shape(module_dir, template_id):
+    """Return (mode, inherits) for a view declared in the sources, else None.
 
-    Handles both declaration styles: <template id="..."> and
-    <record model="ir.ui.view">. A view is an extension when it inherits and is
-    not explicitly flagged primary.
+    ``inherits`` is what really matters: a declared inherit_id means the arch
+    must be inheritance specs. ``mode`` is kept because it is still worth
+    reporting, but it is NOT a reliable discriminant: a view moving from a root
+    template to « inherit_id + primary="True" » keeps mode='primary' on both
+    sides while its arch shape has to change.
     """
     pattern = os.path.join(module_dir, "**", "*.xml")
     for file_path in sorted(glob.glob(pattern, recursive=True)):
@@ -100,23 +168,24 @@ def declared_mode(module_dir, template_id):
             if element.get("id") != template_id:
                 continue
             if element.tag == "template":
+                inherits = bool(element.get("inherit_id"))
                 if str(element.get("primary", "")).lower() in ("true", "1"):
-                    return "primary"
-                return "extension" if element.get("inherit_id") else "primary"
+                    return "primary", inherits
+                return ("extension" if inherits else "primary"), inherits
             if (
                 element.tag == "record"
                 and element.get("model") == "ir.ui.view"
             ):
                 mode = None
-                inherit = None
+                inherits = False
                 for field in element.findall("field"):
                     if field.get("name") == "mode":
                         mode = (field.text or "").strip()
                     elif field.get("name") == "inherit_id":
-                        inherit = field
+                        inherits = True
                 if mode:
-                    return mode
-                return "extension" if inherit is not None else "primary"
+                    return mode, inherits
+                return ("extension" if inherits else "primary"), inherits
     return None
 
 
@@ -131,25 +200,58 @@ def analyse(database, target_version):
     lst_at_risk = []
     lst_module_absent = []
     lst_no_counterpart = []
-    cache_mode = {}
+    cache_shape = {}
+    renamed_modules = load_renamed_modules(target_version)
 
-    for view_id, key, mode, website_id in query_cow_views(database):
+    for view_id, key, mode, website_id, arch in query_cow_views(database):
         if not key or "." not in key:
             continue
-        if key not in cache_mode:
+        if key not in cache_shape:
             module_name, _, template_id = key.partition(".")
             module_dir = find_module_dir(target_version, module_name)
+            if module_dir is None and module_name in renamed_modules:
+                module_dir = find_module_dir(
+                    target_version, renamed_modules[module_name]
+                )
             if module_dir is None:
-                cache_mode[key] = MODE_UNKNOWN
+                cache_shape[key] = MODE_UNKNOWN
             else:
-                cache_mode[key] = declared_mode(module_dir, template_id)
-        target_mode = cache_mode[key]
-        if target_mode == MODE_UNKNOWN:
+                cache_shape[key] = declared_view_shape(module_dir, template_id)
+        shape = cache_shape[key]
+
+        if shape == MODE_UNKNOWN:
             lst_module_absent.append((view_id, key, mode, website_id))
-        elif target_mode is None:
+            continue
+        if shape is None:
             lst_no_counterpart.append((view_id, key, mode, website_id))
+            continue
+
+        target_mode, target_inherits = shape
+        is_spec = arch_is_inheritance_spec(arch)
+
+        # The decisive test: the target expects inheritance specs but the copy
+        # holds a standalone template, or the reverse.
+        if is_spec is not None and target_inherits != is_spec:
+            reason = (
+                "target inherits, copy holds a standalone template"
+                if target_inherits
+                else "target is a root view, copy holds inheritance specs"
+            )
+            lst_at_risk.append(
+                (view_id, key, mode, target_mode, website_id, reason)
+            )
         elif target_mode != mode:
-            lst_at_risk.append((view_id, key, mode, target_mode, website_id))
+            # Shape is fine but the mode moves: worth reporting, less severe.
+            lst_at_risk.append(
+                (
+                    view_id,
+                    key,
+                    mode,
+                    target_mode,
+                    website_id,
+                    "mode changes, arch shape unchanged",
+                )
+            )
     return lst_at_risk, lst_module_absent, lst_no_counterpart
 
 
@@ -195,18 +297,28 @@ def main():
     else:
         print(
             f"⚠️ {len(lst_at_risk)} website COW view(s) will break when moving"
-            f" to {config.target_version}: the module view changes mode, but"
-            " the copy keeps an arch written for the old mode."
+            f" to {config.target_version}: the copy keeps an arch whose shape"
+            " no longer matches what the target module view expects."
         )
-        for view_id, key, mode, target_mode, website_id in lst_at_risk:
+        for (
+            view_id,
+            key,
+            mode,
+            target_mode,
+            website_id,
+            reason,
+        ) in lst_at_risk:
             print(
                 f"   - id={view_id} website={website_id} {key}"
-                f" : {mode} -> {target_mode}"
+                f" : {mode} -> {target_mode} ({reason})"
             )
         print(
-            "   Arbitrate BEFORE launching the migration: reset the copy on the"
-            " module view, deactivate it (active=False, reversible), or rewrite"
-            " the customization for the target version."
+            "   Arbitrate BEFORE launching the migration. To neutralize a copy,"
+            " rename its key (UPDATE ir_ui_view SET key='zz_cow_archive.'||key,"
+            " active=false): an unmatched key is never paired with the module"
+            " view, so the copy never receives the new inherit_id. Setting"
+            " active=false alone is NOT enough -- an inactive copy that keeps"
+            " the same key still shadows the module view."
         )
 
     if lst_module_absent:
