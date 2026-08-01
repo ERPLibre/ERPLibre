@@ -1407,6 +1407,158 @@ TRANSLATIONS = {
         "fr": "Préférences réinitialisées",
         "en": "Preferences reset",
     },
+    "Interface:": {
+        "fr": "Interface :",
+        "en": "Interface:",
+    },
+    "(change the default in TODO > Configuration)": {
+        "fr": "(changer le défaut dans TODO > Configuration)",
+        "en": "(change the default in TODO > Configuration)",
+    },
+    "Loading (VM list, branches)...": {
+        "fr": "Chargement (liste des VM, branches)...",
+        "en": "Loading (VM list, branches)...",
+    },
+    "Architecture": {
+        "fr": "Architecture",
+        "en": "Architecture",
+    },
+    "Resources per VM": {
+        "fr": "Ressources par VM",
+        "en": "Resources per VM",
+    },
+    "Install ERPLibre": {
+        "fr": "Installer ERPLibre",
+        "en": "Install ERPLibre",
+    },
+    "Production (/opt, confined)": {
+        "fr": "Production (/opt, confiné)",
+        "en": "Production (/opt, confined)",
+    },
+    "Monitoring dashboard": {
+        "fr": "Tableau de bord de suivi",
+        "en": "Monitoring dashboard",
+    },
+    "Add each VM to ~/.ssh/config": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config",
+        "en": "Add each VM to ~/.ssh/config",
+    },
+    "Parallelism": {
+        "fr": "Parallélisme",
+        "en": "Parallelism",
+    },
+    "Name": {
+        "fr": "Nom",
+        "en": "Name",
+    },
+    "Distro": {
+        "fr": "Distro",
+        "en": "Distro",
+    },
+    "Version": {
+        "fr": "Version",
+        "en": "Version",
+    },
+    "Arch": {
+        "fr": "Archi",
+        "en": "Arch",
+    },
+    "vCPU": {
+        "fr": "vCPU",
+        "en": "vCPU",
+    },
+    "RAM (MB)": {
+        "fr": "RAM (Mo)",
+        "en": "RAM (MB)",
+    },
+    "all archs": {
+        "fr": "toutes",
+        "en": "all",
+    },
+    "exists - skipped": {
+        "fr": "existe — ignorée",
+        "en": "exists - skipped",
+    },
+    "orphan disk - will FAIL": {
+        "fr": "disque orphelin — ÉCHOUERA",
+        "en": "orphan disk - will FAIL",
+    },
+    "press F5 again to confirm": {
+        "fr": "F5 à nouveau pour confirmer",
+        "en": "press F5 again to confirm",
+    },
+    "Deploy": {
+        "fr": "Déployer",
+        "en": "Deploy",
+    },
+    "Edit VM": {
+        "fr": "Éditer la VM",
+        "en": "Edit VM",
+    },
+    "Preview": {
+        "fr": "Aperçu",
+        "en": "Preview",
+    },
+    "All": {
+        "fr": "Tout",
+        "en": "All",
+    },
+    "Main versions": {
+        "fr": "Versions principales",
+        "en": "Main versions",
+    },
+    "None": {
+        "fr": "Rien",
+        "en": "None",
+    },
+    "Cancel": {
+        "fr": "Annuler",
+        "en": "Cancel",
+    },
+    "Apply": {
+        "fr": "Appliquer",
+        "en": "Apply",
+    },
+    "Close": {
+        "fr": "Fermer",
+        "en": "Close",
+    },
+    "Copy log": {
+        "fr": "Copier le log",
+        "en": "Copy log",
+    },
+    "Copy all logs": {
+        "fr": "Copier tous les logs",
+        "en": "Copy all logs",
+    },
+    "all logs": {
+        "fr": "tous les logs",
+        "en": "all logs",
+    },
+    "c copy log · C copy all · q quit": {
+        "fr": "c copier le log · C copier tout · q quitter",
+        "en": "c copy log · C copy all · q quit",
+    },
+    "Clipboard": {
+        "fr": "Presse-papiers",
+        "en": "Clipboard",
+    },
+    "chars": {
+        "fr": "car.",
+        "en": "chars",
+    },
+    "tail only, log was truncated": {
+        "fr": "fin seulement, log tronqué",
+        "en": "tail only, log was truncated",
+    },
+    "Needs an OSC 52 capable terminal.": {
+        "fr": "Nécessite un terminal compatible OSC 52.",
+        "en": "Needs an OSC 52 capable terminal.",
+    },
+    "Nothing to copy.": {
+        "fr": "Rien à copier.",
+        "en": "Nothing to copy.",
+    },
     "TODO navigation telemetry": {
         "fr": "TODO — télémétrie de navigation",
         "en": "TODO navigation telemetry",

@@ -3200,9 +3200,12 @@ class TODO:
             pass
         return None, None, arch
 
-    def _qemu_pick_branch(self):
-        """Liste les branches distantes d'ERPLibre et en fait choisir une."""
-        print(f"\n{t('Fetching ERPLibre branch list...')}")
+    def _qemu_branch_list(self):
+        """Branches distantes d'ERPLibre, triées. Vide si le réseau manque.
+
+        Séparé de l'invite : le formulaire TUI a besoin de la LISTE, et cet
+        appel réseau (jusqu'à 30 s) doit être fait avant que Textual prenne
+        le terminal."""
         branches = []
         try:
             res = subprocess.run(
@@ -3217,6 +3220,13 @@ class TODO:
                     branches.append(ref[len("refs/heads/") :])
         except (OSError, subprocess.SubprocessError):
             pass
+        branches.sort()
+        return branches
+
+    def _qemu_pick_branch(self):
+        """Liste les branches distantes d'ERPLibre et en fait choisir une."""
+        print(f"\n{t('Fetching ERPLibre branch list...')}")
+        branches = self._qemu_branch_list()
         default = (
             "master"
             if "master" in branches
@@ -3227,7 +3237,6 @@ class TODO:
                 input(f"{t('Branch (default:')} {default}): ").strip()
                 or default
             )
-        branches.sort()
         print(f"{t('Branches:')}")
         for i, b in enumerate(branches, 1):
             star = " *" if b == default else ""
@@ -3315,9 +3324,9 @@ class TODO:
         sel = input(t("Choice (1-2, default 1): ")).strip()
         return sel == "2"
 
-    def _qemu_pick_install_profile(self):
-        """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
-        finale exécutée dans ~/git/erplibre)."""
+    def _qemu_install_profiles(self):
+        """Profils installables : [(libellé, commande)]. Le premier est le
+        défaut. Partagé par l'invite en ligne et le formulaire TUI."""
         profiles = [
             (
                 f"ERPLibre + Odoo {v}",
@@ -3344,6 +3353,12 @@ class TODO:
                 + self._QEMU_QEMU_PKGS,
             ),
         ]
+        return profiles
+
+    def _qemu_pick_install_profile(self):
+        """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
+        finale exécutée dans ~/git/erplibre)."""
+        profiles = self._qemu_install_profiles()
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
@@ -3356,7 +3371,6 @@ class TODO:
             pass
         return profiles[0]  # défaut : ERPLibre + Odoo 18
 
-    @staticmethod
     @staticmethod
     def _qemu_install_dir(prod):
         """Répertoire d'installation ERPLibre dans la VM : /opt/erplibre en
@@ -4124,10 +4138,80 @@ class TODO:
         existing = [vm["name"] for vm in vms if vm["name"] in known]
         return pending, existing
 
+    def _qemu_ask_ui(self):
+        """Interface du déploiement : formulaire TUI ou invites en ligne.
+        La préférence peut trancher d'avance (menu Configuration) ; « ask »
+        pose la question."""
+        pref = todo_prefs.get("qemu_deploy_ui")
+        if pref in ("tui", "cli"):
+            return pref
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')} *")
+        print(f"  [2] {t('Classic questions (line by line)')}")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        sel = input(t("Choice (1-2, default 1): ")).strip()
+        return "cli" if sel == "2" else "tui"
+
+    def _qemu_form_context(self, mod):
+        """Données préchargées pour le formulaire TUI.
+
+        TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
+        est fait ICI, pendant que le terminal est encore à nous : une invite
+        de mot de passe pendant que Textual affiche casserait l'écran."""
+        native = self._native_arch()
+        arches = ["amd64", "arm64", "s390x"]
+        if native not in arches:
+            arches.insert(0, native)
+        arches.append("all")
+
+        catalog = {}
+        for a in arches:
+            distros = list(mod.DISTROS)
+            if a != "all":
+                allowed = self._qemu_arch_distros(a)
+                if allowed is not None:
+                    distros = [d for d in distros if d in allowed]
+            entries = self._qemu_catalog_entries(mod, distros, a)
+            for e in entries:
+                # Le nom est calculé ici : le formulaire reste pure donnée.
+                e["name"] = self._qemu_infra_name(
+                    e["distro"], e["version"], e["arch"]
+                )
+            catalog[a] = entries
+
+        print(f"\n{t('Loading (VM list, branches)...')}")
+        return {
+            "catalog": catalog,
+            "arches": arches,
+            "native": native,
+            "domains": self._qemu_list_domains(),
+            "branches": self._qemu_branch_list() or ["master"],
+            "install_profiles": self._qemu_install_profiles(),
+            "ssh_key": self._qemu_default_ssh_key(),
+            "host_cpu": os.cpu_count() or 2,
+            "free_ram": self._host_free_ram_mb(),
+            "base_vcpus": self._QEMU_BASE_VCPUS,
+            "cpu_presets": self._QEMU_CPU_PRESETS,
+            "ram_presets": self._QEMU_RAM_PRESETS,
+            "disk_presets": self._QEMU_DISK_PRESETS,
+            "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            "defaults": {
+                "install": True,
+                "add_ssh_config": True,
+                "monitor": True,
+                "prod": False,
+            },
+            # L'aperçu passe par le MÊME constructeur que le déploiement.
+            "build_command": lambda vm, spec, dry: " ".join(
+                shlex.quote(p)
+                for p in self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
+            ),
+        }
+
     def _qemu_deploy(self, dry_run=False):
         """Déploiement d'un parc de VM, en trois temps : collecte des choix
-        (invites en ligne), aperçu ou exécution. La collecte produit une SPEC
-        que le formulaire TUI sait produire à l'identique."""
+        (formulaire TUI ou invites en ligne), aperçu ou exécution. Les deux
+        interfaces produisent la MÊME spec."""
         print(f"🚀 {t('Deploy ERPLibre VM(s)!')}")
         try:
             mod = self._qemu_import_module()
@@ -4138,6 +4222,14 @@ class TODO:
         last = self._qemu_last_run_line()
         if last:
             print(last)
+
+        if self._qemu_ask_ui() == "tui":
+            spec = self._qemu_deploy_form(mod, dry_run)
+            if spec is None:
+                return
+            if spec:  # None = annulé, {} = repli sur la CLI
+                self._qemu_run_spec(spec)
+                return
 
         got = self._qemu_collect_vms_cli(mod)
         if not got:
@@ -4152,6 +4244,33 @@ class TODO:
         if not spec:
             return
         self._qemu_run_spec(spec)
+
+    def _qemu_deploy_form(self, mod, dry_run):
+        """Ouvre le formulaire TUI. Renvoie la spec, None si annulé, ou {}
+        pour retomber sur les invites en ligne (textual absent)."""
+        try:
+            from script.todo.qemu_deploy_form import run_deploy_form
+        except ImportError:
+            print(t("Install textual for the dashboard (pip)."))
+            return {}
+        ctx = self._qemu_form_context(mod)
+        try:
+            spec = run_deploy_form(ctx)
+        except ImportError:
+            print(t("Install textual for the dashboard (pip)."))
+            return {}
+        if not spec:
+            print(t("Cancelled."))
+            return None
+        if dry_run:
+            # L'entrée « aperçu » du menu ne crée rien, même depuis la TUI.
+            self._qemu_print_dry_run(spec["vms"])
+            return None
+        self._qemu_print_recap(spec, spec.get("existing") or [])
+        if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+            print(t("Cancelled."))
+            return None
+        return spec
 
     def _qemu_print_dry_run(self, vms):
         """Aperçu : les commandes deploy_qemu, sans rien créer (ni sudo, ni
@@ -4428,6 +4547,46 @@ class TODO:
             return None
         return spec
 
+    def _qemu_deploy_jobs_cli(self, jobs, workers):
+        """Déploiement parallèle, sortie texte. Renvoie
+        [(nom, rc, sortie, durée)] — même contrat que la vue TUI."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        def _run(job):
+            jid, jname, jparts = job
+            j0 = time.time()
+            res = subprocess.run(jparts, capture_output=True, text=True)
+            out = (res.stdout or "") + (res.stderr or "")
+            return jid, jname, res.returncode, out, time.time() - j0
+
+        outcome = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_run, j) for j in jobs]
+            # done = ordre de COMPLÉTION (les résultats reviennent dans le
+            # désordre) ; jid = ordre de préparation (stable). Durée par VM.
+            for done, fut in enumerate(as_completed(futures), 1):
+                jid, jname, rc, out, secs = fut.result()
+                mark = "✅" if rc == 0 else "❌"
+                print(
+                    f"\n[{done}/{len(jobs)}] {mark} [{jid}] {jname} "
+                    f"(rc={rc}, {self._fmt_dur(secs)})"
+                )
+                for line in [ln for ln in out.strip().splitlines() if ln][-4:]:
+                    print(f"    {line}")
+                outcome.append((jname, rc, out, secs))
+        return outcome
+
+    def _qemu_deploy_jobs_tui(self, jobs, workers):
+        """Même chose, en blocs repliables Textual. Renvoie None si textual
+        manque, pour que l'appelant retombe sur la sortie texte."""
+        try:
+            from script.todo.qemu_deploy_form import run_deploy_progress
+
+            return run_deploy_progress(jobs, workers)
+        except ImportError:
+            print(f"  {t('Install textual for the dashboard (pip).')}")
+            return None
+
     def _qemu_run_spec(self, spec):
         """Exécute une spec de déploiement : création des VM en parallèle,
         résolution des IP, ~/.ssh/config, installation ERPLibre.
@@ -4453,45 +4612,26 @@ class TODO:
         deploy_start = time.time()
         n_ok = 0
         if jobs:
-            from concurrent.futures import (
-                ThreadPoolExecutor,
-                as_completed,
-            )
-
             workers = min(parallelism, len(jobs))
             print(
                 f"\n{t('Deploying')} {len(jobs)} VM "
                 f"({t('parallel jobs:')} {workers})…"
             )
-
-            def _run(job):
-                jid, jname, jparts = job
-                j0 = time.time()
-                res = subprocess.run(jparts, capture_output=True, text=True)
-                out = (res.stdout or "") + (res.stderr or "")
-                return jid, jname, res.returncode, out, time.time() - j0
-
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = [pool.submit(_run, j) for j in jobs]
-                # done = ordre de COMPLÉTION (les résultats reviennent dans le
-                # désordre) ; jid = ordre de préparation (stable). Durée par VM.
-                for done, fut in enumerate(as_completed(futures), 1):
-                    jid, jname, rc, out, secs = fut.result()
-                    mark = "✅" if rc == 0 else "❌"
-                    print(
-                        f"\n[{done}/{len(jobs)}] {mark} [{jid}] {jname} "
-                        f"(rc={rc}, {self._fmt_dur(secs)})"
-                    )
-                    tail = [ln for ln in out.strip().splitlines() if ln][-4:]
-                    for ln in tail:
-                        print(f"    {ln}")
-                    if rc == 0:
-                        deployed.append(jname)
-                        n_ok += 1
+            if todo_prefs.get("qemu_deploy_progress") == "tui":
+                outcome = self._qemu_deploy_jobs_tui(jobs, workers)
+            else:
+                outcome = None
+            if outcome is None:
+                outcome = self._qemu_deploy_jobs_cli(jobs, workers)
+            for name, rc, _out, _secs in outcome:
+                if rc == 0:
+                    deployed.append(name)
+                    n_ok += 1
             print(
                 f"\n{t('Deploy summary:')} {n_ok} OK, "
                 f"{len(jobs) - n_ok} {t('failed')}, "
-                f"{len(jobs)} {t('VMs')}, {self._fmt_dur(time.time() - deploy_start)}"
+                f"{len(jobs)} {t('VMs')}, "
+                f"{self._fmt_dur(time.time() - deploy_start)}"
             )
 
         # 6) Résolution des IP EN PARALLÈLE (réutilisée pour ssh_config +
