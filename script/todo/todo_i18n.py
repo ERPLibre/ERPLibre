@@ -1399,6 +1399,67 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = garder) :",
         "en": "Choice (number, blank = keep):",
     },
+    "SSH configuration (~/.ssh/config, ProxyJump)": {
+        "fr": "🔑 Configuration SSH (~/.ssh/config, ProxyJump)",
+        "en": "🔑 SSH configuration (~/.ssh/config, ProxyJump)",
+    },
+    "SSH configuration for QEMU VMs": {
+        "fr": "Configuration SSH des VM QEMU",
+        "en": "SSH configuration for QEMU VMs",
+    },
+    "Update ~/.ssh/config for local VMs": {
+        "fr": "📝 Mettre à jour ~/.ssh/config pour les VM locales",
+        "en": "📝 Update ~/.ssh/config for local VMs",
+    },
+    "Add nested VMs through ProxyJump (recursive)": {
+        "fr": "🪜 Ajouter les VM imbriquées via ProxyJump (récursif)",
+        "en": "🪜 Add nested VMs through ProxyJump (recursive)",
+    },
+    "Which VMs? (numbers, comma-separated; blank = all): ": {
+        "fr": "Quelles VM ? (numéros séparés par des virgules ; "
+        "vide = toutes) : ",
+        "en": "Which VMs? (numbers, comma-separated; blank = all): ",
+    },
+    "Depth (default:": {
+        "fr": "Profondeur (défaut :",
+        "en": "Depth (default:",
+    },
+    "entry": {
+        "fr": "entrée",
+        "en": "entry",
+    },
+    "written": {
+        "fr": "écrite(s)",
+        "en": "written",
+    },
+    "skipped": {
+        "fr": "ignorée(s)",
+        "en": "skipped",
+    },
+    "Level": {
+        "fr": "Niveau",
+        "en": "Level",
+    },
+    "machines to probe": {
+        "fr": "machines à sonder",
+        "en": "machines to probe",
+    },
+    "unreachable or no libvirt": {
+        "fr": "injoignable ou sans libvirt",
+        "en": "unreachable or no libvirt",
+    },
+    "no nested VM": {
+        "fr": "aucune VM imbriquée",
+        "en": "no nested VM",
+    },
+    "SSH hosts written": {
+        "fr": "Hôtes SSH écrits",
+        "en": "SSH hosts written",
+    },
+    "via": {
+        "fr": "via",
+        "en": "via",
+    },
     "Odoo migration interface": {
         "fr": "🚚 Interface de la migration Odoo",
         "en": "🚚 Odoo migration interface",

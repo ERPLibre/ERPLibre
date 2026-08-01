@@ -1193,6 +1193,11 @@ class TODO:
                 )
             },
             {"prompt_description": t("Statistics (installs, durations, VMs)")},
+            {
+                "prompt_description": t(
+                    "SSH configuration (~/.ssh/config, ProxyJump)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1231,6 +1236,8 @@ class TODO:
             elif status == "12":
                 self._qemu_stats()
             elif status == "13":
+                self._qemu_ssh_config_menu()
+            elif status == "14":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1246,6 +1253,186 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print(t("Command not found !"))
+
+    # Profondeur d'exploration par défaut : hôte -> VM -> VM imbriquée. Le
+    # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
+    # donc un parc à deux niveaux est le cas courant.
+    _QEMU_SSH_DEPTH = 2
+    # Sonde exécutée SUR une machine : un couple « nom<TAB>ip » par VM
+    # libvirt. Une seule connexion SSH par niveau plutôt qu'une par VM. Le
+    # bail dnsmasq peut manquer, d'où le repli sur l'agent invité.
+    _QEMU_SSH_PROBE = (
+        "for n in $(sudo virsh list --all --name 2>/dev/null); do "
+        'ip=$(sudo virsh domifaddr "$n" --source lease 2>/dev/null '
+        "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1); "
+        'if [ -z "$ip" ]; then '
+        'ip=$(sudo virsh domifaddr "$n" --source agent 2>/dev/null '
+        "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+        "| grep -v '^127\\.' | head -1); fi; "
+        'printf "%s\\t%s\\n" "$n" "$ip"; done'
+    )
+
+    def _qemu_ssh_config_menu(self):
+        """Écrit les entrées ~/.ssh/config du parc QEMU."""
+        print(f"🔑 {t('SSH configuration for QEMU VMs')}")
+        choices = [
+            {"prompt_description": t("Update ~/.ssh/config for local VMs")},
+            {
+                "prompt_description": t(
+                    "Add nested VMs through ProxyJump (recursive)"
+                )
+            },
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._qemu_ssh_config_local()
+            elif status == "2":
+                self._qemu_ssh_config_nested()
+            else:
+                print(t("Command not found !"))
+
+    def _qemu_pick_domains(self):
+        """Fait choisir des VM parmi celles définies. Vide = toutes."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(t("No VM found."))
+            return []
+        for i, name in enumerate(names, 1):
+            print(f"  [{i}] {name}")
+        raw = input(
+            t("Which VMs? (numbers, comma-separated; blank = all): ")
+        ).strip()
+        if not raw:
+            return names
+        chosen = self._parse_index_selection(raw, names)
+        return chosen or names
+
+    def _qemu_ssh_config_local(self):
+        """Une entrée ~/.ssh/config par VM locale, comme le fait déjà le
+        déploiement — mais sur un parc déjà en place."""
+        names = self._qemu_pick_domains()
+        if not names:
+            return
+        ip_map = self._qemu_resolve_ips(names, timeout=60)
+        written = 0
+        for name in names:
+            ip = ip_map.get(name)
+            if not ip:
+                print(f"  ⏭  {name}: {t('no IP')}")
+                continue
+            self._write_ssh_config_entry(name, "erplibre", ip)
+            written += 1
+        print(
+            f"\n✅ {written} {self._plural(t('entry'), written)}"
+            f" {t('written')} ({len(names) - written} {t('skipped')})"
+        )
+
+    def _qemu_ssh_probe_remote(self, alias):
+        """VM libvirt vues DEPUIS `alias` : [(nom, ip)].
+
+        Passe par « ssh <alias> », donc par le bloc ~/.ssh/config qu'on vient
+        d'écrire : le ProxyJump du parent s'applique tout seul et la même
+        sonde marche à n'importe quelle profondeur."""
+        cmd = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            alias,
+            self._QEMU_SSH_PROBE,
+        ]
+        try:
+            res = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=90
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if res.returncode != 0:
+            return None
+        found = []
+        for line in res.stdout.splitlines():
+            parts = line.strip().split("\t")
+            if len(parts) == 2 and parts[0]:
+                found.append((parts[0], parts[1].strip()))
+        return found
+
+    def _qemu_ssh_config_nested(self):
+        """Descend le parc en profondeur et écrit un ProxyJump par niveau.
+
+        Une VM du profil « Déploiement » héberge elle-même des VM : celles-ci
+        n'ont pas d'IP joignable depuis l'hôte, seulement depuis leur parent.
+        ProxyJump enchaîne les sauts, et la chaîne se construit d'elle-même
+        puisque le parent est déjà dans ~/.ssh/config quand on écrit l'enfant.
+        """
+        roots = self._qemu_pick_domains()
+        if not roots:
+            return
+        raw = input(
+            f"{t('Depth (default:')} {self._QEMU_SSH_DEPTH}): "
+        ).strip()
+        try:
+            max_depth = max(1, int(raw)) if raw else self._QEMU_SSH_DEPTH
+        except ValueError:
+            max_depth = self._QEMU_SSH_DEPTH
+
+        # Niveau 0 : les VM locales, jointes directement.
+        ip_map = self._qemu_resolve_ips(roots, timeout=60)
+        aliases = {}  # alias -> (nom, ip, parent|None)
+        frontier = []
+        for name in roots:
+            ip = ip_map.get(name)
+            if not ip:
+                print(f"  ⏭  {name}: {t('no IP')}")
+                continue
+            self._write_ssh_config_entry(name, "erplibre", ip)
+            aliases[name] = (name, ip, None)
+            frontier.append(name)
+
+        for depth in range(1, max_depth + 1):
+            if not frontier:
+                break
+            print(
+                f"\n🔎 {t('Level')} {depth} — "
+                f"{len(frontier)} {t('machines to probe')}"
+            )
+            next_frontier = []
+            for parent in frontier:
+                found = self._qemu_ssh_probe_remote(parent)
+                if found is None:
+                    print(f"  ⏭  {parent}: {t('unreachable or no libvirt')}")
+                    continue
+                if not found:
+                    print(f"  ·  {parent}: {t('no nested VM')}")
+                    continue
+                for child, ip in found:
+                    if not ip:
+                        print(f"  ⏭  {parent} › {child}: {t('no IP')}")
+                        continue
+                    # Le nom court est plus agréable à taper ; on ne le
+                    # préfixe du parent qu'en cas de collision, pour ne
+                    # jamais écraser l'entrée d'une autre machine.
+                    alias = child
+                    if alias in aliases:
+                        alias = f"{parent}+{child}"
+                    if alias in aliases:
+                        continue  # déjà vu (cycle)
+                    self._write_ssh_config_entry(
+                        alias, "erplibre", ip, proxy_jump=parent
+                    )
+                    aliases[alias] = (child, ip, parent)
+                    next_frontier.append(alias)
+            frontier = next_frontier
+
+        print(f"\n── {t('SSH hosts written')} ──")
+        for alias, (name, ip, parent) in aliases.items():
+            via = f"  ({t('via')} {parent})" if parent else ""
+            print(f"  ssh {alias:<34} {ip}{via}")
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
@@ -2534,8 +2721,12 @@ class TODO:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
-    def _write_ssh_config_entry(self, host, user, ip):
-        """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config."""
+    def _write_ssh_config_entry(self, host, user, ip, proxy_jump=None):
+        """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
+
+        `proxy_jump` : alias du rebond pour une VM imbriquée, dont l'IP n'est
+        joignable que depuis son hôte. OpenSSH enchaîne les ProxyJump tout
+        seul dès que le parent a lui-même le sien."""
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
@@ -2559,6 +2750,8 @@ class TODO:
             f"    StrictHostKeyChecking no\n"
             f"    UserKnownHostsFile /dev/null\n"
         )
+        if proxy_jump:
+            block += f"    ProxyJump {proxy_jump}\n"
         content = (existing + "\n\n" + block) if existing else block
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
