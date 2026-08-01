@@ -689,6 +689,53 @@ def kernel_modules_stale() -> str:
     )
 
 
+def ensure_ssh_key(runner: Runner) -> None:
+    """Garantit que l'utilisateur possède une clé publique SSH.
+
+    Sans clé, cloud-init ne peut en injecter aucune dans la VM créée : elle
+    démarre sans accès SSH et l'orchestrateur ne peut plus vérifier son état.
+    On en génère donc une (ed25519, sans passphrase) quand il n'y en a pas.
+
+    La clé doit appartenir à l'UTILISATEUR, pas à root : sous sudo, « ~ »
+    désigne /root et la clé y serait inutilisable.
+    """
+    user = invoking_user()
+    home = os.path.expanduser(f"~{user}")
+    ssh_dir = os.path.join(home, ".ssh")
+    for name in ("id_ed25519.pub", "id_rsa.pub"):
+        path_pub = os.path.join(ssh_dir, name)
+        if os.path.exists(path_pub):
+            print(f"  Clé SSH déjà présente : {path_pub}")
+            return
+
+    path_key = os.path.join(ssh_dir, "id_ed25519")
+    print(f"  Génération d'une clé SSH ed25519 pour « {user} »…")
+    # sudo -u : on exécute EN TANT QUE l'utilisateur, pour que la clé et le
+    # répertoire lui appartiennent même quand --setup-host tourne sous sudo.
+    prefix = (
+        ["sudo", "-u", user] if os.geteuid() == 0 and user != "root" else []
+    )
+    runner.run(prefix + ["mkdir", "-p", "-m", "700", ssh_dir], check=False)
+    runner.run(
+        prefix
+        + [
+            "ssh-keygen",
+            "-t",
+            "ed25519",
+            "-N",
+            "",
+            "-q",
+            "-f",
+            path_key,
+            "-C",
+            f"erplibre-deploy@{socket.gethostname()}",
+        ],
+        check=False,
+    )
+    if not runner.dry_run and os.path.exists(f"{path_key}.pub"):
+        print(f"  Clé créée : {path_key}.pub")
+
+
 def schedule_reboot(runner: Runner) -> None:
     """Programme un redémarrage DIFFÉRÉ et détaché de la session courante.
 
@@ -728,6 +775,7 @@ def setup_host(
     ensure_tools(runner, assume_yes, no_install, force_daemon=True)
     ensure_libvirt_service(runner)
     already_in_group = ensure_libvirt_group(runner)
+    ensure_ssh_key(runner)
     # Diagnostiqué AVANT le réseau : sans les modules du noyau en cours, le
     # pont virbr0 est impossible et l'erreur de virsh est indéchiffrable.
     stale = kernel_modules_stale()
