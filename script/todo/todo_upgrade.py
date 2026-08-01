@@ -1625,6 +1625,15 @@ class TodoUpgrade:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
+                # Record the website COW views before the data migration. The
+                # upgrade silently deletes and recreates copies (measured on
+                # 12->13: 16 copies dropped, 13 created, children re-parented),
+                # and rewrites the arch of many others. Without a before/after
+                # record, "the site looks wrong" cannot be investigated.
+                self.snapshot_cow_views(
+                    database_name_upgrade, f"before_{next_version}"
+                )
+
                 status, cmd_executed = self.todo_upgrade_execute(
                     cmd_upgrade,
                     new_env={
@@ -1645,6 +1654,15 @@ class TodoUpgrade:
                         " will be replayed."
                     )
                     return
+
+                self.snapshot_cow_views(
+                    database_name_upgrade, f"after_{next_version}"
+                )
+                self.diff_cow_views(
+                    database_name_upgrade,
+                    f"before_{next_version}",
+                    f"after_{next_version}",
+                )
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
@@ -1830,6 +1848,33 @@ class TodoUpgrade:
             "target_module_path": target_path_to_check,
         }
         return dct_module
+
+    def snapshot_cow_views(self, database_name, label):
+        """Record the website COW views of a database under private/.
+
+        Never blocks the migration: a snapshot is forensic material, its
+        absence must not stop an upgrade.
+        """
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/snapshot_cow_views.py"
+            f" -d {database_name} -l {label}",
+            wait_at_error=False,
+        )
+
+    def diff_cow_views(self, database_name, label_before, label_after):
+        """Print what the version bump did to the website COW views."""
+        directory = os.path.join(
+            PATH_MIGRATION_PRIVATE, database_name, "cow_snapshots"
+        )
+        path_before = os.path.join(directory, f"{label_before}.json")
+        path_after = os.path.join(directory, f"{label_after}.json")
+        if not (os.path.exists(path_before) and os.path.exists(path_after)):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/snapshot_cow_views.py"
+            f" --diff {path_before} {path_after}",
+            wait_at_error=False,
+        )
 
     @staticmethod
     def parse_module_list_file(file_path):
