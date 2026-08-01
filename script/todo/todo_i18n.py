@@ -2523,6 +2523,15 @@ TRANSLATIONS = {
         "fr": "Reprise à partir de l'étape",
         "en": "Replaying from step",
     },
+    "Replay the upgrade from version N": {
+        "fr": "Reprendre la montée à partir de la version N",
+        "en": "Replay the upgrade from version N",
+    },
+    "rebuilds the intermediate database": {
+        "fr": "recrée la base intermédiaire",
+        "en": "rebuilds the intermediate database",
+    },
+    "Unknown version": {"fr": "Version inconnue", "en": "Unknown version"},
     "The progression file is invalid, ignoring it": {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",

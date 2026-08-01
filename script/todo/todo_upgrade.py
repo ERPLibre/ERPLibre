@@ -186,11 +186,18 @@ class TodoUpgrade:
             icon, detail = self.step_status(old_dct_progression, step)
             print(f"     [{step}] {icon} {t(label):<44} {detail}")
         print()
+        lst_version = self.version_bumps(old_dct_progression)
         print(f"   [c] {t('Continue where it stopped')}")
         print(
             f"   [0-4] {t('Replay from that step')}"
             f" ({t('erases the progression of that step and the next ones')})"
         )
+        if lst_version:
+            print(
+                f"   [4.N] {t('Replay the upgrade from version N')}"
+                f" ({'/'.join(str(v) for v in lst_version)}) —"
+                f" {t('rebuilds the intermediate database')}"
+            )
         print(f"   [n] {t('New migration, erase everything')}")
         print(f"   [r] {t('Keep the zip only, ask every question again')}")
         answer = input(f"💬 {t('Your choice')} : ").strip().lower()
@@ -204,6 +211,17 @@ class TodoUpgrade:
                 "migration_file": old_dct_progression.get("migration_file"),
                 "date_create": old_dct_progression.get("date_create"),
             }, True
+        if answer.startswith("4.") and lst_version:
+            target = answer.split(".", 1)[1].strip()
+            if target.isdigit() and int(target) in lst_version:
+                return (
+                    self.rewind_version_bump(
+                        old_dct_progression, lst_version.index(int(target))
+                    ),
+                    True,
+                )
+            print(f"⚠️ {t('Unknown version')} : {target}")
+            return old_dct_progression, False
         if answer.isdigit() and 0 <= int(answer) <= MIGRATION_STEP[-1][0]:
             return (
                 self.rewind_progression(old_dct_progression, int(answer)),
@@ -212,6 +230,54 @@ class TodoUpgrade:
 
         print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
         return old_dct_progression, False
+
+    @staticmethod
+    def version_bumps(dct_progression):
+        """Odoo versions the step 4 loop walks through, e.g. [13, 14, ..., 18].
+
+        The per-version lists all end on the target, so the first bump is
+        « target - len + 1 ». Returns [] when step 4 has not started.
+        """
+        total = max(
+            [
+                len(value)
+                for key, value in dct_progression.items()
+                if key.startswith("state_4_")
+                and key.endswith("_odoo_lst")
+                and isinstance(value, list)
+            ]
+            or [0]
+        )
+        if not total:
+            return []
+        try:
+            last = int(float(dct_progression["target_odoo_version"]))
+        except (KeyError, TypeError, ValueError):
+            return []
+        return list(range(last - total + 1, last + 1))
+
+    @staticmethod
+    def rewind_version_bump(old_dct_progression, index):
+        """Replay the step 4 loop from one version bump onwards.
+
+        Only the per-version lists are trimmed from `index`: earlier bumps stay
+        migrated and steps 0 to 3 are untouched. Resetting the clone entry is
+        the point — the intermediate database of a failed bump is half
+        migrated, so it must be dropped and rebuilt from the previous version
+        rather than upgraded again.
+        """
+        dct_kept = dict(old_dct_progression)
+        for key, value in old_dct_progression.items():
+            if (
+                key.startswith("state_4_")
+                and isinstance(value, list)
+                and key.endswith(("_odoo_lst", "_module"))
+            ):
+                dct_kept[key] = [
+                    item if i < index else False
+                    for i, item in enumerate(value)
+                ]
+        return dct_kept
 
     @staticmethod
     def rewind_progression(old_dct_progression, step):
@@ -916,20 +982,8 @@ class TodoUpgrade:
                 self.read_uninstall_module_list(start_version, database_name)
             )
             if lst_uninstall_reason:
-                # Show WHY each module goes away: which modules must be dropped
-                # depends on the database, and a removal without a stated reason
-                # is a decision nobody can review later.
                 print("✨ Modules to uninstall before migration :")
-                for name, reason, origin in lst_uninstall_reason:
-                    print(
-                        f"   - {name}"
-                        + (
-                            f" — {reason}"
-                            if reason
-                            else " — ⚠️ no reason given"
-                        )
-                        + f"  [{origin}]"
-                    )
+                self.print_uninstall_reason(lst_uninstall_reason)
 
             if config_state_1_uninstall_module:
                 lst_module_to_uninstall = (
@@ -1169,9 +1223,24 @@ class TodoUpgrade:
             )
 
             if not lst_module_uninstall_module[index]:
-                lst_module_to_uninstall = config_state_4_uninstall_module[
-                    index
-                ]
+                lst_module_to_uninstall = (
+                    config_state_4_uninstall_module[index] or []
+                )
+                # Same file convention as step 1, one file per version bump:
+                # uninstall_module_list_odoo130_to_odoo140.txt is read HERE,
+                # right before the 13 -> 14 data migration. Without this the
+                # per-bump files existed in name only and were never read.
+                lst_file, lst_detail = self.read_uninstall_module_list(
+                    next_version - 1, database_name
+                )
+                if lst_detail:
+                    print(
+                        f"✨ Modules to uninstall before Odoo{next_version} :"
+                    )
+                    self.print_uninstall_reason(lst_detail)
+                lst_module_to_uninstall = list(
+                    dict.fromkeys(list(lst_module_to_uninstall) + lst_file)
+                )
 
                 if lst_module_to_uninstall:
                     self.uninstall_from_database(
@@ -1735,11 +1804,17 @@ class TodoUpgrade:
                 # forced: their arch is a real customization.
                 self.neutralize_cow_views(database_name_upgrade, next_version)
 
+                # wait_at_error=False on purpose: the generic « [1] to redo the
+                # command » would replay OpenUpgrade on a database it has just
+                # half migrated, which never recovers. The failure is handled
+                # below by dropping the clone flag so the replay REBUILDS the
+                # intermediate database from the previous version.
                 status, cmd_executed = self.todo_upgrade_execute(
                     cmd_upgrade,
                     new_env={
                         "OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"
                     },
+                    wait_at_error=False,
                 )
 
                 # This is THE data migration. Recording it as done when it
@@ -1757,11 +1832,15 @@ class TodoUpgrade:
                     )
                     self.write_config()
                     print(
-                        f"❌ -> Database migration to Odoo{next_version} FAILED"
-                        f" (status {status}). Stopping before version"
-                        f" {next_version + 1} to avoid migrating a broken"
-                        " database. Fix the cause, then relaunch: this version"
-                        f" replays from a fresh clone of '{database_name}'."
+                        f"\n❌ -> Database migration to Odoo{next_version}"
+                        f" FAILED (status {status}).\n"
+                        f"   '{database_name_upgrade}' is now half migrated:"
+                        " replaying the command on it would never recover, so"
+                        " it is NOT offered.\n"
+                        "   The clone step has been reset. Fix the cause, then"
+                        " relaunch the migration and answer [c] (continue):"
+                        f" '{database_name_upgrade}' will be dropped and"
+                        " rebuilt from the previous version before retrying."
                     )
                     return
 
@@ -2045,6 +2124,20 @@ class TodoUpgrade:
                 for module_name in content.replace(",", " ").split():
                     lst_module.append((module_name, reason.strip()))
         return lst_module
+
+    @staticmethod
+    def print_uninstall_reason(lst_detail):
+        """Show WHY each module goes away.
+
+        Which modules must be dropped depends on the database, and a removal
+        without a stated reason is a decision nobody can review later.
+        """
+        for name, reason, origin in lst_detail:
+            print(
+                f"   - {name}"
+                + (f" — {reason}" if reason else " — ⚠️ no reason given")
+                + f"  [{origin}]"
+            )
 
     def read_uninstall_module_list(self, start_version, database_name):
         """Modules to uninstall before migrating start_version -> next.
