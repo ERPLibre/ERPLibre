@@ -3928,7 +3928,22 @@ class TODO:
             ):
                 return False
 
-    def _qemu_confirm_collisions(self, deployed, pending):
+    @staticmethod
+    def _qemu_orphan_disks(names):
+        """qcow2 présents sans VM définie, parmi `names` : [(nom, chemin)].
+
+        Pur : ni sudo ni virsh — l'appelant fournit déjà les noms qui n'ont
+        PAS de domaine. C'est ce qui permet au formulaire TUI de recalculer
+        les collisions à chaque frappe sans déclencher d'invite de mot de
+        passe."""
+        orphans = []
+        for name in names:
+            path = f"/var/lib/libvirt/images/{name}.qcow2"
+            if os.path.exists(path):
+                orphans.append((name, path))
+        return orphans
+
+    def _qemu_confirm_collisions(self, existing, pending_names):
         """Signale les noms qui heurtent l'existant, et demande confirmation.
 
         Deux cas, de gravité différente : une VM déjà définie est simplement
@@ -3936,16 +3951,12 @@ class TODO:
         supprimée sans son disque) fait échouer deploy_qemu, qui refuse
         d'écraser sans --force. Défaut NON : on ne poursuit que sur un « oui »
         explicite."""
-        orphans = []
-        for name, *_rest in pending:
-            path = f"/var/lib/libvirt/images/{name}.qcow2"
-            if os.path.exists(path):
-                orphans.append((name, path))
-        if not deployed and not orphans:
+        orphans = self._qemu_orphan_disks(pending_names)
+        if not existing and not orphans:
             return True
         print(f"\n⚠  {t('Name collisions detected')} :")
         skipped = t("VM already defined - SKIPPED, nothing overwritten")
-        for name in deployed:
+        for name in existing:
             print(f"   {name:<28.28} {skipped}")
         for name, path in orphans:
             print(
@@ -3958,49 +3969,44 @@ class TODO:
             input(f"{t('Continue despite these collisions? (y/N): ')}")
         )
 
-    def _qemu_print_recap(
-        self,
-        pending,
-        deployed,
-        branch,
-        install_label,
-        install_prod,
-        ssh_key,
-        add_ssh_config,
-        parallelism,
-    ):
+    def _qemu_print_recap(self, spec, existing):
         """État final soumis à approbation : tout ce qui va changer sur
         l'hôte, y compris ce qui ne changera PAS (VM existantes)."""
+        install = spec.get("install")
+        branch = install["branch"] if install else None
         print(f"\n── {t('Final review before deployment')} ──")
-        print(f"  {t('VMs to create:')} {len(pending)}")
-        for name, d, v, ram, disk, a, vcpus in pending:
+        print(f"  {t('VMs to create:')} {len(spec['vms'])}")
+        for vm in spec["vms"]:
             # Le disque annoncé est celui qui sera réellement créé : ERPLibre
             # ajoute ERPLIBRE_EXTRA_DISK_GB à la demande initiale.
-            gigs = self._parse_disk_gb(disk) + (
+            gigs = self._parse_disk_gb(vm["disk"]) + (
                 self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
             )
             print(
-                f"     {name:<30} {d} {v:<7} [{a:<5}] "
-                f"{vcpus} vCPU  RAM {ram}Mo  {t('disk')} {gigs}G"
+                f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
+                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
+                f"{t('disk')} {gigs}G"
             )
-        if deployed:
-            print(f"  {t('Existing, left untouched:')} {', '.join(deployed)}")
-        if branch:
+        if existing:
+            print(f"  {t('Existing, left untouched:')} {', '.join(existing)}")
+        if install:
             env = (
                 t("production (/opt, confined)")
-                if install_prod
+                if install["prod"]
                 else t("development (~/git)")
             )
             print(
                 f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
-                f"{t('profile')} {install_label}, {env}"
+                f"{t('profile')} {install['label']}, {env}"
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
-        print(f"  {t('SSH key:')} {ssh_key or t('none')}")
-        cfg = t("one entry per VM") if add_ssh_config else t("untouched")
+        print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
+        cfg = (
+            t("one entry per VM") if spec["add_ssh_config"] else t("untouched")
+        )
         print(f"  {t('~/.ssh/config:')} {cfg}")
-        print(f"  {t('Parallelism:')} {parallelism} {t('at a time')}")
+        print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
 
     def _qemu_build_deploy_parts(
         self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
@@ -4037,18 +4043,130 @@ class TODO:
         parts.append("--dry-run" if dry_run else "-y")
         return parts
 
+    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False):
+        """Commande deploy_qemu.py d'une VM de la spec.
+
+        POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
+        invites en ligne produisent la même spec, donc forcément la même
+        commande. C'est ce qui rend leur divergence vérifiable par un test."""
+        install = spec.get("install")
+        return self._qemu_build_deploy_parts(
+            vm["distro"],
+            vm["version"],
+            vm["arch"],
+            vm["name"],
+            vm["ram"],
+            vm["vcpus"],
+            vm["disk"],
+            spec.get("ssh_key"),
+            install["branch"] if install else None,
+            dry_run=dry_run,
+        )
+
+    # ---------------------------------------------------------------- #
+    # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
+    # ---------------------------------------------------------------- #
+
+    def _qemu_arches_for(self, distro, arch):
+        """Architectures à déployer pour cette distro selon le choix global.
+        « all » = uniquement celles que la distro publie réellement."""
+        if arch != "all":
+            return [arch]
+        out = ["amd64"]
+        if distro in self._QEMU_ARM64_DISTROS:
+            out.append("arm64")
+        if distro in self._QEMU_S390X_DISTROS:
+            out.append("s390x")
+        return out
+
+    def _qemu_catalog_entries(self, mod, distros, arch):
+        """Catalogue APLATI : une entrée par (distro, version, architecture).
+
+        Fonction pure, sans I/O : c'est la source unique de ce qui est
+        déployable, aussi bien pour la liste granulaire de la CLI que pour la
+        liste à cocher du formulaire TUI."""
+        flat = []
+        for d in distros:
+            versions_map, default_v = mod.DISTROS[d]
+            for v, (_c, _o, ram, disk) in versions_map.items():
+                for a in self._qemu_arches_for(d, arch):
+                    flat.append(
+                        {
+                            "distro": d,
+                            "version": v,
+                            "arch": a,
+                            "ram": ram,
+                            "disk": disk,
+                            "default": v == default_v,
+                        }
+                    )
+        return flat
+
+    @staticmethod
+    def _qemu_make_vm(distro, version, arch, ram, disk, vcpus, name):
+        """Une VM de la spec. Un seul endroit décrit sa forme."""
+        return {
+            "name": name,
+            "distro": distro,
+            "version": version,
+            "arch": arch,
+            "ram": ram,
+            "disk": disk,
+            "vcpus": vcpus,
+        }
+
+    def _qemu_split_existing(self, vms, domains):
+        """Sépare les VM à créer de celles dont le domaine existe déjà.
+        `domains` est la liste des noms libvirt, obtenue UNE fois (un seul
+        sudo) et non par VM. Renvoie (à_créer, noms_existants)."""
+        known = set(domains)
+        pending = [vm for vm in vms if vm["name"] not in known]
+        existing = [vm["name"] for vm in vms if vm["name"] in known]
+        return pending, existing
+
     def _qemu_deploy(self, dry_run=False):
+        """Déploiement d'un parc de VM, en trois temps : collecte des choix
+        (invites en ligne), aperçu ou exécution. La collecte produit une SPEC
+        que le formulaire TUI sait produire à l'identique."""
         print(f"🚀 {t('Deploy ERPLibre VM(s)!')}")
         try:
             mod = self._qemu_import_module()
         except Exception as exc:
             print(f"{t('Cannot load QEMU catalog: ')}{exc}")
             return
-        distros = list(mod.DISTROS)
         # Rappel de la dernière installation enregistrée (si historique).
         last = self._qemu_last_run_line()
         if last:
             print(last)
+
+        got = self._qemu_collect_vms_cli(mod)
+        if not got:
+            return
+        res_label, vms = got
+
+        if dry_run:
+            self._qemu_print_dry_run(vms)
+            return
+
+        spec = self._qemu_collect_options_cli(vms, res_label)
+        if not spec:
+            return
+        self._qemu_run_spec(spec)
+
+    def _qemu_print_dry_run(self, vms):
+        """Aperçu : les commandes deploy_qemu, sans rien créer (ni sudo, ni
+        installation). Passe par le point de passage unique, donc montre
+        exactement ce qui serait lancé."""
+        spec = {"vms": vms, "ssh_key": self._qemu_default_ssh_key()}
+        print(f"\n{t('Preview (dry-run):')}")
+        for vm in vms:
+            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=True)
+            print("  " + " ".join(shlex.quote(p) for p in parts))
+
+    def _qemu_collect_vms_cli(self, mod):
+        """Invites en ligne : architecture, catalogue, ressources, noms.
+        Renvoie (étiquette_de_profil, vms) ou None si rien à faire."""
+        distros = list(mod.DISTROS)
 
         # 0) Architecture du parc (défaut : native ; [all] = TOUTES les archis
         # supportées). Pour une arch précise non-amd64, on restreint le
@@ -4069,18 +4187,10 @@ class TODO:
                 distros = keep
                 if not distros:
                     print(t("Nothing selected."))
-                    return
+                    return None
 
         def arches_for(distro):
-            """Architectures à déployer pour cette distro selon le choix."""
-            if arch != "all":
-                return [arch]
-            out = ["amd64"]
-            if distro in self._QEMU_ARM64_DISTROS:
-                out.append("arm64")
-            if distro in self._QEMU_S390X_DISTROS:
-                out.append("s390x")
-            return out
+            return self._qemu_arches_for(distro, arch)
 
         # 1) Distributions : multi-sélection, catalogue complet, principal (la
         # version par défaut de chaque distro, marquée d'un *), ou granulaire
@@ -4117,26 +4227,25 @@ class TODO:
         selected = []  # (distro, version, ram_mb, disk_str, arch)
         if granular:
             # Liste APLATIE distro + version + ARCHITECTURE : on choisit des
-            # combinaisons précises par numéros séparés de virgules.
-            flat = []  # (distro, version, ram, disk, is_default, arch)
-            for d in distros:
-                versions_map, default_v = mod.DISTROS[d]
-                for v, (_c, _o, ram, disk) in versions_map.items():
-                    for a in arches_for(d):
-                        flat.append((d, v, ram, disk, v == default_v, a))
+            # combinaisons précises par numéros séparés de virgules. La liste
+            # vient du catalogue partagé avec le formulaire TUI.
+            flat = self._qemu_catalog_entries(mod, distros, arch)
             print(f"\n{t('All versions:')}")
-            for i, (d, v, ram, disk, isdef, a) in enumerate(flat, 1):
-                star = " *" if isdef else ""
-                print(f"  [{i}] {d} {v}{star} [{a}]  (RAM≥{ram}Mo, {disk})")
+            for i, e in enumerate(flat, 1):
+                star = " *" if e["default"] else ""
+                print(
+                    f"  [{i}] {e['distro']} {e['version']}{star} "
+                    f"[{e['arch']}]  (RAM≥{e['ram']}Mo, {e['disk']})"
+                )
             r = (
                 input(t("Selection (comma-separated numbers): "))
                 .strip()
                 .lower()
             )
-            for d, v, ram, disk, _isdef, a in self._parse_index_selection(
-                r, flat
-            ):
-                selected.append((d, v, ram, disk, a))
+            for e in self._parse_index_selection(r, flat):
+                selected.append(
+                    (e["distro"], e["version"], e["ram"], e["disk"], e["arch"])
+                )
         elif principal:
             # Une VM par distro (version par défaut) × chaque archi supportée.
             for d in distros:
@@ -4152,7 +4261,7 @@ class TODO:
             )
             if not sel_distros:
                 print(t("Nothing selected."))
-                return
+                return None
             # 2) Versions par distro (multi-sélection) ; « all » si catalogue.
             for d in sel_distros:
                 versions_map = mod.DISTROS[d][0]
@@ -4180,7 +4289,7 @@ class TODO:
                         selected.append((d, v, ram, disk, a))
         if not selected:
             print(t("Nothing selected."))
-            return
+            return None
 
         # 2b) Ressources par VM : multiplicateur x1..x4 ou « Personnalisé ».
         # Le profil est CUIT dans `selected`, qui porte dès lors les valeurs
@@ -4194,15 +4303,24 @@ class TODO:
         # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
         names, selected = self._qemu_customize_vms(selected, host_cpu)
 
-        # 3) Plan + estimation des ressources.
-        total_ram = sum(s[2] for s in selected)
-        total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
-        total_cpu = sum(s[5] for s in selected)
-        print(f"\n{t('Deployment plan')} ({len(selected)} VM, {res_label}) :")
-        for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
+        vms = [
+            self._qemu_make_vm(d, v, a, ram, disk, vcpus, names[i])
+            for i, (d, v, ram, disk, a, vcpus) in enumerate(selected)
+        ]
+        self._qemu_print_plan(vms, res_label, host_cpu, free_ram)
+        return res_label, vms
+
+    def _qemu_print_plan(self, vms, res_label, host_cpu, free_ram):
+        """Plan + estimation des ressources de l'hôte."""
+        total_ram = sum(vm["ram"] for vm in vms)
+        total_disk = sum(self._parse_disk_gb(vm["disk"]) for vm in vms)
+        total_cpu = sum(vm["vcpus"] for vm in vms)
+        print(f"\n{t('Deployment plan')} ({len(vms)} VM, {res_label}) :")
+        for vm in vms:
             print(
-                f"  - {names[i]:<30} {d} {v:<7} [{a:<5}] "
-                f"{vcpus} vCPU  RAM {ram}Mo  {t('disk')} {disk}"
+                f"  - {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
+                f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
+                f"{t('disk')} {vm['disk']}"
             )
         cpu_warn = (
             f"   ⚠ {t('> host cores')} ({host_cpu})"
@@ -4221,27 +4339,10 @@ class TODO:
                 )
                 print(f"  ⚠ {warn}")
 
-        # Aperçu (dry-run) : montre les commandes deploy_qemu sans rien créer
-        # (ni sudo, ni installation), puis on s'arrête.
-        if dry_run:
-            default_key = self._qemu_default_ssh_key()
-            print(f"\n{t('Preview (dry-run):')}")
-            for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
-                parts = self._qemu_build_deploy_parts(
-                    d,
-                    v,
-                    a,
-                    names[i],
-                    ram,
-                    vcpus,
-                    disk,
-                    default_key,
-                    None,
-                    dry_run=True,
-                )
-                print("  " + " ".join(shlex.quote(p) for p in parts))
-            return
-
+    def _qemu_collect_options_cli(self, vms, res_label):
+        """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
+        parallélisme, puis récapitulatif et confirmation.
+        Renvoie la spec complète, ou None si l'utilisateur renonce."""
         # Clé SSH (partagée par tout le parc).
         default_key = self._qemu_default_ssh_key()
         key_hint = default_key or t("none")
@@ -4252,23 +4353,25 @@ class TODO:
             ssh_key = os.path.expanduser(ssh_key)
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
-        install_branch = None
-        install_monitor = False
-        install_prod = (
-            False  # dev (~/git, SELinux dev) vs prod (/opt, confiné)
-        )
-        install_cmd = None  # commande finale selon le profil choisi
-        install_label = None
+        install = None
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
         )
         if self._is_yes_default_yes(ans):
-            install_branch = self._qemu_pick_branch()
-            install_prod = self._qemu_ask_prod()
-            install_label, install_cmd = self._qemu_pick_install_profile()
-            install_monitor = self._is_yes_default_yes(
+            branch = self._qemu_pick_branch()
+            # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
+            prod = self._qemu_ask_prod()
+            label, cmd = self._qemu_pick_install_profile()
+            monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
+            install = {
+                "branch": branch,
+                "prod": prod,
+                "label": label,
+                "cmd": cmd,
+                "monitor": monitor,
+            }
 
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
@@ -4277,25 +4380,22 @@ class TODO:
         # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
         # parallélisme : on connaît alors le vrai nombre à déployer (affiché
         # dans le prompt) et on peut numéroter chaque tâche.
-        pending = []  # (name, d, v, ram, disk, a, vcpus)
-        deployed = []
-        for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
-            name = names[i]
-            if self._qemu_domain_exists(name):
-                deployed.append(name)
-            else:
-                pending.append((name, d, v, ram, disk, a, vcpus))
+        pending, existing = self._qemu_split_existing(
+            vms, self._qemu_list_domains()
+        )
         n_jobs = len(pending)
 
         # Collisions de noms : une VM déjà définie est ignorée (rien n'est
         # écrasé), mais un qcow2 orphelin fera ÉCHOUER deploy_qemu, qui refuse
         # d'écraser sans --force. On le dit avant, pas après l'attente.
-        if not self._qemu_confirm_collisions(deployed, pending):
+        if not self._qemu_confirm_collisions(
+            existing, [vm["name"] for vm in pending]
+        ):
             print(t("Cancelled."))
-            return
+            return None
         if not pending:
             print(t("Nothing to create - every VM already exists."))
-            return
+            return None
 
         # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
         # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
@@ -4309,40 +4409,46 @@ class TODO:
         except ValueError:
             parallelism = default_par
 
+        spec = {
+            "res_label": res_label,
+            "vms": pending,
+            "existing": existing,
+            "ssh_key": ssh_key,
+            "install": install,
+            "add_ssh_config": add_ssh_config,
+            "parallelism": parallelism,
+        }
+
         # 6) Récapitulatif final, puis confirmation. Toutes les réponses
         # données jusqu'ici sont rassemblées ici : c'est le dernier point où
         # une erreur de saisie se rattrape sans avoir rien créé.
-        self._qemu_print_recap(
-            pending,
-            deployed,
-            install_branch,
-            install_label,
-            install_prod,
-            ssh_key,
-            add_ssh_config,
-            parallelism,
-        )
+        self._qemu_print_recap(spec, existing)
         if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
             print(t("Cancelled."))
-            return
+            return None
+        return spec
+
+    def _qemu_run_spec(self, spec):
+        """Exécute une spec de déploiement : création des VM en parallèle,
+        résolution des IP, ~/.ssh/config, installation ERPLibre.
+
+        Ne pose AUCUNE question — tous les choix sont dans la spec, d'où
+        qu'elle vienne (invites en ligne ou formulaire TUI)."""
+        pending = spec["vms"]
+        deployed = list(spec.get("existing") or [])
+        install = spec.get("install")
+        install_branch = install["branch"] if install else None
+        ssh_key = spec.get("ssh_key")
+        add_ssh_config = spec["add_ssh_config"]
+        parallelism = spec["parallelism"]
+        n_jobs = len(pending)
 
         # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
         # si les résultats reviennent dans le désordre (exécution parallèle).
         jobs = []  # (id, name, parts)
-        for k, (name, d, v, ram, disk, a, vcpus) in enumerate(pending, 1):
-            parts = self._qemu_build_deploy_parts(
-                d,
-                v,
-                a,
-                name,
-                ram,
-                vcpus,
-                disk,
-                ssh_key,
-                install_branch,
-                dry_run=False,
-            )
-            jobs.append((f"{k}/{n_jobs}", name, parts))
+        for k, vm in enumerate(pending, 1):
+            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=False)
+            jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
 
         deploy_start = time.time()
         n_ok = 0
@@ -4405,15 +4511,15 @@ class TODO:
                     self._write_ssh_config_entry(name, "erplibre", ip)
 
         # 7) Installation ERPLibre (clone + make) si demandée.
-        if install_branch:
-            if install_monitor:
+        if install:
+            if install["monitor"]:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
                     deployed,
                     install_branch,
                     ip_map,
-                    install_cmd,
-                    install_prod,
+                    install["cmd"],
+                    install["prod"],
                 )
             else:
                 print(
@@ -4426,8 +4532,8 @@ class TODO:
                         ssh_key,
                         install_branch,
                         ip_map.get(name),
-                        install_cmd,
-                        install_prod,
+                        install["cmd"],
+                        install["prod"],
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
