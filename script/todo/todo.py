@@ -879,12 +879,12 @@ class TODO:
             {"prompt_description": t("SSH (remote host)...")},
             {
                 "prompt_description": t(
-                    "Deploy - Install NTFY notification server"
+                    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)"
                 )
             },
             {
                 "prompt_description": t(
-                    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)"
+                    "Deploy - Install NTFY notification server"
                 )
             },
         ]
@@ -902,9 +902,9 @@ class TODO:
             elif status == "3":
                 self.prompt_execute_deploy_ssh()
             elif status == "4":
-                self._deploy_ntfy_server()
-            elif status == "5":
                 self.prompt_execute_qemu()
+            elif status == "5":
+                self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
 

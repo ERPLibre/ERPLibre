@@ -2264,18 +2264,86 @@ class TodoUpgrade:
                 lst_detail.append((module_name, reason, file_path))
         return lst_module, lst_detail
 
+    def split_present_missing(self, lst_module):
+        """Split a module list into (present, missing) against the ACTIVE code.
+
+        « Missing » means the addons path no longer holds the module — not
+        that it is absent from the database. The distinction matters because
+        check_addons_exist.py refuses the WHOLE uninstall for a single missing
+        name, so the modules that ARE there never get uninstalled either.
+        """
+        lst_missing, _lst_duplicate = self.check_addons_exist(lst_module)
+        set_missing = set(lst_missing or [])
+        return (
+            [name for name in lst_module if name not in set_missing],
+            [name for name in lst_module if name in set_missing],
+        )
+
+    def prompt_uninstall_missing(self, lst_present, lst_missing):
+        """Ask what to do when part of the list has no code left.
+        Returns the list to actually uninstall (possibly empty)."""
+        print()
+        print(
+            f"⚠️  {len(lst_missing)} "
+            f"{t('modules of the list have no code in the active Odoo:')}"
+        )
+        for name in lst_missing:
+            print(f"      {name}")
+        print(f"    {t('Odoo cannot uninstall a module whose code is gone;')}")
+        print(f"    {t('one of them fails the whole uninstall command.')}")
+        print()
+        if lst_present:
+            print(
+                f"    {len(lst_present)} "
+                f"{t('are present and can be uninstalled:')}"
+            )
+            for name in lst_present:
+                print(f"      {name}")
+        else:
+            print(f"    {t('No module of the list is present.')}")
+        print()
+        if lst_present:
+            print(
+                f"    [1] {t('Uninstall the present ones, skip the missing')}"
+                " *"
+            )
+        print(f"    [2] {t('Try the whole list anyway (it will fail)')}")
+        print(f"    [3] {t('Uninstall nothing, continue')}")
+        answer = input(f"💬 {t('Your choice')} : ").strip()
+        if answer == "2":
+            return lst_present + lst_missing
+        if answer == "3" or not lst_present:
+            return []
+        return lst_present
+
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
     ):
         if not lst_module_to_uninstall:
             return
+        # Sort out what the active code still holds BEFORE calling the script:
+        # it aborts on the first missing name and takes the rest down with it.
+        lst_present, lst_missing = self.split_present_missing(
+            lst_module_to_uninstall
+        )
+        if lst_missing:
+            self.add_comment_progression(
+                "uninstall - no code for: " + ", ".join(lst_missing)
+            )
+            lst_module_to_uninstall = self.prompt_uninstall_missing(
+                lst_present, lst_missing
+            )
+            if not lst_module_to_uninstall:
+                print(f"⏭  {t('Nothing uninstalled.')}")
+                return
         uninstall_module = ",".join(lst_module_to_uninstall)
         self.todo_upgrade_execute(
             f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
             single_source_odoo=True,
         )
 
-        # Update list installed module
+        # Update list installed module — only what was REALLY uninstalled, so
+        # a module left in place stays counted as installed.
         self.dct_module_per_version[actual_version] = sorted(
             list(
                 set(self.dct_module_per_version[actual_version])

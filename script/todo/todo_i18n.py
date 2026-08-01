@@ -1403,6 +1403,43 @@ TRANSLATIONS = {
         "fr": "🚚 Interface de la migration Odoo",
         "en": "🚚 Odoo migration interface",
     },
+    "modules of the list have no code in the active Odoo:": {
+        "fr": "modules de la liste n'ont plus de code dans l'Odoo actif :",
+        "en": "modules of the list have no code in the active Odoo:",
+    },
+    "Odoo cannot uninstall a module whose code is gone;": {
+        "fr": "Odoo ne peut pas désinstaller un module dont le code a"
+        " disparu ;",
+        "en": "Odoo cannot uninstall a module whose code is gone;",
+    },
+    "one of them fails the whole uninstall command.": {
+        "fr": "un seul d'entre eux fait échouer toute la désinstallation.",
+        "en": "one of them fails the whole uninstall command.",
+    },
+    "are present and can be uninstalled:": {
+        "fr": "sont présents et peuvent être désinstallés :",
+        "en": "are present and can be uninstalled:",
+    },
+    "No module of the list is present.": {
+        "fr": "Aucun module de la liste n'est présent.",
+        "en": "No module of the list is present.",
+    },
+    "Uninstall the present ones, skip the missing": {
+        "fr": "Désinstaller les présents, ignorer les manquants",
+        "en": "Uninstall the present ones, skip the missing",
+    },
+    "Try the whole list anyway (it will fail)": {
+        "fr": "Tout tenter quand même (ça échouera)",
+        "en": "Try the whole list anyway (it will fail)",
+    },
+    "Uninstall nothing, continue": {
+        "fr": "Ne rien désinstaller, continuer",
+        "en": "Uninstall nothing, continue",
+    },
+    "Nothing uninstalled.": {
+        "fr": "Rien de désinstallé.",
+        "en": "Nothing uninstalled.",
+    },
     "No migration in progress to resume.": {
         "fr": "Aucune migration en cours à reprendre.",
         "en": "No migration in progress to resume.",
