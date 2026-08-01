@@ -1622,15 +1622,33 @@ class TodoUpgrade:
 
             if not lst_fix_migration_odoo[index]:
                 print("")
-                file_path_fix_migration = os.path.join(
-                    "script",
-                    "odoo",
-                    "migration",
-                    f"fix_migration_odoo{(next_version-1)*10}_to_odoo{next_version*10}.py",
+                stem = os.path.join(
+                    PATH_MIGRATION_GLOBAL,
+                    f"fix_migration_odoo{(next_version - 1) * 10}"
+                    f"_to_odoo{next_version * 10}",
                 )
-                if os.path.exists(file_path_fix_migration):
+                # Two flavours. « .sql » runs through psql: no Odoo registry,
+                # so it works on a database not yet migrated -- exactly when
+                # loading it with the TARGET version's code would fail. « .py »
+                # is piped into the Odoo shell when the ORM is really needed.
+                file_path_fix_migration = ""
+                cmd_fix_migration = ""
+                if os.path.exists(f"{stem}.sql"):
+                    file_path_fix_migration = f"{stem}.sql"
+                    cmd_fix_migration = (
+                        f"psql -v ON_ERROR_STOP=1 -d {database_name_upgrade}"
+                        f" -f ./{file_path_fix_migration}"
+                    )
+                elif os.path.exists(f"{stem}.py"):
+                    file_path_fix_migration = f"{stem}.py"
+                    cmd_fix_migration = (
+                        f"cat ./{file_path_fix_migration} |"
+                        f" ./odoo{next_version}.0/odoo/odoo-bin shell"
+                        f" -d {database_name_upgrade}"
+                    )
+                if file_path_fix_migration:
                     status, cmd_executed = self.todo_upgrade_execute(
-                        f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
+                        cmd_fix_migration,
                         single_source_odoo=True,
                     )
 
