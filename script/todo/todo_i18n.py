@@ -1351,6 +1351,62 @@ TRANSLATIONS = {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
     },
+    "Configuration": {
+        "fr": "⚙  Configuration",
+        "en": "⚙  Configuration",
+    },
+    "Interface": {
+        "fr": "Interface",
+        "en": "Interface",
+    },
+    "Maintenance": {
+        "fr": "Maintenance",
+        "en": "Maintenance",
+    },
+    "Language / Langue": {
+        "fr": "🌐 Langue / Language",
+        "en": "🌐 Language / Langue",
+    },
+    "QEMU deployment interface": {
+        "fr": "🖥  Interface de déploiement QEMU",
+        "en": "🖥  QEMU deployment interface",
+    },
+    "Display while deploying": {
+        "fr": "📜 Affichage pendant le déploiement",
+        "en": "📜 Display while deploying",
+    },
+    "Ask every time": {
+        "fr": "Demander à chaque fois",
+        "en": "Ask every time",
+    },
+    "TUI form": {
+        "fr": "Formulaire TUI",
+        "en": "TUI form",
+    },
+    "Classic questions (line by line)": {
+        "fr": "Questions classiques (ligne par ligne)",
+        "en": "Classic questions (line by line)",
+    },
+    "CLI output (easy to copy)": {
+        "fr": "Sortie CLI (facile à copier)",
+        "en": "CLI output (easy to copy)",
+    },
+    "TUI, collapsible blocks per VM": {
+        "fr": "TUI, blocs repliables par VM",
+        "en": "TUI, collapsible blocks per VM",
+    },
+    "Choice (number, blank = keep):": {
+        "fr": "Choix (numéro, vide = garder) :",
+        "en": "Choice (number, blank = keep):",
+    },
+    "Reset all preferences": {
+        "fr": "🧹 Réinitialiser toutes les préférences",
+        "en": "🧹 Reset all preferences",
+    },
+    "Preferences reset": {
+        "fr": "Préférences réinitialisées",
+        "en": "Preferences reset",
+    },
     "TODO navigation telemetry": {
         "fr": "TODO — télémétrie de navigation",
         "en": "TODO navigation telemetry",

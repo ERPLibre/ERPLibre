@@ -27,7 +27,8 @@ from script.config import config_file
 from script.execute import execute
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
-from script.todo.todo_i18n import lang_is_configured, set_lang, t
+from script.todo import todo_prefs
+from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -130,6 +131,7 @@ class TODO:
 [3] {t("Question")}
 [4] {t("Fork - Open TODO in a new tab")}
 [5] {t("Navigation telemetry (TUI)")}
+[6] {t("Configuration")}
 [0] {t("Quit")}
 """
         while True:
@@ -163,6 +165,8 @@ class TODO:
                 self.execute.exec_command_live(cmd, source_erplibre=True)
             elif status == "5":
                 self._todo_telemetry_tui()
+            elif status == "6":
+                self.prompt_configuration()
             # elif status == "3" or status == "install":
             #     print("install")
             else:
@@ -547,6 +551,7 @@ class TODO:
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
+        "prompt_configuration": "Configuration",
     }
 
     def _menu_header(self):
@@ -617,6 +622,92 @@ class TODO:
             ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
                 return
+
+    # Préférences éditables depuis le menu Configuration : clé, libellé, et
+    # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :
+    # l'écran, la lecture et l'écriture en découlent.
+    _PREF_CHOICES = {
+        "qemu_deploy_ui": (
+            "QEMU deployment interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
+        "qemu_deploy_progress": (
+            "Display while deploying",
+            (
+                ("cli", "CLI output (easy to copy)"),
+                ("tui", "TUI, collapsible blocks per VM"),
+            ),
+        ),
+    }
+
+    def _pref_label(self, key):
+        """Libellé traduit de la valeur courante d'une préférence."""
+        value = todo_prefs.get(key)
+        for stored, label in self._PREF_CHOICES[key][1]:
+            if stored == value:
+                return t(label)
+        return str(value)
+
+    def _pref_edit(self, key):
+        """Fait choisir une valeur parmi celles proposées pour `key`."""
+        title, options = self._PREF_CHOICES[key]
+        current = todo_prefs.get(key)
+        print(f"\n{t(title)} :")
+        for i, (stored, label) in enumerate(options, 1):
+            star = " *" if stored == current else ""
+            print(f"  [{i}] {t(label)}{star}")
+        sel = input(f"{t('Choice (number, blank = keep):')} ").strip()
+        try:
+            idx = int(sel) - 1
+        except ValueError:
+            return
+        if 0 <= idx < len(options):
+            todo_prefs.set(key, options[idx][0])
+            print(f"  ✅ {t(title)} : {self._pref_label(key)}")
+
+    def prompt_configuration(self):
+        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).
+        La langue vit à part, dans env_var.sh, et garde son propre mécanisme.
+        """
+        while True:
+            lang = "français" if get_lang() == "fr" else "English"
+            choices = [
+                {"section": t("Interface")},
+                {"prompt_description": f"{t('Language / Langue')}  ({lang})"},
+                {
+                    "prompt_description": (
+                        f"{t('QEMU deployment interface')}  "
+                        f"({self._pref_label('qemu_deploy_ui')})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Display while deploying')}  "
+                        f"({self._pref_label('qemu_deploy_progress')})"
+                    )
+                },
+                {"section": t("Maintenance")},
+                {"prompt_description": t("Reset all preferences")},
+            ]
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                self._change_language()
+            elif status == "2":
+                self._pref_edit("qemu_deploy_ui")
+            elif status == "3":
+                self._pref_edit("qemu_deploy_progress")
+            elif status == "4":
+                n = todo_prefs.reset()
+                print(f"✅ {t('Preferences reset')} ({n})")
+            else:
+                print(t("Command not found !"))
 
     def fill_help_info(self, choices):
         # Une entrée {"section": "..."} affiche un titre de section SANS
