@@ -260,7 +260,8 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
     """(nb_erreurs, nb_avertissements) dans un log d'installation, en
     réutilisant la détection de la suite de tests ERPLibre : sous-chaîne
     « error »/« warning » (insensible à la casse) moins les listes d'ignore.
-    Lit le fichier COMPLET (appelé une seule fois, à la complétion d'une VM)."""
+    Lit le fichier COMPLET (appelé une seule fois, à la complétion d'une VM).
+    """
     try:
         text = Path(log_path).read_text(errors="replace")
     except OSError:
@@ -270,9 +271,7 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
         low = line.lower()
         if EXIT_MARKER in line:
             continue
-        if "error" in low and not any(
-            ig in line for ig in _LST_IGNORE_ERROR
-        ):
+        if "error" in low and not any(ig in line for ig in _LST_IGNORE_ERROR):
             nerr += 1
         if "warning" in low and not any(
             ig in line for ig in _LST_IGNORE_WARNING
@@ -311,7 +310,8 @@ def _read_tail(
     `max_lines` lignes) et renvoie (texte, TAILLE TOTALE du fichier). Utilisé
     au CHANGEMENT de VM : lire+réafficher le fichier ENTIER (offset 0) gelait
     l'UI sur les gros logs (250 Ko / milliers de lignes). L'offset renvoyé =
-    taille totale -> le suivi incrémental (_tick_log) continue depuis la fin."""
+    taille totale -> le suivi incrémental (_tick_log) continue depuis la fin.
+    """
     try:
         size = os.path.getsize(path)
         with open(path, "rb") as fh:
@@ -351,10 +351,14 @@ def load_stats() -> dict:
         return {}
 
 
-def record_duration(distro, version, arch, secs) -> None:
+def record_duration(distro, version, arch, secs, ok=True) -> None:
     """Enregistre une install (distro + version + archi + durée + horodatage)
     dans l'historique, pour l'ETA et les moyennes par archi/distro. Garde les
-    500 derniers runs."""
+    500 derniers runs.
+
+    `ok=False` conserve la trace d'un ÉCHEC : sans elle aucun taux de réussite
+    n'est calculable. Les échecs sont exclus des moyennes et de l'ETA (leur
+    durée ne dit rien du temps d'une install qui aboutit)."""
     data = load_stats()
     runs = data.setdefault("runs", [])
     runs.append(
@@ -364,6 +368,7 @@ def record_duration(distro, version, arch, secs) -> None:
             "arch": arch or "?",
             "seconds": int(secs),
             "ts": int(time.time()),
+            "ok": bool(ok),
         }
     )
     data["runs"] = runs[-500:]
@@ -373,8 +378,80 @@ def record_duration(distro, version, arch, secs) -> None:
         pass
 
 
-def _runs(stats=None):
+def reset_stats() -> int:
+    """Vide l'historique. Renvoie le nombre de runs effacés."""
+    count = len(all_runs())
+    try:
+        _stats_path().write_text(json.dumps({"runs": []}))
+    except OSError:
+        pass
+    return count
+
+
+def all_runs(stats=None):
+    """Tous les runs, succès ET échecs."""
     return (stats or load_stats()).get("runs", []) or []
+
+
+def _runs(stats=None):
+    """Runs RÉUSSIS seulement : base des moyennes et de l'ETA.
+
+    Les entrées écrites avant l'ajout du champ « ok » n'en ont pas ; elles
+    étaient forcément des succès (seuls ceux-là étaient enregistrés).
+    """
+    return [r for r in all_runs(stats) if r.get("ok", True)]
+
+
+def stats_summary(stats=None):
+    """Chiffres globaux de l'historique d'installation.
+
+    Renvoie un dict vide quand rien n'a encore été enregistré, pour que
+    l'appelant distingue « aucune donnée » de « zéro seconde »."""
+    runs = all_runs(stats)
+    if not runs:
+        return {}
+    ok = [r for r in runs if r.get("ok", True)]
+    secs = sorted(r["seconds"] for r in ok)
+    lst_ts = [r.get("ts", 0) for r in runs if r.get("ts")]
+    return {
+        "total": len(runs),
+        "ok": len(ok),
+        "failed": len(runs) - len(ok),
+        "first_ts": min(lst_ts) if lst_ts else 0,
+        "last_ts": max(lst_ts) if lst_ts else 0,
+        "median": secs[len(secs) // 2] if secs else 0,
+        "min": secs[0] if secs else 0,
+        "max": secs[-1] if secs else 0,
+        "total_secs": sum(secs),
+    }
+
+
+def stats_by(field, stats=None):
+    """Agrège par « distro », « arch » ou « distro version ».
+
+    Renvoie [(clé, nb_réussis, moyenne_secondes, nb_échecs)] trié du plus
+    utilisé au moins utilisé."""
+    dct = {}
+    for run in all_runs(stats):
+        if field == "version":
+            key = f"{run.get('distro', '?')} {run.get('version', '?')}"
+        else:
+            key = run.get(field, "?")
+        entry = dct.setdefault(key, {"secs": [], "failed": 0})
+        if run.get("ok", True):
+            entry["secs"].append(run["seconds"])
+        else:
+            entry["failed"] += 1
+    lst = [
+        (
+            key,
+            len(e["secs"]),
+            int(sum(e["secs"]) / len(e["secs"])) if e["secs"] else 0,
+            e["failed"],
+        )
+        for key, e in dct.items()
+    ]
+    return sorted(lst, key=lambda row: (-(row[1] + row[3]), row[0]))
 
 
 def eta_reference(stats, arch):
@@ -650,7 +727,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._cells = {}
             # Historique de durées (ETA) + dossier disque à surveiller.
             self._stats = load_stats()
-            self._disk_dir = os.path.dirname(vm_disk_path(vms[0])) if vms else "/"
+            self._disk_dir = (
+                os.path.dirname(vm_disk_path(vms[0])) if vms else "/"
+            )
             # État libvirt (running/paused/gone), rafraîchi à intervalle LENT.
             self._domstate = {}
             # Erreurs détectées dans le log à la complétion : {nom: (err, warn)}.
@@ -698,7 +777,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table.add_column("Disque", key="disk", width=8)
             for i, vm in enumerate(vms, 1):
                 table.add_row(
-                    str(i), vm["name"], "", "⏳", "—", "--:--", "-",
+                    str(i),
+                    vm["name"],
+                    "",
+                    "⏳",
+                    "—",
+                    "--:--",
+                    "-",
                     key=vm["name"],
                 )
             # max_lines borne la mémoire/rendu (un install verbeux × 30 VM).
@@ -719,7 +804,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def on_mount(self) -> None:
             # Le NOMBRE de VM figure dans le titre ; le sous-titre suit la
             # progression (terminées / total + durée globale).
-            self.title = f"ERPLibre — {t('install monitoring')} ({len(vms)} VM)"
+            self.title = (
+                f"ERPLibre — {t('install monitoring')} ({len(vms)} VM)"
+            )
             self.sub_title = f"0/{len(vms)} {t('completed')}"
             self._refresh_ssh()
             self._load_selected_log(reset=True)
@@ -808,9 +895,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         errors[name] = scan_log_errors(vm["log"])
                 # Odoo up ? On ne teste que celles pas encore confirmées up
                 # et non effacées (test TCP court sur :8069).
-                if name not in self._odoo_up and self._domstate.get(
-                    name
-                ) != "gone":
+                if (
+                    name not in self._odoo_up
+                    and self._domstate.get(name) != "gone"
+                ):
                     if _port_open(vm.get("ip"), 8069):
                         odoo[name] = True
             return disks, status, self._collect_tele(), errors, odoo
@@ -836,7 +924,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     self._set_cell(table, name, "disk", disks.get(name, "-"))
                     # Colonne Odoo : 🟢 dès que :8069 répond, sinon « — ».
                     self._set_cell(
-                        table, name, "odoo",
+                        table,
+                        name,
+                        "odoo",
                         "🟢" if name in self._odoo_up else "—",
                     )
                     if name in self._final:
@@ -855,14 +945,16 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     if state in ("done", "failed"):
                         elapsed = now - started
                         self._final[name] = (state, code, elapsed)
-                        if state == "done":
-                            record_duration(
-                                vm.get("distro"),
-                                vm.get("version"),
-                                vm.get("arch"),
-                                elapsed,
-                            )
-                            self._stats = load_stats()
+                        # Les échecs sont enregistrés eux aussi (ok=False) :
+                        # sans eux, aucun taux de réussite n'est calculable.
+                        record_duration(
+                            vm.get("distro"),
+                            vm.get("version"),
+                            vm.get("arch"),
+                            elapsed,
+                            ok=state == "done",
+                        )
+                        self._stats = load_stats()
                         lbl = "✅" if state == "done" else f"❌ ({code})"
                         self._set_cell(table, name, "state", lbl)
                         self._set_cell(
@@ -871,7 +963,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         # Colonne ⚠ (à gauche d'État) : erreurs détectées dans
                         # le log, y compris pour un « succès ».
                         self._set_cell(
-                            table, name, "err",
+                            table,
+                            name,
+                            "err",
                             self._err_label(self._errcount.get(name)),
                         )
                     elif ds == "paused":
@@ -940,9 +1034,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 else:
                     running += 1
             return {
-                "total": len(vms), "done": done, "fail": fail,
-                "deleted": deleted, "running": running, "paused": paused,
-                "err_vms": err_vms, "warn_vms": warn_vms,
+                "total": len(vms),
+                "done": done,
+                "fail": fail,
+                "deleted": deleted,
+                "running": running,
+                "paused": paused,
+                "err_vms": err_vms,
+                "warn_vms": warn_vms,
             }
 
         def _update_stats(self):
@@ -1082,9 +1181,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 for i, b in enumerate(available, 1):
                     print(f"  [{i}] {b}{' *' if i == 1 else ''}")
                 print("  [i] Installer un autre navigateur")
-                sel = input(
-                    f"Choix (numéro, vide = {available[0]}) : "
-                ).strip().lower()
+                sel = (
+                    input(f"Choix (numéro, vide = {available[0]}) : ")
+                    .strip()
+                    .lower()
+                )
                 if sel == "i":
                     return self._install_cli_browser()
                 if not sel:
@@ -1123,9 +1224,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     return None
                 printable = " ".join(cmd)
                 print(f"Commande : {printable}")
-                ans = input(
-                    "Installer maintenant ? (o/N) : "
-                ).strip().lower()
+                ans = input("Installer maintenant ? (o/N) : ").strip().lower()
                 if ans not in ("o", "oui", "y", "yes"):
                     return None
                 rc = os.system(printable)

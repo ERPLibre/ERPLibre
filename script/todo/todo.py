@@ -1085,6 +1085,7 @@ class TODO:
                     "Reopen install monitoring (last run / history)"
                 )
             },
+            {"prompt_description": t("Statistics (installs, durations, VMs)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1121,6 +1122,8 @@ class TODO:
             elif status == "11":
                 self._qemu_reopen_monitor()
             elif status == "12":
+                self._qemu_stats()
+            elif status == "13":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1136,6 +1139,134 @@ class TODO:
                     pass
                 if cmd_no_found:
                     print(t("Command not found !"))
+
+    def _qemu_stats(self):
+        """Statistiques d'utilisation de QEMU, et remise à zéro.
+
+        Tout vient de l'historique tenu par le moniteur d'installation
+        (.venv.erplibre/qemu_install_stats.json) et de l'état libvirt courant.
+        """
+        try:
+            from script.todo import qemu_install_monitor as mon
+        except ImportError:
+            print(t("Install textual for the dashboard (pip)."))
+            return
+
+        while True:
+            summary = mon.stats_summary()
+            print(f"\n📊 {t('QEMU statistics')}")
+            if not summary:
+                print(f"   {t('No installation recorded yet.')}")
+            else:
+                rate = 100 * summary["ok"] // max(summary["total"], 1)
+                print(f"\n── {t('Installations')} ──")
+                print(
+                    f"   {t('Total'):<18}: {summary['total']}"
+                    f"  ({summary['ok']} {t('succeeded')},"
+                    f" {summary['failed']} {t('failed')} — {rate} %)"
+                )
+                if summary["first_ts"]:
+                    days = max(
+                        1,
+                        (summary["last_ts"] - summary["first_ts"]) // 86400,
+                    )
+                    print(
+                        f"   {t('Period'):<18}:"
+                        f" {self._qemu_stamp(summary['first_ts'])}"
+                        f" → {self._qemu_stamp(summary['last_ts'])}"
+                        f"  ({days} {t('days')})"
+                    )
+                print(
+                    f"   {t('Median duration'):<18}:"
+                    f" {mon._fmt_secs(summary['median'])}"
+                    f"   ({t('min')} {mon._fmt_secs(summary['min'])} ·"
+                    f" {t('max')} {mon._fmt_secs(summary['max'])})"
+                )
+                print(
+                    f"   {t('Cumulated time'):<18}:"
+                    f" {mon._fmt_secs(summary['total_secs'])}"
+                )
+                for field, title in (
+                    ("distro", t("By distribution")),
+                    ("version", t("By version")),
+                    ("arch", t("By architecture")),
+                ):
+                    rows = mon.stats_by(field)
+                    if not rows:
+                        continue
+                    print(f"\n── {title} ──")
+                    for key, count, avg, failed in rows[:8]:
+                        # Un groupe sans aucun succès n'a pas de moyenne : « — »
+                        # plutôt qu'un « ~0s » trompeur.
+                        moy = f"~{mon._fmt_secs(avg)}" if count else "—"
+                        fail = (
+                            f"   ⚠ {failed} {self._plural(t('failure'), failed)}"
+                            if failed
+                            else ""
+                        )
+                        print(f"   {key:<22} {count:>3} ×   {moy:<8}{fail}")
+
+            self._qemu_stats_vms(mon)
+            print(f"\n   [r] {t('Reset the statistics')}")
+            print(f"   [0] {t('Back')}")
+            answer = input(f"💬 {t('Your choice')} : ").strip().lower()
+            if answer in ("", "0"):
+                return
+            if answer == "r":
+                if not summary:
+                    print(f"   {t('Nothing to reset.')}")
+                    continue
+                confirm = input(
+                    f"   {t('Erase')} {summary['total']}"
+                    f" {t('recorded runs')}? (y/N): "
+                ).strip()
+                if self._is_yes(confirm):
+                    count = mon.reset_stats()
+                    print(f"   ✅ {count} {t('runs erased')}.")
+                else:
+                    print(f"   {t('Cancelled.')}")
+
+    @staticmethod
+    def _qemu_stamp(ts):
+        """Horodatage court « 2026-08-01 »."""
+        try:
+            return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        except (OSError, OverflowError, ValueError):
+            return "?"
+
+    def _qemu_stats_vms(self, mon):
+        """Machines virtuelles actuelles : nombre, états, place disque."""
+        try:
+            states = mon.virsh_domstates()
+        except Exception:
+            return
+        if not states:
+            return
+        running = sum(1 for s in states.values() if s == "running")
+        total_bytes = 0
+        counted = 0
+        for name in states:
+            try:
+                # vm_disk_path attend un dict ; le chemin par défaut de libvirt
+                # se déduit du seul nom.
+                size = mon.disk_actual_size(mon.vm_disk_path({"name": name}))
+            except Exception:
+                size = None
+            if size:
+                total_bytes += size
+                counted += 1
+        print(f"\n── {t('Virtual machines')} ──")
+        print(
+            f"   {t('Defined'):<18}: {len(states)}"
+            f"  ({running} {t('running')},"
+            f" {len(states) - running} {t('stopped')})"
+        )
+        if counted:
+            print(
+                f"   {t('Disk used'):<18}:"
+                f" {mon._fmt_size(total_bytes)}"
+                f"  ({counted} {self._plural(t('image'), counted)})"
+            )
 
     def _qemu_download_image(self):
         script_path = self._qemu_script_path()
@@ -3421,7 +3552,20 @@ class TODO:
     # Suggestions proposées aux invites de taille. Les lettres démarrent à « a »
     # pour ne JAMAIS entrer en conflit avec une valeur tapée directement : toute
     # saisie commençant par un chiffre est lue comme la valeur elle-même.
-    _QEMU_DISK_PRESETS = ("20G", "40G", "60G", "80G", "120G", "200G")
+    _QEMU_DISK_PRESETS = (
+        "20G",
+        "40G",
+        "60G",
+        "80G",
+        "120G",
+        "200G",
+        "400G",
+        "600G",
+        "800G",
+        "1T",
+        "1.5T",
+        "2T",
+    )
     # Jusqu'à 256 Go : les hôtes de virtualisation récents dépassent largement
     # 32 Go, et l'invite est en Mo — l'équivalent en Go est donc affiché.
     _QEMU_RAM_PRESETS = (
@@ -3435,6 +3579,31 @@ class TODO:
         131072,
         262144,
     )
+
+    @staticmethod
+    def _plural(word, count):
+        """Accord simple : « échec » / « échecs ». Vaut pour fr et en."""
+        return word if abs(count) <= 1 else f"{word}s"
+
+    @staticmethod
+    def _qemu_parse_disk(value):
+        """Normalise une taille de disque en « <n>G », ou None si invalide.
+
+        Accepte « 60 », « 60G », « 1T », « 1,5T ». Le suffixe T est converti
+        (1 T = 1024 G) : tout le reste de la chaîne — nom de fichier qcow2,
+        argument --disk-size — raisonne en gigaoctets.
+        """
+        txt = value.strip().upper().replace(",", ".")
+        factor = 1
+        if txt.endswith("T"):
+            factor, txt = 1024, txt[:-1]
+        elif txt.endswith("G"):
+            txt = txt[:-1]
+        try:
+            gigs = int(float(txt) * factor)
+        except ValueError:
+            return None
+        return f"{gigs}G" if gigs > 0 else None
 
     @staticmethod
     def _qemu_ram_label(mb):
@@ -3542,19 +3711,16 @@ class TODO:
             ).strip()
             if new:
                 names[i] = new
-            dk = (
-                self._qemu_ask_value(
-                    t("New disk size in G, blank = keep"),
-                    sel[i][3],
-                    self._QEMU_DISK_PRESETS,
-                )
-                .upper()
-                .rstrip("G")
+            dk = self._qemu_ask_value(
+                t("New disk size in G, blank = keep"),
+                sel[i][3],
+                self._QEMU_DISK_PRESETS,
             )
             if dk:
-                try:
-                    sel[i][3] = f"{int(float(dk))}G"
-                except ValueError:
+                parsed = self._qemu_parse_disk(dk)
+                if parsed:
+                    sel[i][3] = parsed
+                else:
                     print(f"    ⚠ {t('Invalid size.')}")
             rm = self._qemu_ask_value(
                 t("New RAM in MB, blank = keep"),
