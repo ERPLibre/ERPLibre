@@ -1399,6 +1399,42 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = garder) :",
         "en": "Choice (number, blank = keep):",
     },
+    "Odoo migration interface": {
+        "fr": "🚚 Interface de la migration Odoo",
+        "en": "🚚 Odoo migration interface",
+    },
+    "No migration in progress to resume.": {
+        "fr": "Aucune migration en cours à reprendre.",
+        "en": "No migration in progress to resume.",
+    },
+    "Quit without doing anything": {
+        "fr": "Quitter sans rien faire",
+        "en": "Quit without doing anything",
+    },
+    "Version bumps": {
+        "fr": "Montées de version",
+        "en": "Version bumps",
+    },
+    "Step": {
+        "fr": "Étape",
+        "en": "Step",
+    },
+    "Detail": {
+        "fr": "Détail",
+        "en": "Detail",
+    },
+    "Enter on a step or a version = replay from there": {
+        "fr": "Entrée sur une étape ou une version = rejouer depuis là",
+        "en": "Enter on a step or a version = replay from there",
+    },
+    "New migration": {
+        "fr": "Nouvelle migration",
+        "en": "New migration",
+    },
+    "Keep the zip only": {
+        "fr": "Garder seulement le zip",
+        "en": "Keep the zip only",
+    },
     "Reset all preferences": {
         "fr": "🧹 Réinitialiser toutes les préférences",
         "en": "🧹 Reset all preferences",

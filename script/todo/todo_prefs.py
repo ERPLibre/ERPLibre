@@ -28,6 +28,8 @@ DEFAULTS = {
     # Affichage pendant le déploiement : "cli" (sortie texte, facile à copier
     # depuis le terminal) ou "tui" (blocs repliables + copie OSC 52).
     "qemu_deploy_progress": "cli",
+    # Interface de la migration Odoo : "ask" / "tui" / "cli".
+    "migration_ui": "ask",
 }
 
 

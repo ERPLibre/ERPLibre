@@ -156,54 +156,91 @@ class TodoUpgrade:
             return "✅", t("done")
         return "⏳", t("partially done")
 
-    def prompt_resume(self, old_dct_progression):
-        """Show where the migration stands and ask what to do next.
+    def resume_context(self, old_dct_progression):
+        """Everything the resume screen shows, as plain data.
 
-        Returns (progression, changed). The previous menu exposed internal key
-        names (« Reuse database without state_4 »), which said nothing about
-        what would actually happen. This shows the real state of every step and
-        lets the user replay from any of them.
+        No I/O: the line-by-line prompt and the TUI both render THIS, so the
+        two can never describe the migration differently.
         """
         migration_file = old_dct_progression.get("migration_file") or "?"
+        steps = []
+        for step, label in MIGRATION_STEP:
+            icon, detail = self.step_status(old_dct_progression, step)
+            steps.append(
+                {
+                    "step": step,
+                    "icon": icon,
+                    "label": t(label),
+                    "detail": detail,
+                }
+            )
+        lst_version = self.version_bumps(old_dct_progression)
+        done = old_dct_progression.get("state_4_upgrade_odoo_lst") or []
+        return {
+            "file": os.path.basename(migration_file),
+            "database": old_dct_progression.get("config_database_name") or "?",
+            "target": old_dct_progression.get("target_odoo_version") or "?",
+            "started": old_dct_progression.get("date_create") or "?",
+            "steps": steps,
+            "versions": [
+                {
+                    "version": version,
+                    "done": bool(i < len(done) and done[i]),
+                }
+                for i, version in enumerate(lst_version)
+            ],
+        }
+
+    @staticmethod
+    def print_resume(ctx):
+        """Render the resume screen on the terminal."""
         print()
         print(f"📍 {t('Migration in progress')}")
         # Pad in code, not in the translations: the labels differ in length
         # between languages and a hardcoded padding misaligns the colons.
-        print(f"   {t('File'):<9}: {os.path.basename(migration_file)}")
+        print(f"   {t('File'):<9}: {ctx['file']}")
         print(
-            f"   {t('Database'):<9}: "
-            f"{old_dct_progression.get('config_database_name') or '?'}"
-            f"   ·   {t('Target')} :"
-            f" {old_dct_progression.get('target_odoo_version') or '?'}"
+            f"   {t('Database'):<9}: {ctx['database']}"
+            f"   ·   {t('Target')} : {ctx['target']}"
         )
-        print(
-            f"   {t('Started'):<9}: "
-            f"{old_dct_progression.get('date_create')}"
-        )
+        print(f"   {t('Started'):<9}: {ctx['started']}")
         print()
         print(f"   {t('Steps')} :")
-        for step, label in MIGRATION_STEP:
-            icon, detail = self.step_status(old_dct_progression, step)
-            print(f"     [{step}] {icon} {t(label):<44} {detail}")
+        for item in ctx["steps"]:
+            print(
+                f"     [{item['step']}] {item['icon']} "
+                f"{item['label']:<44} {item['detail']}"
+            )
         print()
-        lst_version = self.version_bumps(old_dct_progression)
         print(f"   [c] {t('Continue where it stopped')}")
         print(
             f"   [0-4] {t('Replay from that step')}"
             f" ({t('erases the progression of that step and the next ones')})"
         )
-        if lst_version:
+        if ctx["versions"]:
+            versions = "/".join(str(v["version"]) for v in ctx["versions"])
             print(
                 f"   [4.N] {t('Replay the upgrade from version N')}"
-                f" ({'/'.join(str(v) for v in lst_version)}) —"
+                f" ({versions}) —"
                 f" {t('rebuilds the intermediate database')}"
             )
         print(f"   [n] {t('New migration, erase everything')}")
         print(f"   [r] {t('Keep the zip only, ask every question again')}")
-        answer = input(f"💬 {t('Your choice')} : ").strip().lower()
+        print(f"   [q] {t('Quit without doing anything')}")
+
+    def apply_resume_answer(self, old_dct_progression, answer, ctx):
+        """Turn the answer into (progression, changed), or None to quit.
+
+        THE decision point, shared by both interfaces: the TUI returns the
+        same answer strings as the prompt, so this logic is written once.
+        """
+        answer = (answer or "").strip().lower()
+        lst_version = [v["version"] for v in ctx["versions"]]
 
         if answer in ("", "c"):
             return old_dct_progression, False
+        if answer == "q":
+            return None
         if answer == "n":
             return {}, True
         if answer == "r":
@@ -230,6 +267,57 @@ class TodoUpgrade:
 
         print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
         return old_dct_progression, False
+
+    def prompt_resume(self, old_dct_progression, use_tui=False):
+        """Show where the migration stands and ask what to do next.
+
+        Returns (progression, changed), or None if the user quits. The old
+        menu exposed internal key names (« Reuse database without state_4 »),
+        which said nothing about what would happen; this shows the real state
+        of every step and lets the user replay from any of them.
+        """
+        ctx = self.resume_context(old_dct_progression)
+        answer = None
+        if use_tui:
+            answer = self.resume_tui(ctx)
+        if answer is None:
+            self.print_resume(ctx)
+            answer = input(f"💬 {t('Your choice')} : ")
+        return self.apply_resume_answer(old_dct_progression, answer, ctx)
+
+    @staticmethod
+    def ask_ui():
+        """Interface of the migration: TUI or line-by-line prompts.
+
+        The preference can settle it in advance (TODO > Configuration);
+        « ask » asks. Same contract as the QEMU deployment.
+        """
+        try:
+            from script.todo import todo_prefs
+
+            pref = todo_prefs.get("migration_ui")
+        except Exception:
+            pref = "ask"
+        if pref in ("tui", "cli"):
+            return pref
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')} *")
+        print(f"  [2] {t('Classic questions (line by line)')}")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        answer = input(t("Choice (1-2, default 1): ")).strip()
+        return "cli" if answer == "2" else "tui"
+
+    @staticmethod
+    def resume_tui(ctx):
+        """Resume screen as a TUI. Returns the SAME answer strings as the
+        prompt, or None when textual is missing (fall back to the prompt)."""
+        try:
+            from script.todo.migration_form import run_resume_tui
+
+            return run_resume_tui(ctx)
+        except ImportError:
+            print(t("Install textual for the dashboard (pip)."))
+            return None
 
     @staticmethod
     def version_bumps(dct_progression):
@@ -634,14 +722,21 @@ class TodoUpgrade:
         self.dct_module_per_dct_version_path = {}
         default_database_name = "test"
 
+        use_tui = self.ask_ui() == "tui"
+
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
             old_dct_progression = self.read_progression()
             if old_dct_progression:
-                self.dct_progression, changed = self.prompt_resume(
-                    old_dct_progression
-                )
+                resumed = self.prompt_resume(old_dct_progression, use_tui)
+                if resumed is None:
+                    return
+                self.dct_progression, changed = resumed
                 if changed:
                     self.write_config()
+            elif use_tui:
+                print(f"ℹ️  {t('No migration in progress to resume.')}")
+        elif use_tui:
+            print(f"ℹ️  {t('No migration in progress to resume.')}")
 
         if "migration_file" in self.dct_progression:
             self.file_path = self.dct_progression["migration_file"]

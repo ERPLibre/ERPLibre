@@ -642,6 +642,14 @@ class TODO:
                 ("tui", "TUI, collapsible blocks per VM"),
             ),
         ),
+        "migration_ui": (
+            "Odoo migration interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
     }
 
     def _pref_label(self, key):
@@ -690,6 +698,12 @@ class TODO:
                         f"({self._pref_label('qemu_deploy_progress')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('Odoo migration interface')}  "
+                        f"({self._pref_label('migration_ui')})"
+                    )
+                },
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -704,6 +718,8 @@ class TODO:
             elif status == "3":
                 self._pref_edit("qemu_deploy_progress")
             elif status == "4":
+                self._pref_edit("migration_ui")
+            elif status == "5":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:
