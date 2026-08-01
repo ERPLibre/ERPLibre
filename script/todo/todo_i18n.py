@@ -2457,6 +2457,76 @@ TRANSLATIONS = {
         "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
         "en": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
     },
+    # Database migration - resume menu
+    "Migration in progress": {
+        "fr": "Migration en cours",
+        "en": "Migration in progress",
+    },
+    "File": {"fr": "Fichier", "en": "File"},
+    "Database": {"fr": "Base", "en": "Database"},
+    "Target": {"fr": "Cible", "en": "Target"},
+    "Started": {"fr": "Démarrée", "en": "Started"},
+    "Steps": {"fr": "Étapes", "en": "Steps"},
+    "Prepare the environment": {
+        "fr": "Préparer l'environnement",
+        "en": "Prepare the environment",
+    },
+    "Restore and neutralize the database": {
+        "fr": "Restaurer et neutraliser la base",
+        "en": "Restore and neutralize the database",
+    },
+    "Update all addons": {
+        "fr": "Mettre à jour tous les modules",
+        "en": "Update all addons",
+    },
+    "Clean up before data migration": {
+        "fr": "Nettoyer avant la migration des données",
+        "en": "Clean up before data migration",
+    },
+    "Upgrade version by version (OpenUpgrade)": {
+        "fr": "Monter de version en version (OpenUpgrade)",
+        "en": "Upgrade version by version (OpenUpgrade)",
+    },
+    "not started": {"fr": "non démarrée", "en": "not started"},
+    "done": {"fr": "terminée", "en": "done"},
+    "partially done": {"fr": "partielle", "en": "partially done"},
+    "version bumps migrated": {
+        "fr": "montées de version faites",
+        "en": "version bumps migrated",
+    },
+    "Continue where it stopped": {
+        "fr": "Continuer là où ça s'est arrêté",
+        "en": "Continue where it stopped",
+    },
+    "Replay from that step": {
+        "fr": "Reprendre à partir de cette étape",
+        "en": "Replay from that step",
+    },
+    "erases the progression of that step and the next ones": {
+        "fr": "efface la progression de cette étape et des suivantes",
+        "en": "erases the progression of that step and the next ones",
+    },
+    "New migration, erase everything": {
+        "fr": "Nouvelle migration, tout effacer",
+        "en": "New migration, erase everything",
+    },
+    "Keep the zip only, ask every question again": {
+        "fr": "Garder seulement le zip, reposer toutes les questions",
+        "en": "Keep the zip only, ask every question again",
+    },
+    "Your choice": {"fr": "Votre choix", "en": "Your choice"},
+    "Unknown choice, continuing where it stopped": {
+        "fr": "Choix inconnu, on continue là où ça s'est arrêté",
+        "en": "Unknown choice, continuing where it stopped",
+    },
+    "Replaying from step": {
+        "fr": "Reprise à partir de l'étape",
+        "en": "Replaying from step",
+    },
+    "The progression file is invalid, ignoring it": {
+        "fr": "Le fichier de progression est invalide, on l'ignore",
+        "en": "The progression file is invalid, ignoring it",
+    },
 }
 
 

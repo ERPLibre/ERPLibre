@@ -16,6 +16,14 @@ import todo_file_browser
 
 from script.todo.version_manager import get_odoo_version
 
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - fallback when i18n is unavailable
+
+    def t(key: str) -> str:
+        return key
+
+
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
 )
@@ -50,6 +58,17 @@ LOCAL_MANIFEST = os.path.join(
 # be dropped depends on the database, so that choice is never versioned.
 PATH_MIGRATION_GLOBAL = os.path.join("script", "odoo", "migration")
 PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
+# Steps of the migration, in order. Each one owns the progression keys prefixed
+# with « state_<index> ». Rewinding to a step drops its keys and every later
+# one, so the run replays from there. Labels go through t(): the key IS the
+# English string, as everywhere else in this project.
+MIGRATION_STEP = [
+    (0, "Prepare the environment"),
+    (1, "Restore and neutralize the database"),
+    (2, "Update all addons"),
+    (3, "Clean up before data migration"),
+    (4, "Upgrade version by version (OpenUpgrade)"),
+]
 
 
 class TodoUpgrade:
@@ -74,6 +93,149 @@ class TodoUpgrade:
             self.dct_progression["command_executed"] = value
         with open(UPGRADE_DATABASE_CONFIG_LOG, "w") as f:
             json.dump(self.dct_progression, f, indent=4)
+
+    @staticmethod
+    def read_progression():
+        """Return the saved progression, or an empty dict if unreadable."""
+        try:
+            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
+                return json.load(f)
+        except (json.decoder.JSONDecodeError, OSError):
+            print(
+                f"⚠️ {t('The progression file is invalid, ignoring it')}:"
+                f" {UPGRADE_DATABASE_CONFIG_LOG}"
+            )
+            return {}
+
+    @staticmethod
+    def step_status(dct_progression, step):
+        """Return (icon, detail) telling how far a migration step went.
+
+        Steps 0 to 3 are plain booleans. Step 4 keeps one list per version, so
+        its detail reports which version bumps are already migrated.
+        """
+        prefix = f"state_{step}_"
+        dct_flag = {
+            key: value
+            for key, value in dct_progression.items()
+            if key.startswith(prefix)
+        }
+        if not dct_flag:
+            return "⬜", t("not started")
+
+        if step == 4:
+            lst_done = dct_progression.get("state_4_upgrade_odoo_lst") or []
+            # The data migration list only appears once a bump succeeds, so the
+            # number of bumps comes from any per-version list (« *_odoo_lst »).
+            total = max(
+                [
+                    len(value)
+                    for key, value in dct_progression.items()
+                    if key.startswith("state_4_")
+                    and key.endswith("_odoo_lst")
+                    and isinstance(value, list)
+                ]
+                or [0]
+            )
+            done = sum(1 for item in lst_done if item)
+            detail = f"{done}/{total} " + t("version bumps migrated")
+            # Name the versions when the target is known: the list ends on the
+            # target, so the first bump is target - total + 1.
+            try:
+                last = int(float(dct_progression["target_odoo_version"]))
+                detail += "  ·  " + " ".join(
+                    f"{last - total + 1 + i}"
+                    f"{'✓' if i < len(lst_done) and lst_done[i] else ''}"
+                    for i in range(total)
+                )
+            except (KeyError, TypeError, ValueError):
+                pass
+            return ("✅" if total and done == total else "⏳"), detail
+
+        if all(dct_flag.values()):
+            return "✅", t("done")
+        return "⏳", t("partially done")
+
+    def prompt_resume(self, old_dct_progression):
+        """Show where the migration stands and ask what to do next.
+
+        Returns (progression, changed). The previous menu exposed internal key
+        names (« Reuse database without state_4 »), which said nothing about
+        what would actually happen. This shows the real state of every step and
+        lets the user replay from any of them.
+        """
+        migration_file = old_dct_progression.get("migration_file") or "?"
+        print()
+        print(f"📍 {t('Migration in progress')}")
+        # Pad in code, not in the translations: the labels differ in length
+        # between languages and a hardcoded padding misaligns the colons.
+        print(f"   {t('File'):<9}: {os.path.basename(migration_file)}")
+        print(
+            f"   {t('Database'):<9}: "
+            f"{old_dct_progression.get('config_database_name') or '?'}"
+            f"   ·   {t('Target')} :"
+            f" {old_dct_progression.get('target_odoo_version') or '?'}"
+        )
+        print(
+            f"   {t('Started'):<9}: "
+            f"{old_dct_progression.get('date_create')}"
+        )
+        print()
+        print(f"   {t('Steps')} :")
+        for step, label in MIGRATION_STEP:
+            icon, detail = self.step_status(old_dct_progression, step)
+            print(f"     [{step}] {icon} {t(label):<44} {detail}")
+        print()
+        print(f"   [c] {t('Continue where it stopped')}")
+        print(
+            f"   [0-4] {t('Replay from that step')}"
+            f" ({t('erases the progression of that step and the next ones')})"
+        )
+        print(f"   [n] {t('New migration, erase everything')}")
+        print(f"   [r] {t('Keep the zip only, ask every question again')}")
+        answer = input(f"💬 {t('Your choice')} : ").strip().lower()
+
+        if answer in ("", "c"):
+            return old_dct_progression, False
+        if answer == "n":
+            return {}, True
+        if answer == "r":
+            return {
+                "migration_file": old_dct_progression.get("migration_file"),
+                "date_create": old_dct_progression.get("date_create"),
+            }, True
+        if answer.isdigit() and 0 <= int(answer) <= MIGRATION_STEP[-1][0]:
+            return (
+                self.rewind_progression(old_dct_progression, int(answer)),
+                True,
+            )
+
+        print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+        return old_dct_progression, False
+
+    @staticmethod
+    def rewind_progression(old_dct_progression, step):
+        """Drop the progression of `step` and of every later step.
+
+        Configuration answers (config_*), the zip and the target version are
+        kept: they are decisions, not progress. Only « state_* » is rewound.
+        """
+        dct_kept = {}
+        for key, value in old_dct_progression.items():
+            if not key.startswith("state_"):
+                dct_kept[key] = value
+                continue
+            index = key[len("state_") :].split("_", 1)[0]
+            if index.isdigit() and int(index) < step:
+                dct_kept[key] = value
+        # The module search fills an in-memory dict the later steps rely on;
+        # it must run again even when step 0 itself is kept.
+        dct_kept["state_0_search_missing_module"] = False
+        print(
+            f"⏪ {t('Replaying from step')} {step} —"
+            f" {t(dict(MIGRATION_STEP)[step])}"
+        )
+        return dct_kept
 
     def on_file_selected(self, file_path):
         self.file_path = file_path
@@ -407,97 +569,13 @@ class TodoUpgrade:
         default_database_name = "test"
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
-            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                try:
-                    old_dct_progression = json.load(f)
-                    self.dct_progression = {
-                        "migration_file": old_dct_progression.get(
-                            "migration_file"
-                        ),
-                        # More useful to ask this question each time
-                        "target_odoo_version": old_dct_progression.get(
-                            "target_odoo_version"
-                        ),
-                        "date_create": old_dct_progression.get("date_create"),
-                    }
-                except json.decoder.JSONDecodeError:
-                    print(
-                        f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
-                    )
-
-            print(
-                f"✨ Detected migration \"{self.dct_progression.get('migration_file')}\" "
-                f"to version \"{self.dct_progression.get('target_odoo_version')}\", "
-                f"please select an option."
-            )
-
-            print("[1] Erase progression for a new migration")
-            print("[2] Reuse database with new process")
-            print(
-                "[3] Reuse database without state_4, before looping on next version"
-            )
-            print("[4] Reuse database without configuration")
-            erase_progression_input = (
-                input("💬 Select an option or press to continue : ")
-                .strip()
-                .lower()
-            )
-            self.dct_progression = {}
-            if erase_progression_input in ["2", "3", "4"]:
-                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                    try:
-                        old_dct_progression = json.load(f)
-                        self.dct_progression = {
-                            "migration_file": old_dct_progression.get(
-                                "migration_file"
-                            ),
-                            # More useful to ask this question each time
-                            # "target_odoo_version": old_dct_progression.get(
-                            #     "target_odoo_version"
-                            # ),
-                            "date_create": old_dct_progression.get(
-                                "date_create"
-                            ),
-                        }
-                        for key, value in old_dct_progression.items():
-                            if erase_progression_input == "3":
-                                if (
-                                    key.startswith("state_0")
-                                    or key.startswith("state_1")
-                                    or key.startswith("state_2")
-                                    or key.startswith("state_3")
-                                ):
-                                    self.dct_progression[key] = value
-                                if key.startswith(f"config_state") and not (
-                                    key.startswith(f"config_state_0")
-                                    or key.startswith(f"config_state_1")
-                                    or key.startswith(f"config_state_2")
-                                    or key.startswith(f"config_state_3")
-                                ):
-                                    continue
-                            if (
-                                key.startswith("config_")
-                                and erase_progression_input != "4"
-                            ):
-                                self.dct_progression[key] = value
-                        # Force to search missing module to fill dict
-                        self.dct_progression[
-                            "state_0_search_missing_module"
-                        ] = False
-                    except json.decoder.JSONDecodeError:
-                        print(
-                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
-                        )
-
-                self.write_config()
-            elif erase_progression_input not in ["1"]:
-                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                    try:
-                        self.dct_progression = json.load(f)
-                    except json.decoder.JSONDecodeError:
-                        print(
-                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
-                        )
+            old_dct_progression = self.read_progression()
+            if old_dct_progression:
+                self.dct_progression, changed = self.prompt_resume(
+                    old_dct_progression
+                )
+                if changed:
+                    self.write_config()
 
         if "migration_file" in self.dct_progression:
             self.file_path = self.dct_progression["migration_file"]
