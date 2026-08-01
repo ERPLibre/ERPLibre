@@ -3070,18 +3070,15 @@ class TODO:
         # sshd répondait au moins (mieux qu'un abandon silencieux).
         return ssh_up
 
-    # Paquets QEMU/libvirt pour le profil « Déploiement » (nos 3 gestionnaires).
-    # Paquets SYSTÈME du profil « ERPLibre Déploiement » : QEMU/libvirt/
-    # virtinst + libguestfs (virt-resize/virt-filesystems, requis pour la
-    # RÉDUCTION SÛRE de disque). Ce sont des binaires système (OCaml) : ils ne
-    # peuvent PAS vivre dans .venv.erplibre (venv Python) — d'où leur place ici.
-    _QEMU_QEMU_PKGS = (
-        "(sudo apt-get install -y qemu-kvm libvirt-daemon-system virtinst "
-        "cloud-image-utils libguestfs-tools 2>/dev/null || sudo dnf install "
-        "-y qemu-kvm libvirt virt-install cloud-utils guestfs-tools "
-        "2>/dev/null || sudo pacman -S --needed --noconfirm qemu-desktop "
-        "libvirt virt-install libguestfs 2>/dev/null || true)"
-    )
+    # Préparation hôte QEMU/libvirt du profil « ERPLibre Déploiement ».
+    # Délègue à deploy_qemu.py --setup-host : les noms de paquets y sont déjà
+    # définis pour apt/dnf/pacman/zypper/brew (TOOL_PACKAGES, DAEMON_PACKAGES),
+    # et il fait ce que l'ancien one-liner ne faisait PAS — démarrer le démon,
+    # ajouter l'utilisateur au groupe libvirt et activer le réseau « default ».
+    # Sans le groupe, virt-install retombe sur qemu:///session où « default »
+    # n'existe pas : la VM échoue alors que tous les paquets sont installés.
+    # L'ancien one-liner finissait par « || true » et masquait ses erreurs.
+    _QEMU_QEMU_PKGS = "./script/qemu/deploy_qemu.py --setup-host --assume-yes"
 
     def _qemu_ask_prod(self):
         """Environnement cible : dev (défaut) ou prod. En PROD : ERPLibre est

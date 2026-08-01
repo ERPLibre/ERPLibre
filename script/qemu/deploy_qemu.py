@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import grp
 import hashlib
 import os
 import re
@@ -148,6 +149,7 @@ def host_arch() -> str:
         "s390x": "s390x",
     }.get(machine, "amd64")
 
+
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
@@ -237,7 +239,9 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
         try:
-            with urllib.request.urlopen(index, timeout=30) as resp:  # noqa: S310
+            with urllib.request.urlopen(
+                index, timeout=30
+            ) as resp:  # noqa: S310
                 html = resp.read().decode(errors="replace")
         except Exception as exc:  # pragma: no cover - dépend du réseau
             last_err = str(exc)
@@ -377,6 +381,14 @@ def need_tool(name: str) -> None:
 # --------------------------------------------------------------------------- #
 # Outils indispensables au déploiement complet (le mode --download-only n'en
 # requiert aucun).
+# URI libvirt visée par TOUS les clients (virsh, virt-install). À ne jamais
+# laisser implicite : pour un utilisateur non root, libvirt choisit
+# « qemu:///session », où le réseau « default » N'EXISTE PAS — virt-install
+# échoue alors sur « --network network=default » de façon incompréhensible.
+# Appartenir au groupe libvirt donne le DROIT d'accéder à qemu:///system mais
+# ne change PAS l'URI par défaut : il faut l'imposer.
+LIBVIRT_URI = "qemu:///system"
+
 REQUIRED_TOOLS: tuple[str, ...] = ("qemu-img", "virt-install", "virsh")
 # Pour construire le seed cloud-init il faut AU MOINS un de ces outils.
 SEED_TOOLS: tuple[str, ...] = ("cloud-localds", "genisoimage")
@@ -613,11 +625,142 @@ def ensure_libvirt_service(runner: Runner) -> None:
     )
 
 
-def ensure_tools(runner: Runner, assume_yes: bool, no_install: bool) -> None:
+def invoking_user() -> str:
+    """Utilisateur réel derrière l'appel, même sous sudo."""
+    return os.environ.get("SUDO_USER") or getpass.getuser()
+
+
+def ensure_libvirt_group(runner: Runner) -> bool:
+    """Ajoute l'utilisateur au groupe libvirt. Renvoie True s'il l'était déjà.
+
+    SANS ce groupe, les clients libvirt d'un utilisateur non root retombent sur
+    « qemu:///session », où le réseau « default » N'EXISTE PAS : virt-install
+    échoue alors sur « --network network=default » alors que tous les paquets
+    sont pourtant installés. C'est le trou qui manquait au profil
+    « ERPLibre Déploiement » : il installait QEMU sans jamais rendre
+    qemu:///system accessible.
+    """
+    user = invoking_user()
+    if user == "root":
+        return True
+    lst_group = []
+    for group in ("libvirt", "kvm"):
+        try:
+            grp.getgrnam(group)
+        except KeyError:
+            continue  # groupe absent sur cette distro
+        try:
+            if user in grp.getgrnam(group).gr_mem:
+                continue
+        except KeyError:
+            pass
+        lst_group.append(group)
+    if not lst_group:
+        print(f"  Utilisateur « {user} » déjà dans les groupes libvirt/kvm.")
+        return True
+    for group in lst_group:
+        print(f"  Ajout de « {user} » au groupe « {group} »…")
+        runner.run(
+            ["usermod", "-aG", group, user], privileged=True, check=False
+        )
+    return False
+
+
+def kernel_modules_stale() -> str:
+    """Renvoie un message si les modules du noyau EN COURS ont disparu.
+
+    Sur une distro roulante, « make install_os » met le noyau à jour et le
+    gestionnaire de paquets SUPPRIME /lib/modules/<noyau en cours>. Tant qu'on
+    n'a pas redémarré, « modprobe bridge » échoue et libvirt ne peut pas créer
+    virbr0 : « Unable to create bridge virbr0: Package not installed ». Aucun
+    paquet ne corrige ça, seul un redémarrage le fait — d'où ce diagnostic.
+    """
+    if not shutil.which("uname"):
+        return ""
+    running = os.uname().release
+    path_module = f"/lib/modules/{running}"
+    if os.path.isdir(path_module):
+        return ""
+    return (
+        f"Le noyau en cours ({running}) n'a plus ses modules "
+        f"({path_module} absent) : il a été mis à jour depuis le démarrage.\n"
+        "  libvirt ne pourra pas créer le pont virbr0 tant que la machine\n"
+        "  n'aura pas REDÉMARRÉ. Redémarrez, puis relancez --setup-host."
+    )
+
+
+def setup_host(runner: Runner, assume_yes: bool, no_install: bool) -> None:
+    """Prépare l'hôte à faire tourner des VM : paquets, démon, groupe, réseau.
+
+    Point d'entrée unique du profil d'installation « ERPLibre Déploiement ».
+    Il réutilise les mêmes fonctions que le déploiement, donc les noms de
+    paquets restent définis à UN SEUL endroit (TOOL_PACKAGES /
+    DAEMON_PACKAGES) et restent valides pour apt, dnf, pacman, zypper et brew.
+    """
+    print("\n== Préparation de l'hôte pour QEMU/libvirt ==")
+    # ensure_tools installe les clients ET, si le démon manque, les paquets de
+    # DAEMON_PACKAGES (qemu système + libvirt + firmware UEFI), puis démarre le
+    # service. ensure_emulator ne sert QU'À l'émulation croisée (arm64 sur x86)
+    # et n'a pas de clé pour l'architecture hôte.
+    ensure_tools(runner, assume_yes, no_install, force_daemon=True)
+    ensure_libvirt_service(runner)
+    already_in_group = ensure_libvirt_group(runner)
+    # Diagnostiqué AVANT le réseau : sans les modules du noyau en cours, le
+    # pont virbr0 est impossible et l'erreur de virsh est indéchiffrable.
+    stale = kernel_modules_stale()
+    if stale:
+        print(f"\n⚠ {stale}")
+    ensure_network("default", runner)
+
+    if runner.dry_run:
+        print("\n[dry-run] Rien n'a été modifié, vérification ignorée.")
+        return
+
+    print("\n== Vérification ==")
+    ok = libvirt_ready(runner.use_sudo)
+    print(f"  hyperviseur qemu:///system : {'OK' if ok else 'INJOIGNABLE'}")
+    active, autostart = network_state("default", runner.use_sudo)
+    print(
+        f"  réseau libvirt « default »  : "
+        f"{'actif' if active else 'INACTIF'}"
+        f" / {'autostart' if autostart else 'PAS autostart'}"
+    )
+    if not (ok and active):
+        sys.exit(
+            "Erreur : l'hôte n'est pas prêt.\n"
+            + (f"  {stale}\n" if stale else "")
+            + "  Sinon vérifiez :\n"
+            "    sudo systemctl enable --now libvirtd\n"
+            "    sudo virsh -c qemu:///system net-start default"
+        )
+    if not already_in_group:
+        print(
+            f"\n⚠ « {invoking_user()} » vient d'être ajouté au groupe libvirt."
+            " Les groupes ne s'appliquent qu'aux NOUVELLES sessions :"
+            " reconnectez-vous (ou « newgrp libvirt »), sinon virt-install"
+            " continuera d'utiliser qemu:///session et le réseau « default »"
+            " restera introuvable."
+        )
+    print("\nHôte prêt.")
+
+
+def ensure_tools(
+    runner: Runner,
+    assume_yes: bool,
+    no_install: bool,
+    force_daemon: bool = False,
+) -> None:
     """Vérifie outils, démon libvirt et émulateur ; installe/démarre ce qui
-    manque, puis vérifie la connexion à l'hyperviseur."""
+    manque, puis vérifie la connexion à l'hyperviseur.
+
+    `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
+    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
+    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
+    n'était jamais installé -> « Failed to start network default ». Les
+    gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
+    """
     missing = missing_tools()
-    need_daemon = daemon_missing()
+    need_daemon = daemon_missing() or force_daemon
 
     # Tout est là et l'hyperviseur répond : rien à faire.
     if not missing and not need_daemon and libvirt_ready(runner.use_sudo):
@@ -1138,7 +1281,13 @@ def network_name(network_arg: str) -> str | None:
 
 def network_state(name: str, use_sudo: bool) -> tuple[bool, bool]:
     """(actif, autostart) d'un réseau libvirt, via « virsh net-info »."""
-    cmd = (["sudo"] if use_sudo else []) + ["virsh", "net-info", name]
+    cmd = (["sudo"] if use_sudo else []) + [
+        "virsh",
+        "-c",
+        LIBVIRT_URI,
+        "net-info",
+        name,
+    ]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
@@ -1156,9 +1305,15 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         return
     if runner.dry_run:
         print(f"  [dry-run] réseau libvirt '{name}' activé si nécessaire")
-        runner.run(["virsh", "net-start", name], privileged=True, check=False)
         runner.run(
-            ["virsh", "net-autostart", name], privileged=True, check=False
+            ["virsh", "-c", LIBVIRT_URI, "net-start", name],
+            privileged=True,
+            check=False,
+        )
+        runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "net-autostart", name],
+            privileged=True,
+            check=False,
         )
         return
     active, autostart = network_state(name, runner.use_sudo)
@@ -1167,10 +1322,16 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         return
     print(f"  Configuration du réseau libvirt '{name}'…")
     if not active:
-        runner.run(["virsh", "net-start", name], privileged=True, check=False)
+        runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "net-start", name],
+            privileged=True,
+            check=False,
+        )
     if not autostart:
         runner.run(
-            ["virsh", "net-autostart", name], privileged=True, check=False
+            ["virsh", "-c", LIBVIRT_URI, "net-autostart", name],
+            privileged=True,
+            check=False,
         )
 
 
@@ -1188,6 +1349,11 @@ def virt_install(
     console_target = "sclp" if args.arch == "s390x" else "serial"
     cmd = [
         "virt-install",
+        # Sans --connect, un utilisateur non root vise qemu:///session : le
+        # réseau « default » n'y existe pas et la création échoue même quand
+        # tous les paquets sont installés et le réseau actif côté système.
+        "--connect",
+        LIBVIRT_URI,
         "--name",
         args.name,
         "--memory",
@@ -1284,7 +1450,8 @@ def wait_for_ip(name: str, use_sudo: bool, timeout: int) -> str | None:
     peut avoir PLUSIEURS baux (l'image demande d'abord une IP avec le hostname
     par défaut « ubuntu », puis cloud-init fixe le vrai hostname -> 2e bail) :
     on renvoie une IP JOIGNABLE (sshd up), sinon la plus récente, jamais
-    aveuglément la 1re (souvent le bail précoce périmé, « No route to host »)."""
+    aveuglément la 1re (souvent le bail précoce périmé, « No route to host »).
+    """
     base = (["sudo"] if use_sudo else []) + [
         "virsh",
         "domifaddr",
@@ -1545,6 +1712,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="N'installe jamais les dépendances manquantes (échoue si absentes).",
     )
     g_run.add_argument(
+        "--setup-host",
+        action="store_true",
+        help="Prépare l'hôte (paquets QEMU/libvirt, démon, groupe libvirt, "
+        "réseau default) puis quitte. Ne déploie aucune VM.",
+    )
+    g_run.add_argument(
         "--list-images",
         action="store_true",
         help="Liste les distros/versions disponibles et leurs specs, "
@@ -1588,6 +1761,19 @@ def main() -> None:
 
     if args.list_images:
         list_images()
+        return
+
+    # Préparation de l'hôte : aucune image, aucune distro cible, aucun --name.
+    # Traité AVANT la résolution de version/image pour rester utilisable seul.
+    if args.setup_host:
+        setup_host(
+            Runner(
+                use_sudo=not args.no_sudo and os.geteuid() != 0,
+                dry_run=args.dry_run,
+            ),
+            args.assume_yes,
+            args.no_install_deps,
+        )
         return
 
     versions, default_version = DISTROS[args.distro]
