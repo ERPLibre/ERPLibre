@@ -1452,6 +1452,58 @@ TRANSLATIONS = {
         "fr": "aucune VM imbriquée",
         "en": "no nested VM",
     },
+    "Create the SSH key if missing and deploy it? (Y/n): ": {
+        "fr": "Créer la clé SSH si absente et la déployer ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Create the SSH key if missing and deploy it? "
+        "(Y/n, default: yes): ",
+    },
+    "Generating an ed25519 SSH key": {
+        "fr": "Génération d'une clé SSH ed25519",
+        "en": "Generating an ed25519 SSH key",
+    },
+    "Cannot generate the key": {
+        "fr": "Impossible de générer la clé",
+        "en": "Cannot generate the key",
+    },
+    "Deploying the key on": {
+        "fr": "Déploiement de la clé sur",
+        "en": "Deploying the key on",
+    },
+    "host": {
+        "fr": "hôte",
+        "en": "host",
+    },
+    "key already accepted": {
+        "fr": "clé déjà acceptée",
+        "en": "key already accepted",
+    },
+    "deployed": {
+        "fr": "déployée(s)",
+        "en": "deployed",
+    },
+    "already there": {
+        "fr": "déjà en place",
+        "en": "already there",
+    },
+    "virt-manager detected": {
+        "fr": "virt-manager détecté",
+        "en": "virt-manager detected",
+    },
+    "virt-manager: every connection already there": {
+        "fr": "virt-manager : toutes les connexions sont déjà là",
+        "en": "virt-manager: every connection already there",
+    },
+    "Add the missing connections to virt-manager? (Y/n): ": {
+        "fr": "Ajouter les connexions manquantes à virt-manager ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Add the missing connections to virt-manager? "
+        "(Y/n, default: yes): ",
+    },
+    "Restart virt-manager if it is open.": {
+        "fr": "Redémarrer virt-manager s'il est ouvert.",
+        "en": "Restart virt-manager if it is open.",
+    },
     "SSH hosts written": {
         "fr": "Hôtes SSH écrits",
         "en": "SSH hosts written",

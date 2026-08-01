@@ -2,6 +2,7 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import ast
 import configparser
 import datetime
 import getpass
@@ -1318,19 +1319,207 @@ class TODO:
         names = self._qemu_pick_domains()
         if not names:
             return
+        deploy_key = self._is_yes_default_yes(
+            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
+        )
         ip_map = self._qemu_resolve_ips(names, timeout=60)
-        written = 0
+        written = []
         for name in names:
             ip = ip_map.get(name)
             if not ip:
                 print(f"  ⏭  {name}: {t('no IP')}")
                 continue
             self._write_ssh_config_entry(name, "erplibre", ip)
-            written += 1
+            written.append(name)
         print(
-            f"\n✅ {written} {self._plural(t('entry'), written)}"
-            f" {t('written')} ({len(names) - written} {t('skipped')})"
+            f"\n✅ {len(written)} {self._plural(t('entry'), len(written))}"
+            f" {t('written')} ({len(names) - len(written)} {t('skipped')})"
         )
+        if deploy_key:
+            self._ssh_deploy_keys(written)
+
+    def _ssh_ensure_key(self):
+        """Chemin de la clé PUBLIQUE, générée si aucune n'existe.
+
+        Sans clé, ssh-copy-id n'a rien à déployer. On en crée une ed25519 sans
+        passphrase — le même choix que `deploy_qemu.ensure_ssh_key`, pour que
+        les VM créées et celles adoptées ici partagent la même clé."""
+        existing = self._qemu_default_ssh_key()
+        if existing:
+            return existing
+        path = os.path.expanduser("~/.ssh/id_ed25519")
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        print(f"🔑 {t('Generating an ed25519 SSH key')}: {path}")
+        try:
+            res = subprocess.run(
+                ["ssh-keygen", "-t", "ed25519", "-N", "", "-f", path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"  ⚠ {t('Cannot generate the key')}: {exc}")
+            return ""
+        if res.returncode != 0:
+            print(f"  ⚠ {t('Cannot generate the key')}: {res.stderr.strip()}")
+            return ""
+        return f"{path}.pub"
+
+    @staticmethod
+    def _ssh_key_accepted(alias):
+        """Vrai si la connexion par CLÉ passe déjà (aucun mot de passe).
+
+        `PasswordAuthentication=no` est le point clé : sans lui, ssh
+        basculerait sur le mot de passe et on croirait la clé installée."""
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "PasswordAuthentication=no",
+                    "-o",
+                    "ConnectTimeout=10",
+                    alias,
+                    "true",
+                ],
+                capture_output=True,
+                timeout=45,
+            )
+            return res.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _ssh_deploy_keys(self, aliases):
+        """Déploie la clé publique sur les hôtes qui ne l'ont pas encore.
+
+        ssh-copy-id passe par ssh, donc par ~/.ssh/config : le ProxyJump d'une
+        VM imbriquée s'applique tout seul. Le mot de passe est demandé
+        directement dans le terminal (pas de capture de la sortie), sinon
+        l'invite serait invisible."""
+        if not aliases:
+            return
+        pub = self._ssh_ensure_key()
+        if not pub:
+            return
+        print(
+            f"\n🔑 {t('Deploying the key on')} {len(aliases)} "
+            f"{self._plural(t('host'), len(aliases))} ({pub})"
+        )
+        n_ok = n_skip = n_fail = 0
+        for alias in aliases:
+            if self._ssh_key_accepted(alias):
+                print(f"  ·  {alias}: {t('key already accepted')}")
+                n_skip += 1
+                continue
+            print(f"  ⤴  ssh-copy-id {alias}")
+            try:
+                res = subprocess.run(
+                    ["ssh-copy-id", "-i", pub, alias], timeout=180
+                )
+                ok = res.returncode == 0
+            except (OSError, subprocess.SubprocessError) as exc:
+                print(f"     ⚠ {exc}")
+                ok = False
+            if ok:
+                n_ok += 1
+            else:
+                n_fail += 1
+        print(
+            f"  {n_ok} {t('deployed')} · {n_skip} {t('already there')} · "
+            f"{n_fail} {t('failed')}"
+        )
+
+    # Connexions de virt-manager : stockées dans GSettings, pas dans un
+    # fichier. Le schéma est le même depuis des années (virt-manager 5.1
+    # inclus) ; on LIT d'abord, et on n'écrit que si la lecture a marché.
+    _VIRT_MANAGER_SCHEMA = "org.virt-manager.virt-manager.connections"
+
+    def _virt_manager_uris(self):
+        """URI déjà connues de virt-manager, ou None s'il n'est pas là."""
+        if not shutil.which("virt-manager") or not shutil.which("gsettings"):
+            return None
+        try:
+            res = subprocess.run(
+                ["gsettings", "get", self._VIRT_MANAGER_SCHEMA, "uris"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if res.returncode != 0:
+            return None
+        # GSettings rend du littéral Python : ['a', 'b'] ou @as [].
+        raw = res.stdout.strip()
+        if raw.startswith("@as "):
+            raw = raw[4:].strip()
+        try:
+            value = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            return None
+        return [str(item) for item in value] if isinstance(value, list) else []
+
+    def _virt_manager_add(self, uris):
+        """Ajoute les URI manquantes à virt-manager. Renvoie le nb ajouté."""
+        current = self._virt_manager_uris()
+        if current is None:
+            return 0
+        missing = [uri for uri in uris if uri not in current]
+        if not missing:
+            print(f"  ·  {t('virt-manager: every connection already there')}")
+            return 0
+        merged = current + missing
+        literal = "[" + ", ".join(f"'{uri}'" for uri in merged) + "]"
+        try:
+            res = subprocess.run(
+                [
+                    "gsettings",
+                    "set",
+                    self._VIRT_MANAGER_SCHEMA,
+                    "uris",
+                    literal,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"  ⚠ virt-manager: {exc}")
+            return 0
+        if res.returncode != 0:
+            print(f"  ⚠ virt-manager: {res.stderr.strip()}")
+            return 0
+        for uri in missing:
+            print(f"  ✅ virt-manager: {uri}")
+        return len(missing)
+
+    def _virt_manager_offer(self, hosts):
+        """Propose d'ajouter à virt-manager les machines qui font tourner
+        libvirt, pour piloter leurs VM depuis l'interface graphique locale.
+
+        On passe par l'ALIAS SSH et non par l'IP : le transport qemu+ssh
+        utilise le binaire ssh, donc ~/.ssh/config — l'alias porte déjà
+        l'adresse ET le ProxyJump, ce qu'une IP brute ne saurait pas faire
+        pour une VM imbriquée."""
+        if self._virt_manager_uris() is None:
+            return
+        uris = ["qemu:///system"] + [
+            f"qemu+ssh://erplibre@{alias}/system" for alias in hosts
+        ]
+        print(f"\n🖥  {t('virt-manager detected')}")
+        for uri in uris:
+            print(f"     {uri}")
+        if not self._is_yes_default_yes(
+            input(t("Add the missing connections to virt-manager? (Y/n): "))
+        ):
+            return
+        added = self._virt_manager_add(uris)
+        if added:
+            # virt-manager réécrit ses réglages en quittant : s'il tourne, il
+            # écraserait ce qu'on vient d'ajouter.
+            print(f"  ⚠ {t('Restart virt-manager if it is open.')}")
 
     def _qemu_ssh_probe_remote(self, alias):
         """VM libvirt vues DEPUIS `alias` : [(nom, ip)].
@@ -1380,10 +1569,14 @@ class TODO:
             max_depth = max(1, int(raw)) if raw else self._QEMU_SSH_DEPTH
         except ValueError:
             max_depth = self._QEMU_SSH_DEPTH
+        deploy_key = self._is_yes_default_yes(
+            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
+        )
 
         # Niveau 0 : les VM locales, jointes directement.
         ip_map = self._qemu_resolve_ips(roots, timeout=60)
         aliases = {}  # alias -> (nom, ip, parent|None)
+        hosts_libvirt = []  # machines qui font tourner libvirt
         frontier = []
         for name in roots:
             ip = ip_map.get(name)
@@ -1397,6 +1590,11 @@ class TODO:
         for depth in range(1, max_depth + 1):
             if not frontier:
                 break
+            # La clé est déployée AVANT de sonder : la sonde utilise
+            # BatchMode, donc sans clé acceptée elle échouerait et le niveau
+            # suivant resterait invisible.
+            if deploy_key:
+                self._ssh_deploy_keys(frontier)
             print(
                 f"\n🔎 {t('Level')} {depth} — "
                 f"{len(frontier)} {t('machines to probe')}"
@@ -1407,6 +1605,7 @@ class TODO:
                 if found is None:
                     print(f"  ⏭  {parent}: {t('unreachable or no libvirt')}")
                     continue
+                hosts_libvirt.append(parent)
                 if not found:
                     print(f"  ·  {parent}: {t('no nested VM')}")
                     continue
@@ -1433,6 +1632,10 @@ class TODO:
         for alias, (name, ip, parent) in aliases.items():
             via = f"  ({t('via')} {parent})" if parent else ""
             print(f"  ssh {alias:<34} {ip}{via}")
+
+        # Les machines qui hébergent des VM sont celles qui valent d'être
+        # ajoutées à virt-manager : c'est de là qu'on pilote leurs invitées.
+        self._virt_manager_offer(hosts_libvirt)
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
