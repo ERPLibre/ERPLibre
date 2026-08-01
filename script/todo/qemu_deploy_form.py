@@ -453,33 +453,36 @@ def run_deploy_form(ctx, run_app: bool = True):
                 t("Disk"),
                 t("Status"),
             )
-            self._reload_catalog(select_defaults=True)
+            self._reload_catalog(first_load=True)
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
             return catalog.get(self.arch, [])
 
-        def _reload_catalog(self, select_defaults=False):
-            """Recharge la liste à cocher après un changement d'architecture.
-            Les cases cochées sont conservées quand la même entrée existe
-            encore (l'identité est (distro, version, arch), pas le rang)."""
+        def _reload_catalog(self, first_load=False):
+            """(Re)charge la liste à cocher.
+
+            RIEN n'est coché d'avance : déployer coûte cher, et une case
+            pré-cochée ferait créer une VM que personne n'a demandée. Le « * »
+            marque toujours la version principale, et F7 les coche toutes.
+
+            Après un changement d'architecture, les cases déjà cochées sont
+            conservées quand l'entrée existe encore — l'identité est
+            (distro, version, archi), pas le rang dans la liste."""
             widget = self.query_one("#f_catalog", SelectionList)
-            keep = set()
-            if not select_defaults:
-                keep = {
+            keep = (
+                set()
+                if first_load
+                else {
                     entry_key(self._entries_before[i])
                     for i in widget.selected
                     if i < len(self._entries_before)
                 }
+            )
             widget.clear_options()
             entries = self._entries()
             for i, e in enumerate(entries):
-                on = (
-                    e.get("default", False)
-                    if select_defaults
-                    else (entry_key(e) in keep)
-                )
-                widget.add_option((entry_label(e), i, on))
+                widget.add_option((entry_label(e), i, entry_key(e) in keep))
             self._entries_before = entries
             self._recompute()
 
@@ -525,6 +528,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                     f"{r['disk_gb']}G",
                     f"{icon}{r['note']}",
                 )
+            if not self.rows:
+                # Rien de coché : un total à zéro n'apprend rien, on dit
+                # plutôt comment remplir la liste.
+                self.query_one("#totals", Static).update(
+                    f"  {t('Tick what to deploy')} — "
+                    f"{t('F7 main versions · F6 all')}"
+                )
+                return
             n, cpus, ram, disk = plan_totals(self.rows)
             warn = ""
             if free_ram and ram > free_ram:

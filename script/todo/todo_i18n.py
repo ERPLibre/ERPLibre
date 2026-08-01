@@ -1475,6 +1475,14 @@ TRANSLATIONS = {
         "fr": "toutes",
         "en": "all",
     },
+    "Tick what to deploy": {
+        "fr": "Cocher ce qu'on veut déployer",
+        "en": "Tick what to deploy",
+    },
+    "F7 main versions · F6 all": {
+        "fr": "F7 versions principales · F6 tout",
+        "en": "F7 main versions · F6 all",
+    },
     "exists - skipped": {
         "fr": "existe — ignorée",
         "en": "exists - skipped",
