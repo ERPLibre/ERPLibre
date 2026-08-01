@@ -3418,6 +3418,36 @@ class TODO:
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # Suggestions proposées aux invites de taille. Les lettres démarrent à « a »
+    # pour ne JAMAIS entrer en conflit avec une valeur tapée directement : toute
+    # saisie commençant par un chiffre est lue comme la valeur elle-même.
+    _QEMU_DISK_PRESETS = ("20G", "40G", "60G", "80G", "120G", "200G")
+    _QEMU_RAM_PRESETS = (1024, 2048, 4096, 8192, 16384, 32768)
+
+    @staticmethod
+    def _qemu_ask_value(label, current, presets):
+        """Invite avec raccourcis lettrés. Renvoie '' pour « garder ».
+
+        [a]…[f] choisissent une suggestion, un chiffre reste une valeur
+        littérale, vide garde la valeur actuelle.
+        """
+        print(
+            "    "
+            + "  ".join(
+                f"[{chr(ord('a') + i)}] {p}" for i, p in enumerate(presets)
+            )
+        )
+        answer = input(f"  {label} ({current}): ").strip()
+        if not answer:
+            return ""
+        if len(answer) == 1 and answer.isalpha():
+            index = ord(answer.lower()) - ord("a")
+            if 0 <= index < len(presets):
+                return str(presets[index])
+            print(f"    ⚠ {t('Invalid size.')}")
+            return ""
+        return answer
+
     # vCPU de base (x1) par VM. Le multiplicateur monte de là.
     _QEMU_BASE_VCPUS = 2
 
@@ -3496,11 +3526,11 @@ class TODO:
             if new:
                 names[i] = new
             dk = (
-                input(
-                    f"  {t('New disk size in G, blank = keep')} "
-                    f"({sel[i][3]}): "
+                self._qemu_ask_value(
+                    t("New disk size in G, blank = keep"),
+                    sel[i][3],
+                    self._QEMU_DISK_PRESETS,
                 )
-                .strip()
                 .upper()
                 .rstrip("G")
             )
@@ -3509,9 +3539,11 @@ class TODO:
                     sel[i][3] = f"{int(float(dk))}G"
                 except ValueError:
                     print(f"    ⚠ {t('Invalid size.')}")
-            rm = input(
-                f"  {t('New RAM in MB, blank = keep')} ({sel[i][2]}): "
-            ).strip()
+            rm = self._qemu_ask_value(
+                t("New RAM in MB, blank = keep"),
+                sel[i][2],
+                self._QEMU_RAM_PRESETS,
+            )
             if rm:
                 try:
                     sel[i][2] = int(rm)
