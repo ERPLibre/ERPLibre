@@ -3422,21 +3422,38 @@ class TODO:
     # pour ne JAMAIS entrer en conflit avec une valeur tapée directement : toute
     # saisie commençant par un chiffre est lue comme la valeur elle-même.
     _QEMU_DISK_PRESETS = ("20G", "40G", "60G", "80G", "120G", "200G")
-    _QEMU_RAM_PRESETS = (1024, 2048, 4096, 8192, 16384, 32768)
+    # Jusqu'à 256 Go : les hôtes de virtualisation récents dépassent largement
+    # 32 Go, et l'invite est en Mo — l'équivalent en Go est donc affiché.
+    _QEMU_RAM_PRESETS = (
+        1024,
+        2048,
+        4096,
+        8192,
+        16384,
+        32768,
+        65536,
+        131072,
+        262144,
+    )
 
     @staticmethod
-    def _qemu_ask_value(label, current, presets):
+    def _qemu_ram_label(mb):
+        """« 65536 (64G) » : l'invite est en Mo, on raisonne en Go."""
+        return f"{mb} ({mb // 1024}G)" if mb >= 1024 else str(mb)
+
+    @staticmethod
+    def _qemu_ask_value(label, current, presets, fmt=str):
         """Invite avec raccourcis lettrés. Renvoie '' pour « garder ».
 
-        [a]…[f] choisissent une suggestion, un chiffre reste une valeur
-        littérale, vide garde la valeur actuelle.
+        Une lettre choisit une suggestion, un chiffre reste une valeur
+        littérale, vide garde la valeur actuelle. Les suggestions sont
+        réparties sur plusieurs lignes pour rester lisibles.
         """
-        print(
-            "    "
-            + "  ".join(
-                f"[{chr(ord('a') + i)}] {p}" for i, p in enumerate(presets)
-            )
-        )
+        lst_item = [
+            f"[{chr(ord('a') + i)}] {fmt(p)}" for i, p in enumerate(presets)
+        ]
+        for start in range(0, len(lst_item), 5):
+            print("    " + "  ".join(lst_item[start : start + 5]))
         answer = input(f"  {label} ({current}): ").strip()
         if not answer:
             return ""
@@ -3543,6 +3560,7 @@ class TODO:
                 t("New RAM in MB, blank = keep"),
                 sel[i][2],
                 self._QEMU_RAM_PRESETS,
+                fmt=self._qemu_ram_label,
             )
             if rm:
                 try:
