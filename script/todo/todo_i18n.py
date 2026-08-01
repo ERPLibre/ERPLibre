@@ -262,9 +262,9 @@ TRANSLATIONS = {
         "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N, défaut : non) : ",
         "en": "Add this VM to ~/.ssh/config? (y/N, default: no): ",
     },
-    "Add each VM to ~/.ssh/config? (y/N): ": {
-        "fr": "Ajouter chaque VM à ~/.ssh/config ? (o/N, défaut : non) : ",
-        "en": "Add each VM to ~/.ssh/config? (y/N, default: no): ",
+    "Add each VM to ~/.ssh/config? (Y/n): ": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config ? (O/n, défaut : oui) : ",
+        "en": "Add each VM to ~/.ssh/config? (Y/n, default: yes): ",
     },
     "Waiting for the VM IP (DHCP lease)...": {
         "fr": "Attente de l'IP de la VM (bail DHCP)...",
@@ -1249,6 +1249,46 @@ TRANSLATIONS = {
         "fr": "Choix (1-4, défaut 1) :",
         "en": "Choice (1-4, default 1):",
     },
+    "Choice (1-5, default 1):": {
+        "fr": "Choix (1-5, défaut 1) :",
+        "en": "Choice (1-5, default 1):",
+    },
+    "Custom - set vCPU, RAM and disk": {
+        "fr": "Personnalisé — choisir vCPU, RAM et disque",
+        "en": "Custom — set vCPU, RAM and disk",
+    },
+    "custom": {
+        "fr": "personnalisé",
+        "en": "custom",
+    },
+    "varies": {
+        "fr": "varié",
+        "en": "varies",
+    },
+    "vCPU per VM, blank = keep": {
+        "fr": "vCPU par VM, vide = garder",
+        "en": "vCPU per VM, blank = keep",
+    },
+    "New vCPU count, blank = keep": {
+        "fr": "Nouveau nombre de vCPU, vide = garder",
+        "en": "New vCPU count, blank = keep",
+    },
+    "Invalid vCPU count.": {
+        "fr": "Nombre de vCPU invalide.",
+        "en": "Invalid vCPU count.",
+    },
+    "More vCPU than host cores": {
+        "fr": "Plus de vCPU que de cœurs sur l'hôte",
+        "en": "More vCPU than host cores",
+    },
+    "> host cores": {
+        "fr": "> cœurs de l'hôte",
+        "en": "> host cores",
+    },
+    "Total vCPU (all running):": {
+        "fr": "vCPU total (toutes démarrées) :",
+        "en": "Total vCPU (all running):",
+    },
     "Deploy VM(s) (one or many)": {
         "fr": "🚀 Déployer une ou plusieurs VM",
         "en": "🚀 Deploy VM(s) (one or many)",
@@ -2205,21 +2245,116 @@ TRANSLATIONS = {
         "tourneront pas toutes en même temps.",
         "en": "Total RAM exceeds host free RAM: not all VMs will run at once.",
     },
-    "Install ERPLibre into ~/git/erplibre on each VM? (y/N): ": {
-        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? (o/N, défaut : non) : ",
-        "en": "Install ERPLibre into ~/git/erplibre on each VM? (y/N, default: no): ",
+    "Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on each VM? "
+        "(Y/n, default: yes): ",
     },
-    "Deploy these VMs now? (y/N): ": {
-        "fr": "Déployer ces VM maintenant ? (o/N, défaut : non) : ",
-        "en": "Deploy these VMs now? (y/N, default: no): ",
+    "Deploy these VMs now? (Y/n): ": {
+        "fr": "Déployer ces VM maintenant ? (O/n, défaut : oui) : ",
+        "en": "Deploy these VMs now? (Y/n, default: yes): ",
+    },
+    "Discard everything and start over? (y/N): ": {
+        "fr": "Tout abandonner et recommencer ? (o/N, défaut : non) : ",
+        "en": "Discard everything and start over? (y/N, default: no): ",
+    },
+    "Final review before deployment": {
+        "fr": "Récapitulatif final avant déploiement",
+        "en": "Final review before deployment",
+    },
+    "VMs to create:": {
+        "fr": "VM à créer :",
+        "en": "VMs to create:",
+    },
+    "Existing, left untouched:": {
+        "fr": "Existantes, laissées intactes :",
+        "en": "Existing, left untouched:",
+    },
+    "ERPLibre install:": {
+        "fr": "Installation ERPLibre :",
+        "en": "ERPLibre install:",
+    },
+    "profile": {
+        "fr": "profil",
+        "en": "profile",
+    },
+    "branch": {
+        "fr": "branche",
+        "en": "branch",
+    },
+    "production (/opt, confined)": {
+        "fr": "production (/opt, confiné)",
+        "en": "production (/opt, confined)",
+    },
+    "development (~/git)": {
+        "fr": "développement (~/git)",
+        "en": "development (~/git)",
+    },
+    "no": {
+        "fr": "non",
+        "en": "no",
+    },
+    "SSH key:": {
+        "fr": "Clé SSH :",
+        "en": "SSH key:",
+    },
+    "~/.ssh/config:": {
+        "fr": "~/.ssh/config :",
+        "en": "~/.ssh/config:",
+    },
+    "one entry per VM": {
+        "fr": "une entrée par VM",
+        "en": "one entry per VM",
+    },
+    "untouched": {
+        "fr": "inchangé",
+        "en": "untouched",
+    },
+    "Parallelism:": {
+        "fr": "Parallélisme :",
+        "en": "Parallelism:",
+    },
+    "at a time": {
+        "fr": "à la fois",
+        "en": "at a time",
+    },
+    "Nothing to create - every VM already exists.": {
+        "fr": "Rien à créer — toutes les VM existent déjà.",
+        "en": "Nothing to create — every VM already exists.",
+    },
+    "Name collisions detected": {
+        "fr": "Collisions de noms détectées",
+        "en": "Name collisions detected",
+    },
+    "VM already defined - SKIPPED, nothing overwritten": {
+        "fr": "VM déjà définie — IGNORÉE, rien ne sera écrasé",
+        "en": "VM already defined — SKIPPED, nothing overwritten",
+    },
+    "disk present without VM - deployment will FAIL": {
+        "fr": "disque présent sans VM — le déploiement ÉCHOUERA",
+        "en": "disk present without VM - deployment will FAIL",
+    },
+    "Remove it by hand, or rename the VM.": {
+        "fr": "L'effacer à la main, ou renommer la VM.",
+        "en": "Remove it by hand, or rename the VM.",
+    },
+    "Continue despite these collisions? (y/N): ": {
+        "fr": "Continuer malgré ces collisions ? (o/N, défaut : non) : ",
+        "en": "Continue despite these collisions? (y/N, default: no): ",
     },
     "Cancelled.": {
         "fr": "Annulé.",
         "en": "Cancelled.",
     },
-    "already exists, skipped.": {
-        "fr": "existe déjà, ignorée.",
-        "en": "already exists, skipped.",
+    "Resolving VM IPs (parallel, emulated boot is slow)...": {
+        "fr": "Résolution des IP des VM (en parallèle, le démarrage émulé "
+        "est lent)...",
+        "en": "Resolving VM IPs (parallel, emulated boot is slow)...",
+    },
+    "no IP": {
+        "fr": "pas d'IP",
+        "en": "no IP",
     },
     "Cloning ERPLibre on each VM": {
         "fr": "Clonage d'ERPLibre sur chaque VM",

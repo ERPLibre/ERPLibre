@@ -3579,6 +3579,10 @@ class TODO:
         131072,
         262144,
     )
+    # KVM autorise plus de vCPU que de cœurs (surengagement) : on prévient
+    # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
+    # est un calcul automatique et se borne aux cœurs de l'hôte.
+    _QEMU_CPU_PRESETS = (1, 2, 4, 6, 8, 16, 24, 32)
 
     @staticmethod
     def _plural(word, count):
@@ -3634,15 +3638,72 @@ class TODO:
             return ""
         return answer
 
+    # Les trois invites ci-dessous sont posées à DEUX endroits — le profil
+    # global « Personnalisé » et la personnalisation par VM. Elles vivent donc
+    # ici : une seule définition, mêmes suggestions, mêmes validations.
+    # Chacune renvoie None pour « garder la valeur actuelle ».
+
+    def _qemu_ask_disk(self, label, current):
+        raw = self._qemu_ask_value(label, current, self._QEMU_DISK_PRESETS)
+        if not raw:
+            return None
+        parsed = self._qemu_parse_disk(raw)
+        if not parsed:
+            print(f"    ⚠ {t('Invalid size.')}")
+        return parsed
+
+    def _qemu_ask_ram(self, label, current):
+        raw = self._qemu_ask_value(
+            label, current, self._QEMU_RAM_PRESETS, fmt=self._qemu_ram_label
+        )
+        if not raw:
+            return None
+        try:
+            mb = int(raw)
+        except ValueError:
+            mb = 0
+        if mb <= 0:
+            print(f"    ⚠ {t('Invalid size.')}")
+            return None
+        return mb
+
+    def _qemu_ask_cpu(self, label, current, host_cpu):
+        raw = self._qemu_ask_value(label, current, self._QEMU_CPU_PRESETS)
+        if not raw:
+            return None
+        try:
+            n = int(raw)
+        except ValueError:
+            n = 0
+        if n <= 0:
+            print(f"    ⚠ {t('Invalid vCPU count.')}")
+            return None
+        if n > host_cpu:
+            print(f"    ⚠ {t('More vCPU than host cores')} ({host_cpu}).")
+        return n
+
+    @staticmethod
+    def _qemu_shared_value(values, fmt=str):
+        """Valeur commune à toutes les VM, ou « varié » si elles diffèrent.
+        Sert d'« actuel » aux invites globales, où une seule réponse couvre un
+        parc qui n'est pas forcément homogène."""
+        uniq = set(values)
+        return fmt(uniq.pop()) if len(uniq) == 1 else t("varies")
+
     # vCPU de base (x1) par VM. Le multiplicateur monte de là.
     _QEMU_BASE_VCPUS = 2
 
-    def _qemu_prompt_resource_mult(self, selected, host_cpu, free_ram):
-        """Multiplicateur de ressources par VM : x1 (minimum catalogue) .. x4.
-        Multiplie la RAM (base = minimum de la version) et les vCPU (base
-        _QEMU_BASE_VCPUS), en bornant les vCPU au nombre de cœurs de l'hôte et
-        en signalant si la RAM totale dépasse la RAM libre. Renvoie (mult,
-        base_vcpus)."""
+    def _qemu_prompt_resources(self, selected, host_cpu, free_ram):
+        """Ressources par VM : multiplicateur x1..x4, ou « Personnalisé ».
+
+        x1..x4 multiplie la RAM (base = minimum de la version) et les vCPU
+        (base _QEMU_BASE_VCPUS) en bornant ces derniers aux cœurs de l'hôte.
+        « Personnalisé » pose les mêmes trois questions que la personnalisation
+        par VM, mais une seule fois pour tout le parc.
+
+        `selected` = liste de (d, v, ram_min, disk, arch). Renvoie
+        (label, selected) où selected porte désormais les valeurs FINALES et
+        un vCPU par VM : (d, v, ram, disk, arch, vcpus)."""
         base_ram = sum(s[2] for s in selected)  # RAM min totale (x1)
         base_vcpus = self._QEMU_BASE_VCPUS
         print(f"\n{t('Resources per VM (x1 = catalog minimum):')}")
@@ -3664,31 +3725,63 @@ class TODO:
                 f"  [{n}] x{n}{star}  {vcpus} vCPU/VM, "
                 f"{t('total RAM')} ~{total} Mo{warn}"
             )
-        sel = input(f"{t('Choice (1-4, default 1):')} ").strip()
+        print(f"  [5] {t('Custom - set vCPU, RAM and disk')}")
+        sel = input(f"{t('Choice (1-5, default 1):')} ").strip()
         try:
-            n = int(sel)
-            if 1 <= n <= 4:
-                return n, base_vcpus
+            mult = int(sel)
         except ValueError:
-            pass
-        return 1, base_vcpus
+            mult = 1
+        if not 1 <= mult <= 5:
+            mult = 1
 
-    def _qemu_customize_vms(self, selected):
-        """Personnalise chaque VM avant déploiement : NOM, taille de DISQUE et
-        RAM. `selected` = liste de (d, v, ram, disk, a) où ram (Mo) et disk
-        (« 20G ») sont les valeurs FINALES (multiplicateur déjà appliqué).
+        if mult != 5:
+            vcpus = min(base_vcpus * mult, host_cpu)
+            return f"x{mult}", [
+                (d, v, ram * mult, disk, a, vcpus)
+                for (d, v, ram, disk, a) in selected
+            ]
+
+        # Personnalisé : une réponse vide garde la valeur du catalogue, qui
+        # peut différer d'une VM à l'autre — d'où « varié » comme « actuel ».
+        cpu = self._qemu_ask_cpu(
+            t("vCPU per VM, blank = keep"), base_vcpus, host_cpu
+        )
+        ram = self._qemu_ask_ram(
+            t("New RAM in MB, blank = keep"),
+            self._qemu_shared_value([s[2] for s in selected]),
+        )
+        disk = self._qemu_ask_disk(
+            t("New disk size in G, blank = keep"),
+            self._qemu_shared_value([s[3] for s in selected]),
+        )
+        return t("custom"), [
+            (
+                d,
+                v,
+                ram or vram,
+                disk or vdisk,
+                a,
+                cpu or base_vcpus,
+            )
+            for (d, v, vram, vdisk, a) in selected
+        ]
+
+    def _qemu_customize_vms(self, selected, host_cpu):
+        """Personnalise chaque VM avant déploiement : NOM, DISQUE, RAM et vCPU.
+        `selected` = liste de (d, v, ram, disk, a, vcpus) où les valeurs sont
+        déjà FINALES (profil de ressources appliqué).
         Renvoie (names, selected_maj). Défaut : rien ne change."""
         names = [
-            self._qemu_infra_name(d, v, a) for d, v, _r, _dk, a in selected
+            self._qemu_infra_name(d, v, a) for d, v, _r, _dk, a, _c in selected
         ]
-        sel = [list(s) for s in selected]  # mutable (d, v, ram, disk, a)
+        sel = [list(s) for s in selected]  # mutable
 
         def show():
             print(f"\n{t('VMs (default = no change):')}")
             for i, (nm, s) in enumerate(zip(names, sel), 1):
-                d, v, ram, disk, a = s
+                d, v, ram, disk, a, vcpus = s
                 print(
-                    f"  [{i}] {nm}   ({d} {v} [{a}])  "
+                    f"  [{i}] {nm}   ({d} {v} [{a}])  {vcpus} vCPU  "
                     f"RAM {ram}Mo  {t('disk')} {disk}"
                 )
 
@@ -3705,37 +3798,118 @@ class TODO:
                 continue
             if not (0 <= i < len(sel)):
                 continue
-            # Pour la VM i : nom, disque, RAM (vide = garder la valeur).
+            # Pour la VM i : nom, disque, RAM, vCPU (vide = garder la valeur).
             new = input(
                 f"  {names[i]} — {t('new name (blank = keep):')} "
             ).strip()
             if new:
                 names[i] = new
-            dk = self._qemu_ask_value(
-                t("New disk size in G, blank = keep"),
-                sel[i][3],
-                self._QEMU_DISK_PRESETS,
+            dk = self._qemu_ask_disk(
+                t("New disk size in G, blank = keep"), sel[i][3]
             )
             if dk:
-                parsed = self._qemu_parse_disk(dk)
-                if parsed:
-                    sel[i][3] = parsed
-                else:
-                    print(f"    ⚠ {t('Invalid size.')}")
-            rm = self._qemu_ask_value(
-                t("New RAM in MB, blank = keep"),
-                sel[i][2],
-                self._QEMU_RAM_PRESETS,
-                fmt=self._qemu_ram_label,
+                sel[i][3] = dk
+            rm = self._qemu_ask_ram(
+                t("New RAM in MB, blank = keep"), sel[i][2]
             )
             if rm:
-                try:
-                    sel[i][2] = int(rm)
-                except ValueError:
-                    print(f"    ⚠ {t('Invalid size.')}")
+                sel[i][2] = rm
+            cpu = self._qemu_ask_cpu(
+                t("New vCPU count, blank = keep"), sel[i][5], host_cpu
+            )
+            if cpu:
+                sel[i][5] = cpu
         if len(set(names)) != len(names):
             print(f"  ⚠ {t('Duplicate names detected; keeping as entered.')}")
         return names, [tuple(s) for s in sel]
+
+    def _confirm_or_discard(self, question):
+        """Confirmation à défaut OUI, avec double validation sur le NON.
+
+        Un « non » distrait ferait perdre toutes les réponses déjà saisies. On
+        ne renonce donc que si l'abandon est confirmé ; sinon on repose la
+        question."""
+        while True:
+            if self._is_yes_default_yes(input(f"\n{question}")):
+                return True
+            if self._is_yes(
+                input(f"  {t('Discard everything and start over? (y/N): ')}")
+            ):
+                return False
+
+    def _qemu_confirm_collisions(self, deployed, pending):
+        """Signale les noms qui heurtent l'existant, et demande confirmation.
+
+        Deux cas, de gravité différente : une VM déjà définie est simplement
+        ignorée — rien n'est écrasé — tandis qu'un qcow2 resté seul (VM
+        supprimée sans son disque) fait échouer deploy_qemu, qui refuse
+        d'écraser sans --force. Défaut NON : on ne poursuit que sur un « oui »
+        explicite."""
+        orphans = []
+        for name, *_rest in pending:
+            path = f"/var/lib/libvirt/images/{name}.qcow2"
+            if os.path.exists(path):
+                orphans.append((name, path))
+        if not deployed and not orphans:
+            return True
+        print(f"\n⚠  {t('Name collisions detected')} :")
+        skipped = t("VM already defined - SKIPPED, nothing overwritten")
+        for name in deployed:
+            print(f"   {name:<28.28} {skipped}")
+        for name, path in orphans:
+            print(
+                f"   {name:<28.28} "
+                f"{t('disk present without VM - deployment will FAIL')}"
+            )
+            print(f"   {'':<28} {path}")
+            print(f"   {'':<28} {t('Remove it by hand, or rename the VM.')}")
+        return self._is_yes(
+            input(f"{t('Continue despite these collisions? (y/N): ')}")
+        )
+
+    def _qemu_print_recap(
+        self,
+        pending,
+        deployed,
+        branch,
+        install_label,
+        install_prod,
+        ssh_key,
+        add_ssh_config,
+        parallelism,
+    ):
+        """État final soumis à approbation : tout ce qui va changer sur
+        l'hôte, y compris ce qui ne changera PAS (VM existantes)."""
+        print(f"\n── {t('Final review before deployment')} ──")
+        print(f"  {t('VMs to create:')} {len(pending)}")
+        for name, d, v, ram, disk, a, vcpus in pending:
+            # Le disque annoncé est celui qui sera réellement créé : ERPLibre
+            # ajoute ERPLIBRE_EXTRA_DISK_GB à la demande initiale.
+            gigs = self._parse_disk_gb(disk) + (
+                self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
+            )
+            print(
+                f"     {name:<30} {d} {v:<7} [{a:<5}] "
+                f"{vcpus} vCPU  RAM {ram}Mo  {t('disk')} {gigs}G"
+            )
+        if deployed:
+            print(f"  {t('Existing, left untouched:')} {', '.join(deployed)}")
+        if branch:
+            env = (
+                t("production (/opt, confined)")
+                if install_prod
+                else t("development (~/git)")
+            )
+            print(
+                f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
+                f"{t('profile')} {install_label}, {env}"
+            )
+        else:
+            print(f"  {t('ERPLibre install:')} {t('no')}")
+        print(f"  {t('SSH key:')} {ssh_key or t('none')}")
+        cfg = t("one entry per VM") if add_ssh_config else t("untouched")
+        print(f"  {t('~/.ssh/config:')} {cfg}")
+        print(f"  {t('Parallelism:')} {parallelism} {t('at a time')}")
 
     def _qemu_build_deploy_parts(
         self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
@@ -3917,35 +4091,35 @@ class TODO:
             print(t("Nothing selected."))
             return
 
-        # 2b) Multiplicateur de ressources par VM (x1 = minimum .. x4) : monte
-        # la RAM et les vCPU selon ce que l'hôte peut fournir.
+        # 2b) Ressources par VM : multiplicateur x1..x4 ou « Personnalisé ».
+        # Le profil est CUIT dans `selected`, qui porte dès lors les valeurs
+        # finales — RAM, disque et vCPU — pour chaque VM.
         host_cpu = os.cpu_count() or 2
         free_ram = self._host_free_ram_mb()
-        res_mult, base_vcpus = self._qemu_prompt_resource_mult(
+        res_label, selected = self._qemu_prompt_resources(
             selected, host_cpu, free_ram
         )
-        # On CUIT le multiplicateur dans `selected` (RAM finale) et on fixe un
-        # nombre de vCPU uniforme -> la personnalisation par VM (RAM absolue)
-        # n'est plus ambiguë. vCPU n'est pas éditable par VM (choix global).
-        evcpus = min(base_vcpus * res_mult, host_cpu)
-        selected = [
-            (d, v, ram * res_mult, disk, a)
-            for (d, v, ram, disk, a) in selected
-        ]
 
-        # 2c) Personnalisation par VM : nom, disque, RAM (à la demande).
-        names, selected = self._qemu_customize_vms(selected)
+        # 2c) Personnalisation par VM : nom, disque, RAM, vCPU (à la demande).
+        names, selected = self._qemu_customize_vms(selected, host_cpu)
 
         # 3) Plan + estimation des ressources.
         total_ram = sum(s[2] for s in selected)
         total_disk = sum(self._parse_disk_gb(s[3]) for s in selected)
-        print(f"\n{t('Deployment plan')} ({len(selected)} VM, x{res_mult}) :")
-        for i, (d, v, ram, disk, a) in enumerate(selected):
+        total_cpu = sum(s[5] for s in selected)
+        print(f"\n{t('Deployment plan')} ({len(selected)} VM, {res_label}) :")
+        for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
             print(
                 f"  - {names[i]:<30} {d} {v:<7} [{a:<5}] "
-                f"{evcpus} vCPU  RAM {ram}Mo  {t('disk')} {disk}"
+                f"{vcpus} vCPU  RAM {ram}Mo  {t('disk')} {disk}"
             )
-        print(f"\n  {t('Total RAM (all running):')} {total_ram} Mo")
+        cpu_warn = (
+            f"   ⚠ {t('> host cores')} ({host_cpu})"
+            if (total_cpu > host_cpu)
+            else ""
+        )
+        print(f"\n  {t('Total vCPU (all running):')} {total_cpu}{cpu_warn}")
+        print(f"  {t('Total RAM (all running):')} {total_ram} Mo")
         print(f"  {t('Total virtual disk (thin qcow2):')} ~{total_disk} G")
         if free_ram:
             print(f"  {t('Host RAM available:')} {free_ram} Mo")
@@ -3961,14 +4135,14 @@ class TODO:
         if dry_run:
             default_key = self._qemu_default_ssh_key()
             print(f"\n{t('Preview (dry-run):')}")
-            for i, (d, v, ram, disk, a) in enumerate(selected):
+            for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
                 parts = self._qemu_build_deploy_parts(
                     d,
                     v,
                     a,
                     names[i],
                     ram,
-                    evcpus,
+                    vcpus,
                     disk,
                     default_key,
                     None,
@@ -3993,34 +4167,44 @@ class TODO:
             False  # dev (~/git, SELinux dev) vs prod (/opt, confiné)
         )
         install_cmd = None  # commande finale selon le profil choisi
+        install_label = None
         ans = input(
-            t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
+            t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
         )
-        if self._is_yes(ans):
+        if self._is_yes_default_yes(ans):
             install_branch = self._qemu_pick_branch()
             install_prod = self._qemu_ask_prod()
-            _label, install_cmd = self._qemu_pick_install_profile()
+            install_label, install_cmd = self._qemu_pick_install_profile()
             install_monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
 
-        add_ssh_config = self._is_yes(
-            input(t("Add each VM to ~/.ssh/config? (y/N): "))
+        add_ssh_config = self._is_yes_default_yes(
+            input(t("Add each VM to ~/.ssh/config? (Y/n): "))
         )
 
         # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
         # parallélisme : on connaît alors le vrai nombre à déployer (affiché
         # dans le prompt) et on peut numéroter chaque tâche.
-        pending = []  # (name, d, v, ram, disk, a)
+        pending = []  # (name, d, v, ram, disk, a, vcpus)
         deployed = []
-        for i, (d, v, ram, disk, a) in enumerate(selected):
+        for i, (d, v, ram, disk, a, vcpus) in enumerate(selected):
             name = names[i]
             if self._qemu_domain_exists(name):
-                print(f"⏭  {name}: {t('already exists, skipped.')}")
                 deployed.append(name)
             else:
-                pending.append((name, d, v, ram, disk, a))
+                pending.append((name, d, v, ram, disk, a, vcpus))
         n_jobs = len(pending)
+
+        # Collisions de noms : une VM déjà définie est ignorée (rien n'est
+        # écrasé), mais un qcow2 orphelin fera ÉCHOUER deploy_qemu, qui refuse
+        # d'écraser sans --force. On le dit avant, pas après l'attente.
+        if not self._qemu_confirm_collisions(deployed, pending):
+            print(t("Cancelled."))
+            return
+        if not pending:
+            print(t("Nothing to create - every VM already exists."))
+            return
 
         # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
         # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
@@ -4034,23 +4218,34 @@ class TODO:
         except ValueError:
             parallelism = default_par
 
-        # Confirmation puis déploiement (en parallèle).
-        ans = input(f"\n{t('Deploy these VMs now? (y/N): ')}")
-        if not self._is_yes(ans):
+        # 6) Récapitulatif final, puis confirmation. Toutes les réponses
+        # données jusqu'ici sont rassemblées ici : c'est le dernier point où
+        # une erreur de saisie se rattrape sans avoir rien créé.
+        self._qemu_print_recap(
+            pending,
+            deployed,
+            install_branch,
+            install_label,
+            install_prod,
+            ssh_key,
+            add_ssh_config,
+            parallelism,
+        )
+        if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
             print(t("Cancelled."))
             return
 
         # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
         # si les résultats reviennent dans le désordre (exécution parallèle).
         jobs = []  # (id, name, parts)
-        for k, (name, d, v, ram, disk, a) in enumerate(pending, 1):
+        for k, (name, d, v, ram, disk, a, vcpus) in enumerate(pending, 1):
             parts = self._qemu_build_deploy_parts(
                 d,
                 v,
                 a,
                 name,
                 ram,
-                evcpus,
+                vcpus,
                 disk,
                 ssh_key,
                 install_branch,
