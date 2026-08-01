@@ -614,9 +614,7 @@ class TODO:
                 except Exception as exc:
                     print(f"{t('Command failed: ')}{exc}")
             # Revenir (curseur restauré) ou quitter ?
-            ans = input(
-                f"\n{t('Back to telemetry (r) or quit (Enter)? ')}"
-            )
+            ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
             if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
                 return
 
@@ -1212,14 +1210,10 @@ class TODO:
             return
         # DOUBLE validation avant d'appliquer.
         summary = f"{verb} -> {', '.join(resolved)}"
-        if not self._is_yes(
-            input(f"{t('Apply:')} {summary} ? (o/N) : ")
-        ):
+        if not self._is_yes(input(f"{t('Apply:')} {summary} ? (o/N) : ")):
             print(t("Cancelled."))
             return
-        if not self._is_yes(
-            input(t("Confirm for real? (y/N): "))
-        ):
+        if not self._is_yes(input(t("Confirm for real? (y/N): "))):
             print(t("Cancelled."))
             return
         for real in resolved:
@@ -1404,9 +1398,7 @@ class TODO:
                 f"  [{i}] {r['label']} — {len(r['vms'])} VM{star}\n"
                 f"        {names}"
             )
-        sel = input(
-            t("Choice (number, blank = last): ")
-        ).strip()
+        sel = input(t("Choice (number, blank = last): ")).strip()
         run = runs[0]
         if sel:
             try:
@@ -1544,8 +1536,10 @@ class TODO:
         cmd = f"sudo virsh shutdown {shlex.quote(name)} --mode acpi,agent"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
-        print(f"{t('Waiting for the VM to shut down...')} "
-              f"({t('timeout')}: {timeout} s)")
+        print(
+            f"{t('Waiting for the VM to shut down...')} "
+            f"({t('timeout')}: {timeout} s)"
+        )
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self._qemu_domstate(name) == "shut off":
@@ -1553,15 +1547,22 @@ class TODO:
                 print(f"\r{' ' * 40}\r✅ {name}: {t('VM is off.')}")
                 return True
             remaining = int(deadline - time.time())
-            print(f"\r  ⏳ {t('shutting down')}… "
-                  f"{remaining:>3d} s {t('remaining')}",
-                  end="", flush=True)
+            print(
+                f"\r  ⏳ {t('shutting down')}… "
+                f"{remaining:>3d} s {t('remaining')}",
+                end="",
+                flush=True,
+            )
             time.sleep(2)
         print()  # newline après le compte à rebours
         # Arrêt gracieux trop long : proposer un arrêt forcé.
         if self._is_yes(
-            input(t("Graceful shutdown timed out. Force off (destroy)? "
-                    "(y/N): "))
+            input(
+                t(
+                    "Graceful shutdown timed out. Force off (destroy)? "
+                    "(y/N): "
+                )
+            )
         ):
             cmd = f"sudo virsh destroy {shlex.quote(name)}"
             print(f"{t('Will execute:')} {cmd}")
@@ -1695,25 +1696,28 @@ class TODO:
             print(t("No change."))
             return
         shrink = new_gb < cur_gb
-        print(
-            f"\n{t('New virtual size:')} {cur_gb:.1f} G -> {new_gb:.1f} G"
-        )
+        print(f"\n{t('New virtual size:')} {cur_gb:.1f} G -> {new_gb:.1f} G")
         # Avertissement (NON bloquant) : agrandir au-delà de ce que l'hôte
         # peut soutenir -> surallocation, l'hôte se remplira si la VM utilise
         # tout l'espace.
         if not shrink and max_safe_gb and new_gb > max_safe_gb:
             over = new_gb - max_safe_gb
             msg1 = t("Beyond host capacity by ~%.1f G — overcommit.") % over
-            msg2 = t(
-                "The qcow2 is thin: fine until the VM fills it, then the "
-                "host disk runs out. Max sustainable: ~%.1f G."
-            ) % max_safe_gb
+            msg2 = (
+                t(
+                    "The qcow2 is thin: fine until the VM fills it, then the "
+                    "host disk runs out. Max sustainable: ~%.1f G."
+                )
+                % max_safe_gb
+            )
             print(f"⚠  {msg1}")
             print(f"   {msg2}")
 
         # 3) Application selon agrandir/réduire et l'état de la VM.
         was_shut_down = False  # la VM a-t-elle été éteinte pour l'occasion ?
-        cmd = None  # commande d'AGRANDISSEMENT (la réduction a son propre flux)
+        cmd = (
+            None  # commande d'AGRANDISSEMENT (la réduction a son propre flux)
+        )
         if shrink:
             # DANGER : qcow2 --shrink ne réduit PAS le FS invité -> perte de
             # données si le FS dépasse la cible. VM éteinte obligatoire.
@@ -1725,8 +1729,12 @@ class TODO:
             print(f"⚠  {danger}")
             if state != "shut off":
                 if not self._is_yes(
-                    input(t("The VM must be off. Shut it down and retry? "
-                            "(y/N): "))
+                    input(
+                        t(
+                            "The VM must be off. Shut it down and retry? "
+                            "(y/N): "
+                        )
+                    )
                 ):
                     print(t("Cancelled."))
                     return
@@ -1776,9 +1784,7 @@ class TODO:
         bak = getattr(self, "_shrink_backup", None)
         if shrink and bak and os.path.exists(bak):
             print(f"\n{t('A disk backup was kept:')} {bak}")
-            if self._is_yes(
-                input(t("Delete this backup now? (y/N): "))
-            ):
+            if self._is_yes(input(t("Delete this backup now? (y/N): "))):
                 subprocess.run(["sudo", "rm", "-f", bak], check=False)
                 print(t("Backup deleted."))
             else:
@@ -1802,8 +1808,14 @@ class TODO:
     # util-linux, qemu-utils) — PAS libguestfs (souvent cassé : appliance
     # supermin sans noyau dans /boot).
     _SHRINK_TOOLS = (
-        "qemu-nbd", "e2fsck", "resize2fs", "sgdisk", "partprobe",
-        "lsblk", "dumpe2fs", "blockdev",
+        "qemu-nbd",
+        "e2fsck",
+        "resize2fs",
+        "sgdisk",
+        "partprobe",
+        "lsblk",
+        "dumpe2fs",
+        "blockdev",
     )
     _SECT = 512
     _MiB = 1024 * 1024
@@ -1832,13 +1844,25 @@ class TODO:
         ):
             bak = f"{disk}.bak"
             print(f"\n{t('Backing up the disk before shrinking…')}")
-            if subprocess.run(
-                ["sudo", "cp", "--reflink=auto", "--sparse=always", disk, bak]
-            ).returncode != 0:
+            if (
+                subprocess.run(
+                    [
+                        "sudo",
+                        "cp",
+                        "--reflink=auto",
+                        "--sparse=always",
+                        disk,
+                        bak,
+                    ]
+                ).returncode
+                != 0
+            ):
                 print(t("Backup failed; aborting."))
                 return False
         else:
-            print(f"⚠  {t('No backup: a failure could leave the disk broken.')}")
+            print(
+                f"⚠  {t('No backup: a failure could leave the disk broken.')}"
+            )
         subprocess.run(["sudo", "modprobe", "nbd", "max_part=16"], check=False)
         dev = None
         try:
@@ -1876,14 +1900,19 @@ class TODO:
                 f"\n{t('Shrinking guest ext filesystem')} {part} "
                 f"-> {fs_target_mib} MiB…"
             )
-            if subprocess.run(
-                ["sudo", "resize2fs", part, f"{fs_target_mib}M"]
-            ).returncode != 0:
+            if (
+                subprocess.run(
+                    ["sudo", "resize2fs", part, f"{fs_target_mib}M"]
+                ).returncode
+                != 0
+            ):
                 print(t("resize2fs failed; reverting."))
                 return self._qemu_shrink_revert(bak, disk, changed=True)
             # Fin de partition = début + taille RÉELLE du FS + 1 Mio, alignée.
             fs_bytes = self._qemu_fs_blocks(part) * bs
-            new_end = start + int(math.ceil((fs_bytes + self._MiB) / self._SECT))
+            new_end = start + int(
+                math.ceil((fs_bytes + self._MiB) / self._SECT)
+            )
             new_end = ((new_end + 2047) // 2048) * 2048 - 1  # align 2048
             if (new_end + 34) * self._SECT > target:
                 print(t("Internal size check failed; reverting."))
@@ -1892,9 +1921,19 @@ class TODO:
             print(f"{t('Shrinking the partition…')} ({part})")
             subprocess.run(["sudo", "sgdisk", "-d", n, dev], check=False)
             rc = subprocess.run(
-                ["sudo", "sgdisk", "-n", f"{n}:{start}:{new_end}",
-                 "-t", f"{n}:{info['type']}", "-u", f"{n}:{info['uuid']}",
-                 "-c", f"{n}:{info['name']}", dev]
+                [
+                    "sudo",
+                    "sgdisk",
+                    "-n",
+                    f"{n}:{start}:{new_end}",
+                    "-t",
+                    f"{n}:{info['type']}",
+                    "-u",
+                    f"{n}:{info['uuid']}",
+                    "-c",
+                    f"{n}:{info['name']}",
+                    dev,
+                ]
             ).returncode
             if rc != 0:
                 print(t("Partition rewrite failed; reverting."))
@@ -1906,10 +1945,19 @@ class TODO:
             self._qemu_nbd_disconnect(dev)
             dev = None
             print(f"{t('Shrinking the qcow2 container…')} {new_gb:g}G")
-            if subprocess.run(
-                ["sudo", "qemu-img", "resize", "--shrink", disk,
-                 f"{new_gb:g}G"]
-            ).returncode != 0:
+            if (
+                subprocess.run(
+                    [
+                        "sudo",
+                        "qemu-img",
+                        "resize",
+                        "--shrink",
+                        disk,
+                        f"{new_gb:g}G",
+                    ]
+                ).returncode
+                != 0
+            ):
                 print(t("Container shrink failed; reverting."))
                 return self._qemu_shrink_revert(bak, disk, changed=True)
             # Répare la GPT de secours (fin du disque) + fsck final.
@@ -1917,8 +1965,10 @@ class TODO:
             if dev:
                 subprocess.run(["sudo", "sgdisk", "-e", dev], check=False)
                 subprocess.run(
-                ["sudo", "partprobe", dev], check=False, capture_output=True
-            )
+                    ["sudo", "partprobe", dev],
+                    check=False,
+                    capture_output=True,
+                )
                 p2 = self._qemu_root_part(dev)[0]
                 if p2:
                     subprocess.run(
@@ -1928,9 +1978,7 @@ class TODO:
                 dev = None
             self._shrink_backup = bak  # proposé à la suppression après le boot
             if bak:
-                print(
-                    f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}"
-                )
+                print(f"✅ {t('Disk safely shrunk. Backup kept at:')} {bak}")
             else:
                 print(f"✅ {t('Disk safely shrunk.')}")
             return True
@@ -1965,15 +2013,18 @@ class TODO:
                 continue
             rc = subprocess.run(
                 ["sudo", "qemu-nbd", "-c", dev, disk],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             ).returncode
             if rc != 0:
                 continue
             base = f"nbd{i}"
             for _ in range(15):
                 subprocess.run(
-                ["sudo", "partprobe", dev], check=False, capture_output=True
-            )
+                    ["sudo", "partprobe", dev],
+                    check=False,
+                    capture_output=True,
+                )
                 time.sleep(1)
                 if any(
                     os.path.exists(f"/sys/class/block/{base}p{n}")
@@ -1999,7 +2050,9 @@ class TODO:
         try:
             res = subprocess.run(
                 ["lsblk", "-Pbno", "NAME,SIZE,TYPE,FSTYPE", dev],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
         except (OSError, subprocess.SubprocessError):
             return None, 0, ""
@@ -2013,28 +2066,31 @@ class TODO:
             except ValueError:
                 size = 0
             if size > best_sz:
-                best, best_sz, best_fs = d.get("NAME"), size, d.get("FSTYPE", "")
+                best, best_sz, best_fs = (
+                    d.get("NAME"),
+                    size,
+                    d.get("FSTYPE", ""),
+                )
         if not best:
             return None, 0, ""
         part = f"/dev/{best}"
         try:
-            start = int(
-                open(f"/sys/class/block/{best}/start").read().strip()
-            )
+            start = int(open(f"/sys/class/block/{best}/start").read().strip())
         except OSError:
             start = 0
         if not best_fs:
             # FSTYPE pas encore en cache : sonder directement avec blkid.
             best_fs = subprocess.run(
                 ["sudo", "blkid", "-o", "value", "-s", "TYPE", part],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
         return part, start, best_fs
 
     @staticmethod
     def _qemu_part_number(dev, part):
         """Numéro de partition (ex. « 1 ») depuis /dev/nbd0p1."""
-        return part[len(dev):].lstrip("p")
+        return part[len(dev) :].lstrip("p")
 
     @staticmethod
     def _qemu_part_info(dev, n):
@@ -2042,7 +2098,9 @@ class TODO:
         info = {"type": "", "uuid": "", "name": ""}
         res = subprocess.run(
             ["sudo", "sgdisk", "-i", n, dev],
-            capture_output=True, text=True, env=TODO._qemu_c_env(),
+            capture_output=True,
+            text=True,
+            env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             low = line.lower()
@@ -2058,7 +2116,9 @@ class TODO:
     def _qemu_fs_blocksize(part):
         res = subprocess.run(
             ["sudo", "dumpe2fs", "-h", part],
-            capture_output=True, text=True, env=TODO._qemu_c_env(),
+            capture_output=True,
+            text=True,
+            env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             if line.startswith("Block size:"):
@@ -2072,7 +2132,9 @@ class TODO:
     def _qemu_fs_blocks(part):
         res = subprocess.run(
             ["sudo", "dumpe2fs", "-h", part],
-            capture_output=True, text=True, env=TODO._qemu_c_env(),
+            capture_output=True,
+            text=True,
+            env=TODO._qemu_c_env(),
         )
         for line in res.stdout.splitlines():
             if line.startswith("Block count:"):
@@ -2087,7 +2149,9 @@ class TODO:
         """Taille minimale (blocs) du FS via « resize2fs -P »."""
         res = subprocess.run(
             ["sudo", "resize2fs", "-P", part],
-            capture_output=True, text=True, env=TODO._qemu_c_env(),
+            capture_output=True,
+            text=True,
+            env=TODO._qemu_c_env(),
         )
         for tok in res.stdout.replace(":", " ").split():
             if tok.isdigit():
@@ -2099,15 +2163,15 @@ class TODO:
     _GROW_FS_REMOTE = (
         "set -e; "
         "root=$(findmnt -no SOURCE /); "
-        "dev=$(lsblk -no PKNAME \"$root\" | head -1); "
+        'dev=$(lsblk -no PKNAME "$root" | head -1); '
         "part=$(echo \"$root\" | grep -oE '[0-9]+$'); "
         "sudo growpart /dev/$dev $part || true; "
         "fstype=$(findmnt -no FSTYPE /); "
         'case "$fstype" in '
-        "ext*) sudo resize2fs \"$root\";; "
+        'ext*) sudo resize2fs "$root";; '
         "xfs) sudo xfs_growfs /;; "
         "btrfs) sudo btrfs filesystem resize max /;; "
-        'esac; '
+        "esac; "
         "df -h /"
     )
 
@@ -2142,9 +2206,13 @@ class TODO:
             if rc == 0:
                 print(f"✅ {t('Guest filesystem grown via guest agent.')}")
                 return
-            print(f"⚠  {t('Guest agent grow failed; falling back to console.')}")
+            print(
+                f"⚠  {t('Guest agent grow failed; falling back to console.')}"
+            )
         else:
-            print(t("Guest agent unavailable; falling back to serial console."))
+            print(
+                t("Guest agent unavailable; falling back to serial console.")
+            )
         # 3) Console série (commande prête à coller, login interactif).
         self._qemu_grow_via_console(real, remote)
 
@@ -2158,8 +2226,11 @@ class TODO:
             try:
                 res = subprocess.run(
                     [
-                        "sudo", "virsh", "qemu-agent-command",
-                        name, json.dumps(payload),
+                        "sudo",
+                        "virsh",
+                        "qemu-agent-command",
+                        name,
+                        json.dumps(payload),
                     ],
                     capture_output=True,
                     text=True,
@@ -2219,9 +2290,7 @@ class TODO:
         print(
             f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
         )
-        if not self._is_yes(
-            input(t("Open the serial console now? (y/N): "))
-        ):
+        if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
             return
         cmd = f"sudo virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
@@ -2827,7 +2896,9 @@ class TODO:
         from concurrent.futures import TimeoutError as _FTimeout
 
         labels = labels or {}
-        print(f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}")
+        print(
+            f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}"
+        )
         result = {}
         t0 = time.time()
         starts = {}
@@ -3082,7 +3153,9 @@ class TODO:
         PROD : ERPLibre sous /opt/erplibre (hors user_home_t) -> le service
         reste CONFINÉ par SELinux ; on restaure les contextes (restorecon)."""
         svc_dir = self._qemu_install_dir(prod)
-        selinux_shell = 'SELINUX_LINE=""; '  # pas de SELinuxContext (inefficace)
+        selinux_shell = (
+            'SELINUX_LINE=""; '  # pas de SELinuxContext (inefficace)
+        )
         if prod:
             pre = (
                 "command -v restorecon >/dev/null 2>&1 && "
@@ -3138,6 +3211,31 @@ class TODO:
         # « ERPLibre seul », « mobile » ni « Déploiement ».
         if "install_odoo" in final_cmd:
             final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd(prod)}"
+        # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
+        # Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
+        # pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
+        # (« received fast shutdown request » x3) -> OpenUpgrade a perdu sa
+        # connexion et la base intermédiaire est restée à moitié migrée. Effet
+        # secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
+        # apt pendant l'installation. En PROD on ne touche à rien : les
+        # correctifs de sécurité automatiques doivent rester actifs.
+        no_auto_upgrade = ""
+        if not prod:
+            no_auto_upgrade = (
+                "if command -v apt-get >/dev/null 2>&1; then "
+                "sudo systemctl disable --now unattended-upgrades.service "
+                "apt-daily.timer apt-daily-upgrade.timer "
+                ">/dev/null 2>&1 || true; "
+                'printf \'APT::Periodic::Update-Package-Lists "0";\\n'
+                'APT::Periodic::Unattended-Upgrade "0";\\n\' '
+                "| sudo tee /etc/apt/apt.conf.d/99-erplibre-no-auto-upgrade "
+                ">/dev/null; "
+                "fi; "
+                "if command -v dnf >/dev/null 2>&1; then "
+                "sudo systemctl disable --now dnf-automatic.timer "
+                "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
+                "fi; "
+            )
         return (
             "set -e; "
             # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
@@ -3147,6 +3245,9 @@ class TODO:
             "command -v cloud-init >/dev/null 2>&1 && "
             "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
             "|| true; "
+            # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
+            # le verrou entre l'attente cloud-init et l'installation.
+            + no_auto_upgrade +
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -3312,8 +3413,7 @@ class TODO:
         )
         cmd = f"ssh {ssh_opts} erplibre@{ip} {shlex.quote(remote)}"
         print(
-            f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} "
-            f"({branch})"
+            f"\n  📦 {name} ({ip}): {t('installing ERPLibre')} " f"({branch})"
         )
         print(f"  {t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -3395,10 +3495,15 @@ class TODO:
             ).strip()
             if new:
                 names[i] = new
-            dk = input(
-                f"  {t('New disk size in G, blank = keep')} "
-                f"({sel[i][3]}): "
-            ).strip().upper().rstrip("G")
+            dk = (
+                input(
+                    f"  {t('New disk size in G, blank = keep')} "
+                    f"({sel[i][3]}): "
+                )
+                .strip()
+                .upper()
+                .rstrip("G")
+            )
             if dk:
                 try:
                     sel[i][3] = f"{int(float(dk))}G"
@@ -3424,9 +3529,18 @@ class TODO:
         parts = [] if dry_run else ["sudo"]
         parts += [
             self._qemu_script_path(),
-            "--distro", d, "--version", v, "--name", name,
-            "--memory", str(eram), "--vcpus", str(evcpus),
-            "--password", "erplibre",
+            "--distro",
+            d,
+            "--version",
+            v,
+            "--name",
+            name,
+            "--memory",
+            str(eram),
+            "--vcpus",
+            str(evcpus),
+            "--password",
+            "erplibre",
         ]
         if not dry_run:
             # --no-wait-ip : ne bloque pas 90s/VM, l'IP est collectée après.
@@ -3633,8 +3747,16 @@ class TODO:
             print(f"\n{t('Preview (dry-run):')}")
             for i, (d, v, ram, disk, a) in enumerate(selected):
                 parts = self._qemu_build_deploy_parts(
-                    d, v, a, names[i], ram, evcpus, disk,
-                    default_key, None, dry_run=True,
+                    d,
+                    v,
+                    a,
+                    names[i],
+                    ram,
+                    evcpus,
+                    disk,
+                    default_key,
+                    None,
+                    dry_run=True,
                 )
                 print("  " + " ".join(shlex.quote(p) for p in parts))
             return
@@ -3651,7 +3773,9 @@ class TODO:
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install_branch = None
         install_monitor = False
-        install_prod = False  # dev (~/git, SELinux dev) vs prod (/opt, confiné)
+        install_prod = (
+            False  # dev (~/git, SELinux dev) vs prod (/opt, confiné)
+        )
         install_cmd = None  # commande finale selon le profil choisi
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (y/N): ")
@@ -3705,8 +3829,16 @@ class TODO:
         jobs = []  # (id, name, parts)
         for k, (name, d, v, ram, disk, a) in enumerate(pending, 1):
             parts = self._qemu_build_deploy_parts(
-                d, v, a, name, ram, evcpus, disk,
-                ssh_key, install_branch, dry_run=False,
+                d,
+                v,
+                a,
+                name,
+                ram,
+                evcpus,
+                disk,
+                ssh_key,
+                install_branch,
+                dry_run=False,
             )
             jobs.append((f"{k}/{n_jobs}", name, parts))
 
@@ -3760,8 +3892,7 @@ class TODO:
         ip_map = {}
         if deployed and (add_ssh_config or install_branch):
             labels = {
-                nm: f"{k}/{len(deployed)}"
-                for k, nm in enumerate(deployed, 1)
+                nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
             ip_map = self._qemu_resolve_ips(deployed, labels)
 
@@ -3776,7 +3907,10 @@ class TODO:
             if install_monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
-                    deployed, install_branch, ip_map, install_cmd,
+                    deployed,
+                    install_branch,
+                    ip_map,
+                    install_cmd,
                     install_prod,
                 )
             else:
@@ -3798,9 +3932,13 @@ class TODO:
         # synchrone ; l'install monitorée est détachée, non comptée ici).
         print(f"\n{'═' * 60}")
         print(f"  {t('TOTAL summary')}")
-        print(f"  {t('VMs deployed:')} {n_ok}/{len(jobs) if jobs else 0}"
-              f"  ({t('total incl. existing:')} {len(deployed)})")
-        print(f"  {t('Total time:')} {self._fmt_dur(time.time() - deploy_start)}")
+        print(
+            f"  {t('VMs deployed:')} {n_ok}/{len(jobs) if jobs else 0}"
+            f"  ({t('total incl. existing:')} {len(deployed)})"
+        )
+        print(
+            f"  {t('Total time:')} {self._fmt_dur(time.time() - deploy_start)}"
+        )
         print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")
