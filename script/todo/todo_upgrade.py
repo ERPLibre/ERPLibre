@@ -845,7 +845,11 @@ class TodoUpgrade:
                 for name, reason, origin in lst_uninstall_reason:
                     print(
                         f"   - {name}"
-                        + (f" — {reason}" if reason else " — ⚠️ no reason given")
+                        + (
+                            f" — {reason}"
+                            if reason
+                            else " — ⚠️ no reason given"
+                        )
                         + f"  [{origin}]"
                     )
 
@@ -891,7 +895,10 @@ class TodoUpgrade:
         print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
-        if not self.dct_progression.get("state_2_update_all") and not already_update_state_1:
+        if (
+            not self.dct_progression.get("state_2_update_all")
+            and not already_update_state_1
+        ):
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_addons_all.sh {database_name}",
                 single_source_odoo=True,
@@ -899,6 +906,20 @@ class TodoUpgrade:
             if not status:
                 self.dct_progression["state_2_update_all"] = True
                 self.write_config()
+
+        # Predict the website COW views that the NEXT version bump will break.
+        # A copy-on-write view freezes the structure of the module view it was
+        # copied from; when that module view changes mode between two versions,
+        # the copy keeps an arch written for the old mode and the upgrade dies
+        # on « Element ... cannot be located in parent view ». Reporting it here
+        # -- before hours of migration -- leaves time to arbitrate.
+        # Only the next bump can be predicted: the modes in database describe
+        # the current version.
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
+            f" -d {database_name} -t odoo{start_version + 1}.0",
+            wait_at_error=False,
+        )
 
         msg = "3 - Clean up database before data migration"
         print(f"🔷 {msg}")
