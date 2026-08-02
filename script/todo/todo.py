@@ -876,6 +876,11 @@ class TODO:
             {"section": t("Local")},
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
             {"prompt_description": t("Configure sshfs")},
+            {
+                "prompt_description": t(
+                    "SSH port forwarding (open Odoo in the browser)"
+                )
+            },
             {"section": t("Remote & services")},
             {"prompt_description": t("SSH (remote host)...")},
             {
@@ -901,10 +906,12 @@ class TODO:
             elif status == "2":
                 self._configure_sshfs()
             elif status == "3":
-                self.prompt_execute_deploy_ssh()
+                self._deploy_port_forward()
             elif status == "4":
-                self.prompt_execute_qemu()
+                self.prompt_execute_deploy_ssh()
             elif status == "5":
+                self.prompt_execute_qemu()
+            elif status == "6":
                 self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
@@ -5329,6 +5336,87 @@ class TODO:
             print(f"\n{t('NTFY server installed and started successfully!')}")
         except Exception as e:
             print(f"{t('Error installing NTFY server: ')}{e}")
+
+    @staticmethod
+    def _ssh_config_hosts():
+        """Noms d'hôtes déclarés dans ~/.ssh/config, dans l'ordre du fichier.
+
+        Une ligne « Host » peut porter plusieurs noms : on les rend tous. Les
+        motifs (`*`, `?`) sont écartés — ce sont des règles, pas des machines
+        auxquelles se connecter."""
+        path = os.path.expanduser("~/.ssh/config")
+        names = []
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    if not re.match(r"^[ \t]*Host[ \t]+", line):
+                        continue
+                    for name in line.split()[1:]:
+                        if "*" in name or "?" in name or name in names:
+                            continue
+                        names.append(name)
+        except OSError:
+            pass
+        return names
+
+    @staticmethod
+    def _port_is_free(port):
+        """Vrai si rien n'écoute sur ce port en local."""
+        import socket
+
+        with socket.socket() as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("127.0.0.1", int(port)))
+                return True
+            except OSError:
+                return False
+
+    def _deploy_port_forward(self):
+        """Ouvre un tunnel SSH pour joindre un service distant depuis le
+        navigateur local.
+
+        Le port distant est vu DEPUIS la machine cible : « -L
+        local:localhost:distant ». Un rebond éventuel n'a pas à être indiqué —
+        le ProxyJump du bloc ~/.ssh/config s'applique tout seul, ce qui rend
+        joignable une VM imbriquée sans route directe."""
+        print(f"\n🔌 {t('SSH port forwarding')}")
+        hosts = self._ssh_config_hosts()
+        if hosts:
+            for i, name in enumerate(hosts, 1):
+                print(f"  [{i}] {name}")
+        host = input(f"{t('Host (number or name):')} ").strip()
+        if not host:
+            print(t("Cancelled."))
+            return
+        if host.isdigit() and 1 <= int(host) <= len(hosts):
+            host = hosts[int(host) - 1]
+
+        raw = input(f"{t('Remote port (default:')} 8069): ").strip()
+        remote = raw if raw.isdigit() else "8069"
+        raw = input(f"{t('Local port (default:')} {remote}): ").strip()
+        local = raw if raw.isdigit() else remote
+
+        if not self._port_is_free(local):
+            print(f"  ⚠ {t('Local port already in use:')} {local}")
+            if not self._is_yes(input(t("Try anyway? (y/N): "))):
+                return
+        if local != remote:
+            # Odoo redirige d'après web.base.url : un port local différent
+            # renvoie le navigateur vers une adresse qui n'existe pas chez lui.
+            print(f"  ⚠ {t('Local port differs from the remote one.')}")
+            print(f"    {t('Odoo redirects using web.base.url; check it')}")
+            print(f"    {t('matches http://localhost:')}{local}")
+
+        cmd = f"ssh -N -L {local}:localhost:{remote} {shlex.quote(host)}"
+        print(f"\n  🌐 http://localhost:{local}")
+        print(f"  {t('Will execute:')} {cmd}")
+        print(f"  {t('Ctrl+C closes the tunnel.')}\n")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        except KeyboardInterrupt:
+            pass
+        print(f"\n  {t('Tunnel closed.')}")
 
     def _configure_sshfs(self):
         import getpass

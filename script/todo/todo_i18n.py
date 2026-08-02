@@ -1399,6 +1399,54 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = garder) :",
         "en": "Choice (number, blank = keep):",
     },
+    "SSH port forwarding (open Odoo in the browser)": {
+        "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
+        "en": "🔌 SSH port forwarding (open Odoo in the browser)",
+    },
+    "SSH port forwarding": {
+        "fr": "Redirection de port SSH",
+        "en": "SSH port forwarding",
+    },
+    "Host (number or name):": {
+        "fr": "Hôte (numéro ou nom) :",
+        "en": "Host (number or name):",
+    },
+    "Remote port (default:": {
+        "fr": "Port distant (défaut :",
+        "en": "Remote port (default:",
+    },
+    "Local port (default:": {
+        "fr": "Port local (défaut :",
+        "en": "Local port (default:",
+    },
+    "Local port already in use:": {
+        "fr": "Port local déjà occupé :",
+        "en": "Local port already in use:",
+    },
+    "Try anyway? (y/N): ": {
+        "fr": "Essayer quand même ? (o/N, défaut : non) : ",
+        "en": "Try anyway? (y/N, default: no): ",
+    },
+    "Local port differs from the remote one.": {
+        "fr": "Le port local diffère du port distant.",
+        "en": "Local port differs from the remote one.",
+    },
+    "Odoo redirects using web.base.url; check it": {
+        "fr": "Odoo redirige d'après web.base.url ; vérifier qu'il",
+        "en": "Odoo redirects using web.base.url; check it",
+    },
+    "matches http://localhost:": {
+        "fr": "vaut bien http://localhost:",
+        "en": "matches http://localhost:",
+    },
+    "Ctrl+C closes the tunnel.": {
+        "fr": "Ctrl+C referme le tunnel.",
+        "en": "Ctrl+C closes the tunnel.",
+    },
+    "Tunnel closed.": {
+        "fr": "Tunnel refermé.",
+        "en": "Tunnel closed.",
+    },
     "SSH configuration (~/.ssh/config, ProxyJump)": {
         "fr": "🔑 Configuration SSH (~/.ssh/config, ProxyJump)",
         "en": "🔑 SSH configuration (~/.ssh/config, ProxyJump)",
