@@ -1444,13 +1444,17 @@ TRANSLATIONS = {
         "fr": "machines à sonder",
         "en": "machines to probe",
     },
-    "unreachable or no libvirt": {
-        "fr": "injoignable ou sans libvirt",
-        "en": "unreachable or no libvirt",
+    "unreachable": {
+        "fr": "injoignable",
+        "en": "unreachable",
     },
-    "no nested VM": {
-        "fr": "aucune VM imbriquée",
-        "en": "no nested VM",
+    "no QEMU/libvirt here": {
+        "fr": "pas de QEMU/libvirt ici",
+        "en": "no QEMU/libvirt here",
+    },
+    "QEMU present, no VM": {
+        "fr": "QEMU présent, aucune VM",
+        "en": "QEMU present, no VM",
     },
     "Create the SSH key if missing and deploy it? (Y/n): ": {
         "fr": "Créer la clé SSH si absente et la déployer ? "

@@ -1259,11 +1259,21 @@ class TODO:
     # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
     # donc un parc à deux niveaux est le cas courant.
     _QEMU_SSH_DEPTH = 2
-    # Sonde exécutée SUR une machine : un couple « nom<TAB>ip » par VM
-    # libvirt. Une seule connexion SSH par niveau plutôt qu'une par VM. Le
-    # bail dnsmasq peut manquer, d'où le repli sur l'agent invité.
+    # Sonde exécutée SUR une machine. Première ligne « LIBVIRT<TAB>yes|no »,
+    # puis un couple « nom<TAB>ip » par VM. Une seule connexion SSH par
+    # niveau plutôt qu'une par VM ; le bail dnsmasq peut manquer, d'où le
+    # repli sur l'agent invité.
+    #
+    # La première ligne est indispensable : sans virsh, la boucle ne tourne
+    # simplement pas et la sonde sortirait VIDE avec un code 0 — impossible
+    # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
     _QEMU_SSH_PROBE = (
-        "for n in $(sudo virsh list --all --name 2>/dev/null); do "
+        "if ! command -v virsh >/dev/null 2>&1; then "
+        "printf 'LIBVIRT\\tno\\n'; exit 0; fi; "
+        "vms=$(sudo virsh list --all --name 2>/dev/null) || "
+        "{ printf 'LIBVIRT\\tno\\n'; exit 0; }; "
+        "printf 'LIBVIRT\\tyes\\n'; "
+        "for n in $vms; do "
         'ip=$(sudo virsh domifaddr "$n" --source lease 2>/dev/null '
         "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1); "
         'if [ -z "$ip" ]; then '
@@ -1322,6 +1332,14 @@ class TODO:
         deploy_key = self._is_yes_default_yes(
             input(t("Create the SSH key if missing and deploy it? (Y/n): "))
         )
+        # La clé est fixée AVANT d'écrire : c'est elle qui va dans
+        # IdentityFile, et c'est la même qu'on déploiera ensuite.
+        pub = (
+            self._ssh_ensure_key()
+            if deploy_key
+            else self._qemu_default_ssh_key()
+        )
+        identity = self._ssh_private_key(pub)
         ip_map = self._qemu_resolve_ips(names, timeout=60)
         written = []
         for name in names:
@@ -1329,7 +1347,9 @@ class TODO:
             if not ip:
                 print(f"  ⏭  {name}: {t('no IP')}")
                 continue
-            self._write_ssh_config_entry(name, "erplibre", ip)
+            self._write_ssh_config_entry(
+                name, "erplibre", ip, identity_file=identity
+            )
             written.append(name)
         print(
             f"\n✅ {len(written)} {self._plural(t('entry'), len(written))}"
@@ -1522,11 +1542,16 @@ class TODO:
             print(f"  ⚠ {t('Restart virt-manager if it is open.')}")
 
     def _qemu_ssh_probe_remote(self, alias):
-        """VM libvirt vues DEPUIS `alias` : [(nom, ip)].
+        """Sonde `alias` : (libvirt_présent, [(nom, ip)]), ou None si
+        injoignable.
 
         Passe par « ssh <alias> », donc par le bloc ~/.ssh/config qu'on vient
         d'écrire : le ProxyJump du parent s'applique tout seul et la même
-        sonde marche à n'importe quelle profondeur."""
+        sonde marche à n'importe quelle profondeur.
+
+        « libvirt présent » et « a des VM » sont deux choses distinctes : une
+        machine avec QEMU mais sans VM mérite quand même sa connexion
+        virt-manager, une machine sans QEMU n'en veut aucune."""
         cmd = [
             "ssh",
             "-o",
@@ -1544,12 +1569,17 @@ class TODO:
             return None
         if res.returncode != 0:
             return None
+        has_libvirt = False
         found = []
         for line in res.stdout.splitlines():
             parts = line.strip().split("\t")
-            if len(parts) == 2 and parts[0]:
-                found.append((parts[0], parts[1].strip()))
-        return found
+            if len(parts) != 2 or not parts[0]:
+                continue
+            if parts[0] == "LIBVIRT":
+                has_libvirt = parts[1].strip() == "yes"
+                continue
+            found.append((parts[0], parts[1].strip()))
+        return has_libvirt, found
 
     def _qemu_ssh_config_nested(self):
         """Descend le parc en profondeur et écrit un ProxyJump par niveau.
@@ -1572,6 +1602,14 @@ class TODO:
         deploy_key = self._is_yes_default_yes(
             input(t("Create the SSH key if missing and deploy it? (Y/n): "))
         )
+        # La clé est fixée AVANT d'écrire quoi que ce soit : c'est elle qui
+        # va dans IdentityFile à chaque niveau, et celle qu'on déploiera.
+        pub = (
+            self._ssh_ensure_key()
+            if deploy_key
+            else self._qemu_default_ssh_key()
+        )
+        identity = self._ssh_private_key(pub)
 
         # Niveau 0 : les VM locales, jointes directement.
         ip_map = self._qemu_resolve_ips(roots, timeout=60)
@@ -1583,7 +1621,9 @@ class TODO:
             if not ip:
                 print(f"  ⏭  {name}: {t('no IP')}")
                 continue
-            self._write_ssh_config_entry(name, "erplibre", ip)
+            self._write_ssh_config_entry(
+                name, "erplibre", ip, identity_file=identity
+            )
             aliases[name] = (name, ip, None)
             frontier.append(name)
 
@@ -1601,13 +1641,19 @@ class TODO:
             )
             next_frontier = []
             for parent in frontier:
-                found = self._qemu_ssh_probe_remote(parent)
-                if found is None:
-                    print(f"  ⏭  {parent}: {t('unreachable or no libvirt')}")
+                probed = self._qemu_ssh_probe_remote(parent)
+                if probed is None:
+                    print(f"  ⏭  {parent}: {t('unreachable')}")
                     continue
+                has_libvirt, found = probed
+                if not has_libvirt:
+                    print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
+                    continue
+                # Une machine avec QEMU vaut sa connexion virt-manager, même
+                # sans VM : c'est là qu'on pourra en créer.
                 hosts_libvirt.append(parent)
                 if not found:
-                    print(f"  ·  {parent}: {t('no nested VM')}")
+                    print(f"  ·  {parent}: {t('QEMU present, no VM')}")
                     continue
                 for child, ip in found:
                     if not ip:
@@ -1622,7 +1668,11 @@ class TODO:
                     if alias in aliases:
                         continue  # déjà vu (cycle)
                     self._write_ssh_config_entry(
-                        alias, "erplibre", ip, proxy_jump=parent
+                        alias,
+                        "erplibre",
+                        ip,
+                        proxy_jump=parent,
+                        identity_file=identity,
                     )
                     aliases[alias] = (child, ip, parent)
                     next_frontier.append(alias)
@@ -2924,12 +2974,28 @@ class TODO:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
-    def _write_ssh_config_entry(self, host, user, ip, proxy_jump=None):
+    @staticmethod
+    def _ssh_private_key(pub_path):
+        """Clé PRIVÉE correspondant à une clé publique, ou '' si introuvable.
+        C'est elle que réclame IdentityFile ; donner le « .pub » ferait
+        échouer l'authentification."""
+        if not pub_path:
+            return ""
+        priv = pub_path[:-4] if pub_path.endswith(".pub") else pub_path
+        return priv if os.path.exists(os.path.expanduser(priv)) else ""
+
+    def _write_ssh_config_entry(
+        self, host, user, ip, proxy_jump=None, identity_file=None
+    ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
         `proxy_jump` : alias du rebond pour une VM imbriquée, dont l'IP n'est
         joignable que depuis son hôte. OpenSSH enchaîne les ProxyJump tout
-        seul dès que le parent a lui-même le sien."""
+        seul dès que le parent a lui-même le sien.
+
+        `identity_file` : clé PRIVÉE à présenter. Sans elle, ssh propose
+        toutes les identités de l'agent et un parc un peu fourni déclenche
+        « Too many authentication failures » avant d'arriver à la bonne."""
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
@@ -2953,6 +3019,14 @@ class TODO:
             f"    StrictHostKeyChecking no\n"
             f"    UserKnownHostsFile /dev/null\n"
         )
+        if identity_file:
+            # IdentitiesOnly : sans lui, IdentityFile s'AJOUTE aux clés de
+            # l'agent au lieu de les remplacer, et le serveur coupe après
+            # 5 essais infructueux.
+            block += (
+                f"    IdentityFile {identity_file}\n"
+                f"    IdentitiesOnly yes\n"
+            )
         if proxy_jump:
             block += f"    ProxyJump {proxy_jump}\n"
         content = (existing + "\n\n" + block) if existing else block
@@ -5057,10 +5131,15 @@ class TODO:
             ip_map = self._qemu_resolve_ips(deployed, labels)
 
         if add_ssh_config:
+            # La clé injectée par cloud-init est celle de la spec : c'est
+            # elle que doit présenter ssh, pas la première venue de l'agent.
+            identity = self._ssh_private_key(ssh_key)
             for name in deployed:
                 ip = ip_map.get(name)
                 if ip:
-                    self._write_ssh_config_entry(name, "erplibre", ip)
+                    self._write_ssh_config_entry(
+                        name, "erplibre", ip, identity_file=identity
+                    )
 
         # 7) Installation ERPLibre (clone + make) si demandée.
         if install:
