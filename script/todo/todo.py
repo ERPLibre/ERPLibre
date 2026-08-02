@@ -1455,6 +1455,36 @@ class TODO:
     # fichier. Le schéma est le même depuis des années (virt-manager 5.1
     # inclus) ; on LIT d'abord, et on n'écrit que si la lecture a marché.
     _VIRT_MANAGER_SCHEMA = "org.virt-manager.virt-manager.connections"
+    # Schéma RELOCATABLE d'UNE connexion : il porte son nom affiché.
+    _VIRT_MANAGER_CONN_SCHEMA = "org.virt-manager.virt-manager.connection"
+
+    @staticmethod
+    def _virt_manager_conn_path(uri):
+        """Chemin dconf des réglages d'une connexion.
+
+        virt-manager ne fait aucun échappement : il retire simplement TOUS
+        les « / » de l'URI et s'en sert comme segment unique
+        (virtManager/config.py, _make_perconn_key). Le « :», le « @» et le
+        « + » restent donc tels quels."""
+        return f"/org/virt-manager/virt-manager/conns/{uri.replace('/', '')}/"
+
+    def _virt_manager_set_label(self, uri, label):
+        """Fixe le nom affiché d'une connexion. Sans lui, virt-manager
+        fabrique un libellé à partir de l'URI, où l'imbrication se lit mal."""
+        target = (
+            f"{self._VIRT_MANAGER_CONN_SCHEMA}:"
+            f"{self._virt_manager_conn_path(uri)}"
+        )
+        try:
+            res = subprocess.run(
+                ["gsettings", "set", target, "pretty-name", label],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return res.returncode == 0
 
     def _virt_manager_uris(self):
         """URI déjà connues de virt-manager, ou None s'il n'est pas là."""
@@ -1522,12 +1552,14 @@ class TODO:
         On passe par l'ALIAS SSH et non par l'IP : le transport qemu+ssh
         utilise le binaire ssh, donc ~/.ssh/config — l'alias porte déjà
         l'adresse ET le ProxyJump, ce qu'une IP brute ne saurait pas faire
-        pour une VM imbriquée."""
+        pour une VM imbriquée. `hosts` contient les noms CHAÎNÉS, de sorte
+        que l'imbrication se lise aussi dans l'interface graphique."""
         if self._virt_manager_uris() is None:
             return
-        uris = ["qemu:///system"] + [
-            f"qemu+ssh://erplibre@{alias}/system" for alias in hosts
-        ]
+        labels = {
+            f"qemu+ssh://erplibre@{alias}/system": alias for alias in hosts
+        }
+        uris = ["qemu:///system"] + list(labels)
         print(f"\n🖥  {t('virt-manager detected')}")
         for uri in uris:
             print(f"     {uri}")
@@ -1535,6 +1567,10 @@ class TODO:
             input(t("Add the missing connections to virt-manager? (Y/n): "))
         ):
             return
+        # Le nom affiché est posé AVANT l'ajout à la liste : virt-manager le
+        # lit au moment d'afficher la connexion, pas à l'inscription.
+        for uri, label in labels.items():
+            self._virt_manager_set_label(uri, label)
         added = self._virt_manager_add(uris)
         if added:
             # virt-manager réécrit ses réglages en quittant : s'il tourne, il
@@ -1613,8 +1649,10 @@ class TODO:
 
         # Niveau 0 : les VM locales, jointes directement.
         ip_map = self._qemu_resolve_ips(roots, timeout=60)
-        aliases = {}  # alias -> (nom, ip, parent|None)
-        hosts_libvirt = []  # machines qui font tourner libvirt
+        entries = []  # un enregistrement par machine écrite
+        taken = set()  # tous les noms d'hôte déjà attribués
+        chain_of = {}  # alias -> nom chaîné « parent+enfant »
+        hosts_libvirt = []  # machines qui font tourner QEMU
         frontier = []
         for name in roots:
             ip = ip_map.get(name)
@@ -1624,7 +1662,11 @@ class TODO:
             self._write_ssh_config_entry(
                 name, "erplibre", ip, identity_file=identity
             )
-            aliases[name] = (name, ip, None)
+            entries.append(
+                {"names": [name], "ip": ip, "parent": None, "chain": name}
+            )
+            taken.add(name)
+            chain_of[name] = name
             frontier.append(name)
 
         for depth in range(1, max_depth + 1):
@@ -1659,33 +1701,47 @@ class TODO:
                     if not ip:
                         print(f"  ⏭  {parent} › {child}: {t('no IP')}")
                         continue
-                    # Le nom court est plus agréable à taper ; on ne le
-                    # préfixe du parent qu'en cas de collision, pour ne
-                    # jamais écraser l'entrée d'une autre machine.
-                    alias = child
-                    if alias in aliases:
-                        alias = f"{parent}+{child}"
-                    if alias in aliases:
+                    # Le nom CHAÎNÉ dit où vit la VM ; le nom court est plus
+                    # agréable à taper. UN SEUL bloc porte les deux — ssh
+                    # accepte plusieurs noms sur la ligne Host — et le court
+                    # n'est retenu que s'il est libre, pour ne jamais masquer
+                    # une autre machine.
+                    chain = f"{chain_of[parent]}+{child}"
+                    if chain in taken:
                         continue  # déjà vu (cycle)
+                    names = [chain] if child in taken else [child, chain]
                     self._write_ssh_config_entry(
-                        alias,
+                        names,
                         "erplibre",
                         ip,
                         proxy_jump=parent,
                         identity_file=identity,
                     )
-                    aliases[alias] = (child, ip, parent)
-                    next_frontier.append(alias)
+                    entries.append(
+                        {
+                            "names": names,
+                            "ip": ip,
+                            "parent": parent,
+                            "chain": chain,
+                        }
+                    )
+                    taken.update(names)
+                    chain_of[names[0]] = chain
+                    next_frontier.append(names[0])
             frontier = next_frontier
 
         print(f"\n── {t('SSH hosts written')} ──")
-        for alias, (name, ip, parent) in aliases.items():
-            via = f"  ({t('via')} {parent})" if parent else ""
-            print(f"  ssh {alias:<34} {ip}{via}")
+        for item in entries:
+            via = f"  ({t('via')} {item['parent']})" if item["parent"] else ""
+            print(f"  ssh {' '.join(item['names']):<44} {item['ip']}{via}")
 
-        # Les machines qui hébergent des VM sont celles qui valent d'être
+        # Les machines qui hébergent QEMU sont celles qui valent d'être
         # ajoutées à virt-manager : c'est de là qu'on pilote leurs invitées.
-        self._virt_manager_offer(hosts_libvirt)
+        # On y présente le nom CHAÎNÉ, pour que l'imbrication se lise aussi
+        # dans l'interface graphique et pas seulement dans ~/.ssh/config.
+        self._virt_manager_offer(
+            [chain_of.get(alias, alias) for alias in hosts_libvirt]
+        )
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
@@ -2984,10 +3040,49 @@ class TODO:
         priv = pub_path[:-4] if pub_path.endswith(".pub") else pub_path
         return priv if os.path.exists(os.path.expanduser(priv)) else ""
 
+    @staticmethod
+    def _ssh_config_drop_hosts(content, names):
+        """Retire les blocs « Host … » qui déclarent l'un de `names`.
+
+        On découpe en blocs plutôt que de substituer par expression
+        régulière : une ligne Host peut porter PLUSIEURS noms, et il faut
+        alors retirer le bloc entier dès qu'un seul de ses noms est repris —
+        sinon le même nom se retrouverait défini deux fois, et ssh
+        appliquerait la première définition rencontrée."""
+        drop = set(names)
+        out, block, block_names = [], [], set()
+
+        def flush():
+            if block and not (block_names & drop):
+                out.extend(block)
+
+        for line in content.splitlines(keepends=True):
+            if re.match(r"^[ \t]*Host[ \t]+", line):
+                flush()
+                block = [line]
+                block_names = set(line.split()[1:])
+            elif block:
+                # Une ligne non indentée et non vide clôt le bloc (Match,
+                # directive globale…) : elle n'appartient à personne.
+                if line.strip() and not line[:1].isspace():
+                    flush()
+                    block, block_names = [], set()
+                    out.append(line)
+                else:
+                    block.append(line)
+            else:
+                out.append(line)
+        flush()
+        return "".join(out)
+
     def _write_ssh_config_entry(
         self, host, user, ip, proxy_jump=None, identity_file=None
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
+
+        `host` peut être une liste de noms : ils partagent alors un seul bloc.
+        Sert aux VM imbriquées, joignables par leur nom court ET par leur nom
+        chaîné « parent+enfant », qui montre où elles vivent.
 
         `proxy_jump` : alias du rebond pour une VM imbriquée, dont l'IP n'est
         joignable que depuis son hôte. OpenSSH enchaîne les ProxyJump tout
@@ -2996,23 +3091,16 @@ class TODO:
         `identity_file` : clé PRIVÉE à présenter. Sans elle, ssh propose
         toutes les identités de l'agent et un parc un peu fourni déclenche
         « Too many authentication failures » avant d'arriver à la bonne."""
+        names = [host] if isinstance(host, str) else list(host)
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
         if os.path.exists(cfg):
             with open(cfg, encoding="utf-8") as fh:
                 existing = fh.read()
-        # Retire un ancien bloc du même Host (ses lignes indentées). Pas de
-        # drapeau DOTALL : « . » ne doit PAS traverser les sauts de ligne,
-        # sinon .* engloutirait tout jusqu'à la fin du fichier et effacerait
-        # les entrées suivantes.
-        pattern = re.compile(
-            rf"(?m)^[ \t]*Host[ \t]+{re.escape(host)}[ \t]*\n"
-            r"(?:[ \t]+[^\n]*\n?)*"
-        )
-        existing = pattern.sub("", existing).rstrip("\n")
+        existing = self._ssh_config_drop_hosts(existing, names).rstrip("\n")
         block = (
-            f"Host {host}\n"
+            f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
             f"    User {user}\n"
             # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
@@ -3033,7 +3121,7 @@ class TODO:
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
         os.chmod(cfg, 0o600)
-        print(f"✅ {t('Added to ~/.ssh/config:')} ssh {host}")
+        print(f"✅ {t('Added to ~/.ssh/config:')} ssh {names[0]}")
 
     def _qemu_list_domains(self):
         """Noms des VM libvirt définies (via virsh)."""
