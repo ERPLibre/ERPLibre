@@ -14,9 +14,11 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
 
 - Toujours vérifier la version Odoo active avant de modifier du code (`cat .odoo-version`)
 - Les addons sont dans `addons/` et gérés par Google Repo — ne pas modifier la structure des dépôts
-- Utiliser le venv approprié : `.venv.odoo{XX}/bin/python` pour le code Odoo
+- Utiliser le venv approprié pour le code Odoo. Son nom porte les DEUX versions
+  (`.venv.odoo18.0_python3.12.10/bin/python`) : le retrouver par
+  `ls -d .venv.odoo*` plutôt que de le composer de tête
 - Les scripts ERPLibre utilisent `.venv.erplibre/bin/python`
-- Le Makefile principal inclut 12 fragments depuis `conf/make.*.Makefile`
+- Le Makefile principal inclut des fragments depuis `conf/make.*.Makefile`
 - Les fichiers privés vont dans `private/` (non versionné)
 - La DB PostgreSQL par défaut est sur le port 5432, mot de passe admin : `admin`
 - Port Odoo par défaut : 8069, longpolling : 8072
@@ -36,12 +38,19 @@ Les instructions détaillées sont dans `.claude/rules/` :
 
 | Fichier | Contenu |
 |---------|---------|
-| `01-versions.md` | Versions Odoo/Python/Poetry supportées |
-| `02-project-structure.md` | Arborescence du projet |
-| `03-commands.md` | Commandes essentielles (make, scripts) |
-| `04-code-conventions.md` | Conventions Python, XML, fichiers, Git |
-| `05-environments.md` | Venvs, pyenv, système de dépendances |
+| `01-versions.md` | Versions Odoo supportées, où lit-on la correspondance |
+| `04-code-conventions.md` | Où sont les configs de format, conventions Git |
 | `06-code-generator.md` | Génération de modules Odoo |
-| `07-documentation.md` | Documentation multilingue (mmg) + i18n CLI |
+| `07-documentation.md` | Interdit : ne pas éditer les `.md` générés |
 | `08-deployment.md` | Docker, systemd, nginx, SSL, DNS |
 | `09-workflow.md` | Workflow orchestration + task management |
+
+Chargées à la demande (`.claude/skills/`) :
+
+| Skill | Contenu |
+|-------|---------|
+| `erplibre-commands` | Commandes make et scripts : versions, run, tests, DB, Docker, repo |
+| `erplibre-doc-i18n` | Mode d'emploi mmg (`.base.md`) et i18n du CLI TODO |
+
+L'arborescence et la liste des venvs ne sont plus documentées : `ls` et
+`ls -d .venv.*` en donnent l'état réel, la doc dérivait de la réalité.
