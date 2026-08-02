@@ -1512,13 +1512,42 @@ TRANSLATIONS = {
         "fr": "Configuration SSH des VM QEMU",
         "en": "SSH configuration for QEMU VMs",
     },
-    "Update ~/.ssh/config for local VMs": {
-        "fr": "📝 Mettre à jour ~/.ssh/config pour les VM locales",
-        "en": "📝 Update ~/.ssh/config for local VMs",
+    "Where should the machines come from?": {
+        "fr": "D'où viennent les machines à configurer ?",
+        "en": "Where should the machines come from?",
     },
-    "Add nested VMs through ProxyJump (recursive)": {
-        "fr": "🪜 Ajouter les VM imbriquées via ProxyJump (récursif)",
-        "en": "🪜 Add nested VMs through ProxyJump (recursive)",
+    "Local QEMU VMs (virsh)": {
+        "fr": "VM QEMU locales (virsh)",
+        "en": "Local QEMU VMs (virsh)",
+    },
+    "Hosts from ~/.ssh/config": {
+        "fr": "Hôtes de ~/.ssh/config",
+        "en": "Hosts from ~/.ssh/config",
+    },
+    "Type a host or an IP": {
+        "fr": "Saisir un hôte ou une IP",
+        "en": "Type a host or an IP",
+    },
+    "~/.ssh/config holds no host.": {
+        "fr": "~/.ssh/config ne contient aucun hôte.",
+        "en": "~/.ssh/config holds no host.",
+    },
+    "Which hosts? (numbers, comma-separated; blank = all): ": {
+        "fr": "Quels hôtes ? (numéros séparés par des virgules ; "
+        "vide = tous) : ",
+        "en": "Which hosts? (numbers, comma-separated; blank = all): ",
+    },
+    "Host or IP:": {
+        "fr": "Hôte ou IP :",
+        "en": "Host or IP:",
+    },
+    "Name for ~/.ssh/config": {
+        "fr": "Nom pour ~/.ssh/config",
+        "en": "Name for ~/.ssh/config",
+    },
+    "Depth (1 = these machines only, default:": {
+        "fr": "Profondeur (1 = ces machines seulement, défaut :",
+        "en": "Depth (1 = these machines only, default:",
     },
     "Which VMs? (numbers, comma-separated; blank = all): ": {
         "fr": "Quelles VM ? (numéros séparés par des virgules ; "

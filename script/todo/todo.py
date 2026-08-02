@@ -1316,29 +1316,92 @@ class TODO:
         'printf "%s\\t%s\\n" "$n" "$ip"; done'
     )
 
+    def _qemu_ssh_pick_roots(self):
+        """D'où partir pour configurer ~/.ssh/config. Renvoie une liste de
+        racines [{alias, ip|None}], ou [] pour renoncer.
+
+        Trois provenances, parce que « la machine à configurer » n'est pas
+        toujours une VM d'ici : elle peut être un hôte déjà connu de
+        ~/.ssh/config, ou une adresse qu'on vient d'obtenir."""
+        print(f"\n{t('Where should the machines come from?')}")
+        print(f"  [1] {t('Local QEMU VMs (virsh)')} *")
+        print(f"  [2] {t('Hosts from ~/.ssh/config')}")
+        print(f"  [3] {t('Type a host or an IP')}")
+        print(f"  [0] {t('Back')}")
+        answer = input(t("Choice (0-3, default 1): ")).strip()
+        if answer == "0":
+            return []
+
+        if answer == "2":
+            hosts = self._ssh_config_hosts()
+            if not hosts:
+                print(f"  {t('~/.ssh/config holds no host.')}")
+                return []
+            for i, name in enumerate(hosts, 1):
+                print(f"  [{i}] {name}")
+            raw = input(
+                t("Which hosts? (numbers, comma-separated; blank = all): ")
+            ).strip()
+            chosen = (
+                hosts if not raw else self._parse_index_selection(raw, hosts)
+            )
+            # Déjà dans ~/.ssh/config : leur adresse y est, rien à réécrire.
+            return [{"alias": name, "ip": None} for name in chosen or hosts]
+
+        if answer == "3":
+            target = input(f"{t('Host or IP:')} ").strip()
+            if not target:
+                return []
+            if target in self._ssh_config_hosts():
+                return [{"alias": target, "ip": None}]
+            # Une IP brute n'est pas un alias : on lui en donne un, sinon ni
+            # le ProxyJump des enfants ni virt-manager n'auraient de nom.
+            default_alias = "qemu-" + target.replace(".", "-").replace(
+                "@", "-"
+            )
+            alias = (
+                input(
+                    f"{t('Name for ~/.ssh/config')} ({default_alias}): "
+                ).strip()
+                or default_alias
+            )
+            return [{"alias": alias, "ip": target}]
+
+        names = self._qemu_pick_domains()
+        if not names:
+            return []
+        ip_map = self._qemu_resolve_ips(names, timeout=60)
+        roots = []
+        for name in names:
+            ip = ip_map.get(name)
+            if not ip:
+                print(f"  ⏭  {name}: {t('no IP')}")
+                continue
+            roots.append({"alias": name, "ip": ip})
+        return roots
+
     def _qemu_ssh_config_menu(self):
-        """Écrit les entrées ~/.ssh/config du parc QEMU."""
+        """Écrit les entrées ~/.ssh/config du parc QEMU.
+
+        Un seul flux : les deux anciennes entrées (« VM locales » et
+        « imbriquées, récursif ») écrivaient la même chose et ne différaient
+        que par la profondeur — c'est donc une question, pas un menu."""
         print(f"🔑 {t('SSH configuration for QEMU VMs')}")
-        choices = [
-            {"prompt_description": t("Update ~/.ssh/config for local VMs")},
-            {
-                "prompt_description": t(
-                    "Add nested VMs through ProxyJump (recursive)"
-                )
-            },
-        ]
-        help_info = self.fill_help_info(choices)
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._qemu_ssh_config_local()
-            elif status == "2":
-                self._qemu_ssh_config_nested()
-            else:
-                print(t("Command not found !"))
+        roots = self._qemu_ssh_pick_roots()
+        if not roots:
+            return
+        raw = input(
+            f"{t('Depth (1 = these machines only, default:')}"
+            f" {self._QEMU_SSH_DEPTH}): "
+        ).strip()
+        try:
+            max_depth = max(1, int(raw)) if raw else self._QEMU_SSH_DEPTH
+        except ValueError:
+            max_depth = self._QEMU_SSH_DEPTH
+        deploy_key = self._is_yes_default_yes(
+            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
+        )
+        self._qemu_ssh_walk(roots, max_depth, deploy_key)
 
     def _qemu_pick_domains(self):
         """Fait choisir des VM parmi celles définies. Vide = toutes."""
@@ -1355,41 +1418,6 @@ class TODO:
             return names
         chosen = self._parse_index_selection(raw, names)
         return chosen or names
-
-    def _qemu_ssh_config_local(self):
-        """Une entrée ~/.ssh/config par VM locale, comme le fait déjà le
-        déploiement — mais sur un parc déjà en place."""
-        names = self._qemu_pick_domains()
-        if not names:
-            return
-        deploy_key = self._is_yes_default_yes(
-            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
-        )
-        # La clé est fixée AVANT d'écrire : c'est elle qui va dans
-        # IdentityFile, et c'est la même qu'on déploiera ensuite.
-        pub = (
-            self._ssh_ensure_key()
-            if deploy_key
-            else self._qemu_default_ssh_key()
-        )
-        identity = self._ssh_private_key(pub)
-        ip_map = self._qemu_resolve_ips(names, timeout=60)
-        written = []
-        for name in names:
-            ip = ip_map.get(name)
-            if not ip:
-                print(f"  ⏭  {name}: {t('no IP')}")
-                continue
-            self._write_ssh_config_entry(
-                name, "erplibre", ip, identity_file=identity
-            )
-            written.append(name)
-        print(
-            f"\n✅ {len(written)} {self._plural(t('entry'), len(written))}"
-            f" {t('written')} ({len(names) - len(written)} {t('skipped')})"
-        )
-        if deploy_key:
-            self._ssh_deploy_keys(written)
 
     def _ssh_ensure_key(self):
         """Chemin de la clé PUBLIQUE, générée si aucune n'existe.
@@ -1652,27 +1680,17 @@ class TODO:
             found.append((parts[0], parts[1].strip()))
         return has_libvirt, found
 
-    def _qemu_ssh_config_nested(self):
-        """Descend le parc en profondeur et écrit un ProxyJump par niveau.
+    def _qemu_ssh_walk(self, roots, max_depth, deploy_key):
+        """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
 
         Une VM du profil « Déploiement » héberge elle-même des VM : celles-ci
         n'ont pas d'IP joignable depuis l'hôte, seulement depuis leur parent.
         ProxyJump enchaîne les sauts, et la chaîne se construit d'elle-même
         puisque le parent est déjà dans ~/.ssh/config quand on écrit l'enfant.
+
+        Une racine sans IP est un hôte DÉJÀ décrit dans ~/.ssh/config : son
+        adresse y est, on ne la réécrit pas, on part simplement de lui.
         """
-        roots = self._qemu_pick_domains()
-        if not roots:
-            return
-        raw = input(
-            f"{t('Depth (default:')} {self._QEMU_SSH_DEPTH}): "
-        ).strip()
-        try:
-            max_depth = max(1, int(raw)) if raw else self._QEMU_SSH_DEPTH
-        except ValueError:
-            max_depth = self._QEMU_SSH_DEPTH
-        deploy_key = self._is_yes_default_yes(
-            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
-        )
         # La clé est fixée AVANT d'écrire quoi que ce soit : c'est elle qui
         # va dans IdentityFile à chaque niveau, et celle qu'on déploiera.
         pub = (
@@ -1682,27 +1700,25 @@ class TODO:
         )
         identity = self._ssh_private_key(pub)
 
-        # Niveau 0 : les VM locales, jointes directement.
-        ip_map = self._qemu_resolve_ips(roots, timeout=60)
         entries = []  # un enregistrement par machine écrite
         taken = set()  # tous les noms d'hôte déjà attribués
         chain_of = {}  # alias -> nom chaîné « parent+enfant »
         hosts_libvirt = []  # machines qui font tourner QEMU
         frontier = []
-        for name in roots:
-            ip = ip_map.get(name)
-            if not ip:
-                print(f"  ⏭  {name}: {t('no IP')}")
-                continue
-            self._write_ssh_config_entry(
-                name, "erplibre", ip, identity_file=identity
-            )
-            entries.append({"names": [name], "ip": ip, "parent": None})
-            taken.add(name)
-            chain_of[name] = name
-            frontier.append(name)
+        for root in roots:
+            alias, ip = root["alias"], root.get("ip")
+            if ip:
+                self._write_ssh_config_entry(
+                    alias, "erplibre", ip, identity_file=identity
+                )
+                entries.append({"names": [alias], "ip": ip, "parent": None})
+            taken.add(alias)
+            chain_of[alias] = alias
+            frontier.append(alias)
 
-        for depth in range(1, max_depth + 1):
+        # `max_depth` compte les NIVEAUX de machines, racines comprises : une
+        # profondeur de 1 s'arrête donc ici, sans rien sonder.
+        for depth in range(1, max_depth):
             if not frontier:
                 break
             # La clé est déployée AVANT de sonder : la sonde utilise
@@ -1711,7 +1727,7 @@ class TODO:
             if deploy_key:
                 self._ssh_deploy_keys(frontier)
             print(
-                f"\n🔎 {t('Level')} {depth} — "
+                f"\n🔎 {t('Level')} {depth + 1} — "
                 f"{len(frontier)} {t('machines to probe')}"
             )
             next_frontier = []
