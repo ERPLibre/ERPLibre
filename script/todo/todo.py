@@ -1664,9 +1664,7 @@ class TODO:
             self._write_ssh_config_entry(
                 name, "erplibre", ip, identity_file=identity
             )
-            entries.append(
-                {"names": [name], "ip": ip, "parent": None, "chain": name}
-            )
+            entries.append({"names": [name], "ip": ip, "parent": None})
             taken.add(name)
             chain_of[name] = name
             frontier.append(name)
@@ -1703,33 +1701,25 @@ class TODO:
                     if not ip:
                         print(f"  ⏭  {parent} › {child}: {t('no IP')}")
                         continue
-                    # Le nom CHAÎNÉ dit où vit la VM ; le nom court est plus
-                    # agréable à taper. UN SEUL bloc porte les deux — ssh
-                    # accepte plusieurs noms sur la ligne Host — et le court
-                    # n'est retenu que s'il est libre, pour ne jamais masquer
-                    # une autre machine.
+                    # UN SEUL nom, le nom CHAÎNÉ : il dit où vit la VM et ne
+                    # peut heurter aucune autre machine. Y ajouter le nom
+                    # court ne ferait que répéter la fin de la chaîne.
                     chain = f"{chain_of[parent]}+{child}"
                     if chain in taken:
                         continue  # déjà vu (cycle)
-                    names = [chain] if child in taken else [child, chain]
                     self._write_ssh_config_entry(
-                        names,
+                        chain,
                         "erplibre",
                         ip,
                         proxy_jump=parent,
                         identity_file=identity,
                     )
                     entries.append(
-                        {
-                            "names": names,
-                            "ip": ip,
-                            "parent": parent,
-                            "chain": chain,
-                        }
+                        {"names": [chain], "ip": ip, "parent": parent}
                     )
-                    taken.update(names)
-                    chain_of[names[0]] = chain
-                    next_frontier.append(names[0])
+                    taken.add(chain)
+                    chain_of[chain] = chain
+                    next_frontier.append(chain)
             frontier = next_frontier
 
         print(f"\n── {t('SSH hosts written')} ──")
