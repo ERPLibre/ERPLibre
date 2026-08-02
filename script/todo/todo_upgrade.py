@@ -6,6 +6,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import zipfile
@@ -311,6 +312,52 @@ class TodoUpgrade:
         print(f"  {t('(change the default in TODO > Configuration)')}")
         answer = input(t("Choice (0-3, default 1): ")).strip()
         return {"0": None, "2": "cli", "3": "stats"}.get(answer, "tui")
+
+    @staticmethod
+    def database_from_command(cmd):
+        """Nom de base visé par une commande, ou "" si indécelable.
+
+        Sert à proposer le bon outil au bon moment quand une commande échoue.
+        On reconnaît les trois formes du dépôt : « -d <base> », « --database
+        <base> », et l'argument positionnel des scripts addons
+        (`update_addons_all.sh <base>`, `install_addons*.sh <base> <modules>`).
+        """
+        if not cmd:
+            return ""
+        match = re.search(r"(?:^|\s)(?:-d|--database)[=\s]+([\w.-]+)", cmd)
+        if match:
+            return match.group(1)
+        match = re.search(
+            r"\./script/addons/\w+\.sh\s+([\w.-]+)",
+            cmd,
+        )
+        return match.group(1) if match else ""
+
+    def check_stale_cow_views(self, database_name):
+        """Lance le détecteur de copies COW en retard sur leur vue module.
+
+        Purement consultatif : il n'écrit rien sans « --reset … --apply », que
+        l'on propose seulement après avoir montré le diff — réinitialiser une
+        copie peut effacer une personnalisation réelle."""
+        script_path = os.path.join(
+            PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
+        )
+        if not os.path.exists(script_path):
+            print(f"⚠️ {t('Tool not found')}: {script_path}")
+            return
+        status, _cmd = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{script_path} -d {database_name}",
+            wait_at_error=False,
+        )
+        if status:
+            # Sortie 1 = des écarts ont été trouvés (le script les a listés).
+            warn = t("Read the diff first: a copy can hold a customisation.")
+            print(f"\n💡 {t('To reset one of them onto its module view:')}")
+            print(
+                f"   {PYTHON_BIN} ./{script_path} -d {database_name}"
+                f" --reset <key> --apply"
+            )
+            print(f"   {warn}")
 
     def show_stats(self):
         """Écran de statistiques, en lecture seule : rien n'est écrit, ni
@@ -2650,17 +2697,34 @@ class TodoUpgrade:
         # failure, never as a success (defence in depth: exec_command_live now
         # always sets one, but a silent None must not skip this prompt).
         if (status is None or status) and wait_at_error:
-            print("[1] to redo the command")
-            wait_status = (
-                input(
-                    "💬 Error detected, press to continue or ctrl+c to stop : "
+            database_name = self.database_from_command(cmd)
+            while True:
+                print("[1] to redo the command")
+                if database_name:
+                    print(
+                        f"[2] {t('Check the COW views that drifted')}"
+                        f" ({database_name})"
+                    )
+                wait_status = (
+                    input(
+                        "💬 Error detected, press to continue or ctrl+c to"
+                        " stop : "
+                    )
+                    .strip()
+                    .lower()
                 )
-                .strip()
-                .lower()
-            )
 
-            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
-            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+                # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
+                # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+
+                if wait_status == "2" and database_name:
+                    # Le motif d'échec le plus fréquent ici est « Element
+                    # <xpath …> cannot be located in parent view » : une copie
+                    # COW en retard sur sa vue module. On propose l'outil sur
+                    # place, puis on repose le choix pour rejouer.
+                    self.check_stale_cow_views(database_name)
+                    continue
+                break
 
             if wait_status == "1":
                 return self.todo_upgrade_execute(

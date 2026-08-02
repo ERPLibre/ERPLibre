@@ -1609,6 +1609,23 @@ TRANSLATIONS = {
         "fr": "Rien de désinstallé.",
         "en": "Nothing uninstalled.",
     },
+    "Check the COW views that drifted": {
+        "fr": "Vérifier les vues COW en retard sur leur vue module",
+        "en": "Check the COW views that drifted",
+    },
+    "Tool not found": {
+        "fr": "Outil introuvable",
+        "en": "Tool not found",
+    },
+    "To reset one of them onto its module view:": {
+        "fr": "Pour réinitialiser l'une d'elles sur sa vue module :",
+        "en": "To reset one of them onto its module view:",
+    },
+    "Read the diff first: a copy can hold a customisation.": {
+        "fr": "Lire le diff d'abord : une copie peut porter une"
+        " personnalisation.",
+        "en": "Read the diff first: a copy can hold a customisation.",
+    },
     "Migration statistics (read-only)": {
         "fr": "📊 Statistiques de la migration (lecture seule)",
         "en": "📊 Migration statistics (read-only)",
