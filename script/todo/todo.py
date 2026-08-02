@@ -1168,12 +1168,38 @@ class TODO:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_ensure_tools(self):
+        """virsh absent : proposer l'installation plutôt que de laisser
+        chaque commande échouer sur « sudo: virsh: command not found ».
+
+        deploy_qemu.py --setup-host connaît les paquets de chaque
+        distribution ; on ne devine donc rien ici, on le délègue."""
+        if shutil.which("virsh"):
+            return True
+        print(f"\n⚠  {t('virsh is missing: libvirt is not installed here.')}")
+        print(f"   {t('Every VM command will fail until it is.')}")
+        if not self._is_yes_default_yes(
+            input(t("Install the QEMU/libvirt tools now? (Y/n): "))
+        ):
+            return False
+        cmd = f"sudo {self._QEMU_QEMU_PKGS}"
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+        if shutil.which("virsh"):
+            print(f"✅ {t('libvirt is available.')}")
+            return True
+        # Sur une distribution à noyau roulant, --setup-host peut demander un
+        # redémarrage avant que les modules soient chargeables.
+        print(f"⚠  {t('virsh still missing; a reboot may be required.')}")
+        return False
+
     def prompt_execute_qemu(self):
         print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
         script_path = self._qemu_script_path()
         if not os.path.isfile(script_path):
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
             return False
+        self._qemu_ensure_tools()
         choices = [
             {"section": t("Deployment")},
             {"prompt_description": t("Deploy VM(s) (one or many)")},
@@ -5035,8 +5061,16 @@ class TODO:
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
         Renvoie la spec complète, ou None si l'utilisateur renonce."""
-        # Clé SSH (partagée par tout le parc).
+        # Clé SSH (partagée par tout le parc). Sans clé, cloud-init n'en
+        # injecte aucune : la VM démarre sans accès SSH, donc sans
+        # installation ni vérification possibles. On propose donc d'en créer
+        # une plutôt que de laisser passer un déploiement inutilisable.
         default_key = self._qemu_default_ssh_key()
+        if not default_key:
+            print(f"\n⚠  {t('No SSH public key found in ~/.ssh.')}")
+            print(f"   {t('Without one the VMs start with no SSH access.')}")
+            if self._is_yes_default_yes(input(t("Generate one now? (Y/n): "))):
+                default_key = self._ssh_ensure_key()
         key_hint = default_key or t("none")
         ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
         if not ssh_key:

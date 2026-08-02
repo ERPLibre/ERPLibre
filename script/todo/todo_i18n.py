@@ -1419,6 +1419,39 @@ TRANSLATIONS = {
         "fr": "Port local (défaut :",
         "en": "Local port (default:",
     },
+    "virsh is missing: libvirt is not installed here.": {
+        "fr": "virsh est absent : libvirt n'est pas installé ici.",
+        "en": "virsh is missing: libvirt is not installed here.",
+    },
+    "Every VM command will fail until it is.": {
+        "fr": "Toutes les commandes VM échoueront tant que ce sera le cas.",
+        "en": "Every VM command will fail until it is.",
+    },
+    "Install the QEMU/libvirt tools now? (Y/n): ": {
+        "fr": "Installer les outils QEMU/libvirt maintenant ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Install the QEMU/libvirt tools now? (Y/n, default: yes): ",
+    },
+    "libvirt is available.": {
+        "fr": "libvirt est disponible.",
+        "en": "libvirt is available.",
+    },
+    "virsh still missing; a reboot may be required.": {
+        "fr": "virsh toujours absent ; un redémarrage est peut-être requis.",
+        "en": "virsh still missing; a reboot may be required.",
+    },
+    "No SSH public key found in ~/.ssh.": {
+        "fr": "Aucune clé publique SSH trouvée dans ~/.ssh.",
+        "en": "No SSH public key found in ~/.ssh.",
+    },
+    "Without one the VMs start with no SSH access.": {
+        "fr": "Sans elle, les VM démarrent sans accès SSH.",
+        "en": "Without one the VMs start with no SSH access.",
+    },
+    "Generate one now? (Y/n): ": {
+        "fr": "En générer une maintenant ? (O/n, défaut : oui) : ",
+        "en": "Generate one now? (Y/n, default: yes): ",
+    },
     "Checking the remote port...": {
         "fr": "Vérification du port distant...",
         "en": "Checking the remote port...",
