@@ -1541,6 +1541,10 @@ TRANSLATIONS = {
         "fr": "Hôte ou IP :",
         "en": "Host or IP:",
     },
+    "User": {
+        "fr": "Utilisateur",
+        "en": "User",
+    },
     "Name for ~/.ssh/config": {
         "fr": "Nom pour ~/.ssh/config",
         "en": "Name for ~/.ssh/config",

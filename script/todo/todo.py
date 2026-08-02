@@ -1288,6 +1288,10 @@ class TODO:
                 if cmd_no_found:
                     print(t("Command not found !"))
 
+    # Compte créé par cloud-init dans les VM déployées ici. Sert de défaut
+    # quand ~/.ssh/config ne déclare aucun `User` pour l'hôte adopté.
+    QEMU_VM_USER = "erplibre"
+
     # Profondeur d'exploration par défaut : hôte -> VM -> VM imbriquée. Le
     # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
     # donc un parc à deux niveaux est le cas courant.
@@ -1346,26 +1350,48 @@ class TODO:
                 hosts if not raw else self._parse_index_selection(raw, hosts)
             )
             # Déjà dans ~/.ssh/config : leur adresse y est, rien à réécrire.
-            return [{"alias": name, "ip": None} for name in chosen or hosts]
+            # Le `User` déclaré est repris tel quel : ces hôtes ne sont pas
+            # forcément des VM ERPLibre, et leurs invitées suivent la même
+            # convention que leur parent.
+            return [
+                {
+                    "alias": name,
+                    "ip": None,
+                    "user": self._ssh_config_user(name),
+                }
+                for name in chosen or hosts
+            ]
 
         if answer == "3":
             target = input(f"{t('Host or IP:')} ").strip()
             if not target:
                 return []
             if target in self._ssh_config_hosts():
-                return [{"alias": target, "ip": None}]
+                return [
+                    {
+                        "alias": target,
+                        "ip": None,
+                        "user": self._ssh_config_user(target),
+                    }
+                ]
+            # « utilisateur@hôte » est accepté : c'est la forme qu'on tape
+            # naturellement, et elle évite une question de plus.
+            user, _, address = target.rpartition("@")
             # Une IP brute n'est pas un alias : on lui en donne un, sinon ni
             # le ProxyJump des enfants ni virt-manager n'auraient de nom.
-            default_alias = "qemu-" + target.replace(".", "-").replace(
-                "@", "-"
-            )
+            default_alias = "qemu-" + address.replace(".", "-")
             alias = (
                 input(
                     f"{t('Name for ~/.ssh/config')} ({default_alias}): "
                 ).strip()
                 or default_alias
             )
-            return [{"alias": alias, "ip": target}]
+            if not user:
+                user = (
+                    input(f"{t('User')} ({self.QEMU_VM_USER}): ").strip()
+                    or self.QEMU_VM_USER
+                )
+            return [{"alias": alias, "ip": address, "user": user}]
 
         names = self._qemu_pick_domains()
         if not names:
@@ -1613,12 +1639,14 @@ class TODO:
         On passe par l'ALIAS SSH et non par l'IP : le transport qemu+ssh
         utilise le binaire ssh, donc ~/.ssh/config — l'alias porte déjà
         l'adresse ET le ProxyJump, ce qu'une IP brute ne saurait pas faire
-        pour une VM imbriquée. `hosts` contient les noms CHAÎNÉS, de sorte
-        que l'imbrication se lise aussi dans l'interface graphique."""
+        pour une VM imbriquée. `hosts` = [(alias_chaîné, compte)], de sorte
+        que l'imbrication se lise aussi dans l'interface graphique et que le
+        compte soit celui de ~/.ssh/config, pas un défaut supposé."""
         if self._virt_manager_uris() is None:
             return
         labels = {
-            f"qemu+ssh://erplibre@{alias}/system": alias for alias in hosts
+            f"qemu+ssh://{user or self.QEMU_VM_USER}@{alias}/system": alias
+            for alias, user in hosts
         }
         uris = ["qemu:///system"] + list(labels)
         print(f"\n🖥  {t('virt-manager detected')}")
@@ -1703,15 +1731,26 @@ class TODO:
         entries = []  # un enregistrement par machine écrite
         taken = set()  # tous les noms d'hôte déjà attribués
         chain_of = {}  # alias -> nom chaîné « parent+enfant »
+        user_of = {}  # alias -> compte de connexion
         hosts_libvirt = []  # machines qui font tourner QEMU
         frontier = []
         for root in roots:
             alias, ip = root["alias"], root.get("ip")
+            # Le compte vient de ~/.ssh/config quand il y est déclaré : un
+            # hôte adopté n'est pas forcément une VM ERPLibre.
+            user_of[alias] = root.get("user") or self.QEMU_VM_USER
             if ip:
                 self._write_ssh_config_entry(
-                    alias, "erplibre", ip, identity_file=identity
+                    alias, user_of[alias], ip, identity_file=identity
                 )
-                entries.append({"names": [alias], "ip": ip, "parent": None})
+                entries.append(
+                    {
+                        "names": [alias],
+                        "ip": ip,
+                        "parent": None,
+                        "user": user_of[alias],
+                    }
+                )
             taken.add(alias)
             chain_of[alias] = alias
             frontier.append(alias)
@@ -1756,15 +1795,23 @@ class TODO:
                     chain = f"{chain_of[parent]}+{child}"
                     if chain in taken:
                         continue  # déjà vu (cycle)
+                    # L'invitée hérite du compte de son parent : elle a été
+                    # créée par lui, avec la même convention.
+                    user_of[chain] = user_of[parent]
                     self._write_ssh_config_entry(
                         chain,
-                        "erplibre",
+                        user_of[chain],
                         ip,
                         proxy_jump=parent,
                         identity_file=identity,
                     )
                     entries.append(
-                        {"names": [chain], "ip": ip, "parent": parent}
+                        {
+                            "names": [chain],
+                            "ip": ip,
+                            "parent": parent,
+                            "user": user_of[chain],
+                        }
                     )
                     taken.add(chain)
                     chain_of[chain] = chain
@@ -1774,14 +1821,20 @@ class TODO:
         print(f"\n── {t('SSH hosts written')} ──")
         for item in entries:
             via = f"  ({t('via')} {item['parent']})" if item["parent"] else ""
-            print(f"  ssh {' '.join(item['names']):<44} {item['ip']}{via}")
+            print(
+                f"  ssh {' '.join(item['names']):<40}"
+                f" {item['user']}@{item['ip']}{via}"
+            )
 
         # Les machines qui hébergent QEMU sont celles qui valent d'être
         # ajoutées à virt-manager : c'est de là qu'on pilote leurs invitées.
         # On y présente le nom CHAÎNÉ, pour que l'imbrication se lise aussi
         # dans l'interface graphique et pas seulement dans ~/.ssh/config.
         self._virt_manager_offer(
-            [chain_of.get(alias, alias) for alias in hosts_libvirt]
+            [
+                (chain_of.get(alias, alias), user_of.get(alias, ""))
+                for alias in hosts_libvirt
+            ]
         )
 
     def _qemu_stats(self):
@@ -5408,6 +5461,39 @@ class TODO:
         except OSError:
             pass
         return names
+
+    @staticmethod
+    def _ssh_config_user(host):
+        """`User` déclaré pour cet hôte dans ~/.ssh/config, ou "".
+
+        On suit la règle d'OpenSSH : le PREMIER `User` rencontré parmi les
+        blocs qui correspondent l'emporte, motifs (`Host *`) compris. Sans
+        déclaration on renvoie "" — il n'y a alors rien à copier, et
+        l'appelant garde son défaut plutôt que d'inventer le nom de session
+        locale."""
+        import fnmatch
+
+        path = os.path.expanduser("~/.ssh/config")
+        matching = False
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    stripped = line.strip()
+                    if re.match(r"^Host[ \t]+", stripped):
+                        matching = any(
+                            fnmatch.fnmatch(host, pattern)
+                            for pattern in stripped.split()[1:]
+                        )
+                        continue
+                    if matching:
+                        found = re.match(
+                            r"^User[ \t]+(\S+)", stripped, re.IGNORECASE
+                        )
+                        if found:
+                            return found.group(1)
+        except OSError:
+            pass
+        return ""
 
     @staticmethod
     def _port_is_free(port):
