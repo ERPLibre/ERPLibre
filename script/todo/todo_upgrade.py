@@ -287,10 +287,13 @@ class TodoUpgrade:
 
     @staticmethod
     def ask_ui():
-        """Interface of the migration: TUI or line-by-line prompts.
+        """Interface of the migration: TUI, line-by-line prompts, or the
+        read-only statistics screen. Returns None to leave the tool.
 
         The preference can settle it in advance (TODO > Configuration);
-        « ask » asks. Same contract as the QEMU deployment.
+        « ask » asks. Same contract as the QEMU deployment — except for
+        « stats », which is never a stored default: it does nothing, so
+        landing there every time would only be in the way.
         """
         try:
             from script.todo import todo_prefs
@@ -303,9 +306,155 @@ class TodoUpgrade:
         print(f"\n{t('Interface:')}")
         print(f"  [1] {t('TUI form')} *")
         print(f"  [2] {t('Classic questions (line by line)')}")
+        print(f"  [3] {t('Migration statistics (read-only)')}")
+        print(f"  [0] {t('Cancel')}")
         print(f"  {t('(change the default in TODO > Configuration)')}")
-        answer = input(t("Choice (1-2, default 1): ")).strip()
-        return "cli" if answer == "2" else "tui"
+        answer = input(t("Choice (0-3, default 1): ")).strip()
+        return {"0": None, "2": "cli", "3": "stats"}.get(answer, "tui")
+
+    def show_stats(self):
+        """Écran de statistiques, en lecture seule : rien n'est écrit, ni
+        dans la base ni dans le journal de migration."""
+        from script.todo import migration_stats as ms
+
+        if not os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
+            print(f"\nℹ️  {t('No migration in progress to resume.')}")
+            return
+        dct = self.read_progression()
+        if not dct:
+            print(f"\nℹ️  {t('No migration in progress to resume.')}")
+            return
+        ctx = self.resume_context(dct)
+        database_name = dct.get("config_database_name") or ""
+        stats = ms.compute(
+            dct,
+            ctx,
+            database_name,
+            self.read_uninstall_module_list,
+            PATH_MIGRATION_PRIVATE,
+            PATH_MIGRATION_GLOBAL,
+        )
+
+        while True:
+            self.print_stats(ctx, stats)
+            print(f"\n   [1] {t('Removed modules, with their reason')}")
+            print(f"   [2] {t('Removed modules, comma-separated (copy)')}")
+            print(f"   [3] {t('COW views: snapshots and differences')}")
+            print(f"   [4] {t('Recorded decisions (journal)')}")
+            print(f"   [5] {t('Executed commands (last 30)')}")
+            print(f"   [0] {t('Back')}")
+            answer = input(f"💬 {t('Your choice')} : ").strip()
+            if answer in ("", "0"):
+                return
+            if answer == "1":
+                for version, detail in sorted(stats["uninstall"].items()):
+                    print(f"\n── {version - 1}.0 → {version}.0 ──")
+                    self.print_uninstall_reason(detail)
+            elif answer == "2":
+                flat = ms.flat_module_list(stats["uninstall"])
+                print(f"\n{len(flat)} {t('modules')} :\n")
+                print(",".join(flat))
+            elif answer == "3":
+                self.stats_cow(stats, database_name)
+            elif answer == "4":
+                for line in stats["journal"]["comments"]:
+                    print(f"   · {line}")
+                if not stats["journal"]["comments"]:
+                    print(f"   {t('nothing recorded')}")
+            elif answer == "5":
+                for line in stats["journal"]["commands"][-30:]:
+                    print(f"   $ {line}")
+            else:
+                print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+
+    @staticmethod
+    def print_stats(ctx, stats):
+        """Rend le tableau de bord de la migration."""
+        print(f"\n📊 {t('Migration statistics')}")
+        print(f"   {t('File'):<11}: {ctx['file']}")
+        print(
+            f"   {t('Database'):<11}: {ctx['database']}"
+            f"   ·   {t('Target')} : {ctx['target']}"
+        )
+        print(
+            f"   {t('Started'):<11}: {ctx['started']}"
+            f"   ·   {t('elapsed')} {stats['delay']}"
+        )
+
+        print(f"\n── {t('Level reached')} ──")
+        done = sum(1 for v in ctx["versions"] if v["done"])
+        total = len(ctx["versions"]) or 1
+        line = "   "
+        for item in ctx["versions"]:
+            mark = "✅" if item["done"] else "⬜"
+            line += f"{item['version'] - 1}.0→{item['version']}.0 {mark}   "
+        print(line)
+        print(
+            f"   {done}/{len(ctx['versions'])} "
+            f"{t('version bumps migrated')}  ({done * 100 // total} %)"
+        )
+        print(
+            "   "
+            + "  ".join(f"[{s['step']}]{s['icon']}" for s in ctx["steps"])
+        )
+
+        print(f"\n── {t('Modules')} ──")
+        if stats["origin_count"]:
+            print(f"   {t('At the start'):<24}: {stats['origin_count']}")
+        for version, count, delta in stats["evolution"]:
+            change = "" if delta is None else f"   ({delta:+d})"
+            print(f"   {f'{version}.0':<24}: {count}{change}")
+        print(f"   {t('Removed in total'):<24}: {stats['removed_total']}")
+        if stats["missing"]:
+            print(f"   {t('Reported missing'):<24}: {len(stats['missing'])}")
+        if stats["duplicate"]:
+            print(f"   {t('Duplicated'):<24}: {len(stats['duplicate'])}")
+
+        if stats["fixes"]:
+            print(f"\n── {t('Migration fixes')} ──")
+            for fix in stats["fixes"]:
+                mark = "✅" if fix["applied"] else "⬜"
+                print(f"   {mark} {fix['version']}.0   {fix['file']}")
+
+        print(f"\n── {t('COW views')} ──")
+        if stats["cow"]:
+            for snap in stats["cow"]:
+                print(
+                    f"   {snap['label']:<18} {str(snap['count']):>4} "
+                    f"{t('views')}   {snap['taken_at']}"
+                )
+        else:
+            print(f"   {t('no snapshot')}")
+
+        print(f"\n── {t('Journal')} ──")
+        print(
+            f"   {len(stats['journal']['commands'])} {t('commands')}, "
+            f"{len(stats['journal']['comments'])} {t('recorded decisions')}"
+        )
+
+    def stats_cow(self, stats, database_name):
+        """Instantanés COW, et différence entre deux d'entre eux."""
+        snaps = stats["cow"]
+        if len(snaps) < 2:
+            print(f"   {t('Need two snapshots to diff.')}")
+            return
+        for index, snap in enumerate(snaps, 1):
+            print(
+                f"   [{index}] {snap['label']:<18} "
+                f"{str(snap['count']):>4} {t('views')}   {snap['taken_at']}"
+            )
+        raw = input(
+            f"💬 {t('Diff which two? (e.g. 1,2 — blank to skip)')} : "
+        ).strip()
+        parts = [p.strip() for p in raw.replace(",", " ").split()]
+        if len(parts) != 2 or not all(p.isdigit() for p in parts):
+            return
+        first, second = (int(p) - 1 for p in parts)
+        if not (0 <= first < len(snaps) and 0 <= second < len(snaps)):
+            return
+        self.diff_cow_views(
+            database_name, snaps[first]["label"], snaps[second]["label"]
+        )
 
     @staticmethod
     def resume_tui(ctx):
@@ -722,7 +871,16 @@ class TodoUpgrade:
         self.dct_module_per_dct_version_path = {}
         default_database_name = "test"
 
-        use_tui = self.ask_ui() == "tui"
+        # L'écran de statistiques ne fait rien : on y revient autant de fois
+        # qu'on veut, et on repose ensuite le choix d'interface.
+        while True:
+            ui = self.ask_ui()
+            if ui is None:
+                return
+            if ui != "stats":
+                break
+            self.show_stats()
+        use_tui = ui == "tui"
 
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
             old_dct_progression = self.read_progression()

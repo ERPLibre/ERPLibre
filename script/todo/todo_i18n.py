@@ -1561,6 +1561,110 @@ TRANSLATIONS = {
         "fr": "Rien de désinstallé.",
         "en": "Nothing uninstalled.",
     },
+    "Migration statistics (read-only)": {
+        "fr": "📊 Statistiques de la migration (lecture seule)",
+        "en": "📊 Migration statistics (read-only)",
+    },
+    "Choice (0-3, default 1): ": {
+        "fr": "Choix (0-3, défaut 1) : ",
+        "en": "Choice (0-3, default 1): ",
+    },
+    "Migration statistics": {
+        "fr": "Statistiques de la migration",
+        "en": "Migration statistics",
+    },
+    "elapsed": {
+        "fr": "écoulé",
+        "en": "elapsed",
+    },
+    "Level reached": {
+        "fr": "Niveau atteint",
+        "en": "Level reached",
+    },
+    "Modules": {
+        "fr": "Modules",
+        "en": "Modules",
+    },
+    "modules": {
+        "fr": "modules",
+        "en": "modules",
+    },
+    "At the start": {
+        "fr": "Au départ",
+        "en": "At the start",
+    },
+    "Removed in total": {
+        "fr": "Supprimés au total",
+        "en": "Removed in total",
+    },
+    "Reported missing": {
+        "fr": "Signalés manquants",
+        "en": "Reported missing",
+    },
+    "Duplicated": {
+        "fr": "En double",
+        "en": "Duplicated",
+    },
+    "Migration fixes": {
+        "fr": "Correctifs de migration",
+        "en": "Migration fixes",
+    },
+    "COW views": {
+        "fr": "Vues COW",
+        "en": "COW views",
+    },
+    "views": {
+        "fr": "vues",
+        "en": "views",
+    },
+    "no snapshot": {
+        "fr": "aucun instantané",
+        "en": "no snapshot",
+    },
+    "Journal": {
+        "fr": "Journal",
+        "en": "Journal",
+    },
+    "commands": {
+        "fr": "commandes",
+        "en": "commands",
+    },
+    "recorded decisions": {
+        "fr": "décisions annotées",
+        "en": "recorded decisions",
+    },
+    "Removed modules, with their reason": {
+        "fr": "Modules supprimés, avec leur justification",
+        "en": "Removed modules, with their reason",
+    },
+    "Removed modules, comma-separated (copy)": {
+        "fr": "Modules supprimés, séparés par des virgules (à copier)",
+        "en": "Removed modules, comma-separated (copy)",
+    },
+    "COW views: snapshots and differences": {
+        "fr": "Vues COW : instantanés et différences",
+        "en": "COW views: snapshots and differences",
+    },
+    "Recorded decisions (journal)": {
+        "fr": "Décisions annotées (journal)",
+        "en": "Recorded decisions (journal)",
+    },
+    "Executed commands (last 30)": {
+        "fr": "Commandes exécutées (30 dernières)",
+        "en": "Executed commands (last 30)",
+    },
+    "nothing recorded": {
+        "fr": "rien d'annoté",
+        "en": "nothing recorded",
+    },
+    "Need two snapshots to diff.": {
+        "fr": "Il faut deux instantanés pour comparer.",
+        "en": "Need two snapshots to diff.",
+    },
+    "Diff which two? (e.g. 1,2 — blank to skip)": {
+        "fr": "Comparer lesquels ? (ex. 1,2 — vide pour passer)",
+        "en": "Diff which two? (e.g. 1,2 — blank to skip)",
+    },
     "No migration in progress to resume.": {
         "fr": "Aucune migration en cours à reprendre.",
         "en": "No migration in progress to resume.",
