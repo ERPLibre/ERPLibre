@@ -1419,6 +1419,30 @@ TRANSLATIONS = {
         "fr": "Port local (défaut :",
         "en": "Local port (default:",
     },
+    "Checking the remote port...": {
+        "fr": "Vérification du port distant...",
+        "en": "Checking the remote port...",
+    },
+    "Nothing is listening on port": {
+        "fr": "Rien n'écoute sur le port",
+        "en": "Nothing is listening on port",
+    },
+    "of": {
+        "fr": "de",
+        "en": "of",
+    },
+    "Start the service there, or continue anyway.": {
+        "fr": "Démarrer le service là-bas, ou continuer quand même.",
+        "en": "Start the service there, or continue anyway.",
+    },
+    "Continue anyway? (y/N): ": {
+        "fr": "Continuer quand même ? (o/N, défaut : non) : ",
+        "en": "Continue anyway? (y/N, default: no): ",
+    },
+    "Could not probe the remote port; going on.": {
+        "fr": "Impossible de sonder le port distant ; on continue.",
+        "en": "Could not probe the remote port; going on.",
+    },
     "Local port already in use:": {
         "fr": "Port local déjà occupé :",
         "en": "Local port already in use:",

@@ -5372,6 +5372,43 @@ class TODO:
             except OSError:
                 return False
 
+    @staticmethod
+    def _remote_port_open(host, port):
+        """Quelqu'un écoute-t-il sur ce port DEPUIS l'hôte distant ?
+
+        True / False / None quand on n'a pas pu conclure (hôte injoignable,
+        pas de bash). On teste une vraie connexion TCP vers « localhost » et
+        non la table d'écoute : c'est exactement ce que fera le tunnel, y
+        compris le choix IPv4/IPv6 de la résolution.
+        """
+        probe = (
+            f"exec 3<>/dev/tcp/localhost/{int(port)} && echo OPEN"
+            " || echo CLOSED"
+        )
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=10",
+                    host,
+                    f"bash -c {shlex.quote(probe)} 2>/dev/null",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        out = res.stdout.strip()
+        if "OPEN" in out:
+            return True
+        if "CLOSED" in out:
+            return False
+        return None
+
     def _deploy_port_forward(self):
         """Ouvre un tunnel SSH pour joindre un service distant depuis le
         navigateur local.
@@ -5396,6 +5433,22 @@ class TODO:
         remote = raw if raw.isdigit() else "8069"
         raw = input(f"{t('Local port (default:')} {remote}): ").strip()
         local = raw if raw.isdigit() else remote
+
+        # Sonde AVANT d'ouvrir : sans elle, un service arrêté à l'autre bout
+        # ne se manifeste que par un mur de « channel N: open failed » à
+        # chaque requête du navigateur, qui ne dit pas d'où vient le refus.
+        print(f"  {t('Checking the remote port...')}")
+        listening = self._remote_port_open(host, remote)
+        if listening is False:
+            print(
+                f"  ⚠ {t('Nothing is listening on port')} {remote}"
+                f" {t('of')} {host}"
+            )
+            print(f"    {t('Start the service there, or continue anyway.')}")
+            if not self._is_yes(input(t("Continue anyway? (y/N): "))):
+                return
+        elif listening is None:
+            print(f"  ℹ️  {t('Could not probe the remote port; going on.')}")
 
         if not self._port_is_free(local):
             print(f"  ⚠ {t('Local port already in use:')} {local}")
