@@ -1,21 +1,12 @@
 # Conventions de code
 
-## Python
-- Formateur : **Black** (profil par défaut, ligne max 79 pour les modules Odoo)
-- Imports : **isort** avec profil `black`, longueur de ligne 79
-- Linting : **Flake8** avec bugbear, max-line-length 80, max-complexity 16
-- Ignorer : E203, E501, W503 (compatibilité Black)
+Le formatage et le lint sont entièrement décrits par les fichiers de
+configuration du dépôt — les lire plutôt que de supposer : `.flake8`,
+`.editorconfig`, et les sections `[tool.black]` / `[tool.isort]` de
+`pyproject.toml`. `make format` applique l'ensemble.
 
-## XML / JSON / YAML
-- Formateur : **Prettier** (via npm)
-- Indentation : 4 espaces (XML/CSS/JS), 2 espaces (JSON/YAML)
-
-## Fichiers
-- Encodage : UTF-8
-- Fins de ligne : LF (Unix)
-- Indentation : 4 espaces (Python, XML, CSS, JS), 2 espaces (JSON, YAML, RST, MD)
-- Retour à la ligne final : oui
-- Espaces en fin de ligne : supprimés
+Prettier (via npm) formate XML/JSON/YAML ; `.editorconfig` donne les
+indentations par type de fichier.
 
 ## Git
 - Branches : `develop` (développement), `master` (production)
