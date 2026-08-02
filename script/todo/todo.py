@@ -1573,9 +1573,11 @@ class TODO:
             self._virt_manager_set_label(uri, label)
         added = self._virt_manager_add(uris)
         if added:
-            # virt-manager réécrit ses réglages en quittant : s'il tourne, il
-            # écraserait ce qu'on vient d'ajouter.
-            print(f"  ⚠ {t('Restart virt-manager if it is open.')}")
+            # Le NOM est relu à chaud (virt-manager écoute /pretty-name),
+            # mais la liste des connexions est lue au démarrage : une
+            # nouvelle entrée n'apparaît qu'au prochain lancement.
+            note = t("Restart virt-manager to see the new connections")
+            print(f"  ℹ️  {note} ({t('the names apply live')})")
 
     def _qemu_ssh_probe_remote(self, alias):
         """Sonde `alias` : (libvirt_présent, [(nom, ip)]), ou None si

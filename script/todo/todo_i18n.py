@@ -1504,9 +1504,13 @@ TRANSLATIONS = {
         "en": "Add the missing connections to virt-manager? "
         "(Y/n, default: yes): ",
     },
-    "Restart virt-manager if it is open.": {
-        "fr": "Redémarrer virt-manager s'il est ouvert.",
-        "en": "Restart virt-manager if it is open.",
+    "Restart virt-manager to see the new connections": {
+        "fr": "Redémarrer virt-manager pour voir les nouvelles connexions",
+        "en": "Restart virt-manager to see the new connections",
+    },
+    "the names apply live": {
+        "fr": "les noms s'appliquent à chaud",
+        "en": "the names apply live",
     },
     "SSH hosts written": {
         "fr": "Hôtes SSH écrits",
