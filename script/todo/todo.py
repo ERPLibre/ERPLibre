@@ -1427,10 +1427,9 @@ class TODO:
             max_depth = max(1, int(raw)) if raw else self._QEMU_SSH_DEPTH
         except ValueError:
             max_depth = self._QEMU_SSH_DEPTH
-        deploy_key = self._is_yes_default_yes(
-            input(t("Create the SSH key if missing and deploy it? (Y/n): "))
-        )
-        self._qemu_ssh_walk(roots, max_depth, deploy_key)
+        # Aucune question sur la clé ici : tant que rien n'a échoué, elle
+        # serait prématurée. Elle est posée à la première identité refusée.
+        self._qemu_ssh_walk(roots, max_depth)
 
     def _qemu_pick_domains(self):
         """Fait choisir des VM parmi celles définies. Vide = toutes."""
@@ -1671,9 +1670,57 @@ class TODO:
             note = t("Restart virt-manager to see the new connections")
             print(f"  ℹ️  {note} ({t('the names apply live')})")
 
+    # Signatures d'un refus d'AUTHENTIFICATION dans la sortie de ssh, par
+    # opposition à un hôte éteint ou introuvable. C'est la distinction qui
+    # décide s'il vaut la peine de parler de clé SSH.
+    _SSH_AUTH_ERRORS = (
+        "permission denied",
+        "too many authentication failures",
+        "no such identity",
+        "host key verification failed",
+        "publickey",
+    )
+
+    @classmethod
+    def _ssh_error_kind(cls, stderr):
+        """« auth » si ssh a refusé l'identité, « net » sinon.
+
+        Un hôte éteint et une clé absente produisent tous deux « injoignable »
+        alors qu'ils n'appellent pas du tout la même réponse."""
+        text = (stderr or "").lower()
+        if any(marker in text for marker in cls._SSH_AUTH_ERRORS):
+            return "auth"
+        return "net"
+
+    def _qemu_ssh_retry_with_key(self, alias, message):
+        """ssh a refusé l'identité : proposer la clé, puis resonder une fois.
+
+        Posée ICI et pas au début : tant que rien n'échoue, la question est
+        prématurée — et si l'accès passe déjà par une clé d'agent ou un autre
+        mécanisme, elle n'aurait jamais lieu d'être."""
+        print(f"\n  🔒 {alias}: {t('SSH refused the identity.')}")
+        print(f"     {message}")
+        pub = self._qemu_default_ssh_key()
+        if pub:
+            print(f"     {t('Existing key:')} {pub}")
+            question = t("Deploy it on this host (ssh-copy-id)? (Y/n): ")
+        else:
+            print(f"     {t('No SSH key in ~/.ssh.')}")
+            question = t("Create one and deploy it? (Y/n): ")
+        if not self._is_yes_default_yes(input(f"     {question}")):
+            return "auth", message
+        if not self._ssh_ensure_key():
+            return "auth", message
+        self._ssh_deploy_keys([alias])
+        return self._qemu_ssh_probe_remote(alias)
+
     def _qemu_ssh_probe_remote(self, alias):
-        """Sonde `alias` : (libvirt_présent, [(nom, ip)]), ou None si
-        injoignable.
+        """Sonde `alias`. Renvoie (statut, données) :
+
+            ("ok", [(nom, ip)])   libvirt répond, voici ses VM
+            ("nolibvirt", [])     joignable, mais pas de QEMU
+            ("auth", message)     ssh a refusé l'identité
+            ("net", message)      injoignable (éteint, DNS, port fermé…)
 
         Passe par « ssh <alias> », donc par le bloc ~/.ssh/config qu'on vient
         d'écrire : le ProxyJump du parent s'applique tout seul et la même
@@ -1695,10 +1742,14 @@ class TODO:
             res = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=90
             )
-        except (OSError, subprocess.SubprocessError):
-            return None
+        except subprocess.TimeoutExpired:
+            return "net", t("timed out")
+        except (OSError, subprocess.SubprocessError) as exc:
+            return "net", str(exc)
         if res.returncode != 0:
-            return None
+            detail = (res.stderr or "").strip().splitlines()
+            message = detail[-1] if detail else f"exit {res.returncode}"
+            return self._ssh_error_kind(res.stderr), message
         has_libvirt = False
         found = []
         for line in res.stdout.splitlines():
@@ -1709,9 +1760,9 @@ class TODO:
                 has_libvirt = parts[1].strip() == "yes"
                 continue
             found.append((parts[0], parts[1].strip()))
-        return has_libvirt, found
+        return ("ok" if has_libvirt else "nolibvirt"), found
 
-    def _qemu_ssh_walk(self, roots, max_depth, deploy_key):
+    def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
 
         Une VM du profil « Déploiement » héberge elle-même des VM : celles-ci
@@ -1722,14 +1773,10 @@ class TODO:
         Une racine sans IP est un hôte DÉJÀ décrit dans ~/.ssh/config : son
         adresse y est, on ne la réécrit pas, on part simplement de lui.
         """
-        # La clé est fixée AVANT d'écrire quoi que ce soit : c'est elle qui
-        # va dans IdentityFile à chaque niveau, et celle qu'on déploiera.
-        pub = (
-            self._ssh_ensure_key()
-            if deploy_key
-            else self._qemu_default_ssh_key()
-        )
-        identity = self._ssh_private_key(pub)
+        # Clé existante s'il y en a une : elle va dans IdentityFile. Si une
+        # clé est créée plus tard, en réaction à un refus, les entrées
+        # suivantes la reprendront.
+        identity = self._ssh_private_key(self._qemu_default_ssh_key())
 
         entries = []  # un enregistrement par machine écrite
         taken = set()  # tous les noms d'hôte déjà attribués
@@ -1763,22 +1810,34 @@ class TODO:
         for depth in range(1, max_depth):
             if not frontier:
                 break
-            # La clé est déployée AVANT de sonder : la sonde utilise
-            # BatchMode, donc sans clé acceptée elle échouerait et le niveau
-            # suivant resterait invisible.
-            if deploy_key:
-                self._ssh_deploy_keys(frontier)
             print(
                 f"\n🔎 {t('Level')} {depth + 1} — "
                 f"{len(frontier)} {t('machines to probe')}"
             )
             next_frontier = []
             for parent in frontier:
-                probed = self._qemu_ssh_probe_remote(parent)
-                if probed is None:
-                    print(f"  ⏭  {parent}: {t('unreachable')}")
+                status, found = self._qemu_ssh_probe_remote(parent)
+                if status == "auth":
+                    # C'EST ici qu'une clé manquante se manifeste, pas avant :
+                    # on ne parle d'identité qu'une fois l'identité refusée.
+                    status, found = self._qemu_ssh_retry_with_key(
+                        parent, found
+                    )
+                    # Une clé a pu naître de cet échange : les entrées
+                    # écrites ensuite doivent la nommer.
+                    identity = (
+                        self._ssh_private_key(self._qemu_default_ssh_key())
+                        or identity
+                    )
+                if status in ("auth", "net"):
+                    label = (
+                        t("access refused")
+                        if status == "auth"
+                        else t("unreachable")
+                    )
+                    print(f"  ⏭  {parent}: {label} — {found}")
                     continue
-                has_libvirt, found = probed
+                has_libvirt = status == "ok"
                 if not has_libvirt:
                     print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
                     continue

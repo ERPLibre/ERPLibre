@@ -1582,6 +1582,35 @@ TRANSLATIONS = {
         "fr": "machines à sonder",
         "en": "machines to probe",
     },
+    "SSH refused the identity.": {
+        "fr": "SSH a refusé l'identité.",
+        "en": "SSH refused the identity.",
+    },
+    "Existing key:": {
+        "fr": "Clé existante :",
+        "en": "Existing key:",
+    },
+    "Deploy it on this host (ssh-copy-id)? (Y/n): ": {
+        "fr": "La déployer sur cet hôte (ssh-copy-id) ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Deploy it on this host (ssh-copy-id)? (Y/n, default: yes): ",
+    },
+    "No SSH key in ~/.ssh.": {
+        "fr": "Aucune clé SSH dans ~/.ssh.",
+        "en": "No SSH key in ~/.ssh.",
+    },
+    "Create one and deploy it? (Y/n): ": {
+        "fr": "En créer une et la déployer ? (O/n, défaut : oui) : ",
+        "en": "Create one and deploy it? (Y/n, default: yes): ",
+    },
+    "access refused": {
+        "fr": "accès refusé",
+        "en": "access refused",
+    },
+    "timed out": {
+        "fr": "délai dépassé",
+        "en": "timed out",
+    },
     "unreachable": {
         "fr": "injoignable",
         "en": "unreachable",
