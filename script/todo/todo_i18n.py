@@ -310,10 +310,6 @@ TRANSLATIONS = {
         "fr": "Hôte SSH (ex: user@192.168.1.100) : ",
         "en": "SSH host (e.g.: user@192.168.1.100): ",
     },
-    "SSH host is required!": {
-        "fr": "L'hôte SSH est requis!",
-        "en": "SSH host is required!",
-    },
     "Mounting sshfs on: ": {
         "fr": "Montage sshfs sur : ",
         "en": "Mounting sshfs on: ",
@@ -1063,10 +1059,6 @@ TRANSLATIONS = {
     "Claude Code custom commands:": {
         "fr": "Commandes personnalisées Claude Code :",
         "en": "Claude Code custom commands:",
-    },
-    "Total:": {
-        "fr": "Total :",
-        "en": "Total:",
     },
     "File already exists: ": {
         "fr": "Le fichier existe déjà : ",
@@ -2114,7 +2106,6 @@ TRANSLATIONS = {
     "Network": {"fr": "Réseau", "en": "Network"},
     "Battery": {"fr": "Batterie", "en": "Battery"},
     "Temperature": {"fr": "Température", "en": "Temperature"},
-    "max": {"fr": "max", "en": "max"},
     "lm-sensors absent — press i to install": {
         "fr": "lm-sensors absent — appuyez sur i pour installer",
         "en": "lm-sensors absent — press i to install",
@@ -3061,10 +3052,6 @@ TRANSLATIONS = {
         "fr": "Continuer malgré ces collisions ? (o/N, défaut : non) : ",
         "en": "Continue despite these collisions? (y/N, default: no): ",
     },
-    "Cancelled.": {
-        "fr": "Annulé.",
-        "en": "Cancelled.",
-    },
     "Resolving VM IPs (parallel, emulated boot is slow)...": {
         "fr": "Résolution des IP des VM (en parallèle, le démarrage émulé "
         "est lent)...",
@@ -3173,10 +3160,6 @@ TRANSLATIONS = {
     "Deploy summary:": {
         "fr": "Bilan déploiement :",
         "en": "Deploy summary:",
-    },
-    "failed": {
-        "fr": "en échec",
-        "en": "failed",
     },
     "IPs resolved:": {
         "fr": "IP résolues :",
