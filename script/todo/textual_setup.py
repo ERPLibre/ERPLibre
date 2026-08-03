@@ -29,6 +29,15 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+# Borne de version, à UN seul endroit. Les écrans TUI du dépôt sont écrits pour
+# Textual 8 ; la bibliothèque casse son API entre majeures. « pip install
+# textual » sans borne installerait la majeure suivante et casserait les écrans
+# sans prévenir, alors même que requirement/erplibre_require-ments.txt la borne.
+# Les deux chemins d'installation doivent dire la même chose : ce littéral est
+# recopié dans le fichier de requirements, avec un commentaire qui pointe ici.
+TEXTUAL_SPEC = "textual>=8,<9"
+
+
 def available() -> bool:
     """Textual est-il importable maintenant ?"""
     return importlib.util.find_spec("textual") is not None
@@ -47,7 +56,7 @@ def install_command():
     verrait jamais. Hors venv, « --user » contourne le refus des
     distributions dont l'environnement est « externally managed » (PEP 668).
     """
-    cmd = [sys.executable, "-m", "pip", "install", "textual"]
+    cmd = [sys.executable, "-m", "pip", "install", TEXTUAL_SPEC]
     if not in_venv():
         cmd.insert(4, "--user")
     return cmd
