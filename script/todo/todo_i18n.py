@@ -2118,9 +2118,29 @@ TRANSLATIONS = {
         "fr": "Échec de la commande : ",
         "en": "Command failed: ",
     },
-    "Install textual for the telemetry TUI (pip).": {
-        "fr": "Installez textual pour le TUI de télémétrie (pip).",
-        "en": "Install textual for the telemetry TUI (pip).",
+    "Textual is required for this screen.": {
+        "fr": "Textual est nécessaire pour cet écran.",
+        "en": "Textual is required for this screen.",
+    },
+    "Install it now? (Y/n): ": {
+        "fr": "L'installer maintenant ? (O/n, défaut : oui) : ",
+        "en": "Install it now? (Y/n, default: yes): ",
+    },
+    "Textual is installed.": {
+        "fr": "Textual est installé.",
+        "en": "Textual is installed.",
+    },
+    "Installation finished but textual is still missing.": {
+        "fr": "Installation terminée mais textual reste introuvable.",
+        "en": "Installation finished but textual is still missing.",
+    },
+    "pip exited with": {
+        "fr": "pip a retourné",
+        "en": "pip exited with",
+    },
+    "Your distribution may package it as python3-textual.": {
+        "fr": "Votre distribution le fournit peut-être en python3-textual.",
+        "en": "Your distribution may package it as python3-textual.",
     },
     "Resize a VM disk": {
         "fr": "📐 Redimensionner le disque d'une VM",
@@ -3112,10 +3132,6 @@ TRANSLATIONS = {
     "Log files:": {
         "fr": "Fichiers de log :",
         "en": "Log files:",
-    },
-    "Install textual for the dashboard (pip).": {
-        "fr": "Installez textual pour le dashboard (pip).",
-        "en": "Install textual for the dashboard (pip).",
     },
     "Parallel deployments (default:": {
         "fr": "Déploiements en parallèle (défaut :",

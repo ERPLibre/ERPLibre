@@ -507,12 +507,15 @@ class TodoUpgrade:
     def resume_tui(ctx):
         """Resume screen as a TUI. Returns the SAME answer strings as the
         prompt, or None when textual is missing (fall back to the prompt)."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return None
         try:
             from script.todo.migration_form import run_resume_tui
 
             return run_resume_tui(ctx)
         except ImportError:
-            print(t("Install textual for the dashboard (pip)."))
             return None
 
     @staticmethod

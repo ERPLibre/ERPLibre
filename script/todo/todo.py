@@ -584,12 +584,15 @@ class TODO:
         et la position du curseur sont restaurés) ou de quitter."""
         from script.todo.todo_telemetry import run_tui
 
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return
         state = None
         while True:
             try:
                 result = run_tui(state=state)
             except ImportError:
-                print(t("Install textual for the telemetry TUI (pip)."))
                 return
             if not result:
                 return
@@ -1843,10 +1846,13 @@ class TODO:
         Tout vient de l'historique tenu par le moniteur d'installation
         (.venv.erplibre/qemu_install_stats.json) et de l'état libvirt courant.
         """
+        # Cet écran ne lit que des fichiers : il n'a pas besoin de Textual,
+        # contrairement au dashboard du même module. Un échec d'import est
+        # donc un vrai problème de module, pas une dépendance manquante.
         try:
             from script.todo import qemu_install_monitor as mon
-        except ImportError:
-            print(t("Install textual for the dashboard (pip)."))
+        except ImportError as exc:
+            print(f"{t('Command failed: ')}{exc}")
             return
 
         while True:
@@ -2242,7 +2248,10 @@ class TODO:
         try:
             mon.run_monitor(run["manifest"])
         except ImportError:
-            print(t("Install textual for the dashboard (pip)."))
+            from script.todo import textual_setup
+
+            if textual_setup.ensure():
+                mon.run_monitor(run["manifest"])
         except Exception as exc:
             print(f"{t('Command failed: ')}{exc}")
 
@@ -4278,8 +4287,11 @@ class TODO:
             run_monitor(manifest)
         except ImportError:
             # textual absent : les installs tournent déjà (détachées), on ne
-            # plante pas — on indique juste où sont les logs.
-            print(f"  {t('Install textual for the dashboard (pip).')}")
+            # plante donc pas — on propose de l'installer pour rouvrir.
+            from script.todo import textual_setup
+
+            if textual_setup.ensure():
+                run_monitor(manifest)
         print(
             f"\n{t('Monitor closed. Installs keep running in the background.')}"
         )
@@ -4916,16 +4928,16 @@ class TODO:
     def _qemu_deploy_form(self, mod, dry_run):
         """Ouvre le formulaire TUI. Renvoie la spec, None si annulé, ou {}
         pour retomber sur les invites en ligne (textual absent)."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return {}
         try:
             from script.todo.qemu_deploy_form import run_deploy_form
-        except ImportError:
-            print(t("Install textual for the dashboard (pip)."))
-            return {}
-        ctx = self._qemu_form_context(mod)
-        try:
+
+            ctx = self._qemu_form_context(mod)
             spec = run_deploy_form(ctx)
         except ImportError:
-            print(t("Install textual for the dashboard (pip)."))
             return {}
         if not spec:
             print(t("Cancelled."))
@@ -5255,12 +5267,15 @@ class TODO:
     def _qemu_deploy_jobs_tui(self, jobs, workers):
         """Même chose, en blocs repliables Textual. Renvoie None si textual
         manque, pour que l'appelant retombe sur la sortie texte."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return None
         try:
             from script.todo.qemu_deploy_form import run_deploy_progress
 
             return run_deploy_progress(jobs, workers)
         except ImportError:
-            print(f"  {t('Install textual for the dashboard (pip).')}")
             return None
 
     def _qemu_run_spec(self, spec):
