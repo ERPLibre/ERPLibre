@@ -478,6 +478,18 @@ TRANSLATIONS = {
         "fr": "Aucune base de données sélectionnée.",
         "en": "No database selected.",
     },
+    "Cannot list the databases (exit code): ": {
+        "fr": "Impossible de lister les bases (code de retour) : ",
+        "en": "Cannot list the databases (exit code): ",
+    },
+    "Is PostgreSQL running?": {
+        "fr": "PostgreSQL est-il démarré ?",
+        "en": "Is PostgreSQL running?",
+    },
+    "No database on this PostgreSQL server.": {
+        "fr": "Aucune base sur ce serveur PostgreSQL.",
+        "en": "No database on this PostgreSQL server.",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",
