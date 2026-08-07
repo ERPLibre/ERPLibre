@@ -1,12 +1,34 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
     <remote name="TechnoLibre" fetch="https://github.com/TechnoLibre/" />
+    <remote name="ggerganov"   fetch="https://github.com/ggerganov/" />
+    <remote name="google"      fetch="https://github.com/google/" />
 
     <project
         name="technolibre_home_mobile.git"
         path="mobile/erplibre_home_mobile"
         remote="TechnoLibre"
         revision="main"
+        groups="mobile"
+    />
+
+    <!-- sentencepiece : tokeniseur SentencePiece pour MarianMT (NDK JNI) -->
+    <project
+        name="sentencepiece"
+        path="mobile/erplibre_home_mobile/android/app/src/main/cpp/sentencepiece"
+        remote="google"
+        revision="master"
+        clone-depth="1"
+        groups="mobile"
+    />
+
+    <!-- whisper.cpp : moteur de transcription audio locale (NDK JNI) -->
+    <project
+        name="whisper.cpp"
+        path="mobile/erplibre_home_mobile/android/app/src/main/cpp/whisper"
+        remote="ggerganov"
+        revision="master"
+        clone-depth="1"
         groups="mobile"
     />
 </manifest>

@@ -12,6 +12,21 @@ import subprocess
 import sys
 import time
 
+# erplibre_state is in the same directory; import lazily to avoid hard failure
+# when the script runs outside the project root (e.g. during bare install).
+try:
+    from script.version.erplibre_state import (
+        get_version_extra,
+        get_version_installed,
+        print_state,
+        set_version_installed,
+        set_version_switched,
+    )
+
+    _STATE_AVAILABLE = True
+except ImportError:
+    _STATE_AVAILABLE = False
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
@@ -24,6 +39,7 @@ VERSION_ERPLIBRE_FILE = os.path.join(".erplibre-version")
 VERSION_ODOO_FILE = os.path.join(".odoo-version")
 VERSION_POETRY_FILE = os.path.join(".poetry-version")
 ADDONS_PATH = os.path.join("addons")
+MOBILE_PATH = os.path.join("mobile", "erplibre_home_mobile")
 VENV_TEMPLATE_FILE = ".venv.%s"
 MANIFEST_FILE = "default.dev.xml"
 MANIFEST_TEMPLATE_FILE = "default.dev.odoo%s.xml"
@@ -123,6 +139,14 @@ def get_config():
         action="store_true",
         help="Force all, include force_install, force_repo.",
     )
+    parser.add_argument(
+        "--with_extra",
+        action="store_true",
+        help=(
+            "Install or switch with extra modules (e.g. CybroOdoo)."
+            " State is saved in .erplibre-state.json."
+        ),
+    )
     args = parser.parse_args()
 
     if args.force:
@@ -144,6 +168,7 @@ class Update:
         self.data_version = None
         self.odoo_version = None
         self.python_version = None
+        self.mobile_active = False
         self.detected_version_erplibre = None
         self.new_version_erplibre = None
         self.new_version_odoo = None
@@ -188,10 +213,21 @@ class Update:
         with open(VERSION_POETRY_FILE) as txt:
             poetry_version = txt.read().strip()
 
+        # Detect mobile context
+        self.mobile_active = os.path.isdir(MOBILE_PATH)
+
         # Show actual version
         _logger.info(f"Python version: {self.python_version}")
         _logger.info(f"Odoo version: {self.odoo_version}")
         _logger.info(f"Poetry version: {poetry_version}")
+        _logger.info(
+            f"Mobile context: {'active (' + MOBILE_PATH + ')' if self.mobile_active else 'inactive'}"
+        )
+        if _STATE_AVAILABLE:
+            extra = get_version_extra(self.odoo_version)
+            _logger.info(
+                f"Extra modules (CybroOdoo): {'active' if extra else 'inactive'}"
+            )
         erplibre_version_to_search = ERPLIBRE_TEMPLATE_VERSION % (
             self.odoo_version,
             self.python_version,
@@ -405,15 +441,38 @@ class Update:
             if self.config.install_dev:
                 _logger.info("Installation.")
                 status = self.install_erplibre()
+                if _STATE_AVAILABLE and not status:
+                    set_version_installed(
+                        self.new_version_odoo,
+                        extra=bool(self.config.with_extra),
+                        python=self.new_version_python,
+                        poetry=self.new_version_poetry,
+                    )
             elif (
                 self.config.is_in_switch
                 and self.config.is_in_switch_force_update
             ):
                 _logger.info("Switch")
                 self.execute_log.append(f"System update")
-                status = os.system(
-                    "./script/manifest/update_manifest_local_dev.sh"
-                )
+                # Auto-detect extra from state, warn if no state recorded
+                with_extra = bool(self.config.with_extra)
+                if _STATE_AVAILABLE and not with_extra:
+                    if not get_version_installed(self.new_version_odoo):
+                        _logger.warning(
+                            f"No installation state found for odoo"
+                            f" {self.new_version_odoo}. Proceeding without"
+                            f" extra modules (CybroOdoo). To install with"
+                            f" extra: make"
+                            f" install_odoo_{self.new_version_odoo.replace('.', '')}_with_extra"
+                        )
+                    else:
+                        with_extra = get_version_extra(self.new_version_odoo)
+                manifest_script = "./script/manifest/update_manifest_local_dev.sh"
+                if with_extra:
+                    manifest_script += " --with_extra"
+                status = os.system(manifest_script)
+                if _STATE_AVAILABLE and not status:
+                    set_version_switched(self.new_version_odoo)
 
             # To support multiple addons directory, remove TEMP
             # for addons_path in os.listdir("."):

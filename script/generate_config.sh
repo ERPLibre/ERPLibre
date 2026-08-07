@@ -27,8 +27,6 @@ printf "longpolling_port = ${EL_LONGPOLLING_PORT}\n" >> "${EL_CONFIG_FILE}"
 printf "addons_path = ${EL_HOME_ODOO}/addons,${EL_HOME_ODOO}/odoo/addons,${EL_HOME}/odoo${EL_ODOO_VERSION}/addons/addons," >> "${EL_CONFIG_FILE}"
 
 if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
-    printf "${EL_HOME_ODOO_PROJECT}/addons/CybroOdoo_CybroAddons," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME_ODOO_PROJECT}/addons/CybroOdoo_OpenHRMS," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/ERPLibre_erplibre_addons," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/MathBenTech_development," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/OCA_account-analytic," >> "${EL_CONFIG_FILE}"
@@ -155,7 +153,6 @@ if [[ ${EL_MINIMAL_ADDONS} = "False" ]]; then
     printf "${EL_HOME_ODOO_PROJECT}/addons/dhongu_deltatech," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/muk-it_odoo-modules," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/novacode-nl_odoo-formio," >> "${EL_CONFIG_FILE}"
-    printf "${EL_HOME_ODOO_PROJECT}/addons/odoo_design-themes," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/odoomates_odooapps," >> "${EL_CONFIG_FILE}"
     printf "${EL_HOME_ODOO_PROJECT}/addons/openeducat_openeducat_erp," >> "${EL_CONFIG_FILE}"
 fi

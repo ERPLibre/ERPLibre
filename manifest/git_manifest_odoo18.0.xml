@@ -34,21 +34,6 @@
     <remote name="tegin" fetch="https://github.com/tegin/" />
 
     <project
-        name="OpenHRMS.git"
-        revision="18.0"
-        path="odoo18.0/addons/CybroOdoo_OpenHRMS"
-        remote="CybroOdoo"
-        groups="addons,odoo18.0"
-    />
-    <project
-        name="CybroAddons.git"
-        path="odoo18.0/addons/CybroOdoo_CybroAddons"
-        remote="ERPLibre_origin_CybroOdoo"
-        clone-depth="1"
-        revision="18.0_dev"
-        groups="addons,odoo18.0"
-    />
-    <project
         name="account-analytic.git"
         revision="18.0"
         path="odoo18.0/addons/OCA_account-analytic"
@@ -304,13 +289,6 @@
         path="odoo18.0/addons/MathBenTech_development"
         remote="ERPLibre_origin_MathBenTech"
         groups="addons,base,odoo18.0"
-    />
-    <project
-        name="design-themes.git"
-        path="odoo18.0/addons/odoo_design-themes"
-        remote="ERPLibre_origin_odoo"
-        revision="18.0"
-        groups="addons,odoo18.0"
     />
     <project
         name="donation.git"

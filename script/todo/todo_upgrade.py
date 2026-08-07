@@ -511,7 +511,7 @@ class TodoUpgrade:
                 file_browser.run_main_frame()
             elif self.file_path == "remote":
                 status, self.file_path, default_database_name = (
-                    self.todo.download_database_backup_cli()
+                    self.todo.db_manager.download_database_backup_cli()
                 )
                 if status:
                     _logger.error(
@@ -2038,7 +2038,9 @@ class TodoUpgrade:
         if not has_existing_target_branch:
             cmd_git_clone = (
                 f"cd {target_addons_path} "
-                f"&& git checkout -b {branch_target} && cd ~-"
+                f"&& if git rev-parse --verify --quiet refs/heads/{branch_target}; then "
+                f"git checkout {branch_target}; else git checkout -b {branch_target}; fi "
+                f"&& cd ~-"
             )
             status, cmd_executed, lst_output = self.todo_upgrade_execute(
                 cmd_git_clone,
