@@ -4,6 +4,7 @@
 
 import datetime
 import getpass
+import json
 import logging
 import os
 import random
@@ -69,8 +70,6 @@ MONTHS_FR = {
     "decembre": 12,
 }
 
-defaut_timeout = 60
-
 
 class SeleniumLib(object):
     def __init__(self, config):
@@ -79,10 +78,17 @@ class SeleniumLib(object):
         self.config_file = config_file.ConfigFile()
         self.kdbx = None
         self.video_recorder = None
-        if config.use_download_path_default:
-            self.default_download_dir_path = "/home/seluser/Downloads"
-        else:
-            self.default_download_dir_path = tempfile.mkdtemp()
+        self.default_copy_download_dir_path = None
+        self.defaut_timeout = 60
+
+        date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        tmp_dir = tempfile.mkdtemp(
+            prefix=f"selenium_download_{date_str}_",
+            # dir="/tmp/test/",
+        )
+
+        self.default_download_dir_path = tmp_dir
+
         if self.config.video_suffix:
             self.filename_recording = (
                 f"video_{self.config.video_suffix}_"
@@ -136,6 +142,7 @@ class SeleniumLib(object):
             "permissions.default.desktop-notification", 1
         )
         firefox_options.set_preference("browser.download.folderList", 2)
+        firefox_options.set_preference("browser.download.useDownloadDir", True)
         firefox_options.set_preference(
             "browser.download.manager.showWhenStarting", False
         )
@@ -145,8 +152,14 @@ class SeleniumLib(object):
             )
         firefox_options.set_preference(
             "browser.helperApps.neverAsk.saveToDisk",
-            "application/octet-stream,application/pdf,application/x-pdf",
+            "application/pdf,"
+            "application/x-pdf,"
+            "application/vnd.ms-excel,"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,"
+            "text/csv,"
+            "application/octet-stream",
         )
+        # disable pdf viewer from firefox
         firefox_options.set_preference("pdfjs.disabled", True)
         firefox_services = None
         if self.config.firefox_binary_path:
@@ -172,6 +185,8 @@ class SeleniumLib(object):
         except Exception as e:
             print(f"ERROR when check user: {e}")
 
+        driver_url = f"{self.config.use_network}/wd/hub"
+
         try:
             if self.config.use_chrome_driver:
                 from selenium.webdriver.chrome.options import (
@@ -190,9 +205,10 @@ class SeleniumLib(object):
                     chrome_options.set_capability(
                         "se:name", "ERPLibre selenium"
                     )
+                    chrome_options.enable_downloads = True
                     self.driver = webdriver.Remote(
                         options=chrome_options,
-                        command_executor=self.config.use_network,
+                        command_executor=driver_url,
                     )
                 else:
                     from webdriver_manager.chrome import ChromeDriverManager
@@ -201,6 +217,7 @@ class SeleniumLib(object):
                         ChromeDriverManager().install(),
                         log_path="/tmp/chromedriver.log",
                     )
+                    chrome_options.enable_downloads = True
                     self.driver = webdriver.Chrome(
                         options=chrome_options,
                         # options=firefox_options,
@@ -289,11 +306,13 @@ class SeleniumLib(object):
                     firefox_options.set_capability(
                         "se:name", "ERPLibre selenium"
                     )
+                    firefox_options.enable_downloads = True
                     self.driver = webdriver.Remote(
                         options=firefox_options,
-                        command_executor=self.config.use_network,
+                        command_executor=driver_url,
                     )
                 else:
+                    firefox_options.add_argument("-remote-allow-system-access")
                     self.driver = webdriver.Firefox(
                         options=firefox_options,
                         service=firefox_services,
@@ -323,10 +342,6 @@ class SeleniumLib(object):
         # Ajout de l'enregistrement
         if self.config.record_mode:
             # Create recording
-            new_path = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), "..", "..")
-            )
-            sys.path.append(new_path)
             from script.selenium.selenium_video import VideoRecorder
 
             if not os.path.isdir(self.dirname_recording):
@@ -342,19 +357,27 @@ class SeleniumLib(object):
         if self.config.use_firefox_driver and not self.config.use_network:
             if not self.config.no_dark_mode:
                 self.driver.install_addon(
-                    "./script/selenium/darkreader-firefox.xpi", temporary=True
+                    os.path.join(
+                        new_path, "script/selenium/darkreader-firefox.xpi"
+                    ),
+                    temporary=True,
                 )
                 self.driver.install_addon(
-                    "./script/selenium/odoo_debug-4.0.xpi", temporary=True
+                    os.path.join(
+                        new_path, "script/selenium/odoo_debug-4.0.xpi"
+                    ),
+                    temporary=True,
                 )
 
             if (
                 not self.config.not_private_mode
                 and not self.config.no_dark_mode
             ):
+                # self.driver.set_context("chrome")
                 self.driver.get("about:addons")
                 # Enable Dark Reader into incognito
-                self.click("/html/body/div/div[1]/categories-box/button[2]")
+                # Click Extensions
+                self.click('//button[@viewid="addons://list/extension"]')
                 self.click(
                     "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
                 )
@@ -448,7 +471,9 @@ class SeleniumLib(object):
                 word = ""
         return word
 
-    def click(self, xpath, timeout=defaut_timeout):
+    def click(self, xpath, timeout=None):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         button = wait.until(
             EC.element_to_be_clickable(
@@ -461,15 +486,31 @@ class SeleniumLib(object):
         button.click()
         return button
 
+    def get_elements(self, by: str = By.ID, value: str = None, timeout=None):
+        if timeout is None:
+            timeout = self.defaut_timeout
+        wait = WebDriverWait(self.driver, timeout)
+        elements = wait.until(
+            EC.visibility_of_any_elements_located(
+                (
+                    by,
+                    value,
+                )
+            )
+        )
+        return elements
+
     def get_element(
         self,
         by: str = By.ID,
         value: str = None,
-        timeout=defaut_timeout,
+        timeout=None,
         wait_clickable=False,
         wait_is_invisible=False,
         is_visible=True,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         only_one = False
         wait = WebDriverWait(self.driver, timeout)
         if wait_clickable:
@@ -481,6 +522,7 @@ class SeleniumLib(object):
                     )
                 )
             )
+            only_one = True
         elif is_visible:
             ele = wait.until(
                 EC.visibility_of_any_elements_located(
@@ -514,8 +556,10 @@ class SeleniumLib(object):
         return ele[0]
 
     def get_element_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_element_located(
@@ -529,8 +573,10 @@ class SeleniumLib(object):
         return ele
 
     def get_elements_not_visible(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.presence_of_all_elements_located(
@@ -544,14 +590,18 @@ class SeleniumLib(object):
         return ele
 
     def get_text_from_element(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout: int = None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         ele = self.get_element(by, value, timeout=timeout)
         return ele.text
 
     def get_all_element(
-        self, by: str = By.ID, value: str = None, timeout=defaut_timeout
+        self, by: str = By.ID, value: str = None, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         wait = WebDriverWait(self.driver, timeout)
         ele = wait.until(
             EC.visibility_of_all_elements_located(
@@ -569,9 +619,11 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
         inject_cursor=False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         new_element = self.wait_new_element(
             by=by, value=value, delay_wait=delay_wait, timeout=timeout
         )
@@ -586,9 +638,11 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
         timeout_wait=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         element = None
         # TODO support timeout_wait
         while element is None:
@@ -605,8 +659,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         new_element = self.wait_add_new_element(
             by=by, value=value, delay_wait=delay_wait, timeout=timeout
         )
@@ -618,8 +674,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         all_element_init = self.get_all_element(by=by, value=value)
         len_all_element_init = len(all_element_init)
         len_all_element = len_all_element_init
@@ -637,8 +695,10 @@ class SeleniumLib(object):
         by: str = By.ID,
         value: str = None,
         delay_wait=1,
-        timeout=defaut_timeout,
+        timeout=None,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         element_init = self.get_element(by=by, value=value, timeout=timeout)
         actual_number = int(element_init.text)
         number_goal = actual_number + 1
@@ -656,7 +716,7 @@ class SeleniumLib(object):
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
@@ -664,21 +724,41 @@ class SeleniumLib(object):
         with_index: bool = False,
         is_visible=True,
         index_of_list: int = 0,
+        support_multiple_click: bool = False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
+        # Exemple Detect button by text value
+        # Replace CLASS_NAME
+        # By.CSS_SELECTOR, "input.CLASS_NAME[value='Fermer']"
+
         # ele = self.driver.find_element(by, value)
         if element:
             ele = element
         else:
-            ele = self.get_element(by, value, timeout, is_visible=is_visible)
+            if support_multiple_click:
+                ele = self.get_elements(by, value, timeout)
+            else:
+                ele = self.get_element(
+                    by, value, timeout, is_visible=is_visible
+                )
         if not no_scroll:
             viewport_ele = None
             if viewport_ele_value:
                 viewport_ele = self.get_element(
                     viewport_ele_by, viewport_ele_value, timeout
                 )
-            self.scrollto_element(ele, viewport_ele=viewport_ele)
-            # ActionChains(self.driver).move_to_element(ele).click().perform()
-            ActionChains(self.driver).move_to_element(ele).perform()
+            if support_multiple_click:
+                for one_ele in ele:
+                    self.scrollto_element(one_ele, viewport_ele=viewport_ele)
+                    # ActionChains(self.driver).move_to_element(one_ele).click().perform()
+                    ActionChains(self.driver).move_to_element(
+                        one_ele
+                    ).perform()
+            else:
+                self.scrollto_element(ele, viewport_ele=viewport_ele)
+                # ActionChains(self.driver).move_to_element(ele).click().perform()
+                ActionChains(self.driver).move_to_element(ele).perform()
         time.sleep(self.config.selenium_default_delay)
         wait = WebDriverWait(self.driver, timeout)
         if element:
@@ -695,36 +775,71 @@ class SeleniumLib(object):
                 )
                 button = buttons[index_of_list]
             else:
-                button = wait.until(
-                    EC.element_to_be_clickable(
-                        (
-                            by,
-                            value,
+                if support_multiple_click:
+                    button = wait.until(
+                        # EC.visibility_of_all_elements_located(
+                        EC.presence_of_all_elements_located(
+                            (
+                                by,
+                                value,
+                            )
                         )
                     )
-                )
+                else:
+                    button = wait.until(
+                        EC.element_to_be_clickable(
+                            (
+                                by,
+                                value,
+                            )
+                        )
+                    )
+
         try:
-            button.click()
+            if support_multiple_click:
+                for btn in button:
+                    try:
+                        btn.click()
+                        # This button work!
+                        return btn
+                    except Exception as e:
+                        pass
+            else:
+                button.click()
         except ElementClickInterceptedException as e:
             try:
                 print(e)
-                self.driver.execute_script(
-                    "arguments[0].scrollIntoView(true);", button
-                )
-                button.click()
+                if support_multiple_click:
+                    for btn in button:
+                        self.driver.execute_script(
+                            "arguments[0].scrollIntoView(true);", btn
+                        )
+                        btn.click()
+                else:
+                    self.driver.execute_script(
+                        "arguments[0].scrollIntoView(true);", button
+                    )
+                    button.click()
             except ElementClickInterceptedException as e:
                 print(e)
-                self.driver.execute_script("arguments[0].click();", button)
+                if support_multiple_click:
+                    for btn in button:
+                        self.driver.execute_script(
+                            "arguments[0].click();", btn
+                        )
+                else:
+                    self.driver.execute_script("arguments[0].click();", button)
         return button
 
     def click_canvas_form(
         self,
         by: str = By.ID,
         value: str = None,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         form="carre",
     ):
-
+        if timeout is None:
+            timeout = self.defaut_timeout
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value, timeout)
         actions = ActionChains(self.driver)
@@ -745,13 +860,15 @@ class SeleniumLib(object):
         value: str = None,
         text_value: str = "",
         delay_after: int = -1,
-        timeout: int = defaut_timeout,
+        timeout: int = None,
         no_scroll: bool = False,
         viewport_ele_by: str = By.ID,
         viewport_ele_value: str = None,
         clear_before: bool = False,
         click_before: bool = False,
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         # ele = self.driver.find_element(by, value)
         ele = self.get_element(by, value)
         if not no_scroll:
@@ -984,8 +1101,13 @@ class SeleniumLib(object):
         # Switch to the new window and open new URL
         self.driver.switch_to.window(self.driver.window_handles[index])
 
-    def refresh(self):
+    def refresh(self, wait_ready=False):
         self.driver.refresh()
+        if wait_ready:
+            WebDriverWait(self.driver, 15).until(
+                lambda d: d.execute_script("return document.readyState")
+                == "complete"
+            )
 
     def check_bot_chat_and_close(self):
         try:
@@ -1118,7 +1240,7 @@ class SeleniumLib(object):
                 " odoo_website_menu_click"
             )
         button = self.click_with_mouse_move(
-            By.LINK_TEXT, from_text, timeout=defaut_timeout
+            By.LINK_TEXT, from_text, timeout=self.defaut_timeout
         )
         return button
 
@@ -1260,8 +1382,10 @@ class SeleniumLib(object):
         return button
 
     def odoo_web_form_click_statusbar_button_status(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         try:
             status_button = self.click_with_mouse_move(
                 By.XPATH,
@@ -1306,8 +1430,10 @@ class SeleniumLib(object):
         toggle_data_menu("color_scheme.switch", enable_dark_mode)
 
     def odoo_web_form_click_statusbar_button_status_floating(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         status_button = self.click_with_mouse_move(
             By.XPATH,
             "//span[contains(@class, 'o_arrow_button') and contains(text(),"
@@ -1318,8 +1444,10 @@ class SeleniumLib(object):
         return status_button
 
     def odoo_web_form_click_statusbar_button_status_plus(
-        self, status_label, timeout=defaut_timeout
+        self, status_label, timeout=None
     ):
+        if timeout is None:
+            timeout = self.defaut_timeout
         status_button = self.click_with_mouse_move(
             By.XPATH,
             "//button[contains(@class, 'o_arrow_button') and"
@@ -1631,14 +1759,14 @@ class SeleniumLib(object):
             header.text,
         )  # on retourne aussi le texte exact pour attendre le changement
 
-    def wait_is_invisible(self, by, value):
-        div_field = WebDriverWait(self.driver, 10).until(
-            EC.presence_of_element_located((By.NAME, field_name))
-        )
-        wait = WebDriverWait(driver, 10)
-        wait.until(
-            EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
-        )
+    # def wait_is_invisible(self, by, value):
+    #     div_field = WebDriverWait(self.driver, 10).until(
+    #         EC.presence_of_element_located((By.NAME, field_name))
+    #     )
+    #     wait = WebDriverWait(driver, 10)
+    #     wait.until(
+    #         EC.invisibility_of_element_located((By.ID, "ui-datepicker-div"))
+    #     )
 
     def select_date(self, driver, date_to_select):
         # 1) ouvrir/viser le datepicker (si besoin, clique l'input avant)
@@ -1705,6 +1833,198 @@ class SeleniumLib(object):
 
         return day_btn
 
+    def extraire_svg_graphique_by_3d(
+        self,
+        container_id: str = "svgbox627",
+    ) -> Optional[str]:
+        """
+        Récupère le code SVG du graphique D3 tel que rendu dans le DOM.
+
+        Le SVG est généré dynamiquement par D3.js après chargement de la page,
+        donc on récupère le HTML *après* exécution, pas la source initiale.
+
+        Returns:
+            Le code SVG complet (avec namespace et styles inline) ou None si absent.
+        """
+        try:
+            # Récupérer le <svg> rendu via execute_script (outerHTML inclut les
+            # attributs et le contenu généré dynamiquement par D3).
+            svg_html = self.driver.execute_script(
+                """
+                var container = document.getElementById(arguments[0]);
+                if (!container) return null;
+                var svg = container.querySelector('svg');
+                return svg ? svg.outerHTML : null;
+            """,
+                container_id,
+            )
+
+            if not svg_html:
+                return None
+
+            return self._svg_autonome(svg_html)
+        except Exception:
+            return None
+
+    def _svg_autonome(self, svg_html: str) -> str:
+        """
+        Transforme un fragment SVG en document SVG autonome, viewable hors navigateur.
+
+        - Garantit le namespace xmlns
+        - Ajoute la déclaration XML
+        - Nettoie les attributs spécifiques à darkreader (extension de navigateur)
+        """
+        # import re
+
+        # Nettoyer les attributs injectés par l'extension Dark Reader, qui polluent
+        # le SVG sans valeur ajoutée et peuvent contenir des --darkreader-* invalides.
+        svg_html = re.sub(r'\s*--darkreader-[^;"]*;?', "", svg_html)
+        svg_html = re.sub(r'\s*data-darkreader-[^=]*="[^"]*"', "", svg_html)
+        svg_html = re.sub(
+            r'<style class="darkreader[^"]*"[^>]*>.*?</style>',
+            "",
+            svg_html,
+            flags=re.DOTALL,
+        )
+
+        # S'assurer du namespace SVG (D3 le met normalement, mais on vérifie)
+        if 'xmlns="http://www.w3.org/2000/svg"' not in svg_html:
+            svg_html = svg_html.replace(
+                "<svg ",
+                '<svg xmlns="http://www.w3.org/2000/svg" ',
+                1,
+            )
+
+        # Préfixer avec la déclaration XML pour un fichier .svg standalone
+        return (
+            '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+            + svg_html
+        )
+
+    def convertir_svg_en_png_via_selenium(
+        self,
+        container_id: str,
+        chemin_png: str,
+    ) -> bool:
+        """
+        Alternative : capture le SVG via screenshot Selenium, sans cairosvg.
+        Avantage : pas de dépendance native.
+        Inconvénient : qualité dépend de la résolution du navigateur.
+        """
+
+        try:
+            svg_element = self.get_element(
+                by=By.ID, value=container_id, timeout=5
+            )
+        except Exception as e:
+            return False
+
+        if not svg_element:
+            return False
+
+        # Scroller pour s'assurer que le SVG est visible
+        self.driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});", svg_element
+        )
+
+        time.sleep(0.3)
+        svg_element.screenshot(chemin_png)
+
+        return True
+
+    def telecharger_svg_graphique(
+        self,
+        chemin_sortie: str,
+        container_id: str = "svgbox627",
+    ) -> bool:
+        """
+        Télécharge le graphique en SVG dans un fichier.
+
+        Args:
+            driver: WebDriver positionné sur la page.
+            chemin_sortie: chemin du fichier .svg à créer.
+            container_id: id du conteneur du graphique (par défaut svgbox627).
+
+        Returns:
+            True si le fichier a été écrit, False si le graphique est absent.
+        """
+        svg = self.extraire_svg_graphique_by_3d(container_id)
+        if not svg:
+            return False
+
+        os.makedirs(
+            os.path.dirname(os.path.abspath(chemin_sortie)) or ".",
+            exist_ok=True,
+        )
+        with open(chemin_sortie, "w", encoding="utf-8") as f:
+            f.write(svg)
+        return True
+
+    def get_init_list_file_unique(self):
+        # init_list_file = set(os.listdir(self.default_download_dir_path))
+        if self.config.use_network:
+            init_list_file = set(self.driver.get_downloadable_files())
+        else:
+            if os.path.isdir(self.default_download_dir_path):
+                init_list_file = set(
+                    os.listdir(self.default_download_dir_path)
+                )
+            else:
+                init_list_file = set()
+        return init_list_file
+
+    def download_file_unique(
+        self, init_list_file, lst_unique_file, dct_document, filename
+    ):
+        finish_download = False
+        fichiers = []
+        # 1 hour max
+        new_file_name = ""
+        max_time_to_wait = 60 * 60
+        i_wait = 0
+        while not finish_download:
+            if self.config.use_network:
+                fichiers = set(
+                    self.driver.get_downloadable_files()
+                ).difference(init_list_file)
+            else:
+                fichiers = set(
+                    os.listdir(self.default_download_dir_path)
+                ).difference(init_list_file)
+            diff_list_fichiers = list(fichiers.difference(lst_unique_file))
+            if diff_list_fichiers:
+                new_file_name = diff_list_fichiers[-1]
+                if not new_file_name.endswith(".part"):
+                    # finish_download = True
+                    break
+            i_wait += 1
+            if i_wait < max_time_to_wait:
+                time.sleep(1)
+            else:
+                return set()
+        lst_unique_file = fichiers
+        dct_document[filename] = os.path.join(
+            self.default_download_dir_path, new_file_name
+        )
+        print(len(fichiers))
+        print(fichiers)
+        print("--")
+        print(dct_document)
+        if self.config.use_network:
+            self.driver.download_file(
+                new_file_name, target_directory=self.default_download_dir_path
+            )
+
+        return lst_unique_file
+
+    def print_download_file_unique(self, dct_document, detect_error=False):
+        dct_output = {"document": dct_document, "has_error": detect_error}
+        print()
+        print("=DATA=")
+        print(json.dumps(dct_output))
+        print("=ENDDATA=")
+        print()
+
 
 def get_args(parser):
     args = parser.parse_args()
@@ -1753,7 +2073,7 @@ def fill_parser(parser):
     )
     group_browser.add_argument(
         "--use_network",
-        help="Specify the adress, example: http://localhost:4444",
+        help="Specify the address, example: http://localhost:4444",
     )
     group_browser.add_argument(
         "--use_download_path_default",

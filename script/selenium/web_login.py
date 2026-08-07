@@ -192,6 +192,7 @@ def main():
     # Execute
     run(args, selenium_tool)
     selenium_tool.stop_record()
+    input("Appuie sur Entrée pour fermer...")
     return 0
 
 
