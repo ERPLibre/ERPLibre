@@ -16,6 +16,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
+from typing import Optional
 
 from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
@@ -312,7 +313,12 @@ class SeleniumLib(object):
                         command_executor=driver_url,
                     )
                 else:
-                    firefox_options.add_argument("-remote-allow-system-access")
+                    # NE PAS passer « -remote-allow-system-access » : les
+                    # geckodriver récents le REFUSENT via les capabilities
+                    # (« Argument --remote-allow-system-access can't be set via
+                    # capabilities ») et gèrent seuls l'accès système du Firefox
+                    # snap. Le passer cassait TOUS les setups sur geckodriver
+                    # récent (pas seulement snap/Ubuntu).
                     self.driver = webdriver.Firefox(
                         options=firefox_options,
                         service=firefox_services,

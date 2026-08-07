@@ -22,6 +22,14 @@ VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
 POETRY_ODOO_PATH=${VENV_ERPLIBRE_PATH}/bin/poetry
 export WITH_POETRY_INSTALLATION=1
 
+# Verbosité de l'installation Poetry : silencieuse (-q) par défaut, les logs
+# détaillés (-vvv) reviennent avec la variable d'environnement EL_VERBOSE=1.
+if [[ "${EL_VERBOSE:-0}" == "1" ]]; then
+    POETRY_VERBOSE="-vvv"
+else
+    POETRY_VERBOSE="-q"
+fi
+
 # EL_PHASE controls which steps to execute.  Used by install_locally_dev.sh
 # for parallel installation — do not set manually unless you know what you do.
 #   all    (default) – full install: setup + poetry phases
@@ -83,7 +91,7 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         # To fix keyring problem when installation is blocked, use
         export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
         if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
-            poetry install --no-root -vvv
+            poetry install --no-root ${POETRY_VERBOSE}
         fi
         retVal=$?
         if [[ $retVal -ne 0 ]]; then

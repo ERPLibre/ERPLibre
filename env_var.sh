@@ -33,3 +33,7 @@ EL_GITHUB_TOKEN=""
 EL_MANIFEST_PROD="./default.xml"
 EL_MANIFEST_DEV="./manifest/git_manifest_erplibre.xml"
 EL_LANG="fr"
+# Verbosité de l'installation (poetry install, repo sync, git daemon).
+# 0 = silencieux (défaut), 1 = logs détaillés. On respecte une valeur déjà
+# passée en environnement : EL_VERBOSE=1 make install_odoo_18
+EL_VERBOSE="${EL_VERBOSE:-0}"
