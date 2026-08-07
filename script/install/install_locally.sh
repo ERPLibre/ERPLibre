@@ -96,6 +96,12 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         retVal=$?
         if [[ $retVal -ne 0 ]]; then
             echo "Poetry installation error with status ${retVal}"
+            # « -q » masque la CAUSE. On rejoue en « -vvv » (debug) car c'est
+            # le SEUL niveau où Poetry affiche la sortie des sous-processus
+            # (git clone/checkout, build pip) — donc l'erreur réelle d'une
+            # dépendance VCS/build. Capturé dans le log pour diagnostic.
+            echo "---- Poetry: rejeu -vvv pour diagnostic ----"
+            poetry install --no-root -vvv 2>&1 || true
             exit 1
         fi
     fi
