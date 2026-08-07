@@ -5,6 +5,7 @@
 import datetime
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,41 @@ except ModuleNotFoundError as e:
     humanize = None
 
 VENV_ERPLIBRE = ".venv.erplibre"
+
+# Une commande construite ailleurs peut porter un secret en clair : todo.py et
+# kdbx_manager.py y mettent « --default_password_auth '<mot de passe KeePass>' »,
+# db_restore.py « --master_password=… ». Cette commande est affichée avant et
+# après l'exécution, et journalisée en erreur : le secret finissait donc dans le
+# terminal, dans les journaux et dans toute sortie CI qui les capture.
+#
+# On caviarde la VALEUR, jamais le nom de l'option : la commande reste lisible et
+# reproductible, il ne manque que ce qui ne doit pas être lu.
+_SECRET_OPTION = re.compile(
+    r"(?P<opt>--?[\w-]*"
+    r"(?:password|passwd|pwd|secret|token|api[-_]?key)[\w-]*"
+    r"(?:\s+|=))"
+    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
+    re.IGNORECASE,
+)
+_SECRET_ENV = re.compile(
+    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN)\w*=)"
+    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
+)
+
+
+def redact_secrets(text):
+    """Remplace la valeur des options et variables porteuses de secret.
+
+    Appliqué à CHAQUE affichage d'une commande. Filtrer au point d'affichage
+    plutôt qu'à la construction est ce qui rend la garantie tenable : il n'y a
+    qu'une poignée de sorties ici, alors que les commandes se construisent
+    partout dans le dépôt.
+    """
+    if not text:
+        return text
+    text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
+    return _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
+
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -107,7 +143,8 @@ class Execute:
                     source_odoo = f.read()
             if not source_odoo:
                 _logger.error(
-                    f"You cannot execute Odoo command if no version is installed. Command : {command}"
+                    "You cannot execute Odoo command if no version is"
+                    f" installed. Command : {redact_secrets(command)}"
                 )
                 return -1
             command = f"source ./.venv.{source_odoo}/bin/activate && {command}"
@@ -116,7 +153,7 @@ class Execute:
 
         if not quiet:
             print("🏠 ⬇ Execute command :\n")
-            print(command)
+            print(redact_secrets(command))
         output_lines = []
 
         try:
@@ -156,16 +193,10 @@ class Execute:
 
         except FileNotFoundError:
             if not quiet:
-                if "password" in command:
-                    print(
-                        f"Error: Command '{command.split(' ')[0]}'[...]"
-                        " not found."
-                    )
-                else:
-                    print(f"Error: Command '{command}' not found.")
+                print(f"Error: Command '{redact_secrets(command)}' not found.")
         except Exception as e:
             if not quiet:
-                print(f"An error occurred: {e}")
+                print(f"An error occurred: {redact_secrets(str(e))}")
         process_end_time = time.time()
         duration_sec = process_end_time - process_start_time
         if humanize:
@@ -177,7 +208,7 @@ class Execute:
             if not quiet:
                 print(f"🏠 ⬆ Executed ({duration_sec:.2f} sec.) :\n")
         if not quiet:
-            print(command)
+            print(redact_secrets(command))
             print()
         if return_status_and_output_and_command:
             return exit_code, command, output_lines
