@@ -27,6 +27,8 @@ from script.config import config_file
 from script.execute import execute
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
+from script.todo import todo_prefs
+from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -446,6 +448,79 @@ class TODO:
             ),
         ),
     }
+
+    def _pref_label(self, key):
+        """Libellé traduit de la valeur courante d'une préférence."""
+        value = todo_prefs.get(key)
+        for stored, label in self._PREF_CHOICES[key][1]:
+            if stored == value:
+                return t(label)
+        return str(value)
+
+    def _pref_edit(self, key):
+        """Fait choisir une valeur parmi celles proposées pour `key`."""
+        title, options = self._PREF_CHOICES[key]
+        current = todo_prefs.get(key)
+        print(f"\n{t(title)} :")
+        for i, (stored, label) in enumerate(options, 1):
+            star = " *" if stored == current else ""
+            print(f"  [{i}] {t(label)}{star}")
+        sel = input(f"{t('Choice (number, blank = keep):')} ").strip()
+        try:
+            idx = int(sel) - 1
+        except ValueError:
+            return
+        if 0 <= idx < len(options):
+            todo_prefs.set(key, options[idx][0])
+            print(f"  ✅ {t(title)} : {self._pref_label(key)}")
+
+    def prompt_configuration(self):
+        """Réglages persistants de l'utilisateur (~/.erplibre/todo_prefs.json).
+        La langue vit à part, dans env_var.sh, et garde son propre mécanisme.
+        """
+        while True:
+            lang = "français" if get_lang() == "fr" else "English"
+            choices = [
+                {"section": t("Interface")},
+                {"prompt_description": f"{t('Language / Langue')}  ({lang})"},
+                {
+                    "prompt_description": (
+                        f"{t('QEMU deployment interface')}  "
+                        f"({self._pref_label('qemu_deploy_ui')})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Display while deploying')}  "
+                        f"({self._pref_label('qemu_deploy_progress')})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Odoo migration interface')}  "
+                        f"({self._pref_label('migration_ui')})"
+                    )
+                },
+                {"section": t("Maintenance")},
+                {"prompt_description": t("Reset all preferences")},
+            ]
+            status = click.prompt(self.fill_help_info(choices))
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                self._change_language()
+            elif status == "2":
+                self._pref_edit("qemu_deploy_ui")
+            elif status == "3":
+                self._pref_edit("qemu_deploy_progress")
+            elif status == "4":
+                self._pref_edit("migration_ui")
+            elif status == "5":
+                n = todo_prefs.reset()
+                print(f"✅ {t('Preferences reset')} ({n})")
+            else:
+                print(t("Command not found !"))
 
     def fill_help_info(self, choices):
         # Une entrée {"section": "..."} affiche un titre de section SANS
@@ -1148,6 +1223,22 @@ class TODO:
         # Aucune question sur la clé ici : tant que rien n'a échoué, elle
         # serait prématurée. Elle est posée à la première identité refusée.
         self._qemu_ssh_walk(roots, max_depth)
+
+    def _qemu_pick_domains(self):
+        """Fait choisir des VM parmi celles définies. Vide = toutes."""
+        names = self._qemu_list_domains()
+        if not names:
+            print(t("No VM found."))
+            return []
+        for i, name in enumerate(names, 1):
+            print(f"  [{i}] {name}")
+        raw = input(
+            t("Which VMs? (numbers, comma-separated; blank = all): ")
+        ).strip()
+        if not raw:
+            return names
+        chosen = self._parse_index_selection(raw, names)
+        return chosen or names
 
     def _ssh_ensure_key(self):
         """Chemin de la clé PUBLIQUE, générée si aucune n'existe.

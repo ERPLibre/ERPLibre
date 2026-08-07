@@ -1246,6 +1246,54 @@ TRANSLATIONS = {
         "fr": "📊 Télémétrie de navigation (TUI)",
         "en": "📊 Navigation telemetry (TUI)",
     },
+    "Configuration": {
+        "fr": "⚙  Configuration",
+        "en": "⚙  Configuration",
+    },
+    "Interface": {
+        "fr": "Interface",
+        "en": "Interface",
+    },
+    "Maintenance": {
+        "fr": "Maintenance",
+        "en": "Maintenance",
+    },
+    "Language / Langue": {
+        "fr": "🌐 Langue / Language",
+        "en": "🌐 Language / Langue",
+    },
+    "QEMU deployment interface": {
+        "fr": "🖥  Interface de déploiement QEMU",
+        "en": "🖥  QEMU deployment interface",
+    },
+    "Display while deploying": {
+        "fr": "📜 Affichage pendant le déploiement",
+        "en": "📜 Display while deploying",
+    },
+    "Ask every time": {
+        "fr": "Demander à chaque fois",
+        "en": "Ask every time",
+    },
+    "TUI form": {
+        "fr": "Formulaire TUI",
+        "en": "TUI form",
+    },
+    "Classic questions (line by line)": {
+        "fr": "Questions classiques (ligne par ligne)",
+        "en": "Classic questions (line by line)",
+    },
+    "CLI output (easy to copy)": {
+        "fr": "Sortie CLI (facile à copier)",
+        "en": "CLI output (easy to copy)",
+    },
+    "TUI, collapsible blocks per VM": {
+        "fr": "TUI, blocs repliables par VM",
+        "en": "TUI, collapsible blocks per VM",
+    },
+    "Choice (number, blank = keep):": {
+        "fr": "Choix (numéro, vide = garder) :",
+        "en": "Choice (number, blank = keep):",
+    },
     "SSH port forwarding (open Odoo in the browser)": {
         "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
         "en": "🔌 SSH port forwarding (open Odoo in the browser)",
@@ -1351,6 +1399,14 @@ TRANSLATIONS = {
         "fr": "Tunnel refermé.",
         "en": "Tunnel closed.",
     },
+    "SSH configuration (~/.ssh/config, ProxyJump)": {
+        "fr": "🔑 Configuration SSH (~/.ssh/config, ProxyJump)",
+        "en": "🔑 SSH configuration (~/.ssh/config, ProxyJump)",
+    },
+    "SSH configuration for QEMU VMs": {
+        "fr": "Configuration SSH des VM QEMU",
+        "en": "SSH configuration for QEMU VMs",
+    },
     "Where should the machines come from?": {
         "fr": "D'où viennent les machines à configurer ?",
         "en": "Where should the machines come from?",
@@ -1391,6 +1447,35 @@ TRANSLATIONS = {
     "Depth (1 = these machines only, default:": {
         "fr": "Profondeur (1 = ces machines seulement, défaut :",
         "en": "Depth (1 = these machines only, default:",
+    },
+    "Which VMs? (numbers, comma-separated; blank = all): ": {
+        "fr": "Quelles VM ? (numéros séparés par des virgules ; "
+        "vide = toutes) : ",
+        "en": "Which VMs? (numbers, comma-separated; blank = all): ",
+    },
+    "Depth (default:": {
+        "fr": "Profondeur (défaut :",
+        "en": "Depth (default:",
+    },
+    "entry": {
+        "fr": "entrée",
+        "en": "entry",
+    },
+    "written": {
+        "fr": "écrite(s)",
+        "en": "written",
+    },
+    "skipped": {
+        "fr": "ignorée(s)",
+        "en": "skipped",
+    },
+    "Level": {
+        "fr": "Niveau",
+        "en": "Level",
+    },
+    "machines to probe": {
+        "fr": "machines à sonder",
+        "en": "machines to probe",
     },
     "SSH refused the identity.": {
         "fr": "SSH a refusé l'identité.",
@@ -1488,6 +1573,22 @@ TRANSLATIONS = {
     "the names apply live": {
         "fr": "les noms s'appliquent à chaud",
         "en": "the names apply live",
+    },
+    "SSH hosts written": {
+        "fr": "Hôtes SSH écrits",
+        "en": "SSH hosts written",
+    },
+    "via": {
+        "fr": "via",
+        "en": "via",
+    },
+    "Reset all preferences": {
+        "fr": "🧹 Réinitialiser toutes les préférences",
+        "en": "🧹 Reset all preferences",
+    },
+    "Preferences reset": {
+        "fr": "Préférences réinitialisées",
+        "en": "Preferences reset",
     },
     "Interface:": {
         "fr": "Interface :",
