@@ -146,7 +146,16 @@ class Execute:
                     "You cannot execute Odoo command if no version is"
                     f" installed. Command : {redact_secrets(command)}"
                 )
-                return -1
+                # Return the SAME shape the caller asked for. A bare int here
+                # made callers doing « status, cmd = exec_command_live(...) »
+                # crash with ValueError instead of seeing the failure.
+                if return_status_and_output_and_command:
+                    return 1, command, []
+                if return_status_and_command:
+                    return 1, command
+                if return_status_and_output:
+                    return 1, []
+                return 1
             command = f"source ./.venv.{source_odoo}/bin/activate && {command}"
         if new_window and self.cmd_source_default:
             command = self.cmd_source_default % command
@@ -191,10 +200,16 @@ class Execute:
             if process.returncode != 0 and not quiet:
                 print("Command returned error code:" f" {process.returncode}")
 
+        # An exception MUST report a failure. exit_code stays None otherwise,
+        # and None is falsy: callers testing « if not status: » would mark the
+        # step as done, and « if status and wait_at_error » would skip the error
+        # prompt. A crashed command was therefore recorded as a success.
         except FileNotFoundError:
+            exit_code = 1
             if not quiet:
                 print(f"Error: Command '{redact_secrets(command)}' not found.")
         except Exception as e:
+            exit_code = 1
             if not quiet:
                 print(f"An error occurred: {redact_secrets(str(e))}")
         process_end_time = time.time()
