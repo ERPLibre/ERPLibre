@@ -3422,6 +3422,104 @@ TRANSLATIONS = {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",
     },
+    # --- script/analyse : poids du schéma ---
+    "Schema analysis": {
+        "fr": "Analyse du schéma",
+        "en": "Schema analysis",
+    },
+    "Database size": {
+        "fr": "Poids de la base",
+        "en": "Database size",
+    },
+    "Tables": {"fr": "Tables", "en": "Tables"},
+    "Models": {"fr": "Modèles", "en": "Models"},
+    "rows": {"fr": "lignes", "en": "rows"},
+    "Models without table": {
+        "fr": "Modèles sans table",
+        "en": "Models without table",
+    },
+    "abstract models have none, by design": {
+        "fr": "les modèles abstraits n'en ont pas, par construction",
+        "en": "abstract models have none, by design",
+    },
+    "ir_model_relation is absent, so m2m tables cannot be told apart from"
+    " orphans: the list below is unreliable.": {
+        "fr": "ir_model_relation est absente : impossible de distinguer une"
+        " table m2m d'une orpheline, la liste ci-dessous n'est pas fiable.",
+        "en": "ir_model_relation is absent, so m2m tables cannot be told apart"
+        " from orphans: the list below is unreliable.",
+    },
+    "Heaviest tables": {
+        "fr": "Tables les plus lourdes",
+        "en": "Heaviest tables",
+    },
+    "All tables, heaviest first": {
+        "fr": "Toutes les tables, de la plus lourde à la plus légère",
+        "en": "All tables, heaviest first",
+    },
+    "use -v to list them all": {
+        "fr": "utilisez -v pour toutes les afficher",
+        "en": "use -v to list them all",
+    },
+    "Every table belongs to an installed model.": {
+        "fr": "Chaque table appartient à un modèle installé.",
+        "en": "Every table belongs to an installed model.",
+    },
+    "Orphan tables": {
+        "fr": "Tables orphelines",
+        "en": "Orphan tables",
+    },
+    "No installed model claims these tables. They are usually left over from"
+    " modules uninstalled without DROP TABLE, and every version upgrade"
+    " carries them along.": {
+        "fr": "Aucun modèle installé ne réclame ces tables. Ce sont le plus"
+        " souvent des reliquats de modules désinstallés sans DROP TABLE, que"
+        " chaque montée de version transporte avec elle.",
+        "en": "No installed model claims these tables. They are usually left"
+        " over from modules uninstalled without DROP TABLE, and every version"
+        " upgrade carries them along.",
+    },
+    "Check what they hold before dropping anything.": {
+        "fr": "Regardez ce qu'elles contiennent avant de supprimer quoi que ce"
+        " soit.",
+        "en": "Check what they hold before dropping anything.",
+    },
+    "Row counts are estimates from the last ANALYZE. Use --exact for real"
+    " counts, at the cost of one full scan per table.": {
+        "fr": "Les nombres de lignes sont estimés d'après le dernier ANALYZE."
+        " Utilisez --exact pour un comptage réel, au prix d'un balayage"
+        " complet par table.",
+        "en": "Row counts are estimates from the last ANALYZE. Use --exact for"
+        " real counts, at the cost of one full scan per table.",
+    },
+    "Report the size of an Odoo database and the tables no installed model"
+    " claims (read-only).": {
+        "fr": "Rapporter le poids d'une base Odoo et les tables qu'aucun"
+        " modèle installé ne réclame (lecture seule).",
+        "en": "Report the size of an Odoo database and the tables no installed"
+        " model claims (read-only).",
+    },
+    "database to inspect": {
+        "fr": "base à examiner",
+        "en": "database to inspect",
+    },
+    "count rows exactly: one full scan per table": {
+        "fr": "compter les lignes exactement : un balayage complet par table",
+        "en": "count rows exactly: one full scan per table",
+    },
+    "how many tables to show (default: 20)": {
+        "fr": "nombre de tables à afficher (défaut : 20)",
+        "en": "how many tables to show (default: 20)",
+    },
+    "list every table": {
+        "fr": "afficher toutes les tables",
+        "en": "list every table",
+    },
+    "output JSON": {"fr": "sortie JSON", "en": "output JSON"},
+    "path to an Odoo config file": {
+        "fr": "chemin d'un fichier de configuration Odoo",
+        "en": "path to an Odoo config file",
+    },
 }
 
 
