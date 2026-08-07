@@ -1649,6 +1649,42 @@ TRANSLATIONS = {
         "fr": "Rien à copier.",
         "en": "Nothing to copy.",
     },
+    "TODO navigation telemetry": {
+        "fr": "TODO — télémétrie de navigation",
+        "en": "TODO navigation telemetry",
+    },
+    "navigations": {
+        "fr": "navigations",
+        "en": "navigations",
+    },
+    "menus": {
+        "fr": "menus",
+        "en": "menus",
+    },
+    "Telemetry reset.": {
+        "fr": "Télémétrie réinitialisée.",
+        "en": "Telemetry reset.",
+    },
+    "tree from code": {
+        "fr": "arbre issu du code",
+        "en": "tree from code",
+    },
+    "visited paths only": {
+        "fr": "chemins visités seulement",
+        "en": "visited paths only",
+    },
+    "Enter = run, F3 = view": {
+        "fr": "Entrée = exécuter, F3 = vue",
+        "en": "Enter = run, F3 = view",
+    },
+    "Enter = run, F3/F4 = views": {
+        "fr": "Entrée = exécuter, F3/F4 = vues",
+        "en": "Enter = run, F3/F4 = views",
+    },
+    "view": {
+        "fr": "vue",
+        "en": "view",
+    },
     "avg": {
         "fr": "moy",
         "en": "avg",
@@ -1656,6 +1692,63 @@ TRANSLATIONS = {
     "Last install:": {
         "fr": "Dernière install :",
         "en": "Last install:",
+    },
+    "No command found.": {
+        "fr": "Aucune commande trouvée.",
+        "en": "No command found.",
+    },
+    "Back to telemetry (r) or quit (Enter)? ": {
+        "fr": "Revenir à la télémétrie (r) ou quitter (Entrée) ? ",
+        "en": "Back to telemetry (r) or quit (Enter)? ",
+    },
+    "F2 system · F3/F4 views · Enter run": {
+        "fr": "F2 système · F3/F4 vues · Entrée exécute",
+        "en": "F2 system · F3/F4 views · Enter run",
+    },
+    "State": {"fr": "État", "en": "State"},
+    "uptime": {"fr": "actif depuis", "en": "uptime"},
+    "load": {"fr": "charge", "en": "load"},
+    "cores": {"fr": "cœurs", "en": "cores"},
+    "Memory": {"fr": "Mémoire", "en": "Memory"},
+    "Disk": {"fr": "Disque", "en": "Disk"},
+    "Network": {"fr": "Réseau", "en": "Network"},
+    "Battery": {"fr": "Batterie", "en": "Battery"},
+    "Temperature": {"fr": "Température", "en": "Temperature"},
+    "lm-sensors absent — press i to install": {
+        "fr": "lm-sensors absent — appuyez sur i pour installer",
+        "en": "lm-sensors absent — press i to install",
+    },
+    "Sensors already available.": {
+        "fr": "Capteurs déjà disponibles.",
+        "en": "Sensors already available.",
+    },
+    "Sensors now available.": {
+        "fr": "Capteurs désormais disponibles.",
+        "en": "Sensors now available.",
+    },
+    "Still no temperature (reboot/modprobe may be needed).": {
+        "fr": "Toujours pas de température (redémarrage/modprobe requis ?).",
+        "en": "Still no temperature (reboot/modprobe may be needed).",
+    },
+    "Unknown package manager for lm-sensors.": {
+        "fr": "Gestionnaire de paquets inconnu pour lm-sensors.",
+        "en": "Unknown package manager for lm-sensors.",
+    },
+    "Proposed install command:": {
+        "fr": "Commande d'installation proposée :",
+        "en": "Proposed install command:",
+    },
+    "Install lm-sensors now? (y/N): ": {
+        "fr": "Installer lm-sensors maintenant ? (o/N) : ",
+        "en": "Install lm-sensors now? (y/N): ",
+    },
+    "Command failed: ": {
+        "fr": "Échec de la commande : ",
+        "en": "Command failed: ",
+    },
+    "Your distribution may package it as python3-textual.": {
+        "fr": "Votre distribution le fournit peut-être en python3-textual.",
+        "en": "Your distribution may package it as python3-textual.",
     },
     "Resize a VM disk": {
         "fr": "📐 Redimensionner le disque d'une VM",
@@ -1986,6 +2079,18 @@ TRANSLATIONS = {
     "Waiting for the VM to shut down...": {
         "fr": "Attente de l'arrêt de la VM…",
         "en": "Waiting for the VM to shut down...",
+    },
+    "timeout": {
+        "fr": "délai max",
+        "en": "timeout",
+    },
+    "shutting down": {
+        "fr": "arrêt en cours",
+        "en": "shutting down",
+    },
+    "remaining": {
+        "fr": "restantes",
+        "en": "remaining",
     },
     "VM is off.": {
         "fr": "VM éteinte.",

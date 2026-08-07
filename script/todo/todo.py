@@ -117,6 +117,61 @@ class TODO:
             set_lang("en")
         print(t("Language changed to: English"))
 
+    def run(self):
+        with open(self.config_file.get_logo_ascii_file_path()) as my_file:
+            print(my_file.read())
+        self._ask_language()
+        print(t("Opening TODO ..."))
+        print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
+        help_info = f"""{self._menu_header()}
+[1] {t("Execute")}
+[2] {t("Install")}
+[3] {t("Question")}
+[4] {t("Fork - Open TODO in a new tab")}
+[5] {t("Navigation telemetry (TUI)")}
+[6] {t("Configuration")}
+[0] {t("Quit")}
+"""
+        while True:
+            try:
+                status = click.prompt(help_info)
+            except NameError:
+                print("Do")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
+                sys.exit(1)
+            except ImportError:
+                print("Do")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
+                sys.exit(1)
+            except click.exceptions.Abort:
+                sys.exit(0)
+            print()
+            if status == "0":
+                break
+            elif status == "1":
+                self.prompt_execute()
+            elif status == "2":
+                self.prompt_install()
+            elif status == "3":
+                self.execute_prompt_ia()
+            elif status == "4":
+                # cmd = (
+                #     f"gnome-terminal --tab -- bash -c 'source"
+                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
+                # )
+                cmd = "make todo"
+                self.execute.exec_command_live(cmd, source_erplibre=True)
+            elif status == "5":
+                self._todo_telemetry_tui()
+            elif status == "6":
+                self.prompt_configuration()
+            # elif status == "3" or status == "install":
+            #     print("install")
+            else:
+                print(t("Command not found !"))
+
+        print(status)
+
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
 
@@ -289,6 +344,107 @@ class TODO:
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_configuration": "Configuration",
+    }
+
+    def _menu_header(self):
+        """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de
+        la ligne « Commande : ». Le fil situe le menu courant et se copie pour
+        décrire sans ambiguïté où l'on se trouve."""
+        crumbs = []
+        for frame_info in reversed(inspect.stack()):
+            if frame_info.frame.f_locals.get("self") is not self:
+                continue
+            label = self._MENU_LABELS.get(frame_info.function)
+            if label and (not crumbs or crumbs[-1] != label):
+                crumbs.append(label)
+        header = ""
+        if crumbs:
+            header = "📍 " + " › ".join(crumbs) + "\n"
+            # Télémétrie de navigation (best-effort, ne casse jamais le menu).
+            try:
+                from script.todo import todo_telemetry
+
+                todo_telemetry.record(" › ".join(crumbs))
+            except Exception:
+                pass
+        return header + t("Command:")
+
+    def _todo_telemetry_tui(self):
+        """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
+        exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
+        et la position du curseur sont restaurés) ou de quitter."""
+        from script.todo.todo_telemetry import run_tui
+
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return
+        state = None
+        while True:
+            try:
+                result = run_tui(state=state)
+            except ImportError:
+                return
+            if not result:
+                return
+            action, state = result
+            if not action:
+                return  # quitté sans choisir de commande
+            method, kwargs = action
+            # Fil d'Ariane : la commande étant lancée DEPUIS la télémétrie (et
+            # non via la navigation), aucun menu n'a affiché le chemin. On le
+            # montre ici (dernier segment traduit + icône) et on l'enregistre.
+            path = state.get("path") if isinstance(state, dict) else None
+            if path:
+                segs = path.split(" › ")
+                segs[-1] = t(segs[-1])
+                print(f"\n📍 {' › '.join(segs)}")
+                try:
+                    from script.todo import todo_telemetry
+
+                    todo_telemetry.record(path)
+                except Exception:
+                    pass
+            fn = getattr(self, method, None)
+            if not callable(fn):
+                print(f"{t('Command not found !')} ({method})")
+            else:
+                try:
+                    fn(**(kwargs or {}))
+                except Exception as exc:
+                    print(f"{t('Command failed: ')}{exc}")
+            # Revenir (curseur restauré) ou quitter ?
+            ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
+            if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
+                return
+
+    # Préférences éditables depuis le menu Configuration : clé, libellé, et
+    # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :
+    # l'écran, la lecture et l'écriture en découlent.
+    _PREF_CHOICES = {
+        "qemu_deploy_ui": (
+            "QEMU deployment interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
+        "qemu_deploy_progress": (
+            "Display while deploying",
+            (
+                ("cli", "CLI output (easy to copy)"),
+                ("tui", "TUI, collapsible blocks per VM"),
+            ),
+        ),
+        "migration_ui": (
+            "Odoo migration interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
     }
 
     def fill_help_info(self, choices):
