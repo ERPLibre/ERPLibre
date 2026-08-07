@@ -3629,6 +3629,33 @@ TRANSLATIONS = {
         "fr": "📜 Afficher tous les champs",
         "en": "📜 Show every field",
     },
+    "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
+    "A backup .zip, without restoring it": {
+        "fr": "🗜  Une sauvegarde .zip, sans la restaurer",
+        "en": "🗜  A backup .zip, without restoring it",
+    },
+    "Path to the backup .zip (empty to cancel): ": {
+        "fr": "Chemin de la sauvegarde .zip (vide pour annuler) : ",
+        "en": "Path to the backup .zip (empty to cancel): ",
+    },
+    "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
+    "Odoo backup .zip to inspect, without restoring it": {
+        "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
+        "en": "Odoo backup .zip to inspect, without restoring it",
+    },
+    "Not an Odoo backup (no manifest.json): ": {
+        "fr": "Pas une sauvegarde Odoo (aucun manifest.json) : ",
+        "en": "Not an Odoo backup (no manifest.json): ",
+    },
+    "Cannot read the backup: ": {
+        "fr": "Lecture impossible de la sauvegarde : ",
+        "en": "Cannot read the backup: ",
+    },
+    "This backup holds no dump.sql: ": {
+        "fr": "Cette sauvegarde ne contient aucun dump.sql : ",
+        "en": "This backup holds no dump.sql: ",
+    },
     # --- script/analyse : champs et modèles hors module ---
     "Nothing declares these in a file, so no module will "
     "recreate them. What a version upgrade keeps is what "

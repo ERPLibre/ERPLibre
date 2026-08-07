@@ -391,3 +391,49 @@ class TestSideBySide(unittest.TestCase):
         self.assertEqual(
             L.diff_stats(rows), {"added": 1, "removed": 0, "changed": 1}
         )
+
+
+class TestUnescapeCopy(unittest.TestCase):
+    r"""Les valeurs d'un bloc COPY d'un dump.sql.
+
+    C'est ce qui permet de lire une sauvegarde sans la restaurer. Une erreur
+    ici corrompt silencieusement une valeur — un « \n » laissé littéral dans
+    une aide de champ, un NULL pris pour la chaîne « \N ».
+    """
+
+    def test_backslash_n_is_null_not_a_string(self):
+        self.assertIsNone(L.unescape_copy("\\N"))
+        # Mais « \N » AU MILIEU d'une valeur reste du texte.
+        self.assertEqual(L.unescape_copy("a\\Nb"), "aNb")
+
+    def test_plain_value_passes_through(self):
+        self.assertEqual(L.unescape_copy("x_studio_code"), "x_studio_code")
+        self.assertEqual(L.unescape_copy(""), "")
+
+    def test_newline_and_tab_are_restored(self):
+        # Une aide de champ multi-lignes arrive échappée : la laisser telle
+        # quelle mettrait « \n » littéral dans le rapport.
+        self.assertEqual(L.unescape_copy("a\\nb"), "a\nb")
+        self.assertEqual(L.unescape_copy("a\\tb"), "a\tb")
+        self.assertEqual(L.unescape_copy("a\\rb"), "a\rb")
+
+    def test_escaped_backslash(self):
+        self.assertEqual(L.unescape_copy("a\\\\b"), "a\\b")
+
+    def test_unknown_escape_keeps_the_character(self):
+        self.assertEqual(L.unescape_copy("a\\qb"), "aqb")
+
+    def test_trailing_backslash_is_not_an_index_error(self):
+        self.assertEqual(L.unescape_copy("a\\"), "a\\")
+
+
+class TestNotAColumn(unittest.TestCase):
+    def test_constraint_lines_are_not_columns(self):
+        # Un CREATE TABLE mêle colonnes et contraintes ; prendre le premier
+        # mot d'une ligne CONSTRAINT donnerait une colonne qui n'existe pas,
+        # et un champ x_ passerait pour ayant sa colonne.
+        for word in ("CONSTRAINT", "PRIMARY", "CHECK", "FOREIGN", "UNIQUE"):
+            self.assertTrue(f"{word} foo".upper().startswith(L.NOT_A_COLUMN))
+        self.assertFalse(
+            "name character varying".upper().startswith(L.NOT_A_COLUMN)
+        )

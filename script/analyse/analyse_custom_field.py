@@ -48,11 +48,14 @@ sys.path.append(new_path)
 
 from script.analyse.lib_analyse import (  # noqa: E402
     AnalyseError,
+    backup_manifest,
     column_types,
     existing_columns,
     json_query,
     model_table,
+    normalise_arch,
     public_tables,
+    read_backup,
     require_odoo_database,
     scalar_query,
     t,
@@ -242,6 +245,26 @@ def collect(database, config_path=None, timeout=120):
         if table and table not in dct_columns:
             dct_columns[table] = existing_columns(database, table, **kwargs)
 
+    lst_blocker = _judge(
+        lst_field, set_model, set_table, dct_columns, dct_selection
+    )
+    return _result(
+        database,
+        odoo_version,
+        lst_field,
+        lst_model,
+        lst_blocker,
+        source="database",
+    )
+
+
+def _judge(lst_field, set_model, set_table, dct_columns, dct_selection):
+    """Attribuer et juger chaque champ. Renvoie la liste des bloquants.
+
+    Partagé par la lecture d'une base et celle d'une sauvegarde : les deux
+    doivent conclure la même chose des mêmes faits, sinon le zip et la base
+    d'où il vient ne diraient pas pareil.
+    """
     lst_blocker = []
     for row in lst_field:
         row["origin"] = field_origin(row)
@@ -274,6 +297,18 @@ def collect(database, config_path=None, timeout=120):
         ):
             lst_blocker.append(row)
 
+    return lst_blocker
+
+
+def _result(
+    database,
+    odoo_version,
+    lst_field,
+    lst_model,
+    lst_blocker,
+    source="database",
+):
+    """La donnée de sortie, une seule forme quelle que soit la provenance."""
     dct_origin = {"studio": 0, "handmade": 0, "module": 0}
     for row in lst_field:
         dct_origin[row["origin"]] += 1
@@ -282,8 +317,8 @@ def collect(database, config_path=None, timeout=120):
         "tool": "analyse_custom_field",
         "version": 1,
         "database": database,
+        "source": source,
         "odoo_version": odoo_version,
-        "has_selection_table": bool(dct_selection) or None,
         "n_fields": len(lst_field),
         "n_models": len(lst_model),
         "counts": {
@@ -295,6 +330,99 @@ def collect(database, config_path=None, timeout=120):
         "models": lst_model,
         "blockers": lst_blocker,
     }
+
+
+def collect_from_backup(zip_path):
+    """Même analyse, mais depuis une sauvegarde .zip, sans rien restaurer.
+
+    Pourquoi cela existe : restaurer la sauvegarde d'une instance Enterprise
+    sur une installation Community échoue — Odoo veut charger des modules
+    qu'on n'a pas. Les champs Studio, eux, ne sont que des lignes de
+    `ir_model_fields`, et un `dump.sql` est du texte. On les lit donc là où
+    ils sont, plutôt que d'exiger une restauration impossible.
+
+    Ce que la sauvegarde permet en moins : rien, pour cet outil. Le dump
+    contient les `CREATE TABLE`, donc même la colonne physique manquante — le
+    seul vrai bloquant — se détecte.
+    """
+    manifest, dct_rows, dct_columns = read_backup(
+        zip_path,
+        tables=("ir_model_fields", "ir_model", "ir_model_data"),
+        with_columns=True,
+    )
+
+    # Les identifiants externes, agrégés par champ et par modèle — le même
+    # regroupement que fait le SQL, pour que Studio s'attribue pareil.
+    dct_xmlid = {}
+    for row in dct_rows["ir_model_data"]:
+        key = (row.get("model"), row.get("res_id"))
+        dct_xmlid.setdefault(key, set()).add(row.get("module"))
+
+    lst_field = []
+    for row in dct_rows["ir_model_fields"]:
+        name = row.get("name") or ""
+        if row.get("state") != "manual" and not name.startswith("x_"):
+            continue
+        lst_field.append(
+            {
+                "id": row.get("id"),
+                "model": row.get("model"),
+                "name": name,
+                "ttype": row.get("ttype"),
+                "relation": row.get("relation"),
+                "related": row.get("related"),
+                # Le dump rend « t »/« f » : PostgreSQL écrit les booléens
+                # ainsi dans un COPY, et « f » est une chaîne vraie en Python.
+                "store": row.get("store") != "f",
+                "translate": row.get("translate") == "t",
+                "state": row.get("state"),
+                # Un champ traduit est du jsonb à partir de 16.0. Depuis une
+                # base, tr_col le déballe côté SQL ; depuis un dump, la valeur
+                # arrive brute, et « {"en_US": "Code client"} » ne se lit pas.
+                # normalise_arch fait ce déballage, et c'est la même fonction
+                # des deux côtés — deux implémentations divergeraient.
+                "label": normalise_arch(row.get("field_description")),
+                "help": normalise_arch(row.get("help")),
+                "xmlid_modules": sorted(
+                    dct_xmlid.get(("ir.model.fields", row.get("id"))) or []
+                ),
+                "create_date": row.get("create_date"),
+                "write_date": row.get("write_date"),
+            }
+        )
+
+    lst_model = [
+        {
+            "model": row.get("model"),
+            "description": normalise_arch(row.get("name")),
+            "state": row.get("state"),
+            "transient": row.get("transient") == "t",
+            "xmlid_modules": sorted(
+                dct_xmlid.get(("ir.model", row.get("id"))) or []
+            ),
+        }
+        for row in dct_rows["ir_model"]
+        if row.get("state") == "manual"
+        or (row.get("model") or "").startswith("x_")
+    ]
+
+    set_model = {row.get("model") for row in dct_rows["ir_model"]}
+    set_table = set(dct_columns)
+    for row in lst_field:
+        row["table"] = model_table(row["model"], known_tables=set_table)
+
+    lst_blocker = _judge(lst_field, set_model, set_table, dct_columns, {})
+    data = _result(
+        os.path.basename(zip_path),
+        manifest.get("version"),
+        lst_field,
+        lst_model,
+        lst_blocker,
+        source="backup",
+    )
+    data["backup_path"] = zip_path
+    data["backup_db_name"] = manifest.get("db_name")
+    return data
 
 
 def _field_block(lst_row, top):
@@ -318,7 +446,8 @@ def render(data, verbose=False, top=TOP_DEFAULT, hints=True):
     lines = [
         "",
         f"🔬 {t('Fields added outside a module')} — {data['database']}"
-        f" (Odoo {data.get('odoo_version') or '?'})",
+        f" (Odoo {data.get('odoo_version') or '?'}"
+        f"{', ' + t('from a backup') if data.get('source') == 'backup' else ''})",
         "",
         f"  {t('Custom fields'):<30}: {data['n_fields']}",
     ]
@@ -392,8 +521,13 @@ def main(argv=None):
             " hand (read-only)."
         )
     )
-    parser.add_argument(
-        "-d", "--database", required=True, help=t("database to inspect")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("-d", "--database", help=t("database to inspect"))
+    source.add_argument(
+        "-z",
+        "--zip",
+        dest="backup",
+        help=t("Odoo backup .zip to inspect, without restoring it"),
     )
     parser.add_argument(
         "--top",
@@ -411,7 +545,10 @@ def main(argv=None):
     config = parser.parse_args(argv)
 
     try:
-        data = collect(config.database, config_path=config.config)
+        if config.backup:
+            data = collect_from_backup(config.backup)
+        else:
+            data = collect(config.database, config_path=config.config)
     except AnalyseError as exc:
         print(f"❌ {exc}")
         return 2

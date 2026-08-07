@@ -620,6 +620,142 @@ def diff_stats(lst_row):
     }
 
 
+# --- Lire une sauvegarde .zip sans restaurer quoi que ce soit ----------------
+#
+# Une sauvegarde Odoo est un zip contenant `manifest.json`, un `filestore/` et
+# un `dump.sql` — un pg_dump TEXTE, avec ses blocs `COPY … FROM stdin;` et ses
+# `CREATE TABLE`. Tout se lit donc sans PostgreSQL et sans Odoo.
+#
+# Ce que ça débloque : analyser la sauvegarde d'une instance Enterprise depuis
+# une installation Community. La restaurer y échoue — Odoo veut charger des
+# modules qu'on n'a pas — alors que les champs Studio, eux, ne sont que des
+# lignes de `ir_model_fields` qu'on peut lire telles quelles.
+#
+# La lecture est en FLOT, une seule passe : un dump de production pèse des
+# gigaoctets, et on n'en veut que trois tables.
+
+# Échappements de pg_dump dans un bloc COPY. `\N` (NULL) est traité à part :
+# c'est une valeur, pas un caractère.
+COPY_ESCAPE = {
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
+}
+
+# Lignes d'un CREATE TABLE qui ne déclarent pas une colonne.
+NOT_A_COLUMN = (
+    "CONSTRAINT",
+    "PRIMARY",
+    "UNIQUE",
+    "CHECK",
+    "FOREIGN",
+    "EXCLUDE",
+)
+
+
+def unescape_copy(value):
+    r"""Une valeur d'un bloc COPY, dés-échappée. « \N » devient None."""
+    if value == "\\N":
+        return None
+    if "\\" not in value:
+        return value
+    out, index = [], 0
+    while index < len(value):
+        char = value[index]
+        if char == "\\" and index + 1 < len(value):
+            out.append(COPY_ESCAPE.get(value[index + 1], value[index + 1]))
+            index += 2
+        else:
+            out.append(char)
+            index += 1
+    return "".join(out)
+
+
+def backup_manifest(zip_path):
+    """Le manifest.json d'une sauvegarde : version, modules, base d'origine."""
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            with archive.open("manifest.json") as handle:
+                return json.load(handle)
+    except KeyError as exc:
+        raise AnalyseError(
+            f"{t('Not an Odoo backup (no manifest.json): ')}{zip_path}"
+        ) from exc
+    except (OSError, zipfile.BadZipFile, ValueError) as exc:
+        raise AnalyseError(f"{t('Cannot read the backup: ')}{exc}") from exc
+
+
+def read_backup(zip_path, tables=(), with_columns=()):
+    """Lire un dump.sql en flot. -> (manifest, {table: [lignes]}, {table: colonnes}).
+
+    Une seule passe, quelle que soit la taille du dump : on ne garde en mémoire
+    que les tables demandées.
+    """
+    import io
+    import zipfile
+
+    manifest = backup_manifest(zip_path)
+    set_want = set(tables)
+    # True = toutes les tables. Le dump les déclare toutes de toute façon, et
+    # on ne sait quelles tables comptent qu'APRÈS avoir lu les champs : les
+    # garder toutes coûte quelques centaines de kilo-octets et évite une
+    # seconde passe sur un fichier qui peut peser des gigaoctets.
+    all_cols = with_columns is True
+    set_cols = set() if all_cols else set(with_columns)
+    dct_rows = {name: [] for name in set_want}
+    dct_columns = {name: set() for name in set_cols}
+
+    try:
+        archive = zipfile.ZipFile(zip_path)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise AnalyseError(f"{t('Cannot read the backup: ')}{exc}") from exc
+    with archive:
+        if "dump.sql" not in archive.namelist():
+            raise AnalyseError(
+                f"{t('This backup holds no dump.sql: ')}{zip_path}"
+            )
+        with archive.open("dump.sql") as raw:
+            stream = io.TextIOWrapper(raw, encoding="utf-8", errors="replace")
+            for line in stream:
+                if line.startswith("COPY public."):
+                    name = line[len("COPY public.") :].split(" ", 1)[0]
+                    if name not in set_want:
+                        continue
+                    header = line[line.index("(") + 1 : line.rindex(")")]
+                    lst_col = [c.strip() for c in header.split(",")]
+                    for row in stream:
+                        if row.startswith("\\."):
+                            break
+                        values = row.rstrip("\n").split("\t")
+                        dct_rows[name].append(
+                            dict(
+                                zip(
+                                    lst_col, [unescape_copy(v) for v in values]
+                                )
+                            )
+                        )
+                elif line.startswith("CREATE TABLE public."):
+                    name = line[len("CREATE TABLE public.") :].split(" ", 1)[0]
+                    for row in stream:
+                        stripped = row.strip()
+                        if stripped.startswith(");"):
+                            break
+                        if not all_cols and name not in set_cols:
+                            continue
+                        if stripped.upper().startswith(NOT_A_COLUMN):
+                            continue
+                        column = stripped.split(" ", 1)[0].strip('",')
+                        if column:
+                            dct_columns.setdefault(name, set()).add(column)
+    return manifest, dct_rows, dct_columns
+
+
 def _describe():
     """Dire ce qu'est ce fichier, et où sont les outils.
 

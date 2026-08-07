@@ -6636,14 +6636,40 @@ class TODO:
         )
 
     def execute_analyse_custom_field(self):
-        """Champs et modèles ajoutés hors module : Studio, ou faits à la main."""
-        database = self._analyse_select_database()
-        if not database:
-            return
+        """Champs et modèles ajoutés hors module : Studio, ou faits à la main.
+
+        Deux provenances, parce que la plus utile est souvent la sauvegarde :
+        restaurer celle d'une instance Enterprise sur une installation
+        Community échoue — Odoo veut charger des modules qu'on n'a pas — alors
+        que les champs Studio ne sont que des lignes de `ir_model_fields`, et
+        qu'un dump.sql est du texte.
+        """
         from script.analyse import analyse_custom_field as analyse
 
+        print()
+        print(f"[1] {t('A database')}")
+        print(f"[2] {t('A backup .zip, without restoring it')}")
+        print(f"[0] {t('Back')}")
+        source = click.prompt(t("Command:"))
+        print()
+        if source == "2":
+            path = self.db_manager.select_backup_path()
+            if not path:
+                return
+            database, kwargs = path, {"backup": True}
+        elif source == "1":
+            database = self._analyse_select_database()
+            if not database:
+                return
+            kwargs = {}
+        else:
+            return
+
         try:
-            data = analyse.collect(database)
+            if kwargs.get("backup"):
+                data = analyse.collect_from_backup(database)
+            else:
+                data = analyse.collect(database)
         except Exception as exc:
             print(f"❌ {t('Analysis failed: ')}{exc}")
             return
@@ -6655,7 +6681,9 @@ class TODO:
             if rank == 1:
                 print(analyse.render(data, verbose=True, hints=False))
             else:
-                self._analyse_export_json(data, database, "custom_field")
+                self._analyse_export_json(
+                    data, os.path.basename(database), "custom_field"
+                )
 
         self._analyse_follow_up(
             [
