@@ -651,6 +651,22 @@ class TODO:
         choices = [
             {"prompt_description": t("Clone ERPLibre locally (git clone)")},
             {"prompt_description": t("Configure sshfs")},
+            {"prompt_description": t("SSH - Check connection")},
+            {"prompt_description": t("SSH - Sync files (rsync)")},
+            {"prompt_description": t("SSH - Install ERPLibre")},
+            {"prompt_description": t("SSH - Start Odoo")},
+            {"prompt_description": t("SSH - Stop Odoo")},
+            {"prompt_description": t("SSH - Restart Odoo")},
+            {"prompt_description": t("SSH - Service status")},
+            {"prompt_description": t("SSH - View logs")},
+            {"prompt_description": t("SSH - Run make target")},
+            {"prompt_description": t("SSH - Install systemd service")},
+            {"prompt_description": t("SSH - Configure nginx + SSL")},
+            {
+                "prompt_description": t(
+                    "Deploy - Install NTFY notification server"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -663,6 +679,30 @@ class TODO:
                 self._deploy_clone_erplibre()
             elif status == "2":
                 self._configure_sshfs()
+            elif status == "3":
+                self._deploy_ssh_check()
+            elif status == "4":
+                self._deploy_ssh_push()
+            elif status == "5":
+                self._deploy_ssh_install()
+            elif status == "6":
+                self._deploy_ssh_run()
+            elif status == "7":
+                self._deploy_ssh_stop()
+            elif status == "8":
+                self._deploy_ssh_restart()
+            elif status == "9":
+                self._deploy_ssh_status()
+            elif status == "10":
+                self._deploy_ssh_logs()
+            elif status == "11":
+                self._deploy_ssh_make()
+            elif status == "12":
+                self._deploy_ssh_install_systemd()
+            elif status == "13":
+                self._deploy_ssh_install_nginx()
+            elif status == "14":
+                self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
 
@@ -688,6 +728,54 @@ class TODO:
             print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
         except Exception as e:
             print(f"{t('Error cloning ERPLibre: ')}{e}")
+
+    def _deploy_ntfy_server(self):
+        print(
+            f"\n{t('Deploy a local NTFY push notification server (Ubuntu/Arch)')}"
+        )
+        port = (
+            input(t("NTFY server port (default: 8080): ")).strip() or "8080"
+        )
+        import socket
+
+        hostname = socket.gethostname()
+        try:
+            local_ip = socket.gethostbyname(hostname)
+        except Exception:
+            local_ip = "127.0.0.1"
+
+        default_url = f"http://{local_ip}:{port}"
+        base_url = (
+            input(
+                f"{t('NTFY base URL')} (default: {default_url}): "
+            ).strip()
+            or default_url
+        )
+
+        script_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "install",
+            "install_ntfy.sh",
+        )
+        script_path = os.path.realpath(script_path)
+
+        if not os.path.isfile(script_path):
+            print(f"{t('NTFY install script not found: ')}{script_path}")
+            return
+
+        print(f"\n{t('Installing NTFY server (requires sudo)...')}")
+        cmd = (
+            f"sudo NTFY_PORT={port}"
+            f" NTFY_BASE_URL={base_url}"
+            f" bash {script_path}"
+        )
+        print(f"{t('Will execute:')} {cmd}\n")
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            print(f"\n{t('NTFY server installed and started successfully!')}")
+        except Exception as e:
+            print(f"{t('Error installing NTFY server: ')}{e}")
 
     def _configure_sshfs(self):
         import getpass
@@ -792,6 +880,171 @@ class TODO:
             print(f"nautilus {mount_point}/home/{user}")
         except Exception as e:
             print(f"{t('Error mounting sshfs: ')}{e}")
+
+    def _get_ssh_params(self):
+        """Prompt for SSH connection parameters. Returns dict or None on cancel."""
+        host = click.prompt(t("Remote host (user@hostname or hostname): ")).strip()
+        if not host:
+            print(t("SSH host is required!"))
+            return None
+        user = (
+            click.prompt(t("SSH user (default: erplibre): ")).strip()
+            or "erplibre"
+        )
+        port = click.prompt(t("SSH port (default: 22): ")).strip() or "22"
+        key = (
+            click.prompt(
+                t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
+            ).strip()
+        )
+        path = (
+            click.prompt(t("Remote path (default: ~/erplibre_deploy_2): ")).strip()
+            or "~/erplibre_deploy_2"
+        )
+        return {
+            "SSH_HOST": host,
+            "SSH_USER": user,
+            "SSH_PORT": port,
+            "SSH_KEY": key,
+            "SSH_PATH": path,
+        }
+
+    def _build_ssh_make_cmd(self, target, params, extra=None):
+        """Build a make SSH command string from params dict."""
+        parts = [f"make {target}"]
+        for k, v in params.items():
+            if v:
+                parts.append(f'{k}="{v}"')
+        if extra:
+            for k, v in extra.items():
+                if v:
+                    parts.append(f'{k}="{v}"')
+        return " ".join(parts)
+
+    def _deploy_ssh_check(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_check", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_push(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_push", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_install(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_install", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_run(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_run", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_stop(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_stop", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_restart(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_restart", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_status(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_status", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_logs(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_logs", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_make(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        target = click.prompt(t("Make target to run remotely: ")).strip()
+        if not target:
+            print(t("SSH host is required!"))
+            return
+        cmd = self._build_ssh_make_cmd(
+            "ssh_make", params, extra={"SSH_TARGET": target}
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_install_systemd(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        cmd = self._build_ssh_make_cmd("ssh_install_systemd", params)
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
+
+    def _deploy_ssh_install_nginx(self):
+        params = self._get_ssh_params()
+        if not params:
+            return
+        domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
+        if not domain:
+            print(t("SSH host is required!"))
+            return
+        email = click.prompt(t("Admin email for SSL certificate: ")).strip()
+        cmd = self._build_ssh_make_cmd(
+            "ssh_install_nginx",
+            params,
+            extra={"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email},
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(
+            cmd, source_erplibre=False, single_source_erplibre=True
+        )
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
@@ -1220,6 +1473,7 @@ class TODO:
             },
             {"prompt_description": t("Restore from backup (.zip)")},
             {"prompt_description": t("Create backup (.zip)")},
+            {"prompt_description": t("Erase a database")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1234,6 +1488,8 @@ class TODO:
                 self.db_manager.restore_from_database()
             elif status == "3":
                 self.db_manager.create_backup_from_database()
+            elif status == "4":
+                self.db_manager.drop_database()
             else:
                 print(t("Command not found !"))
 

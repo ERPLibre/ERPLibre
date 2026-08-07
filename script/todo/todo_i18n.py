@@ -299,6 +299,52 @@ TRANSLATIONS = {
         "fr": "Faites des modifications sur les bases de données!",
         "en": "Make changes to databases!",
     },
+    # Database drop / erase
+    "Erase a database": {
+        "fr": "Effacer une base de données",
+        "en": "Erase a database",
+    },
+    "Erase a database — irreversible operation!": {
+        "fr": "Effacer une base de données — opération irréversible !",
+        "en": "Erase a database — irreversible operation!",
+    },
+    "Erase ALL databases (make db_drop_all)": {
+        "fr": "Effacer TOUTES les bases de données (make db_drop_all)",
+        "en": "Erase ALL databases (make db_drop_all)",
+    },
+    "Erase a single database": {
+        "fr": "Effacer une seule base de données",
+        "en": "Erase a single database",
+    },
+    "You are about to erase ALL databases. This cannot be undone.": {
+        "fr": (
+            "Tu es sur le point d'effacer TOUTES les bases de données."
+            " C'est irréversible."
+        ),
+        "en": "You are about to erase ALL databases. This cannot be undone.",
+    },
+    "You are about to erase the database '{database}'. This cannot be undone.": {
+        "fr": (
+            "Tu es sur le point d'effacer la base de données « {database} »."
+            " C'est irréversible."
+        ),
+        "en": (
+            "You are about to erase the database '{database}'."
+            " This cannot be undone."
+        ),
+    },
+    "Type 'oui' to confirm (default: no): ": {
+        "fr": "Tape « oui » pour confirmer (défaut : non) : ",
+        "en": "Type 'oui'/'yes' to confirm (default: no): ",
+    },
+    "Database deletion cancelled.": {
+        "fr": "Effacement de la base de données annulé.",
+        "en": "Database deletion cancelled.",
+    },
+    "No database selected.": {
+        "fr": "Aucune base de données sélectionnée.",
+        "en": "No database selected.",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",
@@ -722,6 +768,95 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout de l'automatisation : ",
         "en": "Error adding automation: ",
     },
+    # SSH Deploy section
+    "Deploy - Deploy ERPLibre via SSH": {
+        "fr": "Déploiement - Déployer ERPLibre via SSH",
+        "en": "Deploy - Deploy ERPLibre via SSH",
+    },
+    "SSH deployment tools!": {
+        "fr": "Outils de déploiement SSH!",
+        "en": "SSH deployment tools!",
+    },
+    "SSH - Check connection": {
+        "fr": "SSH - Vérifier la connexion",
+        "en": "SSH - Check connection",
+    },
+    "SSH - Sync files (rsync)": {
+        "fr": "SSH - Synchroniser les fichiers (rsync)",
+        "en": "SSH - Sync files (rsync)",
+    },
+    "SSH - Install ERPLibre": {
+        "fr": "SSH - Installer ERPLibre",
+        "en": "SSH - Install ERPLibre",
+    },
+    "SSH - Start Odoo": {
+        "fr": "SSH - Démarrer Odoo",
+        "en": "SSH - Start Odoo",
+    },
+    "SSH - Stop Odoo": {
+        "fr": "SSH - Arrêter Odoo",
+        "en": "SSH - Stop Odoo",
+    },
+    "SSH - Restart Odoo": {
+        "fr": "SSH - Redémarrer Odoo",
+        "en": "SSH - Restart Odoo",
+    },
+    "SSH - Service status": {
+        "fr": "SSH - Statut du service",
+        "en": "SSH - Service status",
+    },
+    "SSH - View logs": {
+        "fr": "SSH - Voir les logs",
+        "en": "SSH - View logs",
+    },
+    "SSH - Run make target": {
+        "fr": "SSH - Exécuter une cible make",
+        "en": "SSH - Run make target",
+    },
+    "SSH - Install systemd service": {
+        "fr": "SSH - Installer le service systemd",
+        "en": "SSH - Install systemd service",
+    },
+    "SSH - Configure nginx + SSL": {
+        "fr": "SSH - Configurer nginx + SSL",
+        "en": "SSH - Configure nginx + SSL",
+    },
+    "Remote host (user@hostname or hostname): ": {
+        "fr": "Hôte distant (user@hostname ou hostname) : ",
+        "en": "Remote host (user@hostname or hostname): ",
+    },
+    "SSH user (default: erplibre): ": {
+        "fr": "Utilisateur SSH (défaut: erplibre) : ",
+        "en": "SSH user (default: erplibre): ",
+    },
+    "SSH port (default: 22): ": {
+        "fr": "Port SSH (défaut: 22) : ",
+        "en": "SSH port (default: 22): ",
+    },
+    "SSH key path (default: ~/.ssh/id_rsa, empty for none): ": {
+        "fr": "Chemin de la clé SSH (défaut: ~/.ssh/id_rsa, vide pour aucune) : ",
+        "en": "SSH key path (default: ~/.ssh/id_rsa, empty for none): ",
+    },
+    "Remote path (default: ~/erplibre_deploy_2): ": {
+        "fr": "Chemin distant (défaut: ~/erplibre_deploy_2) : ",
+        "en": "Remote path (default: ~/erplibre_deploy_2): ",
+    },
+    "Make target to run remotely: ": {
+        "fr": "Cible make à exécuter à distance : ",
+        "en": "Make target to run remotely: ",
+    },
+    "Domain name (e.g.: example.com): ": {
+        "fr": "Nom de domaine (ex: example.com) : ",
+        "en": "Domain name (e.g.: example.com): ",
+    },
+    "Admin email for SSL certificate: ": {
+        "fr": "Email administrateur pour le certificat SSL : ",
+        "en": "Admin email for SSL certificate: ",
+    },
+    "SSH host is required!": {
+        "fr": "L'hôte SSH est requis!",
+        "en": "SSH host is required!",
+    },
     # Language selection
     "Choose language / Choisir la langue": {
         "fr": "Choisir la langue / Choose language",
@@ -815,6 +950,39 @@ TRANSLATIONS = {
     "Error creating file: ": {
         "fr": "Erreur lors de la création du fichier : ",
         "en": "Error creating file: ",
+    },
+    # NTFY section
+    "Deploy - Install NTFY notification server": {
+        "fr": "Déployer - Installer le serveur de notifications NTFY",
+        "en": "Deploy - Install NTFY notification server",
+    },
+    "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
+        "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
+        "en": "Deploy a local NTFY push notification server (Ubuntu/Arch)",
+    },
+    "NTFY server port (default: 8080): ": {
+        "fr": "Port du serveur NTFY (défaut : 8080) : ",
+        "en": "NTFY server port (default: 8080): ",
+    },
+    "NTFY base URL": {
+        "fr": "URL de base NTFY",
+        "en": "NTFY base URL",
+    },
+    "Installing NTFY server (requires sudo)...": {
+        "fr": "Installation du serveur NTFY (sudo requis)...",
+        "en": "Installing NTFY server (requires sudo)...",
+    },
+    "NTFY server installed and started successfully!": {
+        "fr": "Serveur NTFY installé et démarré avec succès!",
+        "en": "NTFY server installed and started successfully!",
+    },
+    "Error installing NTFY server: ": {
+        "fr": "Erreur lors de l'installation du serveur NTFY : ",
+        "en": "Error installing NTFY server: ",
+    },
+    "NTFY install script not found: ": {
+        "fr": "Script d'installation NTFY introuvable : ",
+        "en": "NTFY install script not found: ",
     },
 }
 
