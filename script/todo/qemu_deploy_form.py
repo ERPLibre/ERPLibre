@@ -163,6 +163,7 @@ def build_spec(vms, domains, form):
         "vms": [vm for vm in vms if vm["name"] not in known],
         "existing": [vm["name"] for vm in vms if vm["name"] in known],
         "ssh_key": form["ssh_key"],
+        "timezone": form.get("timezone", ""),
         "install": form["install"],
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
@@ -416,6 +417,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("monitor", True),
                         id="f_monitor",
                     )
+                    yield Static(t("Timezone"), classes="grouptitle")
+                    yield Input(
+                        value=ctx.get("timezone") or "",
+                        placeholder=t("Timezone for the VMs"),
+                        id="f_tz",
+                    )
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
                         value=ctx.get("ssh_key") or "",
@@ -631,6 +638,11 @@ def run_deploy_form(ctx, run_app: bool = True):
                     else f"x{self.profile}"
                 ),
                 "ssh_key": os.path.expanduser(key) if key else "",
+                # Un champ vidé retombe sur le fuseau de l'hôte plutôt que sur
+                # rien : sans valeur, la VM démarrerait en UTC.
+                "timezone": self.query_one("#f_tz", Input).value.strip()
+                or ctx.get("timezone")
+                or "",
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 "parallelism": self.query_one("#f_par", Select).value,

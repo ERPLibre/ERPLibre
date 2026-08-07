@@ -3281,6 +3281,18 @@ TRANSLATIONS = {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
     },
+    "Timezone": {
+        "fr": "Fuseau horaire",
+        "en": "Timezone",
+    },
+    "Timezone for the VMs": {
+        "fr": "Fuseau horaire des VM",
+        "en": "Timezone for the VMs",
+    },
+    "Unknown timezone, keeping": {
+        "fr": "Fuseau inconnu, on garde",
+        "en": "Unknown timezone, keeping",
+    },
     "none": {
         "fr": "aucune",
         "en": "none",

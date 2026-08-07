@@ -4776,7 +4776,18 @@ class TODO:
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
 
     def _qemu_build_deploy_parts(
-        self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
+        self,
+        d,
+        v,
+        arch,
+        name,
+        eram,
+        evcpus,
+        disk,
+        ssh_key,
+        branch,
+        dry_run,
+        timezone=None,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -4803,6 +4814,11 @@ class TODO:
             parts += ["--arch", arch]
         if ssh_key:
             parts += ["--ssh-key", ssh_key]
+        if timezone:
+            # Toujours explicite, jamais implicite : la commande affichée en
+            # dry-run doit produire la même VM si on la rejoue depuis une autre
+            # machine, dont le fuseau serait différent.
+            parts += ["--timezone", timezone]
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
             bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
@@ -4828,6 +4844,7 @@ class TODO:
             spec.get("ssh_key"),
             install["branch"] if install else None,
             dry_run=dry_run,
+            timezone=spec.get("timezone"),
         )
 
     # ---------------------------------------------------------------- #
@@ -4941,6 +4958,7 @@ class TODO:
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
             "ssh_key": self._qemu_default_ssh_key(),
+            "timezone": self._qemu_host_timezone(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             "base_vcpus": self._QEMU_BASE_VCPUS,
@@ -5211,6 +5229,33 @@ class TODO:
                 )
                 print(f"  ⚠ {warn}")
 
+    def _qemu_host_timezone(self):
+        """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
+        est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
+        pas proposer un défaut différent de celui réellement appliqué."""
+        try:
+            mod = self._qemu_import_module()
+            return mod.host_timezone()
+        except Exception:
+            return "UTC"
+
+    def _qemu_ask_timezone(self):
+        """Fuseau des VM à créer, celui de l'hôte par défaut.
+
+        Une VM qui hérite du fuseau de son opérateur horodate ses journaux et
+        ses bases comme lui ; en UTC l'écart ne se remarque qu'après coup."""
+        default = self._qemu_host_timezone()
+        answer = input(f"{t('Timezone for the VMs')} ({default}): ").strip()
+        if not answer:
+            return default
+        # Un fuseau inconnu ne casse pas cloud-init : il l'ignore en silence et
+        # la VM reste en UTC. Mieux vaut le refuser ici que le découvrir plus
+        # tard sur des horodatages faux.
+        if not os.path.exists(os.path.join("/usr/share/zoneinfo", answer)):
+            print(f"⚠  {t('Unknown timezone, keeping')} {default}")
+            return default
+        return answer
+
     def _qemu_collect_options_cli(self, vms, res_label):
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
@@ -5231,6 +5276,8 @@ class TODO:
             ssh_key = default_key
         if ssh_key:
             ssh_key = os.path.expanduser(ssh_key)
+
+        timezone = self._qemu_ask_timezone()
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5294,6 +5341,7 @@ class TODO:
             "vms": pending,
             "existing": existing,
             "ssh_key": ssh_key,
+            "timezone": timezone,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,

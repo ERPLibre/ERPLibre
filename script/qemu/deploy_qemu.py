@@ -1163,6 +1163,46 @@ def hash_password(plain: str) -> str:
         return out.stdout.strip()
 
 
+def host_timezone() -> str:
+    """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
+
+    Défaut des VM déployées : une VM qui hérite du fuseau de la machine qui la
+    crée horodate ses journaux, ses commits et ses bases comme son opérateur.
+    Sans cela elle démarre en UTC, ce qui ne se voit qu'après coup — des commits
+    à +0000 alors que tout le reste du dépôt est en -0400.
+
+    Trois sources, de la plus fiable à la plus rustique ; « UTC » en dernier
+    recours plutôt qu'une exception, car un fuseau indéterminable ne doit pas
+    empêcher un déploiement.
+    """
+    try:
+        out = subprocess.run(
+            ["timedatectl", "show", "-p", "Timezone", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        if out:
+            return out
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        tz = Path("/etc/timezone").read_text(encoding="utf-8").strip()
+        if tz:
+            return tz
+    except OSError:
+        pass
+    try:
+        # /etc/localtime est un lien vers /usr/share/zoneinfo/<Zone>
+        target = Path("/etc/localtime").resolve()
+        parts = target.parts
+        if "zoneinfo" in parts:
+            return "/".join(parts[parts.index("zoneinfo") + 1 :])
+    except OSError:
+        pass
+    return "UTC"
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -1189,6 +1229,7 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
+    lines.append(f"timezone: {args.timezone}")
     lines += [
         "keyboard:",
         f"  layout: {args.keyboard_layout}",
@@ -1729,6 +1770,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--locale",
         default="fr_CA.UTF-8",
         help="Locale (défaut : fr_CA.UTF-8).",
+    )
+    g_cloud.add_argument(
+        "--timezone",
+        default=host_timezone(),
+        metavar="ZONE",
+        help=(
+            "Fuseau horaire de la VM, au format zoneinfo "
+            f"(défaut : celui de l'hôte, {host_timezone()})."
+        ),
     )
     g_cloud.add_argument(
         "--keyboard-layout",
