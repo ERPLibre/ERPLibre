@@ -59,7 +59,9 @@ from script.analyse.lib_analyse import (  # noqa: E402
     diff_stats,
     existing_columns,
     json_query,
+    normalise_arch,
     odoo_shell_json,
+    read_backup,
     require_odoo_database,
     scalar_query,
     side_by_side,
@@ -458,6 +460,93 @@ def collect(
     }
 
 
+def collect_from_backup(zip_path):
+    """Même inventaire, depuis une sauvegarde .zip, sans rien restaurer.
+
+    Le classement est identique : il ne dépend que de colonnes que le dump
+    porte toutes. Ce qui manque est la COMPARAISON — l'arch de référence vient
+    de `read_arch_from_file`, donc d'un registre Odoo chargé, et un zip n'en a
+    pas. Le rapport le dit plutôt que de laisser croire à une absence d'écart.
+    """
+    manifest, dct_rows, _, _ = read_backup(
+        zip_path, tables=("ir_ui_view", "ir_model_data")
+    )
+
+    dct_xmlid, dct_noupdate = {}, {}
+    for row in dct_rows["ir_model_data"]:
+        if row.get("model") != "ir.ui.view":
+            continue
+        res_id = row.get("res_id")
+        dct_xmlid.setdefault(res_id, set()).add(row.get("module"))
+        if row.get("noupdate") == "t":
+            dct_noupdate[res_id] = True
+
+    # Une copie COW a une jumelle si une AUTRE vue, sans website_id, porte la
+    # même clé. Le même appariement que fait la CTE « twin » côté SQL.
+    set_twin = {
+        row.get("key")
+        for row in dct_rows["ir_ui_view"]
+        if row.get("key") and row.get("website_id") in (None, "")
+    }
+
+    lst_view = []
+    for row in dct_rows["ir_ui_view"]:
+        res_id = row.get("id")
+        website = row.get("website_id")
+        lst_view.append(
+            {
+                "id": int(res_id) if (res_id or "").isdigit() else res_id,
+                "name": normalise_arch(row.get("name")),
+                "model": row.get("model"),
+                "type": row.get("type"),
+                "key": row.get("key"),
+                "mode": row.get("mode"),
+                "active": row.get("active") != "f",
+                "arch_fs": row.get("arch_fs"),
+                "arch_updated": row.get("arch_updated") == "t",
+                "has_arch_prev": bool(row.get("arch_prev")),
+                "website_id": website if website not in (None, "") else None,
+                "theme_template_id": row.get("theme_template_id") or None,
+                "xmlid_modules": sorted(dct_xmlid.get(res_id) or []),
+                "noupdate": dct_noupdate.get(res_id, False),
+                "has_module_twin": bool(
+                    row.get("key") and row.get("key") in set_twin
+                ),
+                "arch_bytes": len(row.get("arch_db") or ""),
+            }
+        )
+
+    dct_count = {name: 0 for name in CATEGORIES}
+    lst_finding = []
+    for row in lst_view:
+        category, lst_reason = classify(row)
+        row["category"] = category
+        row["reason"] = lst_reason
+        dct_count[category] += 1
+        if category in ACTIONABLE:
+            lst_finding.append(row)
+
+    return {
+        "tool": "analyse_view_custom",
+        "version": 1,
+        "database": os.path.basename(zip_path),
+        "source": "backup",
+        "backup_path": zip_path,
+        "odoo_version": manifest.get("version"),
+        "checkout_version": checkout_odoo_version(),
+        "has_website": any(r.get("website_id") for r in lst_view),
+        "compared_with_module_source": False,
+        "arch_ref_source": "none",
+        "arch_ref_error": None,
+        "from_backup_no_registry": True,
+        "n_identical_after_canonical": 0,
+        "scope": "flagged",
+        "n_views": len(lst_view),
+        "counts": dct_count,
+        "findings": lst_finding,
+    }
+
+
 def _finding_block(lst_row, top, hints=True):
     """Une ligne par vue : clé, identifiant externe, poids, raisons."""
     lines = [
@@ -482,7 +571,8 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None, hints=True):
     counts = data["counts"]
     lines = [
         "",
-        f"🔬 {t('Customised views')} — {data['database']} (Odoo {version})",
+        f"🔬 {t('Customised views')} — {data['database']} (Odoo {version}"
+        f"{', ' + t('from a backup') if data.get('source') == 'backup' else ''})",
         "",
         f"  {t("Views"):<38}: {data['n_views']}",
     ]
@@ -561,6 +651,15 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None, hints=True):
         lines.append(
             f"       | ./odoo_bin.sh shell -c ./config.conf"
             f" -d {data['database']}"
+        )
+    elif data.get("from_backup_no_registry"):
+        lines += wrap_note(
+            "  ℹ️  ",
+            t(
+                "A backup holds no registry, so nothing was compared with the"
+                " module source. The classification above needs none; only the"
+                " differences do. Restore it, or run this on the database."
+            ),
         )
     elif data.get("arch_ref_error"):
         lines += wrap_note(
@@ -657,8 +756,13 @@ def main(argv=None):
             " from a module, website copies included (read-only)."
         )
     )
-    parser.add_argument(
-        "-d", "--database", required=True, help=t("database to inspect")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("-d", "--database", help=t("database to inspect"))
+    source.add_argument(
+        "-z",
+        "--zip",
+        dest="backup",
+        help=t("Odoo backup .zip to inspect, without restoring it"),
     )
     parser.add_argument(
         "--category",
@@ -703,12 +807,15 @@ def main(argv=None):
     config = parser.parse_args(argv)
 
     try:
-        data = collect(
-            config.database,
-            with_diff=config.diff or config.tui,
-            scope=config.scope,
-            config_path=config.config,
-        )
+        if config.backup:
+            data = collect_from_backup(config.backup)
+        else:
+            data = collect(
+                config.database,
+                with_diff=config.diff or config.tui,
+                scope=config.scope,
+                config_path=config.config,
+            )
     except AnalyseError as exc:
         print(f"❌ {exc}")
         return 2

@@ -51,7 +51,9 @@ from script.analyse.lib_analyse import (  # noqa: E402
     column_types,
     json_query,
     model_table,
+    normalise_arch,
     quote_literal,
+    read_backup,
     require_odoo_database,
     scalar_query,
     t,
@@ -281,7 +283,98 @@ def collect(database, exact=False, config_path=None, timeout=120):
     }
 
 
-def _table_block(lst_row, exact):
+def collect_from_backup(zip_path):
+    """Même analyse, depuis une sauvegarde .zip, sans rien restaurer.
+
+    Ce qu'une sauvegarde donne EN MIEUX : le nombre de lignes est exact,
+    compté dans le dump, là où une base rend l'estimation du dernier ANALYZE.
+
+    Ce qu'elle ne peut pas donner : le poids sur le disque. Un dump ignore les
+    index et le ballonnement, et présenter le poids de ses données comme une
+    taille de table tromperait sur ce qui fait grossir une base. La colonne
+    affichée est donc « poids dans le dump », et elle est nommée ainsi.
+    """
+    manifest, dct_rows, _, dct_census = read_backup(
+        zip_path,
+        tables=("ir_model", "ir_model_relation"),
+        census=True,
+    )
+    set_table = set(dct_census)
+    set_relation = {
+        row.get("name") for row in dct_rows.get("ir_model_relation") or []
+    }
+    has_relation_table = "ir_model_relation" in dct_census
+
+    dct_table_model = {}
+    lst_without_table = []
+    for row in dct_rows["ir_model"]:
+        table = model_table(row.get("model") or "", known_tables=set_table)
+        if table is None:
+            lst_without_table.append(
+                {
+                    "model": row.get("model"),
+                    "description": normalise_arch(row.get("name")),
+                    "state": row.get("state"),
+                    "transient": row.get("transient") == "t",
+                }
+            )
+            continue
+        dct_table_model.setdefault(table, row.get("model"))
+
+    lst_table, lst_orphan = [], []
+    for name, census in sorted(
+        dct_census.items(), key=lambda kv: -kv[1]["dump_bytes"]
+    ):
+        row = {
+            "table_name": name,
+            # Aucune de ces trois-là ne se lit dans un dump : les laisser à
+            # None fait afficher « ? », ce qui est la vérité, plutôt qu'un
+            # zéro qui se lirait comme « cette table est vide ».
+            "total_bytes": None,
+            "table_bytes": None,
+            "index_bytes": None,
+            "dump_bytes": census["dump_bytes"],
+            "est_rows": census["rows"],
+            "exact_rows": census["rows"],
+            "model": dct_table_model.get(name),
+            "origin": "model",
+        }
+        if name in dct_table_model:
+            pass
+        elif name in set_relation:
+            row["origin"] = "m2m"
+        elif name in SYSTEM_TABLES:
+            row["origin"] = "system"
+        else:
+            row["origin"] = "orphan"
+            lst_orphan.append(row)
+        lst_table.append(row)
+
+    return {
+        "tool": "analyse_schema_size",
+        "version": 1,
+        "database": os.path.basename(zip_path),
+        "source": "backup",
+        "backup_path": zip_path,
+        "odoo_version": manifest.get("version"),
+        "db_bytes": None,
+        "dump_bytes": sum(c["dump_bytes"] for c in dct_census.values()),
+        "exact": True,
+        "has_relation_table": has_relation_table,
+        "n_tables": len(lst_table),
+        "n_models": len(dct_rows["ir_model"]),
+        "tables": lst_table,
+        "orphan_tables": lst_orphan,
+        "models_without_table": lst_without_table,
+        "counts": {
+            "orphan_tables": len(lst_orphan),
+            "models_without_table": len(lst_without_table),
+            "m2m_tables": sum(1 for r in lst_table if r["origin"] == "m2m"),
+        },
+    }
+
+
+def _table_block(lst_row, exact, source="database"):
     """Tableau aligné : une ligne par table, colonnes de largeur fixe.
 
     « heap » plutôt que « table » pour pg_table_size : la colonne « table »
@@ -289,6 +382,18 @@ def _table_block(lst_row, exact):
     lit mal. Les quatre en-têtes techniques ne passent pas par t() — ils
     s'écrivent pareil en français et en anglais, contrairement à « rows ».
     """
+    if source == "backup":
+        # Un dump n'a ni index ni ballonnement : afficher trois colonnes vides
+        # ferait croire à une mesure manquante plutôt qu'à une mesure qui
+        # n'existe pas.
+        lines = [f"  {'table':<44}{t('in the dump'):>14}{t('rows'):>14}"]
+        for row in lst_row:
+            lines.append(
+                f"  {row['table_name']:<44}"
+                f"{fmt_bytes(row.get('dump_bytes')):>14}"
+                f"{fmt_rows(row['exact_rows']):>14}"
+            )
+        return lines
     lines = [
         f"  {'table':<34}{'total':>10}{'heap':>10}{'index':>10}"
         f"{t('rows'):>14}"
@@ -316,9 +421,15 @@ def render(data, verbose=False, top=TOP_DEFAULT, hints=True):
     version = data.get("odoo_version") or "?"
     lines = [
         "",
-        f"🔬 {t('Schema analysis')} — {data['database']} (Odoo {version})",
+        f"🔬 {t('Schema analysis')} — {data['database']} (Odoo {version}"
+        f"{', ' + t('from a backup') if data.get('source') == 'backup' else ''})",
         "",
-        f"  {t('Database size'):<22}: {fmt_bytes(data['db_bytes'])}",
+        (
+            f"  {t('Weight in the dump'):<22}: "
+            f"{fmt_bytes(data.get('dump_bytes'))}"
+            if data.get("source") == "backup"
+            else f"  {t('Database size'):<22}: {fmt_bytes(data['db_bytes'])}"
+        ),
         f"  {t('Tables'):<22}: {data['n_tables']}",
         f"  {t('Models'):<22}: {data['n_models']}",
     ]
@@ -346,7 +457,9 @@ def render(data, verbose=False, top=TOP_DEFAULT, hints=True):
             else f"{t('Heaviest tables')} ({len(shown)}/{len(lst_table)})"
         )
         lines += ["", f"── {label} ──"]
-        lines += _table_block(shown, data["exact"])
+        lines += _table_block(
+            shown, data["exact"], data.get("source", "database")
+        )
         if hints and not verbose and len(lst_table) > len(shown):
             lines.append(f"  … {t('use -v to list them all')}")
         elif not verbose and len(lst_table) > len(shown):
@@ -360,7 +473,9 @@ def render(data, verbose=False, top=TOP_DEFAULT, hints=True):
             "",
             f"── ⚠️  {t('Orphan tables')} ({len(lst_orphan)}) ──",
         ]
-        lines += _table_block(lst_orphan, data["exact"])
+        lines += _table_block(
+            lst_orphan, data["exact"], data.get("source", "database")
+        )
         lines.append("")
         lines += wrap_note(
             "  ",
@@ -393,8 +508,13 @@ def main(argv=None):
             " model claims (read-only)."
         )
     )
-    parser.add_argument(
-        "-d", "--database", required=True, help=t("database to inspect")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("-d", "--database", help=t("database to inspect"))
+    source.add_argument(
+        "-z",
+        "--zip",
+        dest="backup",
+        help=t("Odoo backup .zip to inspect, without restoring it"),
     )
     parser.add_argument(
         "--exact",
@@ -417,9 +537,12 @@ def main(argv=None):
     config = parser.parse_args(argv)
 
     try:
-        data = collect(
-            config.database, exact=config.exact, config_path=config.config
-        )
+        if config.backup:
+            data = collect_from_backup(config.backup)
+        else:
+            data = collect(
+                config.database, exact=config.exact, config_path=config.config
+            )
     except AnalyseError as exc:
         print(f"❌ {exc}")
         return 2

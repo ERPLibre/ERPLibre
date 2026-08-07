@@ -691,11 +691,19 @@ def backup_manifest(zip_path):
         raise AnalyseError(f"{t('Cannot read the backup: ')}{exc}") from exc
 
 
-def read_backup(zip_path, tables=(), with_columns=()):
-    """Lire un dump.sql en flot. -> (manifest, {table: [lignes]}, {table: colonnes}).
+def read_backup(zip_path, tables=(), with_columns=(), census=False):
+    """Lire un dump.sql en flot.
+
+    -> (manifest, {table: [lignes]}, {table: colonnes}, {table: recensement})
 
     Une seule passe, quelle que soit la taille du dump : on ne garde en mémoire
     que les tables demandées.
+
+    ``census`` compte les lignes et pèse chaque table SANS la garder. Le
+    comptage est alors EXACT, là où une base rend une estimation d'après le
+    dernier ANALYZE. Le poids est celui des données dans le dump, pas sur le
+    disque : une sauvegarde ne sait rien des index ni du ballonnement, et
+    présenter l'un pour l'autre tromperait sur ce qui fait grossir une base.
     """
     import io
     import zipfile
@@ -710,6 +718,7 @@ def read_backup(zip_path, tables=(), with_columns=()):
     set_cols = set() if all_cols else set(with_columns)
     dct_rows = {name: [] for name in set_want}
     dct_columns = {name: set() for name in set_cols}
+    dct_census = {}
 
     try:
         archive = zipfile.ZipFile(zip_path)
@@ -725,13 +734,19 @@ def read_backup(zip_path, tables=(), with_columns=()):
             for line in stream:
                 if line.startswith("COPY public."):
                     name = line[len("COPY public.") :].split(" ", 1)[0]
-                    if name not in set_want:
+                    keep = name in set_want
+                    if not keep and not census:
                         continue
                     header = line[line.index("(") + 1 : line.rindex(")")]
                     lst_col = [c.strip() for c in header.split(",")]
+                    n_row, n_byte = 0, 0
                     for row in stream:
                         if row.startswith("\\."):
                             break
+                        n_row += 1
+                        n_byte += len(row)
+                        if not keep:
+                            continue
                         values = row.rstrip("\n").split("\t")
                         dct_rows[name].append(
                             dict(
@@ -740,8 +755,18 @@ def read_backup(zip_path, tables=(), with_columns=()):
                                 )
                             )
                         )
+                    if census:
+                        dct_census[name] = {
+                            "rows": n_row,
+                            "dump_bytes": n_byte,
+                            "columns": lst_col,
+                        }
                 elif line.startswith("CREATE TABLE public."):
                     name = line[len("CREATE TABLE public.") :].split(" ", 1)[0]
+                    if census:
+                        dct_census.setdefault(
+                            name, {"rows": 0, "dump_bytes": 0, "columns": []}
+                        )
                     for row in stream:
                         stripped = row.strip()
                         if stripped.startswith(");"):
@@ -753,7 +778,7 @@ def read_backup(zip_path, tables=(), with_columns=()):
                         column = stripped.split(" ", 1)[0].strip('",')
                         if column:
                             dct_columns.setdefault(name, set()).add(column)
-    return manifest, dct_rows, dct_columns
+    return manifest, dct_rows, dct_columns, dct_census
 
 
 def _describe():

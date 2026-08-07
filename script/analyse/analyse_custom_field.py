@@ -345,7 +345,7 @@ def collect_from_backup(zip_path):
     contient les `CREATE TABLE`, donc même la colonne physique manquante — le
     seul vrai bloquant — se détecte.
     """
-    manifest, dct_rows, dct_columns = read_backup(
+    manifest, dct_rows, dct_columns, _ = read_backup(
         zip_path,
         tables=("ir_model_fields", "ir_model", "ir_model_data"),
         with_columns=True,

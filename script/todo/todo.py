@@ -6466,6 +6466,28 @@ class TODO:
             else:
                 print(t("Command not found !"))
 
+    def _analyse_select_source(self):
+        """(est_une_sauvegarde, cible), ou None si l'on renonce.
+
+        La sauvegarde n'est pas un cas dégradé : restaurer celle d'une
+        instance Enterprise sur une installation Community échoue — Odoo veut
+        charger des modules qu'on n'a pas — donc c'est souvent la SEULE façon
+        de lire ce qu'elle contient.
+        """
+        print()
+        print(f"[1] {t('A database')}")
+        print(f"[2] {t('A backup .zip, without restoring it')}")
+        print(f"[0] {t('Back')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        if answer == "1":
+            database = self._analyse_select_database()
+            return (False, database) if database else None
+        if answer == "2":
+            path = self.db_manager.select_backup_path()
+            return (True, path) if path else None
+        return None
+
     def _analyse_select_database(self):
         """Faire choisir la base à analyser, ou None si on abandonne."""
         database = self.db_manager.select_database()
@@ -6525,17 +6547,22 @@ class TODO:
         Contrepartie assumée de cet appel direct : une exception remonterait
         dans la boucle du menu et ferait sortir du TODO. D'où le `try`.
         """
-        database = self._analyse_select_database()
-        if not database:
-            return
         from script.analyse import analyse_schema_size as analyse
 
-        state = {"data": None, "exact": False}
+        target = self._analyse_select_source()
+        if not target:
+            return
+        is_backup, database = target
+        state = {"data": None, "exact": is_backup}
 
         def run(exact=False):
             try:
-                state["data"] = analyse.collect(database, exact=exact)
-                state["exact"] = exact
+                state["data"] = (
+                    analyse.collect_from_backup(database)
+                    if is_backup
+                    else analyse.collect(database, exact=exact)
+                )
+                state["exact"] = exact or is_backup
             except Exception as exc:
                 print(f"❌ {t('Analysis failed: ')}{exc}")
                 return False
@@ -6554,7 +6581,9 @@ class TODO:
                 if run(exact=True):
                     print(analyse.render(state["data"], hints=False))
             else:
-                self._analyse_export_json(data, database, "schema_size")
+                self._analyse_export_json(
+                    data, os.path.basename(database), "schema_size"
+                )
 
         self._analyse_follow_up(
             [
@@ -6567,16 +6596,21 @@ class TODO:
 
     def execute_analyse_view_custom(self):
         """Vues qui ne viennent pas telles quelles d'un module, COW comprises."""
-        database = self._analyse_select_database()
-        if not database:
-            return
         from script.analyse import analyse_view_custom as analyse
 
+        target = self._analyse_select_source()
+        if not target:
+            return
+        is_backup, database = target
         state = {"data": None}
 
         def run(**kwargs):
             try:
-                state["data"] = analyse.collect(database, **kwargs)
+                state["data"] = (
+                    analyse.collect_from_backup(database)
+                    if is_backup
+                    else analyse.collect(database, **kwargs)
+                )
             except Exception as exc:
                 print(f"❌ {t('Analysis failed: ')}{exc}")
                 return False
@@ -6614,7 +6648,9 @@ class TODO:
                 elif not analyse.open_tui(data):
                     print(analyse.render(data, verbose=True, hints=False))
             else:
-                self._analyse_export_json(data, database, "view_custom")
+                self._analyse_export_json(
+                    data, os.path.basename(database), "view_custom"
+                )
 
         self._analyse_follow_up(
             [
@@ -6646,30 +6682,16 @@ class TODO:
         """
         from script.analyse import analyse_custom_field as analyse
 
-        print()
-        print(f"[1] {t('A database')}")
-        print(f"[2] {t('A backup .zip, without restoring it')}")
-        print(f"[0] {t('Back')}")
-        source = click.prompt(t("Command:"))
-        print()
-        if source == "2":
-            path = self.db_manager.select_backup_path()
-            if not path:
-                return
-            database, kwargs = path, {"backup": True}
-        elif source == "1":
-            database = self._analyse_select_database()
-            if not database:
-                return
-            kwargs = {}
-        else:
+        target = self._analyse_select_source()
+        if not target:
             return
-
+        is_backup, database = target
         try:
-            if kwargs.get("backup"):
-                data = analyse.collect_from_backup(database)
-            else:
-                data = analyse.collect(database)
+            data = (
+                analyse.collect_from_backup(database)
+                if is_backup
+                else analyse.collect(database)
+            )
         except Exception as exc:
             print(f"❌ {t('Analysis failed: ')}{exc}")
             return

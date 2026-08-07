@@ -3458,6 +3458,16 @@ TRANSLATIONS = {
         "fr": "Liste complète et sortie JSON :",
         "en": "Full list and JSON output:",
     },
+    "A backup holds no registry, so nothing was compared with the module"
+    " source. The classification above needs none; only the differences do."
+    " Restore it, or run this on the database.": {
+        "fr": "Une sauvegarde n'a pas de registre, donc rien n'a été comparé"
+        " avec la source du module. Le classement ci-dessus n'en a pas besoin"
+        " ; seuls les écarts en ont. Restaurez-la, ou lancez ceci sur la base.",
+        "en": "A backup holds no registry, so nothing was compared with the"
+        " module source. The classification above needs none; only the"
+        " differences do. Restore it, or run this on the database.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
@@ -3880,6 +3890,11 @@ TRANSLATIONS = {
         "en": "No analysis tool here yet.",
     },
     "From the menu:": {"fr": "Depuis le menu :", "en": "From the menu:"},
+    "in the dump": {"fr": "dans le dump", "en": "in the dump"},
+    "Weight in the dump": {
+        "fr": "Poids dans le dump",
+        "en": "Weight in the dump",
+    },
     # --- script/analyse : poids du schéma ---
     "Schema analysis": {
         "fr": "Analyse du schéma",
