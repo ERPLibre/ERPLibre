@@ -24,6 +24,13 @@ openai
 humanize
 requests
 urwid
+# Borne recopiée de script/todo/textual_setup.py (TEXTUAL_SPEC) : les écrans TUI
+# sont écrits pour Textual 8, qui casse son API entre majeures. Modifier les deux.
+textual>=8,<9
+# Dépendance directe : les outils d'analyse comparent des arbres XML avec lxml.
+# Il n'arrivait que par pykeepass / openupgradelib / odoo-module-migrator, donc
+# un jour où l'un d'eux s'en passe, il disparaît sans que rien ne le réclame.
+lxml
 python-dotenv
 python-dateutil
 unidecode
