@@ -31,12 +31,46 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
+- Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
+  Arch) on amd64, arm64 and s390x, with a menu to list, test, resize, delete
+  and clean up
+- Textual interfaces: install dashboard, VM deployment form, migration resume
+  screen; Textual is installed on demand
+- Navigation telemetry for TODO, as a tree, a kanban or a list
+- Migration tools for the website copy-on-write views: predict, snapshot,
+  diff, neutralize and reset
+- Read-only analysis toolkit for an Odoo database
+- SSH configuration with recursive ProxyJump, port forwarding, and
+  registration of the QEMU hosts in virt-manager
+- NTFY self-hosted push notification server
+- Generative AI policy, adopting the OCA one
+- Claude Code agents and commands
+- Local git server to share code between machines
+- Unit tests for the configuration, the refactoring and the uncovered
+  components, with a bilingual test plan
 
 ## Changed
 
 - Docker support postgresql 18
 - Format script search diff file into each repository
 - Support neutralize database from Odoo
+- Installation supports Fedora, Debian, Ubuntu and Arch Linux
+- Repository sync and poetry install run in parallel, up to 50 % faster on a
+  slow connection
+- CybroOdoo extra modules become opt-in, tracked per Odoo version
+- Node.js 22, required by Capacitor 8 for the mobile application
+- Poetry and repo are quiet by default; EL_VERBOSE restores the output
+- TODO menus grouped into sections with icons, and English text used as the
+  i18n key
+- Documentation is bilingual, generated from the .base.md sources
+
+## Fixed
+
+- A failed installation is no longer reported as a success: the exit code is
+  propagated through the whole chain
+- --with_extra now applies to an already-installed environment
+- The addons path no longer points at a repository the Odoo 18 manifest never
+  clones
 
 
 ## [1.6.0] - 2025-04-25

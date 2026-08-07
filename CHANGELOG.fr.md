@@ -31,12 +31,47 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Application mobile ERPLibre Home, utiliser TODO pour compiler, déployer et personnaliser
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
+- Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
+  Debian, Fedora, Arch) en amd64, arm64 et s390x, avec un menu pour lister,
+  tester, redimensionner, supprimer et nettoyer
+- Interfaces Textual : tableau de bord d'installation, formulaire de
+  déploiement de VM, écran de reprise de migration ; Textual s'installe à la
+  demande
+- Télémétrie de navigation pour TODO, en arbre, en kanban ou en liste
+- Outils de migration pour les vues copy-on-write du site web : prévoir,
+  photographier, comparer, neutraliser et réinitialiser
+- Boîte à outils d'analyse en lecture seule d'une base Odoo
+- Configuration SSH avec ProxyJump récursif, redirection de port et
+  enregistrement des hôtes QEMU dans virt-manager
+- Serveur de notifications NTFY auto-hébergé
+- Politique d'IA générative, adoptant celle de l'OCA
+- Agents et commandes Claude Code
+- Serveur git local pour partager du code entre machines
+- Tests unitaires pour la configuration, la refactorisation et les composants
+  non couverts, avec un plan de test bilingue
 
 ## Modifié
 
 - Support Docker postgresql 18
 - Script de formatage recherche les fichiers diff dans chaque dépôt
 - Support de la neutralisation de base de données depuis Odoo
+- L'installation prend en charge Fedora, Debian, Ubuntu et Arch Linux
+- La synchronisation des dépôts et l'installation poetry tournent en
+  parallèle, jusqu'à 50 % plus rapide sur une connexion lente
+- Les modules extra CybroOdoo deviennent optionnels, suivis par version d'Odoo
+- Node.js 22, exigé par Capacitor 8 pour l'application mobile
+- Poetry et repo sont silencieux par défaut ; EL_VERBOSE rétablit la sortie
+- Menus TODO regroupés en sections avec icônes, et texte anglais utilisé comme
+  clé i18n
+- Documentation bilingue, générée depuis les sources .base.md
+
+## Corrigé
+
+- Une installation en échec n'est plus rapportée comme réussie : le code de
+  sortie remonte toute la chaîne
+- --with_extra s'applique désormais à un environnement déjà installé
+- Le chemin d'addons ne pointe plus vers un dépôt que le manifeste Odoo 18 ne
+  clone jamais
 
 
 ## [1.6.0] - 2025-04-25
