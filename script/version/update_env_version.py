@@ -14,6 +14,10 @@ import time
 
 # erplibre_state is in the same directory; import lazily to avoid hard failure
 # when the script runs outside the project root (e.g. during bare install).
+# Two import styles are needed: when this file is imported as a package module
+# the repo root is on sys.path (package import works); when it is executed
+# directly as ./script/version/update_env_version.py, sys.path[0] is
+# script/version/ and only the sibling import resolves.
 try:
     from script.version.erplibre_state import (
         get_version_extra,
@@ -25,7 +29,18 @@ try:
 
     _STATE_AVAILABLE = True
 except ImportError:
-    _STATE_AVAILABLE = False
+    try:
+        from erplibre_state import (
+            get_version_extra,
+            get_version_installed,
+            print_state,
+            set_version_installed,
+            set_version_switched,
+        )
+
+        _STATE_AVAILABLE = True
+    except ImportError:
+        _STATE_AVAILABLE = False
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -546,6 +561,61 @@ class Update:
         self.execute_log.append("Extra modules (CybroOdoo)")
         return os.system("./script/manifest/update_manifest_local_dev.sh")
 
+    def add_extra_to_config_conf(self):
+        """Append the extra addons (CybroOdoo, ...) to config.conf addons_path.
+
+        generate_config.sh rewrites config.conf from a fixed addons list that
+        does NOT include the extra modules, so this must run AFTER it (last
+        writer wins). The paths come from the source-of-truth extra manifest
+        (projects tagged with the "extra" group). Already-present paths are
+        skipped, so the call is idempotent."""
+        import xml.etree.ElementTree as ET
+
+        ver = self.new_version_odoo  # e.g. "18.0"
+        manifest = os.path.join(
+            "manifest", f"git_manifest_extra_odoo{ver}.xml"
+        )
+        config_path = "config.conf"
+        if not os.path.isfile(manifest) or not os.path.isfile(config_path):
+            _logger.warning(
+                "Cannot add extra modules to config.conf:"
+                f" missing {manifest} or {config_path}."
+            )
+            return
+        home = os.getcwd()
+        prefix = f"odoo{ver}/addons/"
+        extra_paths = []
+        for project in ET.parse(manifest).getroot().findall("project"):
+            groups = project.get("groups", "").split(",")
+            path = project.get("path", "")
+            if "extra" in groups and path.startswith(prefix):
+                extra_paths.append(os.path.join(home, path))
+        if not extra_paths:
+            return
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        changed = False
+        for i, line in enumerate(lines):
+            if not line.startswith("addons_path"):
+                continue
+            value = line.rstrip("\n").split("=", 1)[1] if "=" in line else ""
+            existing = [p.strip() for p in value.split(",") if p.strip()]
+            missing = [p for p in extra_paths if p not in existing]
+            if missing:
+                lines[i] = "addons_path = " + ",".join(existing + missing) + "\n"
+                changed = True
+            break
+        if changed:
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+            _logger.info(
+                "Added extra addons to config.conf: "
+                + ", ".join(extra_paths)
+            )
+        else:
+            _logger.info("Extra addons already present in config.conf.")
+
     def install_system(self):
         self.execute_log.append(f"System installation")
         status = os.system("./script/install/install_dev.sh")
@@ -778,6 +848,13 @@ def main():
             "./.venv.erplibre/bin/python ./script/git/git_repo_update_group.py"
         )
         os.system("./script/generate_config.sh")
+
+    # config.conf : generate_config.sh (ci-dessus) réécrit le fichier à partir
+    # d'une liste d'addons figée SANS les modules extra ; on ajoute donc les
+    # chemins extra APRÈS coup (dernier writer). Idempotent, sans effet si
+    # --with_extra n'est pas demandé.
+    if update.config.with_extra and exit_code == 0:
+        update.add_extra_to_config_conf()
 
     return exit_code
         # TODO ignore this if installation fail

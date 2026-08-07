@@ -31,28 +31,51 @@ class DatabaseManager:
         self._dir_path = path
 
     def select_database(self) -> str | bool:
+        """Faire choisir une base parmi celles que PostgreSQL expose.
+
+        Le code de retour de « db --list » est vérifié AVANT de construire le
+        menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
+        pas d'une base absente : la sortie et l'erreur sont fusionnées dans le
+        même flux (`stderr=STDOUT`, execute.py), donc les lignes de la trace
+        d'appel devenaient les entrées du menu. « Traceback (most recent call
+        last): » s'affichait comme la base [1], et la choisir renvoyait cette
+        ligne comme nom de base à l'appelant, qui la passait à sa commande.
+        """
         cmd_server = "./odoo_bin.sh db --list"
-        status, databases = self._execute.exec_command_live(
+        status, output = self._execute.exec_command_live(
             cmd_server,
             return_status_and_output=True,
+            quiet=True,
             source_erplibre=False,
             single_source_erplibre=True,
         )
-        choices = [{"prompt_description": a.strip()} for a in databases]
+        if status:
+            print(f"❌ {t('Cannot list the databases (exit code): ')}{status}")
+            print(f"   {t('Is PostgreSQL running?')}")
+            for line in output[-5:]:
+                print(f"   {line}")
+            return False
+
+        databases = [a.strip() for a in output if a.strip()]
+        if not databases:
+            print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
+            return False
+
+        choices = [{"prompt_description": a} for a in databases]
         help_info = self._fill_help_info(choices)
-        valid_choices = [str(a) for a in range(len(choices) + 1) if a]
+        valid_choices = [str(a + 1) for a in range(len(databases))]
 
         while True:
-            status = click.prompt(help_info)
+            answer = click.prompt(help_info)
             print()
-            if status == "0":
+            if answer == "0":
                 return False
-            elif status in valid_choices:
-                database_name = databases[int(status) - 1].strip()
+            elif answer in valid_choices:
+                database_name = databases[int(answer) - 1]
                 print(database_name)
                 return database_name
             else:
-                print(t("cmd_not_found"))
+                print(t("Command not found !"))
 
     def _confirm_drop(self, message: str) -> bool:
         """Ask for an explicit 'oui'/'yes' confirmation, default is no."""
