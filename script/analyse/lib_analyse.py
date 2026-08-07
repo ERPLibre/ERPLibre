@@ -391,6 +391,235 @@ def public_tables(database, **kwargs):
     }
 
 
+JSON_BEGIN = "ANALYSE_JSON_BEGIN"
+JSON_END = "ANALYSE_JSON_END"
+
+
+def odoo_config_path(config_path=None):
+    """Chemin du fichier de configuration Odoo, comme run.sh le résout.
+
+    Sans ``-c``, ``odoo_bin.sh`` ne passe AUCUNE configuration : ``addons_path``
+    retombe sur le défaut d'Odoo, et le shell ne voit alors aucun des dépôts de
+    ``addons/``. ``read_arch_from_file`` ne trouverait plus un seul fichier et
+    rendrait une arch de référence vide pour toutes les vues — sans erreur.
+    C'est la panne la plus coûteuse de cet outillage, parce qu'elle est
+    silencieuse : le rapport dirait « aucun écart » sur une base pleine
+    d'écarts.
+    """
+    for path in (
+        config_path,
+        os.path.join(REPO_ROOT, "config.conf"),
+        "/etc/odoo/odoo.conf",
+    ):
+        if path and os.path.isfile(path):
+            return path
+    raise AnalyseError(t("No Odoo configuration file found."))
+
+
+def odoo_shell_json(
+    database, script_path, env=None, timeout=600, config_path=None
+):
+    """Pousser un script dans « odoo-bin shell » et récupérer son JSON.
+
+    Pas de ``shell=True`` : la commande est une liste, le script arrive par
+    l'entrée standard. Un nom de base n'a donc rien à échapper — il ne traverse
+    aucun interpréteur de commandes.
+
+    Les journaux d'Odoo se mêlent à la sortie, d'où les sentinelles : on ne
+    lit que ce qui est entre elles. Leur absence est une erreur franche, pas
+    une liste vide qu'on prendrait pour « rien à signaler ».
+    """
+    if not valid_database_name(database):
+        raise AnalyseError(f"{t('Invalid database name: ')}{database!r}")
+    with open(script_path, "r", encoding="utf-8") as handle:
+        source = handle.read()
+
+    my_env = os.environ.copy()
+    my_env.update(env or {})
+    cmd = [
+        os.path.join(REPO_ROOT, "odoo_bin.sh"),
+        "shell",
+        "-c",
+        odoo_config_path(config_path),
+        "-d",
+        database,
+        "--no-http",
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=REPO_ROOT,
+            env=my_env,
+        )
+    except FileNotFoundError as exc:
+        raise AnalyseError(t("odoo_bin.sh not found.")) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AnalyseError(
+            f"{t('The Odoo shell exceeded the timeout (s): ')}{timeout}"
+        ) from exc
+
+    output = result.stdout or ""
+    if JSON_BEGIN not in output or JSON_END not in output:
+        detail = (result.stderr or output).strip().splitlines()[-3:]
+        raise AnalyseError(
+            f"{t('The Odoo shell returned no result: ')}{' / '.join(detail)}"
+        )
+    chunk = output.split(JSON_BEGIN, 1)[1].split(JSON_END, 1)[0]
+    try:
+        return json.loads(chunk.strip())
+    except ValueError as exc:
+        raise AnalyseError(
+            f"{t('Unreadable JSON from the Odoo shell: ')}{exc}"
+        ) from exc
+
+
+def normalise_arch(value):
+    """L'arch en chaîne, quel que soit le type de la colonne.
+
+    ``arch_db`` est du texte jusqu'à 15.0 et du jsonb à partir de 16.0, avec
+    une entrée par langue. Reprise de ``reset_stale_cow_views.normalise_arch``,
+    à l'identique : deux implémentations de cette conversion finiraient par
+    diverger sur un cas limite, et c'est exactement le genre d'écart qui
+    ferait conclure « la vue a changé » sur une base qui n'a rien changé.
+    """
+    if not isinstance(value, str):
+        return "" if value is None else str(value)
+    text = value.strip()
+    if text.startswith("{") and '"' in text:
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return value
+        if isinstance(data, dict) and data:
+            for lang in ("en_US", *sorted(data)):
+                if lang in data and isinstance(data[lang], str):
+                    return data[lang]
+    return value
+
+
+# Attributs dont la valeur est un chemin ou une expression : l'espace y sépare
+# des jetons, il se normalise, mais il ne se supprime pas. « //div[1] /span »
+# et « //div[1]/span » ne désignent pas la même chose.
+SPACING_ATTRS = ("expr", "position", "groups", "t-call", "class")
+
+
+def canonical(arch):
+    """Forme canonique d'une arch, pour DÉCIDER s'il y a un écart.
+
+    Sert à répondre « est-ce différent », jamais à afficher : ce qu'un humain
+    relit, c'est l'arch brute.
+
+    Pourquoi pas ``etree.canonicalize()`` en un appel, alors que lxml est là :
+    son seul levier sur les espaces, ``strip_text``, s'applique à TOUS les
+    nœuds texte, y compris le contenu d'un ``t-esc`` ou d'un CDATA — donc il
+    masquerait des différences de contenu réelles. Et il n'offre aucun levier
+    sur les espaces à l'intérieur d'une valeur d'attribut, alors que c'est
+    précisément là que vit le bruit : un ``expr`` réindenté n'est pas une
+    modification. D'où ce parcours, qui trie les attributs comme le ferait
+    c14n, replie les espaces là où ils ne portent rien, et laisse le texte
+    tranquille partout ailleurs.
+
+    Renvoie None si l'arch n'est pas du XML analysable — un écart ne se
+    conclut pas sur une comparaison qui n'a pas eu lieu.
+    """
+    from lxml import etree
+
+    text = normalise_arch(arch)
+    if not text.strip():
+        return None
+    try:
+        parser = etree.XMLParser(remove_blank_text=True, remove_comments=True)
+        root = etree.fromstring(text.encode("utf-8"), parser=parser)
+    except etree.XMLSyntaxError:
+        return None
+
+    def render(node):
+        lst_attr = []
+        for key in sorted(node.attrib):
+            value = node.attrib[key]
+            if key in SPACING_ATTRS:
+                value = " ".join(value.split())
+            lst_attr.append(f"{key}={value!r}")
+        head = node.tag + ("[" + ",".join(lst_attr) + "]" if lst_attr else "")
+        # Le texte n'est replié que sur ses bords : l'indentation autour d'un
+        # élément est de la mise en forme, l'espace À L'INTÉRIEUR d'un libellé
+        # ou d'un t-esc est du contenu.
+        own = (node.text or "").strip()
+        parts = [head] + ([f"#{own}" for _ in (1,) if own])
+        parts += [render(child) for child in node]
+        tail = (node.tail or "").strip()
+        if tail:
+            parts.append(f"~{tail}")
+        return "(" + " ".join(parts) + ")"
+
+    return render(root)
+
+
+def arch_differs(left, right):
+    """(différent ?, comparable ?) entre deux arch.
+
+    Deux réponses parce qu'il y a trois issues : identiques, différentes, et
+    « je n'ai pas pu comparer ». Confondre la troisième avec la première
+    ferait répondre « tout va bien » sur une vue au XML cassé, qui est
+    justement celle qu'il faut regarder.
+    """
+    canon_left = canonical(left)
+    canon_right = canonical(right)
+    if canon_left is None or canon_right is None:
+        return None, False
+    return canon_left != canon_right, True
+
+
+def side_by_side(left, right):
+    """[(marque, gauche, droite)] alignés, pour l'affichage côte à côte.
+
+    Marque : ' ' identiques, '≠' remplacées, '-' seulement à gauche, '+'
+    seulement à droite. Consommé par le TUI ET par le rendu texte, pour que
+    les deux racontent la même chose.
+    """
+    import difflib
+
+    lst_left = normalise_arch(left).splitlines()
+    lst_right = normalise_arch(right).splitlines()
+    lst_row = []
+    matcher = difflib.SequenceMatcher(None, lst_left, lst_right)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for offset in range(i2 - i1):
+                lst_row.append(
+                    (" ", lst_left[i1 + offset], lst_right[j1 + offset])
+                )
+        elif tag == "replace":
+            for offset in range(max(i2 - i1, j2 - j1)):
+                lst_row.append(
+                    (
+                        "≠",
+                        lst_left[i1 + offset] if i1 + offset < i2 else None,
+                        lst_right[j1 + offset] if j1 + offset < j2 else None,
+                    )
+                )
+        elif tag == "delete":
+            for offset in range(i1, i2):
+                lst_row.append(("-", lst_left[offset], None))
+        elif tag == "insert":
+            for offset in range(j1, j2):
+                lst_row.append(("+", None, lst_right[offset]))
+    return lst_row
+
+
+def diff_stats(lst_row):
+    """{added, removed, changed} depuis les lignes de side_by_side()."""
+    return {
+        "added": sum(1 for mark, _, _ in lst_row if mark == "+"),
+        "removed": sum(1 for mark, _, _ in lst_row if mark == "-"),
+        "changed": sum(1 for mark, _, _ in lst_row if mark == "≠"),
+    }
+
+
 def _describe():
     """Dire ce qu'est ce fichier, et où sont les outils.
 

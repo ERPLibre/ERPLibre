@@ -6501,12 +6501,25 @@ class TODO:
             print(f"❌ {t('Analysis failed: ')}{exc}")
             return
         print(analyse.render(data))
-        if data["findings"]:
-            print(
-                f"  💡 {t('Full list and JSON output:')}\n"
-                f"     ./script/analyse/analyse_view_custom.py"
-                f" -d {database} -v --json"
-            )
+        if not data["findings"]:
+            return
+        print(
+            f"  💡 {t('Full list and JSON output:')}\n"
+            f"     ./script/analyse/analyse_view_custom.py"
+            f" -d {database} -v --json"
+        )
+        # La comparaison ouvre un shell Odoo et charge le registre : quelques
+        # dizaines de secondes. On la propose plutôt que de l'imposer.
+        answer = input(f"\n💬 {t('Compare with the module source? (Y/n): ')}")
+        if answer.strip().lower() in ("n", "no", "non"):
+            return
+        try:
+            data = analyse.collect(database, with_diff=True)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if not analyse.open_tui(data):
+            print(analyse.render(data))
 
     def prompt_execute_process(self):
         print(f"🤖 {t('Manage execution processes!')}")

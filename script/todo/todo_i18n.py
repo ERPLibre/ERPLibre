@@ -3541,6 +3541,141 @@ TRANSLATIONS = {
         "fr": "afficher toutes les vues",
         "en": "list every view",
     },
+    "which views to compare (default: flagged)": {
+        "fr": "quelles vues comparer (défaut : celles qui sont signalées)",
+        "en": "which views to compare (default: flagged)",
+    },
+    "From a module, silently drifted": {
+        "fr": "D'un module, dérivée en silence",
+        "en": "From a module, silently drifted",
+    },
+    "In --scope all, a difference is a lead, not a verdict:"
+    " read_arch_from_file returns the raw file, while the database holds the"
+    " arch AFTER load-time processing. Measured on a freshly installed 18.0"
+    " database, 160 of its 974 views already differ this way.": {
+        "fr": "En --scope all, un écart est une piste, pas un verdict :"
+        " read_arch_from_file rend le fichier brut, alors que la base porte"
+        " l'arch APRÈS traitement au chargement. Mesuré sur une base 18.0"
+        " fraîchement installée, 160 de ses 974 vues diffèrent déjà ainsi.",
+        "en": "In --scope all, a difference is a lead, not a verdict:"
+        " read_arch_from_file returns the raw file, while the database holds"
+        " the arch AFTER load-time processing. Measured on a freshly installed"
+        " 18.0 database, 160 of its 974 views already differ this way.",
+    },
+    "Compare with the module source? (Y/n): ": {
+        "fr": "Comparer avec la source du module ? (O/n) : ",
+        "en": "Compare with the module source? (Y/n): ",
+    },
+    # --- script/analyse : comparaison et navigation des écarts ---
+    "Differences only": {
+        "fr": "Écarts seuls",
+        "en": "Differences only",
+    },
+    "Ignore indentation": {
+        "fr": "Ignorer l'indentation",
+        "en": "Ignore indentation",
+    },
+    "Copy": {
+        "fr": "Copier",
+        "en": "Copy",
+    },
+    "Reset command": {
+        "fr": "Commande de réinitialisation",
+        "en": "Reset command",
+    },
+    "module (file)": {
+        "fr": "module (fichier)",
+        "en": "module (file)",
+    },
+    "database": {
+        "fr": "base",
+        "en": "database",
+    },
+    "Difference copied.": {
+        "fr": "Écart copié.",
+        "en": "Difference copied.",
+    },
+    "No Odoo configuration file found.": {
+        "fr": "Aucun fichier de configuration Odoo trouvé.",
+        "en": "No Odoo configuration file found.",
+    },
+    "odoo_bin.sh not found.": {
+        "fr": "odoo_bin.sh est introuvable.",
+        "en": "odoo_bin.sh not found.",
+    },
+    "The Odoo shell returned no result: ": {
+        "fr": "Le shell Odoo n'a rien renvoyé : ",
+        "en": "The Odoo shell returned no result: ",
+    },
+    "The Odoo shell exceeded the timeout (s): ": {
+        "fr": "Le shell Odoo a dépassé le délai imparti (s) : ",
+        "en": "The Odoo shell exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from the Odoo shell: ": {
+        "fr": "JSON illisible en sortie du shell Odoo : ",
+        "en": "Unreadable JSON from the Odoo shell: ",
+    },
+    "To restore a view to what its module declares — this "
+    "WRITES to the database, so read the difference first:": {
+        "fr": "Pour rendre à une vue ce que déclare son module — ceci "
+        "ÉCRIT dans la base, lisez donc l'écart d'abord :",
+        "en": "To restore a view to what its module declares — this "
+        "WRITES to the database, so read the difference first:",
+    },
+    "compare with the module source (opens an Odoo shell)": {
+        "fr": "comparer avec la source du module (ouvre un shell Odoo)",
+        "en": "compare with the module source (opens an Odoo shell)",
+    },
+    "fail if the comparison could not be made": {
+        "fr": "échouer si la comparaison n'a pas pu être faite",
+        "en": "fail if the comparison could not be made",
+    },
+    "browse the differences in a full-screen view": {
+        "fr": "naviguer dans les écarts en plein écran",
+        "en": "browse the differences in a full-screen view",
+    },
+    "Flags say a view was touched, not how. They are incomplete "
+    "both ways: a direct SQL write does not set arch_updated, "
+    "and reset_arch clears it. Comparing with the module source "
+    "is what settles it — add --diff.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. "
+        "Ils sont incomplets dans les deux sens : un write SQL "
+        "direct n'arme pas arch_updated, et reset_arch l'efface. "
+        "Seule la comparaison avec la source du module tranche — "
+        "ajoutez --diff.",
+        "en": "Flags say a view was touched, not how. They are incomplete "
+        "both ways: a direct SQL write does not set arch_updated, "
+        "and reset_arch clears it. Comparing with the module source "
+        "is what settles it — add --diff.",
+    },
+    "Database is Odoo": {
+        "fr": "La base est en Odoo",
+        "en": "Database is Odoo",
+    },
+    "checkout is": {
+        "fr": "le checkout est en",
+        "en": "checkout is",
+    },
+    "views were flagged but hold exactly what their module "
+    "declares: only the comparison could tell.": {
+        "fr": "vues étaient signalées mais portent exactement ce que "
+        "déclare leur module : seule la comparaison pouvait le "
+        "dire.",
+        "en": "views were flagged but hold exactly what their module "
+        "declares: only the comparison could tell.",
+    },
+    "No reference arch, so nothing was compared: ": {
+        "fr": "Aucune arch de référence, donc rien n'a été comparé : ",
+        "en": "No reference arch, so nothing was compared: ",
+    },
+    "Not a terminal: showing the text report instead.": {
+        "fr": "Pas un terminal : affichage du rapport texte à la place.",
+        "en": "Not a terminal: showing the text report instead.",
+    },
+    "To restore this view to what its module declares:": {
+        "fr": "Pour rendre à cette vue ce que déclare son module :",
+        "en": "To restore this view to what its module declares:",
+    },
     # --- script/analyse : erreurs du socle ---
     "Invalid database name: ": {
         "fr": "Nom de base invalide : ",

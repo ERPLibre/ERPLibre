@@ -300,3 +300,94 @@ class TestRunPsqlGuards(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCanonical(unittest.TestCase):
+    """Ce qui décide s'il y a un écart. Le bruit se joue ici."""
+
+    def test_indentation_is_not_a_change(self):
+        # Le cas mesuré sur une vraie base : une arch ré-indentée n'est pas
+        # une modification, et c'est l'erreur que fait `has_diff` d'Odoo —
+        # une comparaison de chaînes brutes — dans son propre assistant.
+        left = "<form><field name='a'/></form>"
+        right = "<form>\n    <field name='a'/>\n</form>"
+        self.assertEqual(L.canonical(left), L.canonical(right))
+        self.assertEqual(L.arch_differs(left, right), (False, True))
+
+    def test_attribute_order_is_not_a_change(self):
+        self.assertEqual(
+            L.canonical("<t a='1' b='2'/>"), L.canonical("<t b='2' a='1'/>")
+        )
+
+    def test_comments_are_not_a_change(self):
+        self.assertEqual(
+            L.canonical("<form><!-- note --><field/></form>"),
+            L.canonical("<form><field/></form>"),
+        )
+
+    def test_an_added_field_is_a_change(self):
+        left = "<form><field name='a'/></form>"
+        right = "<form><field name='a'/><field name='x_custom'/></form>"
+        self.assertEqual(L.arch_differs(left, right), (True, True))
+
+    def test_changed_text_is_a_change(self):
+        # L'espace DANS un libellé est du contenu, pas de la mise en forme.
+        self.assertEqual(
+            L.arch_differs("<t>Total</t>", "<t>Grand total</t>"), (True, True)
+        )
+
+    def test_xpath_expression_spacing_is_normalised(self):
+        # L'espace y sépare des jetons : il se replie, il ne disparaît pas.
+        self.assertEqual(
+            L.canonical('<xpath expr="//div[1]  /span"/>'),
+            L.canonical('<xpath expr="//div[1] /span"/>'),
+        )
+
+    def test_a_different_xpath_target_is_a_change(self):
+        self.assertNotEqual(
+            L.canonical('<xpath expr="//div/span"/>'),
+            L.canonical('<xpath expr="//div[1]/span"/>'),
+        )
+
+    def test_broken_xml_is_not_comparable(self):
+        # Ni « identique » ni « différent » : une comparaison qui n'a pas eu
+        # lieu ne doit pas se lire comme une comparaison sans écart.
+        self.assertIsNone(L.canonical("<form><field></form>"))
+        self.assertEqual(
+            L.arch_differs("<form/>", "<form><field>"), (None, False)
+        )
+
+    def test_empty_arch_is_not_comparable(self):
+        self.assertIsNone(L.canonical(""))
+        self.assertIsNone(L.canonical(None))
+
+    def test_jsonb_column_is_unwrapped_first(self):
+        self.assertEqual(
+            L.canonical('{"en_US": "<form/>"}'), L.canonical("<form/>")
+        )
+
+
+class TestSideBySide(unittest.TestCase):
+    def test_identical_lines_are_aligned(self):
+        rows = L.side_by_side("a\nb", "a\nb")
+        self.assertEqual([mark for mark, _, _ in rows], [" ", " "])
+
+    def test_insert_has_no_left_side(self):
+        rows = L.side_by_side("a", "a\nb")
+        self.assertEqual(rows[-1], ("+", None, "b"))
+
+    def test_delete_has_no_right_side(self):
+        rows = L.side_by_side("a\nb", "a")
+        self.assertEqual(rows[-1], ("-", "b", None))
+
+    def test_replace_keeps_both_sides_on_one_row(self):
+        # Le point de l'affichage côte à côte : les deux versions d'une même
+        # ligne se lisent l'une en face de l'autre, sans rien à synchroniser.
+        rows = L.side_by_side("a", "b")
+        self.assertEqual(rows, [("≠", "a", "b")])
+
+    def test_stats_count_each_kind(self):
+        rows = L.side_by_side("a\nb\nc", "a\nB\nc\nd")
+        self.assertEqual(
+            L.diff_stats(rows), {"added": 1, "removed": 0, "changed": 1}
+        )
