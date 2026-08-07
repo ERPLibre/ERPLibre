@@ -3436,10 +3436,14 @@ TRANSLATIONS = {
         "fr": "Analyser une base, sans jamais y écrire !",
         "en": "Analyse a database, without ever writing to it!",
     },
-    "Structure": {"fr": "Structure", "en": "Structure"},
+    # Les icônes du sous-menu Analyse. Elles sont réservées d'avance pour la
+    # famille entière — 🧱 index, 🎈 ballonnement, 📎 pièces jointes,
+    # 🔗 ir_model_data — pour qu'ajouter un outil ne demande pas d'en
+    # rechercher une libre, et que deux outils voisins ne se ressemblent pas.
+    "Structure": {"fr": "🗄  Structure", "en": "🗄  Structure"},
     "Tables and database size": {
-        "fr": "Tables et poids de la base",
-        "en": "Tables and database size",
+        "fr": "📏 Tables et poids de la base",
+        "en": "📏 Tables and database size",
     },
     "Analysis failed: ": {
         "fr": "L'analyse a échoué : ",
