@@ -305,8 +305,14 @@ def _table_block(lst_row, exact):
     return lines
 
 
-def render(data, verbose=False, top=TOP_DEFAULT):
-    """Rapport texte. Fonction pure : donnée -> chaîne, testable sans base."""
+def render(data, verbose=False, top=TOP_DEFAULT, hints=True):
+    """Rapport texte. Fonction pure : donnée -> chaîne, testable sans base.
+
+    ``hints`` gouverne les conseils en ligne de commande (« utilisez -v »,
+    « --exact »). Ils aident qui a tapé la commande ; ils insultent qui est
+    dans un menu, à qui l'on demande de sortir et de retaper autre chose.
+    L'appel depuis le menu les coupe et offre les mêmes actions comme choix.
+    """
     version = data.get("odoo_version") or "?"
     lines = [
         "",
@@ -341,8 +347,10 @@ def render(data, verbose=False, top=TOP_DEFAULT):
         )
         lines += ["", f"── {label} ──"]
         lines += _table_block(shown, data["exact"])
-        if not verbose and len(lst_table) > len(shown):
+        if hints and not verbose and len(lst_table) > len(shown):
             lines.append(f"  … {t('use -v to list them all')}")
+        elif not verbose and len(lst_table) > len(shown):
+            lines.append(f"  … {len(lst_table) - len(shown)} {t('more')}")
 
     lst_orphan = data["orphan_tables"]
     if not lst_orphan:
@@ -366,7 +374,7 @@ def render(data, verbose=False, top=TOP_DEFAULT):
             "  💡 ", t("Check what they hold before dropping anything.")
         )
 
-    if not data["exact"]:
+    if not data["exact"] and hints:
         lines.append("")
         lines += wrap_note(
             "  ℹ️  ",

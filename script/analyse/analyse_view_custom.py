@@ -458,7 +458,7 @@ def collect(
     }
 
 
-def _finding_block(lst_row, top):
+def _finding_block(lst_row, top, hints=True):
     """Une ligne par vue : clé, identifiant externe, poids, raisons."""
     lines = [
         f"  {'id':>6}  {'key / xml-id':<44}{'size':>9}  {t('why')}",
@@ -476,7 +476,7 @@ def _finding_block(lst_row, top):
     return lines
 
 
-def render(data, verbose=False, top=TOP_DEFAULT, category=None):
+def render(data, verbose=False, top=TOP_DEFAULT, category=None, hints=True):
     """Rapport texte. Fonction pure : donnée -> chaîne, testable sans base."""
     version = data.get("odoo_version") or "?"
     counts = data["counts"]
@@ -568,7 +568,7 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None):
             t("No reference arch, so nothing was compared: ")
             + str(data["arch_ref_error"]),
         )
-    else:
+    elif hints:
         lines += wrap_note(
             "  ℹ️  ",
             t(
@@ -576,6 +576,14 @@ def render(data, verbose=False, top=TOP_DEFAULT, category=None):
                 " both ways: a direct SQL write does not set arch_updated,"
                 " and reset_arch clears it. Comparing with the module source"
                 " is what settles it — add --diff."
+            ),
+        )
+    else:
+        lines += wrap_note(
+            "  ℹ️  ",
+            t(
+                "Flags say a view was touched, not how: only comparing with"
+                " the module source settles it."
             ),
         )
     return "\n".join(lines) + "\n"

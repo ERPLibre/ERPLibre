@@ -4188,7 +4188,15 @@ class TODO:
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
         if "install_odoo" in final_cmd:
-            final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd(prod)}"
+            # Le snippet de service est une SUITE d'instructions séparées par
+            # « ; ». Collé tel quel après « && », l'opérateur ne lie que la
+            # première : tout le reste s'exécute même quand le make a échoué, et
+            # comme « systemctl enable » réussit, la commande distante rend 0 —
+            # l'install était rapportée ✅ alors qu'elle avait échoué. « set -e »
+            # ne rattrape pas : il n'interrompt pas sur un maillon d'une liste
+            # « && ». Les accolades font porter le && sur le bloc entier.
+            svc = self._qemu_odoo_service_cmd(prod).strip().rstrip(";")
+            final_cmd = f"{final_cmd} && {{ {svc}; }}"
         # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
         # Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
         # pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
@@ -6460,6 +6468,50 @@ class TODO:
         database = self.db_manager.select_database()
         return database or None
 
+    def _analyse_json_path(self, database, tool):
+        """Où écrire un export JSON. Le dossier est créé au besoin."""
+        directory = os.path.join("private", "analyse", database)
+        os.makedirs(directory, exist_ok=True)
+        return os.path.join(directory, f"{tool}.json")
+
+    def _analyse_export_json(self, data, database, tool):
+        """Écrire le résultat brut, et dire où.
+
+        Sous `private/`, qui n'est pas versionné par convention : un rapport
+        d'analyse porte des noms de vues, de champs et de sociétés du client.
+        """
+        path = self._analyse_json_path(database, tool)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False, default=str)
+        print(f"✅ {t('Written to: ')}{path}")
+
+    def _analyse_follow_up(self, choices, handler):
+        """Boucle « aller plus loin » après une analyse.
+
+        Le rapport suggérait « utilisez -v », « --exact », « ajoutez --diff ».
+        Dans un menu, c'est demander à l'utilisateur de sortir et de retaper
+        une commande pour obtenir ce que le menu pouvait lui offrir. Les
+        options sont donc devenues des entrées, et les conseils en ligne de
+        commande ne s'affichent plus que dans la vraie ligne de commande.
+        """
+        help_info = self.fill_help_info(
+            [{"section": t("Go further")}] + choices
+        )
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            try:
+                rank = int(status)
+            except ValueError:
+                rank = 0
+            if not 1 <= rank <= len(choices):
+                print(t("Command not found !"))
+                continue
+            if handler(rank) is False:
+                return
+
     def execute_analyse_schema_size(self):
         """Poids de la base et tables qu'aucun modèle installé ne réclame.
 
@@ -6475,18 +6527,40 @@ class TODO:
             return
         from script.analyse import analyse_schema_size as analyse
 
-        try:
-            data = analyse.collect(database)
-        except Exception as exc:
-            print(f"❌ {t('Analysis failed: ')}{exc}")
+        state = {"data": None, "exact": False}
+
+        def run(exact=False):
+            try:
+                state["data"] = analyse.collect(database, exact=exact)
+                state["exact"] = exact
+            except Exception as exc:
+                print(f"❌ {t('Analysis failed: ')}{exc}")
+                return False
+            return True
+
+        if not run():
             return
-        print(analyse.render(data))
-        if data["orphan_tables"]:
-            print(
-                f"  💡 {t('Full list and JSON output:')}\n"
-                f"     ./script/analyse/analyse_schema_size.py"
-                f" -d {database} -v --json"
-            )
+        print(analyse.render(state["data"], hints=False))
+
+        def handler(rank):
+            data = state["data"]
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            elif rank == 2:
+                print(f"⏳ {t('Counting rows exactly, one scan per table…')}")
+                if run(exact=True):
+                    print(analyse.render(state["data"], hints=False))
+            else:
+                self._analyse_export_json(data, database, "schema_size")
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every table")},
+                {"prompt_description": t("Count rows exactly (full scan)")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
 
     def execute_analyse_view_custom(self):
         """Vues qui ne viennent pas telles quelles d'un module, COW comprises."""
@@ -6495,31 +6569,68 @@ class TODO:
             return
         from script.analyse import analyse_view_custom as analyse
 
-        try:
-            data = analyse.collect(database)
-        except Exception as exc:
-            print(f"❌ {t('Analysis failed: ')}{exc}")
+        state = {"data": None}
+
+        def run(**kwargs):
+            try:
+                state["data"] = analyse.collect(database, **kwargs)
+            except Exception as exc:
+                print(f"❌ {t('Analysis failed: ')}{exc}")
+                return False
+            return True
+
+        if not run():
             return
-        print(analyse.render(data))
-        if not data["findings"]:
+        print(analyse.render(state["data"], hints=False))
+        if not state["data"]["findings"]:
             return
-        print(
-            f"  💡 {t('Full list and JSON output:')}\n"
-            f"     ./script/analyse/analyse_view_custom.py"
-            f" -d {database} -v --json"
+
+        def compare(scope):
+            print(f"⏳ {t('Loading the Odoo registry, this takes a moment…')}")
+            if not run(with_diff=True, scope=scope):
+                return False
+            data = state["data"]
+            print(analyse.render(data, hints=False))
+            if not data["compared_with_module_source"]:
+                return True
+            if not [row for row in data["findings"] if row.get("differs")]:
+                print(f"✅ {t('No view differs from its module source.')}")
+            return True
+
+        def handler(rank):
+            data = state["data"]
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            elif rank == 2:
+                compare("flagged")
+            elif rank == 3:
+                compare("all")
+            elif rank == 4:
+                if not data.get("compared_with_module_source"):
+                    print(f"ℹ️  {t('Compare first, then browse.')}")
+                elif not analyse.open_tui(data):
+                    print(analyse.render(data, verbose=True, hints=False))
+            else:
+                self._analyse_export_json(data, database, "view_custom")
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every view")},
+                {
+                    "prompt_description": t(
+                        "Compare the flagged views with the module source"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "Compare every view (slower, noisier)"
+                    )
+                },
+                {"prompt_description": t("Browse the differences (TUI)")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
         )
-        # La comparaison ouvre un shell Odoo et charge le registre : quelques
-        # dizaines de secondes. On la propose plutôt que de l'imposer.
-        answer = input(f"\n💬 {t('Compare with the module source? (Y/n): ')}")
-        if answer.strip().lower() in ("n", "no", "non"):
-            return
-        try:
-            data = analyse.collect(database, with_diff=True)
-        except Exception as exc:
-            print(f"❌ {t('Analysis failed: ')}{exc}")
-            return
-        if not analyse.open_tui(data):
-            print(analyse.render(data))
 
     def prompt_execute_process(self):
         print(f"🤖 {t('Manage execution processes!')}")

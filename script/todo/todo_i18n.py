@@ -3566,6 +3566,60 @@ TRANSLATIONS = {
         "fr": "Comparer avec la source du module ? (O/n) : ",
         "en": "Compare with the module source? (Y/n): ",
     },
+    # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
+    # conseillé en options de ligne de commande est devenu des entrées :
+    # dire « utilisez -v » à quelqu'un qui est dans un menu, c'est lui
+    # demander d'en sortir pour obtenir ce que le menu pouvait offrir.
+    "Browse the differences (TUI)": {
+        "fr": "🖥  Naviguer dans les écarts (plein écran)",
+        "en": "🖥  Browse the differences (TUI)",
+    },
+    "Compare every view (slower, noisier)": {
+        "fr": "🔬 Comparer toutes les vues (plus long, plus bruyant)",
+        "en": "🔬 Compare every view (slower, noisier)",
+    },
+    "Compare first, then browse.": {
+        "fr": "Comparez d'abord, vous naviguerez ensuite.",
+        "en": "Compare first, then browse.",
+    },
+    "Compare the flagged views with the module source": {
+        "fr": "🔍 Comparer les vues signalées avec la source du module",
+        "en": "🔍 Compare the flagged views with the module source",
+    },
+    "Count rows exactly (full scan)": {
+        "fr": "🔢 Compter les lignes exactement (balayage complet)",
+        "en": "🔢 Count rows exactly (full scan)",
+    },
+    "Counting rows exactly, one scan per table…": {
+        "fr": "Comptage exact des lignes, un balayage par table…",
+        "en": "Counting rows exactly, one scan per table…",
+    },
+    "Export as JSON": {"fr": "💾 Exporter en JSON", "en": "💾 Export as JSON"},
+    "Go further": {"fr": "🔎 Aller plus loin", "en": "🔎 Go further"},
+    "Loading the Odoo registry, this takes a moment…": {
+        "fr": "Chargement du registre Odoo, cela prend un moment…",
+        "en": "Loading the Odoo registry, this takes a moment…",
+    },
+    "No view differs from its module source.": {
+        "fr": "Aucune vue ne diffère de la source de son module.",
+        "en": "No view differs from its module source.",
+    },
+    "Show every table": {
+        "fr": "📜 Afficher toutes les tables",
+        "en": "📜 Show every table",
+    },
+    "Show every view": {
+        "fr": "📜 Afficher toutes les vues",
+        "en": "📜 Show every view",
+    },
+    "Written to: ": {"fr": "Écrit dans : ", "en": "Written to: "},
+    "Flags say a view was touched, not how: only comparing with the module"
+    " source settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment :"
+        " seule la comparaison avec la source du module tranche.",
+        "en": "Flags say a view was touched, not how: only comparing with the"
+        " module source settles it.",
+    },
     # --- script/analyse : comparaison et navigation des écarts ---
     "Differences only": {
         "fr": "Écarts seuls",
