@@ -130,7 +130,7 @@ class TODO:
         help_info = f"""{self._menu_header()}
 [1] {t("Execute")}
 [2] {t("Install")}
-[3] {t("Question")}
+[3] {t("Assistant")}
 [4] {t("Fork - Open TODO in a new tab")}
 [5] {t("Navigation telemetry (TUI)")}
 [6] {t("Configuration")}
@@ -157,7 +157,7 @@ class TODO:
             elif status == "2":
                 self.prompt_install()
             elif status == "3":
-                self.execute_prompt_ia()
+                self.prompt_assistant()
             elif status == "4":
                 # cmd = (
                 #     f"gnome-terminal --tab -- bash -c 'source"
@@ -177,7 +177,27 @@ class TODO:
         print(status)
         # manipuler()
 
-    def execute_prompt_ia(self):
+    def prompt_assistant(self):
+        """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
+        from script.todo.mail.menu import prompt_execute_mail
+
+        while True:
+            help_info = f"""{self._menu_header()}
+[1] {t("mail_ai_question")}
+[2] {t("mail_menu")}
+[0] {t("Back")}"""
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._assistant_question()
+            elif status == "2":
+                prompt_execute_mail(self)
+            else:
+                print(t("Command not found !"))
+
+    def _assistant_question(self):
         while True:
             help_info = f"""{self._menu_header()}
 [0] {t("Back")}
@@ -541,7 +561,7 @@ class TODO:
     _MENU_LABELS = {
         "run": "TODO",
         "prompt_execute": "Execute",
-        "execute_prompt_ia": "Question",
+        "prompt_assistant": "Assistant",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
@@ -7710,7 +7730,11 @@ if __name__ == "__main__":
         if ENABLE_CRASH:
             todo.crash_diagnostic(CRASH_E)
         todo.run()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, click.exceptions.Abort):
+        # click.prompt() raises Abort (not a KeyboardInterrupt subclass) on
+        # both Ctrl+C and Ctrl+D/EOF. run() only catches it for its own
+        # top-level prompt; every submenu's click.prompt() would otherwise
+        # let Abort escape here as an uncaught exception.
         print(t("Keyboard interrupt"))
     finally:
         end_time = time.time()

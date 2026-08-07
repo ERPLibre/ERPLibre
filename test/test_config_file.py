@@ -20,33 +20,23 @@ class TestDeepMergeWithLists(unittest.TestCase):
         self.assertEqual(result, {})
 
     def test_dest_only(self):
-        result = self.cfg.deep_merge_with_lists(
-            {"a": 1, "b": 2}, {}
-        )
+        result = self.cfg.deep_merge_with_lists({"a": 1, "b": 2}, {})
         self.assertEqual(result, {"a": 1, "b": 2})
 
     def test_src_only(self):
-        result = self.cfg.deep_merge_with_lists(
-            {}, {"a": 1, "b": 2}
-        )
+        result = self.cfg.deep_merge_with_lists({}, {"a": 1, "b": 2})
         self.assertEqual(result, {"a": 1, "b": 2})
 
     def test_simple_merge(self):
-        result = self.cfg.deep_merge_with_lists(
-            {"a": 1}, {"b": 2}
-        )
+        result = self.cfg.deep_merge_with_lists({"a": 1}, {"b": 2})
         self.assertEqual(result, {"a": 1, "b": 2})
 
     def test_src_overrides_dest_string(self):
-        result = self.cfg.deep_merge_with_lists(
-            {"a": "old"}, {"a": "new"}
-        )
+        result = self.cfg.deep_merge_with_lists({"a": "old"}, {"a": "new"})
         self.assertEqual(result, {"a": "new"})
 
     def test_empty_src_string_keeps_dest(self):
-        result = self.cfg.deep_merge_with_lists(
-            {"a": "old"}, {"a": ""}
-        )
+        result = self.cfg.deep_merge_with_lists({"a": "old"}, {"a": ""})
         self.assertEqual(result, {"a": "old"})
 
     def test_nested_dict_merge(self):
@@ -80,9 +70,7 @@ class TestDeepMergeWithLists(unittest.TestCase):
         self.assertEqual(dest, {"a": {"x": 1}})
 
     def test_src_overrides_non_string_non_dict_non_list(self):
-        result = self.cfg.deep_merge_with_lists(
-            {"a": 1}, {"a": 2}
-        )
+        result = self.cfg.deep_merge_with_lists({"a": 1}, {"a": 2})
         self.assertEqual(result, {"a": 2})
 
 
@@ -106,9 +94,7 @@ class TestGetConfig(unittest.TestCase):
         base_path = self._write_json(
             "base.json", {"instance": [{"name": "test"}]}
         )
-        with patch(
-            "script.config.config_file.CONFIG_FILE", base_path
-        ), patch(
+        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
             "script.config.config_file.CONFIG_OVERRIDE_FILE",
             os.path.join(self.tmpdir, "nonexistent1.json"),
         ), patch(
@@ -120,9 +106,7 @@ class TestGetConfig(unittest.TestCase):
 
     def test_get_config_returns_none_for_missing_key(self):
         base_path = self._write_json("base.json", {"a": 1})
-        with patch(
-            "script.config.config_file.CONFIG_FILE", base_path
-        ), patch(
+        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
             "script.config.config_file.CONFIG_OVERRIDE_FILE",
             os.path.join(self.tmpdir, "nonexistent1.json"),
         ), patch(
@@ -141,9 +125,7 @@ class TestGetConfig(unittest.TestCase):
             "override.json",
             {"instance": [{"name": "override"}]},
         )
-        with patch(
-            "script.config.config_file.CONFIG_FILE", base_path
-        ), patch(
+        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
             "script.config.config_file.CONFIG_OVERRIDE_FILE",
             override_path,
         ), patch(
@@ -166,9 +148,7 @@ class TestGetConfig(unittest.TestCase):
             "private.json",
             {"data": {"key": "private_val"}},
         )
-        with patch(
-            "script.config.config_file.CONFIG_FILE", base_path
-        ), patch(
+        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
             "script.config.config_file.CONFIG_OVERRIDE_FILE",
             os.path.join(self.tmpdir, "nonexistent.json"),
         ), patch(
@@ -191,9 +171,7 @@ class TestGetConfig(unittest.TestCase):
             "private.json",
             {"items": [3], "meta": {"a": "private"}},
         )
-        with patch(
-            "script.config.config_file.CONFIG_FILE", base_path
-        ), patch(
+        with patch("script.config.config_file.CONFIG_FILE", base_path), patch(
             "script.config.config_file.CONFIG_OVERRIDE_FILE",
             override_path,
         ), patch(
@@ -207,9 +185,7 @@ class TestGetConfig(unittest.TestCase):
         self.assertEqual(result_items, [1, 3, 2])
         # Dict merge: {a: base} + {a: private} = {a: private}
         # then {a: private} + {b: override} = {a: private, b: override}
-        self.assertEqual(
-            result_meta, {"a": "private", "b": "override"}
-        )
+        self.assertEqual(result_meta, {"a": "private", "b": "override"})
 
     def test_no_config_files_exist(self):
         with patch(
@@ -226,6 +202,99 @@ class TestGetConfig(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestSetConfigValue(unittest.TestCase):
+    """`set_config_value` est le pendant écriture de `get_config_value` :
+    seul `CONFIG_OVERRIDE_PRIVATE_FILE` est gitignored (vérifié avec
+    `git check-ignore`), donc c'est le seul des trois fichiers où écrire un
+    chemin personnel (ex. `kdbx.path`) sans risquer de le committer.
+    """
+
+    def setUp(self):
+        self.cfg = ConfigFile()
+        self.tmp = tempfile.TemporaryDirectory()
+        # Sous un sous-dossier qui n'existe pas encore, comme le vrai
+        # `private/todo/` d'un checkout neuf.
+        self.private_path = os.path.join(
+            self.tmp.name, "private", "todo", "todo_override_private.json"
+        )
+        self.patcher = patch(
+            "script.config.config_file.CONFIG_OVERRIDE_PRIVATE_FILE",
+            self.private_path,
+        )
+        self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
+        self.tmp.cleanup()
+
+    def test_creates_missing_file_and_directory(self):
+        self.cfg.set_config_value(["kdbx", "path"], "/x/y.kdbx")
+        self.assertTrue(os.path.exists(self.private_path))
+        with open(self.private_path) as f:
+            data = json.load(f)
+        self.assertEqual(data, {"kdbx": {"path": "/x/y.kdbx"}})
+
+    def test_nested_key_creation(self):
+        self.cfg.set_config_value(["a", "b", "c"], "v")
+        with open(self.private_path) as f:
+            data = json.load(f)
+        self.assertEqual(data, {"a": {"b": {"c": "v"}}})
+
+    def test_preserves_existing_unrelated_content(self):
+        os.makedirs(os.path.dirname(self.private_path))
+        with open(self.private_path, "w") as f:
+            json.dump({"other": {"key": "kept"}}, f)
+
+        self.cfg.set_config_value(["kdbx", "path"], "/x/y.kdbx")
+
+        with open(self.private_path) as f:
+            data = json.load(f)
+        self.assertEqual(
+            data,
+            {"other": {"key": "kept"}, "kdbx": {"path": "/x/y.kdbx"}},
+        )
+
+    def test_overwrites_only_the_targeted_key(self):
+        self.cfg.set_config_value(["kdbx", "path"], "/first.kdbx")
+        self.cfg.set_config_value(["kdbx", "path"], "/second.kdbx")
+        with open(self.private_path) as f:
+            data = json.load(f)
+        self.assertEqual(data, {"kdbx": {"path": "/second.kdbx"}})
+
+    def test_file_mode_is_0600(self):
+        self.cfg.set_config_value(["kdbx", "path"], "/x/y.kdbx")
+        mode = os.stat(self.private_path).st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
+    def test_directory_mode_is_0700(self):
+        self.cfg.set_config_value(["kdbx", "path"], "/x/y.kdbx")
+        mode = os.stat(os.path.dirname(self.private_path)).st_mode & 0o777
+        self.assertEqual(mode, 0o700)
+
+    def test_existing_file_with_looser_mode_is_corrected(self):
+        os.makedirs(os.path.dirname(self.private_path))
+        with open(self.private_path, "w") as f:
+            json.dump({}, f)
+        os.chmod(self.private_path, 0o644)
+
+        self.cfg.set_config_value(["kdbx", "path"], "/x/y.kdbx")
+
+        mode = os.stat(self.private_path).st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
+    def test_round_trips_through_get_config_value(self):
+        self.cfg.set_config_value(["kdbx", "path"], "/round/trip.kdbx")
+        with patch(
+            "script.config.config_file.CONFIG_FILE",
+            os.path.join(self.tmp.name, "nonexistent_base.json"),
+        ), patch(
+            "script.config.config_file.CONFIG_OVERRIDE_FILE",
+            os.path.join(self.tmp.name, "nonexistent_override.json"),
+        ):
+            result = self.cfg.get_config_value(["kdbx", "path"])
+        self.assertEqual(result, "/round/trip.kdbx")
+
+
 class TestGetConfigValue(unittest.TestCase):
     def setUp(self):
         self.cfg = ConfigFile()
@@ -236,9 +305,7 @@ class TestGetConfigValue(unittest.TestCase):
             "get_config",
             return_value={"level1": {"level2": "found"}},
         ):
-            result = self.cfg.get_config_value(
-                ["root", "level1", "level2"]
-            )
+            result = self.cfg.get_config_value(["root", "level1", "level2"])
         self.assertEqual(result, "found")
 
     def test_single_key(self):

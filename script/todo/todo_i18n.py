@@ -35,9 +35,9 @@ TRANSLATIONS = {
         "fr": "📦 Installation",
         "en": "📦 Install",
     },
-    "Question": {
-        "fr": "❓ Question",
-        "en": "❓ Question",
+    "Assistant": {
+        "fr": "🤖 Assistant",
+        "en": "🤖 Assistant",
     },
     "Fork - Open TODO in a new tab": {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
@@ -4049,6 +4049,571 @@ TRANSLATIONS = {
         "fr": "chemin d'un fichier de configuration Odoo",
         "en": "path to an Odoo config file",
     },
+    # Courriel
+    "mail_menu": {
+        "fr": "Courriel - Lire et envoyer du courriel",
+        "en": "Mail - Read and send email",
+    },
+    "mail_ai_question": {
+        "fr": "Question IA - Poser une question à un modèle",
+        "en": "AI question - Ask a model a question",
+    },
+    "mail_open_tui": {
+        "fr": "Ouvrir le client courriel (TUI)",
+        "en": "Open the mail client (TUI)",
+    },
+    "mail_accounts_menu": {"fr": "Comptes", "en": "Accounts"},
+    "mail_sync_now": {
+        "fr": "Synchroniser maintenant",
+        "en": "Synchronise now",
+    },
+    "mail_cache_menu": {"fr": "Cache", "en": "Cache"},
+    "mail_account_list": {"fr": "Lister les comptes", "en": "List accounts"},
+    "mail_account_add": {"fr": "Ajouter un compte", "en": "Add an account"},
+    "mail_account_delete": {
+        "fr": "Supprimer un compte",
+        "en": "Delete an account",
+    },
+    "mail_account_template": {
+        "fr": "Générer un modèle accounts.json",
+        "en": "Generate an accounts.json template",
+    },
+    "mail_account_test": {
+        "fr": "Tester la connexion d'un compte",
+        "en": "Test an account connection",
+    },
+    "mail_cache_default_mode": {
+        "fr": "Mode de cache par défaut",
+        "en": "Default cache mode",
+    },
+    "mail_cache_account_mode": {
+        "fr": "Mode de cache d'un compte",
+        "en": "Cache mode of one account",
+    },
+    "mail_cache_size_purge": {
+        "fr": "Taille du cache et purge",
+        "en": "Cache size and purge",
+    },
+    "mail_no_account": {
+        "fr": "Aucun compte configuré. Ajoutez-en un d'abord.",
+        "en": "No account configured. Add one first.",
+    },
+    "mail_ask_name": {
+        "fr": "Nom court du compte : ",
+        "en": "Short account name: ",
+    },
+    "mail_ask_email": {"fr": "Adresse courriel : ", "en": "Email address: "},
+    "mail_ask_display_name": {
+        "fr": "Nom affiché (facultatif) : ",
+        "en": "Display name (optional): ",
+    },
+    "mail_ask_preset": {"fr": "Fournisseur : ", "en": "Provider: "},
+    "mail_ask_password": {"fr": "Mot de passe : ", "en": "Password: "},
+    "mail_ask_imap_host": {"fr": "Serveur IMAP : ", "en": "IMAP server: "},
+    "mail_ask_smtp_host": {"fr": "Serveur SMTP : ", "en": "SMTP server: "},
+    "mail_ask_account": {"fr": "Quel compte ? ", "en": "Which account? "},
+    "mail_ask_mode": {
+        "fr": "Mode (clear / encrypted / ephemeral) : ",
+        "en": "Mode (clear / encrypted / ephemeral): ",
+    },
+    "mail_app_password_note": {
+        "fr": "Ce fournisseur exige un mot de passe d'application.",
+        "en": "This provider requires an app password.",
+    },
+    "mail_account_saved": {"fr": "Compte enregistré.", "en": "Account saved."},
+    "mail_account_save": {"fr": "Enregistrer", "en": "Save"},
+    "mail_account_missing_fields": {
+        "fr": "Nom, adresse et mot de passe sont requis.",
+        "en": "Name, address and password are required.",
+    },
+    "mail_account_add_unavailable": {
+        "fr": "Ajout de compte indisponible dans ce contexte.",
+        "en": "Adding an account is unavailable in this context.",
+    },
+    "mail_account_deleted": {
+        "fr": "Compte supprimé.",
+        "en": "Account deleted.",
+    },
+    "mail_connection_ok": {
+        "fr": "Connexion réussie.",
+        "en": "Connection succeeded.",
+    },
+    "mail_connection_failed": {
+        "fr": "Connexion échouée :",
+        "en": "Connection failed:",
+    },
+    "mail_template_written": {
+        "fr": "Modèle écrit dans",
+        "en": "Template written to",
+    },
+    "mail_purge_confirm": {
+        "fr": "Effacer tout le cache de ce compte ? (o/N) ",
+        "en": "Erase this account's whole cache? (y/N) ",
+    },
+    "mail_purged": {"fr": "Cache effacé.", "en": "Cache erased."},
+    "mail_no_vault": {
+        "fr": "Aucun coffre disponible : installez pykeepass ou déverrouillez un trousseau système.",
+        "en": "No vault available: install pykeepass or unlock a system keyring.",
+    },
+    "mail_kdbx_none_configured": {
+        "fr": "Aucun fichier kdbx n'est configuré.",
+        "en": "No kdbx file is configured.",
+    },
+    "mail_kdbx_menu_create": {
+        "fr": "Créer un nouveau fichier .kdbx",
+        "en": "Create a new .kdbx file",
+    },
+    "mail_kdbx_menu_choose": {
+        "fr": "Choisir un fichier existant",
+        "en": "Choose an existing file",
+    },
+    "mail_kdbx_menu_cancel": {"fr": "Annuler", "en": "Cancel"},
+    "mail_kdbx_ask_choice": {"fr": "Votre choix : ", "en": "Your choice: "},
+    "mail_kdbx_ask_path_new": {
+        "fr": "Chemin du nouveau fichier kdbx",
+        "en": "Path for the new kdbx file",
+    },
+    "mail_kdbx_ask_path_existing": {
+        "fr": "Chemin du fichier kdbx existant : ",
+        "en": "Path to the existing kdbx file: ",
+    },
+    "mail_kdbx_ask_password": {
+        "fr": "Mot de passe du coffre : ",
+        "en": "Vault password: ",
+    },
+    "mail_kdbx_ask_password_confirm": {
+        "fr": "Confirmez le mot de passe : ",
+        "en": "Confirm the password: ",
+    },
+    "mail_kdbx_password_mismatch": {
+        "fr": "Les mots de passe ne correspondent pas.",
+        "en": "Passwords do not match.",
+    },
+    "mail_kdbx_path_not_found": {
+        "fr": "Ce fichier n'existe pas :",
+        "en": "This file does not exist:",
+    },
+    "mail_kdbx_created": {
+        "fr": "Fichier kdbx créé :",
+        "en": "Kdbx file created:",
+    },
+    "mail_kdbx_path_recorded": {
+        "fr": "Fichier kdbx configuré :",
+        "en": "Kdbx file configured:",
+    },
+    "mail_no_password_stored": {
+        "fr": "Aucun mot de passe enregistré pour ce compte.",
+        "en": "No password stored for this account.",
+    },
+    "mail_install_textual": {
+        "fr": "Installez textual pour le client courriel (pip).",
+        "en": "Install textual for the mail client (pip).",
+    },
+    "mail_accounts": {"fr": "Comptes", "en": "Accounts"},
+    "mail_search": {"fr": "Rechercher…", "en": "Search…"},
+    "mail_search_clear": {
+        "fr": "Effacer la recherche",
+        "en": "Clear search",
+    },
+    "mail_from": {"fr": "De :", "en": "From:"},
+    "mail_to": {"fr": "À :", "en": "To:"},
+    "mail_cc": {"fr": "Cc :", "en": "Cc:"},
+    "mail_subject": {"fr": "Objet :", "en": "Subject:"},
+    "mail_date": {"fr": "Date", "en": "Date"},
+    "mail_send": {"fr": "Envoyer", "en": "Send"},
+    "mail_attachments": {"fr": "Pièces jointes :", "en": "Attachments:"},
+    "mail_attachments_paths": {
+        "fr": "Pièces jointes (chemins séparés par des points-virgules)",
+        "en": "Attachments (semicolon-separated paths)",
+    },
+    "mail_browse": {"fr": "Parcourir…", "en": "Browse…"},
+    "mail_browse_failed": {
+        "fr": "Sélecteur de fichiers impossible :",
+        "en": "File browser unavailable:",
+    },
+    "mail_no_subject": {"fr": "(sans objet)", "en": "(no subject)"},
+    "mail_body_needs_network": {
+        "fr": "Corps non téléchargé — connexion requise.",
+        "en": "Body not downloaded — connection required.",
+    },
+    "mail_body_error": {
+        "fr": "Lecture du corps impossible :",
+        "en": "Cannot read the body:",
+    },
+    "mail_flag_error": {
+        "fr": "Drapeau non transmis au serveur :",
+        "en": "Flag not sent to the server:",
+    },
+    "mail_syncing": {"fr": "Synchronisation de", "en": "Synchronising"},
+    "mail_new_messages": {"fr": "nouveaux messages", "en": "new messages"},
+    "mail_errors": {"fr": "erreurs", "en": "errors"},
+    "mail_folders_resynced": {
+        "fr": "dossiers resynchronisés (UIDVALIDITY changé) :",
+        "en": "folders resynchronised (UIDVALIDITY changed):",
+    },
+    "mail_offline_cannot_send": {
+        "fr": "Compte hors ligne : envoi impossible.",
+        "en": "Account offline: cannot send.",
+    },
+    "mail_sent_to": {"fr": "Envoyé à", "en": "Sent to"},
+    "mail_sent_not_filed": {
+        "fr": "envoyé, mais pas classé dans Envoyés",
+        "en": "sent, but not filed in Sent",
+    },
+    "mail_nothing_to_reply_to": {
+        "fr": "Aucun message sélectionné.",
+        "en": "No message selected.",
+    },
+    "mail_nothing_to_forward": {
+        "fr": "Aucun message à transférer.",
+        "en": "No message to forward.",
+    },
+    "mail_attachment_not_found": {
+        "fr": "Pièce jointe introuvable.",
+        "en": "Attachment not found.",
+    },
+    "mail_no_attachment": {
+        "fr": "Ce message n'a pas de pièce jointe.",
+        "en": "This message has no attachment.",
+    },
+    "mail_save_failed": {
+        "fr": "Enregistrement impossible :",
+        "en": "Cannot save:",
+    },
+    "mail_saved_to": {"fr": "Enregistré dans", "en": "Saved to"},
+    "mail_log_binding": {"fr": "Journal", "en": "Log"},
+    "mail_log_close": {"fr": "Fermer", "en": "Close"},
+    "mail_log_tail_heading": {
+        "fr": "Journal (fin) :",
+        "en": "Log (tail):",
+    },
+    "mail_log_errors_heading": {
+        "fr": "Erreurs de synchronisation (session en cours) :",
+        "en": "Sync errors (current session):",
+    },
+    "mail_log_missing": {
+        "fr": "journal introuvable",
+        "en": "log not found",
+    },
+    "mail_log_empty": {"fr": "journal vide", "en": "log empty"},
+    "mail_log_unreadable": {
+        "fr": "journal illisible",
+        "en": "log unreadable",
+    },
+    "mail_log_no_errors": {
+        "fr": "Aucune erreur de synchronisation dans cette session.",
+        "en": "No sync errors in this session.",
+    },
+    "mail_layout_binding": {"fr": "Vue", "en": "View"},
+    "mail_layout_switched": {"fr": "Disposition :", "en": "Layout:"},
+    "mail_layout_columns": {"fr": "Colonnes", "en": "Columns"},
+    "mail_layout_split": {"fr": "Partagée", "en": "Split"},
+    "mail_layout_stacked": {"fr": "Empilée", "en": "Stacked"},
+    "mail_pane_grow_binding": {"fr": "Agrandir volet", "en": "Grow pane"},
+    "mail_pane_shrink_binding": {
+        "fr": "Rétrécir volet",
+        "en": "Shrink pane",
+    },
+    "mail_pane_reset_binding": {
+        "fr": "Tailles par défaut",
+        "en": "Reset sizes",
+    },
+    "mail_pane_reset_done": {
+        "fr": "Tailles des volets réinitialisées.",
+        "en": "Pane sizes reset.",
+    },
+    "mail_pane_splitter_tooltip": {
+        "fr": "Glisser pour redimensionner",
+        "en": "Drag to resize",
+    },
+    "mail_fullscreen_binding": {"fr": "Plein écran", "en": "Full screen"},
+    # -- Libellés des raccourcis de MailApp (suffixe _binding) -------------
+    # Ce sont les descriptions des `Binding` de `MailApp` : elles s'affichent
+    # au pied d'écran ET, depuis la tâche 26, dans la fenêtre d'aide (`h`),
+    # qui les lit directement dans `MailApp.BINDINGS`. Le français est repris
+    # MOT POUR MOT de ce qui était écrit en dur avant cette tâche — le pied
+    # d'écran d'un utilisateur francophone ne change pas.
+    "mail_quit_binding": {"fr": "Quitter", "en": "Quit"},
+    "mail_sync_current_binding": {"fr": "Sync", "en": "Sync"},
+    "mail_sync_all_binding": {"fr": "Sync tout", "en": "Sync all"},
+    "mail_back_binding": {"fr": "Retour", "en": "Back"},
+    "mail_search_binding": {"fr": "Rechercher", "en": "Search"},
+    "mail_mark_seen_binding": {"fr": "Lu", "en": "Read"},
+    "mail_mark_unseen_binding": {"fr": "Non lu", "en": "Unread"},
+    "mail_save_attachment_binding": {
+        "fr": "Enregistrer PJ",
+        "en": "Save attachment",
+    },
+    "mail_compose_binding": {"fr": "Écrire", "en": "Compose"},
+    "mail_reply_binding": {"fr": "Répondre", "en": "Reply"},
+    "mail_reply_all_binding": {"fr": "Répondre à tous", "en": "Reply all"},
+    "mail_forward_binding": {"fr": "Transférer", "en": "Forward"},
+    "mail_add_account_binding": {
+        "fr": "Nouveau compte",
+        "en": "New account",
+    },
+    # -- Fenêtre d'aide (touche h) -----------------------------------------
+    # La liste des touches n'est PAS ici : elle est engendrée depuis
+    # `MailApp.BINDINGS` (voir `HelpScreen`), avec les libellés ci-dessus.
+    # Seul ce qu'une liste de touches ne peut pas dire est rédigé ici.
+    "mail_help_binding": {"fr": "Aide", "en": "Help"},
+    "mail_help_close": {"fr": "Fermer", "en": "Close"},
+    "mail_help_title": {
+        "fr": "Aide — client courriel",
+        "en": "Help — mail client",
+    },
+    "mail_help_keys_heading": {
+        "fr": "Raccourcis clavier :",
+        "en": "Keyboard shortcuts:",
+    },
+    "mail_help_notes_heading": {"fr": "Bon à savoir :", "en": "Good to know:"},
+    "mail_help_mouse": {
+        "fr": (
+            "Souris : glisser une barre entre deux volets les redimensionne."
+            " Au clavier, + et - font de même sur le volet qui a le focus, et"
+            " 0 remet les tailles par défaut. Les tailles sont retenues par"
+            " disposition."
+        ),
+        "en": (
+            "Mouse: drag a bar between two panes to resize them. From the"
+            " keyboard, + and - do the same to the focused pane, and 0 resets"
+            " the sizes. Sizes are remembered per layout."
+        ),
+    },
+    "mail_help_layouts": {
+        "fr": (
+            "Dispositions : v passe de colonnes à partagée, puis empilée, puis"
+            " revient à colonnes."
+        ),
+        "en": (
+            "Layouts: v cycles columns, split, stacked, then back to columns."
+        ),
+    },
+    "mail_help_sync": {
+        "fr": (
+            "Synchronisation : r synchronise le compte du dossier sélectionné"
+            " (tous ses dossiers), R synchronise tous les comptes. La"
+            " synchronisation automatique ne tourne QUE tant que le client est"
+            " ouvert, à l'intervalle mail_refresh_sec (300 s par défaut ; 0 la"
+            " désactive)."
+        ),
+        "en": (
+            "Sync: r syncs the account of the selected folder (all its"
+            " folders), R syncs every account. The automatic refresh runs ONLY"
+            " while the client is open, at the mail_refresh_sec interval (300 s"
+            " by default; 0 disables it)."
+        ),
+    },
+    "mail_help_files": {
+        "fr": (
+            "Fichiers : le journal est dans ~/.erplibre/mail.log (la touche l"
+            " en montre la fin), les comptes dans"
+            " ~/.erplibre/mail/accounts.json. Les mots de passe n'y sont JAMAIS"
+            " écrits : ils vivent dans le coffre kdbx ou le trousseau du"
+            " système."
+        ),
+        "en": (
+            "Files: the log lives in ~/.erplibre/mail.log (the l key shows its"
+            " tail), the accounts in ~/.erplibre/mail/accounts.json. Passwords"
+            " are NEVER written there: they live in the kdbx vault or in the"
+            " system keyring."
+        ),
+    },
+    "mail_help_close_hint": {
+        "fr": "Échap ferme cette fenêtre.",
+        "en": "Esc closes this window.",
+    },
+    # -- Exceptions internes au paquet courriel (préfixe mail_err_) --------
+    # Label traduit, données dynamiques (chemins, texte serveur, valeurs de
+    # config) concaténées crues : jamais de traduction d'un message serveur
+    # ou d'un chemin de fichier.
+    #
+    # Quelques messages ont la donnée dynamique AU MILIEU de la phrase : ils
+    # sont donc assemblés à partir de deux clés (voire trois), dans un ordre
+    # FIXE codé au site d'appel plutôt que par une seule clé avec un
+    # emplacement — mail_err_unknown_security + mail_err_expected,
+    # mail_err_key_wrong_length + mail_err_octets_unit,
+    # mail_err_mode_prefix + mail_err_mode_requires_key(_no_vault),
+    # mail_err_imap_connection_prefix / mail_err_smtp_connection_prefix +
+    # mail_err_connection_refused_suffix, et mail_err_keyring_plaintext +
+    # mail_err_keyring_plaintext_hint. L'ordre des mots vit donc dans le
+    # code, pas dans les chaînes traduisibles : une langue à l'ordre des
+    # mots différent devra remplacer ces paires par une convention à
+    # emplacement (ex. `.format()`), pas par une simple concaténation.
+    "mail_err_envelope_too_short": {
+        "fr": "enveloppe trop courte",
+        "en": "envelope too short",
+    },
+    "mail_err_sealed_in_clear_mode": {
+        "fr": "donnée chiffrée lue en mode clair : la clé du compte manque",
+        "en": "encrypted data read in clear mode: the account key is missing",
+    },
+    "mail_err_unknown_envelope": {
+        "fr": "enveloppe inconnue :",
+        "en": "unknown envelope:",
+    },
+    "mail_err_key_wrong_length": {
+        "fr": "la clé doit faire",
+        "en": "the key must be",
+    },
+    "mail_err_octets_unit": {"fr": "octets", "en": "bytes"},
+    "mail_err_cryptography_not_installed": {
+        "fr": "le paquet cryptography n'est pas installé",
+        "en": "the cryptography package is not installed",
+    },
+    "mail_err_decrypt_refused": {
+        "fr": "déchiffrement refusé : clé fausse ou donnée altérée",
+        "en": "decryption refused: wrong key or corrupted data",
+    },
+    "mail_err_envelope_unreadable": {
+        "fr": "enveloppe illisible :",
+        "en": "unreadable envelope:",
+    },
+    "mail_err_mode_prefix": {"fr": "le mode", "en": "mode"},
+    "mail_err_mode_requires_key": {
+        "fr": "exige une clé",
+        "en": "requires a key",
+    },
+    "mail_err_unknown_cache_mode": {
+        "fr": "mode de cache inconnu :",
+        "en": "unknown cache mode:",
+    },
+    "mail_err_file_already_exists": {
+        "fr": "le fichier existe déjà :",
+        "en": "the file already exists:",
+    },
+    "mail_err_invalid_secret_ref": {
+        "fr": "référence de secret invalide :",
+        "en": "invalid secret reference:",
+    },
+    "mail_err_no_kdbx_configured": {
+        "fr": "aucun fichier kdbx configuré",
+        "en": "no kdbx file configured",
+    },
+    "mail_err_kdbx_unreadable": {
+        "fr": "le fichier kdbx n'a pas pu être ouvert",
+        "en": "the kdbx file could not be opened",
+    },
+    "mail_err_no_vault_available": {
+        "fr": "aucun coffre disponible : ni kdbx, ni trousseau système",
+        "en": "no vault available: neither kdbx nor system keyring",
+    },
+    "mail_err_keyring_plaintext": {
+        "fr": (
+            "le trousseau du système écrirait le mot de passe en clair"
+            " (backend"
+        ),
+        "en": (
+            "the system keyring would store the password in plaintext"
+            " (backend"
+        ),
+    },
+    "mail_err_keyring_plaintext_hint": {
+        "fr": "Utilisez un fichier kdbx, ou déverrouillez un vrai trousseau.",
+        "en": "Use a kdbx file, or unlock a real keyring.",
+    },
+    "mail_err_unknown_security": {
+        "fr": "sécurité inconnue :",
+        "en": "unknown security:",
+    },
+    "mail_err_expected": {"fr": "(attendu", "en": "(expected"},
+    "mail_err_account_needs_name": {
+        "fr": "un compte doit avoir un nom",
+        "en": "an account must have a name",
+    },
+    "mail_err_invalid_account_name": {
+        "fr": "nom de compte invalide :",
+        "en": "invalid account name:",
+    },
+    "mail_err_account_name_reason": {
+        "fr": "(il sert de nom de dossier et de référence de coffre)",
+        "en": "(it is used as a folder name and vault reference)",
+    },
+    "mail_err_account_unreadable": {
+        "fr": "compte illisible :",
+        "en": "unreadable account:",
+    },
+    "mail_err_unknown_preset": {
+        "fr": "préréglage inconnu :",
+        "en": "unknown preset:",
+    },
+    "mail_err_not_valid_json": {
+        "fr": "n'est pas du JSON valide :",
+        "en": "is not valid JSON:",
+    },
+    "mail_err_should_contain_json_object": {
+        "fr": "devrait contenir un objet JSON",
+        "en": "should contain a JSON object",
+    },
+    "mail_err_duplicate_account_names": {
+        "fr": "noms de compte en double :",
+        "en": "duplicate account names:",
+    },
+    "mail_err_already_exists_relaunch": {
+        "fr": "existe déjà — relancez avec l'option de remplacement",
+        "en": "already exists — rerun with the overwrite option",
+    },
+    "mail_err_symlink_refused": {
+        "fr": "est un lien symbolique : cache refusé",
+        "en": "is a symlink: cache refused",
+    },
+    "mail_err_owned_by_other_user": {
+        "fr": "appartient à un autre utilisateur : cache refusé",
+        "en": "belongs to another user: cache refused",
+    },
+    "mail_err_cache_unreadable": {
+        "fr": "cache illisible, purgez-le et resynchronisez :",
+        "en": "unreadable cache, purge it and resynchronise:",
+    },
+    "mail_err_mode_requires_key_no_vault": {
+        "fr": "exige une clé : aucun coffre fourni",
+        "en": "requires a key: no vault provided",
+    },
+    "mail_err_cache_not_open": {
+        "fr": "cache non ouvert : appelez open() d'abord",
+        "en": "cache not open: call open() first",
+    },
+    "mail_err_unknown_folder_fields": {
+        "fr": "champs de dossier inconnus :",
+        "en": "unknown folder fields:",
+    },
+    "mail_err_unterminated_ampersand": {
+        "fr": "séquence & non terminée",
+        "en": "unterminated & sequence",
+    },
+    "mail_err_server_replied": {
+        "fr": ": le serveur a répondu",
+        "en": ": the server replied",
+    },
+    "mail_err_no_body_for_uid": {
+        "fr": "aucun corps rendu pour l'UID",
+        "en": "no body returned for UID",
+    },
+    "mail_err_imap_connection_prefix": {
+        "fr": "connexion IMAP à",
+        "en": "IMAP connection to",
+    },
+    "mail_err_smtp_connection_prefix": {
+        "fr": "connexion SMTP à",
+        "en": "SMTP connection to",
+    },
+    "mail_err_connection_refused_suffix": {
+        "fr": "refusée :",
+        "en": "refused:",
+    },
+    "mail_err_message_needs_recipient": {
+        "fr": "un message doit avoir au moins un destinataire",
+        "en": "a message must have at least one recipient",
+    },
+    "mail_err_attachment_missing": {
+        "fr": "pièce jointe introuvable :",
+        "en": "attachment not found:",
+    },
+    "mail_err_no_recipient_nothing_sent": {
+        "fr": "aucun destinataire : rien n'a été envoyé",
+        "en": "no recipient: nothing was sent",
+    },
+    "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
 }
 
 
