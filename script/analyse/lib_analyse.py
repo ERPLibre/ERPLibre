@@ -630,11 +630,24 @@ def _describe():
     quand un outil s'ajoute.
     """
     here = os.path.dirname(os.path.abspath(__file__))
-    lst_tool = sorted(
-        name
-        for name in os.listdir(here)
-        if name.startswith("analyse_") and name.endswith(".py")
-    )
+
+    def is_runnable(name):
+        """Ce fichier se lance-t-il vraiment ?
+
+        Le nom ne suffit pas : `analyse_diff_tui.py` commence pareil et n'a
+        pas de point d'entrée. L'annoncer comme exécutable reproduirait le
+        défaut même que cette fonction corrige — promettre une commande qui
+        ne fait rien. On regarde donc s'il y a un bloc `__main__`.
+        """
+        if not (name.startswith("analyse_") and name.endswith(".py")):
+            return False
+        try:
+            with open(os.path.join(here, name), encoding="utf-8") as handle:
+                return '__name__ == "__main__"' in handle.read()
+        except OSError:
+            return False
+
+    lst_tool = sorted(name for name in os.listdir(here) if is_runnable(name))
     print(
         f"📚 {os.path.basename(__file__)} — "
         f"{t('shared library, nothing to run here.')}"

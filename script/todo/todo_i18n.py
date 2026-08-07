@@ -3620,6 +3620,91 @@ TRANSLATIONS = {
         "en": "Flags say a view was touched, not how: only comparing with the"
         " module source settles it.",
     },
+    "blocking": {"fr": "bloquants", "en": "blocking"},
+    "Studio and hand-made x_ fields": {
+        "fr": "🧩 Champs x_ (Studio et faits à la main)",
+        "en": "🧩 Studio and hand-made x_ fields",
+    },
+    "Show every field": {
+        "fr": "📜 Afficher tous les champs",
+        "en": "📜 Show every field",
+    },
+    # --- script/analyse : champs et modèles hors module ---
+    "Nothing declares these in a file, so no module will "
+    "recreate them. What a version upgrade keeps is what "
+    "someone carried over.": {
+        "fr": "Rien ne les déclare dans un fichier, donc aucun module "
+        "ne les recréera. Ce qu'une montée de version conserve "
+        "est ce que quelqu'un a reporté.",
+        "en": "Nothing declares these in a file, so no module will "
+        "recreate them. What a version upgrade keeps is what "
+        "someone carried over.",
+    },
+    "A stored field without its column stops the registry "
+    "from loading, so the upgrade will not even start. Settle "
+    "these before anything else.": {
+        "fr": "Un champ stocké sans sa colonne empêche le registre de "
+        "charger, donc la montée de version ne démarrera même "
+        "pas. Réglez cela avant tout le reste.",
+        "en": "A stored field without its column stops the registry "
+        "from loading, so the upgrade will not even start. Settle "
+        "these before anything else.",
+    },
+    "Use -v to list them all, --json for the raw data.": {
+        "fr": "Utilisez -v pour tout afficher, --json pour la donnée "
+        "brute.",
+        "en": "Use -v to list them all, --json for the raw data.",
+    },
+    "List the fields and models added outside a module — "
+    "Studio or by hand (read-only).": {
+        "fr": "Lister les champs et modèles ajoutés hors module — "
+        "Studio ou faits à la main (lecture seule).",
+        "en": "List the fields and models added outside a module — "
+        "Studio or by hand (read-only).",
+    },
+    "how many to show (default: 30)": {
+        "fr": "nombre à afficher (défaut : 30)",
+        "en": "how many to show (default: 30)",
+    },
+    "list every one": {"fr": "tout afficher", "en": "list every one"},
+    "Studio": {"fr": "Studio", "en": "Studio"},
+    "Made by hand": {"fr": "Fait à la main", "en": "Made by hand"},
+    "Declared by a module": {
+        "fr": "Déclaré par un module",
+        "en": "Declared by a module",
+    },
+    "stored, but its column is missing": {
+        "fr": "stocké, mais sa colonne manque",
+        "en": "stored, but its column is missing",
+    },
+    "points at a model that no longer exists": {
+        "fr": "pointe vers un modèle qui n'existe plus",
+        "en": "points at a model that no longer exists",
+    },
+    "its model no longer exists": {
+        "fr": "son modèle n'existe plus",
+        "en": "its model no longer exists",
+    },
+    "its table could not be resolved": {
+        "fr": "sa table n'a pas pu être résolue",
+        "en": "its table could not be resolved",
+    },
+    "origin": {"fr": "provenance", "en": "origin"},
+    "Fields added outside a module": {
+        "fr": "Champs ajoutés hors module",
+        "en": "Fields added outside a module",
+    },
+    "Custom fields": {"fr": "Champs personnalisés", "en": "Custom fields"},
+    "Custom models": {"fr": "Modèles personnalisés", "en": "Custom models"},
+    "No field or model was added outside a module.": {
+        "fr": "Aucun champ ni modèle n'a été ajouté hors module.",
+        "en": "No field or model was added outside a module.",
+    },
+    "Blocking": {"fr": "Bloquant", "en": "Blocking"},
+    "To carry over by hand": {
+        "fr": "À reporter à la main",
+        "en": "To carry over by hand",
+    },
     # --- script/analyse : comparaison et navigation des écarts ---
     "Differences only": {
         "fr": "Écarts seuls",

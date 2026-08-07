@@ -6448,6 +6448,7 @@ class TODO:
                     "Customised views, website copies included"
                 )
             },
+            {"prompt_description": t("Studio and hand-made x_ fields")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6460,6 +6461,8 @@ class TODO:
                 self.execute_analyse_schema_size()
             elif status == "2":
                 self.execute_analyse_view_custom()
+            elif status == "3":
+                self.execute_analyse_custom_field()
             else:
                 print(t("Command not found !"))
 
@@ -6627,6 +6630,36 @@ class TODO:
                     )
                 },
                 {"prompt_description": t("Browse the differences (TUI)")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_custom_field(self):
+        """Champs et modèles ajoutés hors module : Studio, ou faits à la main."""
+        database = self._analyse_select_database()
+        if not database:
+            return
+        from script.analyse import analyse_custom_field as analyse
+
+        try:
+            data = analyse.collect(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        print(analyse.render(data, hints=False))
+        if not data["fields"] and not data["models"]:
+            return
+
+        def handler(rank):
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            else:
+                self._analyse_export_json(data, database, "custom_field")
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every field")},
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,
