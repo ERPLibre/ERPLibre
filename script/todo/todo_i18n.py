@@ -51,9 +51,63 @@ TRANSLATIONS = {
         "fr": "Commande non trouvée !",
         "en": "Command not found !",
     },
+    "Back": {
+        "fr": "🔙 Retour",
+        "en": "🔙 Back",
+    },
+    # Execute submenu
+    "Run - Execute and install an instance": {
+        "fr": "🏃 Run - Exécuter et installer une instance",
+        "en": "🏃 Run - Execute and install an instance",
+    },
+    "Automation - Demonstration of developed features": {
+        "fr": "🦾 Automatisation - Demonstration des fonctions développées",
+        "en": "🦾 Automation - Demonstration of developed features",
+    },
+    "Update - Update all developed staging source code": {
+        "fr": "🔃 Mise à jour - Update all developed staging source code",
+        "en": "🔃 Update - Update all developed staging source code",
+    },
+    "Code - Developer tools": {
+        "fr": "💻 Code - Outil pour développeur",
+        "en": "💻 Code - Developer tools",
+    },
+    "Doc - Documentation search": {
+        "fr": "📖 Doc - Recherche de documentation",
+        "en": "📖 Doc - Documentation search",
+    },
+    "Database - Database tools": {
+        "fr": "💾 Database - Outils sur les bases de données",
+        "en": "💾 Database - Database tools",
+    },
+    "Process - Execution tools": {
+        "fr": "📟 Process - Outils sur les executions",
+        "en": "📟 Process - Execution tools",
+    },
+    "Config - Configuration file management": {
+        "fr": "🔧 Config - Traitement du fichier de configuration",
+        "en": "🔧 Config - Configuration file management",
+    },
+    "Network - Network tools": {
+        "fr": "📡 Réseau - Outil réseautique",
+        "en": "📡 Network - Network tools",
+    },
+    "Security - Dependency security audit": {
+        "fr": "🔒 Sécurité - Audit de sécurité des dépendances",
+        "en": "🔒 Security - Dependency security audit",
+    },
     "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "RTK - CLI proxy to reduce LLM token consumption",
+    },
+    "Language - Change language / Changer la langue": {
+        "fr": "🌍 Langue - Changer la langue / Change language",
+        "en": "🌍 Language - Change language / Changer la langue",
+    },
+    # Deploy section
+    "Deploy - Deploy ERPLibre locally": {
+        "fr": "🚀 Déploiement - Déployer ERPLibre localement",
+        "en": "🚀 Deploy - Deploy ERPLibre locally",
     },
     "Deploy ERPLibre to a local directory!": {
         "fr": "Déployer ERPLibre dans un répertoire local!",
@@ -533,10 +587,46 @@ TRANSLATIONS = {
         "fr": "Ouvrir ERPLibre avec TODO 🤖",
         "en": "Open ERPLibre with TODO 🤖",
     },
+    "Update all erplibre_base on database test": {
+        "fr": "🔄 Mise à jour de tous les erplibre_base sur la base de données test",
+        "en": "🔄 Update all erplibre_base on database test",
+    },
+    "Show code status": {
+        "fr": "🔍 Afficher le statut du code",
+        "en": "🔍 Show code status",
+    },
+    "Stash all code": {
+        "fr": "📦 Remiser tout le code",
+        "en": "📦 Stash all code",
+    },
+    "Format modified code": {
+        "fr": "🎨 Formater le code modifié",
+        "en": "🎨 Format modified code",
+    },
     # todo.py hardcoded prompt_descriptions
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",
+    },
+    "Upgrade Odoo - Migration Database": {
+        "fr": "🚚 Mise à jour Odoo - Migration de base de données",
+        "en": "🚚 Upgrade Odoo - Migration Database",
+    },
+    "Upgrade Poetry - Dependency of Odoo": {
+        "fr": "📦 Mise à jour Poetry - Dépendances d'Odoo",
+        "en": "📦 Upgrade Poetry - Dependency of Odoo",
+    },
+    "Open SHELL": {
+        "fr": "🐚 Ouvrir le SHELL",
+        "en": "🐚 Open SHELL",
+    },
+    "Upgrade Module": {
+        "fr": "🧩 Mise à jour de module",
+        "en": "🧩 Upgrade Module",
+    },
+    "Debug": {
+        "fr": "🐛 Débogage",
+        "en": "🐛 Debug",
     },
     "Migration module coverage": {
         "fr": "Couverture de migration des modules",
@@ -614,6 +704,11 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
+    # Test section
+    "Test - Test an Odoo module": {
+        "fr": "🧪 Test - Tester un module Odoo",
+        "en": "🧪 Test - Test an Odoo module",
+    },
     "Test an Odoo module on a temporary database!": {
         "fr": "Tester un module Odoo sur une base de données temporaire!",
         "en": "Test an Odoo module on a temporary database!",
@@ -674,6 +769,10 @@ TRANSLATIONS = {
         "fr": "Suppression de la base de données temporaire",
         "en": "Cleaning up temporary database",
     },
+    "Keep the temporary database? (y/N): ": {
+        "fr": "Conserver la base de données temporaire? (o/N, défaut : non) : ",
+        "en": "Keep the temporary database? (y/N, default: no): ",
+    },
     "Database kept": {
         "fr": "Base de données conservée",
         "en": "Database kept",
@@ -689,6 +788,11 @@ TRANSLATIONS = {
     "Module name is required!": {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
+    },
+    # Git section
+    "Git - Git tools": {
+        "fr": "🌿 Git - Outils Git",
+        "en": "🌿 Git - Git tools",
     },
     "Git management tools!": {
         "fr": "Outils de gestion Git!",
@@ -922,6 +1026,11 @@ TRANSLATIONS = {
     "Keyboard interrupt": {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
+    },
+    # GPT code section
+    "GPT code - AI assistant tools": {
+        "fr": "🤖 GPT code - Outils d'assistant IA",
+        "en": "🤖 GPT code - AI assistant tools",
     },
     "AI assistant tools for development!": {
         "fr": "Outils d'assistant IA pour le développement!",

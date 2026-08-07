@@ -6,6 +6,7 @@ import ast
 import configparser
 import datetime
 import getpass
+import inspect
 import json
 import logging
 import os
@@ -173,6 +174,34 @@ class TODO:
                 print(t("Command not found !"))
 
         print(status)
+        # manipuler()
+
+    def execute_prompt_ia(self):
+        while True:
+            help_info = f"""{self._menu_header()}
+[0] {t("Back")}
+{t("Write your question ")}"""
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            kp = self.kdbx_manager.get_kdbx()
+            if not kp:
+                return
+            config_name = self.config_file.get_config_value(
+                ["kdbx_config", "openai", "kdbx_key"]
+            )
+            entry = kp.find_entries_by_title(config_name, first=True)
+
+            client = openai.OpenAI(api_key=entry.password)
+            prompt_update = status
+            completion = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt_update}],
+            )
+
+            print(completion.choices[0].message.content)
+            print()
 
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
@@ -267,6 +296,184 @@ class TODO:
                     return
             else:
                 print(t("Command not found !"))
+
+    def prompt_install(self):
+        print("Detect first installation from code source.")
+
+        first_installation_input = (
+            input(
+                "💬 First system installation? This will process system installation"
+                " before (Y/N): "
+            )
+            .strip()
+            .lower()
+        )
+        if self._is_yes(first_installation_input):
+            cmd = "./script/version/update_env_version.py --install"
+            self.execute.exec_command_live(cmd, source_erplibre=True)
+            print("Wait after OS installation before continue.")
+
+        # First detect pycharm, need to be open before installation and close to increase speed
+        has_pycharm = False
+        has_pycharm_community = False
+        result = subprocess.run(
+            ["which", "pycharm"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            has_pycharm = True
+        else:
+            result = subprocess.run(
+                ["which", "pycharm-community"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            has_pycharm_community = result.returncode == 0
+        if (has_pycharm or has_pycharm_community) and not os.path.exists(
+            ".idea"
+        ):
+            pycharm_configuration_input = (
+                input("💬 Open Pycharm? (Y/N): ").strip().lower()
+            )
+            if self._is_yes(pycharm_configuration_input):
+                pycharm_bin = "pycharm" if has_pycharm else "pycharm-community"
+
+                cmd = f"cd {os.getcwd()} && {pycharm_bin} ./"
+                self.execute.exec_command_live(
+                    cmd,
+                    source_erplibre=False,
+                    single_source_erplibre=False,
+                    new_window=True,
+                )
+                print(
+                    "👹 WAIT and Close Pycharm when processing is done before continue"
+                    " this guide."
+                )
+        # TODO detect last version supported
+        # cmd_intern = "./script/install/install_erplibre.sh"
+        # TODO maybe update q to only install erplibre from install_locally
+        # TODO problem installing with q, the script depend on odoo
+        key_i = 0
+        commands_begin = {
+            "q": (
+                "q",
+                "q: ERPLibre only with system python without Odoo",
+                "./script/install/install_erplibre.sh",
+            ),
+            "w": (
+                "w",
+                "w: Install all Odoo version with ERPLibre",
+                "make install_odoo_all_version",
+            ),
+            "m": (
+                "m",
+                "m: ERPLibre with mobile home",
+                "./mobile/install_and_run.sh",
+            ),
+            "0": (
+                "0",
+                f"0: {t('Quit')}",
+            ),
+        }
+        commands_end = {}
+        versions, installed_versions, odoo_installed_version = (
+            get_odoo_version()
+        )
+
+        for version_info in versions[::-1]:
+            key_i += 1
+            key_s = str(key_i)
+            label = f"{key_s}: Odoo {version_info.get('odoo_version')}"
+
+            odoo_version = f"odoo{version_info.get('odoo_version')}"
+            if odoo_version in installed_versions:
+                label += " - Installed"
+            if odoo_version == odoo_installed_version:
+                label += " - Actual"
+            if version_info.get("Default"):
+                label += " - Default"
+            if version_info.get("is_deprecated"):
+                label += " - Deprecated"
+            erplibre_version = version_info.get("erplibre_version")
+            commands_begin[key_s] = (
+                key_s,
+                label,
+                f"./script/version/update_env_version.py --erplibre_version {erplibre_version} --install_dev",
+            )
+
+        # Add final command
+        install_commands = {**commands_begin, **commands_end}
+
+        # Show command
+        odoo_version_input = ""
+        while odoo_version_input not in install_commands:
+            if odoo_version_input:
+                print(
+                    f"{t('Error, cannot understand value')} '{odoo_version_input}'"
+                )
+            str_input_dyn_odoo_version = (
+                f"💬 {t('Choose a version:')}\n\t"
+                + "\n\t".join([a[1] for a in install_commands.values()])
+                + f"\n{t('Select: ')}"
+            )
+            odoo_version_input = (
+                input(str_input_dyn_odoo_version).strip().lower()
+            )
+
+        if odoo_version_input == "0":
+            return
+
+        cmd_intern = install_commands.get(odoo_version_input)[2]
+
+        # For numbered version selections, offer extra modules sub-menu
+        if odoo_version_input.isdigit():
+            extra_choices = {
+                "1": (
+                    "1",
+                    f"1: {t('Standard install (without extra modules)')}",
+                ),
+                "2": (
+                    "2",
+                    f"2: {t('Install with extra modules (CybroOdoo - large, slow)')}",
+                ),
+                "0": ("0", f"0: {t('Back')}"),
+            }
+            extra_input = ""
+            while extra_input not in extra_choices:
+                if extra_input:
+                    print(
+                        f"{t('Error, cannot understand value')} '{extra_input}'"
+                    )
+                str_extra = (
+                    f"💬 {t('Install type:')}\n\t"
+                    + "\n\t".join([a[1] for a in extra_choices.values()])
+                    + f"\n{t('Select: ')}"
+                )
+                extra_input = input(str_extra).strip()
+            if extra_input == "0":
+                return
+            if extra_input == "2":
+                cmd_intern = cmd_intern + " --with_extra"
+
+        print(f"{t('Will execute:')}\n{cmd_intern}")
+
+        # TODO use external script to detect terminal to use on system
+        # TODO check script open_terminal_code_generator.sh
+        # cmd_extern = f"gnome-terminal -- bash -c '{cmd_intern};bash'"
+        try:
+            subprocess.run(
+                cmd_intern, shell=True, executable="/bin/bash", check=True
+            )
+        except subprocess.CalledProcessError as e:
+            print(
+                f"{t('The Bash script failed with return code')} {e.returncode}."
+            )
+            print("Wait after installation and open projects by terminal.")
+            print("make open_terminal")
+            self.restart_script(str(e))
 
     def execute_from_configuration(
         self, instance, exec_run_db=False, ignore_makefile=False
@@ -5750,6 +5957,76 @@ class TODO:
             cmd, source_erplibre=False, single_source_erplibre=True
         )
 
+    def prompt_execute_code(self):
+        print(f"🤖 {t('What do you need for development?')}")
+        #         help_info = """Commande :
+        #         [1] Status Git local et distant
+        #         [2] Démarrer le générateur de code
+        #         [3] Format - Formatage automatique selon changement [ou manuelle]
+        #         [4] Qualité - Qualité logiciel, détecter les fichiers qui manquent les licences AGPLv3
+        #         [0] Retour
+        # """
+        #         help_info = """Commande :
+        #         [1] Status Git local et distant
+        #         [0] Retour
+        # """
+
+        choices = self.config_file.get_config("code_from_makefile")
+
+        menu_entry = {
+            "prompt_description": t("Open SHELL"),
+        }
+        choices.append(menu_entry)
+
+        menu_entry = {
+            "prompt_description": t("Upgrade Module"),
+        }
+        choices.append(menu_entry)
+
+        choices.append(
+            {
+                "prompt_description": t("Debug"),
+            }
+        )
+
+        # Déplacé depuis le menu Execute : mise à jour de tout le code source
+        # de dev en staging (sous-menu de mise à jour).
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Update - Update all developed staging source code"
+                ),
+            }
+        )
+
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == str(len(choices)):
+                self.prompt_execute_update()
+            elif status == str(len(choices) - 1):
+                self.debug_ide()
+            elif status == str(len(choices) - 2):
+                self.upgrade_module()
+            elif status == str(len(choices) - 3):
+                self.open_shell_on_database()
+            else:
+                cmd_no_found = True
+                try:
+                    int_cmd = int(status)
+                    if 0 < int_cmd <= len(choices):
+                        cmd_no_found = False
+                        instance = choices[int_cmd - 1]
+                        self.execute_from_configuration(instance)
+                except ValueError:
+                    pass
+                if cmd_no_found:
+                    print(t("Command not found !"))
+
     def prompt_execute_git(self):
         print(f"🤖 {t('Git management tools!')}")
         choices = [
@@ -5986,6 +6263,44 @@ class TODO:
             print(f"  /{name:<30} {date_str}")
         print("-" * 50)
         print(f"{t('Total:')}" f" {len(files)}")
+
+    def _setup_claude_command(
+        self, command_name, template_filename, personalize=False
+    ):
+        dest_dir = os.path.expanduser("~/.claude/commands")
+        dest_file = os.path.join(dest_dir, f"{command_name}.md")
+
+        if os.path.exists(dest_file):
+            print(f"{t('File already exists: ')}{dest_file}")
+            overwrite = input(t("Do you want to overwrite the file? (y/Y): "))
+            if not self._is_yes(overwrite):
+                print(t("Nothing to do."))
+                return
+
+        template_path = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "..",
+            "conf",
+            template_filename,
+        )
+        try:
+            with open(template_path) as f:
+                content = f.read()
+
+            if personalize:
+                name = input(t("Enter your full name: ")).strip()
+                email = input(t("Enter your email: ")).strip()
+                content = content.replace("your@email.com", email)
+                content = content.replace("Your Name", name)
+
+            os.makedirs(dest_dir, exist_ok=True)
+            with open(dest_file, "w") as f:
+                f.write(content)
+
+            print(f"{t('File created successfully: ')}{dest_file}")
+        except Exception as e:
+            print(f"{t('Error creating file: ')}{e}")
 
     def _claude_add_automation(self):
         description = input(t("Description of the command to add: ")).strip()
@@ -6371,6 +6686,95 @@ class TODO:
             else:
                 print(t("Command not found !"))
 
+    def execute_test_module(self, coverage=False):
+        # Module name
+        module_name = input(t("Module name to test: ")).strip()
+        if not module_name:
+            print(t("Module name is required!"))
+            return
+
+        # Database name
+        db_name = input(
+            t("Temporary database name (default: test_todo_tmp): ")
+        ).strip()
+        if not db_name:
+            db_name = "test_todo_tmp"
+
+        # Extra modules
+        extra_modules = input(
+            t("Extra modules to install (comma-separated, empty for none): ")
+        ).strip()
+
+        # Log level
+        log_level = input(t("Log level (default: test): ")).strip()
+        if not log_level:
+            log_level = "test"
+
+        # Build module list
+        modules_to_install = module_name
+        if extra_modules:
+            modules_to_install += f",{extra_modules}"
+
+        # Step 1: Create temp DB
+        print(f"\n--- {t('Creating temporary database')} '{db_name}' ---")
+        cmd_restore = f"./script/database/db_restore.py --database {db_name}"
+        self.execute.exec_command_live(
+            cmd_restore,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        # Step 2: Install modules
+        print(f"\n--- {t('Installing modules')}: {modules_to_install} ---")
+        cmd_install = (
+            f"./script/addons/install_addons.sh"
+            f" {db_name} {modules_to_install}"
+        )
+        self.execute.exec_command_live(
+            cmd_install,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        # Step 3: Run tests
+        print(f"\n--- {t('Running tests')}: {module_name} ---")
+        cmd_test = (
+            f"ODOO_MODE_TEST=true"
+            f" ./run.sh"
+            f" -d {db_name}"
+            f" -u {module_name}"
+            f" --log-level={log_level}"
+        )
+        if coverage:
+            cmd_test = f"ODOO_MODE_COVERAGE=true {cmd_test}"
+        status_code, output = self.execute.exec_command_live(
+            cmd_test,
+            return_status_and_output=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+
+        if status_code == 0:
+            print(f"\n✅ {t('Tests completed successfully!')}")
+        else:
+            print(f"\n❌ {t('Tests failed with return code')} {status_code}")
+
+        # Step 4: Cleanup
+        keep_input = input(t("Keep the temporary database? (y/N): "))
+        keep = self._is_yes(keep_input)
+        if keep:
+            print(f"{t('Database kept')}: {db_name}")
+        else:
+            print(
+                f"\n--- {t('Cleaning up temporary database')} '{db_name}' ---"
+            )
+            cmd_drop = f"./odoo_bin.sh db --drop --database {db_name}"
+            self.execute.exec_command_live(
+                cmd_drop,
+                source_erplibre=False,
+                single_source_erplibre=True,
+            )
+
     def execute_unit_tests(self):
         print(f"\n--- {t('Running unit tests')} ---")
         cmd = (
@@ -6672,6 +7076,50 @@ class TODO:
         upgrade = todo_upgrade.TodoUpgrade(self)
         upgrade.execute_module_upgrade()
 
+    def upgrade_poetry(self):
+        # Only show the version to the user
+        status = self.execute.exec_command_live(
+            f"make version",
+            source_erplibre=False,
+        )
+        # TODO maybe autodetect to update it
+        git_repo_update_input = input(
+            "💬 Would you like to fetch all your git repositories, you need it (y/Y) : "
+        )
+        if self._is_yes(git_repo_update_input):
+            status = self.execute.exec_command_live(
+                f"./script/manifest/update_manifest_local_dev.sh",
+                source_erplibre=False,
+            )
+
+        poetry_lock = "./poetry.lock"
+        try:
+            os.remove(poetry_lock)
+        except Exception as e:
+            pass
+        odoo_long_version = ""
+        if os.path.exists("./.erplibre-version"):
+            with open("./.erplibre-version") as f:
+                odoo_long_version = f.read()
+        path_file_odoo_lock = f"./requirement/poetry.{odoo_long_version}.lock"
+        if odoo_long_version:
+            try:
+                os.remove(path_file_odoo_lock)
+            except Exception as e:
+                pass
+
+        status = self.execute.exec_command_live(
+            f"pip install -r requirement/erplibre_require-ments-poetry.txt && "
+            f"./script/poetry/poetry_update.py -f",
+            source_erplibre=False,
+            single_source_erplibre=False,
+            single_source_odoo=True,
+            source_odoo=odoo_long_version,
+        )
+
+        if os.path.exists(poetry_lock):
+            shutil.copy2(poetry_lock, path_file_odoo_lock)
+
     def callback_execute_custom_database(self, config):
         database_name = self.db_manager.select_database()
         self.prompt_execute_selenium_and_run_db(database_name)
@@ -6718,6 +7166,128 @@ class TODO:
     def on_dir_selected(self, dir_path):
         self.dir_path = dir_path
         todo_file_browser.exit_program()
+
+    def callback_make_mobile_home(self, config):
+        # Read file
+        default_project_name = "ERPLibre"
+        default_package_name = "ca.erplibre.home"
+        # Read default information
+        if os.path.exists(STRINGS_FILE):
+            tree = ET.parse(STRINGS_FILE)
+            root = tree.getroot()
+            for elem in root.findall("string"):
+                if elem.get("name") == "app_name":
+                    default_project_name = elem.text
+                if elem.get("name") == "package_name":
+                    default_package_name = elem.text
+
+        default_project_url_name = "https://erplibre.ca"
+        # Read default information
+        dotenv_file = dotenv.find_dotenv(
+            filename=os.path.join(MOBILE_HOME_PATH, "src", ".env.production")
+        )
+        default_project_url_name = dotenv.get_key(
+            dotenv_file, "VITE_WEBSITE_URL"
+        )
+        default_project_note_subject = dotenv.get_key(
+            dotenv_file, "VITE_LABEL_NOTE"
+        )
+
+        default_debug = False
+        project_name = default_project_name
+        project_url_name = default_project_url_name
+        project_principal_subject = default_project_note_subject
+        package_name = default_package_name
+        do_debug = default_debug
+        do_change_picture_menu = False
+
+        do_personalize = input(
+            "Do you want to personalize the mobile application (Y) : "
+        )
+        if self._is_yes(do_personalize):
+            project_name = (
+                input(
+                    f'Your project name (Separate by space in title), default "{default_project_name}" : '
+                ).strip()
+                or default_project_name
+            )
+            package_name = (
+                input(
+                    f'Your package name (separate by . lower case, 3 works like DOMAIN.NAME.OBJECT), default "{default_package_name}" : '
+                ).strip()
+                or default_package_name
+            )
+            project_url_name = (
+                input(
+                    f'Your project url website, default "{default_project_url_name}" : '
+                ).strip()
+                or default_project_url_name
+            )
+            project_principal_subject = (
+                input(
+                    f'Your project subject, default "{default_project_note_subject}" : '
+                ).strip()
+                or default_project_note_subject
+            )
+            do_debug = self._is_yes(
+                input("Compilation with debug information, default No (Y) : ")
+            )
+            do_change_picture_menu = self._is_yes(
+                input(
+                    "Want to change picture from menu, you need"
+                    " android-studio (Y) : "
+                )
+            )
+
+        # Rename with script bash
+        cmd_client = f'cd {MOBILE_HOME_PATH} && npx cap init "{project_name}" "{package_name}" && ./rename_android.sh "{project_name}" "{package_name}" && npx cap sync android'
+        self.execute.exec_command_live(cmd_client, source_erplibre=False)
+
+        # dotenv_mobile = dotenv.dotenv_values(dotenv_file)
+        # dotenv_mobile["VITE_TITLE"] = project_name
+        # dotenv_mobile["VITE_WEBSITE_URL"] = project_url_name
+        dotenv.set_key(
+            dotenv_file, "VITE_TITLE", project_name, quote_mode="always"
+        )
+        dotenv.set_key(
+            dotenv_file,
+            "VITE_WEBSITE_URL",
+            project_url_name,
+            quote_mode="always",
+        )
+        dotenv.set_key(
+            dotenv_file,
+            "VITE_LABEL_NOTE",
+            project_principal_subject,
+            quote_mode="always",
+        )
+        dotenv.set_key(
+            dotenv_file,
+            "VITE_DEBUG_DEV",
+            "true" if do_debug else "false",
+            quote_mode="never",
+        )
+
+        if do_change_picture_menu:
+            status = self.execute.exec_command_live(
+                f"cd {MOBILE_HOME_PATH} && npx cap open android;bash",
+                source_erplibre=False,
+                new_window=True,
+            )
+            print(
+                "Guide for Android-Studio, wait loading is finish. Right-click to app/New/Image Asset and load your image."
+            )
+            input(
+                "Did you finish to update image with Android-Studio ? Press to continue ..."
+            )
+            cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/company_logo.png"
+            self.execute.exec_command_live(cmd_client, source_erplibre=False)
+            cmd_client = "cp ./mobile/erplibre_home_mobile/android/app/src/main/ic_launcher-playstore.png ./mobile/erplibre_home_mobile/src/assets/imgs/logo.png"
+            self.execute.exec_command_live(cmd_client, source_erplibre=False)
+
+        status = self.execute.exec_command_live(
+            "./mobile/compile_and_run.sh", source_erplibre=False
+        )
 
 
 if __name__ == "__main__":
