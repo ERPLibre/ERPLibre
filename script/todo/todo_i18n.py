@@ -28,20 +28,20 @@ TRANSLATIONS = {
         "en": "Command:",
     },
     "Execute": {
-        "fr": "Exécution",
-        "en": "Execute",
+        "fr": "🧰 Exécution",
+        "en": "🧰 Execute",
     },
     "Install": {
-        "fr": "Installation",
-        "en": "Install",
+        "fr": "📦 Installation",
+        "en": "📦 Install",
     },
     "Question": {
-        "fr": "Question",
-        "en": "Question",
+        "fr": "❓ Question",
+        "en": "❓ Question",
     },
     "Fork - Open TODO in a new tab": {
-        "fr": "Fork - Ouvre TODO dans une nouvelle tabulation",
-        "en": "Fork - Open TODO in a new tab",
+        "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
+        "en": "🔀 Fork - Open TODO in a new tab",
     },
     "Quit": {
         "fr": "Quitter",
@@ -51,71 +51,17 @@ TRANSLATIONS = {
         "fr": "Commande non trouvée !",
         "en": "Command not found !",
     },
-    "Back": {
-        "fr": "Retour",
-        "en": "Back",
-    },
-    # Execute submenu
-    "Run - Execute and install an instance": {
-        "fr": "Run - Exécuter et installer une instance",
-        "en": "Run - Execute and install an instance",
-    },
-    "Automation - Demonstration of developed features": {
-        "fr": "Automatisation - Demonstration des fonctions développées",
-        "en": "Automation - Demonstration of developed features",
-    },
-    "Update - Update all developed staging source code": {
-        "fr": "Mise à jour - Update all developed staging source code",
-        "en": "Update - Update all developed staging source code",
-    },
-    "Code - Developer tools": {
-        "fr": "Code - Outil pour développeur",
-        "en": "Code - Developer tools",
-    },
-    "Doc - Documentation search": {
-        "fr": "Doc - Recherche de documentation",
-        "en": "Doc - Documentation search",
-    },
-    "Database - Database tools": {
-        "fr": "Database - Outils sur les bases de données",
-        "en": "Database - Database tools",
-    },
-    "Process - Execution tools": {
-        "fr": "Process - Outils sur les executions",
-        "en": "Process - Execution tools",
-    },
-    "Config - Configuration file management": {
-        "fr": "Config - Traitement du fichier de configuration",
-        "en": "Config - Configuration file management",
-    },
-    "Network - Network tools": {
-        "fr": "Réseau - Outil réseautique",
-        "en": "Network - Network tools",
-    },
-    "Security - Dependency security audit": {
-        "fr": "Sécurité - Audit de sécurité des dépendances",
-        "en": "Security - Dependency security audit",
-    },
     "RTK - CLI proxy to reduce LLM token consumption": {
         "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
         "en": "RTK - CLI proxy to reduce LLM token consumption",
-    },
-    "Language - Change language / Changer la langue": {
-        "fr": "Langue - Changer la langue / Change language",
-        "en": "Language - Change language / Changer la langue",
-    },
-    # Deploy section
-    "Deploy - Deploy ERPLibre locally": {
-        "fr": "Déploiement - Déployer ERPLibre localement",
-        "en": "Deploy - Deploy ERPLibre locally",
     },
     "Deploy ERPLibre to a local directory!": {
         "fr": "Déployer ERPLibre dans un répertoire local!",
         "en": "Deploy ERPLibre to a local directory!",
     },
     "Clone ERPLibre locally (git clone)": {
-        "fr": "Cloner ERPLibre localement (git clone)",
-        "en": "Clone ERPLibre locally (git clone)",
+        "fr": "📥 Cloner ERPLibre localement (git clone)",
+        "en": "📥 Clone ERPLibre locally (git clone)",
     },
     "Target directory path (default: ~/erplibre): ": {
         "fr": "Chemin du répertoire cible (défaut: ~/erplibre) : ",
@@ -138,8 +84,145 @@ TRANSLATIONS = {
         "en": "Error cloning ERPLibre: ",
     },
     "Configure sshfs": {
-        "fr": "Configurer sshfs",
-        "en": "Configure sshfs",
+        "fr": "📁 Configurer sshfs",
+        "en": "📁 Configure sshfs",
+    },
+    "Local": {
+        "fr": "💻 Local",
+        "en": "💻 Local",
+    },
+    "SSH (remote host)": {
+        "fr": "SSH (hôte distant)",
+        "en": "SSH (remote host)",
+    },
+    "Remote & services": {
+        "fr": "🌐 Distant & services",
+        "en": "🌐 Remote & services",
+    },
+    "SSH (remote host)...": {
+        "fr": "🔐 SSH (hôte distant)…",
+        "en": "🔐 SSH (remote host)...",
+    },
+    "Deploy ERPLibre to a remote host over SSH!": {
+        "fr": "Déployer ERPLibre sur un hôte distant via SSH !",
+        "en": "Deploy ERPLibre to a remote host over SSH!",
+    },
+    "Virtualization & notifications": {
+        "fr": "Virtualisation & notifications",
+        "en": "Virtualization & notifications",
+    },
+    "Development": {
+        "fr": "🧰 Développement",
+        "en": "🧰 Development",
+    },
+    "Data": {
+        "fr": "📊 Données",
+        "en": "📊 Data",
+    },
+    "Sources & documentation": {
+        "fr": "📚 Sources & documentation",
+        "en": "📚 Sources & documentation",
+    },
+    "AI & automation": {
+        "fr": "🧠 IA & automatisation",
+        "en": "🧠 AI & automation",
+    },
+    "Deployment, network & security": {
+        "fr": "🌐 Déploiement, réseau & sécurité",
+        "en": "🌐 Deployment, network & security",
+    },
+    "Preferences": {
+        "fr": "🎨 Préférences",
+        "en": "🎨 Preferences",
+    },
+    "Deployment": {
+        "fr": "🚀 Déploiement",
+        "en": "🚀 Deployment",
+    },
+    "Manage": {
+        "fr": "🛠  Gérer",
+        "en": "🛠  Manage",
+    },
+    "Catalog": {
+        "fr": "📚 Catalogue",
+        "en": "📚 Catalog",
+    },
+    "Open the console on a VM": {
+        "fr": "🖥  Ouvrir la console d'une VM",
+        "en": "🖥  Open the console on a VM",
+    },
+    "Backup": {
+        "fr": "Sauvegarde",
+        "en": "Backup",
+    },
+    "Restore": {
+        "fr": "Restauration",
+        "en": "Restore",
+    },
+    "Danger zone": {
+        "fr": "Zone dangereuse",
+        "en": "Danger zone",
+    },
+    "Setup": {
+        "fr": "Installation",
+        "en": "Setup",
+    },
+    "Status": {
+        "fr": "Statut",
+        "en": "Status",
+    },
+    "Optimize": {
+        "fr": "Optimisation",
+        "en": "Optimize",
+    },
+    "Generate": {
+        "fr": "Génération",
+        "en": "Generate",
+    },
+    "Advanced": {
+        "fr": "Avancé",
+        "en": "Advanced",
+    },
+    "To leave the console, press Ctrl+] (then Enter).": {
+        "fr": "Pour quitter la console, appuyez sur Ctrl+] (puis Entrée).",
+        "en": "To leave the console, press Ctrl+] (then Enter).",
+    },
+    "Default login (if set at deploy): erplibre / erplibre": {
+        "fr": "Login par défaut (si défini au déploiement) : "
+        "erplibre / erplibre",
+        "en": "Default login (if set at deploy): erplibre / erplibre",
+    },
+    "Console password for 'erplibre' (default: erplibre): ": {
+        "fr": "Mot de passe console pour « erplibre » (défaut : erplibre) : ",
+        "en": "Console password for 'erplibre' (default: erplibre): ",
+    },
+    "Console/SSH login:": {
+        "fr": "Connexion console/SSH :",
+        "en": "Console/SSH login:",
+    },
+    "Default login:": {
+        "fr": "Login par défaut :",
+        "en": "Default login:",
+    },
+    "Add this VM to ~/.ssh/config? (y/N): ": {
+        "fr": "Ajouter cette VM à ~/.ssh/config ? (o/N, défaut : non) : ",
+        "en": "Add this VM to ~/.ssh/config? (y/N, default: no): ",
+    },
+    "Add each VM to ~/.ssh/config? (Y/n): ": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config ? (O/n, défaut : oui) : ",
+        "en": "Add each VM to ~/.ssh/config? (Y/n, default: yes): ",
+    },
+    "Waiting for the VM IP (DHCP lease)...": {
+        "fr": "Attente de l'IP de la VM (bail DHCP)...",
+        "en": "Waiting for the VM IP (DHCP lease)...",
+    },
+    "No IP yet; add it later once the VM has booted.": {
+        "fr": "Pas encore d'IP ; à ajouter plus tard une fois la VM démarrée.",
+        "en": "No IP yet; add it later once the VM has booted.",
+    },
+    "Added to ~/.ssh/config:": {
+        "fr": "Ajouté à ~/.ssh/config :",
+        "en": "Added to ~/.ssh/config:",
     },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
@@ -172,10 +255,6 @@ TRANSLATIONS = {
     "SSH host (e.g.: user@192.168.1.100): ": {
         "fr": "Hôte SSH (ex: user@192.168.1.100) : ",
         "en": "SSH host (e.g.: user@192.168.1.100): ",
-    },
-    "SSH host is required!": {
-        "fr": "L'hôte SSH est requis!",
-        "en": "SSH host is required!",
     },
     "Mounting sshfs on: ": {
         "fr": "Montage sshfs sur : ",
@@ -345,6 +424,18 @@ TRANSLATIONS = {
         "fr": "Aucune base de données sélectionnée.",
         "en": "No database selected.",
     },
+    "Cannot list the databases (exit code): ": {
+        "fr": "Impossible de lister les bases (code de retour) : ",
+        "en": "Cannot list the databases (exit code): ",
+    },
+    "Is PostgreSQL running?": {
+        "fr": "PostgreSQL est-il démarré ?",
+        "en": "Is PostgreSQL running?",
+    },
+    "No database on this PostgreSQL server.": {
+        "fr": "Aucune base sur ce serveur PostgreSQL.",
+        "en": "No database on this PostgreSQL server.",
+    },
     "Manage execution processes!": {
         "fr": "Manipuler les processus d'exécution!",
         "en": "Manage execution processes!",
@@ -442,46 +533,10 @@ TRANSLATIONS = {
         "fr": "Ouvrir ERPLibre avec TODO 🤖",
         "en": "Open ERPLibre with TODO 🤖",
     },
-    "Update all erplibre_base on database test": {
-        "fr": "Mise à jour de tous les erplibre_base sur la base de données test",
-        "en": "Update all erplibre_base on database test",
-    },
-    "Show code status": {
-        "fr": "Afficher le statut du code",
-        "en": "Show code status",
-    },
-    "Stash all code": {
-        "fr": "Remiser tout le code",
-        "en": "Stash all code",
-    },
-    "Format modified code": {
-        "fr": "Formater le code modifié",
-        "en": "Format modified code",
-    },
     # todo.py hardcoded prompt_descriptions
     "Mobile - Compile and run software": {
         "fr": "Mobile - Compiler et exécuter le logiciel",
         "en": "Mobile - Compile and run software",
-    },
-    "Upgrade Odoo - Migration Database": {
-        "fr": "Mise à jour Odoo - Migration de base de données",
-        "en": "Upgrade Odoo - Migration Database",
-    },
-    "Upgrade Poetry - Dependency of Odoo": {
-        "fr": "Mise à jour Poetry - Dépendances d'Odoo",
-        "en": "Upgrade Poetry - Dependency of Odoo",
-    },
-    "Open SHELL": {
-        "fr": "Ouvrir le SHELL",
-        "en": "Open SHELL",
-    },
-    "Upgrade Module": {
-        "fr": "Mise à jour de module",
-        "en": "Upgrade Module",
-    },
-    "Debug": {
-        "fr": "Débogage",
-        "en": "Debug",
     },
     "Migration module coverage": {
         "fr": "Couverture de migration des modules",
@@ -559,11 +614,6 @@ TRANSLATIONS = {
         "fr": "Débogage todo.py",
         "en": "Debug todo.py",
     },
-    # Test section
-    "Test - Test an Odoo module": {
-        "fr": "Test - Tester un module Odoo",
-        "en": "Test - Test an Odoo module",
-    },
     "Test an Odoo module on a temporary database!": {
         "fr": "Tester un module Odoo sur une base de données temporaire!",
         "en": "Test an Odoo module on a temporary database!",
@@ -624,10 +674,6 @@ TRANSLATIONS = {
         "fr": "Suppression de la base de données temporaire",
         "en": "Cleaning up temporary database",
     },
-    "Keep the temporary database? (y/N): ": {
-        "fr": "Conserver la base de données temporaire? (o/N) : ",
-        "en": "Keep the temporary database? (y/N): ",
-    },
     "Database kept": {
         "fr": "Base de données conservée",
         "en": "Database kept",
@@ -643,11 +689,6 @@ TRANSLATIONS = {
     "Module name is required!": {
         "fr": "Le nom du module est requis!",
         "en": "Module name is required!",
-    },
-    # Git section
-    "Git - Git tools": {
-        "fr": "Git - Outils Git",
-        "en": "Git - Git tools",
     },
     "Git management tools!": {
         "fr": "Outils de gestion Git!",
@@ -778,48 +819,48 @@ TRANSLATIONS = {
         "en": "SSH deployment tools!",
     },
     "SSH - Check connection": {
-        "fr": "SSH - Vérifier la connexion",
-        "en": "SSH - Check connection",
+        "fr": "🔌 SSH - Vérifier la connexion",
+        "en": "🔌 SSH - Check connection",
     },
     "SSH - Sync files (rsync)": {
-        "fr": "SSH - Synchroniser les fichiers (rsync)",
-        "en": "SSH - Sync files (rsync)",
+        "fr": "🔄 SSH - Synchroniser les fichiers (rsync)",
+        "en": "🔄 SSH - Sync files (rsync)",
     },
     "SSH - Install ERPLibre": {
-        "fr": "SSH - Installer ERPLibre",
-        "en": "SSH - Install ERPLibre",
+        "fr": "📦 SSH - Installer ERPLibre",
+        "en": "📦 SSH - Install ERPLibre",
     },
     "SSH - Start Odoo": {
-        "fr": "SSH - Démarrer Odoo",
-        "en": "SSH - Start Odoo",
+        "fr": "🟢 SSH - Démarrer Odoo",
+        "en": "🟢 SSH - Start Odoo",
     },
     "SSH - Stop Odoo": {
-        "fr": "SSH - Arrêter Odoo",
-        "en": "SSH - Stop Odoo",
+        "fr": "🔴 SSH - Arrêter Odoo",
+        "en": "🔴 SSH - Stop Odoo",
     },
     "SSH - Restart Odoo": {
-        "fr": "SSH - Redémarrer Odoo",
-        "en": "SSH - Restart Odoo",
+        "fr": "🔁 SSH - Redémarrer Odoo",
+        "en": "🔁 SSH - Restart Odoo",
     },
     "SSH - Service status": {
-        "fr": "SSH - Statut du service",
-        "en": "SSH - Service status",
+        "fr": "📊 SSH - Statut du service",
+        "en": "📊 SSH - Service status",
     },
     "SSH - View logs": {
-        "fr": "SSH - Voir les logs",
-        "en": "SSH - View logs",
+        "fr": "📜 SSH - Voir les logs",
+        "en": "📜 SSH - View logs",
     },
     "SSH - Run make target": {
-        "fr": "SSH - Exécuter une cible make",
-        "en": "SSH - Run make target",
+        "fr": "🧰 SSH - Exécuter une cible make",
+        "en": "🧰 SSH - Run make target",
     },
     "SSH - Install systemd service": {
-        "fr": "SSH - Installer le service systemd",
-        "en": "SSH - Install systemd service",
+        "fr": "🧩 SSH - Installer le service systemd",
+        "en": "🧩 SSH - Install systemd service",
     },
     "SSH - Configure nginx + SSL": {
-        "fr": "SSH - Configurer nginx + SSL",
-        "en": "SSH - Configure nginx + SSL",
+        "fr": "🔒 SSH - Configurer nginx + SSL",
+        "en": "🔒 SSH - Configure nginx + SSL",
     },
     "Remote host (user@hostname or hostname): ": {
         "fr": "Hôte distant (user@hostname ou hostname) : ",
@@ -882,11 +923,6 @@ TRANSLATIONS = {
         "fr": "Interruption clavier",
         "en": "Keyboard interrupt",
     },
-    # GPT code section
-    "GPT code - AI assistant tools": {
-        "fr": "GPT code - Outils d'assistant IA",
-        "en": "GPT code - AI assistant tools",
-    },
     "AI assistant tools for development!": {
         "fr": "Outils d'assistant IA pour le développement!",
         "en": "AI assistant tools for development!",
@@ -927,10 +963,6 @@ TRANSLATIONS = {
         "fr": "Commandes personnalisées Claude Code :",
         "en": "Claude Code custom commands:",
     },
-    "Total:": {
-        "fr": "Total :",
-        "en": "Total:",
-    },
     "File already exists: ": {
         "fr": "Le fichier existe déjà : ",
         "en": "File already exists: ",
@@ -953,8 +985,8 @@ TRANSLATIONS = {
     },
     # NTFY section
     "Deploy - Install NTFY notification server": {
-        "fr": "Déployer - Installer le serveur de notifications NTFY",
-        "en": "Deploy - Install NTFY notification server",
+        "fr": "🔔 Déployer - Installer le serveur de notifications NTFY",
+        "en": "🔔 Deploy - Install NTFY notification server",
     },
     "Deploy a local NTFY push notification server (Ubuntu/Arch)": {
         "fr": "Déployer un serveur local de notifications NTFY (Ubuntu/Arch)",
@@ -984,6 +1016,1804 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
+    # QEMU / KVM (libvirt) VM deployment
+    "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
+        "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
+        "en": "💻 QEMU/KVM - Deploy an Ubuntu VM (libvirt)",
+    },
+    "Deploy a QEMU/KVM virtual machine (libvirt)!": {
+        "fr": "Déployer une machine virtuelle QEMU/KVM (libvirt) !",
+        "en": "Deploy a QEMU/KVM virtual machine (libvirt)!",
+    },
+    "QEMU deploy script not found: ": {
+        "fr": "Script de déploiement QEMU introuvable : ",
+        "en": "QEMU deploy script not found: ",
+    },
+    "Deploy a new VM": {
+        "fr": "Déployer une nouvelle VM",
+        "en": "Deploy a new VM",
+    },
+    "Preview a deployment (dry-run, no sudo)": {
+        "fr": "🔍 Prévisualiser un déploiement (dry-run, sans sudo)",
+        "en": "🔍 Preview a deployment (dry-run, no sudo)",
+    },
+    "Download a cloud image only": {
+        "fr": "⬇  Télécharger seulement une image cloud",
+        "en": "⬇  Download a cloud image only",
+    },
+    "List VMs (virsh list --all)": {
+        "fr": "📋 Lister les VM (virsh list --all)",
+        "en": "📋 List VMs (virsh list --all)",
+    },
+    "Show a VM IP address": {
+        "fr": "🌐 Afficher l'adresse IP d'une VM",
+        "en": "🌐 Show a VM IP address",
+    },
+    "List available images and specs": {
+        "fr": "🗂  Lister les images disponibles et leurs specs",
+        "en": "🗂  List available images and specs",
+    },
+    "Distribution:": {
+        "fr": "Distribution :",
+        "en": "Distribution:",
+    },
+    "Choice (number or name, default: ubuntu): ": {
+        "fr": "Choix (numéro ou nom, défaut : ubuntu) : ",
+        "en": "Choice (number or name, default: ubuntu): ",
+    },
+    "Invalid selection, using ubuntu": {
+        "fr": "Sélection invalide, utilisation d'ubuntu",
+        "en": "Invalid selection, using ubuntu",
+    },
+    "Version for": {
+        "fr": "Version des",
+        "en": "Version for",
+    },
+    "Versions for": {
+        "fr": "Versions des",
+        "en": "Versions of",
+    },
+    "Architecture:": {
+        "fr": "Architecture :",
+        "en": "Architecture:",
+    },
+    "native": {
+        "fr": "native",
+        "en": "native",
+    },
+    "IBM Z — emulated, slow on x86; Ubuntu only": {
+        "fr": "IBM Z — émulé, lent sur x86 ; Ubuntu uniquement",
+        "en": "IBM Z — emulated, slow on x86; Ubuntu only",
+    },
+    "IBM Z — emulated, slow; Ubuntu only": {
+        "fr": "IBM Z — émulé, lent ; Ubuntu uniquement",
+        "en": "IBM Z — emulated, slow; Ubuntu only",
+    },
+    "ARM 64-bit — emulated, slow": {
+        "fr": "ARM 64 bits — émulé, lent",
+        "en": "ARM 64-bit — emulated, slow",
+    },
+    "emulated, slow": {
+        "fr": "émulé, lent",
+        "en": "emulated, slow",
+    },
+    "This architecture is emulated (TCG): boot and install are"
+    " much slower than the native one.": {
+        "fr": "Cette architecture est émulée (TCG) : le boot et l'installation"
+        " sont bien plus lents que l'architecture native.",
+        "en": "This architecture is emulated (TCG): boot and install are"
+        " much slower than the native one.",
+    },
+    "images for this arch only exist for:": {
+        "fr": "images pour cette architecture disponibles seulement pour :",
+        "en": "images for this arch only exist for:",
+    },
+    "All supported architectures": {
+        "fr": "Toutes les architectures supportées",
+        "en": "All supported architectures",
+    },
+    "installation": {
+        "fr": "installation",
+        "en": "installation",
+    },
+    "Resources per VM (x1 = catalog minimum):": {
+        "fr": "Ressources par VM (x1 = minimum catalogue) :",
+        "en": "Resources per VM (x1 = catalog minimum):",
+    },
+    "Host:": {
+        "fr": "Hôte :",
+        "en": "Host:",
+    },
+    "free": {
+        "fr": "libres",
+        "en": "free",
+    },
+    "free RAM unknown": {
+        "fr": "RAM libre inconnue",
+        "en": "free RAM unknown",
+    },
+    "> host free RAM": {
+        "fr": "> RAM libre de l'hôte",
+        "en": "> host free RAM",
+    },
+    "total RAM": {
+        "fr": "RAM totale",
+        "en": "total RAM",
+    },
+    "Choice (1-4, default 1):": {
+        "fr": "Choix (1-4, défaut 1) :",
+        "en": "Choice (1-4, default 1):",
+    },
+    "Choice (1-5, default 1):": {
+        "fr": "Choix (1-5, défaut 1) :",
+        "en": "Choice (1-5, default 1):",
+    },
+    "Custom - set vCPU, RAM and disk": {
+        "fr": "Personnalisé — choisir vCPU, RAM et disque",
+        "en": "Custom — set vCPU, RAM and disk",
+    },
+    "custom": {
+        "fr": "personnalisé",
+        "en": "custom",
+    },
+    "varies": {
+        "fr": "varié",
+        "en": "varies",
+    },
+    "vCPU per VM, blank = keep": {
+        "fr": "vCPU par VM, vide = garder",
+        "en": "vCPU per VM, blank = keep",
+    },
+    "New vCPU count, blank = keep": {
+        "fr": "Nouveau nombre de vCPU, vide = garder",
+        "en": "New vCPU count, blank = keep",
+    },
+    "Invalid vCPU count.": {
+        "fr": "Nombre de vCPU invalide.",
+        "en": "Invalid vCPU count.",
+    },
+    "More vCPU than host cores": {
+        "fr": "Plus de vCPU que de cœurs sur l'hôte",
+        "en": "More vCPU than host cores",
+    },
+    "> host cores": {
+        "fr": "> cœurs de l'hôte",
+        "en": "> host cores",
+    },
+    "Total vCPU (all running):": {
+        "fr": "vCPU total (toutes démarrées) :",
+        "en": "Total vCPU (all running):",
+    },
+    "Deploy VM(s) (one or many)": {
+        "fr": "🚀 Déployer une ou plusieurs VM",
+        "en": "🚀 Deploy VM(s) (one or many)",
+    },
+    "Deploy ERPLibre VM(s)!": {
+        "fr": "Déployer une ou plusieurs VM ERPLibre !",
+        "en": "Deploy ERPLibre VM(s)!",
+    },
+    "VM names (default = auto):": {
+        "fr": "Noms des VM (défaut = auto) :",
+        "en": "VM names (default = auto):",
+    },
+    "Rename which VMs? (numbers, comma-separated; blank = none): ": {
+        "fr": "Renommer quelles VM ? (numéros séparés par des virgules ; "
+        "vide = aucune) : ",
+        "en": "Rename which VMs? (numbers, comma-separated; blank = none): ",
+    },
+    "->": {
+        "fr": "->",
+        "en": "->",
+    },
+    "VMs (default = no change):": {
+        "fr": "VM (défaut = aucune modification) :",
+        "en": "VMs (default = no change):",
+    },
+    "Modify which VMs? (numbers, comma-separated; blank = none): ": {
+        "fr": "Modifier quelles VM ? (numéros séparés par des virgules ; "
+        "vide = aucune) : ",
+        "en": "Modify which VMs? (numbers, comma-separated; blank = none): ",
+    },
+    "new name (blank = keep):": {
+        "fr": "nouveau nom (vide = garder) :",
+        "en": "new name (blank = keep):",
+    },
+    "New disk size in G, blank = keep": {
+        "fr": "Nouvelle taille disque en G, vide = garder",
+        "en": "New disk size in G, blank = keep",
+    },
+    "New RAM in MB, blank = keep": {
+        "fr": "Nouvelle RAM en Mo, vide = garder",
+        "en": "New RAM in MB, blank = keep",
+    },
+    "Duplicate names detected; keeping as entered.": {
+        "fr": "Noms en double détectés ; conservés tels quels.",
+        "en": "Duplicate names detected; keeping as entered.",
+    },
+    "Preview (dry-run):": {
+        "fr": "Aperçu (dry-run) :",
+        "en": "Preview (dry-run):",
+    },
+    "(includes emulated architectures — some VMs are slow)": {
+        "fr": "(inclut des architectures émulées — certaines VM sont lentes)",
+        "en": "(includes emulated architectures — some VMs are slow)",
+    },
+    "install monitoring": {
+        "fr": "suivi d'installation",
+        "en": "install monitoring",
+    },
+    "Navigation telemetry (TUI)": {
+        "fr": "📊 Télémétrie de navigation (TUI)",
+        "en": "📊 Navigation telemetry (TUI)",
+    },
+    "SSH port forwarding (open Odoo in the browser)": {
+        "fr": "🔌 Redirection de port SSH (ouvrir Odoo dans le navigateur)",
+        "en": "🔌 SSH port forwarding (open Odoo in the browser)",
+    },
+    "SSH port forwarding": {
+        "fr": "Redirection de port SSH",
+        "en": "SSH port forwarding",
+    },
+    "Host (number or name):": {
+        "fr": "Hôte (numéro ou nom) :",
+        "en": "Host (number or name):",
+    },
+    "Remote port (default:": {
+        "fr": "Port distant (défaut :",
+        "en": "Remote port (default:",
+    },
+    "Local port (default:": {
+        "fr": "Port local (défaut :",
+        "en": "Local port (default:",
+    },
+    "virsh is missing: libvirt is not installed here.": {
+        "fr": "virsh est absent : libvirt n'est pas installé ici.",
+        "en": "virsh is missing: libvirt is not installed here.",
+    },
+    "Every VM command will fail until it is.": {
+        "fr": "Toutes les commandes VM échoueront tant que ce sera le cas.",
+        "en": "Every VM command will fail until it is.",
+    },
+    "Install the QEMU/libvirt tools now? (Y/n): ": {
+        "fr": "Installer les outils QEMU/libvirt maintenant ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Install the QEMU/libvirt tools now? (Y/n, default: yes): ",
+    },
+    "libvirt is available.": {
+        "fr": "libvirt est disponible.",
+        "en": "libvirt is available.",
+    },
+    "virsh still missing; a reboot may be required.": {
+        "fr": "virsh toujours absent ; un redémarrage est peut-être requis.",
+        "en": "virsh still missing; a reboot may be required.",
+    },
+    "No SSH public key found in ~/.ssh.": {
+        "fr": "Aucune clé publique SSH trouvée dans ~/.ssh.",
+        "en": "No SSH public key found in ~/.ssh.",
+    },
+    "Without one the VMs start with no SSH access.": {
+        "fr": "Sans elle, les VM démarrent sans accès SSH.",
+        "en": "Without one the VMs start with no SSH access.",
+    },
+    "Generate one now? (Y/n): ": {
+        "fr": "En générer une maintenant ? (O/n, défaut : oui) : ",
+        "en": "Generate one now? (Y/n, default: yes): ",
+    },
+    "Checking the remote port...": {
+        "fr": "Vérification du port distant...",
+        "en": "Checking the remote port...",
+    },
+    "Nothing is listening on port": {
+        "fr": "Rien n'écoute sur le port",
+        "en": "Nothing is listening on port",
+    },
+    "of": {
+        "fr": "de",
+        "en": "of",
+    },
+    "Start the service there, or continue anyway.": {
+        "fr": "Démarrer le service là-bas, ou continuer quand même.",
+        "en": "Start the service there, or continue anyway.",
+    },
+    "Continue anyway? (y/N): ": {
+        "fr": "Continuer quand même ? (o/N, défaut : non) : ",
+        "en": "Continue anyway? (y/N, default: no): ",
+    },
+    "Could not probe the remote port; going on.": {
+        "fr": "Impossible de sonder le port distant ; on continue.",
+        "en": "Could not probe the remote port; going on.",
+    },
+    "Local port already in use:": {
+        "fr": "Port local déjà occupé :",
+        "en": "Local port already in use:",
+    },
+    "Try anyway? (y/N): ": {
+        "fr": "Essayer quand même ? (o/N, défaut : non) : ",
+        "en": "Try anyway? (y/N, default: no): ",
+    },
+    "Local port differs from the remote one.": {
+        "fr": "Le port local diffère du port distant.",
+        "en": "Local port differs from the remote one.",
+    },
+    "Odoo redirects using web.base.url; check it": {
+        "fr": "Odoo redirige d'après web.base.url ; vérifier qu'il",
+        "en": "Odoo redirects using web.base.url; check it",
+    },
+    "matches http://localhost:": {
+        "fr": "vaut bien http://localhost:",
+        "en": "matches http://localhost:",
+    },
+    "Ctrl+C closes the tunnel.": {
+        "fr": "Ctrl+C referme le tunnel.",
+        "en": "Ctrl+C closes the tunnel.",
+    },
+    "Tunnel closed.": {
+        "fr": "Tunnel refermé.",
+        "en": "Tunnel closed.",
+    },
+    "Where should the machines come from?": {
+        "fr": "D'où viennent les machines à configurer ?",
+        "en": "Where should the machines come from?",
+    },
+    "Local QEMU VMs (virsh)": {
+        "fr": "VM QEMU locales (virsh)",
+        "en": "Local QEMU VMs (virsh)",
+    },
+    "Hosts from ~/.ssh/config": {
+        "fr": "Hôtes de ~/.ssh/config",
+        "en": "Hosts from ~/.ssh/config",
+    },
+    "Type a host or an IP": {
+        "fr": "Saisir un hôte ou une IP",
+        "en": "Type a host or an IP",
+    },
+    "~/.ssh/config holds no host.": {
+        "fr": "~/.ssh/config ne contient aucun hôte.",
+        "en": "~/.ssh/config holds no host.",
+    },
+    "Which hosts? (numbers, comma-separated; blank = all): ": {
+        "fr": "Quels hôtes ? (numéros séparés par des virgules ; "
+        "vide = tous) : ",
+        "en": "Which hosts? (numbers, comma-separated; blank = all): ",
+    },
+    "Host or IP:": {
+        "fr": "Hôte ou IP :",
+        "en": "Host or IP:",
+    },
+    "User": {
+        "fr": "Utilisateur",
+        "en": "User",
+    },
+    "Name for ~/.ssh/config": {
+        "fr": "Nom pour ~/.ssh/config",
+        "en": "Name for ~/.ssh/config",
+    },
+    "Depth (1 = these machines only, default:": {
+        "fr": "Profondeur (1 = ces machines seulement, défaut :",
+        "en": "Depth (1 = these machines only, default:",
+    },
+    "SSH refused the identity.": {
+        "fr": "SSH a refusé l'identité.",
+        "en": "SSH refused the identity.",
+    },
+    "Existing key:": {
+        "fr": "Clé existante :",
+        "en": "Existing key:",
+    },
+    "Deploy it on this host (ssh-copy-id)? (Y/n): ": {
+        "fr": "La déployer sur cet hôte (ssh-copy-id) ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Deploy it on this host (ssh-copy-id)? (Y/n, default: yes): ",
+    },
+    "No SSH key in ~/.ssh.": {
+        "fr": "Aucune clé SSH dans ~/.ssh.",
+        "en": "No SSH key in ~/.ssh.",
+    },
+    "Create one and deploy it? (Y/n): ": {
+        "fr": "En créer une et la déployer ? (O/n, défaut : oui) : ",
+        "en": "Create one and deploy it? (Y/n, default: yes): ",
+    },
+    "access refused": {
+        "fr": "accès refusé",
+        "en": "access refused",
+    },
+    "timed out": {
+        "fr": "délai dépassé",
+        "en": "timed out",
+    },
+    "unreachable": {
+        "fr": "injoignable",
+        "en": "unreachable",
+    },
+    "no QEMU/libvirt here": {
+        "fr": "pas de QEMU/libvirt ici",
+        "en": "no QEMU/libvirt here",
+    },
+    "QEMU present, no VM": {
+        "fr": "QEMU présent, aucune VM",
+        "en": "QEMU present, no VM",
+    },
+    "Create the SSH key if missing and deploy it? (Y/n): ": {
+        "fr": "Créer la clé SSH si absente et la déployer ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Create the SSH key if missing and deploy it? "
+        "(Y/n, default: yes): ",
+    },
+    "Generating an ed25519 SSH key": {
+        "fr": "Génération d'une clé SSH ed25519",
+        "en": "Generating an ed25519 SSH key",
+    },
+    "Cannot generate the key": {
+        "fr": "Impossible de générer la clé",
+        "en": "Cannot generate the key",
+    },
+    "Deploying the key on": {
+        "fr": "Déploiement de la clé sur",
+        "en": "Deploying the key on",
+    },
+    "host": {
+        "fr": "hôte",
+        "en": "host",
+    },
+    "key already accepted": {
+        "fr": "clé déjà acceptée",
+        "en": "key already accepted",
+    },
+    "deployed": {
+        "fr": "déployée(s)",
+        "en": "deployed",
+    },
+    "already there": {
+        "fr": "déjà en place",
+        "en": "already there",
+    },
+    "virt-manager detected": {
+        "fr": "virt-manager détecté",
+        "en": "virt-manager detected",
+    },
+    "virt-manager: every connection already there": {
+        "fr": "virt-manager : toutes les connexions sont déjà là",
+        "en": "virt-manager: every connection already there",
+    },
+    "Add the missing connections to virt-manager? (Y/n): ": {
+        "fr": "Ajouter les connexions manquantes à virt-manager ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Add the missing connections to virt-manager? "
+        "(Y/n, default: yes): ",
+    },
+    "Restart virt-manager to see the new connections": {
+        "fr": "Redémarrer virt-manager pour voir les nouvelles connexions",
+        "en": "Restart virt-manager to see the new connections",
+    },
+    "the names apply live": {
+        "fr": "les noms s'appliquent à chaud",
+        "en": "the names apply live",
+    },
+    "Interface:": {
+        "fr": "Interface :",
+        "en": "Interface:",
+    },
+    "(change the default in TODO > Configuration)": {
+        "fr": "(changer le défaut dans TODO > Configuration)",
+        "en": "(change the default in TODO > Configuration)",
+    },
+    "Loading (VM list, branches)...": {
+        "fr": "Chargement (liste des VM, branches)...",
+        "en": "Loading (VM list, branches)...",
+    },
+    "Architecture": {
+        "fr": "Architecture",
+        "en": "Architecture",
+    },
+    "Resources per VM": {
+        "fr": "Ressources par VM",
+        "en": "Resources per VM",
+    },
+    "Install ERPLibre": {
+        "fr": "Installer ERPLibre",
+        "en": "Install ERPLibre",
+    },
+    "Production (/opt, confined)": {
+        "fr": "Production (/opt, confiné)",
+        "en": "Production (/opt, confined)",
+    },
+    "Monitoring dashboard": {
+        "fr": "Tableau de bord de suivi",
+        "en": "Monitoring dashboard",
+    },
+    "Add each VM to ~/.ssh/config": {
+        "fr": "Ajouter chaque VM à ~/.ssh/config",
+        "en": "Add each VM to ~/.ssh/config",
+    },
+    "Parallelism": {
+        "fr": "Parallélisme",
+        "en": "Parallelism",
+    },
+    "Name": {
+        "fr": "Nom",
+        "en": "Name",
+    },
+    "Distro": {
+        "fr": "Distro",
+        "en": "Distro",
+    },
+    "Version": {
+        "fr": "Version",
+        "en": "Version",
+    },
+    "Arch": {
+        "fr": "Archi",
+        "en": "Arch",
+    },
+    "vCPU": {
+        "fr": "vCPU",
+        "en": "vCPU",
+    },
+    "RAM (MB)": {
+        "fr": "RAM (Mo)",
+        "en": "RAM (MB)",
+    },
+    "all archs": {
+        "fr": "toutes",
+        "en": "all",
+    },
+    "Tick what to deploy": {
+        "fr": "Cocher ce qu'on veut déployer",
+        "en": "Tick what to deploy",
+    },
+    "F7 main versions · F6 all": {
+        "fr": "F7 versions principales · F6 tout",
+        "en": "F7 main versions · F6 all",
+    },
+    "exists - skipped": {
+        "fr": "existe — ignorée",
+        "en": "exists - skipped",
+    },
+    "orphan disk - will FAIL": {
+        "fr": "disque orphelin — ÉCHOUERA",
+        "en": "orphan disk - will FAIL",
+    },
+    "press F5 again to confirm": {
+        "fr": "F5 à nouveau pour confirmer",
+        "en": "press F5 again to confirm",
+    },
+    "Deploy": {
+        "fr": "Déployer",
+        "en": "Deploy",
+    },
+    "Edit VM": {
+        "fr": "Éditer la VM",
+        "en": "Edit VM",
+    },
+    "Preview": {
+        "fr": "Aperçu",
+        "en": "Preview",
+    },
+    "All": {
+        "fr": "Tout",
+        "en": "All",
+    },
+    "Main versions": {
+        "fr": "Versions principales",
+        "en": "Main versions",
+    },
+    "None": {
+        "fr": "Rien",
+        "en": "None",
+    },
+    "Cancel": {
+        "fr": "Annuler",
+        "en": "Cancel",
+    },
+    "Apply": {
+        "fr": "Appliquer",
+        "en": "Apply",
+    },
+    "Close": {
+        "fr": "Fermer",
+        "en": "Close",
+    },
+    "Copy log": {
+        "fr": "Copier le log",
+        "en": "Copy log",
+    },
+    "Copy all logs": {
+        "fr": "Copier tous les logs",
+        "en": "Copy all logs",
+    },
+    "all logs": {
+        "fr": "tous les logs",
+        "en": "all logs",
+    },
+    "c copy log · C copy all · q quit": {
+        "fr": "c copier le log · C copier tout · q quitter",
+        "en": "c copy log · C copy all · q quit",
+    },
+    "Clipboard": {
+        "fr": "Presse-papiers",
+        "en": "Clipboard",
+    },
+    "chars": {
+        "fr": "car.",
+        "en": "chars",
+    },
+    "tail only, log was truncated": {
+        "fr": "fin seulement, log tronqué",
+        "en": "tail only, log was truncated",
+    },
+    "Needs an OSC 52 capable terminal.": {
+        "fr": "Nécessite un terminal compatible OSC 52.",
+        "en": "Needs an OSC 52 capable terminal.",
+    },
+    "Nothing to copy.": {
+        "fr": "Rien à copier.",
+        "en": "Nothing to copy.",
+    },
+    "avg": {
+        "fr": "moy",
+        "en": "avg",
+    },
+    "Last install:": {
+        "fr": "Dernière install :",
+        "en": "Last install:",
+    },
+    "Resize a VM disk": {
+        "fr": "📐 Redimensionner le disque d'une VM",
+        "en": "📐 Resize a VM disk",
+    },
+    "VM name to resize: ": {
+        "fr": "Nom de la VM à redimensionner : ",
+        "en": "VM name to resize: ",
+    },
+    "VM not found.": {
+        "fr": "VM introuvable.",
+        "en": "VM not found.",
+    },
+    "Main disk not found for this VM.": {
+        "fr": "Disque principal introuvable pour cette VM.",
+        "en": "Main disk not found for this VM.",
+    },
+    "Current disk:": {
+        "fr": "Disque actuel :",
+        "en": "Current disk:",
+    },
+    "Current virtual size:": {
+        "fr": "Taille virtuelle actuelle :",
+        "en": "Current virtual size:",
+    },
+    "VM state:": {
+        "fr": "État de la VM :",
+        "en": "VM state:",
+    },
+    "Could not read current disk size; aborting.": {
+        "fr": "Impossible de lire la taille actuelle du disque ; abandon.",
+        "en": "Could not read current disk size; aborting.",
+    },
+    "Host free space:": {
+        "fr": "Espace libre hôte :",
+        "en": "Host free space:",
+    },
+    "max sustainable total (before host full):": {
+        "fr": "max soutenable au total (avant hôte plein) :",
+        "en": "max sustainable total (before host full):",
+    },
+    "Beyond host capacity by ~%.1f G — overcommit.": {
+        "fr": "Dépasse la capacité de l'hôte de ~%.1f G — surallocation.",
+        "en": "Beyond host capacity by ~%.1f G — overcommit.",
+    },
+    "The qcow2 is thin: fine until the VM fills it, then the "
+    "host disk runs out. Max sustainable: ~%.1f G.": {
+        "fr": "Le qcow2 est creux : OK tant que la VM ne remplit pas, sinon "
+        "l'hôte tombe à court. Max soutenable : ~%.1f G.",
+        "en": "The qcow2 is thin: fine until the VM fills it, then the "
+        "host disk runs out. Max sustainable: ~%.1f G.",
+    },
+    "Safe shrink needs libguestfs (virt-resize).": {
+        "fr": "La réduction sûre nécessite libguestfs (virt-resize).",
+        "en": "Safe shrink needs libguestfs (virt-resize).",
+    },
+    "Install libguestfs-tools now? (y/N): ": {
+        "fr": "Installer libguestfs-tools maintenant ? (o/N) : ",
+        "en": "Install libguestfs-tools now? (y/N): ",
+    },
+    "Shrink aborted; disk left intact.": {
+        "fr": "Réduction annulée ; disque laissé intact.",
+        "en": "Shrink aborted; disk left intact.",
+    },
+    "Could not detect the partition to shrink; aborting.": {
+        "fr": "Partition à réduire introuvable ; abandon.",
+        "en": "Could not detect the partition to shrink; aborting.",
+    },
+    "Missing tools for safe shrink:": {
+        "fr": "Outils manquants pour la réduction sûre :",
+        "en": "Missing tools for safe shrink:",
+    },
+    "Backing up the disk before shrinking…": {
+        "fr": "Sauvegarde du disque avant réduction…",
+        "en": "Backing up the disk before shrinking…",
+    },
+    "Back up the disk before shrinking? (Y/n): ": {
+        "fr": "Sauvegarder le disque avant réduction ? (O/n, défaut : oui) : ",
+        "en": "Back up the disk before shrinking? (Y/n, default: yes): ",
+    },
+    "No backup: a failure could leave the disk broken.": {
+        "fr": "Sans sauvegarde : un échec pourrait rendre le disque inutilisable.",
+        "en": "No backup: a failure could leave the disk broken.",
+    },
+    "Disk safely shrunk.": {
+        "fr": "Disque réduit en toute sécurité.",
+        "en": "Disk safely shrunk.",
+    },
+    "No backup to restore; run fsck on the disk before use.": {
+        "fr": "Pas de sauvegarde à restaurer ; lancez fsck avant utilisation.",
+        "en": "No backup to restore; run fsck on the disk before use.",
+    },
+    "A disk backup was kept:": {
+        "fr": "Une sauvegarde du disque a été conservée :",
+        "en": "A disk backup was kept:",
+    },
+    "Delete this backup now? (y/N): ": {
+        "fr": "Effacer cette sauvegarde maintenant ? (o/N) : ",
+        "en": "Delete this backup now? (y/N): ",
+    },
+    "Backup deleted.": {
+        "fr": "Sauvegarde effacée.",
+        "en": "Backup deleted.",
+    },
+    "Backup kept (delete later via Clean up QEMU).": {
+        "fr": "Sauvegarde conservée (à effacer plus tard via Nettoyer QEMU).",
+        "en": "Backup kept (delete later via Clean up QEMU).",
+    },
+    "disk backup (resize)": {
+        "fr": "sauvegarde de disque (redim.)",
+        "en": "disk backup (resize)",
+    },
+    "Backup failed; aborting.": {
+        "fr": "Échec de la sauvegarde ; abandon.",
+        "en": "Backup failed; aborting.",
+    },
+    "Could not attach the disk (nbd); aborting.": {
+        "fr": "Impossible d'attacher le disque (nbd) ; abandon.",
+        "en": "Could not attach the disk (nbd); aborting.",
+    },
+    "Only ext2/3/4 can be shrunk safely; aborting.": {
+        "fr": "Seul ext2/3/4 peut être réduit en sécurité ; abandon.",
+        "en": "Only ext2/3/4 can be shrunk safely; aborting.",
+    },
+    "Target size too small for this layout; aborting.": {
+        "fr": "Taille cible trop petite pour cette disposition ; abandon.",
+        "en": "Target size too small for this layout; aborting.",
+    },
+    "Not enough used-space margin to shrink; aborting.": {
+        "fr": "Espace utilisé trop proche de la cible ; abandon.",
+        "en": "Not enough used-space margin to shrink; aborting.",
+    },
+    "Shrinking guest ext filesystem": {
+        "fr": "Réduction du système de fichiers ext invité",
+        "en": "Shrinking guest ext filesystem",
+    },
+    "resize2fs failed; reverting.": {
+        "fr": "resize2fs a échoué ; restauration.",
+        "en": "resize2fs failed; reverting.",
+    },
+    "Internal size check failed; reverting.": {
+        "fr": "Contrôle de taille interne échoué ; restauration.",
+        "en": "Internal size check failed; reverting.",
+    },
+    "Shrinking the partition…": {
+        "fr": "Réduction de la partition…",
+        "en": "Shrinking the partition…",
+    },
+    "Partition rewrite failed; reverting.": {
+        "fr": "Réécriture de la partition échouée ; restauration.",
+        "en": "Partition rewrite failed; reverting.",
+    },
+    "Shrinking the qcow2 container…": {
+        "fr": "Réduction du conteneur qcow2…",
+        "en": "Shrinking the qcow2 container…",
+    },
+    "Container shrink failed; reverting.": {
+        "fr": "Réduction du conteneur échouée ; restauration.",
+        "en": "Container shrink failed; reverting.",
+    },
+    "Restoring the original disk from backup…": {
+        "fr": "Restauration du disque d'origine depuis la sauvegarde…",
+        "en": "Restoring the original disk from backup…",
+    },
+    "Shrinking guest FS + partition via virt-resize": {
+        "fr": "Réduction du FS invité + partition via virt-resize",
+        "en": "Shrinking guest FS + partition via virt-resize",
+    },
+    "virt-resize failed; original disk left intact.": {
+        "fr": "virt-resize a échoué ; disque d'origine laissé intact.",
+        "en": "virt-resize failed; original disk left intact.",
+    },
+    "Disk safely shrunk. Backup kept at:": {
+        "fr": "Disque réduit en toute sécurité. Sauvegarde conservée :",
+        "en": "Disk safely shrunk. Backup kept at:",
+    },
+    "click to expand": {
+        "fr": "cliquer pour déplier",
+        "en": "click to expand",
+    },
+    "No error detected.": {
+        "fr": "Aucune erreur détectée.",
+        "en": "No error detected.",
+    },
+    "Test a VM (open Odoo in a CLI browser)": {
+        "fr": "🧪 Tester une VM (ouvrir Odoo dans un navigateur CLI)",
+        "en": "🧪 Test a VM (open Odoo in a CLI browser)",
+    },
+    "Reopen install monitoring (last run / history)": {
+        "fr": "📈 Rouvrir le suivi d'installation (dernier run / historique)",
+        "en": "📈 Reopen install monitoring (last run / history)",
+    },
+    "No install run found in history.": {
+        "fr": "Aucun run d'installation dans l'historique.",
+        "en": "No install run found in history.",
+    },
+    "Install runs (most recent first):": {
+        "fr": "Runs d'installation (du plus récent) :",
+        "en": "Install runs (most recent first):",
+    },
+    "Choice (number, blank = last): ": {
+        "fr": "Choix (numéro, vide = le dernier) : ",
+        "en": "Choice (number, blank = last): ",
+    },
+    "Invalid selection.": {
+        "fr": "Sélection invalide.",
+        "en": "Invalid selection.",
+    },
+    "Resolving VM IP...": {
+        "fr": "Résolution de l'IP de la VM…",
+        "en": "Resolving VM IP...",
+    },
+    "No IP found for this VM.": {
+        "fr": "Aucune IP trouvée pour cette VM.",
+        "en": "No IP found for this VM.",
+    },
+    "No CLI browser installed. Which to install?": {
+        "fr": "Aucun navigateur CLI installé. Lequel installer ?",
+        "en": "No CLI browser installed. Which to install?",
+    },
+    "Which browser to install?": {
+        "fr": "Quel navigateur installer ?",
+        "en": "Which browser to install?",
+    },
+    "Install another browser": {
+        "fr": "Installer un autre navigateur",
+        "en": "Install another browser",
+    },
+    "Choice (number, blank = w3m): ": {
+        "fr": "Choix (numéro, vide = w3m) : ",
+        "en": "Choice (number, blank = w3m): ",
+    },
+    "Unknown package manager; install it manually.": {
+        "fr": "Gestionnaire de paquets inconnu ; installez-le manuellement.",
+        "en": "Unknown package manager; install it manually.",
+    },
+    "Install now? (y/N): ": {
+        "fr": "Installer maintenant ? (o/N) : ",
+        "en": "Install now? (y/N): ",
+    },
+    "Which browser to view the page?": {
+        "fr": "Quel navigateur pour voir la page ?",
+        "en": "Which browser to view the page?",
+    },
+    "Choice (number, blank = first): ": {
+        "fr": "Choix (numéro, vide = le premier) : ",
+        "en": "Choice (number, blank = first): ",
+    },
+    "Page may not have loaded: Odoo not started on :8069, "
+    "or network/firewall.": {
+        "fr": "La page ne s'est peut-être pas affichée : Odoo n'est pas "
+        "démarré sur :8069, ou réseau/pare-feu.",
+        "en": "Page may not have loaded: Odoo not started on :8069, "
+        "or network/firewall.",
+    },
+    "errors": {
+        "fr": "erreurs",
+        "en": "errors",
+    },
+    "warnings": {
+        "fr": "avertissements",
+        "en": "warnings",
+    },
+    "Esc to close": {
+        "fr": "Échap pour fermer",
+        "en": "Esc to close",
+    },
+    "No running VM to pause.": {
+        "fr": "Aucune VM en cours à mettre en pause.",
+        "en": "No running VM to pause.",
+    },
+    "No paused VM to resume.": {
+        "fr": "Aucune VM en pause à reprendre.",
+        "en": "No paused VM to resume.",
+    },
+    "resumed": {
+        "fr": "reprise(s)",
+        "en": "resumed",
+    },
+    "SSH grow failed; trying the guest agent.": {
+        "fr": "Échec SSH ; tentative via l'agent invité.",
+        "en": "SSH grow failed; trying the guest agent.",
+    },
+    "No IP; trying the guest agent (no network).": {
+        "fr": "Pas d'IP ; tentative via l'agent invité (sans réseau).",
+        "en": "No IP; trying the guest agent (no network).",
+    },
+    "Guest filesystem grown via guest agent.": {
+        "fr": "FS invité étendu via l'agent invité.",
+        "en": "Guest filesystem grown via guest agent.",
+    },
+    "Guest agent grow failed; falling back to console.": {
+        "fr": "Échec de l'agent invité ; repli sur la console.",
+        "en": "Guest agent grow failed; falling back to console.",
+    },
+    "Guest agent unavailable; falling back to serial console.": {
+        "fr": "Agent invité indisponible ; repli sur la console série.",
+        "en": "Guest agent unavailable; falling back to serial console.",
+    },
+    "Running via guest agent (no network)…": {
+        "fr": "Exécution via l'agent invité (sans réseau)…",
+        "en": "Running via guest agent (no network)…",
+    },
+    "SSH grow failed; falling back to serial console.": {
+        "fr": "Échec de l'extension via SSH ; repli sur la console série.",
+        "en": "SSH grow failed; falling back to serial console.",
+    },
+    "No IP; falling back to serial console.": {
+        "fr": "Pas d'IP ; repli sur la console série.",
+        "en": "No IP; falling back to serial console.",
+    },
+    "Serial console fallback. Log in, then paste:": {
+        "fr": "Repli console série. Connectez-vous, puis collez :",
+        "en": "Serial console fallback. Log in, then paste:",
+    },
+    "Open the serial console now? (y/N): ": {
+        "fr": "Ouvrir la console série maintenant ? (o/N) : ",
+        "en": "Open the serial console now? (y/N): ",
+    },
+    "The VM must be off. Shut it down and retry? (y/N): ": {
+        "fr": "La VM doit être éteinte. L'éteindre et réessayer ? (o/N) : ",
+        "en": "The VM must be off. Shut it down and retry? (y/N): ",
+    },
+    "VM is still not off; aborting.": {
+        "fr": "La VM n'est toujours pas éteinte ; abandon.",
+        "en": "VM is still not off; aborting.",
+    },
+    "Waiting for the VM to shut down...": {
+        "fr": "Attente de l'arrêt de la VM…",
+        "en": "Waiting for the VM to shut down...",
+    },
+    "VM is off.": {
+        "fr": "VM éteinte.",
+        "en": "VM is off.",
+    },
+    "The VM was shut down for the resize.": {
+        "fr": "La VM a été éteinte pour le redimensionnement.",
+        "en": "The VM was shut down for the resize.",
+    },
+    "Start the VM now? (y/N): ": {
+        "fr": "Démarrer la VM maintenant ? (o/N) : ",
+        "en": "Start the VM now? (y/N): ",
+    },
+    "Graceful shutdown timed out. Force off (destroy)? (y/N): ": {
+        "fr": "Arrêt gracieux trop long. Forcer l'arrêt (destroy) ? (o/N) : ",
+        "en": "Graceful shutdown timed out. Force off (destroy)? (y/N): ",
+    },
+    "Show advanced info (vCPU, RAM, disk)? (y/N): ": {
+        "fr": "Afficher les infos avancées (vCPU, RAM, disque) ? (o/N) : ",
+        "en": "Show advanced info (vCPU, RAM, disk)? (y/N): ",
+    },
+    "What do you want to do?": {
+        "fr": "Que voulez-vous faire ?",
+        "en": "What do you want to do?",
+    },
+    "Advanced info (vCPU, RAM, disk)": {
+        "fr": "Infos avancées (vCPU, RAM, disque)",
+        "en": "Advanced info (vCPU, RAM, disk)",
+    },
+    "Change the state of one or more VMs": {
+        "fr": "Changer l'état d'une ou plusieurs VM",
+        "en": "Change the state of one or more VMs",
+    },
+    "Enter": {
+        "fr": "Entrée",
+        "en": "Enter",
+    },
+    "Nothing": {
+        "fr": "Rien",
+        "en": "Nothing",
+    },
+    "Choice: ": {
+        "fr": "Choix : ",
+        "en": "Choice: ",
+    },
+    "Available VMs:": {
+        "fr": "VM disponibles :",
+        "en": "Available VMs:",
+    },
+    "VMs to change (comma-separated): ": {
+        "fr": "VM à modifier (séparées par des virgules) : ",
+        "en": "VMs to change (comma-separated): ",
+    },
+    "Unknown VM(s):": {
+        "fr": "VM inconnue(s) :",
+        "en": "Unknown VM(s):",
+    },
+    "Target state:": {
+        "fr": "État cible :",
+        "en": "Target state:",
+    },
+    "Target environment?": {
+        "fr": "Environnement cible ?",
+        "en": "Target environment?",
+    },
+    "Development (~/git/erplibre, SELinux relaxed)": {
+        "fr": "Développement (~/git/erplibre, SELinux relâché)",
+        "en": "Development (~/git/erplibre, SELinux relaxed)",
+    },
+    "Production (/opt/erplibre, SELinux enforced)": {
+        "fr": "Production (/opt/erplibre, SELinux confiné)",
+        "en": "Production (/opt/erplibre, SELinux enforced)",
+    },
+    "Choice (1-2, default 1): ": {
+        "fr": "Choix (1-2, défaut 1) : ",
+        "en": "Choice (1-2, default 1): ",
+    },
+    "Open (start)": {
+        "fr": "Ouvrir (démarrer)",
+        "en": "Open (start)",
+    },
+    "Close (shut down)": {
+        "fr": "Fermer (éteindre)",
+        "en": "Close (shut down)",
+    },
+    "start": {
+        "fr": "démarrer",
+        "en": "start",
+    },
+    "shut down": {
+        "fr": "éteindre",
+        "en": "shut down",
+    },
+    "Apply:": {
+        "fr": "Appliquer :",
+        "en": "Apply:",
+    },
+    "Confirm for real? (y/N): ": {
+        "fr": "Confirmer pour de vrai ? (o/N) : ",
+        "en": "Confirm for real? (y/N): ",
+    },
+    "Storage": {
+        "fr": "Stockage",
+        "en": "Storage",
+    },
+    "total": {
+        "fr": "au total",
+        "en": "total",
+    },
+    "used": {
+        "fr": "utilisés",
+        "en": "used",
+    },
+    "Enter +NG to grow, -NG to shrink, or NG for a target size "
+    "(e.g. +20G, -10G, 60G).": {
+        "fr": "Entrez +NG pour agrandir, -NG pour réduire, ou NG pour une "
+        "taille cible (ex. +20G, -10G, 60G).",
+        "en": "Enter +NG to grow, -NG to shrink, or NG for a target size "
+        "(e.g. +20G, -10G, 60G).",
+    },
+    "Resize: ": {
+        "fr": "Redimensionner : ",
+        "en": "Resize: ",
+    },
+    "Invalid size.": {
+        "fr": "Taille invalide.",
+        "en": "Invalid size.",
+    },
+    "No change.": {
+        "fr": "Aucun changement.",
+        "en": "No change.",
+    },
+    "New virtual size:": {
+        "fr": "Nouvelle taille virtuelle :",
+        "en": "New virtual size:",
+    },
+    "SHRINKING is DANGEROUS: the guest filesystem is NOT shrunk. "
+    "Data beyond the new size is LOST. Shrink the guest FS FIRST, "
+    "and only then shrink here.": {
+        "fr": "RÉDUIRE est DANGEREUX : le système de fichiers invité n'est "
+        "PAS réduit. Les données au-delà de la nouvelle taille sont PERDUES. "
+        "Réduisez d'ABORD le FS invité, puis seulement ici.",
+        "en": "SHRINKING is DANGEROUS: the guest filesystem is NOT shrunk. "
+        "Data beyond the new size is LOST. Shrink the guest FS FIRST, "
+        "and only then shrink here.",
+    },
+    "Shut the VM off before shrinking (virsh shutdown).": {
+        "fr": "Éteignez la VM avant de réduire (virsh shutdown).",
+        "en": "Shut the VM off before shrinking (virsh shutdown).",
+    },
+    "Type y to confirm you understand the risk (y/N): ": {
+        "fr": "Tapez o pour confirmer que vous comprenez le risque "
+        "(o/N, défaut : non) : ",
+        "en": "Type y to confirm you understand the risk (y/N): ",
+    },
+    "Resize failed (see error above).": {
+        "fr": "Échec du redimensionnement (voir l'erreur ci-dessus).",
+        "en": "Resize failed (see error above).",
+    },
+    "Virtual disk resized.": {
+        "fr": "Disque virtuel redimensionné.",
+        "en": "Virtual disk resized.",
+    },
+    "Grow the guest filesystem now (over SSH)? (y/N): ": {
+        "fr": "Étendre le système de fichiers invité maintenant (via SSH) ? "
+        "(o/N, défaut : non) : ",
+        "en": "Grow the guest filesystem now (over SSH)? (y/N): ",
+    },
+    "No IP; grow the guest FS manually once booted.": {
+        "fr": "Pas d'IP ; étendez le FS invité manuellement après le boot.",
+        "en": "No IP; grow the guest FS manually once booted.",
+    },
+    "completed": {
+        "fr": "terminées",
+        "en": "completed",
+    },
+    "deleted": {
+        "fr": "effacée",
+        "en": "deleted",
+    },
+    "paused": {
+        "fr": "pause",
+        "en": "paused",
+    },
+    "Waiting for the VM to start (boot + cloud-init)": {
+        "fr": "En attente du démarrage de la VM (boot + cloud-init)",
+        "en": "Waiting for the VM to start (boot + cloud-init)",
+    },
+    "(an emulated architecture can be slow; this is normal)": {
+        "fr": "(une architecture émulée peut être lente ; c'est normal)",
+        "en": "(an emulated architecture can be slow; this is normal)",
+    },
+    "VM ready - starting the ERPLibre install": {
+        "fr": "VM prête — installation ERPLibre en cours",
+        "en": "VM ready - starting the ERPLibre install",
+    },
+    "Choice (number or name, blank = native):": {
+        "fr": "Choix (numéro ou nom, vide = native) :",
+        "en": "Choice (number or name, blank = native):",
+    },
+    "Pick exact versions (comma-separated list)": {
+        "fr": "Choisir des versions précises (liste séparée par des virgules)",
+        "en": "Pick exact versions (comma-separated list)",
+    },
+    "Selection (numbers, 'all', 'principal' or 'granulaire',"
+    " default: all): ": {
+        "fr": "Sélection (numéros, « all », « principal » ou « granulaire »,"
+        " défaut : all) : ",
+        "en": "Selection (numbers, 'all', 'principal' or 'granulaire',"
+        " default: all): ",
+    },
+    "All versions:": {
+        "fr": "Toutes les versions :",
+        "en": "All versions:",
+    },
+    "Selection (comma-separated numbers): ": {
+        "fr": "Sélection (numéros séparés par des virgules) : ",
+        "en": "Selection (comma-separated numbers): ",
+    },
+    "s390x images only exist for:": {
+        "fr": "images s390x disponibles seulement pour :",
+        "en": "s390x images only exist for:",
+    },
+    "ignored:": {
+        "fr": "ignoré :",
+        "en": "ignored:",
+    },
+    "IBM Z — emulated, slow on x86": {
+        "fr": "IBM Z — émulé, lent sur x86",
+        "en": "IBM Z — emulated, slow on x86",
+    },
+    "Choice (number or name, blank = amd64):": {
+        "fr": "Choix (numéro ou nom, vide = amd64) :",
+        "en": "Choice (number or name, blank = amd64):",
+    },
+    "s390x is emulated (TCG): boot and install are much "
+    "slower than x86.": {
+        "fr": "s390x est émulé (TCG) : le boot et l'installation sont bien "
+        "plus lents que x86.",
+        "en": "s390x is emulated (TCG): boot and install are much "
+        "slower than x86.",
+    },
+    "Choice (number or version, blank = default):": {
+        "fr": "Choix (numéro ou version, vide = défaut) :",
+        "en": "Choice (number or version, blank = default):",
+    },
+    "Invalid selection, using": {
+        "fr": "Sélection invalide, utilisation de",
+        "en": "Invalid selection, using",
+    },
+    "select all": {
+        "fr": "tout sélectionner",
+        "en": "select all",
+    },
+    "Delete VM(s)": {
+        "fr": "🗑 Effacer une ou plusieurs VM",
+        "en": "🗑 Delete VM(s)",
+    },
+    "No VM found.": {
+        "fr": "Aucune VM trouvée.",
+        "en": "No VM found.",
+    },
+    "Select VMs to delete:": {
+        "fr": "Sélectionner les VM à effacer :",
+        "en": "Select VMs to delete:",
+    },
+    "Selection (numbers, or 'all'): ": {
+        "fr": "Sélection (numéros, ou « all ») : ",
+        "en": "Selection (numbers, or 'all'): ",
+    },
+    "Also delete disk images (qcow2 + seed ISO)? (y/N): ": {
+        "fr": "Effacer aussi les disques (qcow2 + seed ISO) ? (o/N, défaut : non) : ",
+        "en": "Also delete disk images (qcow2 + seed ISO)? (y/N, default: no): ",
+    },
+    "Will delete:": {
+        "fr": "Sera effacé :",
+        "en": "Will delete:",
+    },
+    "disk images and seed ISOs": {
+        "fr": "les disques et les seed ISO",
+        "en": "disk images and seed ISOs",
+    },
+    "disks kept": {
+        "fr": "disques conservés",
+        "en": "disks kept",
+    },
+    "Confirm deletion? (y/N): ": {
+        "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
+        "en": "Confirm deletion? (y/N, default: no): ",
+    },
+    "Deletion done.": {
+        "fr": "Effacement terminé.",
+        "en": "Deletion done.",
+    },
+    "Clean up QEMU (orphan files)": {
+        "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
+        "en": "🧹 Clean up QEMU (orphan files)",
+    },
+    "Scanning for orphan QEMU files...": {
+        "fr": "Recherche des fichiers QEMU orphelins...",
+        "en": "Scanning for orphan QEMU files...",
+    },
+    "orphan disk": {
+        "fr": "disque orphelin",
+        "en": "orphan disk",
+    },
+    "orphan seed": {
+        "fr": "seed orphelin",
+        "en": "orphan seed",
+    },
+    "partial download": {
+        "fr": "téléchargement interrompu",
+        "en": "partial download",
+    },
+    "orphan UEFI nvram": {
+        "fr": "nvram UEFI orpheline",
+        "en": "orphan UEFI nvram",
+    },
+    "No orphan files found.": {
+        "fr": "Aucun fichier orphelin trouvé.",
+        "en": "No orphan files found.",
+    },
+    "Orphan files:": {
+        "fr": "Fichiers orphelins :",
+        "en": "Orphan files:",
+    },
+    "Total:": {
+        "fr": "Total :",
+        "en": "Total:",
+    },
+    "files": {
+        "fr": "fichiers",
+        "en": "files",
+    },
+    "Delete these orphan files? (y/N): ": {
+        "fr": "Effacer ces fichiers orphelins ? (o/N, défaut : non) : ",
+        "en": "Delete these orphan files? (y/N, default: no): ",
+    },
+    "Cleanup done.": {
+        "fr": "Nettoyage terminé.",
+        "en": "Cleanup done.",
+    },
+    "Cached base images (reusable):": {
+        "fr": "Images de base en cache (réutilisables) :",
+        "en": "Cached base images (reusable):",
+    },
+    "Also delete the cached base images? (y/N): ": {
+        "fr": "Effacer aussi les images de base en cache ? (o/N, défaut : non) : ",
+        "en": "Also delete the cached base images? (y/N, default: no): ",
+    },
+    "All cached base images (reusable):": {
+        "fr": "Toutes les images de base en cache (réutilisables) :",
+        "en": "All cached base images (reusable):",
+    },
+    "Delete ALL cached base images? (y/N): ": {
+        "fr": "Effacer TOUTES les images de base en cache ? (o/N, défaut : non) : ",
+        "en": "Delete ALL cached base images? (y/N, default: no): ",
+    },
+    "Ghost domains (defined but disk missing):": {
+        "fr": "Domaines fantômes (définis, disque manquant) :",
+        "en": "Ghost domains (defined but disk missing):",
+    },
+    "Undefine these ghost domains? (y/N): ": {
+        "fr": "Supprimer la définition de ces domaines ? (o/N, défaut : non) : ",
+        "en": "Undefine these ghost domains? (y/N, default: no): ",
+    },
+    "Stale codename-named Ubuntu images (duplicates):": {
+        "fr": "Images Ubuntu nommées par codename (doublons) :",
+        "en": "Stale codename-named Ubuntu images (duplicates):",
+    },
+    "Delete these duplicate images? (y/N): ": {
+        "fr": "Effacer ces images en double ? (o/N, défaut : non) : ",
+        "en": "Delete these duplicate images? (y/N, default: no): ",
+    },
+    "Orphan ~/.ssh/config entries:": {
+        "fr": "Entrées ~/.ssh/config orphelines :",
+        "en": "Orphan ~/.ssh/config entries:",
+    },
+    "Remove these ~/.ssh/config entries? (y/N): ": {
+        "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N, défaut : non) : ",
+        "en": "Remove these ~/.ssh/config entries? (y/N, default: no): ",
+    },
+    "Stale DHCP leases (no matching VM):": {
+        "fr": "Baux DHCP périmés (aucune VM correspondante) :",
+        "en": "Stale DHCP leases (no matching VM):",
+    },
+    "Clear these stale leases? (y/N): ": {
+        "fr": "Effacer ces baux périmés ? (o/N, défaut : non) : ",
+        "en": "Clear these stale leases? (y/N, default: no): ",
+    },
+    "Deploy ERPLibre infra (one minimal VM per image)": {
+        "fr": "Déployer l'infra ERPLibre (une VM minimale par image)",
+        "en": "Deploy ERPLibre infra (one minimal VM per image)",
+    },
+    "Deploy ERPLibre infra: one minimal VM per image": {
+        "fr": "Déployer l'infra ERPLibre : une VM minimale par image",
+        "en": "Deploy ERPLibre infra: one minimal VM per image",
+    },
+    "Cannot load QEMU catalog: ": {
+        "fr": "Impossible de charger le catalogue QEMU : ",
+        "en": "Cannot load QEMU catalog: ",
+    },
+    "Distributions:": {
+        "fr": "Distributions :",
+        "en": "Distributions:",
+    },
+    "Whole catalog (every version)": {
+        "fr": "Tout le catalogue (chaque version)",
+        "en": "Whole catalog (every version)",
+    },
+    "The main version of each distro (marked *)": {
+        "fr": "La version principale de chaque distro (marquée *)",
+        "en": "The main version of each distro (marked *)",
+    },
+    "Selection (numbers, 'all' or 'principal', default: all): ": {
+        "fr": "Sélection (numéros, « all » ou « principal », défaut : all) : ",
+        "en": "Selection (numbers, 'all' or 'principal', default: all): ",
+    },
+    "Selection (numbers, or 'all', default: all): ": {
+        "fr": "Sélection (numéros, ou « all », défaut : all) : ",
+        "en": "Selection (numbers, or 'all', default: all): ",
+    },
+    "Nothing selected.": {
+        "fr": "Rien de sélectionné.",
+        "en": "Nothing selected.",
+    },
+    "Deployment plan": {
+        "fr": "Plan de déploiement",
+        "en": "Deployment plan",
+    },
+    "disk": {
+        "fr": "disque",
+        "en": "disk",
+    },
+    "Total RAM (all running):": {
+        "fr": "RAM totale (toutes actives) :",
+        "en": "Total RAM (all running):",
+    },
+    "Total virtual disk (thin qcow2):": {
+        "fr": "Disque virtuel total (qcow2 thin) :",
+        "en": "Total virtual disk (thin qcow2):",
+    },
+    "Host RAM available:": {
+        "fr": "RAM disponible de l'hôte :",
+        "en": "Host RAM available:",
+    },
+    "Total RAM exceeds host free RAM: not all VMs will run at once.": {
+        "fr": "La RAM totale dépasse la RAM libre de l'hôte : les VM ne "
+        "tourneront pas toutes en même temps.",
+        "en": "Total RAM exceeds host free RAM: not all VMs will run at once.",
+    },
+    "Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur chaque VM ? "
+        "(O/n, défaut : oui) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on each VM? "
+        "(Y/n, default: yes): ",
+    },
+    "Deploy these VMs now? (Y/n): ": {
+        "fr": "Déployer ces VM maintenant ? (O/n, défaut : oui) : ",
+        "en": "Deploy these VMs now? (Y/n, default: yes): ",
+    },
+    "Discard everything and start over? (y/N): ": {
+        "fr": "Tout abandonner et recommencer ? (o/N, défaut : non) : ",
+        "en": "Discard everything and start over? (y/N, default: no): ",
+    },
+    "Final review before deployment": {
+        "fr": "Récapitulatif final avant déploiement",
+        "en": "Final review before deployment",
+    },
+    "VMs to create:": {
+        "fr": "VM à créer :",
+        "en": "VMs to create:",
+    },
+    "Existing, left untouched:": {
+        "fr": "Existantes, laissées intactes :",
+        "en": "Existing, left untouched:",
+    },
+    "ERPLibre install:": {
+        "fr": "Installation ERPLibre :",
+        "en": "ERPLibre install:",
+    },
+    "profile": {
+        "fr": "profil",
+        "en": "profile",
+    },
+    "branch": {
+        "fr": "branche",
+        "en": "branch",
+    },
+    "production (/opt, confined)": {
+        "fr": "production (/opt, confiné)",
+        "en": "production (/opt, confined)",
+    },
+    "development (~/git)": {
+        "fr": "développement (~/git)",
+        "en": "development (~/git)",
+    },
+    "no": {
+        "fr": "non",
+        "en": "no",
+    },
+    "SSH key:": {
+        "fr": "Clé SSH :",
+        "en": "SSH key:",
+    },
+    "~/.ssh/config:": {
+        "fr": "~/.ssh/config :",
+        "en": "~/.ssh/config:",
+    },
+    "one entry per VM": {
+        "fr": "une entrée par VM",
+        "en": "one entry per VM",
+    },
+    "untouched": {
+        "fr": "inchangé",
+        "en": "untouched",
+    },
+    "Parallelism:": {
+        "fr": "Parallélisme :",
+        "en": "Parallelism:",
+    },
+    "at a time": {
+        "fr": "à la fois",
+        "en": "at a time",
+    },
+    "Nothing to create - every VM already exists.": {
+        "fr": "Rien à créer — toutes les VM existent déjà.",
+        "en": "Nothing to create — every VM already exists.",
+    },
+    "Name collisions detected": {
+        "fr": "Collisions de noms détectées",
+        "en": "Name collisions detected",
+    },
+    "VM already defined - SKIPPED, nothing overwritten": {
+        "fr": "VM déjà définie — IGNORÉE, rien ne sera écrasé",
+        "en": "VM already defined — SKIPPED, nothing overwritten",
+    },
+    "disk present without VM - deployment will FAIL": {
+        "fr": "disque présent sans VM — le déploiement ÉCHOUERA",
+        "en": "disk present without VM - deployment will FAIL",
+    },
+    "Remove it by hand, or rename the VM.": {
+        "fr": "L'effacer à la main, ou renommer la VM.",
+        "en": "Remove it by hand, or rename the VM.",
+    },
+    "Continue despite these collisions? (y/N): ": {
+        "fr": "Continuer malgré ces collisions ? (o/N, défaut : non) : ",
+        "en": "Continue despite these collisions? (y/N, default: no): ",
+    },
+    "Resolving VM IPs (parallel, emulated boot is slow)...": {
+        "fr": "Résolution des IP des VM (en parallèle, le démarrage émulé "
+        "est lent)...",
+        "en": "Resolving VM IPs (parallel, emulated boot is slow)...",
+    },
+    "no IP": {
+        "fr": "pas d'IP",
+        "en": "no IP",
+    },
+    "Cloning ERPLibre on each VM": {
+        "fr": "Clonage d'ERPLibre sur chaque VM",
+        "en": "Cloning ERPLibre on each VM",
+    },
+    "Installing ERPLibre on each VM": {
+        "fr": "Installation d'ERPLibre sur chaque VM",
+        "en": "Installing ERPLibre on each VM",
+    },
+    "Install ERPLibre into ~/git/erplibre on this VM? (y/N): ": {
+        "fr": "Installer ERPLibre dans ~/git/erplibre sur cette VM ? (o/N, défaut : non) : ",
+        "en": "Install ERPLibre into ~/git/erplibre on this VM? (y/N, default: no): ",
+    },
+    "installing ERPLibre": {
+        "fr": "installation d'ERPLibre",
+        "en": "installing ERPLibre",
+    },
+    "no IP obtained, ERPLibre install skipped.": {
+        "fr": "aucune IP obtenue, installation ERPLibre ignorée.",
+        "en": "no IP obtained, ERPLibre install skipped.",
+    },
+    "waiting for SSH...": {
+        "fr": "attente du SSH...",
+        "en": "waiting for SSH...",
+    },
+    "SSH not reachable, ERPLibre install skipped.": {
+        "fr": "SSH injoignable, installation ERPLibre ignorée.",
+        "en": "SSH not reachable, ERPLibre install skipped.",
+    },
+    "What to install on the VM(s)?": {
+        "fr": "Que veut-on installer sur la/les VM ?",
+        "en": "What to install on the VM(s)?",
+    },
+    "Choice (number, blank = Odoo 18): ": {
+        "fr": "Choix (numéro, vide = Odoo 18) : ",
+        "en": "Choice (number, blank = Odoo 18): ",
+    },
+    "ERPLibre + all Odoo versions": {
+        "fr": "ERPLibre + toutes les versions Odoo",
+        "en": "ERPLibre + all Odoo versions",
+    },
+    "ERPLibre only (no Odoo)": {
+        "fr": "ERPLibre seulement (sans Odoo)",
+        "en": "ERPLibre only (no Odoo)",
+    },
+    "ERPLibre mobile (home)": {
+        "fr": "ERPLibre mobile (home)",
+        "en": "ERPLibre mobile (home)",
+    },
+    "ERPLibre Deployment (+ QEMU + dev)": {
+        "fr": "ERPLibre Déploiement (+ QEMU + dev)",
+        "en": "ERPLibre Deployment (+ QEMU + dev)",
+    },
+    "Interactive monitoring dashboard? (y/N): ": {
+        "fr": "Suivi interactif (dashboard) ? (O/n, défaut : oui) : ",
+        "en": "Interactive monitoring dashboard? (Y/n, default: yes): ",
+    },
+    "resolving IP...": {
+        "fr": "résolution de l'IP...",
+        "en": "resolving IP...",
+    },
+    "no IP, skipped.": {
+        "fr": "pas d'IP, ignorée.",
+        "en": "no IP, skipped.",
+    },
+    "No VM to install.": {
+        "fr": "Aucune VM à installer.",
+        "en": "No VM to install.",
+    },
+    "Opening the interactive monitor...": {
+        "fr": "Ouverture du suivi interactif...",
+        "en": "Opening the interactive monitor...",
+    },
+    "Monitor closed. Installs keep running in the background.": {
+        "fr": "Suivi fermé. Les installations continuent en arrière-plan.",
+        "en": "Monitor closed. Installs keep running in the background.",
+    },
+    "Logs:": {
+        "fr": "Logs :",
+        "en": "Logs:",
+    },
+    "Read the logs:": {
+        "fr": "Lire les logs :",
+        "en": "Read the logs:",
+    },
+    "Log files:": {
+        "fr": "Fichiers de log :",
+        "en": "Log files:",
+    },
+    "Parallel deployments (default:": {
+        "fr": "Déploiements en parallèle (défaut :",
+        "en": "Parallel deployments (default:",
+    },
+    "VMs": {
+        "fr": "VM",
+        "en": "VMs",
+    },
+    "Deploy summary:": {
+        "fr": "Bilan déploiement :",
+        "en": "Deploy summary:",
+    },
+    "IPs resolved:": {
+        "fr": "IP résolues :",
+        "en": "IPs resolved:",
+    },
+    "still waiting for": {
+        "fr": "encore en attente de",
+        "en": "still waiting for",
+    },
+    "TOTAL summary": {
+        "fr": "Sommaire TOTAL",
+        "en": "TOTAL summary",
+    },
+    "VMs deployed:": {
+        "fr": "VM déployées :",
+        "en": "VMs deployed:",
+    },
+    "total incl. existing:": {
+        "fr": "total avec existantes :",
+        "en": "total incl. existing:",
+    },
+    "Total time:": {
+        "fr": "Temps total :",
+        "en": "Total time:",
+    },
+    "Deploying": {
+        "fr": "Déploiement de",
+        "en": "Deploying",
+    },
+    "parallel jobs:": {
+        "fr": "tâches parallèles :",
+        "en": "parallel jobs:",
+    },
+    "ERPLibre infra deployment done.": {
+        "fr": "Déploiement de l'infra ERPLibre terminé.",
+        "en": "ERPLibre infra deployment done.",
+    },
+    "Manage with:": {
+        "fr": "Gérer avec :",
+        "en": "Manage with:",
+    },
+    "Fetching ERPLibre branch list...": {
+        "fr": "Récupération de la liste des branches ERPLibre...",
+        "en": "Fetching ERPLibre branch list...",
+    },
+    "Branch (default:": {
+        "fr": "Branche (défaut :",
+        "en": "Branch (default:",
+    },
+    "Branches:": {
+        "fr": "Branches :",
+        "en": "Branches:",
+    },
+    "Choice (number or name, default:": {
+        "fr": "Choix (numéro ou nom, défaut :",
+        "en": "Choice (number or name, default:",
+    },
+    "no IP obtained, ERPLibre clone skipped.": {
+        "fr": "aucune IP obtenue, clonage ERPLibre ignoré.",
+        "en": "no IP obtained, ERPLibre clone skipped.",
+    },
+    "cloning ERPLibre": {
+        "fr": "clonage d'ERPLibre",
+        "en": "cloning ERPLibre",
+    },
+    "VM name (required): ": {
+        "fr": "Nom de la VM (requis) : ",
+        "en": "VM name (required): ",
+    },
+    "VM name is required!": {
+        "fr": "Le nom de la VM est requis !",
+        "en": "VM name is required!",
+    },
+    "VM name: ": {
+        "fr": "Nom de la VM : ",
+        "en": "VM name: ",
+    },
+    "VM name or ID: ": {
+        "fr": "Nom ou ID de la VM : ",
+        "en": "VM name or ID: ",
+    },
+    "VM name or ID (or 'all'): ": {
+        "fr": "Nom ou ID de la VM (ou « all ») : ",
+        "en": "VM name or ID (or 'all'): ",
+    },
+    "RAM in MB (blank = version minimum): ": {
+        "fr": "RAM en Mo (vide = minimum de la version) : ",
+        "en": "RAM in MB (blank = version minimum): ",
+    },
+    "vCPUs (default: 2): ": {
+        "fr": "vCPU (défaut : 2) : ",
+        "en": "vCPUs (default: 2): ",
+    },
+    "Disk size (blank = version min; e.g. 30G, 1T): ": {
+        "fr": "Taille du disque (vide = min. version ; ex. 30G, 1T) : ",
+        "en": "Disk size (blank = version min; e.g. 30G, 1T): ",
+    },
+    "VM name (default: ": {
+        "fr": "Nom de la VM (défaut : ",
+        "en": "VM name (default: ",
+    },
+    "Deployment failed (see the error above).": {
+        "fr": "Échec du déploiement (voir l'erreur ci-dessus).",
+        "en": "Deployment failed (see the error above).",
+    },
+    "SSH public key path": {
+        "fr": "Chemin de la clé publique SSH",
+        "en": "SSH public key path",
+    },
+    "none": {
+        "fr": "aucune",
+        "en": "none",
+    },
+    "No SSH key found. Set a password instead? (Y/n): ": {
+        "fr": "Aucune clé SSH trouvée. Définir un mot de passe ? (O/n) : ",
+        "en": "No SSH key found. Set a password instead? (Y/n): ",
+    },
+    "Overwrite existing VM disk if present? (y/N): ": {
+        "fr": "Écraser le disque de la VM s'il existe ? (o/N, défaut : non) : ",
+        "en": "Overwrite existing VM disk if present? (y/N, default: no): ",
+    },
+    "Verify SHA256 after download? (y/N): ": {
+        "fr": "Vérifier le SHA256 après téléchargement ? (o/N, défaut : non) : ",
+        "en": "Verify SHA256 after download? (y/N, default: no): ",
+    },
+    "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
+        "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
+        "en": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
+    },
+    # QEMU - statistics screen
+    "Statistics (installs, durations, VMs)": {
+        "fr": "📊 Statistiques (installations, durées, VM)",
+        "en": "📊 Statistics (installs, durations, VMs)",
+    },
+    "QEMU statistics": {"fr": "Statistiques QEMU", "en": "QEMU statistics"},
+    "No installation recorded yet.": {
+        "fr": "Aucune installation enregistrée pour l'instant.",
+        "en": "No installation recorded yet.",
+    },
+    "Installations": {"fr": "Installations", "en": "Installations"},
+    "Total": {"fr": "Total", "en": "Total"},
+    "succeeded": {"fr": "réussies", "en": "succeeded"},
+    "failed": {"fr": "échouées", "en": "failed"},
+    "Period": {"fr": "Période", "en": "Period"},
+    "days": {"fr": "jours", "en": "days"},
+    "Median duration": {"fr": "Durée médiane", "en": "Median duration"},
+    "min": {"fr": "min", "en": "min"},
+    "max": {"fr": "max", "en": "max"},
+    "Cumulated time": {"fr": "Temps cumulé", "en": "Cumulated time"},
+    "By distribution": {"fr": "Par distribution", "en": "By distribution"},
+    "By version": {"fr": "Par version", "en": "By version"},
+    "By architecture": {"fr": "Par architecture", "en": "By architecture"},
+    "Virtual machines": {
+        "fr": "Machines virtuelles",
+        "en": "Virtual machines",
+    },
+    "Defined": {"fr": "Définies", "en": "Defined"},
+    "running": {"fr": "en cours", "en": "running"},
+    "stopped": {"fr": "arrêtées", "en": "stopped"},
+    "Disk used": {"fr": "Disque utilisé", "en": "Disk used"},
+    "image": {"fr": "image", "en": "image"},
+    "failure": {"fr": "échec", "en": "failure"},
+    "Reset the statistics": {
+        "fr": "Réinitialiser les statistiques",
+        "en": "Reset the statistics",
+    },
+    "Nothing to reset.": {"fr": "Rien à effacer.", "en": "Nothing to reset."},
+    "Erase": {"fr": "Effacer", "en": "Erase"},
+    "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
+    "runs erased": {"fr": "runs effacés", "en": "runs erased"},
+    "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
 }
 
 
