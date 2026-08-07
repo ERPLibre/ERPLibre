@@ -1086,14 +1086,8 @@ class TODO:
             if personalize:
                 name = input(t("Enter your full name: ")).strip()
                 email = input(t("Enter your email: ")).strip()
-                content = content.replace(
-                    "Your Name <your@email.com>",
-                    f"{name} <{email}>",
-                )
-                content = content.replace(
-                    "Your Name ",
-                    f"{name} ",
-                )
+                content = content.replace("your@email.com", email)
+                content = content.replace("Your Name", name)
 
             os.makedirs(dest_dir, exist_ok=True)
             with open(dest_file, "w") as f:

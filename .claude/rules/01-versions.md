@@ -1,14 +1,10 @@
 # Versions supportées
 
-| Odoo  | Python   | Poetry | Statut     |
-|-------|----------|--------|------------|
-| 18.0  | 3.12.10  | 2.1.3  | **Défaut** |
-| 17.0  | 3.10.18  | 1.8.3  | Actif      |
-| 16.0  | 3.10.18  | 1.8.3  | Actif      |
-| 15.0  | 3.8.20   | 1.8.3  | Déprécié   |
-| 14.0  | 3.8.20   | 1.5.0  | Déprécié   |
-| 13.0  | 3.7.17   | 1.5.0  | Déprécié   |
-| 12.0  | 3.7.17   | 1.5.0  | Déprécié   |
+Odoo 12.0 à 18.0, **18.0 par défaut**. Les 12 à 15 sont dépréciées.
 
-Configuration dans `conf/supported_version_erplibre.json`.
-Fichiers de version : `.odoo-version`, `.erplibre-version`, `.poetry-version`, `.python-odoo-version`.
+La correspondance Odoo ↔ Python ↔ Poetry fait autorité dans
+`conf/supported_version_erplibre.json` (ses clés portent déjà le couple, ex.
+`odoo18.0_python3.12.10`) — la lire plutôt que de mémoriser un tableau.
+
+Version active du checkout : `.odoo-version`, `.erplibre-version`,
+`.poetry-version`, `.python-odoo-version`.

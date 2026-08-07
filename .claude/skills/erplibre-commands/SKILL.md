@@ -1,4 +1,8 @@
-# Commandes essentielles
+---
+name: erplibre-commands
+description: Commandes ERPLibre — changer de version Odoo, lancer/tester une instance, opérations base de données, tester un module précis avec couverture, formatage, Docker, Google Repo, installation. À charger dès qu'une commande make ou un script du dépôt est nécessaire.
+---
+
 
 ## Changement de version Odoo
 ```bash
