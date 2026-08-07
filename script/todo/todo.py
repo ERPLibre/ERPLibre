@@ -215,22 +215,23 @@ class TODO:
 
 ── {t("Data")} ──
 [6] {t("Database - Database tools")}
+[7] {t("Analyse - Odoo database analysis")}
 
 ── {t("Sources & documentation")} ──
-[7] {t("Git - Git tools")}
-[8] {t("Doc - Documentation search")}
+[8] {t("Git - Git tools")}
+[9] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[9] {t("GPT code - AI assistant tools")}
-[10] {t("Automation - Demonstration of developed features")}
+[10] {t("GPT code - AI assistant tools")}
+[11] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[11] {t("Deploy - Deploy ERPLibre locally")}
-[12] {t("Network - Network tools")}
-[13] {t("Security - Dependency security audit")}
+[12] {t("Deploy - Deploy ERPLibre locally")}
+[13] {t("Network - Network tools")}
+[14] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[14] {t("Language - Change language / Changer la langue")}
+[15] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -263,34 +264,38 @@ class TODO:
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "14":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "15":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -541,6 +546,7 @@ class TODO:
         "prompt_execute_code": "Code",
         "prompt_execute_config": "Config",
         "prompt_execute_database": "Database",
+        "prompt_execute_analyse": "Analyse",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
@@ -6416,6 +6422,63 @@ class TODO:
                 self.db_manager.drop_database()
             else:
                 print(t("Command not found !"))
+
+    def prompt_execute_analyse(self):
+        """Analyses en lecture seule d'une base Odoo.
+
+        Aucune entrée de ce menu n'écrit : la connexion psql est ouverte avec
+        `default_transaction_read_only=on`, donc c'est le serveur qui refuse
+        toute écriture, pas une promesse du code.
+        """
+        print(f"🤖 {t('Analyse a database, without ever writing to it!')}")
+        choices = [
+            {"section": t("Structure")},
+            {"prompt_description": t("Tables and database size")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_analyse_schema_size()
+            else:
+                print(t("Command not found !"))
+
+    def _analyse_select_database(self):
+        """Faire choisir la base à analyser, ou None si on abandonne."""
+        database = self.db_manager.select_database()
+        return database or None
+
+    def execute_analyse_schema_size(self):
+        """Poids de la base et tables qu'aucun modèle installé ne réclame.
+
+        L'outil est importé et appelé, pas lancé en sous-processus : `todo.py`
+        tourne déjà sous le même interpréteur, donc le sous-processus
+        n'apporterait aucun isolement et coûterait un second démarrage.
+
+        Contrepartie assumée de cet appel direct : une exception remonterait
+        dans la boucle du menu et ferait sortir du TODO. D'où le `try`.
+        """
+        database = self._analyse_select_database()
+        if not database:
+            return
+        from script.analyse import analyse_schema_size as analyse
+
+        try:
+            data = analyse.collect(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        print(analyse.render(data))
+        if data["orphan_tables"]:
+            print(
+                f"  💡 {t('Full list and JSON output:')}\n"
+                f"     ./script/analyse/analyse_schema_size.py"
+                f" -d {database} -v --json"
+            )
 
     def prompt_execute_process(self):
         print(f"🤖 {t('Manage execution processes!')}")

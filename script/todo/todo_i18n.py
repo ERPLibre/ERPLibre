@@ -3422,6 +3422,58 @@ TRANSLATIONS = {
         "fr": "Le fichier de progression est invalide, on l'ignore",
         "en": "The progression file is invalid, ignoring it",
     },
+    # --- Menu Execute › Analyse ---
+    # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
+    # comme « Data » / « Database » : l'entrée de menu porte l'émoji,
+    # l'étiquette du fil d'Ariane est nue — _todo_telemetry_tui traduit le
+    # dernier segment du chemin, et un émoji y détonnerait.
+    "Analyse - Odoo database analysis": {
+        "fr": "🔬 Analyse - Analyse de base de données Odoo",
+        "en": "🔬 Analyse - Odoo database analysis",
+    },
+    "Analyse": {"fr": "Analyse", "en": "Analysis"},
+    "Analyse a database, without ever writing to it!": {
+        "fr": "Analyser une base, sans jamais y écrire !",
+        "en": "Analyse a database, without ever writing to it!",
+    },
+    "Structure": {"fr": "Structure", "en": "Structure"},
+    "Tables and database size": {
+        "fr": "Tables et poids de la base",
+        "en": "Tables and database size",
+    },
+    "Analysis failed: ": {
+        "fr": "L'analyse a échoué : ",
+        "en": "Analysis failed: ",
+    },
+    "Full list and JSON output:": {
+        "fr": "Liste complète et sortie JSON :",
+        "en": "Full list and JSON output:",
+    },
+    # --- script/analyse : erreurs du socle ---
+    "Invalid database name: ": {
+        "fr": "Nom de base invalide : ",
+        "en": "Invalid database name: ",
+    },
+    "Cannot read from the database: ": {
+        "fr": "Lecture impossible dans la base : ",
+        "en": "Cannot read from the database: ",
+    },
+    "is not an Odoo database.": {
+        "fr": "n'est pas une base Odoo.",
+        "en": "is not an Odoo database.",
+    },
+    "psql is not installed or not in PATH.": {
+        "fr": "psql n'est pas installé, ou absent du PATH.",
+        "en": "psql is not installed or not in PATH.",
+    },
+    "Query exceeded the timeout (s): ": {
+        "fr": "La requête a dépassé le délai imparti (s) : ",
+        "en": "Query exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from psql: ": {
+        "fr": "JSON illisible en sortie de psql : ",
+        "en": "Unreadable JSON from psql: ",
+    },
     # --- script/analyse : poids du schéma ---
     "Schema analysis": {
         "fr": "Analyse du schéma",
