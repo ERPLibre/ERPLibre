@@ -17,6 +17,8 @@ uvloop
 python-randomword-fr
 isort
 pykeepass
+cryptography
+keyring
 click
 aioshutil
 python-magic
@@ -51,6 +53,14 @@ virtualenv==20.36.1
 # For logical test and quality
 git+https://github.com/psf/black.git@24.8.0
 pre-commit
+
+# Bac à sable du client courriel : un VRAI serveur SMTP et un VRAI serveur
+# IMAP, sur loopback, pour tester ce qu'un faux transport ne peut pas —
+# littéraux IMAP, en-têtes 8 bits, coupures en plein FETCH. Utilisés
+# UNIQUEMENT par les tests, jamais par le client lui-même : les tests
+# concernés s'ignorent d'eux-mêmes si ces paquets manquent.
+aiosmtpd
+twisted
 
 odoo-module-migrator
 
