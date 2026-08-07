@@ -3445,6 +3445,11 @@ TRANSLATIONS = {
         "fr": "📏 Tables et poids de la base",
         "en": "📏 Tables and database size",
     },
+    "Customisation": {"fr": "🎭 Personnalisation", "en": "🎭 Customisation"},
+    "Customised views, website copies included": {
+        "fr": "🖼  Vues personnalisées, copies de site web comprises",
+        "en": "🖼  Customised views, website copies included",
+    },
     "Analysis failed: ": {
         "fr": "L'analyse a échoué : ",
         "en": "Analysis failed: ",
@@ -3452,6 +3457,89 @@ TRANSLATIONS = {
     "Full list and JSON output:": {
         "fr": "Liste complète et sortie JSON :",
         "en": "Full list and JSON output:",
+    },
+    # --- script/analyse : vues personnalisées ---
+    "Customised views": {
+        "fr": "Vues personnalisées",
+        "en": "Customised views",
+    },
+    "Views": {"fr": "Vues", "en": "Views"},
+    "why": {"fr": "pourquoi", "en": "why"},
+    "more": {"fr": "de plus", "en": "more"},
+    "From an installed theme": {
+        "fr": "Posée par un thème installé",
+        "en": "From an installed theme",
+    },
+    "Website copy (COW)": {
+        "fr": "Copie de site web (COW)",
+        "en": "Website copy (COW)",
+    },
+    "Made with Studio": {"fr": "Faite avec Studio", "en": "Made with Studio"},
+    "Imported or exported": {
+        "fr": "Importée ou exportée",
+        "en": "Imported or exported",
+    },
+    "Created from the interface": {
+        "fr": "Créée depuis l'interface",
+        "en": "Created from the interface",
+    },
+    "From a module, flagged as touched": {
+        "fr": "D'un module, signalée comme retouchée",
+        "en": "From a module, flagged as touched",
+    },
+    "Straight from a module": {
+        "fr": "Telle quelle depuis un module",
+        "en": "Straight from a module",
+    },
+    "Every view comes straight from a module.": {
+        "fr": "Toutes les vues viennent telles quelles d'un module.",
+        "en": "Every view comes straight from a module.",
+    },
+    "Views that did not come straight from a module": {
+        "fr": "Vues qui ne viennent pas telles quelles d'un module",
+        "en": "Views that did not come straight from a module",
+    },
+    "Website copies are user data: Odoo copies a view instead of editing it."
+    " Whether they will survive the next version is another question, and"
+    " these tools answer it:": {
+        "fr": "Les copies de site web sont des données utilisateur : Odoo"
+        " copie une vue au lieu de la modifier. Savoir si elles survivront à"
+        " la prochaine version est une autre question, et ces outils y"
+        " répondent :",
+        "en": "Website copies are user data: Odoo copies a view instead of"
+        " editing it. Whether they will survive the next version is another"
+        " question, and these tools answer it:",
+    },
+    "Flags say a view was touched, not how. They are incomplete both ways: a"
+    " direct SQL write does not set arch_updated, and reset_arch clears it."
+    " Comparing with the module source is what settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. Ils"
+        " sont incomplets dans les deux sens : un write SQL direct n'arme pas"
+        " arch_updated, et reset_arch l'efface. Seule la comparaison avec la"
+        " source du module tranche.",
+        "en": "Flags say a view was touched, not how. They are incomplete"
+        " both ways: a direct SQL write does not set arch_updated, and"
+        " reset_arch clears it. Comparing with the module source is what"
+        " settles it.",
+    },
+    "List the views of an Odoo database that did not come straight from a"
+    " module, website copies included (read-only).": {
+        "fr": "Lister les vues d'une base Odoo qui ne viennent pas telles"
+        " quelles d'un module, copies de site web comprises (lecture seule).",
+        "en": "List the views of an Odoo database that did not come straight"
+        " from a module, website copies included (read-only).",
+    },
+    "only show this category": {
+        "fr": "n'afficher que cette catégorie",
+        "en": "only show this category",
+    },
+    "how many views to show (default: 20)": {
+        "fr": "nombre de vues à afficher (défaut : 20)",
+        "en": "how many views to show (default: 20)",
+    },
+    "list every view": {
+        "fr": "afficher toutes les vues",
+        "en": "list every view",
     },
     # --- script/analyse : erreurs du socle ---
     "Invalid database name: ": {

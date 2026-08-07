@@ -6434,6 +6434,12 @@ class TODO:
         choices = [
             {"section": t("Structure")},
             {"prompt_description": t("Tables and database size")},
+            {"section": t("Customisation")},
+            {
+                "prompt_description": t(
+                    "Customised views, website copies included"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6444,6 +6450,8 @@ class TODO:
                 return False
             elif status == "1":
                 self.execute_analyse_schema_size()
+            elif status == "2":
+                self.execute_analyse_view_custom()
             else:
                 print(t("Command not found !"))
 
@@ -6477,6 +6485,26 @@ class TODO:
             print(
                 f"  💡 {t('Full list and JSON output:')}\n"
                 f"     ./script/analyse/analyse_schema_size.py"
+                f" -d {database} -v --json"
+            )
+
+    def execute_analyse_view_custom(self):
+        """Vues qui ne viennent pas telles quelles d'un module, COW comprises."""
+        database = self._analyse_select_database()
+        if not database:
+            return
+        from script.analyse import analyse_view_custom as analyse
+
+        try:
+            data = analyse.collect(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        print(analyse.render(data))
+        if data["findings"]:
+            print(
+                f"  💡 {t('Full list and JSON output:')}\n"
+                f"     ./script/analyse/analyse_view_custom.py"
                 f" -d {database} -v --json"
             )
 

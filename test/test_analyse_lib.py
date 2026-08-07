@@ -47,6 +47,7 @@ import tempfile
 import unittest
 
 from script.analyse import lib_analyse as L
+from script.todo import todo_i18n
 
 
 class TestValidDatabaseName(unittest.TestCase):
@@ -279,6 +280,18 @@ class TestJsonQuery(unittest.TestCase):
 
 
 class TestRunPsqlGuards(unittest.TestCase):
+    """`_current_lang` est un état de MODULE, pas un état de test.
+
+    Ce test passait seul et tombait dans la suite : un autre fichier avait
+    laissé la langue en français, et le message n'est traduit que depuis
+    qu'une traduction existe. Toute assertion sur un texte affiché doit donc
+    fixer la langue, sinon elle dépend de l'ordre des tests.
+    """
+
+    def setUp(self):
+        todo_i18n.set_lang("en")
+        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+
     def test_hostile_database_name_never_reaches_psql(self):
         with self.assertRaises(L.AnalyseError) as caught:
             L.run_psql("a; DROP DATABASE b", "SELECT 1;")
