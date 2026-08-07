@@ -389,3 +389,37 @@ def public_tables(database, **kwargs):
         for line in run_psql(database, sql, **kwargs).splitlines()
         if line.strip()
     }
+
+
+def _describe():
+    """Dire ce qu'est ce fichier, et où sont les outils.
+
+    Ce fichier porte un shebang et un nom qui ressemble à celui d'un outil ;
+    le lancer ne produisait rien du tout, ce qui se lit comme une panne plutôt
+    que comme « ce n'est pas un exécutable ». Il énumère donc ses voisins qui,
+    eux, se lancent — la liste vient du disque, elle ne peut pas se périmer
+    quand un outil s'ajoute.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    lst_tool = sorted(
+        name
+        for name in os.listdir(here)
+        if name.startswith("analyse_") and name.endswith(".py")
+    )
+    print(
+        f"📚 {os.path.basename(__file__)} — "
+        f"{t('shared library, nothing to run here.')}"
+    )
+    print()
+    if lst_tool:
+        print(t("Runnable tools in this directory:"))
+        for tool in lst_tool:
+            print(f"    ./script/analyse/{tool} -d <database>")
+    else:
+        print(t("No analysis tool here yet."))
+    print()
+    print(f"{t('From the menu:')} make todo → Execute → Analyse")
+
+
+if __name__ == "__main__":
+    _describe()

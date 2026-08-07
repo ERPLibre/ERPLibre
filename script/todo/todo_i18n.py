@@ -3474,6 +3474,19 @@ TRANSLATIONS = {
         "fr": "JSON illisible en sortie de psql : ",
         "en": "Unreadable JSON from psql: ",
     },
+    "shared library, nothing to run here.": {
+        "fr": "bibliothèque partagée, rien à lancer ici.",
+        "en": "shared library, nothing to run here.",
+    },
+    "Runnable tools in this directory:": {
+        "fr": "Outils exécutables de ce répertoire :",
+        "en": "Runnable tools in this directory:",
+    },
+    "No analysis tool here yet.": {
+        "fr": "Aucun outil d'analyse ici pour l'instant.",
+        "en": "No analysis tool here yet.",
+    },
+    "From the menu:": {"fr": "Depuis le menu :", "en": "From the menu:"},
     # --- script/analyse : poids du schéma ---
     "Schema analysis": {
         "fr": "Analyse du schéma",
