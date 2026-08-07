@@ -289,8 +289,16 @@ class TestRunPsqlGuards(unittest.TestCase):
     """
 
     def setUp(self):
-        todo_i18n.set_lang("en")
-        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+        # PAS `set_lang()` : il PERSISTE la langue dans ./env_var.sh, un
+        # fichier suivi par git. Un test qui l'appelle modifie l'arbre de
+        # travail et laisse la langue changée pour tout ce qui suit —
+        # `_current_lang = None` ne défait que la mémoïsation, pas le
+        # fichier, et la résolution suivante relit celui-ci. On écrit donc
+        # la mémoïsation directement, et on rend la valeur trouvée.
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
 
     def test_hostile_database_name_never_reaches_psql(self):
         with self.assertRaises(L.AnalyseError) as caught:

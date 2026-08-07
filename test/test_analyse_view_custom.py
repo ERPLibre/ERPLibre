@@ -157,8 +157,16 @@ class TestCategoryTables(unittest.TestCase):
     """Les trois tables de catégories doivent rester d'accord entre elles."""
 
     def test_every_category_has_a_label(self):
-        todo_i18n.set_lang("en")
-        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+        # PAS `set_lang()` : il PERSISTE la langue dans ./env_var.sh, un
+        # fichier suivi par git. Un test qui l'appelle modifie l'arbre de
+        # travail et laisse la langue changée pour tout ce qui suit —
+        # `_current_lang = None` ne défait que la mémoïsation, pas le
+        # fichier, et la résolution suivante relit celui-ci. On écrit donc
+        # la mémoïsation directement, et on rend la valeur trouvée.
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
         for name in A.CATEGORIES:
             self.assertNotEqual(
                 A.category_label(name),
@@ -175,8 +183,16 @@ class TestCategoryTables(unittest.TestCase):
 
 class TestRender(unittest.TestCase):
     def setUp(self):
-        todo_i18n.set_lang("en")
-        self.addCleanup(setattr, todo_i18n, "_current_lang", None)
+        # PAS `set_lang()` : il PERSISTE la langue dans ./env_var.sh, un
+        # fichier suivi par git. Un test qui l'appelle modifie l'arbre de
+        # travail et laisse la langue changée pour tout ce qui suit —
+        # `_current_lang = None` ne défait que la mémoïsation, pas le
+        # fichier, et la résolution suivante relit celui-ci. On écrit donc
+        # la mémoïsation directement, et on rend la valeur trouvée.
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
 
     def data(self, **override):
         rows = [
@@ -244,7 +260,7 @@ class TestRender(unittest.TestCase):
 
     def test_french_differs(self):
         english = A.render(self.data())
-        todo_i18n.set_lang("fr")
+        todo_i18n._current_lang = "fr"  # cf. plus haut : pas de persistance
         french = A.render(self.data())
         self.assertIn("Copie de site web", french)
         self.assertNotEqual(english, french)
