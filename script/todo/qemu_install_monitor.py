@@ -73,7 +73,9 @@ def list_install_runs() -> list:
     return runs
 
 
-def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
+def _launch_one(
+    ip: str, remote_cmd: str, log_path: str, name: str = ""
+) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie."""
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
@@ -95,19 +97,45 @@ def _launch_one(ip: str, remote_cmd: str, log_path: str) -> None:
     msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
     msg_slow = t("(an emulated architecture can be slow; this is normal)")
     msg_ready = t("VM ready - starting the ERPLibre install")
+    # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
+    # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
+    # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
+    # lancement devient donc morte en cours de route, et l'attente échouait
+    # 20 minutes durant sur une VM parfaitement saine (vécu : bail .247 périmé
+    # pendant que la VM vivait en .248).
+    #
+    # L'agent invité fait foi : il répond depuis l'intérieur, là où le bail
+    # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
+    # car ce script tourne DÉTACHÉ : une demande de mot de passe le bloquerait
+    # sans que personne ne la voie. Sans réponse, on garde l'adresse courante.
+    name_q = shlex.quote(name) if name else ""
+    refresh = (
+        (
+            f"n=$(sudo -n virsh domifaddr {name_q} --source agent 2>/dev/null "
+            "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            "| grep -v '^127\\.' | head -1); "
+            '[ -n "$n" ] && ip="$n"; '
+        )
+        if name
+        else ""
+    )
     wrapper = (
+        f"ip={shlex.quote(ip)}; "
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
         f"for i in $(seq 1 240); do "
-        f"st=$(ssh {SSH_OPTS} -o BatchMode=yes erplibre@{ip} "
+        f"{refresh}"
+        f'st=$(ssh {SSH_OPTS} -o BatchMode=yes "erplibre@$ip" '
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) break;; "
         f"esac; "
-        f'if [ $((i % 6)) -eq 0 ]; then echo "   ... $((i*5))s" >> {log_q}; fi; '
+        f"if [ $((i % 6)) -eq 0 ]; then "
+        f'echo "   ... $((i*5))s ($ip)" >> {log_q}; fi; '
         f"sleep 5; done; "
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
-        f"ssh {SSH_OPTS} erplibre@{ip} {shlex.quote(remote_cmd)} "
+        f'echo "   → $ip" >> {log_q}; '
+        f'ssh {SSH_OPTS} "erplibre@$ip" {shlex.quote(remote_cmd)} '
         f">> {log_q} 2>&1; "
         f'echo "{EXIT_MARKER} $?" >> {log_q}'
     )
@@ -156,7 +184,7 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # En-tête d'emblée (date/distro/version/arch) : le log n'est jamais
         # vide, l'utilisateur voit tout de suite QUOI s'installe.
         Path(log_path).write_text(_log_header(vm, branch, when))
-        _launch_one(vm["ip"], remote_cmd, log_path)
+        _launch_one(vm["ip"], remote_cmd, log_path, vm["name"])
         entries.append(
             {
                 "name": vm["name"],
@@ -705,6 +733,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
             ("s", "ssh", "SSH"),
+            ("v", "console", "Console (virsh)"),
             ("w", "web", "Web (navigateur CLI)"),
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
@@ -829,9 +858,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             bar = self.query_one("#sshbar", Static)
             if vm:
                 bar.update(
-                    f"  {vm['ssh']}    (s = SSH · w = web :8069 · "
-                    "c = copier le log · d = détails erreurs · "
-                    "Maj+glisser = sélectionner)\n"
+                    f"  {vm['ssh']}    (s = SSH · v = console · "
+                    "w = web :8069 · c = copier le log · "
+                    "d = détails erreurs · Maj+glisser = sélectionner)\n"
                     f"  Log : {vm['log']}"
                 )
 
@@ -1132,6 +1161,34 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             with self.suspend():
                 os.system(f"ssh {SSH_OPTS} erplibre@{vm['ip']} || true")
+
+        def action_console(self) -> None:
+            """Console série de la VM, sans quitter le suivi.
+
+            Le seul recours quand SSH ne répond pas : elle ne dépend ni du
+            réseau de la VM, ni de sshd, ni d'une IP — donc elle montre un
+            démarrage bloqué, un cloud-init encore en cours ou un réseau sans
+            bail, que le suivi ne peut que constater de loin.
+
+            « suspend() » rend le terminal avant d'appeler virsh : sudo peut y
+            demander son mot de passe et la console prendre le clavier, ce qui
+            casserait l'affichage si Textual le tenait encore.
+            """
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+            name = shlex.quote(vm["name"])
+            with self.suspend():
+                # La console n'affiche que ce qui arrive APRÈS l'attachement :
+                # sur une VM déjà démarrée l'écran reste noir tant qu'on n'a
+                # rien envoyé. On le dit, plutôt que de laisser croire à un gel.
+                print(f"\n→ virsh console {vm['name']}")
+                print(
+                    "   Écran vide ? Appuyez sur Entrée : la console ne montre"
+                    " que la sortie qui suit l'attachement."
+                )
+                print("   Ctrl+] puis Entrée pour revenir au suivi.\n")
+                os.system(f"sudo virsh console {name} || true")
 
         def action_web(self) -> None:
             """Ouvre l'UI web de la VM (Odoo :8069) dans un navigateur CLI
