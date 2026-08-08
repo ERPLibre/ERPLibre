@@ -3341,6 +3341,10 @@ TRANSLATIONS = {
         "fr": "Fuseau horaire des VM",
         "en": "Timezone for the VMs",
     },
+    "Locale for the VMs": {
+        "fr": "Locale des VM",
+        "en": "Locale for the VMs",
+    },
     "Unknown timezone, keeping": {
         "fr": "Fuseau inconnu, on garde",
         "en": "Unknown timezone, keeping",

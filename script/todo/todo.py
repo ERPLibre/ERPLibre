@@ -4247,6 +4247,15 @@ class TODO:
                 "sudo systemctl disable --now dnf-automatic.timer "
                 "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
                 "fi; "
+                # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
+                # « systemd-analyze critical-chain » sur une VM s390x —
+                # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
+                # n'installe de snap : c'est du temps payé pour rien, à chaque
+                # démarrage. On désactive plutôt que désinstaller, pour rester
+                # réversible d'un « systemctl enable ».
+                "sudo systemctl disable --now snapd.seeded.service "
+                "snapd.service snapd.socket snapd.apparmor.service "
+                ">/dev/null 2>&1 || true; "
             )
         return (
             "set -e; "
@@ -4814,6 +4823,7 @@ class TODO:
         branch,
         dry_run,
         timezone=None,
+        locale=None,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -4845,6 +4855,8 @@ class TODO:
             # dry-run doit produire la même VM si on la rejoue depuis une autre
             # machine, dont le fuseau serait différent.
             parts += ["--timezone", timezone]
+        if locale:
+            parts += ["--locale", locale]
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
             bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
@@ -4871,6 +4883,7 @@ class TODO:
             install["branch"] if install else None,
             dry_run=dry_run,
             timezone=spec.get("timezone"),
+            locale=spec.get("locale"),
         )
 
     # ---------------------------------------------------------------- #
@@ -5348,6 +5361,14 @@ class TODO:
             return default
         return answer
 
+    def _qemu_ask_locale(self):
+        """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
+        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        déploiement pour un confort dont une VM jetable n'a pas besoin."""
+        default = "C.UTF-8"
+        answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
+        return answer or default
+
     def _qemu_collect_options_cli(self, vms, res_label):
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
@@ -5370,6 +5391,7 @@ class TODO:
             ssh_key = os.path.expanduser(ssh_key)
 
         timezone = self._qemu_ask_timezone()
+        locale = self._qemu_ask_locale()
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5434,6 +5456,7 @@ class TODO:
             "existing": existing,
             "ssh_key": ssh_key,
             "timezone": timezone,
+            "locale": locale,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
