@@ -725,6 +725,14 @@ TRANSLATIONS = {
         "fr": "Tests unitaires ERPLibre",
         "en": "ERPLibre unit tests",
     },
+    "Mail unit tests": {
+        "fr": "Tests unitaires courriel",
+        "en": "Mail unit tests",
+    },
+    "Analyse unit tests": {
+        "fr": "Tests unitaires analyse",
+        "en": "Analyse unit tests",
+    },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
         "en": "Running unit tests",

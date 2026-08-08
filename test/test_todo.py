@@ -299,6 +299,56 @@ class TestExecuteUnitTests(unittest.TestCase):
             todo.execute_unit_tests()
         # Verify it was called - error handling path
 
+    def test_the_pattern_reaches_the_command(self):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests("test_mail*.py")
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_mail*.py'", cmd)
+
+    def test_the_default_pattern_is_still_the_whole_suite(self):
+        """La signature a gagné un paramètre : l'entrée [3] ne doit pas
+        s'être mise à ne lancer qu'un sous-ensemble en silence."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_*.py'", cmd)
+
+
+class TestTestMenuDispatch(unittest.TestCase):
+    """Le câblage des entrées, pas leur contenu.
+
+    Un `elif` qui pointe le mauvais motif lancerait une suite verte sans
+    rien tester de ce que l'utilisateur a demandé — panne silencieuse que
+    seul ce test attrape.
+    """
+
+    def _choose(self, entry):
+        todo = TODO()
+        with patch.object(
+            todo, "execute_unit_tests"
+        ) as mock_run, patch.object(todo, "execute_test_module"), patch(
+            "click.prompt", side_effect=[entry, "0"]
+        ), patch(
+            "builtins.print"
+        ):
+            todo.prompt_execute_test()
+        return mock_run
+
+    def test_entry_4_runs_the_mail_tests(self):
+        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
+
+    def test_entry_5_runs_the_analyse_tests(self):
+        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
+
+    def test_entry_3_still_runs_everything(self):
+        self.assertEqual(self._choose("3").call_args[0], ())
+
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
     def test_empty_kdbx_key(self):

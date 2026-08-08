@@ -27,9 +27,9 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
-from script.todo import todo_prefs
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
@@ -609,9 +609,8 @@ class TODO:
         """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
         exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
         et la position du curseur sont restaurés) ou de quitter."""
-        from script.todo.todo_telemetry import run_tui
-
         from script.todo import textual_setup
+        from script.todo.todo_telemetry import run_tui
 
         if not textual_setup.ensure():
             return
@@ -3877,8 +3876,9 @@ class TODO:
         `timeout` : délai max PAR VM (borne l'attente d'une VM sans IP). Un
         BATTEMENT toutes les 30 s liste les VM encore en attente -> jamais de
         silence prolongé qui donne l'impression d'un blocage."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import TimeoutError as _FTimeout
+        from concurrent.futures import as_completed
 
         labels = labels or {}
         print(
@@ -7102,6 +7102,8 @@ class TODO:
             {"prompt_description": t("Test a module")},
             {"prompt_description": t("Test a module with code coverage")},
             {"prompt_description": t("ERPLibre unit tests")},
+            {"prompt_description": t("Mail unit tests")},
+            {"prompt_description": t("Analyse unit tests")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -7116,6 +7118,10 @@ class TODO:
                 self.execute_test_module(coverage=True)
             elif status == "3":
                 self.execute_unit_tests()
+            elif status == "4":
+                self.execute_unit_tests("test_mail*.py")
+            elif status == "5":
+                self.execute_unit_tests("test_analyse*.py")
             else:
                 print(t("Command not found !"))
 
@@ -7208,11 +7214,18 @@ class TODO:
                 single_source_erplibre=True,
             )
 
-    def execute_unit_tests(self):
+    def execute_unit_tests(self, pattern="test_*.py"):
+        """Lance `unittest discover` sur un SOUS-ENSEMBLE de la suite.
+
+        Le motif est le seul paramètre : la suite complète dure plusieurs
+        minutes, dominées par les tests TUI montés, et attendre tout pour
+        vérifier un coin précis décourage de lancer les tests du tout. Une
+        entrée de menu supplémentaire coûte donc un motif, pas une méthode.
+        """
         print(f"\n--- {t('Running unit tests')} ---")
         cmd = (
             ".venv.erplibre/bin/python -m unittest discover"
-            " -s test -p 'test_*.py' -v"
+            f" -s test -p '{pattern}' -v"
         )
         status_code, output = self.execute.exec_command_live(
             cmd,
