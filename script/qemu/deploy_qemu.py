@@ -1261,15 +1261,41 @@ def build_cloud_config(
         "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
         " || systemctl enable --now sshd 2>/dev/null || true",
-        # qemu-guest-agent : installé + activé APRÈS sshd (donc SSH reste
-        # disponible tout de suite, sans attendre le réseau). Tout est
-        # « || true » : si l'installation échoue (réseau lent/absent), le boot
-        # n'est pas bloqué. La plupart des images cloud l'incluent déjà.
-        # Rafraîchit d'abord l'index (les images cloud n'ont PAS de listes apt
-        # -> sinon « Unable to locate package »), puis installe. timeout : un
-        # miroir lent ne bloque JAMAIS cloud-init. Non fatal (|| true).
-        # Sous-shell ( ) et NON accolades { } : « { » est un indicateur YAML.
-        "  - (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
+        # Getty sur la console qui EXISTE VRAIMENT.
+        #
+        # Sur s390x, l'image attend /dev/ttysclp0 (généré depuis la ligne de
+        # commande noyau) alors que le périphérique réellement présent porte un
+        # autre nom : « Timed out waiting for device dev-ttysclp0.device », puis
+        # « Dependency failed for serial-getty@ttysclp0 ». La console affiche
+        # donc tout le démarrage mais n'offre AUCUNE invite de connexion — elle
+        # est en lecture seule par accident, et c'est justement le seul recours
+        # quand SSH ne répond pas. On active le getty sur le premier
+        # périphérique console présent. Ailleurs (x86/arm64) ttyS0 existe et son
+        # getty tourne déjà : « enable --now » n'y change rien.
+        "  - for d in ttysclp0 sclp_line0 hvc0 ttyS0; do"
+        " test -c /dev/$d && systemctl enable --now serial-getty@$d.service"
+        " 2>/dev/null && break; done || true",
+        # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
+        #
+        # Mesuré sur Ubuntu 26.04 s390x : « apt-get install qemu-guest-agent »
+        # tire liburing2, ubuntu-helper-virt-hwe et ubuntu-virt depuis
+        # ports.ubuntu.com, et cloud-final tourne 9 min 47. Or le suivi
+        # d'installation attend « cloud-init status: done » : dix minutes
+        # d'attente pour un paquet accessoire, avant même de commencer le
+        # travail utile.
+        #
+        # systemd-run --no-block rend la main tout de suite : cloud-init termine
+        # en quelques secondes et l'agent apparaît quand il apparaît. On saute
+        # aussi l'installation quand qemu-ga est déjà là, ce qui est le cas de
+        # beaucoup d'images. Repli en ligne si systemd-run manque.
+        "  - command -v qemu-ga >/dev/null 2>&1 ||"
+        " systemd-run --no-block --unit=erplibre-qga --collect"
+        " /bin/sh -c 'command -v apt-get >/dev/null && { apt-get update -qq"
+        " || true; apt-get install -y qemu-guest-agent; }"
+        " || command -v dnf >/dev/null && dnf install -y qemu-guest-agent"
+        " || command -v pacman >/dev/null && pacman -Sy --noconfirm"
+        " qemu-guest-agent' 2>/dev/null"
+        " || (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
         " || true; timeout 300 apt-get install -y qemu-guest-agent)) ||"
         " (command -v dnf >/dev/null && timeout 300 dnf install -y"
         " qemu-guest-agent) || (command -v pacman >/dev/null && timeout 300"
