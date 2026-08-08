@@ -232,14 +232,32 @@ class TestResolveSentFolder(DeliverCase):
 
 class TestDeliver(DeliverCase):
     def test_sends_and_reports(self):
+        """Le chemin HEUREUX, et il faut un transport pour l'emprunter.
+
+        Sans transport, `session.syncer.transport` vaut None, l'APPEND part
+        en AttributeError, et `deliver` renvoie son statut d'ÉCHEC. Le test
+        passait quand même : « a@y.ca » figure dans les deux statuts, celui
+        du succès comme celui de l'échec. D'où le transport ici, et une
+        assertion qui distingue les deux — sinon ce test dit seulement que
+        `deliver` a renvoyé quelque chose.
+        """
+
+        class FakeTransport:
+            def append(self, folder, raw, flags):
+                pass
+
         sent = []
         status = deliver(
-            self.session(),
+            self.session(transport=FakeTransport()),
             self.msg,
             send_fn=lambda acc, m, tr: sent.append(m) or ["a@y.ca"],
         )
         self.assertEqual(len(sent), 1)
         self.assertIn("a@y.ca", status)
+        # `⚠` et le balisage rouge sont posés par le chemin d'échec seul, et
+        # ne dépendent pas de la langue — contrairement au texte traduit.
+        self.assertNotIn("⚠", status)
+        self.assertNotIn("[b red]", status)
 
     def test_appends_to_the_sent_folder(self):
         class FakeTransport:
