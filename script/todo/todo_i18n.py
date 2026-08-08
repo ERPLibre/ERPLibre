@@ -3285,6 +3285,50 @@ TRANSLATIONS = {
         "fr": "Fuseau horaire",
         "en": "Timezone",
     },
+    "virsh cannot reach qemu:///system without sudo.": {
+        "fr": "virsh ne peut pas joindre qemu:///system sans sudo.",
+        "en": "virsh cannot reach qemu:///system without sudo.",
+    },
+    "The install monitor runs detached and cannot type a": {
+        "fr": "Le suivi d'installation tourne détaché et ne peut pas saisir",
+        "en": "The install monitor runs detached and cannot type a",
+    },
+    "password: it would lose the VM when its lease moves.": {
+        "fr": "de mot de passe : il perdrait la VM au changement de bail.",
+        "en": "password: it would lose the VM when its lease moves.",
+    },
+    "You are in the libvirt group, but this session": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session est",
+        "en": "You are in the libvirt group, but this session",
+    },
+    "predates it. Log out and back in, or run:": {
+        "fr": "antérieure. Reconnectez-vous, ou lancez :",
+        "en": "predates it. Log out and back in, or run:",
+    },
+    "Group is active, so the cause is elsewhere:": {
+        "fr": "Le groupe est actif : la cause est donc ailleurs.",
+        "en": "Group is active, so the cause is elsewhere:",
+    },
+    "Add your user to the libvirt group?": {
+        "fr": "Ajouter votre utilisateur au groupe libvirt ?",
+        "en": "Add your user to the libvirt group?",
+    },
+    "Run it now? (Y/n): ": {
+        "fr": "L'exécuter maintenant ? (O/n) : ",
+        "en": "Run it now? (Y/n): ",
+    },
+    "Command failed.": {
+        "fr": "La commande a échoué.",
+        "en": "Command failed.",
+    },
+    "Added. Log out and back in for it to take effect,": {
+        "fr": "Ajouté. Reconnectez-vous pour que ça prenne effet,",
+        "en": "Added. Log out and back in for it to take effect,",
+    },
+    "or start a new shell with: newgrp libvirt": {
+        "fr": "ou ouvrez un shell neuf avec : newgrp libvirt",
+        "en": "or start a new shell with: newgrp libvirt",
+    },
     "Timezone for the VMs": {
         "fr": "Fuseau horaire des VM",
         "en": "Timezone for the VMs",

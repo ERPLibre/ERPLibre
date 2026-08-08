@@ -6,6 +6,7 @@ import ast
 import configparser
 import datetime
 import getpass
+import grp
 import inspect
 import json
 import logging
@@ -4908,6 +4909,70 @@ class TODO:
         existing = [vm["name"] for vm in vms if vm["name"] in known]
         return pending, existing
 
+    def _qemu_check_libvirt_group(self):
+        """Prévient si virsh n'est pas joignable sans sudo, et propose de régler.
+
+        Le suivi d'installation tourne DÉTACHÉ, sans tty : il ne peut pas
+        répondre à une demande de mot de passe. « sudo -n » y échoue sur tout
+        hôte exigeant une authentification interactive (vécu sur erplibre01 avec
+        sudo-rs), et la VM devient alors introuvable dès que son bail DHCP
+        change. Le groupe libvirt est la seule voie qui n'exige ni root ni tty.
+
+        Vérifié AVANT de créer quoi que ce soit : découvrir le problème après
+        vingt minutes d'installation coûte bien plus cher qu'une question ici.
+        """
+        probe = subprocess.run(
+            ["virsh", "--connect", "qemu:///system", "list", "--name"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            return  # joignable sans sudo : rien à signaler
+
+        user = getpass.getuser()
+        # Être dans /etc/group ne suffit pas : les groupes d'un processus sont
+        # figés à l'ouverture de session. Distinguer les deux cas évite de
+        # proposer un usermod déjà fait, et dit la vraie action attendue.
+        try:
+            declared = user in grp.getgrnam("libvirt").gr_mem
+        except KeyError:
+            declared = False
+        try:
+            active = grp.getgrnam("libvirt").gr_gid in os.getgroups()
+        except KeyError:
+            active = False
+
+        print(f"\n⚠  {t('virsh cannot reach qemu:///system without sudo.')}")
+        print(f"   {t('The install monitor runs detached and cannot type a')}")
+        print(
+            f"   {t('password: it would lose the VM when its lease moves.')}"
+        )
+
+        if declared and not active:
+            print(
+                f"\n   {t('You are in the libvirt group, but this session')}"
+            )
+            print(f"   {t('predates it. Log out and back in, or run:')}")
+            print(f"     newgrp libvirt")
+            return
+        if active:
+            # Groupe présent mais virsh échoue quand même : libvirtd arrêté,
+            # socket absente… La cause n'est pas le groupe, ne pas la maquiller.
+            print(f"\n   {t('Group is active, so the cause is elsewhere:')}")
+            print(f"     {(probe.stderr or '').strip()[:200]}")
+            return
+
+        cmd = f"sudo usermod -aG libvirt {shlex.quote(user)}"
+        print(f"\n   {t('Add your user to the libvirt group?')}")
+        print(f"     {cmd}")
+        if not self._is_yes_default_yes(input(t("Run it now? (Y/n): "))):
+            return
+        if os.system(cmd) != 0:
+            print(f"   ⚠ {t('Command failed.')}")
+            return
+        print(f"\n✅ {t('Added. Log out and back in for it to take effect,')}")
+        print(f"   {t('or start a new shell with: newgrp libvirt')}")
+
     def _qemu_ask_ui(self):
         """Interface du déploiement : formulaire TUI ou invites en ligne.
         La préférence peut trancher d'avance (menu Configuration) ; « ask »
@@ -4993,6 +5058,8 @@ class TODO:
         last = self._qemu_last_run_line()
         if last:
             print(last)
+
+        self._qemu_check_libvirt_group()
 
         if self._qemu_ask_ui() == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
