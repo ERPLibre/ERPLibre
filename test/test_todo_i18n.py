@@ -40,23 +40,23 @@ class TestT(unittest.TestCase):
         todo_i18n._current_lang = None
 
     def test_returns_french_when_lang_fr(self):
-        todo_i18n.set_lang("fr")
-        result = todo_i18n.t("menu_quit")
+        todo_i18n._current_lang = "fr"
+        result = todo_i18n.t("Quit")
         self.assertEqual(result, "Quitter")
 
     def test_returns_english_when_lang_en(self):
-        todo_i18n.set_lang("en")
-        result = todo_i18n.t("menu_quit")
+        todo_i18n._current_lang = "en"
+        result = todo_i18n.t("Quit")
         self.assertEqual(result, "Quit")
 
     def test_unknown_key_returns_key(self):
-        todo_i18n.set_lang("fr")
+        todo_i18n._current_lang = "fr"
         result = todo_i18n.t("nonexistent_key_xyz")
         self.assertEqual(result, "nonexistent_key_xyz")
 
     def test_fallback_to_fr_if_lang_missing(self):
-        todo_i18n.set_lang("de")
-        result = todo_i18n.t("menu_quit")
+        todo_i18n._current_lang = "de"
+        result = todo_i18n.t("Quit")
         self.assertEqual(result, "Quitter")
 
 
@@ -81,9 +81,7 @@ class TestGetLang(unittest.TestCase):
             f.write('EL_LANG="en"\n')
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "en")
             finally:
@@ -96,9 +94,7 @@ class TestGetLang(unittest.TestCase):
             f.write("EL_LANG=fr\n")
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     result = todo_i18n.get_lang()
                 self.assertEqual(result, "fr")
             finally:
@@ -148,7 +144,11 @@ class TestSetLang(unittest.TestCase):
         todo_i18n._current_lang = None
 
     def test_sets_current_lang(self):
-        todo_i18n.set_lang("en")
+        # Détourner ENV_VAR_FILE comme le font les trois tests suivants :
+        # `set_lang()` PERSISTE, et sans ce détournement celui-ci écrivait
+        # dans le ./env_var.sh du dépôt, suivi par git.
+        with patch.object(todo_i18n, "ENV_VAR_FILE", "/nonexistent/path"):
+            todo_i18n.set_lang("en")
         self.assertEqual(todo_i18n._current_lang, "en")
 
     def test_persists_to_file_update(self):
@@ -158,9 +158,7 @@ class TestSetLang(unittest.TestCase):
             f.write('EL_LANG="fr"\nOTHER=value\n')
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     todo_i18n.set_lang("en")
                 with open(f.name) as rf:
                     content = rf.read()
@@ -176,9 +174,7 @@ class TestSetLang(unittest.TestCase):
             f.write("SOME_VAR=123\n")
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     todo_i18n.set_lang("en")
                 with open(f.name) as rf:
                     content = rf.read()
@@ -207,9 +203,7 @@ class TestLangIsConfigured(unittest.TestCase):
             f.write('EL_LANG="fr"\n')
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     result = todo_i18n.lang_is_configured()
                 self.assertTrue(result)
             finally:
@@ -222,9 +216,7 @@ class TestLangIsConfigured(unittest.TestCase):
             f.write("SOME_VAR=123\n")
             f.flush()
             try:
-                with patch.object(
-                    todo_i18n, "ENV_VAR_FILE", f.name
-                ):
+                with patch.object(todo_i18n, "ENV_VAR_FILE", f.name):
                     result = todo_i18n.lang_is_configured()
                 self.assertFalse(result)
             finally:
