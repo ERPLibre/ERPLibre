@@ -1631,6 +1631,14 @@ TRANSLATIONS = {
         "fr": "pas de QEMU/libvirt ici",
         "en": "no QEMU/libvirt here",
     },
+    "virsh present but not accessible": {
+        "fr": "virsh présent mais inaccessible (droits)",
+        "en": "virsh present but not accessible (permissions)",
+    },
+    "Add the user to the libvirt group there:": {
+        "fr": "Ajoutez l'utilisateur au groupe libvirt là-bas :",
+        "en": "Add the user to the libvirt group there:",
+    },
     "QEMU present, no VM": {
         "fr": "QEMU présent, aucune VM",
         "en": "QEMU present, no VM",

@@ -1338,17 +1338,34 @@ class TODO:
     # La première ligne est indispensable : sans virsh, la boucle ne tourne
     # simplement pas et la sonde sortirait VIDE avec un code 0 — impossible
     # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
+    # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
+    #
+    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
+    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
+    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
+    # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
+    #
+    # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
+    # utilisateur non root tombe sur qemu:///session, qui répond correctement…
+    # une liste VIDE. On aurait alors « QEMU présent, aucune VM », ce qui est
+    # pire qu'une erreur puisque c'est plausible.
+    #
+    # Trois réponses et non deux : « denied » distingue « virsh est là mais
+    # inaccessible » de « pas de QEMU ici », deux situations qui appellent des
+    # gestes opposés.
     _QEMU_SSH_PROBE = (
+        'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
         "if ! command -v virsh >/dev/null 2>&1; then "
         "printf 'LIBVIRT\\tno\\n'; exit 0; fi; "
-        "vms=$(sudo virsh list --all --name 2>/dev/null) || "
-        "{ printf 'LIBVIRT\\tno\\n'; exit 0; }; "
+        "vms=$(vsh list --all --name) || "
+        "{ printf 'LIBVIRT\\tdenied\\n'; exit 0; }; "
         "printf 'LIBVIRT\\tyes\\n'; "
         "for n in $vms; do "
-        'ip=$(sudo virsh domifaddr "$n" --source lease 2>/dev/null '
+        'ip=$(vsh domifaddr "$n" --source lease '
         "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1); "
         'if [ -z "$ip" ]; then '
-        'ip=$(sudo virsh domifaddr "$n" --source agent 2>/dev/null '
+        'ip=$(vsh domifaddr "$n" --source agent '
         "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
         "| grep -v '^127\\.' | head -1); fi; "
         'printf "%s\\t%s\\n" "$n" "$ip"; done'
@@ -1781,17 +1798,22 @@ class TODO:
             detail = (res.stderr or "").strip().splitlines()
             message = detail[-1] if detail else f"exit {res.returncode}"
             return self._ssh_error_kind(res.stderr), message
-        has_libvirt = False
+        libvirt = "no"
         found = []
         for line in res.stdout.splitlines():
             parts = line.strip().split("\t")
             if len(parts) != 2 or not parts[0]:
                 continue
             if parts[0] == "LIBVIRT":
-                has_libvirt = parts[1].strip() == "yes"
+                libvirt = parts[1].strip()
                 continue
             found.append((parts[0], parts[1].strip()))
-        return ("ok" if has_libvirt else "nolibvirt"), found
+        if libvirt == "yes":
+            return "ok", found
+        # « denied » : virsh est installé mais refuse de répondre — sudo
+        # interactif, ou utilisateur hors du groupe libvirt. Le confondre avec
+        # « pas de QEMU » envoyait chercher un problème qui n'existe pas.
+        return ("denied" if libvirt == "denied" else "nolibvirt"), found
 
     def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
@@ -1868,8 +1890,18 @@ class TODO:
                     )
                     print(f"  ⏭  {parent}: {label} — {found}")
                     continue
-                has_libvirt = status == "ok"
-                if not has_libvirt:
+                if status == "denied":
+                    # virsh est là mais ne répond pas : c'est un DROIT qui
+                    # manque, pas un logiciel. Le dire, et donner le geste.
+                    print(
+                        f"  🔒 {parent}: "
+                        f"{t('virsh present but not accessible')}"
+                    )
+                    print(
+                        f"       {t('Add the user to the libvirt group there:')}"
+                    )
+                    continue
+                if status != "ok":
                     print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
                     continue
                 # Une machine avec QEMU vaut sa connexion virt-manager, même
