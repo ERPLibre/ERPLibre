@@ -545,7 +545,12 @@ class TODO:
             print(f"{t('Will execute:')} {bash_command}")
             self.execute.exec_command_live(bash_command, source_erplibre=False)
 
-        command = instance.get("Command:")
+        # Clé de CONFIGURATION, pas une chaîne d'interface : le passage aux
+        # clés i18n en texte anglais (4fc15c3) a renommé celle-ci en
+        # « Command: », le libellé affiché. Plus aucune entrée de todo.json
+        # ne correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait
+        # plus rien — sans erreur, puisque le `if` était simplement faux.
+        command = instance.get("command")
         if command:
             self.prompt_execute_selenium(
                 command=command, extra_cmd_web_login=extra_cmd_web_login

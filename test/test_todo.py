@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from script.todo.todo import (
     ANDROID_DIR,
@@ -192,6 +192,42 @@ class TestExecuteFromConfiguration(unittest.TestCase):
         todo.execute_from_configuration(dct)
         todo.execute.exec_command_live.assert_called()
 
+    def test_every_command_entry_of_the_real_config_is_reachable(self):
+        """Le dict synthétique du test précédent ne suffisait pas.
+
+        `4fc15c3` a renommé la clé cherchée par le code en « Command: »,
+        le libellé affiché. Plus aucune entrée de todo.json ne
+        correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait plus
+        rien — sans erreur, le `if` étant simplement faux. Seule la VRAIE
+        configuration relie les deux côtés.
+        """
+        with open(CONFIG_FILE) as fh:
+            config = json.load(fh)
+
+        entrees = []
+
+        def parcourir(noeud):
+            if isinstance(noeud, dict):
+                if "command" in noeud:
+                    entrees.append(noeud)
+                for valeur in noeud.values():
+                    parcourir(valeur)
+            elif isinstance(noeud, list):
+                for element in noeud:
+                    parcourir(element)
+
+        parcourir(config)
+        self.assertTrue(entrees, "todo.json n'a plus d'entrée `command`")
+
+        for entree in entrees:
+            todo = TODO()
+            todo.execute = MagicMock()
+            todo.execute_from_configuration(entree)
+            self.assertTrue(
+                todo.execute.exec_command_live.called,
+                f"entrée ignorée en silence : {entree.get('command')}",
+            )
+
     def test_with_makefile_cmd(self):
         todo = TODO()
         todo.execute = MagicMock()
@@ -369,13 +405,47 @@ class TestKdbxGetExtraCommandUser(unittest.TestCase):
 
 
 class TestSetupClaudeCommit(unittest.TestCase):
-    def test_existing_file_skips(self):
+    """Le déploiement d'une commande `/…` dans ~/.claude/commands.
+
+    La méthode a été généralisée depuis : elle prend le nom de la commande
+    et son gabarit, et quand la cible existe elle DEMANDE confirmation au
+    lieu de passer son tour. Le test ne détournait pas `input` — il aurait
+    bloqué si l'appel n'avait pas échoué avant.
+    """
+
+    def test_existing_file_and_refusal_writes_nothing(self):
         todo = TODO()
         with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="n"
+        ), patch("builtins.open") as mock_open, patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
             "builtins.print"
-        ) as mock_print:
-            todo._setup_claude_commit()
-        # Should print exists message without asking for input
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        # Un refus doit sortir AVANT toute écriture : ni lecture du gabarit,
+        # ni création du dossier. Sans ces deux assertions, le test passait
+        # aussi bien si la méthode écrasait le fichier.
+        mock_open.assert_not_called()
+        mock_makedirs.assert_not_called()
+
+    def test_existing_file_and_acceptance_writes(self):
+        """Le pendant : sans lui, la méthode pourrait ne JAMAIS écrire et
+        le test ci-dessus resterait vert."""
+        todo = TODO()
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="y"
+        ), patch("builtins.open", mock_open(read_data="gabarit")), patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
+            "builtins.print"
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        mock_makedirs.assert_called_once()
 
 
 class TestSelectDatabase(unittest.TestCase):
