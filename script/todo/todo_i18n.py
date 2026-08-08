@@ -3353,6 +3353,46 @@ TRANSLATIONS = {
         "fr": "Locale des VM",
         "en": "Locale for the VMs",
     },
+    "KVM is unavailable: the VMs will be EMULATED.": {
+        "fr": "KVM indisponible : les VM seront ÉMULÉES.",
+        "en": "KVM is unavailable: the VMs will be EMULATED.",
+    },
+    "A boot then takes 10-15 min, not under a minute.": {
+        "fr": "Un démarrage prend alors 10 à 15 min, pas moins d'une minute.",
+        "en": "A boot then takes 10-15 min, not under a minute.",
+    },
+    "Cause: /dev/kvm is missing. This host is itself a VM": {
+        "fr": "Cause : /dev/kvm est absent. Cet hôte est lui-même une VM",
+        "en": "Cause: /dev/kvm is missing. This host is itself a VM",
+    },
+    "whose hypervisor does not expose nested virtualization.": {
+        "fr": "dont l'hyperviseur n'expose pas la virtualisation imbriquée.",
+        "en": "whose hypervisor does not expose nested virtualization.",
+    },
+    "To fix it ON THE PARENT HYPERVISOR, not here:": {
+        "fr": "Pour corriger, SUR L'HYPERVISEUR PARENT, pas ici :",
+        "en": "To fix it ON THE PARENT HYPERVISOR, not here:",
+    },
+    "then set this VM to the host-passthrough CPU mode and": {
+        "fr": "puis donner à cette VM le mode CPU « host-passthrough », et",
+        "en": "then set this VM to the host-passthrough CPU mode and",
+    },
+    "stop it and start it again - a reboot is not enough.": {
+        "fr": "l'arrêter puis la redémarrer — un reboot ne suffit pas.",
+        "en": "stop it and start it again - a reboot is not enough.",
+    },
+    "Without access to that hypervisor, nothing to do here.": {
+        "fr": "Sans accès à cet hyperviseur, il n'y a rien à régler ici.",
+        "en": "Without access to that hypervisor, nothing to do here.",
+    },
+    "Usual cause: this host is itself a VM without nested": {
+        "fr": "Cause habituelle : cet hôte est lui-même une VM sans",
+        "en": "Usual cause: this host is itself a VM without nested",
+    },
+    "virtualization. Check: systemd-detect-virt": {
+        "fr": "virtualisation imbriquée. Vérifier : systemd-detect-virt",
+        "en": "virtualization. Check: systemd-detect-virt",
+    },
     "Unknown timezone, keeping": {
         "fr": "Fuseau inconnu, on garde",
         "en": "Unknown timezone, keeping",

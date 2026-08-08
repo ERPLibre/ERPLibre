@@ -1207,6 +1207,46 @@ def apt_mirror_lines(arch: str, override: str | None = None) -> list[str]:
     return lines
 
 
+def kvm_available() -> bool:
+    """L'accélération matérielle est-elle réellement utilisable ici ?
+
+    « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
+    VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
+    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
+    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
+    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
+    que rien ne le signale.
+
+    /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
+    que si on est root : libvirt, lui, tourne en root et se moque de notre
+    appartenance au groupe kvm. Tester nos propres droits en non-root ferait
+    crier « pas de KVM » à un utilisateur simplement hors du groupe.
+    """
+    if not os.path.exists("/dev/kvm"):
+        return False
+    if os.geteuid() == 0:
+        return os.access("/dev/kvm", os.R_OK | os.W_OK)
+    return True
+
+
+def nested_module() -> str:
+    """Module noyau portant le paramètre « nested » sur CET hôte.
+
+    Le nom change selon l'architecture, et se tromper de module fait lire un
+    « 0 » rassurant sur un fichier qui ne commande rien : s390x et arm64
+    l'exposent sur « kvm », x86 sur « kvm_intel » ou « kvm_amd » selon le
+    fabricant — et /sys/module/kvm/parameters/nested n'y existe même pas.
+    """
+    arch = host_arch()
+    if arch != "amd64":
+        return "kvm"
+    try:
+        info = Path("/proc/cpuinfo").read_text(errors="replace")
+    except OSError:
+        return "kvm_intel"
+    return "kvm_amd" if " svm" in info else "kvm_intel"
+
+
 def host_timezone() -> str:
     """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
 
@@ -1544,7 +1584,25 @@ def virt_install(
     runner: Runner,
 ) -> None:
     # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
+    # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
+    # (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
+    # seconde ne se déduit PAS de l'architecture — dans une VM sans
+    # virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
     emulated = args.arch != host_arch()
+    if not emulated and not kvm_available():
+        emulated = True
+        print(
+            "⚠  KVM indisponible (/dev/kvm) : cette VM sera ÉMULÉE, donc TRÈS"
+            " lente."
+        )
+        print(
+            "   Cause habituelle : l'hôte est lui-même une VM sans"
+            " virtualisation imbriquée."
+        )
+        print(
+            "   Vérifier :  systemd-detect-virt  et"
+            '  virsh capabilities | grep "domain type"'
+        )
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
     # ttyS0. Ailleurs (x86/arm64), console série classique.
     console_target = "sclp" if args.arch == "s390x" else "serial"

@@ -5043,6 +5043,48 @@ class TODO:
         print(f"\n✅ {t('Added. Log out and back in for it to take effect,')}")
         print(f"   {t('or start a new shell with: newgrp libvirt')}")
 
+    def _qemu_check_kvm(self):
+        """Prévient quand les VM seront ÉMULÉES faute de KVM.
+
+        « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
+        VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
+        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
+        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
+        d'attendre vaut mieux que de chercher la cause après."""
+        try:
+            mod = self._qemu_import_module()
+            if mod.kvm_available():
+                return
+        except Exception:
+            return
+        try:
+            module = mod.nested_module()
+        except Exception:
+            module = "kvm"
+        print(f"\n⚠  {t('KVM is unavailable: the VMs will be EMULATED.')}")
+        print(f"   {t('A boot then takes 10-15 min, not under a minute.')}")
+        print(
+            f"   {t('Cause: /dev/kvm is missing. This host is itself a VM')}"
+        )
+        print(
+            f"   {t('whose hypervisor does not expose nested virtualization.')}"
+        )
+        print(f"\n   {t('To fix it ON THE PARENT HYPERVISOR, not here:')}")
+        print(
+            f'     echo "options {module} nested=1"'
+            f" | sudo tee /etc/modprobe.d/kvm-nested.conf"
+        )
+        print(f"     sudo modprobe -r {module} && sudo modprobe {module}")
+        print(
+            f"   {t('then set this VM to the host-passthrough CPU mode and')}"
+        )
+        print(
+            f"   {t('stop it and start it again - a reboot is not enough.')}"
+        )
+        print(
+            f"\n   {t('Without access to that hypervisor, nothing to do here.')}"
+        )
+
     def _qemu_ask_ui(self):
         """Interface du déploiement : formulaire TUI ou invites en ligne.
         La préférence peut trancher d'avance (menu Configuration) ; « ask »
@@ -5130,6 +5172,7 @@ class TODO:
             print(last)
 
         self._qemu_check_libvirt_group()
+        self._qemu_check_kvm()
 
         if self._qemu_ask_ui() == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
