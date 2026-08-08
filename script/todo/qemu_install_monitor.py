@@ -108,12 +108,27 @@ def _launch_one(
     # dnsmasq garde les deux adresses sans dire laquelle est vivante. « sudo -n »
     # car ce script tourne DÉTACHÉ : une demande de mot de passe le bloquerait
     # sans que personne ne la voie. Sans réponse, on garde l'adresse courante.
+    # L'agent ne suffit PAS comme source unique : son paquet s'installe hors de
+    # cloud-init pour ne pas retarder le démarrage, donc il arrive tard — et
+    # pendant tout ce temps la ré-résolution ne renvoyait rien et gardait
+    # l'adresse morte. C'est le défaut qui a fait échouer le premier correctif.
+    #
+    # Repli sur les baux : dnsmasq les garde tous les deux sans dire lequel est
+    # vivant, on tranche donc en TESTANT le port 22 — le seul critère qui compte
+    # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
+    # répond pas, le bon répond.
     name_q = shlex.quote(name) if name else ""
     refresh = (
         (
             f"n=$(sudo -n virsh domifaddr {name_q} --source agent 2>/dev/null "
             "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.' | head -1); "
+            'if [ -z "$n" ]; then '
+            f"for c in $(sudo -n virsh domifaddr {name_q} --source lease "
+            "2>/dev/null | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            "| grep -v '^127\\.'); do "
+            'timeout 2 bash -c "echo > /dev/tcp/$c/22" 2>/dev/null '
+            '&& n="$c"; done; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
         if name
