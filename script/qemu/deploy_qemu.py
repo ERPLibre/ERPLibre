@@ -1163,6 +1163,50 @@ def hash_password(plain: str) -> str:
         return out.stdout.strip()
 
 
+# Miroirs apt, du plus rapide au dernier recours. cloud-init prend le PREMIER
+# joignable de la liste « search » : l'ordre est donc la priorité.
+#
+# Mesuré depuis Montréal sur l'index main/s390x (1,6 Mo) :
+#   ports.ubuntu.com              1,61 s   1,0 Mo/s
+#   mirror.csclub.uwaterloo.ca    0,32 s   5,2 Mo/s
+#   mirror.us.leaseweb.net        0,88 s   1,9 Mo/s
+#
+# Le chemin diffère selon l'architecture : les arches « ports » (s390x, arm64,
+# ppc64el, riscv64) ne sont PAS sur archive.ubuntu.com, et amd64 n'est pas sur
+# ports.ubuntu.com. Une seule liste servirait donc la moitié des cas en 404.
+APT_MIRRORS_PORTS = [
+    "http://mirror.csclub.uwaterloo.ca/ubuntu-ports",
+    "http://mirror.us.leaseweb.net/ubuntu-ports",
+    "http://ports.ubuntu.com/ubuntu-ports",
+]
+APT_MIRRORS_MAIN = [
+    "http://mirror.csclub.uwaterloo.ca/ubuntu",
+    "http://mirror.us.leaseweb.net/ubuntu",
+    "http://archive.ubuntu.com/ubuntu",
+]
+PORTS_ARCHES = ("s390x", "arm64", "aarch64", "ppc64el", "riscv64")
+
+
+def apt_mirror_lines(arch: str, override: str | None = None) -> list[str]:
+    """Bloc « apt: » du cloud-config, ou [] si rien à écrire.
+
+    Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
+    « search » y écrirait des URI qui n'existent pas.
+    """
+    mirrors = (
+        [override]
+        if override
+        else (APT_MIRRORS_PORTS if arch in PORTS_ARCHES else APT_MIRRORS_MAIN)
+    )
+    lines = ["apt:", "  primary:", "    - arches: [default]", "      search:"]
+    lines += [f"        - {m}" for m in mirrors]
+    # La sécurité suit le même dépôt pour les arches ports ; sur amd64 elle a
+    # son propre hôte, que les miroirs répliquent sous le même chemin.
+    lines += ["  security:", "    - arches: [default]", "      search:"]
+    lines += [f"        - {m}" for m in mirrors]
+    return lines
+
+
 def host_timezone() -> str:
     """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
 
@@ -1230,6 +1274,10 @@ def build_cloud_config(
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
     lines.append(f"timezone: {args.timezone}")
+    if getattr(args, "distro", "ubuntu") == "ubuntu":
+        lines += apt_mirror_lines(
+            getattr(args, "arch", "amd64"), getattr(args, "apt_mirror", None)
+        )
     lines += [
         "keyboard:",
         f"  layout: {args.keyboard_layout}",
@@ -1796,6 +1844,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--locale",
         default="fr_CA.UTF-8",
         help="Locale (défaut : fr_CA.UTF-8).",
+    )
+    g_cloud.add_argument(
+        "--apt-mirror",
+        metavar="URI",
+        help=(
+            "Miroir apt unique (Ubuntu). Par défaut, cloud-init essaie dans"
+            " l'ordre les miroirs les plus rapides mesurés puis le dépôt"
+            " officiel."
+        ),
     )
     g_cloud.add_argument(
         "--timezone",
