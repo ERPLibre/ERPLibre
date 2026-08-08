@@ -157,6 +157,22 @@ class TestExternalEditor(unittest.TestCase):
         self.assertFalse(seen["chemin"].exists())
 
 
+class _TransportQuiAccepte:
+    """Le transport par défaut du harnais : il enregistre ce qu'on lui
+    dépose, ce qui permet aussi de le relire quand un test s'y intéresse."""
+
+    def __init__(self):
+        self.appended = []
+
+    def append(self, folder, raw, flags):
+        self.appended.append((folder, raw, flags))
+
+
+# Sentinelle : distingue « le test n'a rien demandé » de « le test veut
+# explicitement aucun transport ». `None` ne peut pas servir aux deux.
+_ACCEPTE_TOUT = object()
+
+
 class DeliverCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -171,7 +187,22 @@ class DeliverCase(unittest.TestCase):
         self.store.close()
         self.tmp.cleanup()
 
-    def session(self, online=True, transport=None):
+    def session(self, online=True, transport=_ACCEPTE_TOUT):
+        """Le transport par défaut ACCEPTE l'APPEND.
+
+        Il valait `None` auparavant, ce qui faisait échouer l'APPEND sur un
+        AttributeError : tout test qui ne s'intéressait pas au dépôt dans
+        Envoyés empruntait donc le chemin d'ÉCHEC sans le savoir, et
+        `test_sends_and_reports` — le test du chemin heureux — a passé des
+        semaines à vérifier l'inverse de son nom.
+
+        En production ce cas n'existe pas : `Syncer` n'est construit qu'avec
+        un transport vivant (`tui.py`, `Syncer(store, connect_fn(...))`) et
+        `deliver` refuse déjà les sessions hors ligne. Le défaut du harnais
+        décrivait donc un état impossible. Rester sans transport est
+        toujours possible — `transport=None` — mais doit être DÉLIBÉRÉ.
+        """
+
         class FakeSyncer:
             def __init__(self, transport):
                 self.transport = transport
@@ -180,6 +211,8 @@ class DeliverCase(unittest.TestCase):
             def sync_one(self, folder_name):
                 self.synced.append(folder_name)
 
+        if transport is _ACCEPTE_TOUT:
+            transport = _TransportQuiAccepte()
         syncer = FakeSyncer(transport) if online else None
         return Session(self.account, self.store, syncer)
 
@@ -232,23 +265,18 @@ class TestResolveSentFolder(DeliverCase):
 
 class TestDeliver(DeliverCase):
     def test_sends_and_reports(self):
-        """Le chemin HEUREUX, et il faut un transport pour l'emprunter.
+        """Le chemin HEUREUX, et il faut vraiment l'emprunter.
 
-        Sans transport, `session.syncer.transport` vaut None, l'APPEND part
-        en AttributeError, et `deliver` renvoie son statut d'ÉCHEC. Le test
-        passait quand même : « a@y.ca » figure dans les deux statuts, celui
-        du succès comme celui de l'échec. D'où le transport ici, et une
-        assertion qui distingue les deux — sinon ce test dit seulement que
-        `deliver` a renvoyé quelque chose.
+        Ce test a longtemps parcouru le chemin d'ÉCHEC : le harnais
+        fournissait un transport `None`, l'APPEND partait en AttributeError,
+        et l'unique assertion — « a@y.ca » dans le statut — était vraie du
+        statut d'échec comme de celui du succès. Les deux assertions du bas
+        sont ce qui distingue les deux, et donc ce qui protège encore si le
+        défaut du harnais redevenait cassé.
         """
-
-        class FakeTransport:
-            def append(self, folder, raw, flags):
-                pass
-
         sent = []
         status = deliver(
-            self.session(transport=FakeTransport()),
+            self.session(),
             self.msg,
             send_fn=lambda acc, m, tr: sent.append(m) or ["a@y.ca"],
         )
