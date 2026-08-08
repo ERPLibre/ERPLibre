@@ -117,15 +117,26 @@ def _launch_one(
     # vivant, on tranche donc en TESTANT le port 22 — le seul critère qui compte
     # ici, puisque c'est par là que l'installation passera. Le bail périmé ne
     # répond pas, le bon répond.
+    # virsh SANS sudo d'abord. Ce script tourne détaché, sans tty : « sudo -n »
+    # y échoue dès que l'hôte exige une authentification interactive — vécu sur
+    # erplibre01 (« sudo-rs: interactive authentication is required »), et la
+    # ré-résolution restait alors muette sans laisser la moindre trace.
+    # Appartenir au groupe libvirt suffit pour joindre qemu:///system, ce que
+    # « deploy_qemu.py --setup-host » configure déjà. sudo -n reste en repli
+    # pour les hôtes où le groupe manque.
     name_q = shlex.quote(name) if name else ""
+    vsh = (
+        'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
+    )
     refresh = (
         (
-            f"n=$(sudo -n virsh domifaddr {name_q} --source agent 2>/dev/null "
+            f"n=$(vsh domifaddr {name_q} --source agent "
             "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.' | head -1); "
             'if [ -z "$n" ]; then '
-            f"for c in $(sudo -n virsh domifaddr {name_q} --source lease "
-            "2>/dev/null | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            f"for c in $(vsh domifaddr {name_q} --source lease "
+            "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.'); do "
             'timeout 2 bash -c "echo > /dev/tcp/$c/22" 2>/dev/null '
             '&& n="$c"; done; fi; '
@@ -136,6 +147,7 @@ def _launch_one(
     )
     wrapper = (
         f"ip={shlex.quote(ip)}; "
+        f"{vsh if name else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
         f"for i in $(seq 1 240); do "
