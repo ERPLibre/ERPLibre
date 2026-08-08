@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -649,6 +650,57 @@ def browser_install_command(browser="w3m") -> list | None:
     return None
 
 
+def virsh_ip(name: str) -> str:
+    """Adresse ACTUELLE d'une VM, ou '' si indéterminable.
+
+    Même logique que la sonde du wrapper détaché, et pour la même raison : le
+    bail que la VM prend au premier démarrage sous le nom par défaut de l'image
+    est remplacé dès que cloud-init pose le vrai nom d'hôte. L'agent invité fait
+    foi ; sans lui, on départage les baux en testant le port 22.
+
+    virsh SANS sudo d'abord (groupe libvirt), « sudo -n » en repli : sur un hôte
+    exigeant une authentification interactive, sudo échoue et ne doit pas
+    empêcher la lecture.
+    """
+
+    def run(source):
+        for pre in ([], ["sudo", "-n"]):
+            try:
+                res = subprocess.run(
+                    pre
+                    + [
+                        "virsh",
+                        "--connect",
+                        "qemu:///system",
+                        "domifaddr",
+                        name,
+                        "--source",
+                        source,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    env={**os.environ, "LC_ALL": "C", "LANG": "C"},
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if res.returncode == 0:
+                return res.stdout
+        return ""
+
+    found = re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})/", run("agent"))
+    for ip in found:
+        if not ip.startswith("127."):
+            return ip
+    # Sans agent : plusieurs baux possibles, dont un périmé. Le port 22 tranche.
+    for ip in re.findall(r"\b(\d{1,3}(?:\.\d{1,3}){3})/", run("lease")):
+        if ip.startswith("127."):
+            continue
+        if _port_open(ip, 22):
+            return ip
+    return ""
+
+
 def virsh_domstates() -> dict:
     """{nom: état} de tous les domaines libvirt (« virsh list --all »). Sert à
     détecter une VM EN PAUSE ou EFFACÉE pendant le suivi. Un seul appel virsh
@@ -1155,6 +1207,24 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             for vm in vms:
                 self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+
+            # L'adresse est relue au même rythme. Le processus détaché suivait
+            # déjà la VM quand son bail changeait, mais les VUES gardaient celle
+            # du lancement : la barre proposait « ssh erplibre@…222 » alors que
+            # l'installation parlait à …223, et la touche « s » y menait aussi.
+            # Rafraîchir ici plutôt que dans un tick à part évite un second
+            # appel virsh par VM — celui-ci est déjà le relevé lent.
+            changed = False
+            for vm in vms:
+                if self._domstate.get(vm["name"]) == "gone":
+                    continue
+                ip = await asyncio.to_thread(virsh_ip, vm["name"])
+                if ip and ip != vm.get("ip"):
+                    vm["ip"] = ip
+                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    changed = True
+            if changed:
+                self._refresh_ssh()
 
         # -- events --------------------------------------------------------- #
         def on_data_table_row_highlighted(self, event) -> None:
