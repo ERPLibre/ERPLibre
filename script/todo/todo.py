@@ -7228,8 +7228,14 @@ class TODO:
         entrée de menu supplémentaire coûte donc un motif, pas une méthode.
         """
         print(f"\n--- {t('Running unit tests')} ---")
+        # `-u` : unittest écrit son verdict sur STDERR, les `print()` des
+        # tests sur STDOUT. Capturés ensemble, stderr passe sans tampon
+        # tandis que stdout est tamponné par blocs — tout le stdout se
+        # déversait donc APRÈS le « OK », qui se retrouvait noyé au milieu
+        # de la sortie au lieu d'en être le dernier mot. Sans tampon, les
+        # deux flux s'entrelacent dans l'ordre réel.
         cmd = (
-            ".venv.erplibre/bin/python -m unittest discover"
+            ".venv.erplibre/bin/python -u -m unittest discover"
             f" -s test -p '{pattern}' -v"
         )
         status_code, output = self.execute.exec_command_live(

@@ -335,6 +335,22 @@ class TestExecuteUnitTests(unittest.TestCase):
             todo.execute_unit_tests()
         # Verify it was called - error handling path
 
+    def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
+        """Signalé à l'usage : « pas clair si les tests ont passé ».
+
+        unittest écrit son verdict sur stderr et les tests impriment sur
+        stdout ; capturés ensemble, le stdout tamponné se déversait après
+        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
+        résultat.
+        """
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("python -u -m unittest", cmd)
+
     def test_the_pattern_reaches_the_command(self):
         todo = TODO()
         todo.execute = MagicMock()
