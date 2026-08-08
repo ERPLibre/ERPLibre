@@ -207,6 +207,37 @@ echo "options kvm_intel nested=1" | sudo tee /etc/modprobe.d/kvm-nested.conf
 sudo modprobe -r kvm_intel && sudo modprobe kvm_intel   # ou / or reboot
 ```
 
+Sur **s390x et arm64**, le paramètre vit sur le module `kvm` lui-même, et non
+sur `kvm_intel` / `kvm_amd` — et `/sys/module/kvm/parameters/nested` n'existe
+même pas sur x86. Lire le mauvais fichier renvoie un `0` rassurant qui ne
+commande rien :
+
+```bash
+echo "options kvm nested=1" | sudo tee /etc/modprobe.d/kvm-nested.conf
+sudo modprobe -r kvm && sudo modprobe kvm               # ou / or reboot
+```
+
+`nested` sur une machine signifie « j'autorise MES invités à faire tourner des
+VM ». Pour accélérer une VM créée sur l'hôte H, le réglage appartient à
+l'hyperviseur **au-dessus** de H, pas à H. La commande qui tranche, sur H :
+
+```bash
+ls -l /dev/kvm     # absent -> pas d'imbrication, tout sera émulé
+```
+
+Mesuré sur un hôte s390x lui-même invité KVM sans imbrication : `/dev/kvm`
+absent, `virsh dumpxml` affichant `<domain type='qemu'>`, et un démarrage de
+7 min 30 au lieu de bien moins d'une minute. `systemd-detect-virt` dans la VM
+ne prouve **pas** l'accélération — sur s390x, QEMU fabrique la réponse STSI et
+annonce `kvm` même en TCG. Seul `<domain type=…>` sur l'hôte fait foi.
+
+### Bridge for external access
+
+A NAT VM is isolated; a **bridged** VM gets an IP directly on the LAN,
+reachable by any machine. On the KVM host, create a bridge `br0` over the
+physical NIC (**wired only** — Wi-Fi cannot be bridged). netplan (Ubuntu
+server) — replace `enp3s0` with your interface:
+
 Si l'imbrication est indisponible, QEMU tourne quand même en émulation
 logicielle (TCG) — ça marche mais c'est lent.
 
