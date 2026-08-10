@@ -31,12 +31,81 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
+- Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
+  Arch) on amd64, arm64 and s390x, with a menu to list, test, resize, delete
+  and clean up
+- Textual interfaces: install dashboard, VM deployment form, migration resume
+  screen; Textual is installed on demand
+- Navigation telemetry for TODO, as a tree, a kanban or a list
+- Migration tools for the website copy-on-write views: predict, snapshot,
+  diff, neutralize and reset
+- Read-only analysis toolkit for an Odoo database
+- SSH configuration with recursive ProxyJump, port forwarding, and
+  registration of the QEMU hosts in virt-manager
+- NTFY self-hosted push notification server
+- Generative AI policy, adopting the OCA one
+- Claude Code agents and commands
+- Local git server to share code between machines
+- Unit tests for the configuration, the refactoring and the uncovered
+  components, with a bilingual test plan
+- Read and send email from the TODO CLI, over IMAP and SMTP
+- The database analysis reads a backup zip directly, without restoring it
+- RTK management menu
+- AI assistant tools menu, with the Claude Code commit command
+- Deploy menu: clone ERPLibre on a remote host, configure sshfs, and make
+  targets for SSH deployment
+- Database backup and erase commands, and a clearer restore naming
+- Git patch, git remote and vim configuration from the menu
+- Security check of the Python environment
+- Odoo 18 reads STL files (OpenCAD)
+- Mobile: whisper.cpp and sentencepiece in the manifest, a mobile test script,
+  and the Odoo sync API contract
+- FAQ entry on wkhtmltopdf for recent distributions
+- brin_advisor and brin_cluster: recommend and apply the right PostgreSQL
+  index for an Odoo model
 
 ## Changed
 
 - Docker support postgresql 18
 - Format script search diff file into each repository
 - Support neutralize database from Odoo
+- Installation supports Fedora, Debian, Ubuntu and Arch Linux
+- Repository sync and poetry install run in parallel, up to 50 % faster on a
+  slow connection
+- CybroOdoo extra modules become opt-in, tracked per Odoo version
+- Node.js 22, required by Capacitor 8 for the mobile application
+- Poetry and repo are quiet by default; EL_VERBOSE restores the output
+- TODO menus grouped into sections with icons, and English text used as the
+  i18n key
+- Documentation is bilingual, generated from the .base.md sources
+- A VM inherits the timezone of the host that creates it
+- First boot no longer waits on snapd, locale generation or the guest agent
+- apt picks the fastest reachable mirror before the official archive
+- Selenium: download through a network hub, SVG to PNG, error detection,
+  multiple clicks and updated drivers
+- Odoo can run on a custom database; queue_job setup and SSH forwarding
+  options in the menu
+- Killing a process by port asks before acting, with an interactive menu
+- LinuxMint 22.3 supported
+- Odoo 18 dependencies: flanker, orjson, python-magic, tldextract, PyYAML
+- Copyright year updated to 2026
+
+## Fixed
+
+- A failed installation is no longer reported as a success: the exit code is
+  propagated through the whole chain
+- --with_extra now applies to an already-installed environment
+- The addons path no longer points at a repository the Odoo 18 manifest never
+  clones
+- repo init receives a branch name, so a fresh install no longer fails
+- The install monitor follows a VM whose DHCP lease changes
+- Installation on Debian 13, Fedora and Ubuntu 26.04: apt lock, wkhtmltopdf,
+  SELinux and the missing C compiler
+- Documentation accents and the parallel markdown generation
+
+## Security
+
+- Passwords and tokens are redacted before a command is displayed or logged
 
 
 ## [1.6.0] - 2025-04-25
