@@ -242,6 +242,35 @@ class DatabaseManager:
         print(file_name)
         return file_name
 
+    def select_backup_path(self, start=None) -> str | None:
+        """Faire choisir une sauvegarde .zip, au parcours ou au chemin tapé.
+
+        Les deux, parce que ni l'un ni l'autre ne suffit : le parcours part
+        d'`image_db/` et n'aide pas si la sauvegarde vient d'ailleurs ; le
+        chemin tapé oblige à le connaître. Le parcours d'abord, et une saisie
+        directe si l'on en sort sans rien choisir.
+        """
+        directory = start or os.path.join(os.getcwd(), "image_db")
+        if todo_file_browser is not None and os.path.isdir(directory):
+            self._dir_path = ""
+            browser = todo_file_browser.FileBrowser(
+                directory, self._on_dir_selected
+            )
+            browser.run_main_frame()
+            if self._dir_path and os.path.isfile(self._dir_path):
+                print(self._dir_path)
+                return self._dir_path
+        answer = input(
+            t("Path to the backup .zip (empty to cancel): ")
+        ).strip()
+        if not answer:
+            return None
+        path = os.path.expanduser(answer)
+        if not os.path.isfile(path):
+            print(f"❌ {t('No such file: ')}{path}")
+            return None
+        return path
+
     def download_database_backup_cli(
         self, show_remote_list: bool = True
     ) -> tuple[int, str, str]:

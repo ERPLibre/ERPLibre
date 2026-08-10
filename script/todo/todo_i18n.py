@@ -35,10 +35,6 @@ TRANSLATIONS = {
         "fr": "📦 Installation",
         "en": "📦 Install",
     },
-    "Question": {
-        "fr": "❓ Question",
-        "en": "❓ Question",
-    },
     "Fork - Open TODO in a new tab": {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
         "en": "🔀 Fork - Open TODO in a new tab",
@@ -3129,6 +3125,577 @@ TRANSLATIONS = {
     "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
+    # --- Menu Execute › Analyse ---
+    # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
+    # comme « Data » / « Database » : l'entrée de menu porte l'émoji,
+    # l'étiquette du fil d'Ariane est nue — _todo_telemetry_tui traduit le
+    # dernier segment du chemin, et un émoji y détonnerait.
+    "Analyse - Odoo database analysis": {
+        "fr": "🔬 Analyse - Analyse de base de données Odoo",
+        "en": "🔬 Analyse - Odoo database analysis",
+    },
+    "Analyse": {"fr": "Analyse", "en": "Analysis"},
+    "Analyse a database, without ever writing to it!": {
+        "fr": "Analyser une base, sans jamais y écrire !",
+        "en": "Analyse a database, without ever writing to it!",
+    },
+    # Les icônes du sous-menu Analyse. Elles sont réservées d'avance pour la
+    # famille entière — 🧱 index, 🎈 ballonnement, 📎 pièces jointes,
+    # 🔗 ir_model_data — pour qu'ajouter un outil ne demande pas d'en
+    # rechercher une libre, et que deux outils voisins ne se ressemblent pas.
+    "Structure": {"fr": "🗄  Structure", "en": "🗄  Structure"},
+    "Tables and database size": {
+        "fr": "📏 Tables et poids de la base",
+        "en": "📏 Tables and database size",
+    },
+    "Customisation": {"fr": "🎭 Personnalisation", "en": "🎭 Customisation"},
+    "Customised views, website copies included": {
+        "fr": "🖼  Vues personnalisées, copies de site web comprises",
+        "en": "🖼  Customised views, website copies included",
+    },
+    "Analysis failed: ": {
+        "fr": "L'analyse a échoué : ",
+        "en": "Analysis failed: ",
+    },
+    "Full list and JSON output:": {
+        "fr": "Liste complète et sortie JSON :",
+        "en": "Full list and JSON output:",
+    },
+    "A backup holds no registry, so nothing was compared with the module"
+    " source. The classification above needs none; only the differences do."
+    " Restore it, or run this on the database.": {
+        "fr": "Une sauvegarde n'a pas de registre, donc rien n'a été comparé"
+        " avec la source du module. Le classement ci-dessus n'en a pas besoin"
+        " ; seuls les écarts en ont. Restaurez-la, ou lancez ceci sur la base.",
+        "en": "A backup holds no registry, so nothing was compared with the"
+        " module source. The classification above needs none; only the"
+        " differences do. Restore it, or run this on the database.",
+    },
+    # --- script/analyse : vues personnalisées ---
+    "Customised views": {
+        "fr": "Vues personnalisées",
+        "en": "Customised views",
+    },
+    "Views": {"fr": "Vues", "en": "Views"},
+    "why": {"fr": "pourquoi", "en": "why"},
+    "more": {"fr": "de plus", "en": "more"},
+    "From an installed theme": {
+        "fr": "Posée par un thème installé",
+        "en": "From an installed theme",
+    },
+    "Website copy (COW)": {
+        "fr": "Copie de site web (COW)",
+        "en": "Website copy (COW)",
+    },
+    "Made with Studio": {"fr": "Faite avec Studio", "en": "Made with Studio"},
+    "Imported or exported": {
+        "fr": "Importée ou exportée",
+        "en": "Imported or exported",
+    },
+    "Created from the interface": {
+        "fr": "Créée depuis l'interface",
+        "en": "Created from the interface",
+    },
+    "From a module, flagged as touched": {
+        "fr": "D'un module, signalée comme retouchée",
+        "en": "From a module, flagged as touched",
+    },
+    "Straight from a module": {
+        "fr": "Telle quelle depuis un module",
+        "en": "Straight from a module",
+    },
+    "Every view comes straight from a module.": {
+        "fr": "Toutes les vues viennent telles quelles d'un module.",
+        "en": "Every view comes straight from a module.",
+    },
+    "Views that did not come straight from a module": {
+        "fr": "Vues qui ne viennent pas telles quelles d'un module",
+        "en": "Views that did not come straight from a module",
+    },
+    "Website copies are user data: Odoo copies a view instead of editing it."
+    " Whether they will survive the next version is another question, and"
+    " these tools answer it:": {
+        "fr": "Les copies de site web sont des données utilisateur : Odoo"
+        " copie une vue au lieu de la modifier. Savoir si elles survivront à"
+        " la prochaine version est une autre question, et ces outils y"
+        " répondent :",
+        "en": "Website copies are user data: Odoo copies a view instead of"
+        " editing it. Whether they will survive the next version is another"
+        " question, and these tools answer it:",
+    },
+    "Flags say a view was touched, not how. They are incomplete both ways: a"
+    " direct SQL write does not set arch_updated, and reset_arch clears it."
+    " Comparing with the module source is what settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. Ils"
+        " sont incomplets dans les deux sens : un write SQL direct n'arme pas"
+        " arch_updated, et reset_arch l'efface. Seule la comparaison avec la"
+        " source du module tranche.",
+        "en": "Flags say a view was touched, not how. They are incomplete"
+        " both ways: a direct SQL write does not set arch_updated, and"
+        " reset_arch clears it. Comparing with the module source is what"
+        " settles it.",
+    },
+    "List the views of an Odoo database that did not come straight from a"
+    " module, website copies included (read-only).": {
+        "fr": "Lister les vues d'une base Odoo qui ne viennent pas telles"
+        " quelles d'un module, copies de site web comprises (lecture seule).",
+        "en": "List the views of an Odoo database that did not come straight"
+        " from a module, website copies included (read-only).",
+    },
+    "only show this category": {
+        "fr": "n'afficher que cette catégorie",
+        "en": "only show this category",
+    },
+    "how many views to show (default: 20)": {
+        "fr": "nombre de vues à afficher (défaut : 20)",
+        "en": "how many views to show (default: 20)",
+    },
+    "list every view": {
+        "fr": "afficher toutes les vues",
+        "en": "list every view",
+    },
+    "which views to compare (default: flagged)": {
+        "fr": "quelles vues comparer (défaut : celles qui sont signalées)",
+        "en": "which views to compare (default: flagged)",
+    },
+    "From a module, silently drifted": {
+        "fr": "D'un module, dérivée en silence",
+        "en": "From a module, silently drifted",
+    },
+    "In --scope all, a difference is a lead, not a verdict:"
+    " read_arch_from_file returns the raw file, while the database holds the"
+    " arch AFTER load-time processing. Measured on a freshly installed 18.0"
+    " database, 160 of its 974 views already differ this way.": {
+        "fr": "En --scope all, un écart est une piste, pas un verdict :"
+        " read_arch_from_file rend le fichier brut, alors que la base porte"
+        " l'arch APRÈS traitement au chargement. Mesuré sur une base 18.0"
+        " fraîchement installée, 160 de ses 974 vues diffèrent déjà ainsi.",
+        "en": "In --scope all, a difference is a lead, not a verdict:"
+        " read_arch_from_file returns the raw file, while the database holds"
+        " the arch AFTER load-time processing. Measured on a freshly installed"
+        " 18.0 database, 160 of its 974 views already differ this way.",
+    },
+    "Compare with the module source? (Y/n): ": {
+        "fr": "Comparer avec la source du module ? (O/n) : ",
+        "en": "Compare with the module source? (Y/n): ",
+    },
+    # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
+    # conseillé en options de ligne de commande est devenu des entrées :
+    # dire « utilisez -v » à quelqu'un qui est dans un menu, c'est lui
+    # demander d'en sortir pour obtenir ce que le menu pouvait offrir.
+    "Browse the differences (TUI)": {
+        "fr": "🖥  Naviguer dans les écarts (plein écran)",
+        "en": "🖥  Browse the differences (TUI)",
+    },
+    "Compare every view (slower, noisier)": {
+        "fr": "🔬 Comparer toutes les vues (plus long, plus bruyant)",
+        "en": "🔬 Compare every view (slower, noisier)",
+    },
+    "Compare first, then browse.": {
+        "fr": "Comparez d'abord, vous naviguerez ensuite.",
+        "en": "Compare first, then browse.",
+    },
+    "Compare the flagged views with the module source": {
+        "fr": "🔍 Comparer les vues signalées avec la source du module",
+        "en": "🔍 Compare the flagged views with the module source",
+    },
+    "Count rows exactly (full scan)": {
+        "fr": "🔢 Compter les lignes exactement (balayage complet)",
+        "en": "🔢 Count rows exactly (full scan)",
+    },
+    "Counting rows exactly, one scan per table…": {
+        "fr": "Comptage exact des lignes, un balayage par table…",
+        "en": "Counting rows exactly, one scan per table…",
+    },
+    "Export as JSON": {"fr": "💾 Exporter en JSON", "en": "💾 Export as JSON"},
+    "Go further": {"fr": "🔎 Aller plus loin", "en": "🔎 Go further"},
+    "Loading the Odoo registry, this takes a moment…": {
+        "fr": "Chargement du registre Odoo, cela prend un moment…",
+        "en": "Loading the Odoo registry, this takes a moment…",
+    },
+    "No view differs from its module source.": {
+        "fr": "Aucune vue ne diffère de la source de son module.",
+        "en": "No view differs from its module source.",
+    },
+    "Show every table": {
+        "fr": "📜 Afficher toutes les tables",
+        "en": "📜 Show every table",
+    },
+    "Show every view": {
+        "fr": "📜 Afficher toutes les vues",
+        "en": "📜 Show every view",
+    },
+    "Written to: ": {"fr": "Écrit dans : ", "en": "Written to: "},
+    "Flags say a view was touched, not how: only comparing with the module"
+    " source settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment :"
+        " seule la comparaison avec la source du module tranche.",
+        "en": "Flags say a view was touched, not how: only comparing with the"
+        " module source settles it.",
+    },
+    "blocking": {"fr": "bloquants", "en": "blocking"},
+    "Studio and hand-made x_ fields": {
+        "fr": "🧩 Champs x_ (Studio et faits à la main)",
+        "en": "🧩 Studio and hand-made x_ fields",
+    },
+    "Show every field": {
+        "fr": "📜 Afficher tous les champs",
+        "en": "📜 Show every field",
+    },
+    "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
+    "A backup .zip, without restoring it": {
+        "fr": "🗜  Une sauvegarde .zip, sans la restaurer",
+        "en": "🗜  A backup .zip, without restoring it",
+    },
+    "Path to the backup .zip (empty to cancel): ": {
+        "fr": "Chemin de la sauvegarde .zip (vide pour annuler) : ",
+        "en": "Path to the backup .zip (empty to cancel): ",
+    },
+    "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
+    "Odoo backup .zip to inspect, without restoring it": {
+        "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
+        "en": "Odoo backup .zip to inspect, without restoring it",
+    },
+    "Not an Odoo backup (no manifest.json): ": {
+        "fr": "Pas une sauvegarde Odoo (aucun manifest.json) : ",
+        "en": "Not an Odoo backup (no manifest.json): ",
+    },
+    "Cannot read the backup: ": {
+        "fr": "Lecture impossible de la sauvegarde : ",
+        "en": "Cannot read the backup: ",
+    },
+    "This backup holds no dump.sql: ": {
+        "fr": "Cette sauvegarde ne contient aucun dump.sql : ",
+        "en": "This backup holds no dump.sql: ",
+    },
+    # --- script/analyse : champs et modèles hors module ---
+    "Nothing declares these in a file, so no module will "
+    "recreate them. What a version upgrade keeps is what "
+    "someone carried over.": {
+        "fr": "Rien ne les déclare dans un fichier, donc aucun module "
+        "ne les recréera. Ce qu'une montée de version conserve "
+        "est ce que quelqu'un a reporté.",
+        "en": "Nothing declares these in a file, so no module will "
+        "recreate them. What a version upgrade keeps is what "
+        "someone carried over.",
+    },
+    "A stored field without its column stops the registry "
+    "from loading, so the upgrade will not even start. Settle "
+    "these before anything else.": {
+        "fr": "Un champ stocké sans sa colonne empêche le registre de "
+        "charger, donc la montée de version ne démarrera même "
+        "pas. Réglez cela avant tout le reste.",
+        "en": "A stored field without its column stops the registry "
+        "from loading, so the upgrade will not even start. Settle "
+        "these before anything else.",
+    },
+    "Use -v to list them all, --json for the raw data.": {
+        "fr": "Utilisez -v pour tout afficher, --json pour la donnée "
+        "brute.",
+        "en": "Use -v to list them all, --json for the raw data.",
+    },
+    "List the fields and models added outside a module — "
+    "Studio or by hand (read-only).": {
+        "fr": "Lister les champs et modèles ajoutés hors module — "
+        "Studio ou faits à la main (lecture seule).",
+        "en": "List the fields and models added outside a module — "
+        "Studio or by hand (read-only).",
+    },
+    "how many to show (default: 30)": {
+        "fr": "nombre à afficher (défaut : 30)",
+        "en": "how many to show (default: 30)",
+    },
+    "list every one": {"fr": "tout afficher", "en": "list every one"},
+    "Studio": {"fr": "Studio", "en": "Studio"},
+    "Made by hand": {"fr": "Fait à la main", "en": "Made by hand"},
+    "Declared by a module": {
+        "fr": "Déclaré par un module",
+        "en": "Declared by a module",
+    },
+    "stored, but its column is missing": {
+        "fr": "stocké, mais sa colonne manque",
+        "en": "stored, but its column is missing",
+    },
+    "points at a model that no longer exists": {
+        "fr": "pointe vers un modèle qui n'existe plus",
+        "en": "points at a model that no longer exists",
+    },
+    "its model no longer exists": {
+        "fr": "son modèle n'existe plus",
+        "en": "its model no longer exists",
+    },
+    "its table could not be resolved": {
+        "fr": "sa table n'a pas pu être résolue",
+        "en": "its table could not be resolved",
+    },
+    "origin": {"fr": "provenance", "en": "origin"},
+    "Fields added outside a module": {
+        "fr": "Champs ajoutés hors module",
+        "en": "Fields added outside a module",
+    },
+    "Custom fields": {"fr": "Champs personnalisés", "en": "Custom fields"},
+    "Custom models": {"fr": "Modèles personnalisés", "en": "Custom models"},
+    "No field or model was added outside a module.": {
+        "fr": "Aucun champ ni modèle n'a été ajouté hors module.",
+        "en": "No field or model was added outside a module.",
+    },
+    "Blocking": {"fr": "Bloquant", "en": "Blocking"},
+    "To carry over by hand": {
+        "fr": "À reporter à la main",
+        "en": "To carry over by hand",
+    },
+    # --- script/analyse : comparaison et navigation des écarts ---
+    "Differences only": {
+        "fr": "Écarts seuls",
+        "en": "Differences only",
+    },
+    "Ignore indentation": {
+        "fr": "Ignorer l'indentation",
+        "en": "Ignore indentation",
+    },
+    "Copy": {
+        "fr": "Copier",
+        "en": "Copy",
+    },
+    "Reset command": {
+        "fr": "Commande de réinitialisation",
+        "en": "Reset command",
+    },
+    "module (file)": {
+        "fr": "module (fichier)",
+        "en": "module (file)",
+    },
+    "database": {
+        "fr": "base",
+        "en": "database",
+    },
+    "Difference copied.": {
+        "fr": "Écart copié.",
+        "en": "Difference copied.",
+    },
+    "No Odoo configuration file found.": {
+        "fr": "Aucun fichier de configuration Odoo trouvé.",
+        "en": "No Odoo configuration file found.",
+    },
+    "odoo_bin.sh not found.": {
+        "fr": "odoo_bin.sh est introuvable.",
+        "en": "odoo_bin.sh not found.",
+    },
+    "The Odoo shell returned no result: ": {
+        "fr": "Le shell Odoo n'a rien renvoyé : ",
+        "en": "The Odoo shell returned no result: ",
+    },
+    "The Odoo shell exceeded the timeout (s): ": {
+        "fr": "Le shell Odoo a dépassé le délai imparti (s) : ",
+        "en": "The Odoo shell exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from the Odoo shell: ": {
+        "fr": "JSON illisible en sortie du shell Odoo : ",
+        "en": "Unreadable JSON from the Odoo shell: ",
+    },
+    "To restore a view to what its module declares — this "
+    "WRITES to the database, so read the difference first:": {
+        "fr": "Pour rendre à une vue ce que déclare son module — ceci "
+        "ÉCRIT dans la base, lisez donc l'écart d'abord :",
+        "en": "To restore a view to what its module declares — this "
+        "WRITES to the database, so read the difference first:",
+    },
+    "compare with the module source (opens an Odoo shell)": {
+        "fr": "comparer avec la source du module (ouvre un shell Odoo)",
+        "en": "compare with the module source (opens an Odoo shell)",
+    },
+    "fail if the comparison could not be made": {
+        "fr": "échouer si la comparaison n'a pas pu être faite",
+        "en": "fail if the comparison could not be made",
+    },
+    "browse the differences in a full-screen view": {
+        "fr": "naviguer dans les écarts en plein écran",
+        "en": "browse the differences in a full-screen view",
+    },
+    "Flags say a view was touched, not how. They are incomplete "
+    "both ways: a direct SQL write does not set arch_updated, "
+    "and reset_arch clears it. Comparing with the module source "
+    "is what settles it — add --diff.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. "
+        "Ils sont incomplets dans les deux sens : un write SQL "
+        "direct n'arme pas arch_updated, et reset_arch l'efface. "
+        "Seule la comparaison avec la source du module tranche — "
+        "ajoutez --diff.",
+        "en": "Flags say a view was touched, not how. They are incomplete "
+        "both ways: a direct SQL write does not set arch_updated, "
+        "and reset_arch clears it. Comparing with the module source "
+        "is what settles it — add --diff.",
+    },
+    "Database is Odoo": {
+        "fr": "La base est en Odoo",
+        "en": "Database is Odoo",
+    },
+    "checkout is": {
+        "fr": "le checkout est en",
+        "en": "checkout is",
+    },
+    "views were flagged but hold exactly what their module "
+    "declares: only the comparison could tell.": {
+        "fr": "vues étaient signalées mais portent exactement ce que "
+        "déclare leur module : seule la comparaison pouvait le "
+        "dire.",
+        "en": "views were flagged but hold exactly what their module "
+        "declares: only the comparison could tell.",
+    },
+    "No reference arch, so nothing was compared: ": {
+        "fr": "Aucune arch de référence, donc rien n'a été comparé : ",
+        "en": "No reference arch, so nothing was compared: ",
+    },
+    "Not a terminal: showing the text report instead.": {
+        "fr": "Pas un terminal : affichage du rapport texte à la place.",
+        "en": "Not a terminal: showing the text report instead.",
+    },
+    "To restore this view to what its module declares:": {
+        "fr": "Pour rendre à cette vue ce que déclare son module :",
+        "en": "To restore this view to what its module declares:",
+    },
+    # --- script/analyse : erreurs du socle ---
+    "Invalid database name: ": {
+        "fr": "Nom de base invalide : ",
+        "en": "Invalid database name: ",
+    },
+    "Cannot read from the database: ": {
+        "fr": "Lecture impossible dans la base : ",
+        "en": "Cannot read from the database: ",
+    },
+    "is not an Odoo database.": {
+        "fr": "n'est pas une base Odoo.",
+        "en": "is not an Odoo database.",
+    },
+    "psql is not installed or not in PATH.": {
+        "fr": "psql n'est pas installé, ou absent du PATH.",
+        "en": "psql is not installed or not in PATH.",
+    },
+    "Query exceeded the timeout (s): ": {
+        "fr": "La requête a dépassé le délai imparti (s) : ",
+        "en": "Query exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from psql: ": {
+        "fr": "JSON illisible en sortie de psql : ",
+        "en": "Unreadable JSON from psql: ",
+    },
+    "shared library, nothing to run here.": {
+        "fr": "bibliothèque partagée, rien à lancer ici.",
+        "en": "shared library, nothing to run here.",
+    },
+    "Runnable tools in this directory:": {
+        "fr": "Outils exécutables de ce répertoire :",
+        "en": "Runnable tools in this directory:",
+    },
+    "No analysis tool here yet.": {
+        "fr": "Aucun outil d'analyse ici pour l'instant.",
+        "en": "No analysis tool here yet.",
+    },
+    "From the menu:": {"fr": "Depuis le menu :", "en": "From the menu:"},
+    "in the dump": {"fr": "dans le dump", "en": "in the dump"},
+    "Weight in the dump": {
+        "fr": "Poids dans le dump",
+        "en": "Weight in the dump",
+    },
+    # --- script/analyse : poids du schéma ---
+    "Schema analysis": {
+        "fr": "Analyse du schéma",
+        "en": "Schema analysis",
+    },
+    "Database size": {
+        "fr": "Poids de la base",
+        "en": "Database size",
+    },
+    "Tables": {"fr": "Tables", "en": "Tables"},
+    "Models": {"fr": "Modèles", "en": "Models"},
+    "rows": {"fr": "lignes", "en": "rows"},
+    "Models without table": {
+        "fr": "Modèles sans table",
+        "en": "Models without table",
+    },
+    "abstract models have none, by design": {
+        "fr": "les modèles abstraits n'en ont pas, par construction",
+        "en": "abstract models have none, by design",
+    },
+    "ir_model_relation is absent, so m2m tables cannot be told apart from"
+    " orphans: the list below is unreliable.": {
+        "fr": "ir_model_relation est absente : impossible de distinguer une"
+        " table m2m d'une orpheline, la liste ci-dessous n'est pas fiable.",
+        "en": "ir_model_relation is absent, so m2m tables cannot be told apart"
+        " from orphans: the list below is unreliable.",
+    },
+    "Heaviest tables": {
+        "fr": "Tables les plus lourdes",
+        "en": "Heaviest tables",
+    },
+    "All tables, heaviest first": {
+        "fr": "Toutes les tables, de la plus lourde à la plus légère",
+        "en": "All tables, heaviest first",
+    },
+    "use -v to list them all": {
+        "fr": "utilisez -v pour toutes les afficher",
+        "en": "use -v to list them all",
+    },
+    "Every table belongs to an installed model.": {
+        "fr": "Chaque table appartient à un modèle installé.",
+        "en": "Every table belongs to an installed model.",
+    },
+    "Orphan tables": {
+        "fr": "Tables orphelines",
+        "en": "Orphan tables",
+    },
+    "No installed model claims these tables. They are usually left over from"
+    " modules uninstalled without DROP TABLE, and every version upgrade"
+    " carries them along.": {
+        "fr": "Aucun modèle installé ne réclame ces tables. Ce sont le plus"
+        " souvent des reliquats de modules désinstallés sans DROP TABLE, que"
+        " chaque montée de version transporte avec elle.",
+        "en": "No installed model claims these tables. They are usually left"
+        " over from modules uninstalled without DROP TABLE, and every version"
+        " upgrade carries them along.",
+    },
+    "Check what they hold before dropping anything.": {
+        "fr": "Regardez ce qu'elles contiennent avant de supprimer quoi que ce"
+        " soit.",
+        "en": "Check what they hold before dropping anything.",
+    },
+    "Row counts are estimates from the last ANALYZE. Use --exact for real"
+    " counts, at the cost of one full scan per table.": {
+        "fr": "Les nombres de lignes sont estimés d'après le dernier ANALYZE."
+        " Utilisez --exact pour un comptage réel, au prix d'un balayage"
+        " complet par table.",
+        "en": "Row counts are estimates from the last ANALYZE. Use --exact for"
+        " real counts, at the cost of one full scan per table.",
+    },
+    "Report the size of an Odoo database and the tables no installed model"
+    " claims (read-only).": {
+        "fr": "Rapporter le poids d'une base Odoo et les tables qu'aucun"
+        " modèle installé ne réclame (lecture seule).",
+        "en": "Report the size of an Odoo database and the tables no installed"
+        " model claims (read-only).",
+    },
+    "database to inspect": {
+        "fr": "base à examiner",
+        "en": "database to inspect",
+    },
+    "count rows exactly: one full scan per table": {
+        "fr": "compter les lignes exactement : un balayage complet par table",
+        "en": "count rows exactly: one full scan per table",
+    },
+    "how many tables to show (default: 20)": {
+        "fr": "nombre de tables à afficher (défaut : 20)",
+        "en": "how many tables to show (default: 20)",
+    },
+    "list every table": {
+        "fr": "afficher toutes les tables",
+        "en": "list every table",
+    },
+    "output JSON": {"fr": "sortie JSON", "en": "output JSON"},
+    "path to an Odoo config file": {
+        "fr": "chemin d'un fichier de configuration Odoo",
+        "en": "path to an Odoo config file",
+    },
 }
 
 
