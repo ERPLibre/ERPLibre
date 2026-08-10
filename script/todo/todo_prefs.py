@@ -30,6 +30,26 @@ DEFAULTS = {
     "qemu_deploy_progress": "cli",
     # Interface de la migration Odoo : "ask" / "tui" / "cli".
     "migration_ui": "ask",
+    # Cache courriel : mode par DÉFAUT. Un compte peut le surcharger via
+    # sa clé `cache_mode` dans accounts.json ; `null` là-bas veut dire
+    # « hérite d'ici ». Valeurs : clear | encrypted | ephemeral.
+    "mail_cache_mode": "clear",
+    # Rafraîchissement automatique des boîtes, en secondes, ACTIF seulement
+    # tant que le TUI courriel est à l'écran. 0 désactive.
+    "mail_refresh_sec": 300,
+    # Disposition des volets du client courriel (touche `v`). Voir
+    # `script.todo.mail.tui.MAIL_LAYOUTS` pour les valeurs valides ;
+    # `resolve_layout` y retombe sur "columns" si la valeur stockée n'en fait
+    # plus partie.
+    "mail_layout": "columns",
+    # Tailles personnalisées des volets (`+`/`-`/`0`, et la souris de la
+    # tâche suivante), UNE entrée PAR disposition : {"<layout>": {"folders":
+    # <cellules>, "list_pane": <cellules>}}. Une disposition ou un volet
+    # absent de ce dictionnaire veut dire « pas encore personnalisé » — la
+    # feuille de style de la disposition décide seule. Voir
+    # `script.todo.mail.tui.resolve_pane_sizes`, qui retombe sur {} pour
+    # toute valeur absente ou corrompue.
+    "mail_pane_sizes": {},
 }
 
 

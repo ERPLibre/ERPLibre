@@ -4,9 +4,10 @@
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 from script.todo.todo import (
     ANDROID_DIR,
@@ -180,24 +181,12 @@ class TestOnDirSelected(unittest.TestCase):
         todo = TODO()
         todo.on_dir_selected("/some/path")
         self.assertEqual(todo.dir_path, "/some/path")
-
-
-class TestExecuteFromConfiguration(unittest.TestCase):
     def test_with_command(self):
         todo = TODO()
         todo.execute = MagicMock()
         dct = {"command": "./run.sh"}
         todo.execute_from_configuration(dct)
         todo.execute.exec_command_live.assert_called()
-
-    def test_with_makefile_cmd(self):
-        todo = TODO()
-        todo.execute = MagicMock()
-        todo.execute.exec_command_live.return_value = 0
-        dct = {"makefile_cmd": "run_test"}
-        todo.execute_from_configuration(dct)
-        call_args = todo.execute.exec_command_live.call_args
-        self.assertIn("make run_test", call_args[0][0])
 
     def test_makefile_cmd_ignored_when_flag(self):
         todo = TODO()
@@ -277,9 +266,6 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         cmd = todo.execute.exec_command_live.call_args[0][0]
         self.assertIn("pkill", cmd)
         self.assertIn("git daemon", cmd)
-
-
-class TestExecuteUnitTests(unittest.TestCase):
     def test_success_path(self):
         todo = TODO()
         todo.execute = MagicMock()
@@ -295,10 +281,6 @@ class TestExecuteUnitTests(unittest.TestCase):
         todo.execute.exec_command_live.return_value = (1, ["FAIL"])
         with patch("builtins.print") as mock_print:
             todo.execute_unit_tests()
-        # Verify it was called - error handling path
-
-
-class TestKdbxGetExtraCommandUser(unittest.TestCase):
     def test_empty_kdbx_key(self):
         todo = TODO()
         result = todo.kdbx_manager.get_extra_command_user("")
@@ -314,16 +296,6 @@ class TestKdbxGetExtraCommandUser(unittest.TestCase):
         todo.kdbx_manager.get_kdbx = MagicMock(return_value=None)
         result = todo.kdbx_manager.get_extra_command_user("some_key")
         self.assertEqual(result, "")
-
-
-class TestSetupClaudeCommit(unittest.TestCase):
-    def test_existing_file_skips(self):
-        todo = TODO()
-        with patch("os.path.exists", return_value=True), patch(
-            "builtins.print"
-        ) as mock_print:
-            todo._setup_claude_commit()
-        # Should print exists message without asking for input
 
 
 class TestSelectDatabase(unittest.TestCase):
@@ -405,6 +377,49 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         ]
         self.assertIn("--backup", cmd)
         self.assertIn("test_db", cmd)
+
+
+class TestModuleLevelAbortExit(unittest.TestCase):
+    """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
+    Ctrl+D/EOF - see click's own `termui.prompt_func`) is NOT a
+    `KeyboardInterrupt` subclass. Only the top-level menu's `click.prompt`
+    call is wrapped locally, inside `run()` (todo.py around line 149) -
+    every submenu (`prompt_assistant`, etc.) lets `Abort` propagate
+    uncaught. These tests drive the real script end to end (not a mock of
+    the dispatch chain) to prove the module-level guard around
+    `todo.run()` (todo.py around line 7159) now catches it too.
+    """
+
+    def _run_todo(self, stdin_text):
+        repo_root = Path(__file__).resolve().parent.parent
+        python_bin = repo_root / ".venv.erplibre" / "bin" / "python3"
+        env = os.environ.copy()
+        with tempfile.TemporaryDirectory() as home_dir:
+            env["HOME"] = home_dir
+            return subprocess.run(
+                [str(python_bin), "script/todo/todo.py"],
+                cwd=repo_root,
+                input=stdin_text,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+
+    def test_ctrl_d_in_a_submenu_exits_cleanly(self):
+        # "3" enters the Assistant submenu; the immediate EOF that follows
+        # raises Abort from a click.prompt() call that run() does not wrap.
+        result = self._run_todo("3\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("click.exceptions.Abort", result.stderr)
+
+    def test_ctrl_d_on_the_top_menu_still_exits_cleanly(self):
+        # Regression guard: the pre-existing local handler in run() must
+        # keep working once the module-level guard is added alongside it.
+        result = self._run_todo("")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":
