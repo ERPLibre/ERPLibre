@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
 from script.todo.todo import (
     ANDROID_DIR,
@@ -181,12 +182,60 @@ class TestOnDirSelected(unittest.TestCase):
         todo = TODO()
         todo.on_dir_selected("/some/path")
         self.assertEqual(todo.dir_path, "/some/path")
+
+
+class TestExecuteFromConfiguration(unittest.TestCase):
     def test_with_command(self):
         todo = TODO()
         todo.execute = MagicMock()
         dct = {"command": "./run.sh"}
         todo.execute_from_configuration(dct)
         todo.execute.exec_command_live.assert_called()
+
+    def test_every_command_entry_of_the_real_config_is_reachable(self):
+        """Le dict synthétique du test précédent ne suffisait pas.
+
+        `4fc15c3` a renommé la clé cherchée par le code en « Command: »,
+        le libellé affiché. Plus aucune entrée de todo.json ne
+        correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait plus
+        rien — sans erreur, le `if` étant simplement faux. Seule la VRAIE
+        configuration relie les deux côtés.
+        """
+        with open(CONFIG_FILE) as fh:
+            config = json.load(fh)
+
+        entrees = []
+
+        def parcourir(noeud):
+            if isinstance(noeud, dict):
+                if "command" in noeud:
+                    entrees.append(noeud)
+                for valeur in noeud.values():
+                    parcourir(valeur)
+            elif isinstance(noeud, list):
+                for element in noeud:
+                    parcourir(element)
+
+        parcourir(config)
+        self.assertTrue(entrees, "todo.json n'a plus d'entrée `command`")
+
+        for entree in entrees:
+            todo = TODO()
+            todo.execute = MagicMock()
+            todo.execute_from_configuration(entree)
+            self.assertTrue(
+                todo.execute.exec_command_live.called,
+                f"entrée ignorée en silence : {entree.get('command')}",
+            )
+
+    def test_with_makefile_cmd(self):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = 0
+        dct = {"makefile_cmd": "run_test"}
+        todo.execute_from_configuration(dct)
+        call_args = todo.execute.exec_command_live.call_args
+        self.assertIn("make run_test", call_args[0][0])
 
     def test_makefile_cmd_ignored_when_flag(self):
         todo = TODO()
@@ -266,6 +315,9 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         cmd = todo.execute.exec_command_live.call_args[0][0]
         self.assertIn("pkill", cmd)
         self.assertIn("git daemon", cmd)
+
+
+class TestExecuteUnitTests(unittest.TestCase):
     def test_success_path(self):
         todo = TODO()
         todo.execute = MagicMock()
@@ -281,6 +333,76 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         todo.execute.exec_command_live.return_value = (1, ["FAIL"])
         with patch("builtins.print") as mock_print:
             todo.execute_unit_tests()
+        # Verify it was called - error handling path
+
+    def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
+        """Signalé à l'usage : « pas clair si les tests ont passé ».
+
+        unittest écrit son verdict sur stderr et les tests impriment sur
+        stdout ; capturés ensemble, le stdout tamponné se déversait après
+        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
+        résultat.
+        """
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("python -u -m unittest", cmd)
+
+    def test_the_pattern_reaches_the_command(self):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests("test_mail*.py")
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_mail*.py'", cmd)
+
+    def test_the_default_pattern_is_still_the_whole_suite(self):
+        """La signature a gagné un paramètre : l'entrée [3] ne doit pas
+        s'être mise à ne lancer qu'un sous-ensemble en silence."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_*.py'", cmd)
+
+
+class TestTestMenuDispatch(unittest.TestCase):
+    """Le câblage des entrées, pas leur contenu.
+
+    Un `elif` qui pointe le mauvais motif lancerait une suite verte sans
+    rien tester de ce que l'utilisateur a demandé — panne silencieuse que
+    seul ce test attrape.
+    """
+
+    def _choose(self, entry):
+        todo = TODO()
+        with patch.object(
+            todo, "execute_unit_tests"
+        ) as mock_run, patch.object(todo, "execute_test_module"), patch(
+            "click.prompt", side_effect=[entry, "0"]
+        ), patch(
+            "builtins.print"
+        ):
+            todo.prompt_execute_test()
+        return mock_run
+
+    def test_entry_4_runs_the_mail_tests(self):
+        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
+
+    def test_entry_5_runs_the_analyse_tests(self):
+        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
+
+    def test_entry_3_still_runs_everything(self):
+        self.assertEqual(self._choose("3").call_args[0], ())
+
+
+class TestKdbxGetExtraCommandUser(unittest.TestCase):
     def test_empty_kdbx_key(self):
         todo = TODO()
         result = todo.kdbx_manager.get_extra_command_user("")
@@ -296,6 +418,50 @@ class TestProcessKillGitDaemon(unittest.TestCase):
         todo.kdbx_manager.get_kdbx = MagicMock(return_value=None)
         result = todo.kdbx_manager.get_extra_command_user("some_key")
         self.assertEqual(result, "")
+
+
+class TestSetupClaudeCommit(unittest.TestCase):
+    """Le déploiement d'une commande `/…` dans ~/.claude/commands.
+
+    La méthode a été généralisée depuis : elle prend le nom de la commande
+    et son gabarit, et quand la cible existe elle DEMANDE confirmation au
+    lieu de passer son tour. Le test ne détournait pas `input` — il aurait
+    bloqué si l'appel n'avait pas échoué avant.
+    """
+
+    def test_existing_file_and_refusal_writes_nothing(self):
+        todo = TODO()
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="n"
+        ), patch("builtins.open") as mock_open, patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
+            "builtins.print"
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        # Un refus doit sortir AVANT toute écriture : ni lecture du gabarit,
+        # ni création du dossier. Sans ces deux assertions, le test passait
+        # aussi bien si la méthode écrasait le fichier.
+        mock_open.assert_not_called()
+        mock_makedirs.assert_not_called()
+
+    def test_existing_file_and_acceptance_writes(self):
+        """Le pendant : sans lui, la méthode pourrait ne JAMAIS écrire et
+        le test ci-dessus resterait vert."""
+        todo = TODO()
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="y"
+        ), patch("builtins.open", mock_open(read_data="gabarit")), patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
+            "builtins.print"
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        mock_makedirs.assert_called_once()
 
 
 class TestSelectDatabase(unittest.TestCase):

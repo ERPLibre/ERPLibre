@@ -14,10 +14,15 @@ try:
     from tkinter import filedialog
 
     from pykeepass import PyKeePass
+    from pykeepass.exceptions import CredentialsError
 except ModuleNotFoundError:
     PyKeePass = None
     tk = None
     filedialog = None
+
+    class CredentialsError(Exception):
+        """Jamais levée ici : sans pykeepass, `get_kdbx` sort avant d'ouvrir
+        quoi que ce soit. Définie pour que le `except` reste écrivable."""
 
 
 class KdbxManager:
@@ -25,7 +30,7 @@ class KdbxManager:
         self._config_file = config_file
         self._kdbx = None
 
-    def get_kdbx(self):
+    def get_kdbx(self, attempts: int = 3):
         if self._kdbx:
             return self._kdbx
 
@@ -47,20 +52,42 @@ class KdbxManager:
             )
             return None
 
-        kdbx_password = self._config_file.get_config_value(
-            ["kdbx", "password"]
-        )
-        if not kdbx_password:
-            kdbx_password = getpass.getpass(prompt=t("enter_password"))
-
         if PyKeePass is None:
             _logger.error("pykeepass is not installed")
             return None
 
-        kp = PyKeePass(kdbx_file_path, password=kdbx_password)
-        if kp:
-            self._kdbx = kp
-        return kp
+        kdbx_password = self._config_file.get_config_value(
+            ["kdbx", "password"]
+        )
+        if kdbx_password:
+            # Mot de passe pris dans la configuration : personne à qui
+            # redemander, mais il peut être faux — le dire au lieu de
+            # laisser remonter une trace de la bibliothèque.
+            try:
+                self._kdbx = PyKeePass(kdbx_file_path, password=kdbx_password)
+            except CredentialsError:
+                print(t("kdbx_wrong_password"))
+                return None
+            return self._kdbx
+
+        # Saisie interactive. Un mot de passe refusé est le cas NORMAL ici,
+        # pas une panne : la bibliothèque lève `CredentialsError` et, sans
+        # ce rattrapage, la trace remontait jusqu'à tuer le CLI. On nomme
+        # aussi le coffre — l'invite ne disait pas DE QUOI elle parlait.
+        print(f"{t('kdbx_vault_is')} {kdbx_file_path}")
+        for _ in range(attempts):
+            password = getpass.getpass(prompt=t("kdbx_ask_password"))
+            if not password:
+                print(t("kdbx_give_up"))
+                return None
+            try:
+                self._kdbx = PyKeePass(kdbx_file_path, password=password)
+            except CredentialsError:
+                print(t("kdbx_wrong_password"))
+                continue
+            return self._kdbx
+        print(t("kdbx_give_up"))
+        return None
 
     def get_extra_command_user(
         self, kdbx_key: str | list | None
