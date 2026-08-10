@@ -725,6 +725,14 @@ TRANSLATIONS = {
         "fr": "Tests unitaires ERPLibre",
         "en": "ERPLibre unit tests",
     },
+    "Mail unit tests": {
+        "fr": "Tests unitaires courriel",
+        "en": "Mail unit tests",
+    },
+    "Analyse unit tests": {
+        "fr": "Tests unitaires analyse",
+        "en": "Analyse unit tests",
+    },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
         "en": "Running unit tests",
@@ -4207,6 +4215,24 @@ TRANSLATIONS = {
         "fr": "Aucun coffre disponible : installez pykeepass ou déverrouillez un trousseau système.",
         "en": "No vault available: install pykeepass or unlock a system keyring.",
     },
+    # Coffre KeePass, côté infrastructure partagée (`kdbx_manager`) : ces
+    # messages servent à TOUT le CLI, pas seulement au courriel.
+    "kdbx_vault_is": {
+        "fr": "Coffre KeePass :",
+        "en": "KeePass vault:",
+    },
+    "kdbx_ask_password": {
+        "fr": "Mot de passe du coffre (vide pour abandonner) : ",
+        "en": "Vault password (empty to give up): ",
+    },
+    "kdbx_wrong_password": {
+        "fr": "Mot de passe incorrect pour ce coffre KeePass.",
+        "en": "Wrong password for this KeePass vault.",
+    },
+    "kdbx_give_up": {
+        "fr": "Coffre non ouvert : on abandonne.",
+        "en": "Vault not opened: giving up.",
+    },
     "mail_kdbx_none_configured": {
         "fr": "Aucun fichier kdbx n'est configuré.",
         "en": "No kdbx file is configured.",
@@ -4586,6 +4612,17 @@ TRANSLATIONS = {
     "mail_ask_app_password": {
         "fr": "Mot de passe d'application : ",
         "en": "App password: ",
+    },
+    "mail_err_password_not_ascii": {
+        "fr": (
+            "le mot de passe contient un caractère non ASCII, que ce client"
+            " IMAP ne sait pas transmettre — il n'a pas été envoyé au"
+            " serveur"
+        ),
+        "en": (
+            "the password contains a non-ASCII character this IMAP client"
+            " cannot transmit — it was never sent to the server"
+        ),
     },
     "mail_err_no_kdbx_configured": {
         "fr": "aucun fichier kdbx configuré",

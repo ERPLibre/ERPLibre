@@ -27,6 +27,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
@@ -500,6 +501,65 @@ class TODO:
             print("make open_terminal")
             self.restart_script(str(e))
 
+    def execute_from_configuration(
+        self, instance, exec_run_db=False, ignore_makefile=False
+    ):
+        # exec_run_db need argument database
+        kdbx_key = instance.get("kdbx_key")
+        odoo_user = instance.get("user")
+        odoo_password = instance.get("password")
+
+        if kdbx_key:
+            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(
+                kdbx_key
+            )
+        elif odoo_user and odoo_password:
+            extra_cmd_web_login = (
+                f" --default_email_auth {odoo_user} --default_password_auth"
+                f" '{odoo_password}'"
+            )
+        else:
+            extra_cmd_web_login = ""
+
+        makefile_cmd = instance.get("makefile_cmd")
+        if makefile_cmd and not ignore_makefile:
+            status = self.execute.exec_command_live(
+                f"make {makefile_cmd}",
+                source_erplibre=False,
+                single_source_erplibre=True,
+            )
+            if status:
+                _logger.error(
+                    f"Status {status} - exit execute_from_configuration"
+                )
+                return
+
+        if exec_run_db:
+            db_name = instance.get("database")
+            self.prompt_execute_selenium_and_run_db(
+                db_name, extra_cmd_web_login=extra_cmd_web_login
+            )
+
+        bash_command = instance.get("bash_command")
+        if bash_command:
+            print(f"{t('Will execute:')} {bash_command}")
+            self.execute.exec_command_live(bash_command, source_erplibre=False)
+
+        # Clé de CONFIGURATION, pas une chaîne d'interface : le passage aux
+        # clés i18n en texte anglais (4fc15c3) a renommé celle-ci en
+        # « Command: », le libellé affiché. Plus aucune entrée de todo.json
+        # ne correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait
+        # plus rien — sans erreur, puisque le `if` était simplement faux.
+        command = instance.get("command")
+        if command:
+            self.prompt_execute_selenium(
+                command=command, extra_cmd_web_login=extra_cmd_web_login
+            )
+
+        callback = instance.get("callback")
+        if callback:
+            callback(instance)
+
     # Étiquettes du fil d'Ariane par méthode de menu. Le fil est dérivé de la
     # pile d'appels (aucune méthode de menu à modifier). Labels courts et
     # stables, pensés pour être copiés afin de situer précisément un menu.
@@ -549,6 +609,54 @@ class TODO:
             except Exception:
                 pass
         return header + t("Command:")
+
+    def _todo_telemetry_tui(self):
+        """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
+        exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
+        et la position du curseur sont restaurés) ou de quitter."""
+        from script.todo import textual_setup
+        from script.todo.todo_telemetry import run_tui
+
+        if not textual_setup.ensure():
+            return
+        state = None
+        while True:
+            try:
+                result = run_tui(state=state)
+            except ImportError:
+                return
+            if not result:
+                return
+            action, state = result
+            if not action:
+                return  # quitté sans choisir de commande
+            method, kwargs = action
+            # Fil d'Ariane : la commande étant lancée DEPUIS la télémétrie (et
+            # non via la navigation), aucun menu n'a affiché le chemin. On le
+            # montre ici (dernier segment traduit + icône) et on l'enregistre.
+            path = state.get("path") if isinstance(state, dict) else None
+            if path:
+                segs = path.split(" › ")
+                segs[-1] = t(segs[-1])
+                print(f"\n📍 {' › '.join(segs)}")
+                try:
+                    from script.todo import todo_telemetry
+
+                    todo_telemetry.record(path)
+                except Exception:
+                    pass
+            fn = getattr(self, method, None)
+            if not callable(fn):
+                print(f"{t('Command not found !')} ({method})")
+            else:
+                try:
+                    fn(**(kwargs or {}))
+                except Exception as exc:
+                    print(f"{t('Command failed: ')}{exc}")
+            # Revenir (curseur restauré) ou quitter ?
+            ans = input(f"\n{t('Back to telemetry (r) or quit (Enter)? ')}")
+            if ans.strip().lower() not in ("r", "revenir", "o", "oui", "y"):
+                return
 
     # Préférences éditables depuis le menu Configuration : clé, libellé, et
     # valeurs proposées (valeur stockée -> libellé affiché). Une seule table :
@@ -3797,6 +3905,66 @@ class TODO:
         if secs < 60:
             return f"{secs}s"
         return f"{secs // 60}m{secs % 60:02d}s"
+
+    def _qemu_resolve_ips(self, names, labels=None, timeout=300):
+        """Résout les IP de plusieurs VM EN PARALLÈLE (le boot émulé est lent),
+        en affichant la progression au fur et à mesure. Renvoie {nom: ip|None}.
+        `labels` : {nom: « k/N »} pour préfixer chaque ligne d'un ID de suivi.
+        `timeout` : délai max PAR VM (borne l'attente d'une VM sans IP). Un
+        BATTEMENT toutes les 30 s liste les VM encore en attente -> jamais de
+        silence prolongé qui donne l'impression d'un blocage."""
+        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import TimeoutError as _FTimeout
+        from concurrent.futures import as_completed
+
+        labels = labels or {}
+        print(
+            f"\n{t('Resolving VM IPs (parallel, emulated boot is slow)...')}"
+        )
+        result = {}
+        t0 = time.time()
+        starts = {}
+        workers = min(len(names), (os.cpu_count() or 4)) or 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {}
+            for n in names:
+                starts[n] = time.time()
+                futs[pool.submit(self._qemu_vm_ip, n, timeout)] = n
+            pending = set(futs)
+            done = 0
+            while pending:
+                try:
+                    for fut in as_completed(list(pending), timeout=30):
+                        pending.discard(fut)
+                        n = futs[fut]
+                        try:
+                            ip = fut.result()
+                        except Exception:
+                            ip = None
+                        result[n] = ip
+                        done += 1
+                        tag = f"[{labels[n]}] " if n in labels else ""
+                        dur = self._fmt_dur(time.time() - starts[n])
+                        print(
+                            f"  [{done}/{len(names)}] {tag}{n}: "
+                            f"{ip or t('no IP')} ({dur})"
+                        )
+                except _FTimeout:
+                    # Battement : VM encore en attente (boot/DHCP lent).
+                    waiting = [futs[f] for f in pending]
+                    shown = ", ".join(waiting[:5])
+                    if len(waiting) > 5:
+                        shown += "…"
+                    print(
+                        f"  ⏳ {t('still waiting for')} {len(waiting)} VM "
+                        f"({self._fmt_dur(time.time() - t0)}): {shown}"
+                    )
+        got = sum(1 for ip in result.values() if ip)
+        print(
+            f"  {t('IPs resolved:')} {got}/{len(names)} "
+            f"({self._fmt_dur(time.time() - t0)})"
+        )
+        return result
 
     def _qemu_vm_arch(self, name):
         """Architecture d'une VM (jeton amd64/arm64/s390x) via virsh dumpxml."""
@@ -7055,6 +7223,35 @@ class TODO:
             else:
                 print(t("Command not found !"))
 
+    def prompt_execute_test(self):
+        print(f"🤖 {t('Test an Odoo module on a temporary database!')}")
+        choices = [
+            {"prompt_description": t("Test a module")},
+            {"prompt_description": t("Test a module with code coverage")},
+            {"prompt_description": t("ERPLibre unit tests")},
+            {"prompt_description": t("Mail unit tests")},
+            {"prompt_description": t("Analyse unit tests")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_test_module(coverage=False)
+            elif status == "2":
+                self.execute_test_module(coverage=True)
+            elif status == "3":
+                self.execute_unit_tests()
+            elif status == "4":
+                self.execute_unit_tests("test_mail*.py")
+            elif status == "5":
+                self.execute_unit_tests("test_analyse*.py")
+            else:
+                print(t("Command not found !"))
+
     def execute_test_module(self, coverage=False):
         # Module name
         module_name = input(t("Module name to test: ")).strip()
@@ -7142,6 +7339,37 @@ class TODO:
                 cmd_drop,
                 source_erplibre=False,
                 single_source_erplibre=True,
+            )
+
+    def execute_unit_tests(self, pattern="test_*.py"):
+        """Lance `unittest discover` sur un SOUS-ENSEMBLE de la suite.
+
+        Le motif est le seul paramètre : la suite complète dure plusieurs
+        minutes, dominées par les tests TUI montés, et attendre tout pour
+        vérifier un coin précis décourage de lancer les tests du tout. Une
+        entrée de menu supplémentaire coûte donc un motif, pas une méthode.
+        """
+        print(f"\n--- {t('Running unit tests')} ---")
+        # `-u` : unittest écrit son verdict sur STDERR, les `print()` des
+        # tests sur STDOUT. Capturés ensemble, stderr passe sans tampon
+        # tandis que stdout est tamponné par blocs — tout le stdout se
+        # déversait donc APRÈS le « OK », qui se retrouvait noyé au milieu
+        # de la sortie au lieu d'en être le dernier mot. Sans tampon, les
+        # deux flux s'entrelacent dans l'ordre réel.
+        cmd = (
+            ".venv.erplibre/bin/python -u -m unittest discover"
+            f" -s test -p '{pattern}' -v"
+        )
+        status_code, output = self.execute.exec_command_live(
+            cmd,
+            source_erplibre=False,
+            return_status_and_output=True,
+        )
+        if status_code == 0:
+            print(f"\n✅ {t('All unit tests passed')}")
+        else:
+            print(
+                f"\n❌ {t('Some unit tests failed, exit code')}: {status_code}"
             )
 
     def execute_pip_audit(self):
