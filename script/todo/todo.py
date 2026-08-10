@@ -120,6 +120,109 @@ class TODO:
             set_lang("en")
         print(t("Language changed to: English"))
 
+    def run(self):
+        with open(self.config_file.get_logo_ascii_file_path()) as my_file:
+            print(my_file.read())
+        self._ask_language()
+        print(t("Opening TODO ..."))
+        print(f"🤖 {t('=> Enter your choice by number and press Enter!')}")
+        help_info = f"""{self._menu_header()}
+[1] {t("Execute")}
+[2] {t("Install")}
+[3] {t("Assistant")}
+[4] {t("Fork - Open TODO in a new tab")}
+[5] {t("Navigation telemetry (TUI)")}
+[6] {t("Configuration")}
+[0] {t("Quit")}
+"""
+        while True:
+            try:
+                status = click.prompt(help_info)
+            except NameError:
+                print("Do")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
+                sys.exit(1)
+            except ImportError:
+                print("Do")
+                print(f"source ./{VENV_ERPLIBRE}/bin/activate && make")
+                sys.exit(1)
+            except click.exceptions.Abort:
+                sys.exit(0)
+            print()
+            if status == "0":
+                break
+            elif status == "1":
+                self.prompt_execute()
+            elif status == "2":
+                self.prompt_install()
+            elif status == "3":
+                self.prompt_assistant()
+            elif status == "4":
+                # cmd = (
+                #     f"gnome-terminal --tab -- bash -c 'source"
+                #     f" ./{VENV_ERPLIBRE}/bin/activate;make todo'"
+                # )
+                cmd = "make todo"
+                self.execute.exec_command_live(cmd, source_erplibre=True)
+            elif status == "5":
+                self._todo_telemetry_tui()
+            elif status == "6":
+                self.prompt_configuration()
+            # elif status == "3" or status == "install":
+            #     print("install")
+            else:
+                print(t("Command not found !"))
+
+        print(status)
+        # manipuler()
+
+    def prompt_assistant(self):
+        """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
+        from script.todo.mail.menu import prompt_execute_mail
+
+        while True:
+            help_info = f"""{self._menu_header()}
+[1] {t("mail_ai_question")}
+[2] {t("mail_menu")}
+[0] {t("Back")}"""
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._assistant_question()
+            elif status == "2":
+                prompt_execute_mail(self)
+            else:
+                print(t("Command not found !"))
+
+    def _assistant_question(self):
+        while True:
+            help_info = f"""{self._menu_header()}
+[0] {t("Back")}
+{t("Write your question ")}"""
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            kp = self.kdbx_manager.get_kdbx()
+            if not kp:
+                return
+            config_name = self.config_file.get_config_value(
+                ["kdbx_config", "openai", "kdbx_key"]
+            )
+            entry = kp.find_entries_by_title(config_name, first=True)
+
+            client = openai.OpenAI(api_key=entry.password)
+            prompt_update = status
+            completion = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt_update}],
+            )
+
+            print(completion.choices[0].message.content)
+            print()
+
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
 
@@ -7536,3 +7639,27 @@ class TODO:
         status = self.execute.exec_command_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
+
+
+if __name__ == "__main__":
+    start_time = time.time()
+    try:
+        todo = TODO()
+        if ENABLE_CRASH:
+            todo.crash_diagnostic(CRASH_E)
+        todo.run()
+    except (KeyboardInterrupt, click.exceptions.Abort):
+        # click.prompt() raises Abort (not a KeyboardInterrupt subclass) on
+        # both Ctrl+C and Ctrl+D/EOF. run() only catches it for its own
+        # top-level prompt; every submenu's click.prompt() would otherwise
+        # let Abort escape here as an uncaught exception.
+        print(t("Keyboard interrupt"))
+    finally:
+        end_time = time.time()
+        duration_sec = end_time - start_time
+        if humanize:
+            duration_delta = datetime.timedelta(seconds=duration_sec)
+            humain_time = humanize.precisedelta(duration_delta)
+            print(f"\n{t('TODO execution time')} {humain_time}\n")
+        else:
+            print(f"\n{t('TODO execution time')} {duration_sec:.2f} sec.\n")
