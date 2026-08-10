@@ -1687,6 +1687,200 @@ TRANSLATIONS = {
         "fr": "via",
         "en": "via",
     },
+    "Odoo migration interface": {
+        "fr": "🚚 Interface de la migration Odoo",
+        "en": "🚚 Odoo migration interface",
+    },
+    "modules of the list have no code in the active Odoo:": {
+        "fr": "modules de la liste n'ont plus de code dans l'Odoo actif :",
+        "en": "modules of the list have no code in the active Odoo:",
+    },
+    "Odoo cannot uninstall a module whose code is gone;": {
+        "fr": "Odoo ne peut pas désinstaller un module dont le code a"
+        " disparu ;",
+        "en": "Odoo cannot uninstall a module whose code is gone;",
+    },
+    "one of them fails the whole uninstall command.": {
+        "fr": "un seul d'entre eux fait échouer toute la désinstallation.",
+        "en": "one of them fails the whole uninstall command.",
+    },
+    "are present and can be uninstalled:": {
+        "fr": "sont présents et peuvent être désinstallés :",
+        "en": "are present and can be uninstalled:",
+    },
+    "No module of the list is present.": {
+        "fr": "Aucun module de la liste n'est présent.",
+        "en": "No module of the list is present.",
+    },
+    "Uninstall the present ones, skip the missing": {
+        "fr": "Désinstaller les présents, ignorer les manquants",
+        "en": "Uninstall the present ones, skip the missing",
+    },
+    "Try the whole list anyway (it will fail)": {
+        "fr": "Tout tenter quand même (ça échouera)",
+        "en": "Try the whole list anyway (it will fail)",
+    },
+    "Uninstall nothing, continue": {
+        "fr": "Ne rien désinstaller, continuer",
+        "en": "Uninstall nothing, continue",
+    },
+    "Nothing uninstalled.": {
+        "fr": "Rien de désinstallé.",
+        "en": "Nothing uninstalled.",
+    },
+    "Check the COW views that drifted": {
+        "fr": "Vérifier les vues COW en retard sur leur vue module",
+        "en": "Check the COW views that drifted",
+    },
+    "Tool not found": {
+        "fr": "Outil introuvable",
+        "en": "Tool not found",
+    },
+    "To reset one of them onto its module view:": {
+        "fr": "Pour réinitialiser l'une d'elles sur sa vue module :",
+        "en": "To reset one of them onto its module view:",
+    },
+    "Read the diff first: a copy can hold a customisation.": {
+        "fr": "Lire le diff d'abord : une copie peut porter une"
+        " personnalisation.",
+        "en": "Read the diff first: a copy can hold a customisation.",
+    },
+    "Migration statistics (read-only)": {
+        "fr": "📊 Statistiques de la migration (lecture seule)",
+        "en": "📊 Migration statistics (read-only)",
+    },
+    "Choice (0-3, default 1): ": {
+        "fr": "Choix (0-3, défaut 1) : ",
+        "en": "Choice (0-3, default 1): ",
+    },
+    "Migration statistics": {
+        "fr": "Statistiques de la migration",
+        "en": "Migration statistics",
+    },
+    "elapsed": {
+        "fr": "écoulé",
+        "en": "elapsed",
+    },
+    "Level reached": {
+        "fr": "Niveau atteint",
+        "en": "Level reached",
+    },
+    "Modules": {
+        "fr": "Modules",
+        "en": "Modules",
+    },
+    "modules": {
+        "fr": "modules",
+        "en": "modules",
+    },
+    "At the start": {
+        "fr": "Au départ",
+        "en": "At the start",
+    },
+    "Removed in total": {
+        "fr": "Supprimés au total",
+        "en": "Removed in total",
+    },
+    "Reported missing": {
+        "fr": "Signalés manquants",
+        "en": "Reported missing",
+    },
+    "Duplicated": {
+        "fr": "En double",
+        "en": "Duplicated",
+    },
+    "Migration fixes": {
+        "fr": "Correctifs de migration",
+        "en": "Migration fixes",
+    },
+    "COW views": {
+        "fr": "Vues COW",
+        "en": "COW views",
+    },
+    "views": {
+        "fr": "vues",
+        "en": "views",
+    },
+    "no snapshot": {
+        "fr": "aucun instantané",
+        "en": "no snapshot",
+    },
+    "Journal": {
+        "fr": "Journal",
+        "en": "Journal",
+    },
+    "commands": {
+        "fr": "commandes",
+        "en": "commands",
+    },
+    "recorded decisions": {
+        "fr": "décisions annotées",
+        "en": "recorded decisions",
+    },
+    "Removed modules, with their reason": {
+        "fr": "Modules supprimés, avec leur justification",
+        "en": "Removed modules, with their reason",
+    },
+    "Removed modules, comma-separated (copy)": {
+        "fr": "Modules supprimés, séparés par des virgules (à copier)",
+        "en": "Removed modules, comma-separated (copy)",
+    },
+    "COW views: snapshots and differences": {
+        "fr": "Vues COW : instantanés et différences",
+        "en": "COW views: snapshots and differences",
+    },
+    "Recorded decisions (journal)": {
+        "fr": "Décisions annotées (journal)",
+        "en": "Recorded decisions (journal)",
+    },
+    "Executed commands (last 30)": {
+        "fr": "Commandes exécutées (30 dernières)",
+        "en": "Executed commands (last 30)",
+    },
+    "nothing recorded": {
+        "fr": "rien d'annoté",
+        "en": "nothing recorded",
+    },
+    "Need two snapshots to diff.": {
+        "fr": "Il faut deux instantanés pour comparer.",
+        "en": "Need two snapshots to diff.",
+    },
+    "Diff which two? (e.g. 1,2 — blank to skip)": {
+        "fr": "Comparer lesquels ? (ex. 1,2 — vide pour passer)",
+        "en": "Diff which two? (e.g. 1,2 — blank to skip)",
+    },
+    "No migration in progress to resume.": {
+        "fr": "Aucune migration en cours à reprendre.",
+        "en": "No migration in progress to resume.",
+    },
+    "Quit without doing anything": {
+        "fr": "Quitter sans rien faire",
+        "en": "Quit without doing anything",
+    },
+    "Version bumps": {
+        "fr": "Montées de version",
+        "en": "Version bumps",
+    },
+    "Step": {
+        "fr": "Étape",
+        "en": "Step",
+    },
+    "Detail": {
+        "fr": "Détail",
+        "en": "Detail",
+    },
+    "Enter on a step or a version = replay from there": {
+        "fr": "Entrée sur une étape ou une version = rejouer depuis là",
+        "en": "Enter on a step or a version = replay from there",
+    },
+    "New migration": {
+        "fr": "Nouvelle migration",
+        "en": "New migration",
+    },
+    "Keep the zip only": {
+        "fr": "Garder seulement le zip",
+        "en": "Keep the zip only",
+    },
     "Reset all preferences": {
         "fr": "🧹 Réinitialiser toutes les préférences",
         "en": "🧹 Reset all preferences",
@@ -1951,6 +2145,26 @@ TRANSLATIONS = {
     "Command failed: ": {
         "fr": "Échec de la commande : ",
         "en": "Command failed: ",
+    },
+    "Textual is required for this screen.": {
+        "fr": "Textual est nécessaire pour cet écran.",
+        "en": "Textual is required for this screen.",
+    },
+    "Install it now? (Y/n): ": {
+        "fr": "L'installer maintenant ? (O/n, défaut : oui) : ",
+        "en": "Install it now? (Y/n, default: yes): ",
+    },
+    "Textual is installed.": {
+        "fr": "Textual est installé.",
+        "en": "Textual is installed.",
+    },
+    "Installation finished but textual is still missing.": {
+        "fr": "Installation terminée mais textual reste introuvable.",
+        "en": "Installation finished but textual is still missing.",
+    },
+    "pip exited with": {
+        "fr": "pip a retourné",
+        "en": "pip exited with",
     },
     "Your distribution may package it as python3-textual.": {
         "fr": "Votre distribution le fournit peut-être en python3-textual.",
@@ -3125,6 +3339,85 @@ TRANSLATIONS = {
     "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
+    # Database migration - resume menu
+    "Migration in progress": {
+        "fr": "Migration en cours",
+        "en": "Migration in progress",
+    },
+    "File": {"fr": "Fichier", "en": "File"},
+    "Database": {"fr": "Base", "en": "Database"},
+    "Target": {"fr": "Cible", "en": "Target"},
+    "Started": {"fr": "Démarrée", "en": "Started"},
+    "Steps": {"fr": "Étapes", "en": "Steps"},
+    "Prepare the environment": {
+        "fr": "Préparer l'environnement",
+        "en": "Prepare the environment",
+    },
+    "Restore and neutralize the database": {
+        "fr": "Restaurer et neutraliser la base",
+        "en": "Restore and neutralize the database",
+    },
+    "Update all addons": {
+        "fr": "Mettre à jour tous les modules",
+        "en": "Update all addons",
+    },
+    "Clean up before data migration": {
+        "fr": "Nettoyer avant la migration des données",
+        "en": "Clean up before data migration",
+    },
+    "Upgrade version by version (OpenUpgrade)": {
+        "fr": "Monter de version en version (OpenUpgrade)",
+        "en": "Upgrade version by version (OpenUpgrade)",
+    },
+    "not started": {"fr": "non démarrée", "en": "not started"},
+    "done": {"fr": "terminée", "en": "done"},
+    "partially done": {"fr": "partielle", "en": "partially done"},
+    "version bumps migrated": {
+        "fr": "montées de version faites",
+        "en": "version bumps migrated",
+    },
+    "Continue where it stopped": {
+        "fr": "Continuer là où ça s'est arrêté",
+        "en": "Continue where it stopped",
+    },
+    "Replay from that step": {
+        "fr": "Reprendre à partir de cette étape",
+        "en": "Replay from that step",
+    },
+    "erases the progression of that step and the next ones": {
+        "fr": "efface la progression de cette étape et des suivantes",
+        "en": "erases the progression of that step and the next ones",
+    },
+    "New migration, erase everything": {
+        "fr": "Nouvelle migration, tout effacer",
+        "en": "New migration, erase everything",
+    },
+    "Keep the zip only, ask every question again": {
+        "fr": "Garder seulement le zip, reposer toutes les questions",
+        "en": "Keep the zip only, ask every question again",
+    },
+    "Your choice": {"fr": "Votre choix", "en": "Your choice"},
+    "Unknown choice, continuing where it stopped": {
+        "fr": "Choix inconnu, on continue là où ça s'est arrêté",
+        "en": "Unknown choice, continuing where it stopped",
+    },
+    "Replaying from step": {
+        "fr": "Reprise à partir de l'étape",
+        "en": "Replaying from step",
+    },
+    "Replay the upgrade from version N": {
+        "fr": "Reprendre la montée à partir de la version N",
+        "en": "Replay the upgrade from version N",
+    },
+    "rebuilds the intermediate database": {
+        "fr": "recrée la base intermédiaire",
+        "en": "rebuilds the intermediate database",
+    },
+    "Unknown version": {"fr": "Version inconnue", "en": "Unknown version"},
+    "The progression file is invalid, ignoring it": {
+        "fr": "Le fichier de progression est invalide, on l'ignore",
+        "en": "The progression file is invalid, ignoring it",
+    },
     # --- Menu Execute › Analyse ---
     # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
     # comme « Data » / « Database » : l'entrée de menu porte l'émoji,

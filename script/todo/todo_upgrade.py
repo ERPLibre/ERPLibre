@@ -6,14 +6,24 @@ import datetime
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import zipfile
 from uuid import uuid4
-from script.todo.version_manager import get_odoo_version
 
 import click
 import todo_file_browser
+
+from script.todo.version_manager import get_odoo_version
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - fallback when i18n is unavailable
+
+    def t(key: str) -> str:
+        return key
+
 
 new_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..")
@@ -43,6 +53,23 @@ FILENAME_ODOO_VERSION = ".odoo-version"
 LOCAL_MANIFEST = os.path.join(
     ".repo", "local_manifests", "erplibre_manifest.xml"
 )
+# Module lists for a version bump. The shared, versioned defaults live under
+# script/; the per-database lists live under private/ (mirroring script/, like
+# script/todo/todo.json -> private/todo/todo_override.json). Which modules must
+# be dropped depends on the database, so that choice is never versioned.
+PATH_MIGRATION_GLOBAL = os.path.join("script", "odoo", "migration")
+PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
+# Steps of the migration, in order. Each one owns the progression keys prefixed
+# with « state_<index> ». Rewinding to a step drops its keys and every later
+# one, so the run replays from there. Labels go through t(): the key IS the
+# English string, as everywhere else in this project.
+MIGRATION_STEP = [
+    (0, "Prepare the environment"),
+    (1, "Restore and neutralize the database"),
+    (2, "Update all addons"),
+    (3, "Clean up before data migration"),
+    (4, "Upgrade version by version (OpenUpgrade)"),
+]
 
 
 class TodoUpgrade:
@@ -67,6 +94,501 @@ class TodoUpgrade:
             self.dct_progression["command_executed"] = value
         with open(UPGRADE_DATABASE_CONFIG_LOG, "w") as f:
             json.dump(self.dct_progression, f, indent=4)
+
+    @staticmethod
+    def read_progression():
+        """Return the saved progression, or an empty dict if unreadable."""
+        try:
+            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
+                return json.load(f)
+        except (json.decoder.JSONDecodeError, OSError):
+            print(
+                f"⚠️ {t('The progression file is invalid, ignoring it')}:"
+                f" {UPGRADE_DATABASE_CONFIG_LOG}"
+            )
+            return {}
+
+    @staticmethod
+    def step_status(dct_progression, step):
+        """Return (icon, detail) telling how far a migration step went.
+
+        Steps 0 to 3 are plain booleans. Step 4 keeps one list per version, so
+        its detail reports which version bumps are already migrated.
+        """
+        prefix = f"state_{step}_"
+        dct_flag = {
+            key: value
+            for key, value in dct_progression.items()
+            if key.startswith(prefix)
+        }
+        if not dct_flag:
+            return "⬜", t("not started")
+
+        if step == 4:
+            lst_done = dct_progression.get("state_4_upgrade_odoo_lst") or []
+            # The data migration list only appears once a bump succeeds, so the
+            # number of bumps comes from any per-version list (« *_odoo_lst »).
+            total = max(
+                [
+                    len(value)
+                    for key, value in dct_progression.items()
+                    if key.startswith("state_4_")
+                    and key.endswith("_odoo_lst")
+                    and isinstance(value, list)
+                ]
+                or [0]
+            )
+            done = sum(1 for item in lst_done if item)
+            detail = f"{done}/{total} " + t("version bumps migrated")
+            # Name the versions when the target is known: the list ends on the
+            # target, so the first bump is target - total + 1.
+            try:
+                last = int(float(dct_progression["target_odoo_version"]))
+                detail += "  ·  " + " ".join(
+                    f"{last - total + 1 + i}"
+                    f"{'✓' if i < len(lst_done) and lst_done[i] else ''}"
+                    for i in range(total)
+                )
+            except (KeyError, TypeError, ValueError):
+                pass
+            return ("✅" if total and done == total else "⏳"), detail
+
+        if all(dct_flag.values()):
+            return "✅", t("done")
+        return "⏳", t("partially done")
+
+    def resume_context(self, old_dct_progression):
+        """Everything the resume screen shows, as plain data.
+
+        No I/O: the line-by-line prompt and the TUI both render THIS, so the
+        two can never describe the migration differently.
+        """
+        migration_file = old_dct_progression.get("migration_file") or "?"
+        steps = []
+        for step, label in MIGRATION_STEP:
+            icon, detail = self.step_status(old_dct_progression, step)
+            steps.append(
+                {
+                    "step": step,
+                    "icon": icon,
+                    "label": t(label),
+                    "detail": detail,
+                }
+            )
+        lst_version = self.version_bumps(old_dct_progression)
+        done = old_dct_progression.get("state_4_upgrade_odoo_lst") or []
+        return {
+            "file": os.path.basename(migration_file),
+            "database": old_dct_progression.get("config_database_name") or "?",
+            "target": old_dct_progression.get("target_odoo_version") or "?",
+            "started": old_dct_progression.get("date_create") or "?",
+            "steps": steps,
+            "versions": [
+                {
+                    "version": version,
+                    "done": bool(i < len(done) and done[i]),
+                }
+                for i, version in enumerate(lst_version)
+            ],
+        }
+
+    @staticmethod
+    def print_resume(ctx):
+        """Render the resume screen on the terminal."""
+        print()
+        print(f"📍 {t('Migration in progress')}")
+        # Pad in code, not in the translations: the labels differ in length
+        # between languages and a hardcoded padding misaligns the colons.
+        print(f"   {t('File'):<9}: {ctx['file']}")
+        print(
+            f"   {t('Database'):<9}: {ctx['database']}"
+            f"   ·   {t('Target')} : {ctx['target']}"
+        )
+        print(f"   {t('Started'):<9}: {ctx['started']}")
+        print()
+        print(f"   {t('Steps')} :")
+        for item in ctx["steps"]:
+            print(
+                f"     [{item['step']}] {item['icon']} "
+                f"{item['label']:<44} {item['detail']}"
+            )
+        print()
+        print(f"   [c] {t('Continue where it stopped')}")
+        print(
+            f"   [0-4] {t('Replay from that step')}"
+            f" ({t('erases the progression of that step and the next ones')})"
+        )
+        if ctx["versions"]:
+            versions = "/".join(str(v["version"]) for v in ctx["versions"])
+            print(
+                f"   [4.N] {t('Replay the upgrade from version N')}"
+                f" ({versions}) —"
+                f" {t('rebuilds the intermediate database')}"
+            )
+        print(f"   [n] {t('New migration, erase everything')}")
+        print(f"   [r] {t('Keep the zip only, ask every question again')}")
+        print(f"   [q] {t('Quit without doing anything')}")
+
+    def apply_resume_answer(self, old_dct_progression, answer, ctx):
+        """Turn the answer into (progression, changed), or None to quit.
+
+        THE decision point, shared by both interfaces: the TUI returns the
+        same answer strings as the prompt, so this logic is written once.
+        """
+        answer = (answer or "").strip().lower()
+        lst_version = [v["version"] for v in ctx["versions"]]
+
+        if answer in ("", "c"):
+            return old_dct_progression, False
+        if answer == "q":
+            return None
+        if answer == "n":
+            return {}, True
+        if answer == "r":
+            return {
+                "migration_file": old_dct_progression.get("migration_file"),
+                "date_create": old_dct_progression.get("date_create"),
+            }, True
+        if answer.startswith("4.") and lst_version:
+            target = answer.split(".", 1)[1].strip()
+            if target.isdigit() and int(target) in lst_version:
+                return (
+                    self.rewind_version_bump(
+                        old_dct_progression, lst_version.index(int(target))
+                    ),
+                    True,
+                )
+            print(f"⚠️ {t('Unknown version')} : {target}")
+            return old_dct_progression, False
+        if answer.isdigit() and 0 <= int(answer) <= MIGRATION_STEP[-1][0]:
+            return (
+                self.rewind_progression(old_dct_progression, int(answer)),
+                True,
+            )
+
+        print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+        return old_dct_progression, False
+
+    def prompt_resume(self, old_dct_progression, use_tui=False):
+        """Show where the migration stands and ask what to do next.
+
+        Returns (progression, changed), or None if the user quits. The old
+        menu exposed internal key names (« Reuse database without state_4 »),
+        which said nothing about what would happen; this shows the real state
+        of every step and lets the user replay from any of them.
+        """
+        ctx = self.resume_context(old_dct_progression)
+        answer = None
+        if use_tui:
+            answer = self.resume_tui(ctx)
+        if answer is None:
+            self.print_resume(ctx)
+            answer = input(f"💬 {t('Your choice')} : ")
+        return self.apply_resume_answer(old_dct_progression, answer, ctx)
+
+    @staticmethod
+    def ask_ui():
+        """Interface of the migration: TUI, line-by-line prompts, or the
+        read-only statistics screen. Returns None to leave the tool.
+
+        The preference can settle it in advance (TODO > Configuration);
+        « ask » asks. Same contract as the QEMU deployment — except for
+        « stats », which is never a stored default: it does nothing, so
+        landing there every time would only be in the way.
+        """
+        try:
+            from script.todo import todo_prefs
+
+            pref = todo_prefs.get("migration_ui")
+        except Exception:
+            pref = "ask"
+        if pref in ("tui", "cli"):
+            return pref
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')} *")
+        print(f"  [2] {t('Classic questions (line by line)')}")
+        print(f"  [3] {t('Migration statistics (read-only)')}")
+        print(f"  [0] {t('Cancel')}")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        answer = input(t("Choice (0-3, default 1): ")).strip()
+        return {"0": None, "2": "cli", "3": "stats"}.get(answer, "tui")
+
+    @staticmethod
+    def database_from_command(cmd):
+        """Nom de base visé par une commande, ou "" si indécelable.
+
+        Sert à proposer le bon outil au bon moment quand une commande échoue.
+        On reconnaît les trois formes du dépôt : « -d <base> », « --database
+        <base> », et l'argument positionnel des scripts addons
+        (`update_addons_all.sh <base>`, `install_addons*.sh <base> <modules>`).
+        """
+        if not cmd:
+            return ""
+        match = re.search(r"(?:^|\s)(?:-d|--database)[=\s]+([\w.-]+)", cmd)
+        if match:
+            return match.group(1)
+        match = re.search(
+            r"\./script/addons/\w+\.sh\s+([\w.-]+)",
+            cmd,
+        )
+        return match.group(1) if match else ""
+
+    def check_stale_cow_views(self, database_name):
+        """Lance le détecteur de copies COW en retard sur leur vue module.
+
+        Purement consultatif : il n'écrit rien sans « --reset … --apply », que
+        l'on propose seulement après avoir montré le diff — réinitialiser une
+        copie peut effacer une personnalisation réelle."""
+        script_path = os.path.join(
+            PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
+        )
+        if not os.path.exists(script_path):
+            print(f"⚠️ {t('Tool not found')}: {script_path}")
+            return
+        status, _cmd = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{script_path} -d {database_name}",
+            wait_at_error=False,
+        )
+        if status:
+            # Sortie 1 = des écarts ont été trouvés (le script les a listés).
+            warn = t("Read the diff first: a copy can hold a customisation.")
+            print(f"\n💡 {t('To reset one of them onto its module view:')}")
+            print(
+                f"   {PYTHON_BIN} ./{script_path} -d {database_name}"
+                f" --reset <key> --apply"
+            )
+            print(f"   {warn}")
+
+    def show_stats(self):
+        """Écran de statistiques, en lecture seule : rien n'est écrit, ni
+        dans la base ni dans le journal de migration."""
+        from script.todo import migration_stats as ms
+
+        if not os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
+            print(f"\nℹ️  {t('No migration in progress to resume.')}")
+            return
+        dct = self.read_progression()
+        if not dct:
+            print(f"\nℹ️  {t('No migration in progress to resume.')}")
+            return
+        ctx = self.resume_context(dct)
+        database_name = dct.get("config_database_name") or ""
+        stats = ms.compute(
+            dct,
+            ctx,
+            database_name,
+            self.read_uninstall_module_list,
+            PATH_MIGRATION_PRIVATE,
+            PATH_MIGRATION_GLOBAL,
+        )
+
+        while True:
+            self.print_stats(ctx, stats)
+            print(f"\n   [1] {t('Removed modules, with their reason')}")
+            print(f"   [2] {t('Removed modules, comma-separated (copy)')}")
+            print(f"   [3] {t('COW views: snapshots and differences')}")
+            print(f"   [4] {t('Recorded decisions (journal)')}")
+            print(f"   [5] {t('Executed commands (last 30)')}")
+            print(f"   [0] {t('Back')}")
+            answer = input(f"💬 {t('Your choice')} : ").strip()
+            if answer in ("", "0"):
+                return
+            if answer == "1":
+                for version, detail in sorted(stats["uninstall"].items()):
+                    print(f"\n── {version - 1}.0 → {version}.0 ──")
+                    self.print_uninstall_reason(detail)
+            elif answer == "2":
+                flat = ms.flat_module_list(stats["uninstall"])
+                print(f"\n{len(flat)} {t('modules')} :\n")
+                print(",".join(flat))
+            elif answer == "3":
+                self.stats_cow(stats, database_name)
+            elif answer == "4":
+                for line in stats["journal"]["comments"]:
+                    print(f"   · {line}")
+                if not stats["journal"]["comments"]:
+                    print(f"   {t('nothing recorded')}")
+            elif answer == "5":
+                for line in stats["journal"]["commands"][-30:]:
+                    print(f"   $ {line}")
+            else:
+                print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+
+    @staticmethod
+    def print_stats(ctx, stats):
+        """Rend le tableau de bord de la migration."""
+        print(f"\n📊 {t('Migration statistics')}")
+        print(f"   {t('File'):<11}: {ctx['file']}")
+        print(
+            f"   {t('Database'):<11}: {ctx['database']}"
+            f"   ·   {t('Target')} : {ctx['target']}"
+        )
+        print(
+            f"   {t('Started'):<11}: {ctx['started']}"
+            f"   ·   {t('elapsed')} {stats['delay']}"
+        )
+
+        print(f"\n── {t('Level reached')} ──")
+        done = sum(1 for v in ctx["versions"] if v["done"])
+        total = len(ctx["versions"]) or 1
+        line = "   "
+        for item in ctx["versions"]:
+            mark = "✅" if item["done"] else "⬜"
+            line += f"{item['version'] - 1}.0→{item['version']}.0 {mark}   "
+        print(line)
+        print(
+            f"   {done}/{len(ctx['versions'])} "
+            f"{t('version bumps migrated')}  ({done * 100 // total} %)"
+        )
+        print(
+            "   "
+            + "  ".join(f"[{s['step']}]{s['icon']}" for s in ctx["steps"])
+        )
+
+        print(f"\n── {t('Modules')} ──")
+        if stats["origin_count"]:
+            print(f"   {t('At the start'):<24}: {stats['origin_count']}")
+        for version, count, delta in stats["evolution"]:
+            change = "" if delta is None else f"   ({delta:+d})"
+            print(f"   {f'{version}.0':<24}: {count}{change}")
+        print(f"   {t('Removed in total'):<24}: {stats['removed_total']}")
+        if stats["missing"]:
+            print(f"   {t('Reported missing'):<24}: {len(stats['missing'])}")
+        if stats["duplicate"]:
+            print(f"   {t('Duplicated'):<24}: {len(stats['duplicate'])}")
+
+        if stats["fixes"]:
+            print(f"\n── {t('Migration fixes')} ──")
+            for fix in stats["fixes"]:
+                mark = "✅" if fix["applied"] else "⬜"
+                print(f"   {mark} {fix['version']}.0   {fix['file']}")
+
+        print(f"\n── {t('COW views')} ──")
+        if stats["cow"]:
+            for snap in stats["cow"]:
+                print(
+                    f"   {snap['label']:<18} {str(snap['count']):>4} "
+                    f"{t('views')}   {snap['taken_at']}"
+                )
+        else:
+            print(f"   {t('no snapshot')}")
+
+        print(f"\n── {t('Journal')} ──")
+        print(
+            f"   {len(stats['journal']['commands'])} {t('commands')}, "
+            f"{len(stats['journal']['comments'])} {t('recorded decisions')}"
+        )
+
+    def stats_cow(self, stats, database_name):
+        """Instantanés COW, et différence entre deux d'entre eux."""
+        snaps = stats["cow"]
+        if len(snaps) < 2:
+            print(f"   {t('Need two snapshots to diff.')}")
+            return
+        for index, snap in enumerate(snaps, 1):
+            print(
+                f"   [{index}] {snap['label']:<18} "
+                f"{str(snap['count']):>4} {t('views')}   {snap['taken_at']}"
+            )
+        raw = input(
+            f"💬 {t('Diff which two? (e.g. 1,2 — blank to skip)')} : "
+        ).strip()
+        parts = [p.strip() for p in raw.replace(",", " ").split()]
+        if len(parts) != 2 or not all(p.isdigit() for p in parts):
+            return
+        first, second = (int(p) - 1 for p in parts)
+        if not (0 <= first < len(snaps) and 0 <= second < len(snaps)):
+            return
+        self.diff_cow_views(
+            database_name, snaps[first]["label"], snaps[second]["label"]
+        )
+
+    @staticmethod
+    def resume_tui(ctx):
+        """Resume screen as a TUI. Returns the SAME answer strings as the
+        prompt, or None when textual is missing (fall back to the prompt)."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return None
+        try:
+            from script.todo.migration_form import run_resume_tui
+
+            return run_resume_tui(ctx)
+        except ImportError:
+            return None
+
+    @staticmethod
+    def version_bumps(dct_progression):
+        """Odoo versions the step 4 loop walks through, e.g. [13, 14, ..., 18].
+
+        The per-version lists all end on the target, so the first bump is
+        « target - len + 1 ». Returns [] when step 4 has not started.
+        """
+        total = max(
+            [
+                len(value)
+                for key, value in dct_progression.items()
+                if key.startswith("state_4_")
+                and key.endswith("_odoo_lst")
+                and isinstance(value, list)
+            ]
+            or [0]
+        )
+        if not total:
+            return []
+        try:
+            last = int(float(dct_progression["target_odoo_version"]))
+        except (KeyError, TypeError, ValueError):
+            return []
+        return list(range(last - total + 1, last + 1))
+
+    @staticmethod
+    def rewind_version_bump(old_dct_progression, index):
+        """Replay the step 4 loop from one version bump onwards.
+
+        Only the per-version lists are trimmed from `index`: earlier bumps stay
+        migrated and steps 0 to 3 are untouched. Resetting the clone entry is
+        the point — the intermediate database of a failed bump is half
+        migrated, so it must be dropped and rebuilt from the previous version
+        rather than upgraded again.
+        """
+        dct_kept = dict(old_dct_progression)
+        for key, value in old_dct_progression.items():
+            if (
+                key.startswith("state_4_")
+                and isinstance(value, list)
+                and key.endswith(("_odoo_lst", "_module"))
+            ):
+                dct_kept[key] = [
+                    item if i < index else False
+                    for i, item in enumerate(value)
+                ]
+        return dct_kept
+
+    @staticmethod
+    def rewind_progression(old_dct_progression, step):
+        """Drop the progression of `step` and of every later step.
+
+        Configuration answers (config_*), the zip and the target version are
+        kept: they are decisions, not progress. Only « state_* » is rewound.
+        """
+        dct_kept = {}
+        for key, value in old_dct_progression.items():
+            if not key.startswith("state_"):
+                dct_kept[key] = value
+                continue
+            index = key[len("state_") :].split("_", 1)[0]
+            if index.isdigit() and int(index) < step:
+                dct_kept[key] = value
+        # The module search fills an in-memory dict the later steps rely on;
+        # it must run again even when step 0 itself is kept.
+        dct_kept["state_0_search_missing_module"] = False
+        print(
+            f"⏪ {t('Replaying from step')} {step} —"
+            f" {t(dict(MIGRATION_STEP)[step])}"
+        )
+        return dct_kept
 
     def on_file_selected(self, file_path):
         self.file_path = file_path
@@ -399,98 +921,30 @@ class TodoUpgrade:
         self.dct_module_per_dct_version_path = {}
         default_database_name = "test"
 
+        # L'écran de statistiques ne fait rien : on y revient autant de fois
+        # qu'on veut, et on repose ensuite le choix d'interface.
+        while True:
+            ui = self.ask_ui()
+            if ui is None:
+                return
+            if ui != "stats":
+                break
+            self.show_stats()
+        use_tui = ui == "tui"
+
         if os.path.exists(UPGRADE_DATABASE_CONFIG_LOG):
-            with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                try:
-                    old_dct_progression = json.load(f)
-                    self.dct_progression = {
-                        "migration_file": old_dct_progression.get(
-                            "migration_file"
-                        ),
-                        # More useful to ask this question each time
-                        "target_odoo_version": old_dct_progression.get(
-                            "target_odoo_version"
-                        ),
-                        "date_create": old_dct_progression.get("date_create"),
-                    }
-                except json.decoder.JSONDecodeError:
-                    print(
-                        f'⚠️ The config file "{UPGRADE_DATABASE_CONFIG_LOG}" is invalid, ignore it.'
-                    )
-
-            print(
-                f"✨ Detected migration \"{self.dct_progression.get('migration_file')}\" "
-                f"to version \"{self.dct_progression.get('target_odoo_version')}\", "
-                f"please select an option."
-            )
-
-            print("[1] Erase progression for a new migration")
-            print("[2] Reuse database with new process")
-            print(
-                "[3] Reuse database without state_4, before looping on next version"
-            )
-            print("[4] Reuse database without configuration")
-            erase_progression_input = (
-                input("💬 Select an option or press to continue : ")
-                .strip()
-                .lower()
-            )
-            self.dct_progression = {}
-            if erase_progression_input in ["2", "3", "4"]:
-                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                    try:
-                        old_dct_progression = json.load(f)
-                        self.dct_progression = {
-                            "migration_file": old_dct_progression.get(
-                                "migration_file"
-                            ),
-                            # More useful to ask this question each time
-                            # "target_odoo_version": old_dct_progression.get(
-                            #     "target_odoo_version"
-                            # ),
-                            "date_create": old_dct_progression.get(
-                                "date_create"
-                            ),
-                        }
-                        for key, value in old_dct_progression.items():
-                            if erase_progression_input == "3":
-                                if (
-                                    key.startswith("state_0")
-                                    or key.startswith("state_1")
-                                    or key.startswith("state_2")
-                                    or key.startswith("state_3")
-                                ):
-                                    self.dct_progression[key] = value
-                                if key.startswith(f"config_state") and not (
-                                    key.startswith(f"config_state_0")
-                                    or key.startswith(f"config_state_1")
-                                    or key.startswith(f"config_state_2")
-                                    or key.startswith(f"config_state_3")
-                                ):
-                                    continue
-                            if (
-                                key.startswith("config_")
-                                and erase_progression_input != "4"
-                            ):
-                                self.dct_progression[key] = value
-                        # Force to search missing module to fill dict
-                        self.dct_progression[
-                            "state_0_search_missing_module"
-                        ] = False
-                    except json.decoder.JSONDecodeError:
-                        print(
-                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
-                        )
-
-                self.write_config()
-            elif erase_progression_input not in ["1"]:
-                with open(UPGRADE_DATABASE_CONFIG_LOG, "r") as f:
-                    try:
-                        self.dct_progression = json.load(f)
-                    except json.decoder.JSONDecodeError:
-                        print(
-                            f"⚠️ The config file '{UPGRADE_DATABASE_CONFIG_LOG}' is invalid, ignore it."
-                        )
+            old_dct_progression = self.read_progression()
+            if old_dct_progression:
+                resumed = self.prompt_resume(old_dct_progression, use_tui)
+                if resumed is None:
+                    return
+                self.dct_progression, changed = resumed
+                if changed:
+                    self.write_config()
+            elif use_tui:
+                print(f"ℹ️  {t('No migration in progress to resume.')}")
+        elif use_tui:
+            print(f"ℹ️  {t('No migration in progress to resume.')}")
 
         if "migration_file" in self.dct_progression:
             self.file_path = self.dct_progression["migration_file"]
@@ -767,6 +1221,31 @@ class TodoUpgrade:
                 self.write_config()
 
         print("✅ -> Restore database")
+        already_update_state_1 = False
+
+        if not self.dct_progression.get("state_1_update_all"):
+            print(
+                "[1] Update all addons before neutralize (already neutralize by odoo if supported)"
+            )
+            wait_continue = (
+                input(
+                    "💬 Do you need to upgrade before a database neutralization, press to ignore : "
+                )
+                .strip()
+                .lower()
+            )
+            if wait_continue == "1":
+                status, cmd_executed = self.todo_upgrade_execute(
+                    f"./script/addons/update_addons_all.sh {database_name}",
+                    single_source_odoo=True,
+                )
+
+                if not status:
+                    already_update_state_1 = True
+                    self.dct_progression["state_1_update_all"] = True
+                    self.write_config()
+
+            print("✅ -> Update database before neutralize by module")
 
         print("✅ -> Neutralize database")
         if do_neutralize:
@@ -784,8 +1263,9 @@ class TodoUpgrade:
             # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null
             # Puis faire un retry de la commande, sinon rien
 
-            self.dct_progression["state_1_neutralize_database"] = True
-            self.write_config()
+            # Only record the step when it actually succeeded. The previous
+            # unconditional assignment made the test below dead code: a failed
+            # neutralization was remembered as done and skipped on resume.
             if not status:
                 self.dct_progression["state_1_neutralize_database"] = True
                 self.write_config()
@@ -801,18 +1281,12 @@ class TodoUpgrade:
         )
 
         if not is_state_4_reach_open_upgrade:
-            lst_module_to_uninstall = []
-            uninstall_module_list_file = os.path.join(
-                "script",
-                "odoo",
-                "migration",
-                f"uninstall_module_list_odoo{start_version * 10}_to_odoo{(start_version + 1) * 10}.txt",
+            lst_module_to_uninstall, lst_uninstall_reason = (
+                self.read_uninstall_module_list(start_version, database_name)
             )
-            if os.path.exists(uninstall_module_list_file):
-                with open(uninstall_module_list_file, "r") as f:
-                    lst_module_to_uninstall = [
-                        a.strip() for a in f.readline().split()
-                    ]
+            if lst_uninstall_reason:
+                print("✨ Modules to uninstall before migration :")
+                self.print_uninstall_reason(lst_uninstall_reason)
 
             if config_state_1_uninstall_module:
                 lst_module_to_uninstall = (
@@ -856,7 +1330,10 @@ class TodoUpgrade:
         print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
-        if not self.dct_progression.get("state_2_update_all"):
+        if (
+            not self.dct_progression.get("state_2_update_all")
+            and not already_update_state_1
+        ):
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_addons_all.sh {database_name}",
                 single_source_odoo=True,
@@ -864,6 +1341,20 @@ class TodoUpgrade:
             if not status:
                 self.dct_progression["state_2_update_all"] = True
                 self.write_config()
+
+        # Predict the website COW views that the NEXT version bump will break.
+        # A copy-on-write view freezes the structure of the module view it was
+        # copied from; when that module view changes mode between two versions,
+        # the copy keeps an arch written for the old mode and the upgrade dies
+        # on « Element ... cannot be located in parent view ». Reporting it here
+        # -- before hours of migration -- leaves time to arbitrate.
+        # Only the next bump can be predicted: the modes in database describe
+        # the current version.
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
+            f" -d {database_name} -t odoo{start_version + 1}.0",
+            wait_at_error=False,
+        )
 
         msg = "3 - Clean up database before data migration"
         print(f"🔷 {msg}")
@@ -1003,7 +1494,20 @@ class TodoUpgrade:
 
                 # Duplicate database
                 cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
-                self.todo_upgrade_execute(cmd_clone_database)
+                status, cmd_executed = self.todo_upgrade_execute(
+                    cmd_clone_database
+                )
+
+                # Everything downstream runs against this clone: if it failed,
+                # do not mark it done (a rerun would skip the clone and migrate
+                # a missing or truncated database).
+                if status:
+                    print(
+                        f"❌ -> Clone to Odoo{next_version} FAILED (status"
+                        f" {status}). Stopping: '{database_name_upgrade}' is"
+                        " not usable."
+                    )
+                    return
 
                 lst_clone_odoo[index] = True
                 self.dct_progression["state_4_clone_odoo_lst"] = lst_clone_odoo
@@ -1022,9 +1526,24 @@ class TodoUpgrade:
             )
 
             if not lst_module_uninstall_module[index]:
-                lst_module_to_uninstall = config_state_4_uninstall_module[
-                    index
-                ]
+                lst_module_to_uninstall = (
+                    config_state_4_uninstall_module[index] or []
+                )
+                # Same file convention as step 1, one file per version bump:
+                # uninstall_module_list_odoo130_to_odoo140.txt is read HERE,
+                # right before the 13 -> 14 data migration. Without this the
+                # per-bump files existed in name only and were never read.
+                lst_file, lst_detail = self.read_uninstall_module_list(
+                    next_version - 1, database_name
+                )
+                if lst_detail:
+                    print(
+                        f"✨ Modules to uninstall before Odoo{next_version} :"
+                    )
+                    self.print_uninstall_reason(lst_detail)
+                lst_module_to_uninstall = list(
+                    dict.fromkeys(list(lst_module_to_uninstall) + lst_file)
+                )
 
                 if lst_module_to_uninstall:
                     self.uninstall_from_database(
@@ -1475,17 +1994,46 @@ class TodoUpgrade:
 
             if not lst_fix_migration_odoo[index]:
                 print("")
-                file_path_fix_migration = os.path.join(
-                    "script",
-                    "odoo",
-                    "migration",
-                    f"fix_migration_odoo{(next_version-1)*10}_to_odoo{next_version*10}.py",
+                stem = os.path.join(
+                    PATH_MIGRATION_GLOBAL,
+                    f"fix_migration_odoo{(next_version - 1) * 10}"
+                    f"_to_odoo{next_version * 10}",
                 )
-                if os.path.exists(file_path_fix_migration):
-                    self.todo_upgrade_execute(
-                        f"cat ./{file_path_fix_migration} | ./odoo{next_version}.0/odoo/odoo-bin shell -d {database_name_upgrade}",
+                # Two flavours. « .sql » runs through psql: no Odoo registry,
+                # so it works on a database not yet migrated -- exactly when
+                # loading it with the TARGET version's code would fail. « .py »
+                # is piped into the Odoo shell when the ORM is really needed.
+                file_path_fix_migration = ""
+                cmd_fix_migration = ""
+                if os.path.exists(f"{stem}.sql"):
+                    file_path_fix_migration = f"{stem}.sql"
+                    cmd_fix_migration = (
+                        f"psql -v ON_ERROR_STOP=1 -d {database_name_upgrade}"
+                        f" -f ./{file_path_fix_migration}"
+                    )
+                elif os.path.exists(f"{stem}.py"):
+                    file_path_fix_migration = f"{stem}.py"
+                    cmd_fix_migration = (
+                        f"cat ./{file_path_fix_migration} |"
+                        f" ./odoo{next_version}.0/odoo/odoo-bin shell"
+                        f" -d {database_name_upgrade}"
+                    )
+                if file_path_fix_migration:
+                    status, cmd_executed = self.todo_upgrade_execute(
+                        cmd_fix_migration,
                         single_source_odoo=True,
                     )
+
+                    # A fix that did not run must not be recorded as applied,
+                    # otherwise the rerun skips it and OpenUpgrade hits the very
+                    # problem the fix exists to prevent.
+                    if status:
+                        print(
+                            f"❌ -> Fix migration Odoo{next_version} FAILED"
+                            f" (status {status}):"
+                            f" {file_path_fix_migration}"
+                        )
+                        return
 
                     lst_fix_migration_odoo[index] = file_path_fix_migration
                     self.dct_progression["state_4_fix_migration_odoo_lst"] = (
@@ -1545,13 +2093,68 @@ class TodoUpgrade:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
                 lst_upgrade_odoo[index] = cmd_upgrade
 
-                self.todo_upgrade_execute(
+                # Record the website COW views before the data migration. The
+                # upgrade silently deletes and recreates copies (measured on
+                # 12->13: 16 copies dropped, 13 created, children re-parented),
+                # and rewrites the arch of many others. Without a before/after
+                # record, "the site looks wrong" cannot be investigated.
+                self.snapshot_cow_views(
+                    database_name_upgrade, f"before_{next_version}"
+                )
+
+                # Take the copies that cannot survive this bump out of the way,
+                # otherwise the data migration dies on them. Offered, not
+                # forced: their arch is a real customization.
+                self.neutralize_cow_views(database_name_upgrade, next_version)
+
+                # wait_at_error=False on purpose: the generic « [1] to redo the
+                # command » would replay OpenUpgrade on a database it has just
+                # half migrated, which never recovers. The failure is handled
+                # below by dropping the clone flag so the replay REBUILDS the
+                # intermediate database from the previous version.
+                status, cmd_executed = self.todo_upgrade_execute(
                     cmd_upgrade,
                     new_env={
                         "OPENUPGRADE_TARGET_VERSION": f"{next_version}.0"
                     },
+                    wait_at_error=False,
                 )
-                # TODO detect error
+
+                # This is THE data migration. Recording it as done when it
+                # failed used to send the loop to the next version on top of a
+                # half-migrated database. Stop here instead: the state stays
+                # unset, so a rerun replays this version.
+                if status:
+                    # The intermediate database is now half migrated and must
+                    # not be reused: drop the clone flag so the rerun rebuilds
+                    # it from the pristine source. Without this the replay
+                    # would restart OpenUpgrade on top of the broken clone.
+                    lst_clone_odoo[index] = False
+                    self.dct_progression["state_4_clone_odoo_lst"] = (
+                        lst_clone_odoo
+                    )
+                    self.write_config()
+                    print(
+                        f"\n❌ -> Database migration to Odoo{next_version}"
+                        f" FAILED (status {status}).\n"
+                        f"   '{database_name_upgrade}' is now half migrated:"
+                        " replaying the command on it would never recover, so"
+                        " it is NOT offered.\n"
+                        "   The clone step has been reset. Fix the cause, then"
+                        " relaunch the migration and answer [c] (continue):"
+                        f" '{database_name_upgrade}' will be dropped and"
+                        " rebuilt from the previous version before retrying."
+                    )
+                    return
+
+                self.snapshot_cow_views(
+                    database_name_upgrade, f"after_{next_version}"
+                )
+                self.diff_cow_views(
+                    database_name_upgrade,
+                    f"before_{next_version}",
+                    f"after_{next_version}",
+                )
 
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
@@ -1738,18 +2341,217 @@ class TodoUpgrade:
         }
         return dct_module
 
+    def snapshot_cow_views(self, database_name, label):
+        """Record the website COW views of a database under private/.
+
+        Never blocks the migration: a snapshot is forensic material, its
+        absence must not stop an upgrade.
+        """
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/snapshot_cow_views.py"
+            f" -d {database_name} -l {label}",
+            wait_at_error=False,
+        )
+
+    def neutralize_cow_views(self, database_name, next_version):
+        """Offer to neutralize the COW views that would break this bump.
+
+        Renaming their key unpairs them from the module view, so the upgrade
+        stops choking on them. Nothing is deleted and the operation is
+        reversible (neutralize_cow_views.py --restore), but the choice belongs
+        to the user: those copies carry real customizations.
+        """
+        cmd = (
+            f"{PYTHON_BIN} ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database_name} -t odoo{next_version}.0"
+        )
+        status, cmd_executed, output = self.todo_upgrade_execute(
+            cmd, get_output=True, wait_at_error=False
+        )
+        if "No website COW view to neutralize" in "\n".join(output or []):
+            return
+
+        answer = (
+            input(
+                "💬 Neutralize these copies so the upgrade can proceed?"
+                " Their arch is kept and the change is reversible."
+                " (Y/n) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer == "n":
+            print(
+                "⚠️ -> Skipped. The data migration will very likely stop on"
+                " these views."
+            )
+            return
+        self.todo_upgrade_execute(f"{cmd} --apply", wait_at_error=False)
+
+    def diff_cow_views(self, database_name, label_before, label_after):
+        """Print what the version bump did to the website COW views."""
+        directory = os.path.join(
+            PATH_MIGRATION_PRIVATE, database_name, "cow_snapshots"
+        )
+        path_before = os.path.join(directory, f"{label_before}.json")
+        path_after = os.path.join(directory, f"{label_after}.json")
+        if not (os.path.exists(path_before) and os.path.exists(path_after)):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/snapshot_cow_views.py"
+            f" --diff {path_before} {path_after}",
+            wait_at_error=False,
+        )
+
+    @staticmethod
+    def parse_module_list_file(file_path):
+        """Read a module list file, return [(module, reason), ...].
+
+        Accepted syntax, one module per line with an optional justification:
+
+            queue_job          # blocks 12->13, trigger queue_job_notify
+            mgmtsystem_hazard  # not ported to 13.0
+
+        Commas and several names per line are also accepted, so a list copied
+        from a command line works as-is. Blank lines and full-line comments are
+        ignored.
+
+        The previous parser was « f.readline().split() »: it kept only the FIRST
+        line, so a multi-line list was silently truncated, and a comma-separated
+        list collapsed into one bogus module name.
+        """
+        lst_module = []
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                content, _, reason = line.partition("#")
+                for module_name in content.replace(",", " ").split():
+                    lst_module.append((module_name, reason.strip()))
+        return lst_module
+
+    @staticmethod
+    def print_uninstall_reason(lst_detail):
+        """Show WHY each module goes away.
+
+        Which modules must be dropped depends on the database, and a removal
+        without a stated reason is a decision nobody can review later.
+        """
+        for name, reason, origin in lst_detail:
+            print(
+                f"   - {name}"
+                + (f" — {reason}" if reason else " — ⚠️ no reason given")
+                + f"  [{origin}]"
+            )
+
+    def read_uninstall_module_list(self, start_version, database_name):
+        """Modules to uninstall before migrating start_version -> next.
+
+        Reads the per-database private list first, then the shared versioned
+        defaults; duplicates are dropped, keeping the first occurrence.
+
+        Returns (lst_module, lst_detail) where lst_detail carries
+        (module, reason, origin_file) so the caller can justify each removal.
+        """
+        file_name = (
+            f"uninstall_module_list_odoo{start_version * 10}"
+            f"_to_odoo{(start_version + 1) * 10}.txt"
+        )
+        lst_path = [
+            os.path.join(PATH_MIGRATION_PRIVATE, database_name, file_name),
+            os.path.join(PATH_MIGRATION_GLOBAL, file_name),
+        ]
+
+        lst_module = []
+        lst_detail = []
+        for file_path in lst_path:
+            if not os.path.exists(file_path):
+                continue
+            for module_name, reason in self.parse_module_list_file(file_path):
+                if module_name in lst_module:
+                    continue
+                lst_module.append(module_name)
+                lst_detail.append((module_name, reason, file_path))
+        return lst_module, lst_detail
+
+    def split_present_missing(self, lst_module):
+        """Split a module list into (present, missing) against the ACTIVE code.
+
+        « Missing » means the addons path no longer holds the module — not
+        that it is absent from the database. The distinction matters because
+        check_addons_exist.py refuses the WHOLE uninstall for a single missing
+        name, so the modules that ARE there never get uninstalled either.
+        """
+        lst_missing, _lst_duplicate = self.check_addons_exist(lst_module)
+        set_missing = set(lst_missing or [])
+        return (
+            [name for name in lst_module if name not in set_missing],
+            [name for name in lst_module if name in set_missing],
+        )
+
+    def prompt_uninstall_missing(self, lst_present, lst_missing):
+        """Ask what to do when part of the list has no code left.
+        Returns the list to actually uninstall (possibly empty)."""
+        print()
+        print(
+            f"⚠️  {len(lst_missing)} "
+            f"{t('modules of the list have no code in the active Odoo:')}"
+        )
+        for name in lst_missing:
+            print(f"      {name}")
+        print(f"    {t('Odoo cannot uninstall a module whose code is gone;')}")
+        print(f"    {t('one of them fails the whole uninstall command.')}")
+        print()
+        if lst_present:
+            print(
+                f"    {len(lst_present)} "
+                f"{t('are present and can be uninstalled:')}"
+            )
+            for name in lst_present:
+                print(f"      {name}")
+        else:
+            print(f"    {t('No module of the list is present.')}")
+        print()
+        if lst_present:
+            print(
+                f"    [1] {t('Uninstall the present ones, skip the missing')}"
+                " *"
+            )
+        print(f"    [2] {t('Try the whole list anyway (it will fail)')}")
+        print(f"    [3] {t('Uninstall nothing, continue')}")
+        answer = input(f"💬 {t('Your choice')} : ").strip()
+        if answer == "2":
+            return lst_present + lst_missing
+        if answer == "3" or not lst_present:
+            return []
+        return lst_present
+
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
     ):
         if not lst_module_to_uninstall:
             return
+        # Sort out what the active code still holds BEFORE calling the script:
+        # it aborts on the first missing name and takes the rest down with it.
+        lst_present, lst_missing = self.split_present_missing(
+            lst_module_to_uninstall
+        )
+        if lst_missing:
+            self.add_comment_progression(
+                "uninstall - no code for: " + ", ".join(lst_missing)
+            )
+            lst_module_to_uninstall = self.prompt_uninstall_missing(
+                lst_present, lst_missing
+            )
+            if not lst_module_to_uninstall:
+                print(f"⏭  {t('Nothing uninstalled.')}")
+                return
         uninstall_module = ",".join(lst_module_to_uninstall)
         self.todo_upgrade_execute(
             f"./script/addons/uninstall_addons.sh {database_name} {uninstall_module}",
             single_source_odoo=True,
         )
 
-        # Update list installed module
+        # Update list installed module — only what was REALLY uninstalled, so
+        # a module left in place stays counted as installed.
         self.dct_module_per_version[actual_version] = sorted(
             list(
                 set(self.dct_module_per_version[actual_version])
@@ -1894,18 +2696,38 @@ class TodoUpgrade:
         self.lst_command_executed.append(cmd_executed)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
-        if status and wait_at_error:
-            print("[1] to redo the command")
-            wait_status = (
-                input(
-                    "💬 Error detected, press to continue or ctrl+c to stop : "
+        # None means « the command never reported a status » -> treat it as a
+        # failure, never as a success (defence in depth: exec_command_live now
+        # always sets one, but a silent None must not skip this prompt).
+        if (status is None or status) and wait_at_error:
+            database_name = self.database_from_command(cmd)
+            while True:
+                print("[1] to redo the command")
+                if database_name:
+                    print(
+                        f"[2] {t('Check the COW views that drifted')}"
+                        f" ({database_name})"
+                    )
+                wait_status = (
+                    input(
+                        "💬 Error detected, press to continue or ctrl+c to"
+                        " stop : "
+                    )
+                    .strip()
+                    .lower()
                 )
-                .strip()
-                .lower()
-            )
 
-            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
-            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+                # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
+                # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+
+                if wait_status == "2" and database_name:
+                    # Le motif d'échec le plus fréquent ici est « Element
+                    # <xpath …> cannot be located in parent view » : une copie
+                    # COW en retard sur sa vue module. On propose l'outil sur
+                    # place, puis on repose le choix pour rejouer.
+                    self.check_stale_cow_views(database_name)
+                    continue
+                break
 
             if wait_status == "1":
                 return self.todo_upgrade_execute(
