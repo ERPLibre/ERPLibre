@@ -6,6 +6,7 @@ import ast
 import configparser
 import datetime
 import getpass
+import grp
 import inspect
 import json
 import logging
@@ -1118,6 +1119,46 @@ class TODO:
     # profil « ERPLibre Déploiement (+ QEMU + dev) » installe QEMU DANS la VM,
     # donc un parc à deux niveaux est le cas courant.
     _QEMU_SSH_DEPTH = 2
+    # Sonde exécutée SUR une machine. Première ligne « LIBVIRT<TAB>yes|no »,
+    # puis un couple « nom<TAB>ip » par VM. Une seule connexion SSH par
+    # niveau plutôt qu'une par VM ; le bail dnsmasq peut manquer, d'où le
+    # repli sur l'agent invité.
+    #
+    # La première ligne est indispensable : sans virsh, la boucle ne tourne
+    # simplement pas et la sonde sortirait VIDE avec un code 0 — impossible
+    # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
+    # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
+    #
+    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
+    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
+    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
+    # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
+    #
+    # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
+    # utilisateur non root tombe sur qemu:///session, qui répond correctement…
+    # une liste VIDE. On aurait alors « QEMU présent, aucune VM », ce qui est
+    # pire qu'une erreur puisque c'est plausible.
+    #
+    # Trois réponses et non deux : « denied » distingue « virsh est là mais
+    # inaccessible » de « pas de QEMU ici », deux situations qui appellent des
+    # gestes opposés.
+    _QEMU_SSH_PROBE = (
+        'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
+        "if ! command -v virsh >/dev/null 2>&1; then "
+        "printf 'LIBVIRT\\tno\\n'; exit 0; fi; "
+        "vms=$(vsh list --all --name) || "
+        "{ printf 'LIBVIRT\\tdenied\\n'; exit 0; }; "
+        "printf 'LIBVIRT\\tyes\\n'; "
+        "for n in $vms; do "
+        'ip=$(vsh domifaddr "$n" --source lease '
+        "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1); "
+        'if [ -z "$ip" ]; then '
+        'ip=$(vsh domifaddr "$n" --source agent '
+        "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+        "| grep -v '^127\\.' | head -1); fi; "
+        'printf "%s\\t%s\\n" "$n" "$ip"; done'
+    )
 
     def _qemu_ssh_pick_roots(self):
         """D'où partir pour configurer ~/.ssh/config. Renvoie une liste de
@@ -1509,6 +1550,206 @@ class TODO:
             return "auth", message
         self._ssh_deploy_keys([alias])
         return self._qemu_ssh_probe_remote(alias)
+
+    def _qemu_ssh_probe_remote(self, alias):
+        """Sonde `alias`. Renvoie (statut, données) :
+
+            ("ok", [(nom, ip)])   libvirt répond, voici ses VM
+            ("nolibvirt", [])     joignable, mais pas de QEMU
+            ("auth", message)     ssh a refusé l'identité
+            ("net", message)      injoignable (éteint, DNS, port fermé…)
+
+        Passe par « ssh <alias> », donc par le bloc ~/.ssh/config qu'on vient
+        d'écrire : le ProxyJump du parent s'applique tout seul et la même
+        sonde marche à n'importe quelle profondeur.
+
+        « libvirt présent » et « a des VM » sont deux choses distinctes : une
+        machine avec QEMU mais sans VM mérite quand même sa connexion
+        virt-manager, une machine sans QEMU n'en veut aucune."""
+        cmd = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=10",
+            alias,
+            self._QEMU_SSH_PROBE,
+        ]
+        try:
+            res = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=90
+            )
+        except subprocess.TimeoutExpired:
+            return "net", t("timed out")
+        except (OSError, subprocess.SubprocessError) as exc:
+            return "net", str(exc)
+        if res.returncode != 0:
+            detail = (res.stderr or "").strip().splitlines()
+            message = detail[-1] if detail else f"exit {res.returncode}"
+            return self._ssh_error_kind(res.stderr), message
+        libvirt = "no"
+        found = []
+        for line in res.stdout.splitlines():
+            parts = line.strip().split("\t")
+            if len(parts) != 2 or not parts[0]:
+                continue
+            if parts[0] == "LIBVIRT":
+                libvirt = parts[1].strip()
+                continue
+            found.append((parts[0], parts[1].strip()))
+        if libvirt == "yes":
+            return "ok", found
+        # « denied » : virsh est installé mais refuse de répondre — sudo
+        # interactif, ou utilisateur hors du groupe libvirt. Le confondre avec
+        # « pas de QEMU » envoyait chercher un problème qui n'existe pas.
+        return ("denied" if libvirt == "denied" else "nolibvirt"), found
+
+    def _qemu_ssh_walk(self, roots, max_depth):
+        """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
+
+        Une VM du profil « Déploiement » héberge elle-même des VM : celles-ci
+        n'ont pas d'IP joignable depuis l'hôte, seulement depuis leur parent.
+        ProxyJump enchaîne les sauts, et la chaîne se construit d'elle-même
+        puisque le parent est déjà dans ~/.ssh/config quand on écrit l'enfant.
+
+        Une racine sans IP est un hôte DÉJÀ décrit dans ~/.ssh/config : son
+        adresse y est, on ne la réécrit pas, on part simplement de lui.
+        """
+        # Clé existante s'il y en a une : elle va dans IdentityFile. Si une
+        # clé est créée plus tard, en réaction à un refus, les entrées
+        # suivantes la reprendront.
+        identity = self._ssh_private_key(self._qemu_default_ssh_key())
+
+        entries = []  # un enregistrement par machine écrite
+        taken = set()  # tous les noms d'hôte déjà attribués
+        chain_of = {}  # alias -> nom chaîné « parent+enfant »
+        user_of = {}  # alias -> compte de connexion
+        hosts_libvirt = []  # machines qui font tourner QEMU
+        frontier = []
+        for root in roots:
+            alias, ip = root["alias"], root.get("ip")
+            # Le compte vient de ~/.ssh/config quand il y est déclaré : un
+            # hôte adopté n'est pas forcément une VM ERPLibre.
+            user_of[alias] = root.get("user") or self.QEMU_VM_USER
+            if ip:
+                self._write_ssh_config_entry(
+                    alias, user_of[alias], ip, identity_file=identity
+                )
+                entries.append(
+                    {
+                        "names": [alias],
+                        "ip": ip,
+                        "parent": None,
+                        "user": user_of[alias],
+                    }
+                )
+            taken.add(alias)
+            chain_of[alias] = alias
+            frontier.append(alias)
+
+        # `max_depth` compte les NIVEAUX de machines, racines comprises : une
+        # profondeur de 1 s'arrête donc ici, sans rien sonder.
+        for depth in range(1, max_depth):
+            if not frontier:
+                break
+            print(
+                f"\n🔎 {t('Level')} {depth + 1} — "
+                f"{len(frontier)} {t('machines to probe')}"
+            )
+            next_frontier = []
+            for parent in frontier:
+                status, found = self._qemu_ssh_probe_remote(parent)
+                if status == "auth":
+                    # C'EST ici qu'une clé manquante se manifeste, pas avant :
+                    # on ne parle d'identité qu'une fois l'identité refusée.
+                    status, found = self._qemu_ssh_retry_with_key(
+                        parent, found
+                    )
+                    # Une clé a pu naître de cet échange : les entrées
+                    # écrites ensuite doivent la nommer.
+                    identity = (
+                        self._ssh_private_key(self._qemu_default_ssh_key())
+                        or identity
+                    )
+                if status in ("auth", "net"):
+                    label = (
+                        t("access refused")
+                        if status == "auth"
+                        else t("unreachable")
+                    )
+                    print(f"  ⏭  {parent}: {label} — {found}")
+                    continue
+                if status == "denied":
+                    # virsh est là mais ne répond pas : c'est un DROIT qui
+                    # manque, pas un logiciel. Le dire, et donner le geste.
+                    print(
+                        f"  🔒 {parent}: "
+                        f"{t('virsh present but not accessible')}"
+                    )
+                    print(
+                        f"       {t('Add the user to the libvirt group there:')}"
+                    )
+                    continue
+                if status != "ok":
+                    print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
+                    continue
+                # Une machine avec QEMU vaut sa connexion virt-manager, même
+                # sans VM : c'est là qu'on pourra en créer.
+                hosts_libvirt.append(parent)
+                if not found:
+                    print(f"  ·  {parent}: {t('QEMU present, no VM')}")
+                    continue
+                for child, ip in found:
+                    if not ip:
+                        print(f"  ⏭  {parent} › {child}: {t('no IP')}")
+                        continue
+                    # UN SEUL nom, le nom CHAÎNÉ : il dit où vit la VM et ne
+                    # peut heurter aucune autre machine. Y ajouter le nom
+                    # court ne ferait que répéter la fin de la chaîne.
+                    chain = f"{chain_of[parent]}+{child}"
+                    if chain in taken:
+                        continue  # déjà vu (cycle)
+                    # L'invitée hérite du compte de son parent : elle a été
+                    # créée par lui, avec la même convention.
+                    user_of[chain] = user_of[parent]
+                    self._write_ssh_config_entry(
+                        chain,
+                        user_of[chain],
+                        ip,
+                        proxy_jump=parent,
+                        identity_file=identity,
+                    )
+                    entries.append(
+                        {
+                            "names": [chain],
+                            "ip": ip,
+                            "parent": parent,
+                            "user": user_of[chain],
+                        }
+                    )
+                    taken.add(chain)
+                    chain_of[chain] = chain
+                    next_frontier.append(chain)
+            frontier = next_frontier
+
+        print(f"\n── {t('SSH hosts written')} ──")
+        for item in entries:
+            via = f"  ({t('via')} {item['parent']})" if item["parent"] else ""
+            print(
+                f"  ssh {' '.join(item['names']):<40}"
+                f" {item['user']}@{item['ip']}{via}"
+            )
+
+        # Les machines qui hébergent QEMU sont celles qui valent d'être
+        # ajoutées à virt-manager : c'est de là qu'on pilote leurs invitées.
+        # On y présente le nom CHAÎNÉ, pour que l'imbrication se lise aussi
+        # dans l'interface graphique et pas seulement dans ~/.ssh/config.
+        self._virt_manager_offer(
+            [
+                (chain_of.get(alias, alias), user_of.get(alias, ""))
+                for alias in hosts_libvirt
+            ]
+        )
 
     def _qemu_stats(self):
         """Statistiques d'utilisation de QEMU, et remise à zéro.
@@ -4330,6 +4571,82 @@ class TODO:
         print(f"  {t('~/.ssh/config:')} {cfg}")
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
 
+    def _qemu_build_deploy_parts(
+        self,
+        d,
+        v,
+        arch,
+        name,
+        eram,
+        evcpus,
+        disk,
+        ssh_key,
+        branch,
+        dry_run,
+        timezone=None,
+        locale=None,
+    ):
+        """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
+        dry-run ET le déploiement réel)."""
+        parts = [] if dry_run else ["sudo"]
+        parts += [
+            self._qemu_script_path(),
+            "--distro",
+            d,
+            "--version",
+            v,
+            "--name",
+            name,
+            "--memory",
+            str(eram),
+            "--vcpus",
+            str(evcpus),
+            "--password",
+            "erplibre",
+        ]
+        if not dry_run:
+            # --no-wait-ip : ne bloque pas 90s/VM, l'IP est collectée après.
+            parts.append("--no-wait-ip")
+        if arch and arch != "amd64":
+            parts += ["--arch", arch]
+        if ssh_key:
+            parts += ["--ssh-key", ssh_key]
+        if timezone:
+            # Toujours explicite, jamais implicite : la commande affichée en
+            # dry-run doit produire la même VM si on la rejoue depuis une autre
+            # machine, dont le fuseau serait différent.
+            parts += ["--timezone", timezone]
+        if locale:
+            parts += ["--locale", locale]
+        if branch:
+            # ERPLibre dépasse le minimum : +5 Go de disque.
+            bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
+            parts += ["--disk-size", f"{bigger}G"]
+        parts.append("--dry-run" if dry_run else "-y")
+        return parts
+
+    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False):
+        """Commande deploy_qemu.py d'une VM de la spec.
+
+        POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
+        invites en ligne produisent la même spec, donc forcément la même
+        commande. C'est ce qui rend leur divergence vérifiable par un test."""
+        install = spec.get("install")
+        return self._qemu_build_deploy_parts(
+            vm["distro"],
+            vm["version"],
+            vm["arch"],
+            vm["name"],
+            vm["ram"],
+            vm["vcpus"],
+            vm["disk"],
+            spec.get("ssh_key"),
+            install["branch"] if install else None,
+            dry_run=dry_run,
+            timezone=spec.get("timezone"),
+            locale=spec.get("locale"),
+        )
+
     # ---------------------------------------------------------------- #
     # Déploiement : catalogue (pur) -> collecte (CLI ou TUI) -> exécution
     # ---------------------------------------------------------------- #
@@ -4390,6 +4707,223 @@ class TODO:
         pending = [vm for vm in vms if vm["name"] not in known]
         existing = [vm["name"] for vm in vms if vm["name"] in known]
         return pending, existing
+
+    def _qemu_check_libvirt_group(self):
+        """Prévient si virsh n'est pas joignable sans sudo, et propose de régler.
+
+        Le suivi d'installation tourne DÉTACHÉ, sans tty : il ne peut pas
+        répondre à une demande de mot de passe. « sudo -n » y échoue sur tout
+        hôte exigeant une authentification interactive (vécu sur erplibre01 avec
+        sudo-rs), et la VM devient alors introuvable dès que son bail DHCP
+        change. Le groupe libvirt est la seule voie qui n'exige ni root ni tty.
+
+        Vérifié AVANT de créer quoi que ce soit : découvrir le problème après
+        vingt minutes d'installation coûte bien plus cher qu'une question ici.
+        """
+        probe = subprocess.run(
+            ["virsh", "--connect", "qemu:///system", "list", "--name"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            return  # joignable sans sudo : rien à signaler
+
+        user = getpass.getuser()
+        # Être dans /etc/group ne suffit pas : les groupes d'un processus sont
+        # figés à l'ouverture de session. Distinguer les deux cas évite de
+        # proposer un usermod déjà fait, et dit la vraie action attendue.
+        try:
+            declared = user in grp.getgrnam("libvirt").gr_mem
+        except KeyError:
+            declared = False
+        try:
+            active = grp.getgrnam("libvirt").gr_gid in os.getgroups()
+        except KeyError:
+            active = False
+
+        print(f"\n⚠  {t('virsh cannot reach qemu:///system without sudo.')}")
+        print(f"   {t('The install monitor runs detached and cannot type a')}")
+        print(
+            f"   {t('password: it would lose the VM when its lease moves.')}"
+        )
+
+        if declared and not active:
+            print(
+                f"\n   {t('You are in the libvirt group, but this session')}"
+            )
+            print(f"   {t('predates it. Log out and back in, or run:')}")
+            print(f"     newgrp libvirt")
+            return
+        if active:
+            # Groupe présent mais virsh échoue quand même : libvirtd arrêté,
+            # socket absente… La cause n'est pas le groupe, ne pas la maquiller.
+            print(f"\n   {t('Group is active, so the cause is elsewhere:')}")
+            print(f"     {(probe.stderr or '').strip()[:200]}")
+            return
+
+        cmd = f"sudo usermod -aG libvirt {shlex.quote(user)}"
+        print(f"\n   {t('Add your user to the libvirt group?')}")
+        print(f"     {cmd}")
+        if not self._is_yes_default_yes(input(t("Run it now? (Y/n): "))):
+            return
+        if os.system(cmd) != 0:
+            print(f"   ⚠ {t('Command failed.')}")
+            return
+        print(f"\n✅ {t('Added. Log out and back in for it to take effect,')}")
+        print(f"   {t('or start a new shell with: newgrp libvirt')}")
+
+    def _qemu_check_kvm(self):
+        """Prévient quand les VM seront ÉMULÉES faute de KVM.
+
+        « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
+        VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
+        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
+        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
+        d'attendre vaut mieux que de chercher la cause après."""
+        try:
+            mod = self._qemu_import_module()
+            if mod.kvm_available():
+                return
+        except Exception:
+            return
+        try:
+            module = mod.nested_module()
+        except Exception:
+            module = "kvm"
+        print(f"\n⚠  {t('KVM is unavailable: the VMs will be EMULATED.')}")
+        print(f"   {t('A boot then takes 10-15 min, not under a minute.')}")
+        print(
+            f"   {t('Cause: /dev/kvm is missing. This host is itself a VM')}"
+        )
+        print(
+            f"   {t('whose hypervisor does not expose nested virtualization.')}"
+        )
+        print(f"\n   {t('To fix it ON THE PARENT HYPERVISOR, not here:')}")
+        print(
+            f'     echo "options {module} nested=1"'
+            f" | sudo tee /etc/modprobe.d/kvm-nested.conf"
+        )
+        print(f"     sudo modprobe -r {module} && sudo modprobe {module}")
+        print(
+            f"   {t('then set this VM to the host-passthrough CPU mode and')}"
+        )
+        print(
+            f"   {t('stop it and start it again - a reboot is not enough.')}"
+        )
+        print(
+            f"\n   {t('Without access to that hypervisor, nothing to do here.')}"
+        )
+
+    def _qemu_ask_ui(self):
+        """Interface du déploiement : formulaire TUI ou invites en ligne.
+        La préférence peut trancher d'avance (menu Configuration) ; « ask »
+        pose la question."""
+        pref = todo_prefs.get("qemu_deploy_ui")
+        if pref in ("tui", "cli"):
+            return pref
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')} *")
+        print(f"  [2] {t('Classic questions (line by line)')}")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        sel = input(t("Choice (1-2, default 1): ")).strip()
+        return "cli" if sel == "2" else "tui"
+
+    def _qemu_form_context(self, mod):
+        """Données préchargées pour le formulaire TUI.
+
+        TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
+        est fait ICI, pendant que le terminal est encore à nous : une invite
+        de mot de passe pendant que Textual affiche casserait l'écran."""
+        native = self._native_arch()
+        arches = ["amd64", "arm64", "s390x"]
+        if native not in arches:
+            arches.insert(0, native)
+        arches.append("all")
+
+        catalog = {}
+        for a in arches:
+            distros = list(mod.DISTROS)
+            if a != "all":
+                allowed = self._qemu_arch_distros(a)
+                if allowed is not None:
+                    distros = [d for d in distros if d in allowed]
+            entries = self._qemu_catalog_entries(mod, distros, a)
+            for e in entries:
+                # Le nom est calculé ici : le formulaire reste pure donnée.
+                e["name"] = self._qemu_infra_name(
+                    e["distro"], e["version"], e["arch"]
+                )
+            catalog[a] = entries
+
+        print(f"\n{t('Loading (VM list, branches)...')}")
+        return {
+            "catalog": catalog,
+            "arches": arches,
+            "native": native,
+            "domains": self._qemu_list_domains(),
+            "branches": self._qemu_branch_list() or ["master"],
+            "install_profiles": self._qemu_install_profiles(),
+            "ssh_key": self._qemu_default_ssh_key(),
+            "timezone": self._qemu_host_timezone(),
+            "host_cpu": os.cpu_count() or 2,
+            "free_ram": self._host_free_ram_mb(),
+            "base_vcpus": self._QEMU_BASE_VCPUS,
+            "cpu_presets": self._QEMU_CPU_PRESETS,
+            "ram_presets": self._QEMU_RAM_PRESETS,
+            "disk_presets": self._QEMU_DISK_PRESETS,
+            "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            "defaults": {
+                "install": True,
+                "add_ssh_config": True,
+                "monitor": True,
+                "prod": False,
+            },
+            # L'aperçu passe par le MÊME constructeur que le déploiement.
+            "build_command": lambda vm, spec, dry: " ".join(
+                shlex.quote(p)
+                for p in self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
+            ),
+        }
+
+    def _qemu_deploy(self, dry_run=False):
+        """Déploiement d'un parc de VM, en trois temps : collecte des choix
+        (formulaire TUI ou invites en ligne), aperçu ou exécution. Les deux
+        interfaces produisent la MÊME spec."""
+        print(f"🚀 {t('Deploy ERPLibre VM(s)!')}")
+        try:
+            mod = self._qemu_import_module()
+        except Exception as exc:
+            print(f"{t('Cannot load QEMU catalog: ')}{exc}")
+            return
+        # Rappel de la dernière installation enregistrée (si historique).
+        last = self._qemu_last_run_line()
+        if last:
+            print(last)
+
+        self._qemu_check_libvirt_group()
+        self._qemu_check_kvm()
+
+        if self._qemu_ask_ui() == "tui":
+            spec = self._qemu_deploy_form(mod, dry_run)
+            if spec is None:
+                return
+            if spec:  # None = annulé, {} = repli sur la CLI
+                self._qemu_run_spec(spec)
+                return
+
+        got = self._qemu_collect_vms_cli(mod)
+        if not got:
+            return
+        res_label, vms = got
+
+        if dry_run:
+            self._qemu_print_dry_run(vms)
+            return
+
+        spec = self._qemu_collect_options_cli(vms, res_label)
+        if not spec:
+            return
+        self._qemu_run_spec(spec)
 
     def _qemu_deploy_form(self, mod, dry_run):
         """Ouvre le formulaire TUI. Renvoie la spec, None si annulé, ou {}
@@ -4603,6 +5137,143 @@ class TODO:
                     " at once."
                 )
                 print(f"  ⚠ {warn}")
+
+    def _qemu_host_timezone(self):
+        """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
+        est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
+        pas proposer un défaut différent de celui réellement appliqué."""
+        try:
+            mod = self._qemu_import_module()
+            return mod.host_timezone()
+        except Exception:
+            return "UTC"
+
+    def _qemu_ask_timezone(self):
+        """Fuseau des VM à créer, celui de l'hôte par défaut.
+
+        Une VM qui hérite du fuseau de son opérateur horodate ses journaux et
+        ses bases comme lui ; en UTC l'écart ne se remarque qu'après coup."""
+        default = self._qemu_host_timezone()
+        answer = input(f"{t('Timezone for the VMs')} ({default}): ").strip()
+        if not answer:
+            return default
+        # Un fuseau inconnu ne casse pas cloud-init : il l'ignore en silence et
+        # la VM reste en UTC. Mieux vaut le refuser ici que le découvrir plus
+        # tard sur des horodatages faux.
+        if not os.path.exists(os.path.join("/usr/share/zoneinfo", answer)):
+            print(f"⚠  {t('Unknown timezone, keeping')} {default}")
+            return default
+        return answer
+
+    def _qemu_ask_locale(self):
+        """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
+        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        déploiement pour un confort dont une VM jetable n'a pas besoin."""
+        default = "C.UTF-8"
+        answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
+        return answer or default
+
+    def _qemu_collect_options_cli(self, vms, res_label):
+        """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
+        parallélisme, puis récapitulatif et confirmation.
+        Renvoie la spec complète, ou None si l'utilisateur renonce."""
+        # Clé SSH (partagée par tout le parc). Sans clé, cloud-init n'en
+        # injecte aucune : la VM démarre sans accès SSH, donc sans
+        # installation ni vérification possibles. On propose donc d'en créer
+        # une plutôt que de laisser passer un déploiement inutilisable.
+        default_key = self._qemu_default_ssh_key()
+        if not default_key:
+            print(f"\n⚠  {t('No SSH public key found in ~/.ssh.')}")
+            print(f"   {t('Without one the VMs start with no SSH access.')}")
+            if self._is_yes_default_yes(input(t("Generate one now? (Y/n): "))):
+                default_key = self._ssh_ensure_key()
+        key_hint = default_key or t("none")
+        ssh_key = input(f"{t('SSH public key path')} ({key_hint}): ").strip()
+        if not ssh_key:
+            ssh_key = default_key
+        if ssh_key:
+            ssh_key = os.path.expanduser(ssh_key)
+
+        timezone = self._qemu_ask_timezone()
+        locale = self._qemu_ask_locale()
+
+        # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
+        install = None
+        ans = input(
+            t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
+        )
+        if self._is_yes_default_yes(ans):
+            branch = self._qemu_pick_branch()
+            # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
+            prod = self._qemu_ask_prod()
+            label, cmd = self._qemu_pick_install_profile()
+            monitor = self._is_yes_default_yes(
+                input(t("Interactive monitoring dashboard? (y/N): "))
+            )
+            install = {
+                "branch": branch,
+                "prod": prod,
+                "label": label,
+                "cmd": cmd,
+                "monitor": monitor,
+            }
+
+        add_ssh_config = self._is_yes_default_yes(
+            input(t("Add each VM to ~/.ssh/config? (Y/n): "))
+        )
+
+        # 5) Sépare les VM à CRÉER des déjà existantes AVANT de proposer le
+        # parallélisme : on connaît alors le vrai nombre à déployer (affiché
+        # dans le prompt) et on peut numéroter chaque tâche.
+        pending, existing = self._qemu_split_existing(
+            vms, self._qemu_list_domains()
+        )
+        n_jobs = len(pending)
+
+        # Collisions de noms : une VM déjà définie est ignorée (rien n'est
+        # écrasé), mais un qcow2 orphelin fera ÉCHOUER deploy_qemu, qui refuse
+        # d'écraser sans --force. On le dit avant, pas après l'attente.
+        if not self._qemu_confirm_collisions(
+            existing, [vm["name"] for vm in pending]
+        ):
+            print(t("Cancelled."))
+            return None
+        if not pending:
+            print(t("Nothing to create - every VM already exists."))
+            return None
+
+        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
+        # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
+        default_par = min(n_jobs, os.cpu_count() or 4) or 1
+        raw = input(
+            f"{t('Parallel deployments (default:')} {default_par}, "
+            f"{n_jobs} {t('VMs')}): "
+        ).strip()
+        try:
+            parallelism = max(1, int(raw)) if raw else default_par
+        except ValueError:
+            parallelism = default_par
+
+        spec = {
+            "res_label": res_label,
+            "vms": pending,
+            "existing": existing,
+            "ssh_key": ssh_key,
+            "timezone": timezone,
+            "locale": locale,
+            "install": install,
+            "add_ssh_config": add_ssh_config,
+            "parallelism": parallelism,
+        }
+
+        # 6) Récapitulatif final, puis confirmation. Toutes les réponses
+        # données jusqu'ici sont rassemblées ici : c'est le dernier point où
+        # une erreur de saisie se rattrape sans avoir rien créé.
+        self._qemu_print_recap(spec, existing)
+        if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
+            print(t("Cancelled."))
+            return None
+        return spec
 
     def _qemu_deploy_jobs_cli(self, jobs, workers):
         """Déploiement parallèle, sortie texte. Renvoie

@@ -1619,6 +1619,14 @@ TRANSLATIONS = {
         "fr": "pas de QEMU/libvirt ici",
         "en": "no QEMU/libvirt here",
     },
+    "virsh present but not accessible": {
+        "fr": "virsh présent mais inaccessible (droits)",
+        "en": "virsh present but not accessible (permissions)",
+    },
+    "Add the user to the libvirt group there:": {
+        "fr": "Ajoutez l'utilisateur au groupe libvirt là-bas :",
+        "en": "Add the user to the libvirt group there:",
+    },
     "QEMU present, no VM": {
         "fr": "QEMU présent, aucune VM",
         "en": "QEMU present, no VM",
@@ -3276,6 +3284,106 @@ TRANSLATIONS = {
     "SSH public key path": {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
+    },
+    "Timezone": {
+        "fr": "Fuseau horaire",
+        "en": "Timezone",
+    },
+    "virsh cannot reach qemu:///system without sudo.": {
+        "fr": "virsh ne peut pas joindre qemu:///system sans sudo.",
+        "en": "virsh cannot reach qemu:///system without sudo.",
+    },
+    "The install monitor runs detached and cannot type a": {
+        "fr": "Le suivi d'installation tourne détaché et ne peut pas saisir",
+        "en": "The install monitor runs detached and cannot type a",
+    },
+    "password: it would lose the VM when its lease moves.": {
+        "fr": "de mot de passe : il perdrait la VM au changement de bail.",
+        "en": "password: it would lose the VM when its lease moves.",
+    },
+    "You are in the libvirt group, but this session": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session est",
+        "en": "You are in the libvirt group, but this session",
+    },
+    "predates it. Log out and back in, or run:": {
+        "fr": "antérieure. Reconnectez-vous, ou lancez :",
+        "en": "predates it. Log out and back in, or run:",
+    },
+    "Group is active, so the cause is elsewhere:": {
+        "fr": "Le groupe est actif : la cause est donc ailleurs.",
+        "en": "Group is active, so the cause is elsewhere:",
+    },
+    "Add your user to the libvirt group?": {
+        "fr": "Ajouter votre utilisateur au groupe libvirt ?",
+        "en": "Add your user to the libvirt group?",
+    },
+    "Run it now? (Y/n): ": {
+        "fr": "L'exécuter maintenant ? (O/n) : ",
+        "en": "Run it now? (Y/n): ",
+    },
+    "Command failed.": {
+        "fr": "La commande a échoué.",
+        "en": "Command failed.",
+    },
+    "Added. Log out and back in for it to take effect,": {
+        "fr": "Ajouté. Reconnectez-vous pour que ça prenne effet,",
+        "en": "Added. Log out and back in for it to take effect,",
+    },
+    "or start a new shell with: newgrp libvirt": {
+        "fr": "ou ouvrez un shell neuf avec : newgrp libvirt",
+        "en": "or start a new shell with: newgrp libvirt",
+    },
+    "Timezone for the VMs": {
+        "fr": "Fuseau horaire des VM",
+        "en": "Timezone for the VMs",
+    },
+    "Locale for the VMs": {
+        "fr": "Locale des VM",
+        "en": "Locale for the VMs",
+    },
+    "KVM is unavailable: the VMs will be EMULATED.": {
+        "fr": "KVM indisponible : les VM seront ÉMULÉES.",
+        "en": "KVM is unavailable: the VMs will be EMULATED.",
+    },
+    "A boot then takes 10-15 min, not under a minute.": {
+        "fr": "Un démarrage prend alors 10 à 15 min, pas moins d'une minute.",
+        "en": "A boot then takes 10-15 min, not under a minute.",
+    },
+    "Cause: /dev/kvm is missing. This host is itself a VM": {
+        "fr": "Cause : /dev/kvm est absent. Cet hôte est lui-même une VM",
+        "en": "Cause: /dev/kvm is missing. This host is itself a VM",
+    },
+    "whose hypervisor does not expose nested virtualization.": {
+        "fr": "dont l'hyperviseur n'expose pas la virtualisation imbriquée.",
+        "en": "whose hypervisor does not expose nested virtualization.",
+    },
+    "To fix it ON THE PARENT HYPERVISOR, not here:": {
+        "fr": "Pour corriger, SUR L'HYPERVISEUR PARENT, pas ici :",
+        "en": "To fix it ON THE PARENT HYPERVISOR, not here:",
+    },
+    "then set this VM to the host-passthrough CPU mode and": {
+        "fr": "puis donner à cette VM le mode CPU « host-passthrough », et",
+        "en": "then set this VM to the host-passthrough CPU mode and",
+    },
+    "stop it and start it again - a reboot is not enough.": {
+        "fr": "l'arrêter puis la redémarrer — un reboot ne suffit pas.",
+        "en": "stop it and start it again - a reboot is not enough.",
+    },
+    "Without access to that hypervisor, nothing to do here.": {
+        "fr": "Sans accès à cet hyperviseur, il n'y a rien à régler ici.",
+        "en": "Without access to that hypervisor, nothing to do here.",
+    },
+    "Usual cause: this host is itself a VM without nested": {
+        "fr": "Cause habituelle : cet hôte est lui-même une VM sans",
+        "en": "Usual cause: this host is itself a VM without nested",
+    },
+    "virtualization. Check: systemd-detect-virt": {
+        "fr": "virtualisation imbriquée. Vérifier : systemd-detect-virt",
+        "en": "virtualization. Check: systemd-detect-virt",
+    },
+    "Unknown timezone, keeping": {
+        "fr": "Fuseau inconnu, on garde",
+        "en": "Unknown timezone, keeping",
     },
     "none": {
         "fr": "aucune",

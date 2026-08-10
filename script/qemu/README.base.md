@@ -377,8 +377,55 @@ sudo modprobe -r kvm_intel && sudo modprobe kvm_intel   # ou / or reboot
 ```
 
 <!-- [en] -->
+On **s390x and arm64** the parameter lives on the `kvm` module itself, not on
+`kvm_intel` / `kvm_amd` — and `/sys/module/kvm/parameters/nested` does not even
+exist on x86. Reading the wrong file returns a reassuring `0` that commands
+nothing:
+
+<!-- [fr] -->
+Sur **s390x et arm64**, le paramètre vit sur le module `kvm` lui-même, et non
+sur `kvm_intel` / `kvm_amd` — et `/sys/module/kvm/parameters/nested` n'existe
+même pas sur x86. Lire le mauvais fichier renvoie un `0` rassurant qui ne
+commande rien :
+
+<!-- [common] -->
+```bash
+echo "options kvm nested=1" | sudo tee /etc/modprobe.d/kvm-nested.conf
+sudo modprobe -r kvm && sudo modprobe kvm               # ou / or reboot
+```
+
+<!-- [en] -->
+`nested` on a machine means « let MY guests run VMs ». To accelerate a VM
+created on host H, the setting belongs to the hypervisor **above** H, not to H
+itself. The one command that settles it, run on H:
+
+<!-- [fr] -->
+`nested` sur une machine signifie « j'autorise MES invités à faire tourner des
+VM ». Pour accélérer une VM créée sur l'hôte H, le réglage appartient à
+l'hyperviseur **au-dessus** de H, pas à H. La commande qui tranche, sur H :
+
+<!-- [common] -->
+```bash
+ls -l /dev/kvm     # absent -> pas d'imbrication, tout sera émulé
+```
+
+<!-- [en] -->
+Measured on an s390x host that was itself a KVM guest without nesting:
+`/dev/kvm` absent, `virsh dumpxml` showing `<domain type='qemu'>`, and a
+7 min 30 boot instead of well under a minute. `systemd-detect-virt` inside the
+VM is **not** proof of acceleration — on s390x, QEMU fabricates the STSI answer
+and reports `kvm` even under TCG. Only `<domain type=…>` on the host is
+conclusive.
+
 If nesting is unavailable, QEMU still runs via software emulation (TCG) — it
 works but is slow.
+
+<!-- [fr] -->
+Mesuré sur un hôte s390x lui-même invité KVM sans imbrication : `/dev/kvm`
+absent, `virsh dumpxml` affichant `<domain type='qemu'>`, et un démarrage de
+7 min 30 au lieu de bien moins d'une minute. `systemd-detect-virt` dans la VM
+ne prouve **pas** l'accélération — sur s390x, QEMU fabrique la réponse STSI et
+annonce `kvm` même en TCG. Seul `<domain type=…>` sur l'hôte fait foi.
 
 ### Bridge for external access
 
