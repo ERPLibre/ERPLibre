@@ -67,21 +67,58 @@ if [ "$(uname -m)" = "s390x" ]; then
   # Ces trois lots étaient les seuls du script à contourner le wrapper, et
   # aucun ne vérifiait son résultat : libqpdf-dev manquait sans un mot, et
   # l'échec ne se voyait qu'une heure plus tard, à la compilation de pikepdf.
-  ${APT_GET} install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential zlib1g-dev libjpeg-dev -y
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "apt-get s390x build dependencies installation error."
-    exit 1
-  fi
-  # manifold3d, tiré par to-3mf, ne publie pas de roue s390x : il se compile
-  # depuis les sources. Son CMake exige tbb via pkg-config, et scikit-build-core
-  # ne trouve pas non plus de roue ninja pour cette architecture — les deux
-  # doivent venir de la distribution.
-  ${APT_GET} install libtbb-dev cmake ninja-build -y
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "apt-get s390x cmake/tbb installation error."
-    exit 1
+  # Un nom de paquet CHANGE d'une version d'Ubuntu à l'autre : GeographicLib
+  # s'appelle « libgeographic-dev » sur 20.04 et 22.04, « libgeographiclib-dev »
+  # depuis 24.04. Le nom récent existe pourtant dans la base apt des anciennes,
+  # SANS version installable — apt refuse alors le lot ENTIER, emportant les
+  # quatorze autres paquets. On demande donc à apt lui-même quel nom est
+  # réellement installable, seule autorité sur la question.
+  apt_pick() {
+    for candidate in "$@"; do
+      if apt-get install -s -qq "${candidate}" > /dev/null 2>&1; then
+        echo "${candidate}"
+        return 0
+      fi
+    done
+    echo "$1"
+  }
+  # Le lot d'abord, pour la vitesse. S'il échoue, on reprend paquet par paquet
+  # afin de NOMMER le fautif : sinon un seul nom obsolète masque les autres et
+  # le message ne dit pas lequel corriger.
+  apt_install_batch() {
+    if ${APT_GET} install "$@" -y; then
+      return 0
+    fi
+    echo "Lot apt en echec, reprise paquet par paquet pour identifier le fautif..."
+    APT_FAILED=""
+    for one in "$@"; do
+      ${APT_GET} install "${one}" -y || APT_FAILED="${APT_FAILED} ${one}"
+    done
+    [ -z "${APT_FAILED}" ]
+  }
+  APT_FAILED=""
+  GEO_DEV="$(apt_pick libgeographiclib-dev libgeographic-dev)"
+  # manifold3d (via to-3mf) et pymupdf n'ont pas de roue s390x : ils se
+  # compilent, d'où tbb, cmake et ninja. Un seul lot, une seule reprise.
+  apt_install_batch rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin \
+    proj-data "${GEO_DEV}" freetds-dev freetds-bin libkrb5-dev libssl-dev \
+    pkg-config build-essential zlib1g-dev libjpeg-dev libtbb-dev cmake \
+    ninja-build
+  if [[ -n "${APT_FAILED}" ]]; then
+    # Seul un paquet dont dépend la SUITE immédiate est bloquant. Les autres
+    # servent des modules Odoo optionnels : les rendre fatals immobiliserait
+    # toute l'installation pour un module que personne n'utilise ici.
+    echo "Paquets s390x non installables :${APT_FAILED}"
+    for essential in build-essential pkg-config libssl-dev zlib1g-dev \
+      libjpeg-dev cmake; do
+      case " ${APT_FAILED} " in
+        *" ${essential} "*)
+          echo "apt-get s390x : '${essential}' est indispensable, arret."
+          exit 1
+          ;;
+      esac
+    done
+    echo "Aucun n'est indispensable a la compilation : on continue."
   fi
   # pymupdf non plus n'a pas de roue s390x : il compile MuPDF, dont le
   # générateur de liaisons charge « libclang.so » par son nom nu, via ctypes.
