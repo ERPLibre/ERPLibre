@@ -85,6 +85,36 @@ if [ "$(uname -m)" = "s390x" ]; then
       echo "Attention : libclang introuvable, la compilation de pymupdf va echouer."
     fi
   fi
+  # cryptography ne publie aucune roue s390x : elle se compile, et son
+  # Cargo.lock est en version 4, que seul cargo >= 1.78 sait lire. Ubuntu 24.04
+  # livre 1.75 et s'arrête sur « lock file version 4 requires
+  # -Znext-lockfile-bump » ; 25.10 et au-delà passent. On complète alors par
+  # rustup, en exposant la chaîne hors du shell de connexion : les étapes
+  # suivantes sont des processus distincts, qui ne liront ni ~/.bashrc ni
+  # ~/.cargo/env.
+  CARGO_MIN_MINOR=78
+  cargo_ver="$(cargo --version 2>/dev/null | awk '{print $2}')"
+  cargo_major="${cargo_ver%%.*}"
+  cargo_rest="${cargo_ver#*.}"
+  cargo_minor="${cargo_rest%%.*}"
+  cargo_ok=0
+  if [[ "${cargo_major}" =~ ^[0-9]+$ && "${cargo_minor}" =~ ^[0-9]+$ ]]; then
+    if [[ ${cargo_major} -gt 1 ]] ||
+      [[ ${cargo_major} -eq 1 && ${cargo_minor} -ge ${CARGO_MIN_MINOR} ]]; then
+      cargo_ok=1
+    fi
+  fi
+  if [ "${cargo_ok}" -ne 1 ]; then
+    echo "cargo trop ancien ($(cargo --version 2>/dev/null || echo absent)) pour cryptography : installation via rustup."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain stable
+    for bin in cargo rustc; do
+      if [ -x "${HOME}/.cargo/bin/${bin}" ]; then
+        sudo ln -sf "${HOME}/.cargo/bin/${bin}" "/usr/local/bin/${bin}"
+      fi
+    done
+    echo "cargo retenu : $(PATH=/usr/local/bin:$PATH cargo --version 2>/dev/null || echo absent)"
+  fi
 fi
 
 #--------------------------------------------------
