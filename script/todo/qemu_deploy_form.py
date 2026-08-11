@@ -608,12 +608,25 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return ""
             return desktops[index - 1][0]
 
+        def _desktop_label(self):
+            """Libellé court du type de VM, pour le tableau et les totaux."""
+            key = self._desktop()
+            if not key:
+                return t("server")
+            label = dict(desktops).get(key, key)
+            return f"🖥 {label}"
+
         def _render_plan(self):
             table = self.query_one("#plan", DataTable)
             table.clear()
+            # Le type ne concerne QUE les VM réellement créées : une VM déjà
+            # définie n'est pas retouchée, lui afficher « GNOME » laisserait
+            # croire qu'on va lui poser un bureau.
+            kind = self._desktop_label()
             for r in self.rows:
                 vm = r["vm"]
                 icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[r["state"]]
+                status = kind if r["state"] == "new" else f"{icon}{r['note']}"
                 table.add_row(
                     vm["name"],
                     vm["distro"],
@@ -622,7 +635,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     str(vm["vcpus"]),
                     f"{vm['ram']}Mo",
                     f"{r['disk_gb']}G",
-                    f"{icon}{r['note']}",
+                    status,
                 )
             if not self.rows:
                 # Rien de coché : un total à zéro n'apprend rien, on dit
@@ -646,7 +659,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             )
             self.query_one("#totals", Static).update(
                 f"  {n} {t('VMs')} · {cpus} vCPU · {ram} Mo · ~{disk} G"
-                f"{warn}{dup_txt}"
+                f" · {self._desktop_label()}{warn}{dup_txt}"
             )
 
         # -- réactions aux champs -------------------------------------- #
@@ -655,7 +668,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.arch = arches[event.radio_set.pressed_index]
                 self._reload_catalog()
             elif event.radio_set.id == "f_type":
-                self._recompute()  # le disque annonce inclut GNOME
+                # Recalcul : le disque annonce inclut le bureau, et la
+                # colonne Statut affiche le type de VM.
+                self._recompute()
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
