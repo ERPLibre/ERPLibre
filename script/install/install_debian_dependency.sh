@@ -235,20 +235,73 @@ case "${NODE_ARCH}" in
 esac
 ${APT_GET} install ${NODE_PKG:-nodejs} -y
 
+node_major() {
+  node --version 2>/dev/null | sed -n 's/^v\([0-9]*\).*/\1/p'
+}
+
+# Le node de la distribution suffit sur les versions récentes, pas sur les
+# anciennes : focal livre la 10, jammy la 12, alors que « less » exige node 18
+# et « rtlcss » node 12. Là où NodeSource n'a rien à offrir, l'archive
+# officielle de nodejs.org prend le relais — elle publie bien linux-s390x,
+# vérifié dans son index. Rien n'est téléchargé si la distribution suffit.
+NODE_MIN=18
+node_have="$(node_major)"
+if [[ -n "${NODE_PKG}" && ! (${node_have:-0} -ge ${NODE_MIN}) ]]; then
+  echo "node $(node --version 2>/dev/null || echo absent) trop ancien (< ${NODE_MIN}) : archive officielle Node ${NODE_MAJOR}."
+  case "${NODE_ARCH}" in
+    # Node 22 publie linux-{x64,arm64,armv7l,ppc64le,s390x} — vérifié dans son
+    # index. Pas de riscv64 : cette architecture garde le node de sa
+    # distribution, et le message plus bas le dit.
+    s390x) NODE_DIST_ARCH=s390x ;;
+    ppc64el) NODE_DIST_ARCH=ppc64le ;;
+    *) NODE_DIST_ARCH="" ;;
+  esac
+  NODE_VER="$(curl -fsSL --max-time 60 https://nodejs.org/dist/index.json |
+    grep -o "\"version\":\"v${NODE_MAJOR}\.[0-9.]*\"" | head -1 | cut -d'"' -f4)"
+  if [[ -z "${NODE_DIST_ARCH}" || -z "${NODE_VER}" ]]; then
+    echo "Pas d'archive Node officielle pour ${NODE_ARCH} : on garde celle de la distribution."
+  else
+    NODE_TGZ="node-${NODE_VER}-linux-${NODE_DIST_ARCH}.tar.xz"
+    NODE_TMP="$(mktemp -d)"
+    if curl -fsSL --max-time 600 -o "${NODE_TMP}/${NODE_TGZ}" \
+      "https://nodejs.org/dist/${NODE_VER}/${NODE_TGZ}" &&
+      curl -fsSL --max-time 120 -o "${NODE_TMP}/SHASUMS256.txt" \
+        "https://nodejs.org/dist/${NODE_VER}/SHASUMS256.txt" &&
+      (cd "${NODE_TMP}" && grep " ${NODE_TGZ}\$" SHASUMS256.txt | sha256sum -c -); then
+      # Un « npm install npm@latest -g » antérieur a pu déposer un npm
+      # incompatible ici : l'archive écrase les fichiers mais ne supprime pas
+      # ceux qu'elle n'a pas, ce qui laisserait un mélange des deux versions.
+      sudo rm -rf /usr/local/lib/node_modules/npm
+      sudo tar -xJf "${NODE_TMP}/${NODE_TGZ}" -C /usr/local --strip-components=1
+      hash -r
+      echo "node $(node --version) / npm $(npm --version) installés dans /usr/local."
+    else
+      echo "Telechargement de Node ${NODE_VER} impossible : on garde celle de la distribution."
+    fi
+    rm -rf "${NODE_TMP}"
+  fi
+fi
+
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm est introuvable apres l'installation de nodejs (${NODE_ARCH})."
   exit 1
 fi
 
-# « npm@latest » dépasse régulièrement le node de la distribution : sur
-# Ubuntu 26.04 s390x, npm 12 exige node ^22.22.2 alors que l'archive livre la
-# 22.22.1 — un correctif d'écart, et EBADENGINE. Cette mise à niveau est un
-# confort : rtlcss et less fonctionnent avec le npm empaqueté. Elle ne doit
-# donc pas emporter toute l'installation du système.
-sudo npm install npm@latest -g
-retVal=$?
-if [[ $retVal -ne 0 ]]; then
-  echo "Avertissement : npm n'a pas pu être mis à niveau, on garde $(npm --version)."
+# « npm@latest » dépasse régulièrement le node en place : sur Ubuntu 26.04
+# s390x, npm 12 exige node ^22.22.2 alors que l'archive livre la 22.22.1 — un
+# correctif d'écart, et EBADENGINE. Pire sur un node ancien : npm 6 n'applique
+# PAS « engines », il se contente d'avertir, installe npm 12 par-dessus et le
+# rend inutilisable (« Cannot find module 'node:path' », absent avant node
+# 14.18). Le npm livré AVEC node est compatible par construction ; cette mise à
+# niveau n'est qu'un confort, on ne la tente que si node est assez récent.
+if [[ "$(node_major)" =~ ^[0-9]+$ && $(node_major) -ge ${NODE_MAJOR} ]]; then
+  sudo npm install npm@latest -g
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "Avertissement : npm n'a pas pu être mis à niveau, on garde $(npm --version)."
+  fi
+else
+  echo "npm $(npm --version) conservé : node $(node --version) est en deçà de ${NODE_MAJOR}."
 fi
 sudo npm install -g rtlcss
 retVal=$?
