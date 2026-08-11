@@ -177,7 +177,7 @@ def build_spec(vms, domains, form):
         "existing": [vm["name"] for vm in vms if vm["name"] in known],
         "ssh_key": form["ssh_key"],
         "timezone": form.get("timezone", ""),
-        "desktop": form.get("desktop", False),
+        "desktop": form.get("desktop", ""),
         "install": form["install"],
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
@@ -243,6 +243,8 @@ def run_deploy_form(ctx, run_app: bool = True):
     base_vcpus = ctx.get("base_vcpus") or 2
     extra_disk = ctx.get("extra_disk_gb") or 0
     desktop_disk = ctx.get("desktop_disk_gb") or 0
+    # [(clé, libellé)] — la liste vient de todo.py, source unique.
+    desktops = list(ctx.get("desktops") or [])
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -452,12 +454,13 @@ def run_deploy_form(ctx, run_app: bool = True):
                     with RadioSet(id="f_type"):
                         yield RadioButton(
                             t("Server (no graphical interface)"),
-                            value=not defaults.get("desktop", False),
+                            value=not defaults.get("desktop", ""),
                         )
-                        yield RadioButton(
-                            t("Graphical (server + GNOME desktop)"),
-                            value=defaults.get("desktop", False),
-                        )
+                        for key, label in desktops:
+                            yield RadioButton(
+                                f"{t('Graphical (server + desktop):')} {label}",
+                                value=defaults.get("desktop", "") == key,
+                            )
                     yield Static("ERPLibre", classes="grouptitle")
                     yield Checkbox(
                         t("Install ERPLibre"),
@@ -599,7 +602,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._render_plan()
 
         def _desktop(self):
-            return self.query_one("#f_type", RadioSet).pressed_index == 1
+            """« » pour un serveur, sinon la clé de la saveur choisie."""
+            index = self.query_one("#f_type", RadioSet).pressed_index
+            if index is None or index < 1 or index > len(desktops):
+                return ""
+            return desktops[index - 1][0]
 
         def _render_plan(self):
             table = self.query_one("#plan", DataTable)

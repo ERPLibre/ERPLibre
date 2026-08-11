@@ -19,22 +19,35 @@ APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
 UBUNTU_VERSION=$(lsb_release -rs)
 DEBIAN_VERSION=$(lsb_release -cs)
 OS=$(lsb_release -si)
+
+# Ubuntu 18.04, 20.04 et 22.04 ne sont plus supportées, sur AUCUNE
+# architecture. Le mur le plus net est pikepdf, qui réclame qpdf >= 12.2,
+# lui-même en C++20 : focal livre GCC 9 et ne publie même pas de g++-10 pour
+# s390x. S'y ajoutaient Python 3.8 à l'amorçage, node 10, cargo 0.67 et
+# OpenSSL 1.1.1 — chacun avait son contournement, l'accumulation non.
+#
+# Le refus est ICI, avant tout le reste : ce script tourne aussi sur une
+# machine existante, pas seulement sur une VM fraîchement déployée.
 if [[ "${OS}" == "Ubuntu" ]]; then
-  if [ "20.04" == "${UBUNTU_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-  elif [ "18.04" == "${UBUNTU_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.bionic_amd64.deb
-  else
-    # 22.04+ (jusqu'à 26.04 et au-delà) : wkhtmltopdf ne publie pas de build
-    # par version ; le .deb « jammy » est le plus récent et fonctionne. Un
-    # « else » (au lieu d'énumérer les versions) évite une URL VIDE sur une
-    # version récente (26.04) -> gdebi appelé sans fichier -> échec.
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
-  fi
+  case "${UBUNTU_VERSION}" in
+    18.04 | 20.04 | 22.04)
+      echo "Ubuntu ${UBUNTU_VERSION} n'est plus supporte par ERPLibre :"
+      echo "  sa chaine d'outils est trop ancienne (pikepdf exige qpdf 12.2,"
+      echo "  compile en C++20, quand cette version livre GCC 9)."
+      echo "  Utilisez Ubuntu 24.04, 25.10 ou 26.04."
+      exit 1
+      ;;
+  esac
+fi
+
+if [[ "${OS}" == "Ubuntu" ]]; then
+  # wkhtmltopdf ne publie pas de build par version d'Ubuntu ; le .deb
+  # « jammy » est le plus récent et fonctionne de 24.04 à 26.04 et au-delà.
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [[ "${OS}" == "Linuxmint" ]]; then
-  if [ "22.3" == "${UBUNTU_VERSION}" ]; then
-    WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
-  fi
+  # Sans « else », toute Mint autre que 22.3 laissait WKHTMLTOX_X64 VIDE, et
+  # gdebi etait appele sans fichier. Mint 22.x repose sur noble : meme .deb.
+  WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 elif [[ "${OS}" == "Debian" ]]; then
   if [ "bullseye" == "${DEBIAN_VERSION}" ]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bullseye_amd64.deb
@@ -46,10 +59,10 @@ elif [[ "${OS}" == "Debian" ]]; then
     WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb
   fi
 elif [[ "${OS}" == *"Ubuntu"* ]]; then
-  echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
+  echo "Your version of Ubuntu is not supported, only support 24.04, 25.10 and 26.04"
   WKHTMLTOX_X64=https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.jammy_amd64.deb
 else
-  echo "Your version of Ubuntu is not supported, only support 18.04, 20.04 and 22.04"
+  echo "Your version of Ubuntu is not supported, only support 24.04, 25.10 and 26.04"
   exit 1
 fi
 
@@ -58,25 +71,6 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
-  # Sur s390x, aucune roue PyPI : tout se compile contre les bibliothèques de
-  # la distribution. Deux versions n'en ont pas d'assez récentes.
-  #
-  # 20.04 : pikepdf réclame qpdf >= 12.2, dont la compilation exige C++20.
-  #         focal livre GCC 9 et ne publie PAS g++-10 pour s390x — vérifié.
-  #         La compilation s'arrête sur « fatal error: concepts: No such file
-  #         or directory », sans contournement possible.
-  # 22.04 : même mur qpdf, franchissable en théorie, abandonné avec la 20.04
-  #         plutôt que de maintenir un chemin de plus.
-  #
-  # On refuse ICI, avant une heure de compilation émulée pour rien.
-  case "${UBUNTU_VERSION}" in
-    20.04 | 22.04)
-      echo "Ubuntu ${UBUNTU_VERSION} n'est plus supporte sur s390x :"
-      echo "  sa chaine d'outils est trop ancienne pour ERPLibre."
-      echo "  Utilisez Ubuntu 24.04 ou plus recent."
-      exit 1
-      ;;
-  esac
   # Sur une VM fraîche, l'index apt peut être vide : « apt install » échouerait
   # alors sur TOUT le lot, et l'absence d'un seul paquet ne se voit que bien
   # plus loin, sous la forme d'une commande introuvable.
@@ -239,16 +233,6 @@ fi
 #--------------------------------------------------
 echo -e "\n---- Update Server ----"
 
-if [ "18.04" == "${UBUNTU_VERSION}" ]; then
-  # add-apt-repository can install add-apt-repository Ubuntu 18.x
-  ${APT_GET} install software-properties-common curl -y
-  # universe package is for Ubuntu 18.x
-  sudo add-apt-repository universe
-  # libpng12-0 dependency for wkhtmltopdf
-  sudo add-apt-repository "deb http://mirrors.kernel.org/ubuntu/ xenial main"
-  ${APT_GET} update
-  ${APT_GET} upgrade -y
-fi
 
 #--------------------------------------------------
 # Install PostgreSQL Server
@@ -292,14 +276,6 @@ if [[ $retVal -ne 0 ]]; then
   echo "apt-get libmariadb installation error."
   exit 1
 fi
-if [ "18.04" == "${UBUNTU_VERSION}" ]; then
-  ${APT_GET} install libpng12-0 -y
-  retVal=$?
-  if [[ $retVal -ne 0 ]]; then
-    echo "apt-get libpng installation error."
-    exit 1
-  fi
-fi
 # Dependencies for pyenv
 ${APT_GET} install make libssl-dev zlib1g-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev liblzma-dev -y
 retVal=$?
@@ -321,13 +297,8 @@ ${APT_GET} install -y ca-certificates curl gnupg
 sudo mkdir -p /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
 
-if [ "18.04" == "${UBUNTU_VERSION}" ]; then
-  sudo apt remove nodeJS npm
-  NODE_MAJOR=16
-else
-  # Node 22+ required by @capacitor/cli v8.x (mobile app dependency)
-  NODE_MAJOR=22
-fi
+# Node 22+ required by @capacitor/cli v8.x (mobile app dependency)
+NODE_MAJOR=22
 
 # NodeSource ne publie que amd64, arm64 et armhf : vérifié, binary-s390x
 # répond 404. Ajouter le dépôt sur une autre architecture n'apporte rien et

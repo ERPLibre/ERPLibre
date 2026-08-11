@@ -86,16 +86,24 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
-Supported Ubuntu versions: `20.04`, `22.04`, `24.04` (default), `24.10`,
-`25.04`, `25.10`. Provide an explicit image path as a positional argument to
-override the automatic download location.
+Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 
-On **s390x**, `20.04` and `22.04` are **not supported**: no PyPI wheel exists
-for that architecture, so everything is built against the distribution's
-libraries, and pikepdf needs qpdf 12.2, whose build requires C++20. Focal
-ships GCC 9 and publishes no `g++-10` for s390x — there is no way around it.
-Use `24.04` or later. Both are still supported on amd64 and arm64, where pip
-installs prebuilt wheels.
+| Distro | Versions | amd64 | arm64 | s390x |
+|---|---|:-:|:-:|:-:|
+| ubuntu | `24.04` (default), `25.10`, `26.04` | ✔ | ✔ | ✔ |
+| debian | `11`, `12` (default), `13` | ✔ | ✔ | — |
+| fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | — |
+| almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
+| rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
+| arch | `latest` | ✔ | — | — |
+
+Provide an explicit image path as a positional argument to override the
+automatic download location.
+
+Ubuntu `20.04` and `22.04` were **dropped on every architecture**: pikepdf
+needs qpdf 12.2, whose build requires C++20, and focal ships GCC 9 — it does
+not even publish `g++-10` for s390x. Python 3.8, node 10, cargo 0.67 and
+OpenSSL 1.1.1 each had a workaround; the pile of them did not.
 
 ## After deployment
 

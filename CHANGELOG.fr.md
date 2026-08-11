@@ -32,8 +32,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
-  Debian, Fedora, Arch) en amd64, arm64 et s390x, avec un menu pour lister,
-  tester, redimensionner, supprimer et nettoyer
+  Debian, Fedora, AlmaLinux, Rocky Linux, Arch) en amd64, arm64 et s390x, avec
+  un menu pour lister, tester, redimensionner, supprimer et nettoyer
+- VM graphiques : un choix serveur / bureau proposant GNOME ou Cinnamon (le
+  bureau de Linux Mint), avec accès distant par xrdp — TigerVNC sur Arch
 - Interfaces Textual : tableau de bord d'installation, formulaire de
   déploiement de VM, écran de reprise de migration ; Textual s'installe à la
   demande
@@ -65,6 +67,12 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Entrée de FAQ sur wkhtmltopdf pour les distributions récentes
 - brin_advisor et brin_cluster : recommander et appliquer le bon index
   PostgreSQL pour un modèle Odoo
+
+## Retiré
+
+- Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf
+  réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9
+  et ne publie pas de `g++-10` pour s390x
 
 ## Modifié
 

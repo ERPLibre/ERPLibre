@@ -15,6 +15,32 @@ EL_USER=${USER}
 DNF="sudo dnf install -y --refresh --skip-unavailable"
 
 #--------------------------------------------------
+# Dérivés RHEL : dépôts supplémentaires
+#--------------------------------------------------
+# AlmaLinux, Rocky, CentOS Stream et RHEL passent par ce script (install_dev.sh
+# les aiguille sur ID_LIKE=rhel). Contrairement à Fedora, leur jeu de dépôts
+# par défaut est ÉTROIT : la plupart des paquets « -devel » vivent dans CRB
+# (CodeReady Builder), et tout ce qui est communautaire dans EPEL. Sans ces
+# deux dépôts, « --skip-unavailable » saute les paquets EN SILENCE et l'échec
+# n'apparaît qu'à la compilation, très loin d'ici.
+if [ -r /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+fi
+case "${ID}" in
+  almalinux | rocky | rhel | centos)
+    echo -e "\n---- Depots EPEL et CRB (famille RHEL) ----"
+    sudo dnf install -y epel-release \
+      || echo "epel-release indisponible : certains paquets manqueront."
+    # « crb » sur EL9/EL10 ; « powertools » était le nom sur EL8.
+    sudo dnf config-manager --set-enabled crb 2> /dev/null \
+      || sudo dnf config-manager --set-enabled powertools 2> /dev/null \
+      || sudo dnf config-manager --enable crb 2> /dev/null \
+      || echo "CRB/PowerTools non active : certains -devel manqueront."
+    ;;
+esac
+
+#--------------------------------------------------
 # Outils de compilation (build Python via pyenv, extensions Python)
 #--------------------------------------------------
 echo -e "\n---- Groupe outils de développement ----"

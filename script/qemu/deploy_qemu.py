@@ -79,9 +79,13 @@ from pathlib import Path
 # transitoire. Un VM à 10G tombait « Poetry installation error » (disque
 # plein). Le qcow2 est CREUX (sparse) : une taille virtuelle plus grande ne
 # consomme rien tant qu'elle n'est pas remplie -> 20G sans surcoût réel.
+#
+# 20.04 et 22.04 ne sont plus proposées : leur chaîne d'outils ne suffit plus à
+# ERPLibre. Le mur le plus net est pikepdf, qui réclame qpdf >= 12.2, lui-même
+# en C++20 — focal livre GCC 9. S'y ajoutaient Python 3.8 à l'amorçage, node 10,
+# cargo 0.67 et OpenSSL 1.1.1. Chacun avait son contournement ; l'accumulation,
+# non.
 UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "20.04": ("focal", "ubuntu20.04", 2048, "20G"),
-    "22.04": ("jammy", "ubuntu22.04", 2048, "20G"),
     "24.04": ("noble", "ubuntu24.04", 3072, "20G"),
     "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
@@ -97,6 +101,18 @@ FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "43": ("43", "fedora43", 2048, "20G"),
     "44": ("44", "fedora44", 2048, "20G"),
 }
+# Dérivés RHEL. Le second champ est l'identifiant libosinfo : « almalinux9 » et
+# « almalinux10 » figurent dans osinfo-db, « rocky10 » n'y est pas encore sur
+# les hôtes 24.04 — osinfo_arg() replie alors sur une valeur connue.
+# RAM : libosinfo demande 1,5 Gio en x86_64 ; on retient 2048 comme Fedora.
+ALMALINUX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "9": ("9", "almalinux9", 2048, "20G"),
+    "10": ("10", "almalinux10", 2048, "20G"),
+}
+ROCKY_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "9": ("9", "rocky9", 2048, "20G"),
+    "10": ("10", "rocky10", 2048, "20G"),
+}
 # Arch est en rolling release : une seule « version » (latest).
 ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "latest": ("latest", "archlinux", 1024, "20G"),
@@ -107,6 +123,8 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
     "fedora": (FEDORA_VERSIONS, "42"),
+    "almalinux": (ALMALINUX_VERSIONS, "9"),
+    "rocky": (ROCKY_VERSIONS, "10"),
     "arch": (ARCH_VERSIONS, "latest"),
 }
 
@@ -114,6 +132,8 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
 # s390x s'écrit « s390x » partout (identité), donc aucune entrée n'est requise.
 ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
+    "almalinux": {"amd64": "x86_64", "arm64": "aarch64"},
+    "rocky": {"amd64": "x86_64", "arm64": "aarch64"},
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
 
@@ -126,31 +146,14 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 # - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
 # - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
-S390X_DISTROS: tuple[str, ...] = ("ubuntu",)
-ARM64_DISTROS: tuple[str, ...] = ("ubuntu", "debian", "fedora")
-
-# Versions ABANDONNÉES sur une architecture donnée : publier une image cloud ne
-# suffit pas, encore faut-il que la chaîne d'outils permette d'installer
-# ERPLibre. Sur s390x, aucune roue PyPI n'existe : tout se compile contre les
-# bibliothèques de la distribution, et deux versions n'en ont pas d'assez
-# récentes.
-#
-#   20.04 : pikepdf réclame qpdf >= 12.2, dont la compilation exige C++20 —
-#           or focal livre GCC 9 et NE PUBLIE PAS g++-10 pour s390x. Sans
-#           issue. S'y ajoutaient Python 3.8, node 10, cargo 0.67 et
-#           OpenSSL 1.1.1, tous contournés, mais celui-là ne l'est pas.
-#   22.04 : même mur qpdf, franchissable en théorie (GCC 11), abandonné avec
-#           la 20.04 pour ne pas maintenir un chemin de plus.
-#
-# amd64 et arm64 ne sont PAS concernés : pip y pose des roues précompilées.
-UNSUPPORTED_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
-    "s390x": {"ubuntu": ("20.04", "22.04")},
-}
-
-
-def is_supported(distro: str, version: str, arch: str) -> bool:
-    """Faux si ce triplet est explicitement abandonné."""
-    return version not in UNSUPPORTED_VERSIONS.get(arch, {}).get(distro, ())
+S390X_DISTROS: tuple[str, ...] = ("ubuntu", "almalinux", "rocky")
+ARM64_DISTROS: tuple[str, ...] = (
+    "ubuntu",
+    "debian",
+    "fedora",
+    "almalinux",
+    "rocky",
+)
 
 
 # arch générique -> distros la publiant (pour valider --arch tôt).
@@ -187,6 +190,8 @@ DEBIAN_CLOUD_BASES: tuple[str, ...] = (
     "https://gemmei.ftp.acc.umu.se/cdimage/cloud",
     "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
 )
+ALMALINUX_CLOUD_BASE = "https://repo.almalinux.org/almalinux"
+ROCKY_CLOUD_BASE = "https://dl.rockylinux.org/pub/rocky"
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 # Serveur MAÎTRE (pas de redirection MirrorManager) : repli fiable quand le
 # redirecteur envoie sur un miroir incomplet (fréquent en déploiement
@@ -237,6 +242,22 @@ def image_candidates(
         ]
     if distro == "fedora":
         return [resolve_fedora_url(version, arch, dry_run)]
+    if distro == "almalinux":
+        # Contrairement à Fedora, AlmaLinux publie un lien « latest » STABLE
+        # par majeure et par architecture : aucun index HTML à analyser. On
+        # vise l'arbre de la MAJEURE (9/, 10/), qui suit la mineure courante —
+        # les répertoires mineurs périmés sont retirés du miroir.
+        return [
+            f"{ALMALINUX_CLOUD_BASE}/{version}/cloud/{a}/images/"
+            f"AlmaLinux-{version}-GenericCloud-latest.{a}.qcow2"
+        ]
+    if distro == "rocky":
+        # Même principe : l'alias « .latest » suit le point release courant, et
+        # les précédents partent au vault — une URL figée casserait.
+        return [
+            f"{ROCKY_CLOUD_BASE}/{version}/images/{a}/"
+            f"Rocky-{version}-GenericCloud.latest.{a}.qcow2"
+        ]
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
@@ -290,6 +311,12 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{version}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro in ("almalinux", "rocky"):
+        # « latest » est MUTABLE : le nom de cache porte donc la majeure, et
+        # une image déjà téléchargée sera réutilisée telle quelle. C'est voulu
+        # (reproductibilité d'un déploiement à l'autre) ; supprimer le fichier
+        # du cache suffit à repartir sur le build courant.
+        return f"{distro}-{version}-genericcloud-{a}.qcow2"
     return f"fedora-cloud-{version}-{a}.qcow2"
 
 
@@ -1312,6 +1339,14 @@ def host_timezone() -> str:
     return "UTC"
 
 
+def admin_group(distro: str) -> str:
+    """Groupe d'administration de la distribution.
+
+    Debian et Ubuntu : « sudo ». Famille RHEL (AlmaLinux, Rocky, Fedora) et
+    Arch : « wheel » — elles n'ont aucun groupe « sudo »."""
+    return "sudo" if distro in ("ubuntu", "debian") else "wheel"
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -1322,10 +1357,15 @@ def build_cloud_config(
         "users:",
         f"  - name: {args.user}",
         "    sudo: ALL=(ALL) NOPASSWD:ALL",
-        # « sudo » existe sur Debian ET Ubuntu ; « admin » n'existe PAS sur
-        # Debian -> useradd -G ...,admin échoue et l'utilisateur n'est jamais
-        # créé (login/clé SSH KO). C'était la cause du « Debian ne marche pas ».
-        "    groups: users, sudo",
+        # Le groupe d'administration N'A PAS le même nom partout, et un nom
+        # inconnu fait échouer « useradd -G » : l'utilisateur n'est alors jamais
+        # créé, donc ni mot de passe ni clé SSH — la VM démarre et reste
+        # inaccessible. C'était déjà la cause du « Debian ne marche pas »
+        # (« admin » n'existe pas sur Debian) ; la famille RHEL et Arch ont le
+        # même écart, elles n'ont pas de groupe « sudo » mais « wheel ».
+        # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
+        # groupe : celui-ci n'est qu'une commodité.
+        f"    groups: users, {admin_group(args.distro)}",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
@@ -2132,19 +2172,6 @@ def main() -> None:
         sys.exit(
             f"Architecture {args.arch} indisponible pour {args.distro!r} : "
             f"images cloud publiées seulement pour {', '.join(supported)}."
-        )
-    # L'image cloud existe, mais la chaîne d'outils de cette version ne permet
-    # pas d'installer ERPLibre sur cette architecture. Mieux vaut le dire ici
-    # qu'après une heure de compilation émulée.
-    if not is_supported(args.distro, args.version, args.arch):
-        dropped = UNSUPPORTED_VERSIONS[args.arch][args.distro]
-        keep = [v for v in versions if v not in dropped]
-        sys.exit(
-            f"{args.distro} {args.version} n'est plus supporté sur "
-            f"{args.arch} : sa chaîne d'outils est trop ancienne pour "
-            f"ERPLibre (GCC 9 sur 20.04 ne compile pas le qpdf que réclame "
-            f"pikepdf, et aucun g++ plus récent n'y est publié).\n"
-            f"  Versions supportées sur {args.arch} : {', '.join(keep)}."
         )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
