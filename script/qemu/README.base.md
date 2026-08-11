@@ -179,10 +179,13 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (default), `25.10`, `26.04` | ✔ | ✔ | ✔ |
 | debian | `11`, `12` (default), `13` | ✔ | ✔ | — |
-| fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | — |
+| fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | `43` only |
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+
+Fedora builds s390x only for the current release, and on a separate tree
+(`fedora-secondary`) — hence the single version there.
 
 Provide an explicit image path as a positional argument to override the
 automatic download location.
@@ -201,10 +204,13 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
 | debian | `11`, `12` (défaut), `13` | ✔ | ✔ | — |
-| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | — |
+| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+
+Fedora ne construit s390x que pour la version courante, et sur une
+arborescence à part (`fedora-secondary`) — d'où la version unique.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.

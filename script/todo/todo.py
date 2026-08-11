@@ -1074,7 +1074,7 @@ class TODO:
 
     # Distros publiant des images cloud par architecture (cohérent avec
     # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
-    _QEMU_S390X_DISTROS = ("ubuntu", "almalinux", "rocky")
+    _QEMU_S390X_DISTROS = ("ubuntu", "almalinux", "rocky", "fedora")
     _QEMU_ARM64_DISTROS = (
         "ubuntu",
         "debian",
@@ -5187,10 +5187,17 @@ class TODO:
         déployable, aussi bien pour la liste granulaire de la CLI que pour la
         liste à cocher du formulaire TUI."""
         flat = []
+        # Une distro peut ne publier qu'une partie de ses versions sur une
+        # architecture (Fedora ne construit que la courante en s390x). La
+        # table vit dans deploy_qemu.py, qui refuse aussi ces combinaisons :
+        # une seule source, donc aucun écran n'offre un choix rejeté ensuite.
+        only = getattr(mod, "arch_versions", None)
         for d in distros:
             versions_map, default_v = mod.DISTROS[d]
             for v, (_c, _o, ram, disk) in versions_map.items():
                 for a in self._qemu_arches_for(d, arch):
+                    if only and v not in only(d, a, versions_map):
+                        continue
                     flat.append(
                         {
                             "distro": d,
