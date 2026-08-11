@@ -63,6 +63,19 @@ def disk_gb(value) -> int:
     return int(parsed[:-1]) if parsed else 0
 
 
+def positive_int(value, fallback):
+    """Entier strictement positif, sinon `fallback`.
+
+    Ces valeurs viennent de widgets : une liste déroulante sans choix rend un
+    sentinelle, une saisie libre rend du texte, éventuellement vide. Aucun des
+    deux ne doit atteindre les totaux, qui les additionnent."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return number if number > 0 else fallback
+
+
 def apply_profile(entries, profile, base_vcpus, host_cpu, custom=None):
     """Applique le profil de ressources aux entrées choisies.
 
@@ -74,9 +87,9 @@ def apply_profile(entries, profile, base_vcpus, host_cpu, custom=None):
     for e in entries:
         if profile == "custom":
             cus = custom or {}
-            ram = cus.get("ram") or e["ram"]
-            disk = cus.get("disk") or e["disk"]
-            vcpus = cus.get("vcpus") or base_vcpus
+            ram = positive_int(cus.get("ram"), e["ram"])
+            disk = parse_disk(cus.get("disk")) or e["disk"]
+            vcpus = positive_int(cus.get("vcpus"), base_vcpus)
         else:
             mult = int(profile)
             ram = e["ram"] * mult
@@ -212,6 +225,12 @@ def run_deploy_form(ctx, run_app: bool = True):
         SelectionList,
         Static,
     )
+
+    # Textual 8 a ramené Select.BLANK à un alias déprécié valant False ; le
+    # sentinelle « rien de choisi » est Select.NULL. Comparer à BLANK ne
+    # filtrait donc plus rien, et NoSelection — dépourvu de __bool__, donc
+    # tenu pour vrai — passait pour une valeur jusque dans les totaux.
+    SELECT_NULL = getattr(Select, "NULL", Select.BLANK)
 
     catalog = ctx["catalog"]
     arches = ctx["arches"]
@@ -403,7 +422,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     )
                     yield Select(
                         [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
-                        value=0 if profiles else Select.BLANK,
+                        value=0 if profiles else SELECT_NULL,
                         allow_blank=not profiles,
                         id="f_profile_install",
                     )
@@ -580,7 +599,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             mapping = {"f_vcpus": "vcpus", "f_ram": "ram", "f_disk": "disk"}
             field = mapping.get(event.select.id)
             if field:
-                if event.value is not Select.BLANK:
+                if event.value is not SELECT_NULL:
                     self.custom[field] = event.value
                 self._recompute()
 
