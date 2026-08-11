@@ -2035,6 +2035,14 @@ TRANSLATIONS = {
         "fr": "Graphique (serveur + bureau GNOME)",
         "en": "Graphical (server + GNOME desktop)",
     },
+    "Graphical (server + desktop):": {
+        "fr": "Graphique (serveur + bureau) :",
+        "en": "Graphical (server + desktop):",
+    },
+    "Installing the desktop (long):": {
+        "fr": "Installation du bureau (long) :",
+        "en": "Installing the desktop (long):",
+    },
     "Choice (number, blank = server): ": {
         "fr": "Choix (numero, vide = serveur) : ",
         "en": "Choice (number, blank = server): ",

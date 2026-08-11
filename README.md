@@ -46,7 +46,7 @@ Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 # Supported platforms
 
-- **Linux** : Ubuntu 20.04, 22.04, 24.04, 25.04; Debian 12; Arch Linux
+- **Linux** : Ubuntu 24.04, 25.10, 26.04; Debian 12; AlmaLinux 9+; Rocky Linux 9+; Arch Linux
 - **macOS** : via pyenv
 - **Windows** : via WSL or Docker
 - **Mainframe** : 390x architecture
@@ -139,7 +139,7 @@ cd ERPLibre
 ```
 
 
-Support Ubuntu 20.04, 22.04, 24.04, 25.04 and OSX.
+Support Ubuntu 24.04, 25.10, 26.04, AlmaLinux 9+, Rocky Linux 9+ and OSX.
 
 
 ```bash

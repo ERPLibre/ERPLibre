@@ -58,8 +58,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
-  Arch) on amd64, arm64 and s390x, with a menu to list, test, resize, delete
-  and clean up
+  AlmaLinux, Rocky Linux, Arch) on amd64, arm64 and s390x, with a menu to list,
+  test, resize, delete and clean up
+- Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the
+  Linux Mint desktop), with remote access through xrdp — TigerVNC on Arch
 - Textual interfaces: install dashboard, VM deployment form, migration resume
   screen; Textual is installed on demand
 - Navigation telemetry for TODO, as a tree, a kanban or a list
@@ -109,8 +111,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
-  Debian, Fedora, Arch) en amd64, arm64 et s390x, avec un menu pour lister,
-  tester, redimensionner, supprimer et nettoyer
+  Debian, Fedora, AlmaLinux, Rocky Linux, Arch) en amd64, arm64 et s390x, avec
+  un menu pour lister, tester, redimensionner, supprimer et nettoyer
+- VM graphiques : un choix serveur / bureau proposant GNOME ou Cinnamon (le
+  bureau de Linux Mint), avec accès distant par xrdp — TigerVNC sur Arch
 - Interfaces Textual : tableau de bord d'installation, formulaire de
   déploiement de VM, écran de reprise de migration ; Textual s'installe à la
   demande
@@ -142,6 +146,22 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Entrée de FAQ sur wkhtmltopdf pour les distributions récentes
 - brin_advisor et brin_cluster : recommander et appliquer le bon index
   PostgreSQL pour un modèle Odoo
+
+<!-- [en] -->
+## Removed
+<!-- [fr] -->
+## Retiré
+<!-- [en] -->
+
+- Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf
+  12.2, whose build requires C++20, while focal ships GCC 9 and publishes no
+  `g++-10` for s390x
+
+<!-- [fr] -->
+
+- Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf
+  réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9
+  et ne publie pas de `g++-10` pour s390x
 
 <!-- [en] -->
 ## Changed

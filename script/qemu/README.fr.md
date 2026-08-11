@@ -92,17 +92,25 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
-Versions Ubuntu supportées : `20.04`, `22.04`, `24.04` (défaut), `24.10`,
-`25.04`, `25.10`. Fournissez un chemin d'image en argument positionnel pour
-surcharger l'emplacement de téléchargement automatique.
+Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 
-Sur **s390x**, les `20.04` et `22.04` ne sont **pas supportées** : aucune roue
-PyPI n'existe pour cette architecture, tout se compile donc contre les
-bibliothèques de la distribution, et pikepdf réclame qpdf 12.2, dont la
-compilation exige C++20. Focal livre GCC 9 et ne publie pas de `g++-10` pour
-s390x — il n'y a pas de contournement. Utilisez la `24.04` ou plus récente.
-Les deux restent supportées sur amd64 et arm64, où pip pose des roues
-précompilées.
+| Distro | Versions | amd64 | arm64 | s390x |
+|---|---|:-:|:-:|:-:|
+| ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
+| debian | `11`, `12` (défaut), `13` | ✔ | ✔ | — |
+| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | — |
+| almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
+| rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
+| arch | `latest` | ✔ | — | — |
+
+Fournissez un chemin d'image en argument positionnel pour surcharger
+l'emplacement de téléchargement automatique.
+
+Les Ubuntu `20.04` et `22.04` sont **abandonnées sur toutes les
+architectures** : pikepdf réclame qpdf 12.2, dont la compilation exige C++20,
+et focal livre GCC 9 — elle ne publie même pas de `g++-10` pour s390x. Python
+3.8, node 10, cargo 0.67 et OpenSSL 1.1.1 avaient chacun leur contournement ;
+leur accumulation, non.
 
 ## Après le déploiement
 

@@ -1022,12 +1022,11 @@ class TODO:
     # distro -> (versions affichées, version par défaut). Source de vérité =
     # deploy_qemu.py ; ceci ne sert qu'au sélecteur interactif.
     _QEMU_DISTROS = {
-        "ubuntu": (
-            ["20.04", "22.04", "24.04", "25.10", "26.04"],
-            "24.04",
-        ),
+        "ubuntu": (["24.04", "25.10", "26.04"], "24.04"),
         "debian": (["11", "12", "13"], "12"),
         "fedora": (["41", "42", "43", "44"], "42"),
+        "almalinux": (["9", "10"], "9"),
+        "rocky": (["9", "10"], "10"),
         "arch": (["latest"], "latest"),
     }
 
@@ -1075,8 +1074,14 @@ class TODO:
 
     # Distros publiant des images cloud par architecture (cohérent avec
     # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
-    _QEMU_S390X_DISTROS = ("ubuntu",)
-    _QEMU_ARM64_DISTROS = ("ubuntu", "debian", "fedora")
+    _QEMU_S390X_DISTROS = ("ubuntu", "almalinux", "rocky")
+    _QEMU_ARM64_DISTROS = (
+        "ubuntu",
+        "debian",
+        "fedora",
+        "almalinux",
+        "rocky",
+    )
     # Alias distro pour l'affichage (jeton générique -> nom courant).
     _QEMU_ARCH_ALIAS = {"amd64": "x86_64", "arm64": "aarch64"}
 
@@ -4303,32 +4308,42 @@ class TODO:
             "sudo systemctl enable --now erplibre.service"
         )
 
-    # GNOME et son accès distant, par gestionnaire de paquets. Une seule
-    # source pour la TUI et la CLI. Les noms ont été relevés distribution par
+    # Bureaux disponibles, par gestionnaire de paquets. Une seule source pour
+    # la TUI et la CLI. Les noms ont été relevés distribution par
     # distribution, pas déduits : Arch n'a PAS xrdp dans ses dépôts officiels
     # (AUR seulement) et prend TigerVNC, avec un port et un client différents.
+    #
+    # Côté dnf on installe un ENVIRONNEMENT, pas un groupe : le groupe
+    # « gnome-desktop » d'AlmaLinux apporte gdm et gnome-shell mais PAS
+    # « base-x », donc aucun serveur X — vérifié dans son comps.xml. Les
+    # environnements diffèrent selon la famille (RHEL / Fedora), d'où la
+    # cascade : le premier qui existe gagne.
     _QEMU_DESKTOP = {
-        "apt": {
-            "packages": "gnome-core xrdp dbus-x11",
-            "groups": "",
-            "remote": "xrdp",
-            "port": 3389,
-            "client": "RDP",
+        "gnome": {
+            "label": "GNOME",
+            "apt": "gnome-core dbus-x11",
+            "dnf_env": "graphical-server-environment "
+            "workstation-product-environment gnome-desktop",
+            "pacman": "gnome gdm",
+            "service": "gdm",
         },
-        "dnf": {
-            "packages": "xrdp",
-            "groups": "gnome-desktop",
-            "remote": "xrdp",
-            "port": 3389,
-            "client": "RDP",
+        "cinnamon": {
+            "label": "Cinnamon (Linux Mint)",
+            # Le bureau de Linux Mint, depuis les dépôts de la distribution :
+            # Ubuntu 24.04 livre Cinnamon 6.0.4, la 25.10 la 6.4.12. Le dépôt
+            # de Mint lui-même n'est pas utilisé — il est en HTTP nu et ne
+            # publie que i386/amd64, ce qui exclurait arm64 et s390x.
+            "apt": "cinnamon-desktop-environment dbus-x11",
+            "dnf_env": "cinnamon-desktop",
+            "pacman": "cinnamon lightdm lightdm-gtk-greeter",
+            "service": "lightdm",
         },
-        "pacman": {
-            "packages": "gdm tigervnc",
-            "groups": "gnome",
-            "remote": "",
-            "port": 5901,
-            "client": "VNC",
-        },
+    }
+    # Accès distant, indépendant du bureau choisi.
+    _QEMU_DESKTOP_REMOTE = {
+        "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+        "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+        "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
     }
     # Place que prend un bureau complet, annoncée dans le plan : sur une image
     # cloud de 40 G, l'oublier remplit le disque en pleine installation.
@@ -4393,36 +4408,43 @@ class TODO:
             ">/dev/null 2>&1 || true; "
         )
 
-    def _qemu_desktop_remote_cmd(self):
-        """Bloc shell installant GNOME + son accès distant, quelle que soit la
-        distribution. Même aiguillage que l'installation ERPLibre, et même
-        traitement du verrou apt : cette étape passe par la commande distante
-        et non par cloud-init, où ses 1 à 2 Go allongeraient un démarrage déjà
-        long sans laisser la moindre trace dans le suivi."""
-        apt = self._QEMU_DESKTOP["apt"]
-        dnf = self._QEMU_DESKTOP["dnf"]
-        pac = self._QEMU_DESKTOP["pacman"]
+    def _qemu_desktop_remote_cmd(self, flavour="gnome"):
+        """Bloc shell installant le bureau choisi + son accès distant, quelle
+        que soit la distribution. Même aiguillage que l'installation ERPLibre,
+        et même traitement du verrou apt : cette étape passe par la commande
+        distante et non par cloud-init, où ses 1 à 2 Go allongeraient un
+        démarrage déjà long sans laisser la moindre trace dans le suivi."""
+        de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
+        rem = self._QEMU_DESKTOP_REMOTE
+        label = de["label"]
         return (
-            f'echo "== {t("Installing the GNOME desktop (long)")} =="; '
+            f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
             "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
             "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
-            f"{apt['packages']}; "
+            f"{de['apt']} {rem['apt']['packages']}; "
             "elif command -v dnf >/dev/null 2>&1; then "
-            f"sudo dnf -y group install {dnf['groups']}; "
-            f"sudo dnf install -y {dnf['packages']}; "
+            # Cascade d'environnements : le premier qui existe gagne. Un
+            # environnement absent fait rendre 1 à dnf sans rien installer,
+            # d'où le « || » plutôt qu'une détection préalable.
+            "de_ok=0; "
+            f"for e in {de['dnf_env']}; do "
+            'sudo dnf -y group install "$e" && { de_ok=1; break; }; done; '
+            '[ "$de_ok" = 1 ] || echo "Aucun environnement graphique dnf '
+            "trouve pour " + label + '"; '
+            f"sudo dnf install -y {rem['dnf']['packages']}; "
             "elif command -v pacman >/dev/null 2>&1; then "
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
-            f"sudo pacman -S --needed --noconfirm {pac['groups']} "
-            f"{pac['packages']}; "
+            f"sudo pacman -S --needed --noconfirm {de['pacman']} "
+            f"{rem['pacman']['packages']}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
             "sudo systemctl set-default graphical.target || true; "
-            "sudo systemctl enable gdm >/dev/null 2>&1 || true; "
+            f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
             # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
             # par utilisateur et n'a pas de service à activer d'office.
             "if command -v xrdp >/dev/null 2>&1; then "
@@ -4453,7 +4475,7 @@ class TODO:
                 "set -e; "
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod)
-                + self._qemu_desktop_remote_cmd()
+                + self._qemu_desktop_remote_cmd(desktop)
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
@@ -4487,7 +4509,7 @@ class TODO:
             # Le bureau d'abord : il repose sur les dépôts de la distribution,
             # là où l'installation ERPLibre compile longuement. Un échec ici se
             # voit donc tôt plutôt qu'après une heure.
-            + (self._qemu_desktop_remote_cmd() if desktop else "") +
+            + (self._qemu_desktop_remote_cmd(desktop) if desktop else "") +
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -5039,10 +5061,13 @@ class TODO:
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
-        if spec.get("desktop"):
+        flavour = spec.get("desktop")
+        if flavour:
+            label = (self._QEMU_DESKTOP.get(flavour) or {}).get(
+                "label", flavour
+            )
             print(
-                f"  {t('VM type:')} "
-                f"{t('Graphical (server + GNOME desktop)')}"
+                f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
             )
         print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
         cfg = (
@@ -5161,17 +5186,10 @@ class TODO:
         déployable, aussi bien pour la liste granulaire de la CLI que pour la
         liste à cocher du formulaire TUI."""
         flat = []
-        # Le catalogue ne propose que ce qui s'installe. La liste des versions
-        # abandonnées vit dans deploy_qemu.py, qui refuse aussi de les
-        # déployer : une seule source, donc pas d'écran offrant un choix que
-        # la couche du dessous rejettera.
-        supported = getattr(mod, "is_supported", None)
         for d in distros:
             versions_map, default_v = mod.DISTROS[d]
             for v, (_c, _o, ram, disk) in versions_map.items():
                 for a in self._qemu_arches_for(d, arch):
-                    if supported and not supported(d, v, a):
-                        continue
                     flat.append(
                         {
                             "distro": d,
@@ -5371,6 +5389,9 @@ class TODO:
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
+            "desktops": [
+                (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
+            ],
             "defaults": {
                 "install": True,
                 "add_ssh_config": True,
@@ -5641,14 +5662,22 @@ class TODO:
                 print(f"  ⚠ {warn}")
 
     def _qemu_ask_desktop(self):
-        """Serveur, ou serveur plus un bureau GNOME.
+        """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
 
         Serveur par défaut : c'est ce que sert une image cloud, et le bureau
         ajoute une à deux heures d'installation sur une architecture émulée."""
         print(f"\n{t('VM type:')}")
         print(f"  [1] {t('Server (no graphical interface)')} *")
-        print(f"  [2] {t('Graphical (server + GNOME desktop)')}")
-        return input(t("Choice (number, blank = server): ")).strip() == "2"
+        flavours = list(self._QEMU_DESKTOP)
+        for i, key in enumerate(flavours, 2):
+            label = self._QEMU_DESKTOP[key]["label"]
+            print(f"  [{i}] {t('Graphical (server + desktop):')} {label}")
+        sel = input(t("Choice (number, blank = server): ")).strip()
+        try:
+            index = int(sel) - 2
+        except ValueError:
+            return ""
+        return flavours[index] if 0 <= index < len(flavours) else ""
 
     def _qemu_host_timezone(self):
         """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
@@ -5853,7 +5882,7 @@ class TODO:
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
         install_branch = install["branch"] if install else None
-        desktop = bool(spec.get("desktop"))
+        desktop = spec.get("desktop") or ""
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
