@@ -5162,10 +5162,17 @@ class TODO:
         déployable, aussi bien pour la liste granulaire de la CLI que pour la
         liste à cocher du formulaire TUI."""
         flat = []
+        # Le catalogue ne propose que ce qui s'installe. La liste des versions
+        # abandonnées vit dans deploy_qemu.py, qui refuse aussi de les
+        # déployer : une seule source, donc pas d'écran offrant un choix que
+        # la couche du dessous rejettera.
+        supported = getattr(mod, "is_supported", None)
         for d in distros:
             versions_map, default_v = mod.DISTROS[d]
             for v, (_c, _o, ram, disk) in versions_map.items():
                 for a in self._qemu_arches_for(d, arch):
+                    if supported and not supported(d, v, a):
+                        continue
                     flat.append(
                         {
                             "distro": d,

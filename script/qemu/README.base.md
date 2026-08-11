@@ -177,12 +177,27 @@ Supported Ubuntu versions: `20.04`, `22.04`, `24.04` (default), `24.10`,
 `25.04`, `25.10`. Provide an explicit image path as a positional argument to
 override the automatic download location.
 
+On **s390x**, `20.04` and `22.04` are **not supported**: no PyPI wheel exists
+for that architecture, so everything is built against the distribution's
+libraries, and pikepdf needs qpdf 12.2, whose build requires C++20. Focal
+ships GCC 9 and publishes no `g++-10` for s390x — there is no way around it.
+Use `24.04` or later. Both are still supported on amd64 and arm64, where pip
+installs prebuilt wheels.
+
 ## After deployment
 
 <!-- [fr] -->
 Versions Ubuntu supportées : `20.04`, `22.04`, `24.04` (défaut), `24.10`,
 `25.04`, `25.10`. Fournissez un chemin d'image en argument positionnel pour
 surcharger l'emplacement de téléchargement automatique.
+
+Sur **s390x**, les `20.04` et `22.04` ne sont **pas supportées** : aucune roue
+PyPI n'existe pour cette architecture, tout se compile donc contre les
+bibliothèques de la distribution, et pikepdf réclame qpdf 12.2, dont la
+compilation exige C++20. Focal livre GCC 9 et ne publie pas de `g++-10` pour
+s390x — il n'y a pas de contournement. Utilisez la `24.04` ou plus récente.
+Les deux restent supportées sur amd64 et arm64, où pip pose des roues
+précompilées.
 
 ## Après le déploiement
 

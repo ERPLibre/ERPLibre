@@ -128,6 +128,31 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 #   aarch64 sur geo.mirror.pkgbuild.com).
 S390X_DISTROS: tuple[str, ...] = ("ubuntu",)
 ARM64_DISTROS: tuple[str, ...] = ("ubuntu", "debian", "fedora")
+
+# Versions ABANDONNÉES sur une architecture donnée : publier une image cloud ne
+# suffit pas, encore faut-il que la chaîne d'outils permette d'installer
+# ERPLibre. Sur s390x, aucune roue PyPI n'existe : tout se compile contre les
+# bibliothèques de la distribution, et deux versions n'en ont pas d'assez
+# récentes.
+#
+#   20.04 : pikepdf réclame qpdf >= 12.2, dont la compilation exige C++20 —
+#           or focal livre GCC 9 et NE PUBLIE PAS g++-10 pour s390x. Sans
+#           issue. S'y ajoutaient Python 3.8, node 10, cargo 0.67 et
+#           OpenSSL 1.1.1, tous contournés, mais celui-là ne l'est pas.
+#   22.04 : même mur qpdf, franchissable en théorie (GCC 11), abandonné avec
+#           la 20.04 pour ne pas maintenir un chemin de plus.
+#
+# amd64 et arm64 ne sont PAS concernés : pip y pose des roues précompilées.
+UNSUPPORTED_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    "s390x": {"ubuntu": ("20.04", "22.04")},
+}
+
+
+def is_supported(distro: str, version: str, arch: str) -> bool:
+    """Faux si ce triplet est explicitement abandonné."""
+    return version not in UNSUPPORTED_VERSIONS.get(arch, {}).get(distro, ())
+
+
 # arch générique -> distros la publiant (pour valider --arch tôt).
 ARCH_DISTRO_SUPPORT: dict[str, tuple[str, ...]] = {
     "s390x": S390X_DISTROS,
@@ -2107,6 +2132,19 @@ def main() -> None:
         sys.exit(
             f"Architecture {args.arch} indisponible pour {args.distro!r} : "
             f"images cloud publiées seulement pour {', '.join(supported)}."
+        )
+    # L'image cloud existe, mais la chaîne d'outils de cette version ne permet
+    # pas d'installer ERPLibre sur cette architecture. Mieux vaut le dire ici
+    # qu'après une heure de compilation émulée.
+    if not is_supported(args.distro, args.version, args.arch):
+        dropped = UNSUPPORTED_VERSIONS[args.arch][args.distro]
+        keep = [v for v in versions if v not in dropped]
+        sys.exit(
+            f"{args.distro} {args.version} n'est plus supporté sur "
+            f"{args.arch} : sa chaîne d'outils est trop ancienne pour "
+            f"ERPLibre (GCC 9 sur 20.04 ne compile pas le qpdf que réclame "
+            f"pikepdf, et aucun g++ plus récent n'y est publié).\n"
+            f"  Versions supportées sur {args.arch} : {', '.join(keep)}."
         )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:
