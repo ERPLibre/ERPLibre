@@ -2023,6 +2023,14 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = rouvrir) : ",
         "en": "Choice (number, blank = reopen): ",
     },
+    "One run per install": {
+        "fr": "une execution par installation",
+        "en": "One run per install",
+    },
+    "limit to host cores": {
+        "fr": "limiter au nombre de coeurs de l'hote",
+        "en": "limit to host cores",
+    },
     "free value…": {
         "fr": "valeur libre…",
         "en": "free value…",
