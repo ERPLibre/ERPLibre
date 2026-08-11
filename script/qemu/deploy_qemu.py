@@ -146,7 +146,27 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 # - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
 # - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
-S390X_DISTROS: tuple[str, ...] = ("ubuntu", "almalinux", "rocky")
+S390X_DISTROS: tuple[str, ...] = ("ubuntu", "almalinux", "rocky", "fedora")
+
+# Une distro peut ne publier qu'une PARTIE de ses versions sur une
+# architecture. Déclaration POSITIVE : hors de cette table, toutes les versions
+# du catalogue sont réputées disponibles.
+#
+# Fedora ne construit s390x que pour la version courante, et sur une
+# arborescence à part (« fedora-secondary ») : la 41 et la 42 y sont retirées
+# (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
+# miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
+ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    "s390x": {"fedora": ("43",)},
+}
+
+
+def arch_versions(distro: str, arch: str, versions) -> list[str]:
+    """Versions de `distro` réellement publiées pour `arch`."""
+    only = ARCH_ONLY_VERSIONS.get(arch, {}).get(distro)
+    return [v for v in versions if only is None or v in only]
+
+
 ARM64_DISTROS: tuple[str, ...] = (
     "ubuntu",
     "debian",
@@ -197,6 +217,15 @@ FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 # redirecteur envoie sur un miroir incomplet (fréquent en déploiement
 # PARALLÈLE : chaque requête peut tomber sur un miroir différent/désynchronisé).
 FEDORA_BASE_MASTER = "https://dl.fedoraproject.org/pub/fedora/linux/releases"
+# s390x est une architecture SECONDAIRE chez Fedora : ses images ne sont PAS
+# sous /pub/fedora/linux/ mais sous /pub/fedora-secondary/, et seule la
+# version courante y est construite.
+FEDORA_SECONDARY = (
+    "https://download.fedoraproject.org/pub/fedora-secondary/releases"
+)
+FEDORA_SECONDARY_MASTER = (
+    "https://dl.fedoraproject.org/pub/fedora-secondary/releases"
+)
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
@@ -275,12 +304,18 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     pattern = re.compile(
         rf"Fedora-Cloud-Base-Generic-{version}-[0-9.]+\.{a}\.qcow2"
     )
+    # Architecture secondaire (s390x, ppc64le) : autre arborescence.
+    primary, master = (
+        (FEDORA_SECONDARY, FEDORA_SECONDARY_MASTER)
+        if arch == "s390x"
+        else (FEDORA_BASE, FEDORA_BASE_MASTER)
+    )
     if dry_run:
-        index = f"{FEDORA_BASE}/{version}/Cloud/{a}/images/"
+        index = f"{primary}/{version}/Cloud/{a}/images/"
         return index + f"Fedora-Cloud-Base-Generic-{version}-<build>.{a}.qcow2"
     # On essaie le redirecteur (2 fois : chaque requête peut viser un miroir
     # différent) puis le serveur maître (toujours complet).
-    bases = [FEDORA_BASE, FEDORA_BASE, FEDORA_BASE_MASTER]
+    bases = [primary, primary, master]
     last_err = ""
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
@@ -2172,6 +2207,14 @@ def main() -> None:
         sys.exit(
             f"Architecture {args.arch} indisponible pour {args.distro!r} : "
             f"images cloud publiées seulement pour {', '.join(supported)}."
+        )
+    # Toutes les versions d'une distro ne sont pas publiées sur toutes les
+    # architectures : le dire ici plutôt que d'échouer au téléchargement.
+    ok_versions = arch_versions(args.distro, args.arch, versions)
+    if args.version not in ok_versions:
+        sys.exit(
+            f"{args.distro} {args.version} n'est pas publié en {args.arch}.\n"
+            f"  Versions disponibles : {', '.join(ok_versions) or 'aucune'}."
         )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:

@@ -98,10 +98,13 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 |---|---|:-:|:-:|:-:|
 | ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
 | debian | `11`, `12` (défaut), `13` | ✔ | ✔ | — |
-| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | — |
+| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+
+Fedora ne construit s390x que pour la version courante, et sur une
+arborescence à part (`fedora-secondary`) — d'où la version unique.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.
