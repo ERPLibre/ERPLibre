@@ -78,7 +78,26 @@ git+https://github.com/prauscher/pysaml2.git@replace-pyopenssl
 
 pandas==2.3.3
 pillow==12.2.0
-s3fs==2026.4.0
+# OCA_storage amène « fsspec[s3] » sans borne : l'extra s3 de fsspec 2026.7.0
+# exige s3fs>=2026.6.0, incompatible avec l'épingle 2026.4.0. On aligne s3fs sur
+# fsspec ; aiobotocore 3.1.2 reste dans la plage exigée (>=2.19.0,<4.0.0), donc
+# le trio botocore/boto3 n'a pas à bouger.
+s3fs==2026.7.0
 aiobotocore==3.1.2
 botocore==1.42.42
 boto3==1.42.42
+
+# factur-x >= 4.0 dépend de saxonche, qui encapsule SaxonC. Saxonica ne publie
+# de roue que pour x86_64, aarch64, macOS et Windows — aucune pour s390x, et
+# aucune distribution source : rien à installer, rien à compiler. La cause est
+# en amont, GraalVM Native Image ne ciblant pas s390x.
+# La 3.x n'exige que lxml et pypdf. On y retombe là où saxonche n'existe pas,
+# au prix de la validation Schematron.
+factur-x>=4.2 ; platform_machine != 's390x'
+factur-x<4 ; platform_machine == 's390x'
+
+# lxml-html-clean 0.4.5 (2026-05-20) exige lxml>=6.1.1, alors qu'Odoo 18 épingle
+# lxml==5.2.1 : le solveur poetry n'a plus de solution. Les versions jusqu'à
+# 0.4.4 n'imposent aucune borne sur lxml — vérifié sur PyPI, release par
+# release. À lever le jour où lxml montera.
+lxml-html-clean<0.4.5
