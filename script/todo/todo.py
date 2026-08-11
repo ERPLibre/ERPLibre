@@ -5581,17 +5581,28 @@ class TODO:
             print(t("Nothing to create - every VM already exists."))
             return None
 
-        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
-        # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
-        default_par = min(n_jobs, os.cpu_count() or 4) or 1
-        raw = input(
-            f"{t('Parallel deployments (default:')} {default_par}, "
-            f"{n_jobs} {t('VMs')}): "
-        ).strip()
-        try:
-            parallelism = max(1, int(raw)) if raw else default_par
-        except ValueError:
-            parallelism = default_par
+        # Nombre de déploiements en parallèle. Par défaut UNE EXÉCUTION PAR
+        # INSTALLATION : le plafond du nombre de CPU ne s'applique pas, c'est
+        # le nombre de VM qui fait foi. « n » retombe sur ce plafond, et un
+        # chiffre vaut pour lui-même — même règle que les autres invites.
+        default_par = n_jobs or 1
+        cpu_par = min(n_jobs, os.cpu_count() or 4) or 1
+        print(f"  [n] {t('limit to host cores')} ({cpu_par})")
+        raw = (
+            input(
+                f"{t('Parallel deployments (default:')} {default_par}, "
+                f"{n_jobs} {t('VMs')}): "
+            )
+            .strip()
+            .lower()
+        )
+        if raw == "n":
+            parallelism = cpu_par
+        else:
+            try:
+                parallelism = max(1, int(raw)) if raw else default_par
+            except ValueError:
+                parallelism = default_par
 
         spec = {
             "res_label": res_label,

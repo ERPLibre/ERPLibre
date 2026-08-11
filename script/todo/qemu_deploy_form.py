@@ -491,10 +491,20 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_sshcfg",
                     )
                     yield Static(t("Parallelism"), classes="grouptitle")
+                    # Cochée, la case donne une exécution PAR installation :
+                    # le plafond du nombre de CPU ne s'applique plus. Décochée,
+                    # le nombre reprend la main, et son défaut suit l'hôte —
+                    # la CLI comptait déjà les CPU, la TUI restait figée à 4.
+                    yield Checkbox(
+                        t("One run per install"),
+                        value=defaults.get("par_per_install", True),
+                        id="f_par_all",
+                    )
                     yield Select(
                         [(str(n), n) for n in range(1, host_cpu + 1)],
-                        value=min(4, host_cpu),
+                        value=host_cpu,
                         allow_blank=False,
+                        disabled=True,
                         id="f_par",
                     )
                 with Vertical(id="right"):
@@ -674,6 +684,8 @@ def run_deploy_form(ctx, run_app: bool = True):
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
+            elif event.checkbox.id == "f_par_all":
+                self.query_one("#f_par", Select).disabled = event.value
 
         # -- actions ---------------------------------------------------- #
         def action_select_all(self) -> None:
@@ -732,7 +744,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                 or "",
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
-                "parallelism": self.query_one("#f_par", Select).value,
+                # Une exécution par installation : le nombre de VM retenues
+                # fait foi. Le déploiement le borne ensuite à ce même nombre,
+                # donc une valeur haute ne crée jamais de travailleur inutile.
+                "parallelism": (
+                    max(1, len(self.vms))
+                    if self.query_one("#f_par_all", Checkbox).value
+                    else self.query_one("#f_par", Select).value
+                ),
             }
 
         def action_preview(self) -> None:
