@@ -101,6 +101,10 @@ if [ "$(uname -m)" = "s390x" ]; then
     done
     echo "$1"
   }
+  # Vrai si dpkg considère le paquet installé et configuré.
+  apt_is_installed() {
+    [ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" = "installed" ]
+  }
   # Le lot d'abord, pour la vitesse. S'il échoue, on reprend paquet par paquet
   # afin de NOMMER le fautif : sinon un seul nom obsolète masque les autres et
   # le message ne dit pas lequel corriger.
@@ -108,10 +112,25 @@ if [ "$(uname -m)" = "s390x" ]; then
     if ${APT_GET} install "$@" -y; then
       return 0
     fi
-    echo "Lot apt en echec, reprise paquet par paquet pour identifier le fautif..."
+    # Un dépaquetage raté laisse dpkg à moitié configuré, et TOUT apt suivant
+    # rend « Unmet dependencies » — y compris pour des paquets déjà installés.
+    # Sans cette réparation, la boucle ci-dessous accusait les quinze paquets
+    # à cause d'un seul, et l'installation s'arrêtait sur un paquet présent.
+    echo "Lot apt en echec : tentative de reparation dpkg..."
+    sudo dpkg --configure -a || true
+    ${APT_GET} --fix-broken install -y || true
+    if ${APT_GET} install "$@" -y; then
+      echo "Reparation reussie."
+      return 0
+    fi
+    echo "Reprise paquet par paquet pour identifier le fautif..."
+    df -h / | sed 's/^/  disque: /'
     APT_FAILED=""
     for one in "$@"; do
-      ${APT_GET} install "${one}" -y || APT_FAILED="${APT_FAILED} ${one}"
+      ${APT_GET} install "${one}" -y && continue
+      # L'échec peut n'être qu'un contrecoup de l'état global : on ne l'impute
+      # au paquet que si dpkg confirme qu'il n'est PAS installé.
+      apt_is_installed "${one}" || APT_FAILED="${APT_FAILED} ${one}"
     done
     [ -z "${APT_FAILED}" ]
   }
