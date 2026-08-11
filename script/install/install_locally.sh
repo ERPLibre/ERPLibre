@@ -81,10 +81,39 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         exit 1
     fi
 
+    # s390x UNIQUEMENT — la borne ci-dessous ne doit toucher aucune autre
+    # architecture, et le test d'architecture vient donc en premier.
+    #
+    # Poetry tire keyring, donc SecretStorage, donc cryptography, dont la
+    # DERNIÈRE version : rien ne la borne à cette étape. Partout ailleurs c'est
+    # sans conséquence, pip y pose une roue manylinux qui embarque son propre
+    # OpenSSL en statique — vérifié, la 50.0.0 en publie pour x86_64, aarch64,
+    # ppc64le et armv7l. s390x est la SEULE sans roue : elle compile, contre
+    # l'OpenSSL du système.
+    #
+    # Or cryptography 47 a retiré le support d'OpenSSL 1.1.1 — vérifié version
+    # par version, les gardes « CRYPTOGRAPHY_OPENSSL_300_OR_GREATER » de
+    # fips.rs disparaissent entre la 46 et la 47 — et Ubuntu 20.04 livre
+    # 1.1.1f. D'où « EVP_default_properties_is_fips_enabled not found in ffi ».
+    # Sur s390x en 22.04 et au-delà, OpenSSL est en 3.x : aucune borne.
+    PIP_CONSTRAINT_CRYPTO=""
+    if [[ "$(uname -m)" == "s390x" ]]; then
+        OPENSSL_VER="$(pkg-config --modversion openssl 2>/dev/null \
+            || openssl version 2>/dev/null | awk '{print $2}')"
+        case "${OPENSSL_VER}" in
+            3.* | 4.*) ;;
+            "") echo "s390x : version d'OpenSSL indeterminee, aucune borne." ;;
+            *)
+                echo "s390x, OpenSSL ${OPENSSL_VER} < 3 : cryptography borne a <47 pour poetry."
+                PIP_CONSTRAINT_CRYPTO="cryptography<47"
+                ;;
+        esac
+    fi
+
     # Delete artifacts created by pip, cause error in next "poetry install"
     if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
         echo -e "Install Poetry ${POETRY_ODOO_PATH}"
-        pip install poetry==${EL_POETRY_VERSION}
+        pip install ${PIP_CONSTRAINT_CRYPTO} poetry==${EL_POETRY_VERSION}
         poetry --version
         # Fix broken poetry by installing ignored dependence
         #    poetry lock --no-update
