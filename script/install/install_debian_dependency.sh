@@ -64,6 +64,23 @@ if [ "$(uname -m)" = "s390x" ]; then
   # ne trouve pas non plus de roue ninja pour cette architecture — les deux
   # doivent venir de la distribution.
   sudo apt install libtbb-dev cmake ninja-build -y
+  # pymupdf non plus n'a pas de roue s390x : il compile MuPDF, dont le
+  # générateur de liaisons charge « libclang.so » par son nom nu, via ctypes.
+  # La roue PyPI libclang, qui embarque cette bibliothèque, n'existe pas ici.
+  # Le paquet de la distribution la fournit bien dans le chemin de l'éditeur de
+  # liens, mais sous un nom versionné : il ne manque que le lien non versionné.
+  sudo apt install libclang-dev -y
+  CLANG_LIB_DIR="/usr/lib/s390x-linux-gnu"
+  if [ ! -e "${CLANG_LIB_DIR}/libclang.so" ]; then
+    CLANG_SO="$(ls -1 ${CLANG_LIB_DIR}/libclang-[0-9]*.so 2>/dev/null | sort -V | tail -1)"
+    if [ -n "${CLANG_SO}" ]; then
+      sudo ln -s "${CLANG_SO}" "${CLANG_LIB_DIR}/libclang.so"
+      sudo ldconfig
+      echo "libclang.so -> ${CLANG_SO}"
+    else
+      echo "Attention : libclang introuvable, la compilation de pymupdf va echouer."
+    fi
+  fi
 fi
 
 #--------------------------------------------------
