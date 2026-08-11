@@ -2023,6 +2023,30 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = rouvrir) : ",
         "en": "Choice (number, blank = reopen): ",
     },
+    "VM type:": {
+        "fr": "Type de VM :",
+        "en": "VM type:",
+    },
+    "Server (no graphical interface)": {
+        "fr": "Serveur (sans interface graphique)",
+        "en": "Server (no graphical interface)",
+    },
+    "Graphical (server + GNOME desktop)": {
+        "fr": "Graphique (serveur + bureau GNOME)",
+        "en": "Graphical (server + GNOME desktop)",
+    },
+    "Choice (number, blank = server): ": {
+        "fr": "Choix (numero, vide = serveur) : ",
+        "en": "Choice (number, blank = server): ",
+    },
+    "Installing the GNOME desktop (long)": {
+        "fr": "Installation du bureau GNOME (long)",
+        "en": "Installing the GNOME desktop (long)",
+    },
+    "Remote desktop:": {
+        "fr": "Bureau distant :",
+        "en": "Remote desktop:",
+    },
     "One run per install": {
         "fr": "une execution par installation",
         "en": "One run per install",

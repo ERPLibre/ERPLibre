@@ -177,6 +177,7 @@ def build_spec(vms, domains, form):
         "existing": [vm["name"] for vm in vms if vm["name"] in known],
         "ssh_key": form["ssh_key"],
         "timezone": form.get("timezone", ""),
+        "desktop": form.get("desktop", False),
         "install": form["install"],
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
@@ -241,6 +242,7 @@ def run_deploy_form(ctx, run_app: bool = True):
     free_ram = ctx.get("free_ram") or 0
     base_vcpus = ctx.get("base_vcpus") or 2
     extra_disk = ctx.get("extra_disk_gb") or 0
+    desktop_disk = ctx.get("desktop_disk_gb") or 0
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -443,6 +445,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                         classes="freeval",
                         disabled=True,
                     )
+                    # Serveur par défaut : c'est ce que sert une image cloud,
+                    # et GNOME ajoute une à deux heures sur une architecture
+                    # émulée. Le plan annonce le surcoût disque.
+                    yield Static(t("VM type:"), classes="grouptitle")
+                    with RadioSet(id="f_type"):
+                        yield RadioButton(
+                            t("Server (no graphical interface)"),
+                            value=not defaults.get("desktop", False),
+                        )
+                        yield RadioButton(
+                            t("Graphical (server + GNOME desktop)"),
+                            value=defaults.get("desktop", False),
+                        )
                     yield Static("ERPLibre", classes="grouptitle")
                     yield Checkbox(
                         t("Install ERPLibre"),
@@ -574,16 +589,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.custom,
                 self.overrides,
             )
-            self.rows = plan_rows(
-                self.vms,
-                domains,
-                (
-                    extra_disk
-                    if self.query_one("#f_install", Checkbox).value
-                    else 0
-                ),
-            )
+            # ERPLibre et GNOME pèsent chacun sur le disque, et se cumulent.
+            grow = 0
+            if self.query_one("#f_install", Checkbox).value:
+                grow += extra_disk
+            if self._desktop():
+                grow += desktop_disk
+            self.rows = plan_rows(self.vms, domains, grow)
             self._render_plan()
+
+        def _desktop(self):
+            return self.query_one("#f_type", RadioSet).pressed_index == 1
 
         def _render_plan(self):
             table = self.query_one("#plan", DataTable)
@@ -631,6 +647,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             if event.radio_set.id == "f_arch":
                 self.arch = arches[event.radio_set.pressed_index]
                 self._reload_catalog()
+            elif event.radio_set.id == "f_type":
+                self._recompute()  # le disque annonce inclut GNOME
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
@@ -742,6 +760,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "timezone": self.query_one("#f_tz", Input).value.strip()
                 or ctx.get("timezone")
                 or "",
+                "desktop": self._desktop(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 # Une exécution par installation : le nombre de VM retenues

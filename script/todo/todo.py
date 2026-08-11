@@ -4303,11 +4303,158 @@ class TODO:
             "sudo systemctl enable --now erplibre.service"
         )
 
-    def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None, prod=False):
-        """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
-        puis clone + `final_cmd`). `final_cmd` par défaut : install_os +
-        install_odoo_18. `prod` : installe dans /opt/erplibre (au lieu de
-        ~/git/erplibre) + service SELinux confiné."""
+    # GNOME et son accès distant, par gestionnaire de paquets. Une seule
+    # source pour la TUI et la CLI. Les noms ont été relevés distribution par
+    # distribution, pas déduits : Arch n'a PAS xrdp dans ses dépôts officiels
+    # (AUR seulement) et prend TigerVNC, avec un port et un client différents.
+    _QEMU_DESKTOP = {
+        "apt": {
+            "packages": "gnome-core xrdp dbus-x11",
+            "groups": "",
+            "remote": "xrdp",
+            "port": 3389,
+            "client": "RDP",
+        },
+        "dnf": {
+            "packages": "xrdp",
+            "groups": "gnome-desktop",
+            "remote": "xrdp",
+            "port": 3389,
+            "client": "RDP",
+        },
+        "pacman": {
+            "packages": "gdm tigervnc",
+            "groups": "gnome",
+            "remote": "",
+            "port": 5901,
+            "client": "VNC",
+        },
+    }
+    # Place que prend un bureau complet, annoncée dans le plan : sur une image
+    # cloud de 40 G, l'oublier remplit le disque en pleine installation.
+    QEMU_DESKTOP_EXTRA_DISK_GB = 6
+
+    @staticmethod
+    def _qemu_cloud_init_wait():
+        """Attend la fin de cloud-init, qui tient le verrou apt/dnf/pacman
+        pendant sa phase « paquets ».
+
+        L'attente dure jusqu'à 15 min et n'écrivait RIEN : sur une architecture
+        émulée, le log restait muet un quart d'heure juste après avoir annoncé
+        le début de l'installation, ce qui se lit comme un blocage. Deux lignes
+        l'encadrent, et le « status » final dit si elle a abouti ou expiré."""
+        return (
+            "if command -v cloud-init >/dev/null 2>&1; then "
+            'echo "== '
+            + t("Waiting for cloud-init to finish (up to 15 min)")
+            + ' =="; '
+            "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
+            "|| true; "
+            + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
+            '| head -1)"; '
+            "fi; "
+        )
+
+    @staticmethod
+    def _qemu_no_auto_upgrade(prod):
+        """Coupe les mises à jour automatiques sur une VM de DÉVELOPPEMENT.
+
+        Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
+        pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
+        (« received fast shutdown request » x3) -> OpenUpgrade a perdu sa
+        connexion et la base intermédiaire est restée à moitié migrée. Effet
+        secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
+        apt pendant l'installation. En PROD on ne touche à rien : les
+        correctifs de sécurité automatiques doivent rester actifs."""
+        if prod:
+            return ""
+        return (
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo systemctl disable --now unattended-upgrades.service "
+            "apt-daily.timer apt-daily-upgrade.timer "
+            ">/dev/null 2>&1 || true; "
+            'printf \'APT::Periodic::Update-Package-Lists "0";\\n'
+            'APT::Periodic::Unattended-Upgrade "0";\\n\' '
+            "| sudo tee /etc/apt/apt.conf.d/99-erplibre-no-auto-upgrade "
+            ">/dev/null; "
+            "fi; "
+            "if command -v dnf >/dev/null 2>&1; then "
+            "sudo systemctl disable --now dnf-automatic.timer "
+            "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
+            "fi; "
+            # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
+            # « systemd-analyze critical-chain » sur une VM s390x —
+            # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
+            # n'installe de snap : c'est du temps payé pour rien, à chaque
+            # démarrage. On désactive plutôt que désinstaller, pour rester
+            # réversible d'un « systemctl enable ».
+            "sudo systemctl disable --now snapd.seeded.service "
+            "snapd.service snapd.socket snapd.apparmor.service "
+            ">/dev/null 2>&1 || true; "
+        )
+
+    def _qemu_desktop_remote_cmd(self):
+        """Bloc shell installant GNOME + son accès distant, quelle que soit la
+        distribution. Même aiguillage que l'installation ERPLibre, et même
+        traitement du verrou apt : cette étape passe par la commande distante
+        et non par cloud-init, où ses 1 à 2 Go allongeraient un démarrage déjà
+        long sans laisser la moindre trace dans le suivi."""
+        apt = self._QEMU_DESKTOP["apt"]
+        dnf = self._QEMU_DESKTOP["dnf"]
+        pac = self._QEMU_DESKTOP["pacman"]
+        return (
+            f'echo "== {t("Installing the GNOME desktop (long)")} =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
+            "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
+            "sudo DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o DPkg::Lock::Timeout=600 install -y "
+            f"{apt['packages']}; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            f"sudo dnf -y group install {dnf['groups']}; "
+            f"sudo dnf install -y {dnf['packages']}; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            f"sudo pacman -S --needed --noconfirm {pac['groups']} "
+            f"{pac['packages']}; "
+            "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
+            # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
+            # images cloud démarrent en multi-user.target.
+            "sudo systemctl set-default graphical.target || true; "
+            "sudo systemctl enable gdm >/dev/null 2>&1 || true; "
+            # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
+            # par utilisateur et n'a pas de service à activer d'office.
+            "if command -v xrdp >/dev/null 2>&1; then "
+            "sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
+            f'echo "   {t("Remote desktop:")} RDP 3389"; '
+            "elif command -v vncserver >/dev/null 2>&1; then "
+            f'echo "   {t("Remote desktop:")} VNC 5901 '
+            '(vncpasswd puis vncserver :1)"; fi; '
+        )
+
+    def _qemu_erplibre_remote_cmd(
+        self, branch, final_cmd=None, prod=False, desktop=False
+    ):
+        """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
+        — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
+        voulue en bureau seul.
+
+        `final_cmd` par défaut : install_os + install_odoo_18. `prod` :
+        installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
+        SELinux confiné. `desktop` : ajoute GNOME et son accès distant."""
+        if not branch:
+            # Bureau seul : ni clone ni make, mais on garde le prologue —
+            # attente de cloud-init et coupure des mises à jour automatiques,
+            # sans quoi le verrou apt ferait échouer l'installation du bureau.
+            if not desktop:
+                return "true"
+            return (
+                "set -e; "
+                + self._qemu_cloud_init_wait()
+                + self._qemu_no_auto_upgrade(prod)
+                + self._qemu_desktop_remote_cmd()
+            )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
@@ -4331,56 +4478,16 @@ class TODO:
         # secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
-        no_auto_upgrade = ""
-        if not prod:
-            no_auto_upgrade = (
-                "if command -v apt-get >/dev/null 2>&1; then "
-                "sudo systemctl disable --now unattended-upgrades.service "
-                "apt-daily.timer apt-daily-upgrade.timer "
-                ">/dev/null 2>&1 || true; "
-                'printf \'APT::Periodic::Update-Package-Lists "0";\\n'
-                'APT::Periodic::Unattended-Upgrade "0";\\n\' '
-                "| sudo tee /etc/apt/apt.conf.d/99-erplibre-no-auto-upgrade "
-                ">/dev/null; "
-                "fi; "
-                "if command -v dnf >/dev/null 2>&1; then "
-                "sudo systemctl disable --now dnf-automatic.timer "
-                "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
-                "fi; "
-                # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
-                # « systemd-analyze critical-chain » sur une VM s390x —
-                # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
-                # n'installe de snap : c'est du temps payé pour rien, à chaque
-                # démarrage. On désactive plutôt que désinstaller, pour rester
-                # réversible d'un « systemctl enable ».
-                "sudo systemctl disable --now snapd.seeded.service "
-                "snapd.service snapd.socket snapd.apparmor.service "
-                ">/dev/null 2>&1 || true; "
-            )
+        no_auto_upgrade = self._qemu_no_auto_upgrade(prod)
         return (
-            "set -e; "
-            # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
-            # tient le verrou apt/dnf/pacman -> sinon « unable to lock
-            # database » (Arch) / « Could not get lock » (apt). timeout pour ne
-            # pas bloquer indéfiniment si cloud-init traîne.
-            #
-            # Cette attente dure jusqu'à 15 min et n'écrivait RIEN : sur une
-            # architecture émulée, le log restait muet d'un quart d'heure juste
-            # après avoir annoncé le début de l'installation, ce qui se lit
-            # comme un blocage. On encadre donc l'attente de deux lignes, et le
-            # « status » final dit si elle a abouti ou expiré.
-            "if command -v cloud-init >/dev/null 2>&1; then "
-            + 'echo "== '
-            + t("Waiting for cloud-init to finish (up to 15 min)")
-            + ' =="; '
-            "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
-            "|| true; "
-            + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
-            '| head -1)"; '
-            "fi; "
+            "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
-            + no_auto_upgrade +
+            + no_auto_upgrade
+            # Le bureau d'abord : il repose sur les dépôts de la distribution,
+            # là où l'installation ERPLibre compile longuement. Un échec ici se
+            # voit donc tôt plutôt qu'après une heure.
+            + (self._qemu_desktop_remote_cmd() if desktop else "") +
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -4453,7 +4560,13 @@ class TODO:
         )
 
     def _qemu_install_erplibre_monitored(
-        self, names, branch, ip_map=None, final_cmd=None, prod=False
+        self,
+        names,
+        branch,
+        ip_map=None,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -4465,7 +4578,9 @@ class TODO:
             run_monitor,
         )
 
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
+        remote = self._qemu_erplibre_remote_cmd(
+            branch, final_cmd, prod, desktop
+        )
         try:
             mod = self._qemu_import_module()
         except Exception:
@@ -4521,7 +4636,14 @@ class TODO:
         print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
     def _qemu_install_erplibre_vm(
-        self, name, ssh_key, branch, ip=None, final_cmd=None, prod=False
+        self,
+        name,
+        ssh_key,
+        branch,
+        ip=None,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -4542,7 +4664,9 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
+        remote = self._qemu_erplibre_remote_cmd(
+            branch, final_cmd, prod, desktop
+        )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
@@ -4916,6 +5040,11 @@ class TODO:
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
+        if spec.get("desktop"):
+            print(
+                f"  {t('VM type:')} "
+                f"{t('Graphical (server + GNOME desktop)')}"
+            )
         print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
         cfg = (
             t("one entry per VM") if spec["add_ssh_config"] else t("untouched")
@@ -4937,6 +5066,7 @@ class TODO:
         dry_run,
         timezone=None,
         locale=None,
+        desktop=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -4970,9 +5100,18 @@ class TODO:
             parts += ["--timezone", timezone]
         if locale:
             parts += ["--locale", locale]
+        if desktop:
+            parts.append("--desktop")
+        extra = 0
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
-            bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
+            extra += self.ERPLIBRE_EXTRA_DISK_GB
+        if desktop:
+            # GNOME et ses dépendances pèsent autant qu'ERPLibre : sans cette
+            # marge, le disque se remplit en pleine installation du bureau.
+            extra += self.QEMU_DESKTOP_EXTRA_DISK_GB
+        if extra:
+            bigger = self._parse_disk_gb(disk) + extra
             parts += ["--disk-size", f"{bigger}G"]
         parts.append("--dry-run" if dry_run else "-y")
         return parts
@@ -4997,6 +5136,7 @@ class TODO:
             dry_run=dry_run,
             timezone=spec.get("timezone"),
             locale=spec.get("locale"),
+            desktop=bool(spec.get("desktop")),
         )
 
     # ---------------------------------------------------------------- #
@@ -5224,6 +5364,7 @@ class TODO:
             "ram_presets": self._QEMU_RAM_PRESETS,
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
             "defaults": {
                 "install": True,
                 "add_ssh_config": True,
@@ -5493,6 +5634,16 @@ class TODO:
                 )
                 print(f"  ⚠ {warn}")
 
+    def _qemu_ask_desktop(self):
+        """Serveur, ou serveur plus un bureau GNOME.
+
+        Serveur par défaut : c'est ce que sert une image cloud, et le bureau
+        ajoute une à deux heures d'installation sur une architecture émulée."""
+        print(f"\n{t('VM type:')}")
+        print(f"  [1] {t('Server (no graphical interface)')} *")
+        print(f"  [2] {t('Graphical (server + GNOME desktop)')}")
+        return input(t("Choice (number, blank = server): ")).strip() == "2"
+
     def _qemu_host_timezone(self):
         """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
         est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
@@ -5551,6 +5702,7 @@ class TODO:
 
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
+        desktop = self._qemu_ask_desktop()
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5627,6 +5779,7 @@ class TODO:
             "ssh_key": ssh_key,
             "timezone": timezone,
             "locale": locale,
+            "desktop": desktop,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
@@ -5694,6 +5847,7 @@ class TODO:
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
         install_branch = install["branch"] if install else None
+        desktop = bool(spec.get("desktop"))
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -5735,7 +5889,9 @@ class TODO:
         # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
         # émulée SANS sortie -> le dashboard « n'ouvrait jamais ».
         ip_map = {}
-        if deployed and (add_ssh_config or install_branch):
+        # `desktop` compte aussi : sans IP résolue, l'installation du bureau
+        # n'aurait aucune VM à joindre.
+        if deployed and (add_ssh_config or install_branch or desktop):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
@@ -5752,16 +5908,20 @@ class TODO:
                         name, "erplibre", ip, identity_file=identity
                     )
 
-        # 7) Installation ERPLibre (clone + make) si demandée.
-        if install:
-            if install["monitor"]:
+        # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
+        # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
+        # Il passe par la même commande distante, donc par le même suivi.
+        if install or desktop:
+            monitor = install["monitor"] if install else True
+            if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
                     deployed,
                     install_branch,
                     ip_map,
-                    install["cmd"],
-                    install["prod"],
+                    install["cmd"] if install else None,
+                    install["prod"] if install else False,
+                    desktop=desktop,
                 )
             else:
                 print(
@@ -5776,6 +5936,7 @@ class TODO:
                         ip_map.get(name),
                         install["cmd"],
                         install["prod"],
+                        desktop=desktop,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
