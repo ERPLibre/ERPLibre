@@ -261,6 +261,46 @@ def read_status(log_path: str) -> tuple[str, int | None]:
     return "running", None
 
 
+def run_progress(run: dict) -> dict:
+    """Avancement d'un run : combien de VM tournent encore, et depuis quand
+    plus rien n'a été écrit. `idle` sert à distinguer une install vivante d'un
+    run laissé pour mort — le marqueur de sortie manque dans les deux cas."""
+    active = final = 0
+    latest = 0.0
+    for vm in run.get("vms", []):
+        log = vm.get("log") or ""
+        state, _code = read_status(log)
+        if state in ("done", "failed"):
+            final += 1
+        else:
+            active += 1
+        try:
+            latest = max(latest, os.path.getmtime(log))
+        except OSError:
+            pass
+    return {
+        "active": active,
+        "final": final,
+        "total": active + final,
+        "idle": (time.time() - latest) if latest else None,
+    }
+
+
+def active_run():
+    """Le run le PLUS RÉCENT s'il a encore des VM en cours, sinon None.
+
+    Les installs tournent détachées (`setsid -f`) : fermer le terminal laisse
+    le travail se poursuivre mais fait perdre la seule vue dessus. On ne
+    regarde que le dernier run — un run ancien resté sans marqueur de sortie
+    signalerait éternellement une install fantôme."""
+    runs = list_install_runs()
+    if not runs:
+        return None
+    run = dict(runs[0])
+    run.update(run_progress(run))
+    return run if run["total"] and run["active"] else None
+
+
 # Listes d'ignore reprises de script/test/run_parallel_test.py (erreurs/
 # avertissements connus et bénins) : on réutilise la MÊME logique de détection
 # que la suite de tests ERPLibre pour analyser les logs d'installation.
