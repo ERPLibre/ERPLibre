@@ -156,15 +156,34 @@ else
   NODE_MAJOR=22
 fi
 
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
-${APT_GET} update
+# NodeSource ne publie que amd64, arm64 et armhf : vérifié, binary-s390x
+# répond 404. Ajouter le dépôt sur une autre architecture n'apporte rien et
+# fait échouer « apt update » sur un index introuvable. La distribution
+# fournit alors nodejs elle-même — Ubuntu 26.04 s390x livre la 22.22.1, ce qui
+# convient.
+NODE_ARCH="$(dpkg --print-architecture)"
+case "${NODE_ARCH}" in
+  amd64 | arm64 | armhf)
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+    ${APT_GET} update
+    ;;
+  *)
+    echo "NodeSource ne publie pas pour ${NODE_ARCH} : nodejs vient de la distribution."
+    sudo rm -f /etc/apt/sources.list.d/nodesource.list
+    ${APT_GET} update
+    ;;
+esac
 ${APT_GET} install nodejs -y
 
+# « npm@latest » dépasse régulièrement le node de la distribution : sur
+# Ubuntu 26.04 s390x, npm 12 exige node ^22.22.2 alors que l'archive livre la
+# 22.22.1 — un correctif d'écart, et EBADENGINE. Cette mise à niveau est un
+# confort : rtlcss et less fonctionnent avec le npm empaqueté. Elle ne doit
+# donc pas emporter toute l'installation du système.
 sudo npm install npm@latest -g
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
-  echo "npm install npm lastest installation error."
-  exit 1
+  echo "Avertissement : npm n'a pas pu être mis à niveau, on garde $(npm --version)."
 fi
 sudo npm install -g rtlcss
 retVal=$?
