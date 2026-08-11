@@ -9,7 +9,15 @@ This file tracks what is installed in the current ERPLibre workspace:
   - Which Odoo versions are installed, and with which options (extra, etc.)
   - Whether the mobile project is active
   - The currently active Odoo version
+
+`update_env_version.py` imports this module as the FIRST thing `make
+install_os` runs, donc avant pyenv : il s'exécute sur le Python DU SYSTÈME,
+3.8 sur Ubuntu 20.04. Les annotations doivent rester différées — sans quoi
+« str | None » (PEP 604) ou « list[str] » (PEP 585) sont évaluées à
+l'import et lèvent un TypeError avant même que l'installation commence.
 """
+
+from __future__ import annotations
 
 import json
 import logging
