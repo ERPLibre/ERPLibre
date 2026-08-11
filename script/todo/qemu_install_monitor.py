@@ -98,6 +98,11 @@ def _launch_one(
     msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
     msg_slow = t("(an emulated architecture can be slow; this is normal)")
     msg_ready = t("VM ready - starting the ERPLibre install")
+    msg_novirsh = t(
+        "WARNING libvirt unreachable: the IP will not be refreshed"
+        " (libvirt group? re-login required)"
+    )
+    msg_moved = t("DHCP lease moved:")
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
@@ -130,17 +135,38 @@ def _launch_one(
         'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
         '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
     )
+    # Deux trous rendaient cette ré-résolution incapable de rattraper une IP
+    # qui bouge — le cas exact où elle sert :
+    #
+    # - « vsh » est muet des deux côtés. Quand libvirt est injoignable (hors du
+    #   groupe libvirt, et « sudo -n » refusé faute de tty dans ce processus
+    #   détaché), la ré-résolution ne renvoie JAMAIS rien : l'IP de départ est
+    #   gardée jusqu'au bout sans qu'une seule ligne du log ne le dise.
+    # - le repli sur les baux exigeait une réponse sur le port 22. Or dnsmasq
+    #   ne garde qu'un bail par MAC : quand cloud-init pose le vrai nom d'hôte
+    #   et que le client DHCP redemande, le bail DÉPLACE l'adresse. L'ancienne
+    #   n'appartient plus à cette VM, mais on l'attendait quand même — et sshd
+    #   n'y répondra jamais.
     refresh = (
         (
+            f"raw=$(vsh domifaddr {name_q} --source lease); vrc=$?; "
+            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ]; then vwarn=1; '
+            f"echo {shlex.quote('   ' + msg_novirsh)} >> {log_q}; fi; "
+            "cands=$(echo \"$raw\" | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            "| grep -v '^127\\.'); "
             f"n=$(vsh domifaddr {name_q} --source agent "
             "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.' | head -1); "
             'if [ -z "$n" ]; then '
-            f"for c in $(vsh domifaddr {name_q} --source lease "
-            "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
-            "| grep -v '^127\\.'); do "
+            'for c in $cands; do '
             'timeout 2 bash -c "echo > /dev/tcp/$c/22" 2>/dev/null '
             '&& n="$c"; done; fi; '
+            # Le bail ne mentionne plus l'adresse courante : elle est périmée,
+            # on suit le bail sans attendre que sshd réponde.
+            'if [ -z "$n" ] && [ -n "$cands" ] && '
+            '! echo "$cands" | grep -Fqx "$ip"; then '
+            'n=$(echo "$cands" | tail -1); '
+            f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
         if name

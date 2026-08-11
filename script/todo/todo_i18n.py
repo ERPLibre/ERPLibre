@@ -1973,6 +1973,17 @@ TRANSLATIONS = {
         "fr": "RAM (Mo)",
         "en": "RAM (MB)",
     },
+    "WARNING libvirt unreachable: the IP will not be refreshed"
+    " (libvirt group? re-login required)": {
+        "fr": "ATTENTION libvirt injoignable : l'IP ne sera pas rafraichie"
+        " (groupe libvirt ? reconnexion necessaire)",
+        "en": "WARNING libvirt unreachable: the IP will not be refreshed"
+        " (libvirt group? re-login required)",
+    },
+    "DHCP lease moved:": {
+        "fr": "bail DHCP deplace :",
+        "en": "DHCP lease moved:",
+    },
     "An install is still running:": {
         "fr": "Une installation est encore en cours :",
         "en": "An install is still running:",
