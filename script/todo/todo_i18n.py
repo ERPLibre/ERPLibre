@@ -2035,6 +2035,10 @@ TRANSLATIONS = {
         "fr": "Graphique (serveur + bureau GNOME)",
         "en": "Graphical (server + GNOME desktop)",
     },
+    "server": {
+        "fr": "serveur",
+        "en": "server",
+    },
     "Graphical (server + desktop):": {
         "fr": "Graphique (serveur + bureau) :",
         "en": "Graphical (server + desktop):",
