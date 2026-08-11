@@ -5269,10 +5269,14 @@ class TODO:
     # saisie commençant par un chiffre est lue comme la valeur elle-même.
     _QEMU_DISK_PRESETS = (
         "20G",
+        "30G",
         "40G",
+        "50G",
         "60G",
         "80G",
+        "100G",
         "120G",
+        "160G",
         "200G",
         "400G",
         "600G",
@@ -5286,8 +5290,19 @@ class TODO:
     _QEMU_RAM_PRESETS = (
         1024,
         2048,
+        3072,
         4096,
+        5120,
+        6144,
+        7168,
         8192,
+        9216,
+        10240,
+        11264,
+        12288,
+        13312,
+        14336,
+        15360,
         16384,
         32768,
         65536,
@@ -5297,7 +5312,9 @@ class TODO:
     # KVM autorise plus de vCPU que de cœurs (surengagement) : on prévient
     # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
     # est un calcul automatique et se borne aux cœurs de l'hôte.
-    _QEMU_CPU_PRESETS = (1, 2, 3, 4, 6, 8, 16, 24, 32)
+    _QEMU_CPU_PRESETS = (
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32
+    )
 
     @staticmethod
     def _plural(word, count):
