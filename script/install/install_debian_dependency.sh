@@ -62,18 +62,33 @@ if [ "$(uname -m)" = "s390x" ]; then
   # alors sur TOUT le lot, et l'absence d'un seul paquet ne se voit que bien
   # plus loin, sous la forme d'une commande introuvable.
   ${APT_GET} update
-  sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential -y
+  # « ${APT_GET} » et non « sudo apt » : au 1er boot d'une image cloud,
+  # cloud-init tient le verrou apt, et un « apt install » nu échoue AUSSITÔT.
+  # Ces trois lots étaient les seuls du script à contourner le wrapper, et
+  # aucun ne vérifiait son résultat : libqpdf-dev manquait sans un mot, et
+  # l'échec ne se voyait qu'une heure plus tard, à la compilation de pikepdf.
+  ${APT_GET} install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential zlib1g-dev libjpeg-dev -y
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "apt-get s390x build dependencies installation error."
+    exit 1
+  fi
   # manifold3d, tiré par to-3mf, ne publie pas de roue s390x : il se compile
   # depuis les sources. Son CMake exige tbb via pkg-config, et scikit-build-core
   # ne trouve pas non plus de roue ninja pour cette architecture — les deux
   # doivent venir de la distribution.
-  sudo apt install libtbb-dev cmake ninja-build -y
+  ${APT_GET} install libtbb-dev cmake ninja-build -y
+  retVal=$?
+  if [[ $retVal -ne 0 ]]; then
+    echo "apt-get s390x cmake/tbb installation error."
+    exit 1
+  fi
   # pymupdf non plus n'a pas de roue s390x : il compile MuPDF, dont le
   # générateur de liaisons charge « libclang.so » par son nom nu, via ctypes.
   # La roue PyPI libclang, qui embarque cette bibliothèque, n'existe pas ici.
   # Le paquet de la distribution la fournit bien dans le chemin de l'éditeur de
   # liens, mais sous un nom versionné : il ne manque que le lien non versionné.
-  sudo apt install libclang-dev -y
+  ${APT_GET} install libclang-dev -y
   CLANG_LIB_DIR="/usr/lib/s390x-linux-gnu"
   if [ ! -e "${CLANG_LIB_DIR}/libclang.so" ]; then
     CLANG_SO="$(ls -1 ${CLANG_LIB_DIR}/libclang-[0-9]*.so 2>/dev/null | sort -V | tail -1)"
@@ -84,6 +99,33 @@ if [ "$(uname -m)" = "s390x" ]; then
     else
       echo "Attention : libclang introuvable, la compilation de pymupdf va echouer."
     fi
+  fi
+  # pikepdf n'a pas de roue s390x et se lie à qpdf, dont il exige une version
+  # PRÉCISE : 12.2.0 au minimum pour la 10.x. Ubuntu en livre 9.1.1 (20.04),
+  # 10.6.3 (22.04) et 11.9.0 (24.04) — trop anciennes, et aucune version de
+  # pikepdf ne descend sous qpdf 11.5. 25.10 et 26.04 passent, d'où le partage
+  # observé. On complète donc par les sources sous ce seuil ; /usr/local est
+  # déjà dans les chemins par défaut de g++ et de l'éditeur de liens.
+  QPDF_MIN=12.2.0
+  QPDF_VER=12.3.2
+  qpdf_have="$(pkg-config --modversion libqpdf 2>/dev/null || echo 0)"
+  if [ "$(printf '%s\n%s\n' "${QPDF_MIN}" "${qpdf_have}" | sort -V | head -1)" != "${QPDF_MIN}" ]; then
+    echo "qpdf ${qpdf_have} < ${QPDF_MIN} requis par pikepdf : compilation de qpdf ${QPDF_VER} (long en emulation)."
+    QPDF_TMP="$(mktemp -d)"
+    if curl -fsSL --max-time 600 -o "${QPDF_TMP}/qpdf.tar.gz" \
+      "https://github.com/qpdf/qpdf/releases/download/v${QPDF_VER}/qpdf-${QPDF_VER}.tar.gz" &&
+      tar -xzf "${QPDF_TMP}/qpdf.tar.gz" -C "${QPDF_TMP}" &&
+      cmake -S "${QPDF_TMP}/qpdf-${QPDF_VER}" -B "${QPDF_TMP}/build" \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_DOC=OFF -DBUILD_STATIC_LIBS=OFF &&
+      cmake --build "${QPDF_TMP}/build" -j"$(nproc)" &&
+      sudo cmake --install "${QPDF_TMP}/build"; then
+      sudo ldconfig
+      echo "qpdf $(PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion libqpdf 2>/dev/null) installe dans /usr/local."
+    else
+      echo "Attention : compilation de qpdf echouee, pikepdf ne pourra pas se construire."
+    fi
+    rm -rf "${QPDF_TMP}"
   fi
   # cryptography ne publie aucune roue s390x : elle se compile, et son
   # Cargo.lock est en version 4, que seul cargo >= 1.78 sait lire. Ubuntu 24.04
