@@ -1973,6 +1973,14 @@ TRANSLATIONS = {
         "fr": "RAM (Mo)",
         "en": "RAM (MB)",
     },
+    "free value…": {
+        "fr": "valeur libre…",
+        "en": "free value…",
+    },
+    "Disk (e.g. 250G, 1.5T)": {
+        "fr": "Disque (ex. 250G, 1,5T)",
+        "en": "Disk (e.g. 250G, 1.5T)",
+    },
     "all archs": {
         "fr": "toutes",
         "en": "all",

@@ -4507,7 +4507,7 @@ class TODO:
     # KVM autorise plus de vCPU que de cœurs (surengagement) : on prévient
     # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
     # est un calcul automatique et se borne aux cœurs de l'hôte.
-    _QEMU_CPU_PRESETS = (1, 2, 4, 6, 8, 16, 24, 32)
+    _QEMU_CPU_PRESETS = (1, 2, 3, 4, 6, 8, 16, 24, 32)
 
     @staticmethod
     def _plural(word, count):

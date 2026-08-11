@@ -245,6 +245,16 @@ def run_deploy_form(ctx, run_app: bool = True):
     result = {"spec": None}
 
     AUTO = "__auto__"
+    # Dernier choix de chaque liste de ressources : il ne porte pas de valeur,
+    # il révèle la saisie libre placée juste dessous.
+    FREE = "__free__"
+    RES_FIELDS = {
+        "vcpus": ("#f_vcpus", "#c_vcpus"),
+        "ram": ("#f_ram", "#c_ram"),
+        "disk": ("#f_disk", "#c_disk"),
+    }
+    SELECT_TO_FIELD = {sel[1:]: f for f, (sel, _i) in RES_FIELDS.items()}
+    INPUT_TO_FIELD = {inp[1:]: f for f, (_s, inp) in RES_FIELDS.items()}
 
     def entry_label(e):
         star = " *" if e.get("default") else ""
@@ -330,6 +340,7 @@ def run_deploy_form(ctx, run_app: bool = True):
         .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
+        .freeval { display: none; }
         #reslabel { color: $text-muted; }
         EditVMScreen { align: center middle; }
         #editbox {
@@ -364,6 +375,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.arch = ctx.get("native") or arches[0]
             self.profile = "1"
             self.custom = {}
+            self._free = {}
             self.overrides = {}
             self.vms = []
             self.rows = []
@@ -385,25 +397,50 @@ def run_deploy_form(ctx, run_app: bool = True):
                         for label in ("x1", "x2", "x3", "x4"):
                             yield RadioButton(label, value=label == "x1")
                         yield RadioButton(t("custom"))
+                    # Chaque ressource offre ses suggestions plus « libre… »,
+                    # qui révèle une saisie. C'est l'équivalent TUI de la règle
+                    # de la CLI : une lettre choisit une suggestion, un chiffre
+                    # vaut pour lui-même.
                     yield Select(
-                        [(str(c), c) for c in ctx["cpu_presets"]],
+                        [(str(c), c) for c in ctx["cpu_presets"]]
+                        + [(t("free value…"), FREE)],
                         prompt=t("vCPU"),
                         id="f_vcpus",
+                        disabled=True,
+                    )
+                    yield Input(
+                        placeholder=t("vCPU"),
+                        id="c_vcpus",
+                        classes="freeval",
                         disabled=True,
                     )
                     yield Select(
                         [
                             (f"{m} ({m // 1024}G)", m)
                             for m in ctx["ram_presets"]
-                        ],
+                        ]
+                        + [(t("free value…"), FREE)],
                         prompt=t("RAM (MB)"),
                         id="f_ram",
                         disabled=True,
                     )
+                    yield Input(
+                        placeholder=t("RAM (MB)"),
+                        id="c_ram",
+                        classes="freeval",
+                        disabled=True,
+                    )
                     yield Select(
-                        [(d, d) for d in ctx["disk_presets"]],
+                        [(d, d) for d in ctx["disk_presets"]]
+                        + [(t("free value…"), FREE)],
                         prompt=t("Disk"),
                         id="f_disk",
+                        disabled=True,
+                    )
+                    yield Input(
+                        placeholder=t("Disk (e.g. 250G, 1.5T)"),
+                        id="c_disk",
+                        classes="freeval",
                         disabled=True,
                     )
                     yield Static("ERPLibre", classes="grouptitle")
@@ -588,19 +625,50 @@ def run_deploy_form(ctx, run_app: bool = True):
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
                 custom = self.profile == "custom"
-                for wid in ("#f_vcpus", "#f_ram", "#f_disk"):
-                    self.query_one(wid, Select).disabled = not custom
+                for field, (sel, inp) in RES_FIELDS.items():
+                    self.query_one(sel, Select).disabled = not custom
+                    free = custom and self._free.get(field)
+                    self._show_free(field, free)
                 self._recompute()
+
+        def _show_free(self, field, visible) -> None:
+            """Montre ou cache la saisie libre d'une ressource."""
+            widget = self.query_one(RES_FIELDS[field][1], Input)
+            widget.display = bool(visible)
+            widget.disabled = not visible
 
         def on_selection_list_selected_changed(self, event) -> None:
             self._recompute()
 
         def on_select_changed(self, event) -> None:
-            mapping = {"f_vcpus": "vcpus", "f_ram": "ram", "f_disk": "disk"}
-            field = mapping.get(event.select.id)
+            field = SELECT_TO_FIELD.get(event.select.id)
+            if not field:
+                return
+            if event.value is FREE:
+                # La valeur retenue est celle de la saisie, pas ce choix-ci.
+                self._free[field] = True
+                self._show_free(field, True)
+                self.query_one(RES_FIELDS[field][1], Input).focus()
+                self._apply_free(field)
+            elif event.value is not SELECT_NULL:
+                self._free[field] = False
+                self._show_free(field, False)
+                self.custom[field] = event.value
+            self._recompute()
+
+        def _apply_free(self, field) -> None:
+            """Relit la saisie libre. Une valeur invalide n'écrase rien : le
+            profil retombe alors sur celle du catalogue."""
+            raw = self.query_one(RES_FIELDS[field][1], Input).value.strip()
+            if field == "disk":
+                self.custom[field] = parse_disk(raw) or ""
+            else:
+                self.custom[field] = positive_int(raw, 0)
+
+        def on_input_changed(self, event) -> None:
+            field = INPUT_TO_FIELD.get(event.input.id)
             if field:
-                if event.value is not SELECT_NULL:
-                    self.custom[field] = event.value
+                self._apply_free(field)
                 self._recompute()
 
         def on_checkbox_changed(self, event) -> None:
