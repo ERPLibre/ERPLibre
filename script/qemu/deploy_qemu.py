@@ -1631,6 +1631,22 @@ def virt_install(
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
     # ttyS0. Ailleurs (x86/arm64), console série classique.
     console_target = "sclp" if args.arch == "s390x" else "serial"
+    # Écran virtuel pour une VM graphique. s390x en est écarté : QEMU y expose
+    # bien « virtio-gpu-ccw », mais rien ne garantit que le noyau s390x de la
+    # distribution embarque le pilote DRM virtio-gpu — la VM démarrerait alors
+    # sur un écran noir. Le bureau distant, lui, marche partout : c'est la voie
+    # retenue pour cette architecture, et le message le dit.
+    graphics = args.graphics
+    video = []
+    if args.desktop and graphics == "none":
+        if args.arch == "s390x":
+            print(
+                "\n  s390x : pas d'écran virtuel (pilote DRM non garanti)."
+                "\n  Le bureau sera accessible à distance, par le réseau."
+            )
+        else:
+            graphics = "spice,listen=none"
+            video = ["--video", "virtio"]
     cmd = [
         "virt-install",
         # Sans --connect, un utilisateur non root vise qemu:///session : le
@@ -1660,7 +1676,7 @@ def virt_install(
         "--network",
         args.network,
         "--graphics",
-        args.graphics,
+        graphics,
         "--console",
         f"pty,target_type={console_target}",
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
@@ -1669,6 +1685,7 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
+    cmd += video
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -1882,6 +1899,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--graphics",
         default="none",
         help="Argument --graphics (défaut : none).",
+    )
+    g_vm.add_argument(
+        "--desktop",
+        action="store_true",
+        help="VM graphique : écran virtuel SPICE là où l'architecture le "
+        "permet. Les paquets GNOME sont posés par la commande d'installation, "
+        "pas ici.",
     )
     g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
