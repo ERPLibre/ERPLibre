@@ -1243,6 +1243,11 @@ class TODO:
                 )
             },
             {"prompt_description": t("Download a cloud image only")},
+            {
+                "prompt_description": t(
+                    "Reopen install monitoring (last run / history)"
+                )
+            },
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
@@ -1253,11 +1258,6 @@ class TODO:
             {
                 "prompt_description": t(
                     "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Reopen install monitoring (last run / history)"
                 )
             },
             {"prompt_description": t("Statistics (installs, durations, VMs)")},
@@ -1286,21 +1286,21 @@ class TODO:
             elif status == "3":
                 self._qemu_download_image()
             elif status == "4":
-                self._qemu_list_vms(ask_advanced=True)
-            elif status == "5":
-                self._qemu_show_ip()
-            elif status == "6":
-                self._qemu_console()
-            elif status == "7":
-                self._qemu_resize_disk()
-            elif status == "8":
-                self._qemu_delete_vm()
-            elif status == "9":
-                self._qemu_cleanup()
-            elif status == "10":
-                self._qemu_test_vm()
-            elif status == "11":
                 self._qemu_reopen_monitor()
+            elif status == "5":
+                self._qemu_list_vms(ask_advanced=True)
+            elif status == "6":
+                self._qemu_show_ip()
+            elif status == "7":
+                self._qemu_console()
+            elif status == "8":
+                self._qemu_resize_disk()
+            elif status == "9":
+                self._qemu_delete_vm()
+            elif status == "10":
+                self._qemu_cleanup()
+            elif status == "11":
+                self._qemu_test_vm()
             elif status == "12":
                 self._qemu_stats()
             elif status == "13":
@@ -2367,15 +2367,61 @@ class TODO:
             except ValueError:
                 print(t("Invalid selection."))
                 return
+        self._qemu_open_monitor(run["manifest"])
+
+    def _qemu_open_monitor(self, manifest):
+        """Ouvre le dashboard sur un manifeste, en installant Textual au
+        besoin. Deux entrées y mènent — l'historique et la reprise proposée
+        avant un déploiement — d'où une seule définition."""
+        from script.todo import qemu_install_monitor as mon
+
         try:
-            mon.run_monitor(run["manifest"])
+            mon.run_monitor(manifest)
         except ImportError:
             from script.todo import textual_setup
 
             if textual_setup.ensure():
-                mon.run_monitor(run["manifest"])
+                mon.run_monitor(manifest)
         except Exception as exc:
             print(f"{t('Command failed: ')}{exc}")
+
+    def _qemu_active_install(self):
+        """Propose de reprendre le suivi quand une installation tourne encore.
+
+        Les installs partent détachées (`setsid -f`) : fermer le terminal ne
+        les arrête pas, mais faisait perdre la seule vue dessus, et la seule
+        issue connue était de tout effacer pour recommencer.
+
+        True si l'on ne doit PAS enchaîner sur un déploiement."""
+        try:
+            from script.todo import qemu_install_monitor as mon
+
+            run = mon.active_run()
+        except Exception:
+            return False
+        if not run:
+            return False
+        names = ", ".join(v.get("name", "?") for v in run["vms"])
+        print(
+            f"\n⏳ {t('An install is still running:')} {run['label']} — "
+            f"{run['active']}/{run['total']} {t('VM(s) in progress')}"
+        )
+        print(f"     {names}")
+        if run.get("idle") is not None:
+            # Un silence prolongé trahit un run mort dont le marqueur de sortie
+            # ne viendra jamais : l'utilisateur tranche mieux que nous.
+            print(
+                f"     {t('Last activity:')} {mon._fmt_secs(int(run['idle']))}"
+            )
+        print(f"\n  [1] {t('Reopen that monitoring')} *")
+        print(f"  [2] {t('Deploy anyway (new run)')}")
+        print(f"  [0] {t('Back')}")
+        sel = input(t("Choice (number, blank = reopen): ")).strip()
+        if sel == "2":
+            return False
+        if sel != "0":
+            self._qemu_open_monitor(run["manifest"])
+        return True
 
     def _qemu_choose_cli_browser(self):
         """Offre la LISTE des navigateurs CLI installés, plus une option pour
@@ -5171,6 +5217,9 @@ class TODO:
         last = self._qemu_last_run_line()
         if last:
             print(last)
+        # Un aperçu ne crée rien : il n'a pas à interroger sur un run en cours.
+        if not dry_run and self._qemu_active_install():
+            return
 
         self._qemu_check_libvirt_group()
         self._qemu_check_kvm()

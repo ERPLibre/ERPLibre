@@ -1973,6 +1973,30 @@ TRANSLATIONS = {
         "fr": "RAM (Mo)",
         "en": "RAM (MB)",
     },
+    "An install is still running:": {
+        "fr": "Une installation est encore en cours :",
+        "en": "An install is still running:",
+    },
+    "VM(s) in progress": {
+        "fr": "VM en cours",
+        "en": "VM(s) in progress",
+    },
+    "Last activity:": {
+        "fr": "Dernière activité il y a :",
+        "en": "Last activity:",
+    },
+    "Reopen that monitoring": {
+        "fr": "Rouvrir ce suivi",
+        "en": "Reopen that monitoring",
+    },
+    "Deploy anyway (new run)": {
+        "fr": "Déployer quand même (nouveau run)",
+        "en": "Deploy anyway (new run)",
+    },
+    "Choice (number, blank = reopen): ": {
+        "fr": "Choix (numéro, vide = rouvrir) : ",
+        "en": "Choice (number, blank = reopen): ",
+    },
     "free value…": {
         "fr": "valeur libre…",
         "en": "free value…",
