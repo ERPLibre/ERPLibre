@@ -2137,20 +2137,34 @@ class TODO:
         if not names:
             print(f"\n{t('No VM found.')}")
             return
-        print(f"\n{t('Available VMs:')} {', '.join(names)}")
-        raw = input(t("VMs to change (comma-separated): ")).strip()
-        targets = [n.strip() for n in raw.split(",") if n.strip()]
-        if not targets:
+        # Liste NUMÉROTÉE, comme l'écran de suppression : les noms de VM sont
+        # longs et se ressemblent, les retaper invite à la faute de frappe sur
+        # une commande qui change l'état d'une machine.
+        print(f"\n{t('Available VMs:')}")
+        for i, n in enumerate(names, 1):
+            print(f"  [{i}] {n}")
+        print(f"  [all] {t('select all')}")
+        raw = input(t("Selection (numbers, or 'all'): ")).strip()
+        if not raw:
             print(t("Nothing selected."))
             return
-        # Résoudre les ID -> noms et valider l'existence.
-        resolved, unknown = [], []
-        known = set(names)
-        for tgt in targets:
-            real = self._qemu_domname(tgt)
-            (resolved if real in known else unknown).append(real)
-        if unknown:
-            print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
+        if raw.lower() in ("all", "*"):
+            resolved = list(names)
+        else:
+            resolved = self._parse_index_selection(raw.lower(), names)
+            # Le parseur ignore en silence ce qu'il ne reconnaît pas. Sur une
+            # sélection qui va démarrer ou éteindre des VM, un numéro hors
+            # liste doit être dit, pas escamoté.
+            unknown = [
+                tok
+                for tok in re.split(r"[\s,]+", raw.strip())
+                if tok and tok not in names and not self._is_index(tok, names)
+            ]
+            if unknown:
+                print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
+                return
+        if not resolved:
+            print(t("Nothing selected."))
             return
         # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
         print(f"\n{t('Target state:')}")
@@ -3811,6 +3825,14 @@ class TODO:
         except OSError:
             pass
         return 0
+
+    @staticmethod
+    def _is_index(token, options):
+        """Vrai si le jeton est un numéro valide dans la liste (1-based)."""
+        try:
+            return 1 <= int(token) <= len(options)
+        except ValueError:
+            return False
 
     @staticmethod
     def _parse_index_selection(raw, options):
