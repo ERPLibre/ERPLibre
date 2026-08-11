@@ -4341,9 +4341,21 @@ class TODO:
             # tient le verrou apt/dnf/pacman -> sinon « unable to lock
             # database » (Arch) / « Could not get lock » (apt). timeout pour ne
             # pas bloquer indéfiniment si cloud-init traîne.
-            "command -v cloud-init >/dev/null 2>&1 && "
+            #
+            # Cette attente dure jusqu'à 15 min et n'écrivait RIEN : sur une
+            # architecture émulée, le log restait muet d'un quart d'heure juste
+            # après avoir annoncé le début de l'installation, ce qui se lit
+            # comme un blocage. On encadre donc l'attente de deux lignes, et le
+            # « status » final dit si elle a abouti ou expiré.
+            "if command -v cloud-init >/dev/null 2>&1; then "
+            + 'echo "== '
+            + t("Waiting for cloud-init to finish (up to 15 min)")
+            + ' =="; '
             "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
             "|| true; "
+            + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
+            '| head -1)"; '
+            "fi; "
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
             + no_auto_upgrade +

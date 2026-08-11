@@ -98,6 +98,15 @@ def _launch_one(
     msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
     msg_slow = t("(an emulated architecture can be slow; this is normal)")
     msg_ready = t("VM ready - starting the ERPLibre install")
+    msg_giveup = t(
+        "cloud-init still running after 20 min - install starts anyway"
+        " (it waits for cloud-init first)"
+    )
+    msg_novirsh = t(
+        "WARNING libvirt unreachable: the IP will not be refreshed"
+        " (libvirt group? re-login required)"
+    )
+    msg_moved = t("DHCP lease moved:")
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
@@ -130,17 +139,38 @@ def _launch_one(
         'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
         '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
     )
+    # Deux trous rendaient cette ré-résolution incapable de rattraper une IP
+    # qui bouge — le cas exact où elle sert :
+    #
+    # - « vsh » est muet des deux côtés. Quand libvirt est injoignable (hors du
+    #   groupe libvirt, et « sudo -n » refusé faute de tty dans ce processus
+    #   détaché), la ré-résolution ne renvoie JAMAIS rien : l'IP de départ est
+    #   gardée jusqu'au bout sans qu'une seule ligne du log ne le dise.
+    # - le repli sur les baux exigeait une réponse sur le port 22. Or dnsmasq
+    #   ne garde qu'un bail par MAC : quand cloud-init pose le vrai nom d'hôte
+    #   et que le client DHCP redemande, le bail DÉPLACE l'adresse. L'ancienne
+    #   n'appartient plus à cette VM, mais on l'attendait quand même — et sshd
+    #   n'y répondra jamais.
     refresh = (
         (
+            f"raw=$(vsh domifaddr {name_q} --source lease); vrc=$?; "
+            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ]; then vwarn=1; '
+            f"echo {shlex.quote('   ' + msg_novirsh)} >> {log_q}; fi; "
+            "cands=$(echo \"$raw\" | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            "| grep -v '^127\\.'); "
             f"n=$(vsh domifaddr {name_q} --source agent "
             "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.' | head -1); "
             'if [ -z "$n" ]; then '
-            f"for c in $(vsh domifaddr {name_q} --source lease "
-            "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
-            "| grep -v '^127\\.'); do "
+            "for c in $cands; do "
             'timeout 2 bash -c "echo > /dev/tcp/$c/22" 2>/dev/null '
             '&& n="$c"; done; fi; '
+            # Le bail ne mentionne plus l'adresse courante : elle est périmée,
+            # on suit le bail sans attendre que sshd réponde.
+            'if [ -z "$n" ] && [ -n "$cands" ] && '
+            '! echo "$cands" | grep -Fqx "$ip"; then '
+            'n=$(echo "$cands" | tail -1); '
+            f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
         if name
@@ -151,17 +181,24 @@ def _launch_one(
         f"{vsh if name else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
+        f"seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
         f'st=$(ssh {SSH_OPTS} -o BatchMode=yes "erplibre@$ip" '
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
-        f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) break;; "
+        f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
         f"esac; "
         f"if [ $((i % 6)) -eq 0 ]; then "
         f'echo "   ... $((i*5))s ($ip)" >> {log_q}; fi; '
         f"sleep 5; done; "
+        # La boucle peut s'ÉPUISER au lieu de rompre : sous émulation,
+        # cloud-init dépasse volontiers 20 min. Annoncer « VM prête » dans les
+        # deux cas donnait un message faux juste avant le plus long silence du
+        # log — c'est l'installation qui attend alors la fin de cloud-init.
+        f'if [ "$seen" = 1 ]; then '
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
+        f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
         f'ssh {SSH_OPTS} "erplibre@$ip" {shlex.quote(remote_cmd)} '
         f">> {log_q} 2>&1; "
