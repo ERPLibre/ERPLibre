@@ -58,6 +58,25 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
+  # Sur s390x, aucune roue PyPI : tout se compile contre les bibliothèques de
+  # la distribution. Deux versions n'en ont pas d'assez récentes.
+  #
+  # 20.04 : pikepdf réclame qpdf >= 12.2, dont la compilation exige C++20.
+  #         focal livre GCC 9 et ne publie PAS g++-10 pour s390x — vérifié.
+  #         La compilation s'arrête sur « fatal error: concepts: No such file
+  #         or directory », sans contournement possible.
+  # 22.04 : même mur qpdf, franchissable en théorie, abandonné avec la 20.04
+  #         plutôt que de maintenir un chemin de plus.
+  #
+  # On refuse ICI, avant une heure de compilation émulée pour rien.
+  case "${UBUNTU_VERSION}" in
+    20.04 | 22.04)
+      echo "Ubuntu ${UBUNTU_VERSION} n'est plus supporte sur s390x :"
+      echo "  sa chaine d'outils est trop ancienne pour ERPLibre."
+      echo "  Utilisez Ubuntu 24.04 ou plus recent."
+      exit 1
+      ;;
+  esac
   # Sur une VM fraîche, l'index apt peut être vide : « apt install » échouerait
   # alors sur TOUT le lot, et l'absence d'un seul paquet ne se voit que bien
   # plus loin, sous la forme d'une commande introuvable.
