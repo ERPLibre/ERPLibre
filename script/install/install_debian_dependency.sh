@@ -58,7 +58,11 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
-  sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential npm -y
+  # Sur une VM fraîche, l'index apt peut être vide : « apt install » échouerait
+  # alors sur TOUT le lot, et l'absence d'un seul paquet ne se voit que bien
+  # plus loin, sous la forme d'une commande introuvable.
+  ${APT_GET} update
+  sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential -y
   # manifold3d, tiré par to-3mf, ne publie pas de roue s390x : il se compile
   # depuis les sources. Son CMake exige tbb via pkg-config, et scikit-build-core
   # ne trouve pas non plus de roue ninja pour cette architecture — les deux
@@ -193,9 +197,18 @@ case "${NODE_ARCH}" in
     echo "NodeSource ne publie pas pour ${NODE_ARCH} : nodejs vient de la distribution."
     sudo rm -f /etc/apt/sources.list.d/nodesource.list
     ${APT_GET} update
+    # Le paquet « nodejs » de NodeSource embarque npm ; celui d'Ubuntu NON —
+    # vérifié : /usr/bin/npm est absent du paquet sur jammy, noble et questing.
+    # Sans cette ligne, tout ce qui suit tombe sur « npm: command not found ».
+    NODE_PKG="nodejs npm"
     ;;
 esac
-${APT_GET} install nodejs -y
+${APT_GET} install ${NODE_PKG:-nodejs} -y
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm est introuvable apres l'installation de nodejs (${NODE_ARCH})."
+  exit 1
+fi
 
 # « npm@latest » dépasse régulièrement le node de la distribution : sur
 # Ubuntu 26.04 s390x, npm 12 exige node ^22.22.2 alors que l'archive livre la
