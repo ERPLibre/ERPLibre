@@ -1973,6 +1973,21 @@ TRANSLATIONS = {
         "fr": "RAM (Mo)",
         "en": "RAM (MB)",
     },
+    "cloud-init still running after 20 min - install starts anyway"
+    " (it waits for cloud-init first)": {
+        "fr": "cloud-init tourne encore apres 20 min - l'installation demarre"
+        " quand meme (elle attend d'abord cloud-init)",
+        "en": "cloud-init still running after 20 min - install starts anyway"
+        " (it waits for cloud-init first)",
+    },
+    "Waiting for cloud-init to finish (up to 15 min)": {
+        "fr": "Attente de la fin de cloud-init (jusqu'a 15 min)",
+        "en": "Waiting for cloud-init to finish (up to 15 min)",
+    },
+    "cloud-init:": {
+        "fr": "cloud-init :",
+        "en": "cloud-init:",
+    },
     "WARNING libvirt unreachable: the IP will not be refreshed"
     " (libvirt group? re-login required)": {
         "fr": "ATTENTION libvirt injoignable : l'IP ne sera pas rafraichie"
