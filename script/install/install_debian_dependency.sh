@@ -59,6 +59,11 @@ fi
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
   sudo apt install rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin proj-data libgeographiclib-dev freetds-dev freetds-bin libkrb5-dev libssl-dev pkg-config build-essential npm -y
+  # manifold3d, tiré par to-3mf, ne publie pas de roue s390x : il se compile
+  # depuis les sources. Son CMake exige tbb via pkg-config, et scikit-build-core
+  # ne trouve pas non plus de roue ninja pour cette architecture — les deux
+  # doivent venir de la distribution.
+  sudo apt install libtbb-dev cmake ninja-build -y
 fi
 
 #--------------------------------------------------
