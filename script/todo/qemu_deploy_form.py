@@ -370,6 +370,7 @@ def run_deploy_form(ctx, run_app: bool = True):
         BINDINGS = [
             ("f5", "deploy", t("Deploy")),
             ("f2", "edit_vm", t("Edit VM")),
+            ("f4", "clear_vm", t("Reset VM")),
             ("f3", "preview", t("Preview")),
             ("f6", "select_all", t("All")),
             ("f7", "select_main", t("Main versions")),
@@ -384,6 +385,15 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.custom = {}
             self._free = {}
             self.overrides = {}
+            # « all » : les champs de ressources nourrissent le profil.
+            # « one » : ils écrivent une surcharge pour la ligne du plan.
+            self.scope = "all"
+            # Vrai pendant qu'on repositionne les widgets nous-mêmes : sans ce
+            # verrou, remettre une liste à vide déclencherait on_select_changed,
+            # qui réécrirait une surcharge — une boucle qui se nourrit seule.
+            self._syncing = False
+            # Dernier rang connu du curseur du plan.
+            self._last_row = 0
             self.vms = []
             self.rows = []
 
@@ -450,6 +460,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                         classes="freeval",
                         disabled=True,
                     )
+                    # Portée des TROIS champs ci-dessus. Le profil x1..x4 reste
+                    # global par nature — il multiplie ce que demande chaque
+                    # image. Ces valeurs-ci, elles, peuvent ne viser qu'une VM :
+                    # une seule machine a besoin de 16 G, pas les huit autres.
+                    #
+                    # Le mode « une seule » rend les champs actifs même hors
+                    # profil personnalisé : on y saisit une valeur absolue, pas
+                    # un multiplicateur.
+                    with RadioSet(id="f_scope"):
+                        yield RadioButton(t("Apply to all VMs"), value=True)
+                        yield RadioButton(t("Apply to the selected VM only"))
+                    yield Static("", id="scopetarget")
                     # Serveur par défaut : c'est ce que sert une image cloud,
                     # et GNOME ajoute une à deux heures sur une architecture
                     # émulée. Le plan annonce le surcoût disque.
@@ -560,6 +582,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 t("Status"),
             )
             self._reload_catalog(first_load=True)
+            self._sync_res_fields()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -614,8 +637,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._desktop():
                 grow += desktop_disk
             self.rows = plan_rows(self.vms, domains, grow)
+            # Le plan doit MONTRER qu'une VM a été personnalisée : sans marque,
+            # deux lignes aux ressources différentes n'ont aucune explication à
+            # l'écran, et la surcharge est oubliée à la relecture. Le drapeau
+            # vit sur la ligne d'affichage, jamais sur la VM : celle-ci part
+            # telle quelle dans la spec, que la CLI produit à l'identique.
+            for row, entry in zip(self.rows, entries):
+                row["custom"] = bool(self.overrides.get(entry_key(entry)))
             self._render_plan()
             self._render_mise()
+            self.query_one("#scopetarget", Static).update(self._scope_label())
 
         def _render_mise(self):
             """Grise le choix quand aucune VM retenue n'est servie par mise,
@@ -671,6 +702,11 @@ def run_deploy_form(ctx, run_app: bool = True):
 
         def _render_plan(self):
             table = self.query_one("#plan", DataTable)
+            # « clear() » ramène le curseur en tête. Le plan étant recalculé à
+            # CHAQUE frappe, la ligne visée serait perdue entre deux saisies :
+            # on choisit debian, on tape 16384, le tableau se redessine, et la
+            # valeur suivante partirait sur ubuntu sans que rien ne le montre.
+            keep = table.cursor_row
             table.clear()
             # Le type ne concerne QUE les VM réellement créées : une VM déjà
             # définie n'est pas retouchée, lui afficher « GNOME » laisserait
@@ -681,7 +717,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[r["state"]]
                 status = kind if r["state"] == "new" else f"{icon}{r['note']}"
                 table.add_row(
-                    vm["name"],
+                    f"{vm['name']} ✎" if r.get("custom") else vm["name"],
                     vm["distro"],
                     vm["version"],
                     vm["arch"],
@@ -690,6 +726,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                     f"{r['disk_gb']}G",
                     status,
                 )
+            if self.rows:
+                # Borné : décocher une entrée raccourcit la liste, et un rang
+                # devenu hors bornes ferait perdre la ligne visée pour de bon.
+                table.move_cursor(row=min(max(keep, 0), len(self.rows) - 1))
             if not self.rows:
                 # Rien de coché : un total à zéro n'apprend rien, on dit
                 # plutôt comment remplir la liste.
@@ -727,12 +767,94 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
-                custom = self.profile == "custom"
-                for field, (sel, inp) in RES_FIELDS.items():
-                    self.query_one(sel, Select).disabled = not custom
-                    free = custom and self._free.get(field)
-                    self._show_free(field, free)
+                self._sync_res_fields()
                 self._recompute()
+            elif event.radio_set.id == "f_scope":
+                self.scope = (
+                    "one" if event.radio_set.pressed_index == 1 else "all"
+                )
+                # Les champs repartent à vide : ils décrivent désormais une
+                # AUTRE cible, et y laisser la valeur précédente ferait croire
+                # qu'elle s'y applique déjà.
+                self._reset_res_widgets()
+                self._sync_res_fields()
+                if self.scope == "one":
+                    # Sans focus, le curseur du tableau reste invisible et on
+                    # modifierait une ligne qu'on ne voit pas désignée.
+                    self.query_one("#plan", DataTable).focus()
+                self._recompute()
+
+        # -- portée des ressources -------------------------------------- #
+        def _cursor_index(self):
+            """Rang de la ligne visée dans le plan, ou None."""
+            index = self.query_one("#plan", DataTable).cursor_row
+            return index if 0 <= index < len(self.vms) else None
+
+        def _cursor_key(self):
+            """Identité de catalogue de la ligne visée, ou None. C'est elle qui
+            indexe les surcharges, pas le rang : cocher une autre distro ne doit
+            pas déplacer une personnalisation d'une VM à l'autre."""
+            index = self._cursor_index()
+            if index is None:
+                return None
+            return entry_key(self._selected_entries()[index])
+
+        def _scope_label(self):
+            """Ce que la saisie va toucher, dit en toutes lettres."""
+            if self.scope != "one":
+                n = len(self.overrides)
+                if not n:
+                    return ""
+                return f"  ✎ {n} {t('VM(s) customised (F4 resets one)')}"
+            index = self._cursor_index()
+            if index is None:
+                return f"  ⚠ {t('Pick a line in the plan (Tab, then arrows)')}"
+            vm = self.vms[index]
+            return (
+                f"  ✎ {vm['name']} — {vm['vcpus']} vCPU · "
+                f"{vm['ram']} Mo · {vm['disk']}"
+            )
+
+        def _sync_res_fields(self) -> None:
+            """Active les trois champs quand ils ont un sens, et redit la cible.
+
+            Portée « toutes » : ils ne servent que le profil personnalisé, comme
+            avant. Portée « une seule » : ils valent toujours, puisqu'on y saisit
+            la valeur absolue d'une VM et non un multiplicateur."""
+            live = self.scope == "one" or self.profile == "custom"
+            for field, (sel, _inp) in RES_FIELDS.items():
+                self.query_one(sel, Select).disabled = not live
+                self._show_free(field, live and self._free.get(field))
+            self.query_one("#scopetarget", Static).update(self._scope_label())
+
+        def _reset_res_widgets(self) -> None:
+            """Remet listes et saisies à vide SANS déclencher d'écriture."""
+            self._syncing = True
+            try:
+                for field, (sel, inp) in RES_FIELDS.items():
+                    self.query_one(sel, Select).value = SELECT_NULL
+                    self.query_one(inp, Input).value = ""
+                    self._free[field] = False
+                    self._show_free(field, False)
+            finally:
+                self._syncing = False
+
+        def _set_resource(self, field, value) -> None:
+            """Écrit une ressource là où la portée le demande."""
+            if self.scope != "one":
+                self.custom[field] = value
+                return
+            key = self._cursor_key()
+            if key is None:
+                return
+            if value in ("", 0):
+                # Saisie vidée ou invalide : on RETIRE la surcharge au lieu
+                # d'écrire un zéro, qui donnerait une VM à 0 vCPU.
+                self.overrides.get(key, {}).pop(field, None)
+                if not self.overrides.get(key):
+                    self.overrides.pop(key, None)
+            else:
+                self.overrides.setdefault(key, {})[field] = value
 
         def _show_free(self, field, visible) -> None:
             """Montre ou cache la saisie libre d'une ressource."""
@@ -744,6 +866,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._recompute()
 
         def on_select_changed(self, event) -> None:
+            if self._syncing:
+                return
             field = SELECT_TO_FIELD.get(event.select.id)
             if not field:
                 return
@@ -756,7 +880,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.value is not SELECT_NULL:
                 self._free[field] = False
                 self._show_free(field, False)
-                self.custom[field] = event.value
+                self._set_resource(field, event.value)
             self._recompute()
 
         def _apply_free(self, field) -> None:
@@ -764,15 +888,31 @@ def run_deploy_form(ctx, run_app: bool = True):
             profil retombe alors sur celle du catalogue."""
             raw = self.query_one(RES_FIELDS[field][1], Input).value.strip()
             if field == "disk":
-                self.custom[field] = parse_disk(raw) or ""
+                self._set_resource(field, parse_disk(raw) or "")
             else:
-                self.custom[field] = positive_int(raw, 0)
+                self._set_resource(field, positive_int(raw, 0))
 
         def on_input_changed(self, event) -> None:
+            if self._syncing:
+                return
             field = INPUT_TO_FIELD.get(event.input.id)
             if field:
                 self._apply_free(field)
                 self._recompute()
+
+        def on_data_table_row_highlighted(self, event) -> None:
+            """Changer de ligne change la cible : on repart de champs vides,
+            pour ne pas reporter par mégarde le réglage de la VM précédente.
+
+            Le rang précédent est mémorisé plutôt que testé sur un verrou :
+            replacer le curseur après un redessin poste le même message, et
+            Textual le délivre APRÈS que le verrou soit retombé."""
+            if event.cursor_row == self._last_row:
+                return
+            self._last_row = event.cursor_row
+            if self.scope == "one":
+                self._reset_res_widgets()
+                self._sync_res_fields()
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
@@ -809,6 +949,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                     self._recompute()
 
             self.push_screen(EditVMScreen(dict(self.vms[index])), apply)
+
+        def action_clear_vm(self) -> None:
+            """Rend la VM visée au profil commun. Sans cette sortie, une
+            personnalisation posée par erreur ne se défaisait qu'en rouvrant le
+            formulaire."""
+            key = self._cursor_key()
+            if key is None or key not in self.overrides:
+                return
+            self.overrides.pop(key)
+            self._reset_res_widgets()
+            self._sync_res_fields()
+            self._recompute()
 
         def _form_values(self):
             install = None
