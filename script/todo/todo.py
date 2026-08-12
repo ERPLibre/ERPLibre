@@ -1027,6 +1027,7 @@ class TODO:
         "fedora": (["41", "42", "43", "44"], "42"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),
+        "opensuse": (["tumbleweed"], "tumbleweed"),
         "arch": (["latest"], "latest"),
     }
 
@@ -1074,13 +1075,20 @@ class TODO:
 
     # Distros publiant des images cloud par architecture (cohérent avec
     # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
-    _QEMU_S390X_DISTROS = ("ubuntu", "almalinux", "rocky", "fedora")
+    _QEMU_S390X_DISTROS = (
+        "ubuntu",
+        "almalinux",
+        "rocky",
+        "fedora",
+        "opensuse",
+    )
     _QEMU_ARM64_DISTROS = (
         "ubuntu",
         "debian",
         "fedora",
         "almalinux",
         "rocky",
+        "opensuse",
     )
     # Alias distro pour l'affichage (jeton générique -> nom courant).
     _QEMU_ARCH_ALIAS = {"amd64": "x86_64", "arm64": "aarch64"}
@@ -4325,6 +4333,7 @@ class TODO:
             "dnf_env": "graphical-server-environment "
             "workstation-product-environment gnome-desktop",
             "pacman": "gnome gdm",
+            "zypper": "patterns-gnome-gnome_basic gdm",
             "service": "gdm",
         },
         "cinnamon": {
@@ -4336,6 +4345,7 @@ class TODO:
             "apt": "cinnamon-desktop-environment dbus-x11",
             "dnf_env": "cinnamon-desktop",
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
+            "zypper": "cinnamon lightdm",
             "service": "lightdm",
         },
     }
@@ -4344,6 +4354,7 @@ class TODO:
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
+        "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
     }
     # Place que prend un bureau complet, annoncée dans le plan : sur une image
     # cloud de 40 G, l'oublier remplit le disque en pleine installation.
@@ -4408,6 +4419,44 @@ class TODO:
             ">/dev/null 2>&1 || true; "
         )
 
+    # Miroirs openSUSE préférés, du plus proche au dernier recours. Le
+    # redirecteur officiel n'est PAS géographique pour cette distribution :
+    # mesuré depuis Montréal sur les métadonnées oss s390x (15 Mo),
+    # download.opensuse.org met 23,8 s — il sert depuis l'Europe — contre
+    # 2,7 s pour mirrors.rit.edu. Les trois familles dnf, elles, choisissent
+    # déjà un miroir canadien toutes seules ; rien à faire de ce côté.
+    #
+    # Chaque miroir est SONDÉ sur le chemin de l'architecture ET du produit
+    # courants, puis le premier qui répond gagne. C'est nécessaire : aucun ne
+    # réplique tout. Relevé le 2026-08-12 —
+    #   csclub    Leap oui, Tumbleweed non (404)
+    #   rit.edu   zsystems oui ; injoignable ce jour-là (curl 7)
+    #   leaseweb  Tumbleweed x86_64 et Leap oui, ports zsystems non
+    # D'où plusieurs entrées plutôt qu'une : avec la seule rit.edu, sa panne
+    # renvoyait tout le monde sur download.opensuse.org, servi d'Europe.
+    # Ordonnées par proximité de Montréal. Aucun sondage concluant : on garde
+    # les dépôts de l'image, donc le comportement d'avant.
+    _QEMU_ZYPPER_MIRRORS = (
+        "https://mirror.csclub.uwaterloo.ca/opensuse",
+        "https://mirrors.rit.edu/opensuse",
+        "https://mirror.us.leaseweb.net/opensuse",
+    )
+
+    def _qemu_zypper_mirror_cmd(self):
+        """Réécrit l'hôte des dépôts zypper vers un miroir plus proche."""
+        mirrors = " ".join(self._QEMU_ZYPPER_MIRRORS)
+        return (
+            "zp=tumbleweed; "
+            '[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed; '
+            f"for zm in {mirrors}; do "
+            "if curl -fsS --max-time 20 -o /dev/null "
+            '"$zm/$zp/repo/oss/repodata/repomd.xml"; then '
+            "sudo sed -i "
+            '"s|https\\?://download\\.opensuse\\.org|$zm|g" '
+            "/etc/zypp/repos.d/*.repo 2>/dev/null || true; "
+            f'echo "   {t("openSUSE mirror:")} $zm"; break; fi; done; '
+        )
+
     def _qemu_desktop_remote_cmd(self, flavour="gnome"):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -4440,6 +4489,14 @@ class TODO:
             "|| sudo rm -f /var/lib/pacman/db.lck; "
             f"sudo pacman -S --needed --noconfirm {de['pacman']} "
             f"{rem['pacman']['packages']}; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive refresh || true; "
+            # « --auto-agree-with-licenses » appartient à la SOUS-COMMANDE
+            # install, pas aux options globales : placé avant, zypper répond
+            # « The flag --auto-agree-with-licenses is not known ».
+            "sudo zypper --non-interactive install "
+            f"--auto-agree-with-licenses {de['zypper']} "
+            f"{rem['zypper']['packages']}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
@@ -4550,10 +4607,29 @@ class TODO:
             "--save /etc/pacman.d/mirrorlist || true; "
             "sudo pacman -Syu --noconfirm || true; "
             "sudo pacman -S --needed --noconfirm $PKGS; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            # openSUSE : « --non-interactive » vaut le -y des autres, et
+            # « --auto-agree-with-licenses », qui va APRÈS « install »,
+            # évite un blocage sur une licence à accepter.
+            # Tumbleweed étant rolling, on rafraîchit avant d'installer.
+            + self._qemu_zypper_mirror_cmd()
+            + "sudo zypper --non-interactive refresh || true; "
+            # Tumbleweed est ROLLING et ne supporte pas les mises à jour
+            # partielles, exactement comme Arch. L'image cloud est un
+            # instantané figé : ses dépôts ont avancé depuis, et un
+            # « install » simple bute sur une incohérence — vécu, git 2.54
+            # réclamait perl-Git bâti contre un perl-base plus ancien que
+            # celui de l'image. zypper proposait alors trois solutions et
+            # attendait un choix ; « --non-interactive » prend le défaut,
+            # « c » = annuler, et l'installation s'arrêtait là.
+            "sudo zypper --non-interactive dup --auto-agree-with-licenses "
+            "--allow-vendor-change || true; "
+            "sudo zypper --non-interactive install "
+            "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets "
-            "(apt/dnf/pacman/yum)'; exit 1; fi; "
+            "(apt/dnf/pacman/zypper/yum)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "

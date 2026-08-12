@@ -2055,6 +2055,10 @@ TRANSLATIONS = {
         "fr": "Installation du bureau GNOME (long)",
         "en": "Installing the GNOME desktop (long)",
     },
+    "openSUSE mirror:": {
+        "fr": "miroir openSUSE :",
+        "en": "openSUSE mirror:",
+    },
     "Remote desktop:": {
         "fr": "Bureau distant :",
         "en": "Remote desktop:",

@@ -32,7 +32,8 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
-  AlmaLinux, Rocky Linux, Arch) on amd64, arm64 and s390x, with a menu to list,
+  AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) on amd64,
+  arm64 and s390x, with a menu to list,
   test, resize, delete and clean up
 - Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the
   Linux Mint desktop), with remote access through xrdp — TigerVNC on Arch
