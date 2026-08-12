@@ -2371,15 +2371,35 @@ class TodoUpgrade:
         if "No website COW view to neutralize" in "\n".join(output or []):
             return
 
-        answer = (
-            input(
-                "💬 Neutralize these copies so the upgrade can proceed?"
-                " Their arch is kept and the change is reversible."
-                " (Y/n) : "
-            )
-            .strip()
-            .lower()
+        # « v » et « w » avant de répondre : la question demande de renoncer à
+        # une personnalisation sans avoir montré laquelle. Souvent trois lignes
+        # — un id, une largeur de conteneur — mais parfois une page entière, et
+        # rien dans l'avertissement ne permet de les distinguer.
+        show = (
+            f"{PYTHON_BIN} ./script/odoo/migration/cow_drift.py"
+            f" -d {database_name} -t odoo{next_version}.0"
         )
+        while True:
+            answer = (
+                input(
+                    "💬 Neutralize these copies so the upgrade can proceed?"
+                    " Their arch is kept and the change is reversible."
+                    " (Y/n, v = view the differences, w = full screen) : "
+                )
+                .strip()
+                .lower()
+            )
+            if answer == "v":
+                self.todo_upgrade_execute(show, wait_at_error=False)
+                self.todo_upgrade_execute(
+                    f"{show} --shape", wait_at_error=False
+                )
+                continue
+            if answer == "w":
+                self.todo_upgrade_execute(f"{show} --tui", wait_at_error=False)
+                continue
+            break
+
         if answer == "n":
             print(
                 "⚠️ -> Skipped. The data migration will very likely stop on"
@@ -2387,6 +2407,11 @@ class TodoUpgrade:
             )
             return
         self.todo_upgrade_execute(f"{cmd} --apply", wait_at_error=False)
+        print(
+            "ℹ -> List them later with:"
+            f" {PYTHON_BIN} ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database_name} --list"
+        )
 
     def diff_cow_views(self, database_name, label_before, label_after):
         """Print what the version bump did to the website COW views."""
