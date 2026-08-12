@@ -814,6 +814,22 @@ def virsh_domstates() -> dict:
 # --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
+# Largeurs de colonnes du tableau de suivi. Une seule source : la
+# construction du tableau les lit ici, et « 0 » y revient. Les redéclarer à
+# deux endroits, c'est garantir qu'un jour la remise à zéro rendra autre chose
+# que ce qui était affiché au départ.
+COL_DEFAULT_WIDTHS = {
+    "seq": 3,
+    "vm": 22,
+    "arch": 7,
+    "err": 4,
+    "state": 8,
+    "odoo": 6,
+    "elapsed": 7,
+    "disk": 8,
+}
+
+
 # Parties d'une remise à jour, dans l'ordre où elles doivent tourner : les
 # paquets système d'abord (compilateurs et en-têtes), le code ensuite, les
 # dépendances Python en dernier — elles se compilent contre les deux premiers.
@@ -1061,7 +1077,17 @@ def run_monitor(manifest_path: str, run_app: bool = True):
 
     class Monitor(App):
         CSS = """
-        DataTable { width: 74; height: 1fr; overflow-x: auto; border: solid $accent; }
+        /* « width: 74 » figeait la table : au-delà, les colonnes élargies
+        n'étaient plus atteignables, et la barre horizontale ne s'affichait
+        pas faute de place réservée. « scrollbar-size » la rend VISIBLE plutôt
+        que devinable, et « max-width » laisse la table suivre l'élargissement
+        des colonnes sans manger tout l'écran. */
+        DataTable {
+            width: auto; max-width: 60%; height: 1fr;
+            overflow-x: auto; overflow-y: auto;
+            scrollbar-size-horizontal: 1; scrollbar-size-vertical: 1;
+            border: solid $accent;
+        }
         RichLog { border: solid $accent; }
         #telemetry { height: 1; color: $text-muted; }
         #stats { height: 1; color: $accent; }
@@ -1099,6 +1125,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("c", "copy_log", "Copier log"),
             ("d", "details", "Détails erreurs"),
             ("a", "vm_actions", "Actions VM"),
+            # Mêmes touches que la TUI mail, qui redimensionne ses volets :
+            # « + » élargit, « - » rétrécit, « 0 » remet tout d'aplomb.
+            ("plus", "col_grow", "Colonne +"),
+            ("minus", "col_shrink", "Colonne -"),
+            ("0", "col_reset", "Colonnes par défaut"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -1155,20 +1186,35 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # tronqué (« ❌ effacée », « ⏸ en pause » lisibles) ; la table
             # défile horizontalement (overflow-x) pour les noms de VM longs.
             # « # » : numéro de séquence de la VM (première colonne).
-            table.add_column("#", key="seq", width=3)
-            table.add_column("VM", key="vm", width=22)
-            table.add_column("⚠", key="err", width=4)
+            table.add_column("#", key="seq", width=COL_DEFAULT_WIDTHS["seq"])
+            table.add_column("VM", key="vm", width=COL_DEFAULT_WIDTHS["vm"])
+            # L'architecture explique à elle seule qu'une installation dure
+            # dix fois plus longtemps : s390x et arm64 sont ÉMULÉES sur un
+            # hôte amd64. La voir évite de chercher la panne ailleurs.
+            table.add_column(
+                "Arch", key="arch", width=COL_DEFAULT_WIDTHS["arch"]
+            )
+            table.add_column("⚠", key="err", width=COL_DEFAULT_WIDTHS["err"])
             # width=8 : le plus long libellé restant est « ⏸ pause » (7) —
             # « effacée » (10) est remplacé par l'icône 🗑 (voir plus bas).
-            table.add_column("État", key="state", width=8)
+            table.add_column(
+                "État", key="state", width=COL_DEFAULT_WIDTHS["state"]
+            )
             # « Odoo » : l'UI web répond-elle sur :8069 ? (🟢 up / — down)
-            table.add_column("Odoo", key="odoo", width=6)
-            table.add_column("Durée", key="elapsed", width=7)
-            table.add_column("Disque", key="disk", width=8)
+            table.add_column(
+                "Odoo", key="odoo", width=COL_DEFAULT_WIDTHS["odoo"]
+            )
+            table.add_column(
+                "Durée", key="elapsed", width=COL_DEFAULT_WIDTHS["elapsed"]
+            )
+            table.add_column(
+                "Disque", key="disk", width=COL_DEFAULT_WIDTHS["disk"]
+            )
             for i, vm in enumerate(vms, 1):
                 table.add_row(
                     str(i),
                     vm["name"],
+                    vm.get("arch") or "?",
                     "",
                     "⏳",
                     "—",
@@ -1714,6 +1760,53 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     )
                 except (OSError, subprocess.SubprocessError):
                     pass
+
+        # -- largeur des colonnes ---------------------------------------- #
+        COL_STEP = 2
+        COL_MIN = 3
+        COL_MAX = 60
+
+        def _cursor_column(self):
+            """Colonne sous le curseur, ou None. DataTable expose ses colonnes
+            dans un dictionnaire ORDONNÉ : le rang du curseur y donne la clé.
+            """
+            table = self.query_one("#vms", DataTable)
+            keys = list(table.columns)
+            index = table.cursor_column
+            if not (0 <= index < len(keys)):
+                return None, None
+            return table, keys[index]
+
+        def _resize_column(self, delta) -> None:
+            table, key = self._cursor_column()
+            if key is None:
+                return
+            col = table.columns[key]
+            width = max(
+                self.COL_MIN, min(self.COL_MAX, (col.width or 0) + delta)
+            )
+            col.width = width
+            # auto_width écraserait la largeur au prochain rendu : on la coupe,
+            # sinon le réglage ne survit pas à la première mise à jour.
+            col.auto_width = False
+            table.refresh(layout=True)
+            self.notify(f"{col.label} : {width}")
+
+        def action_col_grow(self) -> None:
+            self._resize_column(self.COL_STEP)
+
+        def action_col_shrink(self) -> None:
+            self._resize_column(-self.COL_STEP)
+
+        def action_col_reset(self) -> None:
+            """Rend aux colonnes les largeurs déclarées à la construction."""
+            table = self.query_one("#vms", DataTable)
+            for key, width in COL_DEFAULT_WIDTHS.items():
+                if key in table.columns:
+                    table.columns[key].width = width
+                    table.columns[key].auto_width = False
+            table.refresh(layout=True)
+            self.notify("Colonnes remises par défaut.")
 
         def action_vm_actions(self) -> None:
             """Ouvre les actions de la VM sélectionnée."""
