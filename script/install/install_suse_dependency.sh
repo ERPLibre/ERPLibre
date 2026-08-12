@@ -189,7 +189,10 @@ if [ "$(uname -m)" = "s390x" ]; then
   # même règle, et pas seulement celle qui a signalé la panne. cmake et
   # pkg-config sont posés ici parce qu'ils lui sont nécessaires et n'arrivent
   # que plus bas dans le script.
-  zyp_soft qpdf-devel libjpeg8-devel cmake pkg-config
+  # « pkgconf-pkg-config » et non « pkg-config » : aucun RPM ne porte ce dernier
+  # nom dans Tumbleweed, il n'existe plus que comme capacité fournie par le
+  # premier. La capacité résout aujourd'hui, le nom réel ne dépend de rien.
+  zyp_soft qpdf-devel libjpeg8-devel cmake pkgconf-pkg-config
   el_qpdf_ensure
 fi
 
@@ -217,7 +220,7 @@ fi
 
 # Dépendances selenium / bindings.
 zyp_soft \
-  cairo-devel python3-devel pkg-config gobject-introspection-devel \
+  cairo-devel python3-devel pkgconf-pkg-config gobject-introspection-devel \
   libXt-devel || echo "Dependances selenium partielles (optionnel)."
 
 #--------------------------------------------------
