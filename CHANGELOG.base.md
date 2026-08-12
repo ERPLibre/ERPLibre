@@ -58,7 +58,7 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
-  AlmaLinux, Rocky Linux, CentOS Stream, openSUSE Tumbleweed, Arch) on amd64,
+  AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) on amd64,
   arm64 and s390x, with a menu to list,
   test, resize, delete and clean up
 - Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the
@@ -112,7 +112,7 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
-  Debian, Fedora, AlmaLinux, Rocky Linux, CentOS Stream, openSUSE Tumbleweed,
+  Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE Tumbleweed,
   Arch) en amd64, arm64 et s390x, avec
   un menu pour lister, tester, redimensionner, supprimer et nettoyer
 - VM graphiques : un choix serveur / bureau proposant GNOME ou Cinnamon (le

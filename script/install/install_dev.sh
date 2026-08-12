@@ -35,7 +35,7 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
     ./script/install/install_fedora_dependency.sh
   else
     ./script/install/install_debian_dependency.sh
-    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, CentOS Stream, openSUSE, Arch."
+    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE, Arch."
   fi
 elif [[ "${OSTYPE}" == "darwin"* ]]; then
   echo "\n---- Darwin installation process started ----"

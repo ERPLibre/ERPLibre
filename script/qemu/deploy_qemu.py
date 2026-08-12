@@ -113,12 +113,6 @@ ROCKY_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "9": ("9", "rocky9", 2048, "20G"),
     "10": ("10", "rocky10", 2048, "20G"),
 }
-# CentOS Stream : l'amont de RHEL, donc d'AlmaLinux et de Rocky. Utile comme
-# vigie — les régressions y apparaissent avant. Seule la 10 est retenue : la 9
-# est le jumeau d'AlmaLinux 9 et son support s'arrête en mai 2027.
-CENTOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "10": ("10-stream", "centos-stream10", 2048, "20G"),
-}
 # openSUSE Tumbleweed : rolling, donc une seule « version ». C'est la seule
 # distribution du catalogue dont qpdf (12.3.2) dépasse déjà le seuil de
 # pikepdf 10 — aucune compilation de qpdf, ce qui change tout sous émulation.
@@ -137,7 +131,6 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "fedora": (FEDORA_VERSIONS, "42"),
     "almalinux": (ALMALINUX_VERSIONS, "9"),
     "rocky": (ROCKY_VERSIONS, "10"),
-    "centos": (CENTOS_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "tumbleweed"),
     "arch": (ARCH_VERSIONS, "latest"),
 }
@@ -148,7 +141,6 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
     "almalinux": {"amd64": "x86_64", "arm64": "aarch64"},
     "rocky": {"amd64": "x86_64", "arm64": "aarch64"},
-    "centos": {"amd64": "x86_64", "arm64": "aarch64"},
     "opensuse": {"amd64": "x86_64", "arm64": "aarch64"},
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
@@ -167,7 +159,6 @@ S390X_DISTROS: tuple[str, ...] = (
     "almalinux",
     "rocky",
     "fedora",
-    "centos",
     "opensuse",
 )
 
@@ -196,7 +187,6 @@ ARM64_DISTROS: tuple[str, ...] = (
     "fedora",
     "almalinux",
     "rocky",
-    "centos",
     "opensuse",
 )
 
@@ -236,7 +226,6 @@ DEBIAN_CLOUD_BASES: tuple[str, ...] = (
     "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
 )
 ALMALINUX_CLOUD_BASE = "https://repo.almalinux.org/almalinux"
-CENTOS_CLOUD_BASE = "https://cloud.centos.org/centos"
 OPENSUSE_BASE = "https://download.opensuse.org"
 ROCKY_CLOUD_BASE = "https://dl.rockylinux.org/pub/rocky"
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
@@ -314,13 +303,6 @@ def image_candidates(
             f"{ROCKY_CLOUD_BASE}/{version}/images/{a}/"
             f"Rocky-{version}-GenericCloud.latest.{a}.qcow2"
         ]
-    if distro == "centos":
-        # Alias « latest » stable, identique octet pour octet au dernier build
-        # daté. Le code « 10-stream » sert le chemin, la version le nom.
-        return [
-            f"{CENTOS_CLOUD_BASE}/{code}/{a}/images/"
-            f"CentOS-Stream-GenericCloud-{version}-latest.{a}.qcow2"
-        ]
     if distro == "opensuse":
         # Les architectures secondaires vivent sous /ports/, et zsystems DOUBLE
         # l'architecture dans le nom du fichier — irrégularité vérifiée dans
@@ -392,8 +374,6 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{version}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
-    if distro == "centos":
-        return f"centos-stream-{version}-genericcloud-{a}.qcow2"
     if distro == "opensuse":
         return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
     if distro in ("almalinux", "rocky"):

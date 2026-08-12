@@ -101,7 +101,6 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
-| centos | `10` (Stream) | ✔ | ✔ | ✔ |
 | opensuse | `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 
@@ -110,9 +109,7 @@ arborescence à part (`fedora-secondary`) — d'où la version unique.
 
 `opensuse` désigne openSUSE Tumbleweed, seule entrée dont qpdf (12.3.2)
 dépasse déjà le seuil de pikepdf : la compilation de qpdf, une demi-heure, ne
-s'y déclenche jamais — ce qui compte sous émulation s390x. `centos` désigne
-CentOS Stream, l'amont de RHEL : utile pour voir les régressions avant
-qu'AlmaLinux et Rocky n'en héritent.
+s'y déclenche jamais — ce qui compte sous émulation s390x.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.

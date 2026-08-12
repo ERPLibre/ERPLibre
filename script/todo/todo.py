@@ -1027,7 +1027,6 @@ class TODO:
         "fedora": (["41", "42", "43", "44"], "42"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),
-        "centos": (["10"], "10"),
         "opensuse": (["tumbleweed"], "tumbleweed"),
         "arch": (["latest"], "latest"),
     }
@@ -1081,7 +1080,6 @@ class TODO:
         "almalinux",
         "rocky",
         "fedora",
-        "centos",
         "opensuse",
     )
     _QEMU_ARM64_DISTROS = (
@@ -1090,7 +1088,6 @@ class TODO:
         "fedora",
         "almalinux",
         "rocky",
-        "centos",
         "opensuse",
     )
     # Alias distro pour l'affichage (jeton générique -> nom courant).

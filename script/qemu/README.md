@@ -95,7 +95,6 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | `43` only |
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
-| centos | `10` (Stream) | ✔ | ✔ | ✔ |
 | opensuse | `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 
@@ -104,8 +103,7 @@ Fedora builds s390x only for the current release, and on a separate tree
 
 `opensuse` is openSUSE Tumbleweed, the only entry whose qpdf (12.3.2) already
 clears the pikepdf threshold: the half-hour qpdf build never runs there, which
-matters under s390x emulation. `centos` is CentOS Stream, RHEL's upstream —
-useful to catch regressions before AlmaLinux and Rocky inherit them.
+matters under s390x emulation.
 
 Provide an explicit image path as a positional argument to override the
 automatic download location.
