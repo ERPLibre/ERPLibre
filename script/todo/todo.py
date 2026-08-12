@@ -4432,6 +4432,38 @@ class TODO:
     # les dépôts de l'image, donc le comportement d'avant.
     _QEMU_ZYPPER_MIRRORS = ("https://mirrors.rit.edu/opensuse",)
 
+    # Miroirs Arch canadiens, du plus rapide au suivant. Mesuré depuis
+    # Montréal sur extra.db : quantum5 2,0 s, xenyth 7,1 s, contre 8,0 s pour
+    # geo.mirror.pkgbuild.com — le miroir « géographique » officiel n'est donc
+    # pas le meilleur ici. Arch n'est proposé qu'en amd64 dans le catalogue,
+    # et ces deux-là ne servent que x86_64 (Arch Linux ARM a ses propres
+    # miroirs) : la garde d'architecture le dit quand même.
+    _QEMU_PACMAN_MIRRORS = (
+        "https://mirror.quantum5.ca/archlinux/$repo/os/$arch",
+        "https://mirror.xenyth.net/archlinux/$repo/os/$arch",
+    )
+
+    def _qemu_pacman_mirror_cmd(self):
+        """Place les miroirs canadiens EN TÊTE de la mirrorlist.
+
+        reflector écrase le fichier avec « --save » : il faut donc écrire
+        après lui, pas avant. Ses miroirs restent dessous, comme repli."""
+        # « \\n » et non un vrai saut de ligne : la commande distante est UNE
+        # chaîne, passée à bash -c après shlex.quote. Un retour littéral y
+        # survivrait, mais rendrait la chaîne illisible et fragile à relire.
+        # « $repo » et « $arch » restent littéraux : c'est pacman qui les
+        # substitue, d'où les guillemets SIMPLES autour du format.
+        lines = "".join(f"Server = {m}\\n" for m in self._QEMU_PACMAN_MIRRORS)
+        return (
+            '[ "$(uname -m)" = x86_64 ] && { '
+            f"printf '{lines}' | sudo tee /etc/pacman.d/mirrorlist.el "
+            "> /dev/null; "
+            "sudo sh -c 'cat /etc/pacman.d/mirrorlist "
+            ">> /etc/pacman.d/mirrorlist.el "
+            "&& mv /etc/pacman.d/mirrorlist.el /etc/pacman.d/mirrorlist'; "
+            "}; "
+        )
+
     def _qemu_zypper_mirror_cmd(self):
         """Réécrit l'hôte des dépôts zypper vers un miroir plus proche."""
         mirrors = " ".join(self._QEMU_ZYPPER_MIRRORS)
@@ -4640,7 +4672,8 @@ class TODO:
             "sudo pacman -Sy --needed --noconfirm reflector || true; "
             "sudo reflector --latest 20 --protocol https --sort rate "
             "--save /etc/pacman.d/mirrorlist || true; "
-            "sudo pacman -Syu --noconfirm || true; "
+            + self._qemu_pacman_mirror_cmd()
+            + "sudo pacman -Syu --noconfirm || true; "
             "sudo pacman -S --needed --noconfirm $PKGS; "
             "elif command -v zypper >/dev/null 2>&1; then "
             # openSUSE : « --non-interactive » vaut le -y des autres, et
