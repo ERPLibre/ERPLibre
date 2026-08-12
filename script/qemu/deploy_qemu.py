@@ -113,10 +113,23 @@ ROCKY_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "9": ("9", "rocky9", 2048, "20G"),
     "10": ("10", "rocky10", 2048, "20G"),
 }
-# openSUSE Tumbleweed : rolling, donc une seule « version ». C'est la seule
-# distribution du catalogue dont qpdf (12.3.2) dépasse déjà le seuil de
-# pikepdf 10 — aucune compilation de qpdf, ce qui change tout sous émulation.
+# openSUSE, deux produits distincts et pas deux versions du même.
+#   Leap       NUMÉROTÉ, base SLE, ~2 ans de support. C'est le défaut, et le
+#              seul des deux à proposer pour une installation qui doit durer.
+#   Tumbleweed ROLLING, sans numéro. Gardé comme banc d'essai des ruptures à
+#              venir, pas comme cible. Sa dérive d'instantanés est réelle : deux
+#              VM déployées le même jour ont vu git-daemon 2.54 sur s390x et
+#              2.55 sur amd64, et l'image livrée est toujours en retard sur les
+#              dépôts, d'où le « zypper dup » obligatoire avant toute install.
+#
+# Les deux dépassent le seuil qpdf de pikepdf : aucune compilation de qpdf, ce
+# qui change tout sous émulation s390x.
+#
+# osinfo : « opensuse16.0 » n'est pas encore dans osinfo-db, qui s'arrête à
+# 15.6. osinfo_arg() replie sur le DERNIER id connu de la table — d'où l'ordre,
+# Tumbleweed en second servant de repli à Leap.
 OPENSUSE_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "16.0": ("16.0", "opensuse16.0", 2048, "20G"),
     "tumbleweed": ("tumbleweed", "opensusetumbleweed", 2048, "20G"),
 }
 # Arch est en rolling release : une seule « version » (latest).
@@ -131,7 +144,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "fedora": (FEDORA_VERSIONS, "42"),
     "almalinux": (ALMALINUX_VERSIONS, "9"),
     "rocky": (ROCKY_VERSIONS, "10"),
-    "opensuse": (OPENSUSE_VERSIONS, "tumbleweed"),
+    "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
 }
 
@@ -304,16 +317,25 @@ def image_candidates(
             f"Rocky-{version}-GenericCloud.latest.{a}.qcow2"
         ]
     if distro == "opensuse":
-        # Les architectures secondaires vivent sous /ports/, et zsystems DOUBLE
-        # l'architecture dans le nom du fichier — irrégularité vérifiée dans
-        # l'index, pas déduite : « .s390x-s390x-Cloud » contre « .x86_64-Cloud ».
-        port = {"s390x": "ports/zsystems/", "arm64": "ports/aarch64/"}.get(
-            arch, ""
-        )
+        # zsystems DOUBLE l'architecture dans le nom du fichier — irrégularité
+        # vérifiée dans l'index, pas déduite : « .s390x-s390x-Cloud » contre
+        # « .x86_64-Cloud ». Elle vaut pour les DEUX produits.
         tag = f"{a}-{a}" if arch == "s390x" else a
+        if version == "tumbleweed":
+            # Tumbleweed sépare les architectures secondaires sous /ports/.
+            port = {"s390x": "ports/zsystems/", "arm64": "ports/aarch64/"}.get(
+                arch, ""
+            )
+            return [
+                f"{OPENSUSE_BASE}/{port}tumbleweed/appliances/"
+                f"openSUSE-Tumbleweed-Minimal-VM.{tag}-Cloud.qcow2"
+            ]
+        # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
+        # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
+        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
         return [
-            f"{OPENSUSE_BASE}/{port}tumbleweed/appliances/"
-            f"openSUSE-Tumbleweed-Minimal-VM.{tag}-Cloud.qcow2"
+            f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
+            f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
         ]
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
@@ -375,7 +397,9 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
     if distro == "opensuse":
-        return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
+        if version == "tumbleweed":
+            return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
+        return f"opensuse-leap-{version}-minimal-vm-{a}.qcow2"
     if distro in ("almalinux", "rocky"):
         # « latest » est MUTABLE : le nom de cache porte donc la majeure, et
         # une image déjà téléchargée sera réutilisée telle quelle. C'est voulu

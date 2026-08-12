@@ -182,15 +182,19 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | `43` only |
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
-| opensuse | `tumbleweed` | ✔ | ✔ | ✔ |
+| opensuse | `16.0` (default), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
 
-`opensuse` is openSUSE Tumbleweed, the only entry whose qpdf (12.3.2) already
-clears the pikepdf threshold: the half-hour qpdf build never runs there, which
-matters under s390x emulation.
+`opensuse` covers two distinct products, not two versions of one. Leap `16.0`
+is numbered and stable (SLE base) and is the default. `tumbleweed` is the
+rolling one, kept as a bellwether for breakage to come: its snapshot drift is
+real, and it demands a full `zypper dup` before anything can be installed.
+
+Both ship a qpdf above the pikepdf threshold, so the half-hour qpdf build
+never runs there — which matters under s390x emulation.
 
 Provide an explicit image path as a positional argument to override the
 automatic download location.
@@ -212,15 +216,21 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
 | almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
-| opensuse | `tumbleweed` | ✔ | ✔ | ✔ |
+| opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 
 Fedora ne construit s390x que pour la version courante, et sur une
 arborescence à part (`fedora-secondary`) — d'où la version unique.
 
-`opensuse` désigne openSUSE Tumbleweed, seule entrée dont qpdf (12.3.2)
-dépasse déjà le seuil de pikepdf : la compilation de qpdf, une demi-heure, ne
-s'y déclenche jamais — ce qui compte sous émulation s390x.
+`opensuse` recouvre deux produits distincts, pas deux versions du même. Leap
+`16.0` est numérotée et stable (base SLE) : c'est le défaut. `tumbleweed` est
+la rolling, gardée comme banc d'essai des ruptures à venir — sa dérive
+d'instantanés est réelle, et elle impose un `zypper dup` complet avant toute
+installation.
+
+Les deux livrent un qpdf au-dessus du seuil de pikepdf : la compilation de
+qpdf, une demi-heure, ne s'y déclenche jamais — ce qui compte sous émulation
+s390x.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.

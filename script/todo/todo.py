@@ -1027,7 +1027,10 @@ class TODO:
         "fedora": (["41", "42", "43", "44"], "42"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),
-        "opensuse": (["tumbleweed"], "tumbleweed"),
+        # Leap 16.0 par défaut : numérotée et stable. Tumbleweed reste offerte,
+        # comme banc d'essai des ruptures à venir. Voir OPENSUSE_VERSIONS dans
+        # deploy_qemu.py, qui fait autorité sur le catalogue.
+        "opensuse": (["16.0", "tumbleweed"], "16.0"),
         "arch": (["latest"], "latest"),
     }
 
@@ -4510,9 +4513,14 @@ class TODO:
     def _qemu_zypper_mirror_cmd(self):
         """Réécrit l'hôte des dépôts zypper vers un miroir plus proche."""
         mirrors = " ".join(self._QEMU_ZYPPER_MIRRORS)
+        # Leap et Tumbleweed n'ont pas le même arbre de dépôts : la rolling
+        # isole les architectures secondaires sous /ports/, Leap 16 unifie tout
+        # et garde s390x dans l'arbre principal (les /ports/ y rendent 404).
         return (
-            "zp=tumbleweed; "
-            '[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed; '
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) zp=tumbleweed; '
+            '[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed;; '
+            '*) zp="distribution/leap/$VERSION_ID";; esac; '
             f"for zm in {mirrors}; do "
             "if curl -fsS --max-time 20 -o /dev/null "
             '"$zm/$zp/repo/oss/repodata/repomd.xml"; then '
@@ -4722,8 +4730,19 @@ class TODO:
             # celui de l'image. zypper proposait alors trois solutions et
             # attendait un choix ; « --non-interactive » prend le défaut,
             # « c » = annuler, et l'installation s'arrêtait là.
+            #
+            # Sur Leap, « dup » sert à CHANGER de version : l'y appeler irait
+            # contre la raison même de la choisir. « up » y suffit, l'image et
+            # ses dépôts portant la même version.
+            # $ID est déjà posé par le bloc miroir juste au-dessus ; on le
+            # relit quand même, pour ne pas dépendre de l'ordre de deux
+            # méthodes qui s'ignorent.
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) '
             "sudo zypper --non-interactive dup --auto-agree-with-licenses "
-            "--allow-vendor-change || true; "
+            "--allow-vendor-change || true;; "
+            "*) sudo zypper --non-interactive up "
+            "--auto-agree-with-licenses || true;; esac; "
             "sudo zypper --non-interactive install "
             "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
