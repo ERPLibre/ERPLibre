@@ -70,14 +70,42 @@ echo -e "\n---- Rafraichissement des depots ----"
 # introuvables (l'index local pointe des versions déjà retirées du miroir).
 sudo zypper --non-interactive refresh || true
 
+# Mise à jour COMPLÈTE, obligatoire pour la même raison qu'Arch : une rolling
+# release ne supporte PAS les mises à jour partielles. L'image cloud est un
+# instantané figé dont les dépôts ont avancé — vécu sur s390x, git 2.54
+# réclamait un perl-Git bâti contre un perl-base plus ancien que celui de
+# l'image. zypper proposait alors trois solutions et ATTENDAIT un choix ;
+# « --non-interactive » prend le défaut, « c » = annuler, et tout s'arrêtait.
+echo -e "\n---- Mise a jour complete (dup) ----"
+${ZYP} dup ${ZYP_LIC} --allow-vendor-change || true
+
 #--------------------------------------------------
 # Outils de compilation (build Python via pyenv, extensions Python)
 #--------------------------------------------------
-echo -e "\n---- Motif outils de developpement ----"
-# Chez SUSE ce sont des « patterns », l'équivalent des groupes dnf. Repli
-# explicite si le motif n'existe pas sous ce nom.
-${ZYP_IN} -t pattern devel_basis \
-  || ${ZYP_SOFT} gcc gcc-c++ make automake patch
+echo -e "\n---- Outils de developpement ----"
+# Les compilateurs sont installés EXPLICITEMENT, jamais par le seul motif :
+# un « pattern » absent ou incomplet laisserait le système sans g++, et
+# l'échec n'apparaîtrait qu'à la compilation de numpy — la leçon d'EL, où le
+# groupe « development-tools » n'existe pas et où le repli ne partait jamais.
+# Les noms non versionnés existent bien dans Tumbleweed (relevé dans le
+# primary.xml du dépôt oss) : « gcc » y est un méta-paquet qui tire gcc15.
+${ZYP_IN} gcc gcc-c++ make automake patch
+retVal=$?
+if [[ ${retVal} -ne 0 ]]; then
+  echo "zypper install compilers error."
+  exit 1
+fi
+# Le motif ensuite, en complément et sans jamais bloquer.
+${ZYP_IN} -t pattern devel_basis > /dev/null 2>&1 || true
+
+# Python appelle son compilateur par le nom gravé dans sysconfig, souvent
+# « cc ». Sur openSUSE ce lien n'est garanti par aucune déclaration de
+# paquet — vécu sur amd64 : « cc -pthread … error: [Errno 2] No such file or
+# directory » à la compilation de python-ldap, alors que gcc était installé.
+if ! command -v cc > /dev/null 2>&1 && command -v gcc > /dev/null 2>&1; then
+  sudo ln -sf "$(command -v gcc)" /usr/local/bin/cc
+  echo "cc -> $(command -v gcc)"
+fi
 
 #--------------------------------------------------
 # PostgreSQL

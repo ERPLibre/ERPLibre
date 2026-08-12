@@ -4682,6 +4682,16 @@ class TODO:
             # Tumbleweed étant rolling, on rafraîchit avant d'installer.
             + self._qemu_zypper_mirror_cmd()
             + "sudo zypper --non-interactive refresh || true; "
+            # Tumbleweed est ROLLING et ne supporte pas les mises à jour
+            # partielles, exactement comme Arch. L'image cloud est un
+            # instantané figé : ses dépôts ont avancé depuis, et un
+            # « install » simple bute sur une incohérence — vécu, git 2.54
+            # réclamait perl-Git bâti contre un perl-base plus ancien que
+            # celui de l'image. zypper proposait alors trois solutions et
+            # attendait un choix ; « --non-interactive » prend le défaut,
+            # « c » = annuler, et l'installation s'arrêtait là.
+            "sudo zypper --non-interactive dup --auto-agree-with-licenses "
+            "--allow-vendor-change || true; "
             "sudo zypper --non-interactive install "
             "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
