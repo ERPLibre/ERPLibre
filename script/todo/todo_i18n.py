@@ -3726,6 +3726,10 @@ TRANSLATIONS = {
         "fr": "Journal de la migration précédente conservé dans",
         "en": "Previous migration log kept in",
     },
+    "done early, before the neutralization": {
+        "fr": "faite plus tôt, avant la neutralisation",
+        "en": "done early, before the neutralization",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
