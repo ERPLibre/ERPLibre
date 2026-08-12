@@ -68,6 +68,7 @@ def run_resume_tui(ctx, run_app: bool = True):
         """
         BINDINGS = [
             ("c", "cont", t("Continue where it stopped")),
+            ("b", "back_step", t("Go back to a step")),
             ("n", "new", t("New migration, erase everything")),
             ("r", "keep_zip", t("Keep the zip only")),
             ("q", "quit_nothing", t("Quit without doing anything")),
@@ -99,10 +100,12 @@ def run_resume_tui(ctx, run_app: bool = True):
                         id="a_cont",
                     )
                     yield Button(t("New migration"), id="a_new")
+                    yield Button(t("Go back to a step"), id="a_back")
                     yield Button(t("Keep the zip only"), id="a_keep")
                     yield Button(t("Quit"), id="a_quit")
                 yield Static(
-                    f"  {t('Enter on a step or a version = replay from there')}",
+                    f"  {t('Enter on a step or a version = replay from there')}"
+                    f"   ·   b = {t('Go back to a step')}",
                     id="hint",
                 )
             yield Footer()
@@ -156,6 +159,9 @@ def run_resume_tui(ctx, run_app: bool = True):
             self._answer(f"4.{event.option.id}")
 
         def on_button_pressed(self, event) -> None:
+            if event.button.id == "a_back":
+                self.action_back_step()
+                return
             mapping = {
                 "a_cont": "c",
                 "a_new": "n",
@@ -165,6 +171,18 @@ def run_resume_tui(ctx, run_app: bool = True):
             value = mapping.get(event.button.id)
             if value:
                 self._answer(value)
+
+        def action_back_step(self) -> None:
+            """Amener au tableau des étapes, où le choix se fait déjà.
+
+            Le mécanisme existait — Entrée sur une ligne — mais vivait dans une
+            ligne d'astuce sous quatre boutons nommés. Une capacité qu'il faut
+            deviner n'est pas offerte ; celle-ci porte donc une touche, un
+            bouton et un message, comme les autres.
+            """
+            table = self.query_one("#steps", DataTable)
+            table.focus()
+            self.notify(t("Choose a step, Enter replays from there."))
 
         def action_cont(self) -> None:
             self._answer("c")
