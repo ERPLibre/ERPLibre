@@ -3860,6 +3860,14 @@ TRANSLATIONS = {
         " module source. The classification above needs none; only the"
         " differences do. Restore it, or run this on the database.",
     },
+    "Could not archive the previous log": {
+        "fr": "Impossible d'archiver le journal précédent",
+        "en": "Could not archive the previous log",
+    },
+    "Previous migration log kept in": {
+        "fr": "Journal de la migration précédente conservé dans",
+        "en": "Previous migration log kept in",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
