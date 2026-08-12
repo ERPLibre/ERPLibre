@@ -4362,6 +4362,23 @@ class TODO:
             "service": "lightdm",
         },
     }
+    # Sur Ubuntu, « firefox » et « chromium » ne sont plus que des paquets de
+    # TRANSITION : leur postinst lance « snap install ». Or on vient de couper
+    # snapd, quelques lignes plus haut, pour empêcher ses rafraîchissements
+    # automatiques pendant l'installation. Le postinst ne joint alors pas le
+    # store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES — l'installation
+    # semble figée, et rien dans le log ne dit pourquoi.
+    #
+    # gnome-core ne fait que les RECOMMANDER, avec des solutions de rechange :
+    #   Recommends: firefox-esr | firefox | chromium | epiphany-browser | …
+    # On écarte donc les deux paquets-snap et on nomme epiphany-browser, un
+    # vrai .deb : la recommandation est satisfaite sans snap, et le résultat
+    # est déterministe plutôt que laissé au choix d'apt — qui retombait
+    # justement sur « chromium-browser », un paquet de transition lui aussi.
+    #
+    # Relevé sur la VM : « firefox » était le SEUL paquet en « …snap1… » des
+    # 803 du lot, et l'exclusion en laisse zéro.
+    _QEMU_APT_NO_SNAP = "epiphany-browser firefox- chromium- chromium-browser-"
     # Accès distant, indépendant du bureau choisi.
     _QEMU_DESKTOP_REMOTE = {
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
@@ -4546,7 +4563,8 @@ class TODO:
             "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
-            f"{de['apt']} {rem['apt']['packages']}; "
+            f"{de['apt']} {rem['apt']['packages']} "
+            f"{self._QEMU_APT_NO_SNAP}; "
             "elif command -v dnf >/dev/null 2>&1; then "
             # Cascade d'environnements : le premier qui existe gagne. Un
             # environnement absent fait rendre 1 à dnf sans rien installer,
