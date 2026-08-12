@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 . ./env_var.sh
+. ./script/install/lib_qpdf.sh
 
 EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
@@ -169,33 +170,11 @@ if [ "$(uname -m)" = "s390x" ]; then
       echo "Attention : libclang introuvable, la compilation de pymupdf va echouer."
     fi
   fi
-  # pikepdf n'a pas de roue s390x et se lie à qpdf, dont il exige une version
-  # PRÉCISE : 12.2.0 au minimum pour la 10.x. Ubuntu en livre 9.1.1 (20.04),
-  # 10.6.3 (22.04) et 11.9.0 (24.04) — trop anciennes, et aucune version de
-  # pikepdf ne descend sous qpdf 11.5. 25.10 et 26.04 passent, d'où le partage
-  # observé. On complète donc par les sources sous ce seuil ; /usr/local est
-  # déjà dans les chemins par défaut de g++ et de l'éditeur de liens.
-  QPDF_MIN=12.2.0
-  QPDF_VER=12.3.2
-  qpdf_have="$(pkg-config --modversion libqpdf 2>/dev/null || echo 0)"
-  if [ "$(printf '%s\n%s\n' "${QPDF_MIN}" "${qpdf_have}" | sort -V | head -1)" != "${QPDF_MIN}" ]; then
-    echo "qpdf ${qpdf_have} < ${QPDF_MIN} requis par pikepdf : compilation de qpdf ${QPDF_VER} (long en emulation)."
-    QPDF_TMP="$(mktemp -d)"
-    if curl -fsSL --max-time 600 -o "${QPDF_TMP}/qpdf.tar.gz" \
-      "https://github.com/qpdf/qpdf/releases/download/v${QPDF_VER}/qpdf-${QPDF_VER}.tar.gz" &&
-      tar -xzf "${QPDF_TMP}/qpdf.tar.gz" -C "${QPDF_TMP}" &&
-      cmake -S "${QPDF_TMP}/qpdf-${QPDF_VER}" -B "${QPDF_TMP}/build" \
-        -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DBUILD_DOC=OFF -DBUILD_STATIC_LIBS=OFF &&
-      cmake --build "${QPDF_TMP}/build" -j"$(nproc)" &&
-      sudo cmake --install "${QPDF_TMP}/build"; then
-      sudo ldconfig
-      echo "qpdf $(PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion libqpdf 2>/dev/null) installe dans /usr/local."
-    else
-      echo "Attention : compilation de qpdf echouee, pikepdf ne pourra pas se construire."
-    fi
-    rm -rf "${QPDF_TMP}"
-  fi
+  # pikepdf se lie a qpdf, dont il exige 12.2.0 au minimum. Ubuntu 24.04 en
+  # livre 11.9.0 ; 25.10 et 26.04 passent, d'ou le partage observe. Le detail
+  # -- seuil, version batie, chemin d'installation -- est dans lib_qpdf.sh,
+  # partage avec les scripts dnf et zypper qui butaient sur le meme mur.
+  el_qpdf_ensure
   # cryptography ne publie aucune roue s390x : elle se compile, et son
   # Cargo.lock est en version 4, que seul cargo >= 1.78 sait lire. Ubuntu 24.04
   # livre 1.75 et s'arrête sur « lock file version 4 requires

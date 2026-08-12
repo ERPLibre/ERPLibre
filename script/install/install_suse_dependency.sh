@@ -10,6 +10,7 @@
 # demi-heure sous émulation s390x, ne s'y déclenche pas.
 
 . ./env_var.sh
+. ./script/install/lib_qpdf.sh
 
 EL_USER=${USER}
 
@@ -143,6 +144,14 @@ if [ "$(uname -m)" = "s390x" ]; then
   if ! command -v cargo > /dev/null 2>&1; then
     echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
   fi
+  # pillow et pikepdf compilent ici faute de roue : le premier veut jpeg, le
+  # second qpdf >= 12.2. Tumbleweed livre 12.3.2, donc el_qpdf_ensure ne fait
+  # que le constater — l'appel est là pour que les trois familles suivent la
+  # même règle, et pas seulement celle qui a signalé la panne. cmake et
+  # pkg-config sont posés ici parce qu'ils lui sont nécessaires et n'arrivent
+  # que plus bas dans le script.
+  ${ZYP_SOFT} qpdf-devel libjpeg8-devel cmake pkg-config
+  el_qpdf_ensure
 fi
 
 ${ZYP_SOFT} \

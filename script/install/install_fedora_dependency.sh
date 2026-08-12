@@ -10,6 +10,7 @@
 # comprennent pas les mêmes options — voir DNF_SKIP plus bas.
 
 . ./env_var.sh
+. ./script/install/lib_qpdf.sh
 
 EL_USER=${USER}
 
@@ -109,9 +110,28 @@ if [ "$(uname -m)" = "s390x" ]; then
   # (AlmaLinux 1.92, Fedora plus récent) au Cargo.lock v4 qui exige 1.78.
   ${DNF} \
     rust cargo \
-    libjpeg-turbo-devel zlib-devel qpdf-devel geos-devel proj-devel \
+    libjpeg-turbo-devel zlib-devel geos-devel proj-devel \
     krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
-    GeographicLib-devel
+    GeographicLib-devel pkgconf-pkg-config cmake
+
+  # qpdf : pikepdf en exige 12.2.0, et le paquet de la distribution ne le donne
+  # que sur Fedora. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
+  # cents lignes de g++ sans un mot sur qpdf ; EL10 livre 11.9.
+  #
+  # On ne pose donc « qpdf-devel » QUE s'il atteint le seuil, au lieu de le
+  # poser puis de le contourner : contrairement à Debian, l'éditeur de liens de
+  # RHEL cherche /usr/lib64 AVANT /usr/local/lib64. Le -devel trop ancien ferait
+  # lier pikepdf contre l'ancienne bibliothèque malgré les en-têtes neufs de
+  # /usr/local/include — une incohérence bien plus difficile à lire qu'un
+  # en-tête absent. Sans lui, el_qpdf_ensure fournit tout depuis les sources.
+  qpdf_repo="$(dnf repoquery --qf '%{version}' --latest-limit 1 qpdf-devel \
+    2> /dev/null | tail -1)"
+  if el_qpdf_ge_min "${qpdf_repo}"; then
+    ${DNF} qpdf-devel
+  else
+    echo "qpdf-devel ${qpdf_repo:-absent} sous le seuil de pikepdf : compilation depuis les sources."
+  fi
+  el_qpdf_ensure
   # Le dire ICI plutôt que de laisser bcrypt le découvrir une heure plus tard.
   if ! command -v cargo > /dev/null 2>&1; then
     echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
