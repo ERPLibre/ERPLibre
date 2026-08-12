@@ -1457,11 +1457,22 @@ class TodoUpgrade:
         # -- before hours of migration -- leaves time to arbitrate.
         # Only the next bump can be predicted: the modes in database describe
         # the current version.
-        self.todo_upgrade_execute(
+        status, cmd_executed, output = self.todo_upgrade_execute(
             f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
             f" -d {database_name} -t odoo{start_version + 1}.0",
+            get_output=True,
             wait_at_error=False,
         )
+        # Cet avertissement n'est qu'un avertissement, et rien ne le disait :
+        # il annonce un problème, propose d'arbitrer, et aucune question ne
+        # suit. On en conclut que la question est passée — alors qu'elle vient
+        # au moment du palier, des dizaines de minutes plus tard.
+        if output and "will break when moving to" in "\n".join(output):
+            print(
+                f"ℹ -> {t('Nothing to decide yet')} :"
+                f" {t('the migration will offer to neutralize these copies')}"
+                f" {t('at the version bump itself, showing what each one holds.')}"
+            )
 
         msg = "3 - Clean up database before data migration"
         print(f"🔷 {msg}")
