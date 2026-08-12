@@ -1027,6 +1027,8 @@ class TODO:
         "fedora": (["41", "42", "43", "44"], "42"),
         "almalinux": (["9", "10"], "9"),
         "rocky": (["9", "10"], "10"),
+        "centos": (["10"], "10"),
+        "opensuse": (["tumbleweed"], "tumbleweed"),
         "arch": (["latest"], "latest"),
     }
 
@@ -1074,13 +1076,22 @@ class TODO:
 
     # Distros publiant des images cloud par architecture (cohérent avec
     # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
-    _QEMU_S390X_DISTROS = ("ubuntu", "almalinux", "rocky", "fedora")
+    _QEMU_S390X_DISTROS = (
+        "ubuntu",
+        "almalinux",
+        "rocky",
+        "fedora",
+        "centos",
+        "opensuse",
+    )
     _QEMU_ARM64_DISTROS = (
         "ubuntu",
         "debian",
         "fedora",
         "almalinux",
         "rocky",
+        "centos",
+        "opensuse",
     )
     # Alias distro pour l'affichage (jeton générique -> nom courant).
     _QEMU_ARCH_ALIAS = {"amd64": "x86_64", "arm64": "aarch64"}
@@ -4325,6 +4336,7 @@ class TODO:
             "dnf_env": "graphical-server-environment "
             "workstation-product-environment gnome-desktop",
             "pacman": "gnome gdm",
+            "zypper": "patterns-gnome-gnome_basic gdm",
             "service": "gdm",
         },
         "cinnamon": {
@@ -4336,6 +4348,7 @@ class TODO:
             "apt": "cinnamon-desktop-environment dbus-x11",
             "dnf_env": "cinnamon-desktop",
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
+            "zypper": "cinnamon lightdm",
             "service": "lightdm",
         },
     }
@@ -4344,6 +4357,7 @@ class TODO:
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
         "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
+        "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
     }
     # Place que prend un bureau complet, annoncée dans le plan : sur une image
     # cloud de 40 G, l'oublier remplit le disque en pleine installation.
@@ -4440,6 +4454,10 @@ class TODO:
             "|| sudo rm -f /var/lib/pacman/db.lck; "
             f"sudo pacman -S --needed --noconfirm {de['pacman']} "
             f"{rem['pacman']['packages']}; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive refresh || true; "
+            "sudo zypper --non-interactive --auto-agree-with-licenses "
+            f"install {de['zypper']} {rem['zypper']['packages']}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
@@ -4550,10 +4568,17 @@ class TODO:
             "--save /etc/pacman.d/mirrorlist || true; "
             "sudo pacman -Syu --noconfirm || true; "
             "sudo pacman -S --needed --noconfirm $PKGS; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            # openSUSE : « --non-interactive » vaut le -y des autres, et
+            # « --auto-agree-with-licenses » évite un blocage sur une licence.
+            # Tumbleweed étant rolling, on rafraîchit avant d'installer.
+            "sudo zypper --non-interactive refresh || true; "
+            "sudo zypper --non-interactive --auto-agree-with-licenses "
+            "install $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets "
-            "(apt/dnf/pacman/yum)'; exit 1; fi; "
+            "(apt/dnf/pacman/zypper/yum)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "

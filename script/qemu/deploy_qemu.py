@@ -113,6 +113,18 @@ ROCKY_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "9": ("9", "rocky9", 2048, "20G"),
     "10": ("10", "rocky10", 2048, "20G"),
 }
+# CentOS Stream : l'amont de RHEL, donc d'AlmaLinux et de Rocky. Utile comme
+# vigie — les régressions y apparaissent avant. Seule la 10 est retenue : la 9
+# est le jumeau d'AlmaLinux 9 et son support s'arrête en mai 2027.
+CENTOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "10": ("10-stream", "centos-stream10", 2048, "20G"),
+}
+# openSUSE Tumbleweed : rolling, donc une seule « version ». C'est la seule
+# distribution du catalogue dont qpdf (12.3.2) dépasse déjà le seuil de
+# pikepdf 10 — aucune compilation de qpdf, ce qui change tout sous émulation.
+OPENSUSE_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "tumbleweed": ("tumbleweed", "opensusetumbleweed", 2048, "20G"),
+}
 # Arch est en rolling release : une seule « version » (latest).
 ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "latest": ("latest", "archlinux", 1024, "20G"),
@@ -125,6 +137,8 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "fedora": (FEDORA_VERSIONS, "42"),
     "almalinux": (ALMALINUX_VERSIONS, "9"),
     "rocky": (ROCKY_VERSIONS, "10"),
+    "centos": (CENTOS_VERSIONS, "10"),
+    "opensuse": (OPENSUSE_VERSIONS, "tumbleweed"),
     "arch": (ARCH_VERSIONS, "latest"),
 }
 
@@ -134,6 +148,8 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
     "almalinux": {"amd64": "x86_64", "arm64": "aarch64"},
     "rocky": {"amd64": "x86_64", "arm64": "aarch64"},
+    "centos": {"amd64": "x86_64", "arm64": "aarch64"},
+    "opensuse": {"amd64": "x86_64", "arm64": "aarch64"},
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
 
@@ -146,7 +162,14 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 # - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
 # - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
-S390X_DISTROS: tuple[str, ...] = ("ubuntu", "almalinux", "rocky", "fedora")
+S390X_DISTROS: tuple[str, ...] = (
+    "ubuntu",
+    "almalinux",
+    "rocky",
+    "fedora",
+    "centos",
+    "opensuse",
+)
 
 # Une distro peut ne publier qu'une PARTIE de ses versions sur une
 # architecture. Déclaration POSITIVE : hors de cette table, toutes les versions
@@ -173,6 +196,8 @@ ARM64_DISTROS: tuple[str, ...] = (
     "fedora",
     "almalinux",
     "rocky",
+    "centos",
+    "opensuse",
 )
 
 
@@ -211,6 +236,8 @@ DEBIAN_CLOUD_BASES: tuple[str, ...] = (
     "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
 )
 ALMALINUX_CLOUD_BASE = "https://repo.almalinux.org/almalinux"
+CENTOS_CLOUD_BASE = "https://cloud.centos.org/centos"
+OPENSUSE_BASE = "https://download.opensuse.org"
 ROCKY_CLOUD_BASE = "https://dl.rockylinux.org/pub/rocky"
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 # Serveur MAÎTRE (pas de redirection MirrorManager) : repli fiable quand le
@@ -287,6 +314,25 @@ def image_candidates(
             f"{ROCKY_CLOUD_BASE}/{version}/images/{a}/"
             f"Rocky-{version}-GenericCloud.latest.{a}.qcow2"
         ]
+    if distro == "centos":
+        # Alias « latest » stable, identique octet pour octet au dernier build
+        # daté. Le code « 10-stream » sert le chemin, la version le nom.
+        return [
+            f"{CENTOS_CLOUD_BASE}/{code}/{a}/images/"
+            f"CentOS-Stream-GenericCloud-{version}-latest.{a}.qcow2"
+        ]
+    if distro == "opensuse":
+        # Les architectures secondaires vivent sous /ports/, et zsystems DOUBLE
+        # l'architecture dans le nom du fichier — irrégularité vérifiée dans
+        # l'index, pas déduite : « .s390x-s390x-Cloud » contre « .x86_64-Cloud ».
+        port = {"s390x": "ports/zsystems/", "arm64": "ports/aarch64/"}.get(
+            arch, ""
+        )
+        tag = f"{a}-{a}" if arch == "s390x" else a
+        return [
+            f"{OPENSUSE_BASE}/{port}tumbleweed/appliances/"
+            f"openSUSE-Tumbleweed-Minimal-VM.{tag}-Cloud.qcow2"
+        ]
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
@@ -346,6 +392,10 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{version}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro == "centos":
+        return f"centos-stream-{version}-genericcloud-{a}.qcow2"
+    if distro == "opensuse":
+        return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
     if distro in ("almalinux", "rocky"):
         # « latest » est MUTABLE : le nom de cache porte donc la majeure, et
         # une image déjà téléchargée sera réutilisée telle quelle. C'est voulu
@@ -1374,12 +1424,25 @@ def host_timezone() -> str:
     return "UTC"
 
 
-def admin_group(distro: str) -> str:
-    """Groupe d'administration de la distribution.
+def user_groups(distro: str) -> str:
+    """Groupes secondaires du compte créé par cloud-init.
 
-    Debian et Ubuntu : « sudo ». Famille RHEL (AlmaLinux, Rocky, Fedora) et
-    Arch : « wheel » — elles n'ont aucun groupe « sudo »."""
-    return "sudo" if distro in ("ubuntu", "debian") else "wheel"
+    Le nom du groupe d'administration change d'une famille à l'autre, et un
+    nom INCONNU fait échouer « useradd -G » : l'utilisateur n'est alors pas
+    créé du tout, donc ni mot de passe ni clé SSH, et la VM démarre
+    inaccessible. Le privilège vient de toute façon de la directive « sudo: »
+    du cloud-config, pas du groupe — celui-ci n'est qu'une commodité.
+
+    - Debian, Ubuntu : « sudo ».
+    - Famille RHEL (AlmaLinux, Rocky, CentOS, Fedora), Arch : « wheel ».
+    - openSUSE : aucun. Son cloud-init par défaut n'en met pas, et rien ne
+      garantit « wheel » sur une image Minimal-VM — dans le doute on s'abstient
+      plutôt que de risquer un compte non créé."""
+    if distro in ("ubuntu", "debian"):
+        return "users, sudo"
+    if distro == "opensuse":
+        return "users"
+    return "users, wheel"
 
 
 def build_cloud_config(
@@ -1400,7 +1463,7 @@ def build_cloud_config(
         # même écart, elles n'ont pas de groupe « sudo » mais « wheel ».
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
-        f"    groups: users, {admin_group(args.distro)}",
+        f"    groups: {user_groups(args.distro)}",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]

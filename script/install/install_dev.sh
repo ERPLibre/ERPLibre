@@ -24,6 +24,10 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
     ./script/install/install_debian_dependency.sh
   elif [[ "${ID}" == "arch" ]]; then
     ./script/install/install_arch_linux.sh
+  elif [[ "${ID}" == opensuse* || "${ID_LIKE}" == *"suse"* ]]; then
+    # openSUSE Tumbleweed / Leap, SLES : gestionnaire zypper.
+    echo "\n---- SUSE installation process started ----"
+    ./script/install/install_suse_dependency.sh
   elif [[ "${ID}" == "fedora" || "${ID_LIKE}" == *"fedora"* || "${ID_LIKE}" == *"rhel"* ]]; then
     # AlmaLinux et Rocky declarent ID_LIKE="rhel centos fedora" : elles passent
     # donc par ce meme script, qui aiguille dnf.
@@ -31,7 +35,7 @@ if [[ "${OSTYPE}" == "linux-gnu" ]]; then
     ./script/install/install_fedora_dependency.sh
   else
     ./script/install/install_debian_dependency.sh
-    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, Arch."
+    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, CentOS Stream, openSUSE, Arch."
   fi
 elif [[ "${OSTYPE}" == "darwin"* ]]; then
   echo "\n---- Darwin installation process started ----"
