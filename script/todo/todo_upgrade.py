@@ -13,8 +13,8 @@ import zipfile
 from uuid import uuid4
 
 import click
-import todo_file_browser
 
+from script.todo import todo_file_browser
 from script.todo.version_manager import get_odoo_version
 
 try:
@@ -229,6 +229,70 @@ class TodoUpgrade:
         print(f"   [r] {t('Keep the zip only, ask every question again')}")
         print(f"   [q] {t('Quit without doing anything')}")
 
+    @staticmethod
+    def archive_progression(old_dct_progression, reason):
+        """Mettre le journal de côté avant qu'une nouvelle migration l'écrase.
+
+        Le journal ne vit qu'à un seul endroit et la migration suivante écrit
+        par-dessus : recommencer effaçait donc tout ce qu'on savait de la
+        précédente — quels paliers étaient passés, quels modules manquaient,
+        combien de temps chacun avait pris. Autant d'éléments qu'on ne cherche
+        justement qu'APRÈS avoir dû recommencer.
+
+        Le nom porte la base d'origine et l'horodatage de la copie, pour que
+        deux tentatives sur la même base ne se recouvrent pas et qu'un fichier
+        déplacé se décrive encore lui-même. Renvoie le chemin, ou None s'il n'y
+        avait rien qui vaille d'être gardé.
+
+        L'archive vit sous `private/`, pas dans le venv : une réinstallation
+        efface `.venv.erplibre/`, et avec elle l'historique qu'on vient de
+        sauver.
+        """
+        if not old_dct_progression:
+            return None
+        # Un journal qui ne porte aucun état n'apprend rien à personne.
+        if not any(k.startswith("state_") for k in old_dct_progression):
+            return None
+
+        database_name = (
+            old_dct_progression.get("config_database_name")
+            or os.path.splitext(
+                os.path.basename(
+                    old_dct_progression.get("migration_file") or ""
+                )
+            )[0]
+            or "unknown"
+        )
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d_%Hh%Mm%Ss")
+        directory = os.path.join(
+            PATH_MIGRATION_PRIVATE, database_name, "migration_log"
+        )
+        path = os.path.join(directory, f"{database_name}_{stamp}.json")
+        # Deux copies dans la même seconde portent le même horodatage. Écraser
+        # la première annulerait exactement la perte qu'on cherche à éviter,
+        # et sans rien dire.
+        suffix = 2
+        while os.path.exists(path):
+            path = os.path.join(
+                directory, f"{database_name}_{stamp}_{suffix}.json"
+            )
+            suffix += 1
+        payload = dict(old_dct_progression)
+        payload["archived_at"] = str(datetime.datetime.now())
+        payload["archived_reason"] = reason
+        payload["archived_database"] = database_name
+        try:
+            os.makedirs(directory, exist_ok=True)
+            with open(path, "w") as handle:
+                json.dump(payload, handle, indent=4)
+        except OSError as exc:
+            # Ne jamais empêcher une migration de repartir pour une histoire
+            # de copie : on le dit, et on continue.
+            print(f"⚠️ {t('Could not archive the previous log')} : {exc}")
+            return None
+        print(f"📦 {t('Previous migration log kept in')} : {path}")
+        return path
+
     def apply_resume_answer(self, old_dct_progression, answer, ctx):
         """Turn the answer into (progression, changed), or None to quit.
 
@@ -242,9 +306,15 @@ class TodoUpgrade:
             return old_dct_progression, False
         if answer == "q":
             return None
+        # « n » et « r » repartent de zéro : dans les deux cas la progression
+        # enregistrée disparaît, donc dans les deux cas on la garde d'abord.
         if answer == "n":
+            self.archive_progression(old_dct_progression, "restart_from_zero")
             return {}, True
         if answer == "r":
+            self.archive_progression(
+                old_dct_progression, "restart_same_backup"
+            )
             return {
                 "migration_file": old_dct_progression.get("migration_file"),
                 "date_create": old_dct_progression.get("date_create"),
