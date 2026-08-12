@@ -288,6 +288,8 @@ def main():
     lst_at_risk, lst_module_absent, lst_no_counterpart = analyse(
         config.database, config.target_version
     )
+    database = config.database
+    target_version = config.target_version
 
     if not lst_at_risk:
         print(
@@ -312,13 +314,20 @@ def main():
                 f"   - id={view_id} website={website_id} {key}"
                 f" : {mode} -> {target_mode} ({reason})"
             )
+        # La base et la version cible sont connues ici : les remplacer par
+        # « DB » et « odooXX.0 » oblige à les retrouver, au moment précis où
+        # l'on veut juste copier-coller la commande.
         print(
             "   The migration will offer to neutralize them at the bump, and"
-            " shows what each copy holds before you answer. To do it now:"
-            "\n     ./script/odoo/migration/cow_drift.py -d DB -t odooXX.0"
-            "   (read what they hold)"
-            "\n     ./script/odoo/migration/neutralize_cow_views.py -d DB"
-            " -t odooXX.0 --apply   (reversible with --restore)"
+            " shows what each copy holds before you answer. To look now,"
+            " without interrupting anything:"
+            f"\n     ./script/odoo/migration/cow_drift.py -d {database}"
+            f" -t {target_version}          (what each copy holds)"
+            f"\n     ./script/odoo/migration/cow_drift.py -d {database}"
+            f" -t {target_version} --shape  (why it breaks)"
+            f"\n     ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database} -t {target_version} --apply"
+            "   (reversible with --restore)"
         )
         print(
             "   Or by hand. To neutralize a copy,"

@@ -889,7 +889,17 @@ class TODO:
                 return False
             elif status == str(len(choices) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
-                upgrade.execute_odoo_upgrade()
+                try:
+                    upgrade.execute_odoo_upgrade()
+                except todo_upgrade.MigrationRewind:
+                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
+                    # relancer, et l'écran de reprise repartira de l'étape
+                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
+                    # évite de la reprendre au milieu de son état local.
+                    print(
+                        f"\n⏪ {t('Rewound.')}"
+                        f" {t('Relaunch the migration to resume from there.')}"
+                    )
             elif status == str(len(choices)):
                 self.upgrade_poetry()
             else:
