@@ -3764,6 +3764,19 @@ TRANSLATIONS = {
         "en": "website copies compared with their module view,",
     },
     "differ.": {"fr": "diffèrent.", "en": "differ."},
+    "Nothing to decide yet": {
+        "fr": "Rien à décider pour l'instant",
+        "en": "Nothing to decide yet",
+    },
+    "the migration will offer to neutralize these copies": {
+        "fr": "la migration proposera de neutraliser ces copies",
+        "en": "the migration will offer to neutralize these copies",
+    },
+    "at the version bump itself, showing what each one holds.": {
+        "fr": "au moment du palier lui-même, en montrant ce que chacune"
+        " contient.",
+        "en": "at the version bump itself, showing what each one holds.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
