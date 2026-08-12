@@ -72,6 +72,17 @@ MIGRATION_STEP = [
 ]
 
 
+class MigrationRewind(Exception):
+    """L'utilisateur a demandé de revenir à une étape antérieure.
+
+    Une exception, et non un code de retour : la demande peut venir de
+    n'importe laquelle des invites, à n'importe quelle profondeur d'une
+    méthode de mille lignes. La faire remonter par des valeurs de retour
+    obligerait chaque appelant intermédiaire à la reconnaître et à la
+    propager — autant d'endroits où l'oublier.
+    """
+
+
 class TodoUpgrade:
     def __init__(self, todo):
         self.file_path = None
@@ -668,6 +679,47 @@ class TodoUpgrade:
                     for i, item in enumerate(value)
                 ]
         return dct_kept
+
+    def ask_gate(self, prompt):
+        """Une invite d'attente, avec une porte de sortie vers l'arrière.
+
+        Ces invites ne demandent qu'à continuer. Quand on s'aperçoit à ce
+        moment-là qu'une étape précédente méritait un autre choix, la seule
+        issue était Ctrl+C — qui laisse la progression telle quelle et oblige
+        à retrouver l'écran de reprise. « b » fait le travail proprement :
+        il rembobine l'état, l'écrit, et s'arrête en disant quoi relancer.
+        """
+        while True:
+            answer = input(prompt)
+            if (answer or "").strip().lower() != "b":
+                return answer
+            if self.rewind_to_chosen_step():
+                raise MigrationRewind()
+            # Renoncer au retour en arrière ne doit pas arrêter la migration :
+            # on revient à la même invite, exactement là où l'on était.
+
+    def rewind_to_chosen_step(self):
+        """Demander l'étape et rembobiner jusqu'à elle. Écrit la progression."""
+        ctx = self.resume_context(self.dct_progression)
+        print()
+        print(f"📍 {t('Migration in progress')}")
+        for item in ctx["steps"]:
+            print(
+                f"  [{item['step']}] {item['icon']}  {item['label']:<44}"
+                f" {item['detail']}"
+            )
+        answer = input(
+            f"💬 {t('Replay from which step? (empty to cancel)')} : "
+        )
+        answer = (answer or "").strip()
+        if not answer.isdigit() or int(answer) > MIGRATION_STEP[-1][0]:
+            print(f"⚠️ {t('Unknown choice, continuing where it stopped')}.")
+            return False
+        self.dct_progression = self.rewind_progression(
+            self.dct_progression, int(answer)
+        )
+        self.write_config()
+        return True
 
     @staticmethod
     def rewind_progression(old_dct_progression, step):
@@ -1276,7 +1328,11 @@ class TodoUpgrade:
         if not self.dct_progression.get("state_1_neutralize_database"):
             print("[1] Ignore neutralize database")
             wait_continue = (
-                input("💬 Neutralize database, press to continue : ")
+                self.ask_gate(
+                    "💬 "
+                    + t("Neutralize database, press to continue")
+                    + f" {t('(b = go back to a previous step)')} : "
+                )
                 .strip()
                 .lower()
             )
@@ -1491,8 +1547,10 @@ class TodoUpgrade:
             print(
                 "✨ Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
             )
-            status = input(
-                "💬 Did you finish to clean database? Press y/Y to open server with selenium, else ignore it : "
+            status = self.ask_gate(
+                "💬 Did you finish to clean database? Press y/Y to open"
+                " server with selenium, else ignore it"
+                f" {t('(b = go back to a previous step)')} : "
             ).strip()
 
             if status.lower().strip() == "y":
@@ -2200,7 +2258,10 @@ class TodoUpgrade:
                 print(
                     f"🚸 Please, validate this path into config.conf : '{path_addons_openupgrade}'."
                 )
-                status = input(f"💬 Press to continue {msg} : ").strip()
+                status = self.ask_gate(
+                    f"💬 {t('Press to continue')} {msg}"
+                    f" {t('(b = go back to a previous step)')} : "
+                ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
                     erplibre_version = self.install_OCA_openupgrade(
