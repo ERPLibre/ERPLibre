@@ -100,5 +100,87 @@ class TestNeedsUpdateAll(unittest.TestCase):
         )
 
 
+class TestBackGate(unittest.TestCase):
+    """Revenir à une étape précédente depuis une invite en cours de route.
+
+    Ces invites ne demandaient qu'à continuer. S'apercevoir à ce moment-là
+    qu'une étape antérieure méritait un autre choix n'avait qu'une issue :
+    Ctrl+C, qui laisse la progression telle quelle et oblige à retrouver
+    l'écran de reprise. « b » fait le travail proprement.
+    """
+
+    def setUp(self):
+        import os
+        import tempfile
+
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(tempfile.mkdtemp())
+        os.makedirs(".venv.erplibre", exist_ok=True)
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def gate(self, answers):
+        """(a arrêté ?, valeur rendue, progression) après ces réponses."""
+        import builtins
+        import contextlib
+        import io
+
+        from script.todo.todo_upgrade import MigrationRewind
+
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {
+            "config_database_name": "db",
+            "state_0_install_odoo": True,
+            "state_1_restore_database": True,
+            "state_2_update_all": True,
+            "state_3_clean_database": True,
+        }
+        upgrade.lst_command_executed = []
+        seq = iter(answers)
+        original = builtins.input
+        builtins.input = lambda *a: next(seq)
+        self.addCleanup(setattr, builtins, "input", original)
+        stopped, returned = False, None
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                returned = upgrade.ask_gate("? ")
+        except MigrationRewind:
+            stopped = True
+        return stopped, returned, upgrade.dct_progression
+
+    def test_a_normal_answer_passes_straight_through(self):
+        stopped, returned, _ = self.gate(["y"])
+        self.assertFalse(stopped)
+        self.assertEqual(returned, "y")
+
+    def test_b_then_a_step_rewinds_and_stops(self):
+        stopped, _, progression = self.gate(["b", "2"])
+        self.assertTrue(stopped)
+        # L'étape choisie et les suivantes sont effacées, les précédentes non.
+        self.assertIn("state_1_restore_database", progression)
+        self.assertNotIn("state_2_update_all", progression)
+        self.assertNotIn("state_3_clean_database", progression)
+
+    def test_cancelling_the_rewind_does_not_stop_the_migration(self):
+        # LE piège : renoncer au retour en arrière arrêtait quand même tout.
+        # On revient à la même invite, exactement là où l'on était.
+        stopped, returned, progression = self.gate(["b", "", "y"])
+        self.assertFalse(stopped)
+        self.assertEqual(returned, "y")
+        self.assertIn("state_3_clean_database", progression)
+
+    def test_an_unknown_step_is_not_a_rewind(self):
+        stopped, returned, progression = self.gate(["b", "zzz", ""])
+        self.assertFalse(stopped)
+        self.assertEqual(returned, "")
+        self.assertIn("state_3_clean_database", progression)
+
+    def test_the_answer_is_case_insensitive(self):
+        stopped, _, _ = self.gate(["B", "1"])
+        self.assertTrue(stopped)
+
+
 if __name__ == "__main__":
     unittest.main()

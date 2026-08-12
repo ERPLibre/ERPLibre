@@ -3777,6 +3777,27 @@ TRANSLATIONS = {
         " contient.",
         "en": "at the version bump itself, showing what each one holds.",
     },
+    "Press to continue": {
+        "fr": "Appuyez pour continuer",
+        "en": "Press to continue",
+    },
+    "(b = go back to a previous step)": {
+        "fr": "(b = revenir à une étape précédente)",
+        "en": "(b = go back to a previous step)",
+    },
+    "Neutralize database, press to continue": {
+        "fr": "Neutraliser la base, appuyez pour continuer",
+        "en": "Neutralize database, press to continue",
+    },
+    "Replay from which step? (empty to cancel)": {
+        "fr": "Rejouer à partir de quelle étape ? (vide pour annuler)",
+        "en": "Replay from which step? (empty to cancel)",
+    },
+    "Rewound.": {"fr": "Rembobiné.", "en": "Rewound."},
+    "Relaunch the migration to resume from there.": {
+        "fr": "Relancez la migration pour reprendre à partir de là.",
+        "en": "Relaunch the migration to resume from there.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
