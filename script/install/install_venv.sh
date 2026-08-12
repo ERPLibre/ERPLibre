@@ -17,52 +17,25 @@ echo "Context: $CONTEXT"
 echo "Venv Path: $VENV_PATH"
 echo "Python Version: $PYTHON_VERSION"
 
-PYENV_PATH=~/.pyenv
-PYENV_VERSION_PATH=${PYENV_PATH}/versions/${PYTHON_VERSION}
-PYTHON_EXEC=${PYENV_VERSION_PATH}/bin/python
-echo "Python path version home"
-echo ${PYENV_VERSION_PATH}
-#echo "Python path version local"
-#echo ${LOCAL_PYTHON_EXEC}
+# Le CHOIX du fournisseur (mise ou pyenv) vit dans la bibliothèque : ce script
+# ne connaît qu'un chemin d'interpréteur. C'est ce qui permet d'en ajouter un
+# troisième sans toucher ici.
+# shellcheck source=script/install/lib_python_provider.sh
+. ./script/install/lib_python_provider.sh
 
-if [[ ! -d "${PYENV_PATH}" ]]; then
-    echo -e "\n---- Installing pyenv in ${PYENV_PATH} ----"
-    # export PYENV_GIT_TAG=v2.3.35
-    # To change version
-    # rm ~/.pyenv to uninstall it
-    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer | bash
+PYTHON_EXEC="$(el_python_exec "${PYTHON_VERSION}")"
+if [[ -z "${PYTHON_EXEC}" ]] || [[ ! -x "${PYTHON_EXEC}" ]]; then
+  echo "Aucun interpreteur Python ${PYTHON_VERSION} n'a pu etre obtenu."
+  echo "  Fournisseur demande : ${EL_PYTHON_PROVIDER:-auto}"
+  echo "  Voir 'make install_mise', ou installez pyenv."
+  exit 1
 fi
-
-echo -e "\n---- Export pyenv in ${PYENV_PATH} ----"
-export PATH="${PYENV_PATH}/bin:$PATH"
-eval "$(pyenv init -)"
-eval "$(pyenv virtualenv-init -)"
-
-if [[ ! -d "${PYENV_VERSION_PATH}" ]]; then
-    echo -e "\n---- Installing python ${PYTHON_VERSION} with pyenv in ${PYENV_VERSION_PATH} ----"
-    # Update all python version list
-    cd "${PYENV_PATH}" && git pull && cd -
-    yes n|pyenv install ${PYTHON_VERSION}
-    if [[ $retVal -ne 0 ]]; then
-        echo -e "${Red}Error${Color_Off} when installing pyenv"
-        exit 1
-    fi
-fi
-
-# This will write .python-version
-# pyenv local ${PYTHON_VERSION}
+echo "Interpreteur retenu : ${PYTHON_EXEC}"
 
 if [[ ! -d ${VENV_PATH} ]]; then
-    echo -e "\n---- Create Virtual environment Python ----"
-    if [[ -e ${PYTHON_EXEC} ]]; then
-        ${PYTHON_EXEC} -m venv "${VENV_PATH}"
-        retVal=$?
-          if [[ $retVal -ne 0 ]]; then
-              echo "Virtual environment, error when creating ${VENV_PATH}"
-              exit 1
-          fi
-    else
-        echo "Missing pyenv, please refer installation guide. Check variable '${PYTHON_EXEC}'."
-        exit 1
-    fi
+  echo -e "\n---- Create Virtual environment Python ----"
+  if ! "${PYTHON_EXEC}" -m venv "${VENV_PATH}"; then
+    echo "Virtual environment, error when creating ${VENV_PATH}"
+    exit 1
+  fi
 fi

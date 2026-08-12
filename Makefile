@@ -97,6 +97,28 @@ version:
 pyenv_update:
 	~/.pyenv/bin/pyenv update
 
+# mise pose un CPython PRECOMPILE la ou pyenv le compile : quelques secondes
+# contre une a trois minutes, et aucun paquet -dev requis. Volontairement
+# EXPLICITE : « curl | sh » engage, et ce n'est pas a un script d'installation
+# de le decider a la place de l'utilisateur. Une fois mise present,
+# EL_PYTHON_PROVIDER=auto s'en sert tout seul.
+#
+# Pas de binaire s390x publie a ce jour : sur cette architecture, la cible
+# le dit et n'installe rien.
+.PHONY: install_mise
+install_mise:
+	@if command -v mise >/dev/null 2>&1; then \
+		echo "mise deja present : $$(mise --version)"; \
+	elif command -v pacman >/dev/null 2>&1; then \
+		sudo pacman -S --needed --noconfirm mise; \
+	elif [ "$$(uname -m)" = "s390x" ]; then \
+		echo "mise ne publie pas de binaire s390x : on reste sur pyenv."; \
+	else \
+		echo "Installation de mise depuis https://mise.run"; \
+		curl -fsSL https://mise.run | sh; \
+		echo "Ajoutez ~/.local/bin a votre PATH, puis relancez l installation."; \
+	fi
+
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test

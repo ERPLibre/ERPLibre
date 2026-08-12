@@ -48,7 +48,7 @@ Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 # Plateformes supportées
 
 - **Linux** : Ubuntu 24.04, 25.10, 26.04; Debian 12; AlmaLinux 9+; Rocky Linux 9+; Arch Linux
-- **macOS** : via pyenv
+- **macOS** : via mise ou pyenv
 - **Windows** : via WSL ou Docker
 - **Mainframe** : architecture 390x
 
