@@ -3798,6 +3798,14 @@ TRANSLATIONS = {
         "fr": "Relancez la migration pour reprendre à partir de là.",
         "en": "Relaunch the migration to resume from there.",
     },
+    "Go back to a step": {
+        "fr": "Revenir à une étape",
+        "en": "Go back to a step",
+    },
+    "Choose a step, Enter replays from there.": {
+        "fr": "Choisissez une étape, Entrée rejoue à partir de là.",
+        "en": "Choose a step, Enter replays from there.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
