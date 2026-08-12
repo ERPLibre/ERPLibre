@@ -21,6 +21,7 @@ préchargées par l'appelant et arrivent dans `ctx`.
 from __future__ import annotations
 
 import os
+import re
 import time
 
 try:
@@ -76,7 +77,9 @@ def positive_int(value, fallback):
     return number if number > 0 else fallback
 
 
-def apply_profile(entries, profile, base_vcpus, host_cpu, custom=None):
+def apply_profile(
+    entries, profile, base_vcpus, host_cpu, custom=None, desktop=""
+):
     """Applique le profil de ressources aux entrées choisies.
 
     Reproduit à l'identique `TODO._qemu_prompt_resources` : un multiplicateur
@@ -104,6 +107,10 @@ def apply_profile(entries, profile, base_vcpus, host_cpu, custom=None):
                 "ram": ram,
                 "disk": disk,
                 "vcpus": vcpus,
+                # Type de VM (« » = serveur). Il vit sur la VM et non sur la
+                # spec entière depuis qu'il se choisit machine par machine ;
+                # `desktop` n'est plus que le défaut commun.
+                "desktop": desktop,
             }
         )
     return out
@@ -118,10 +125,12 @@ def apply_overrides(vms, entries, overrides):
     return vms
 
 
-def build_vms(entries, profile, base_vcpus, host_cpu, custom, overrides):
+def build_vms(
+    entries, profile, base_vcpus, host_cpu, custom, overrides, desktop=""
+):
     """Catalogue choisi + profil + surcharges -> liste de VM de la spec."""
     return apply_overrides(
-        apply_profile(entries, profile, base_vcpus, host_cpu, custom),
+        apply_profile(entries, profile, base_vcpus, host_cpu, custom, desktop),
         entries,
         overrides,
     )
@@ -214,13 +223,10 @@ def run_deploy_form(ctx, run_app: bool = True):
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen
     from textual.widgets import (
-        Button,
         Checkbox,
-        DataTable,
         Footer,
         Header,
         Input,
-        Label,
         RadioButton,
         RadioSet,
         Select,
@@ -255,6 +261,9 @@ def run_deploy_form(ctx, run_app: bool = True):
     # Dernier choix de chaque liste de ressources : il ne porte pas de valeur,
     # il révèle la saisie libre placée juste dessous.
     FREE = "__free__"
+    # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
+    # rendrait indistinguable de la sentinelle « rien de sélectionné ».
+    SERVER = "__server__"
     RES_FIELDS = {
         "vcpus": ("#f_vcpus", "#c_vcpus"),
         "ram": ("#f_ram", "#c_ram"),
@@ -269,50 +278,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             f"{e['distro']} {e['version']}{star} [{e['arch']}]  "
             f"RAM≥{e['ram']}Mo  {e['disk']}"
         )
-
-    class EditVMScreen(ModalScreen):
-        """Réglages d'UNE VM. Un champ vide garde la valeur courante."""
-
-        BINDINGS = [("escape", "cancel", t("Cancel"))]
-
-        def __init__(self, vm):
-            super().__init__()
-            self._vm = vm
-
-        def compose(self) -> ComposeResult:
-            with Vertical(id="editbox"):
-                yield Static(f"  {self._vm['name']}", id="edittitle")
-                yield Label(t("Name"))
-                yield Input(value=self._vm["name"], id="e_name")
-                yield Label(t("vCPU"))
-                yield Input(value=str(self._vm["vcpus"]), id="e_vcpus")
-                yield Label(t("RAM (MB)"))
-                yield Input(value=str(self._vm["ram"]), id="e_ram")
-                yield Label(t("Disk"))
-                yield Input(value=str(self._vm["disk"]), id="e_disk")
-                with Horizontal(id="editbtns"):
-                    yield Button(t("Apply"), variant="primary", id="e_ok")
-                    yield Button(t("Cancel"), id="e_cancel")
-
-        def on_button_pressed(self, event) -> None:
-            if event.button.id != "e_ok":
-                self.dismiss(None)
-                return
-            out = {}
-            name = self.query_one("#e_name", Input).value.strip()
-            if name:
-                out["name"] = name
-            for field, wid in (("vcpus", "#e_vcpus"), ("ram", "#e_ram")):
-                raw = self.query_one(wid, Input).value.strip()
-                if raw.isdigit() and int(raw) > 0:
-                    out[field] = int(raw)
-            disk = parse_disk(self.query_one("#e_disk", Input).value)
-            if disk:
-                out["disk"] = disk
-            self.dismiss(out)
-
-        def action_cancel(self) -> None:
-            self.dismiss(None)
 
     class PreviewScreen(ModalScreen):
         """Aperçu des commandes qui seraient lancées (aucune exécution)."""
@@ -347,15 +312,13 @@ def run_deploy_form(ctx, run_app: bool = True):
         .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
-        .freeval { display: none; }
+        .freeval { display: none; width: 9; }
+        .vmcard { height: auto; border-bottom: solid $panel; padding: 0 1; }
+        .vmhead { height: 1; }
+        .vmrow { height: 3; align-vertical: middle; }
+        .vmrow Select { width: 15; }
+        .vmrow Input { width: 11; }
         #reslabel { color: $text-muted; }
-        EditVMScreen { align: center middle; }
-        #editbox {
-            width: 56; height: auto; padding: 1 2;
-            border: thick $accent; background: $surface;
-        }
-        #edittitle { color: $accent; text-style: bold; }
-        #editbtns { height: auto; padding-top: 1; }
         PreviewScreen { align: center middle; }
         #prevbox {
             width: 90%; height: 70%; padding: 1 2;
@@ -369,7 +332,6 @@ def run_deploy_form(ctx, run_app: bool = True):
         # par le champ de saisie qui a le focus.
         BINDINGS = [
             ("f5", "deploy", t("Deploy")),
-            ("f2", "edit_vm", t("Edit VM")),
             ("f4", "clear_vm", t("Reset VM")),
             ("f3", "preview", t("Preview")),
             ("f6", "select_all", t("All")),
@@ -385,15 +347,13 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.custom = {}
             self._free = {}
             self.overrides = {}
-            # « all » : les champs de ressources nourrissent le profil.
-            # « one » : ils écrivent une surcharge pour la ligne du plan.
-            self.scope = "all"
-            # Vrai pendant qu'on repositionne les widgets nous-mêmes : sans ce
-            # verrou, remettre une liste à vide déclencherait on_select_changed,
-            # qui réécrirait une surcharge — une boucle qui se nourrit seule.
+            # Vrai pendant qu'on repositionne les widgets nous-mêmes : sans
+            # ce verrou, poser une valeur déclencherait on_select_changed, qui
+            # réécrirait une surcharge — une boucle qui se nourrit seule.
             self._syncing = False
-            # Dernier rang connu du curseur du plan.
-            self._last_row = 0
+            # Jeu de VM actuellement monté dans le panneau droit.
+            self._shown_ids = ()
+            self.rows = []
             self.vms = []
             self.rows = []
 
@@ -460,22 +420,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         classes="freeval",
                         disabled=True,
                     )
-                    # Portée des TROIS champs ci-dessus. Le profil x1..x4 reste
-                    # global par nature — il multiplie ce que demande chaque
-                    # image. Ces valeurs-ci, elles, peuvent ne viser qu'une VM :
-                    # une seule machine a besoin de 16 G, pas les huit autres.
-                    #
-                    # Le mode « une seule » rend les champs actifs même hors
-                    # profil personnalisé : on y saisit une valeur absolue, pas
-                    # un multiplicateur.
-                    with RadioSet(id="f_scope"):
-                        yield RadioButton(t("Apply to all VMs"), value=True)
-                        yield RadioButton(t("Apply to the selected VM only"))
-                    yield Static("", id="scopetarget")
+                    yield Static(
+                        f"  {t('These values are the default for every VM;')}"
+                        f"\n  {t('adjust any of them per VM on the right.')}",
+                        id="scopetarget",
+                    )
                     # Serveur par défaut : c'est ce que sert une image cloud,
                     # et GNOME ajoute une à deux heures sur une architecture
                     # émulée. Le plan annonce le surcoût disque.
-                    yield Static(t("VM type:"), classes="grouptitle")
+                    yield Static(t("VM type (default):"), classes="grouptitle")
                     with RadioSet(id="f_type"):
                         yield RadioButton(
                             t("Server (no graphical interface)"),
@@ -563,26 +516,16 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_par",
                     )
                 with Vertical(id="right"):
-                    yield DataTable(id="plan")
+                    # Une liste de widgets, pas un tableau : chaque VM porte
+                    # SES listes déroulantes, modifiables sur place. Un
+                    # DataTable ne sait pas héberger de widget.
+                    yield VerticalScroll(id="plan")
                     yield Static("", id="totals")
             yield Footer()
 
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
-            table = self.query_one("#plan", DataTable)
-            table.cursor_type = "row"
-            table.add_columns(
-                t("Name"),
-                t("Distro"),
-                t("Version"),
-                t("Arch"),
-                "vCPU",
-                "RAM",
-                t("Disk"),
-                t("Status"),
-            )
             self._reload_catalog(first_load=True)
-            self._sync_res_fields()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -629,14 +572,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                 host_cpu,
                 self.custom,
                 self.overrides,
+                self._default_desktop(),
             )
             # ERPLibre et GNOME pèsent chacun sur le disque, et se cumulent.
             grow = 0
             if self.query_one("#f_install", Checkbox).value:
                 grow += extra_disk
-            if self._desktop():
-                grow += desktop_disk
             self.rows = plan_rows(self.vms, domains, grow)
+            # Le bureau pèse sur le disque de la VM QUI LE PORTE, et d'elle
+            # seule : un supplément commun mentait dès que les types
+            # différaient d'une machine à l'autre.
+            for row in self.rows:
+                if row["vm"].get("desktop"):
+                    row["disk_gb"] += desktop_disk
             # Le plan doit MONTRER qu'une VM a été personnalisée : sans marque,
             # deux lignes aux ressources différentes n'ont aucune explication à
             # l'écran, et la surcharge est oubliée à la relecture. Le drapeau
@@ -646,7 +594,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 row["custom"] = bool(self.overrides.get(entry_key(entry)))
             self._render_plan()
             self._render_mise()
-            self.query_one("#scopetarget", Static).update(self._scope_label())
 
         def _render_mise(self):
             """Grise le choix quand aucune VM retenue n'est servie par mise,
@@ -679,51 +626,162 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
 
-        def _desktop(self):
+        def _default_desktop(self):
             """« » pour un serveur, sinon la clé de la saveur choisie."""
+            """Type de VM par défaut. Chaque rangée peut s'en écarter."""
             index = self.query_one("#f_type", RadioSet).pressed_index
             if index is None or index < 1 or index > len(desktops):
                 return ""
             return desktops[index - 1][0]
 
-        def _desktop_label(self):
-            """Libellé court du type de VM, pour le tableau et les totaux."""
-            key = self._desktop()
-            if not key:
-                return t("server")
-            label = dict(desktops).get(key, key)
-            return f"🖥 {label}"
+        # -- panneau droit : une rangée de widgets par VM ---------------- #
+        def _row_ids(self):
+            """Identité du JEU de VM affiché. Reconstruire les widgets à chaque
+            frappe ferait perdre le focus en pleine saisie : on ne le fait que
+            si la liste elle-même a changé."""
+            return tuple(entry_key(e) for e in self._selected_entries())
+
+        def _type_options(self):
+            return [(t("Server"), SERVER)] + [
+                (label, key) for key, label in desktops
+            ]
+
+        def _mount_rows(self) -> None:
+            """(Re)construit le panneau droit."""
+            plan = self.query_one("#plan", VerticalScroll)
+            plan.remove_children()
+            widgets = []
+            for i, r in enumerate(self.rows):
+                vm = r["vm"]
+                row = Horizontal(
+                    Select(
+                        [(str(c), c) for c in ctx["cpu_presets"]]
+                        + [(t("free value…"), FREE)],
+                        value=(
+                            vm["vcpus"]
+                            if vm["vcpus"] in ctx["cpu_presets"]
+                            else SELECT_NULL
+                        ),
+                        prompt="vCPU",
+                        id=f"v{i}_vcpus",
+                    ),
+                    Input(
+                        value=(
+                            ""
+                            if vm["vcpus"] in ctx["cpu_presets"]
+                            else str(vm["vcpus"])
+                        ),
+                        placeholder="vCPU",
+                        id=f"c{i}_vcpus",
+                        classes="freeval",
+                    ),
+                    Select(
+                        [(f"{m // 1024}G", m) for m in ctx["ram_presets"]]
+                        + [(t("free value…"), FREE)],
+                        value=(
+                            vm["ram"]
+                            if vm["ram"] in ctx["ram_presets"]
+                            else SELECT_NULL
+                        ),
+                        prompt=t("RAM (MB)"),
+                        id=f"v{i}_ram",
+                    ),
+                    Input(
+                        value=(
+                            ""
+                            if vm["ram"] in ctx["ram_presets"]
+                            else str(vm["ram"])
+                        ),
+                        placeholder=t("RAM (MB)"),
+                        id=f"c{i}_ram",
+                        classes="freeval",
+                    ),
+                    Select(
+                        [(d, d) for d in ctx["disk_presets"]]
+                        + [(t("free value…"), FREE)],
+                        value=(
+                            vm["disk"]
+                            if vm["disk"] in ctx["disk_presets"]
+                            else SELECT_NULL
+                        ),
+                        prompt=t("Disk"),
+                        id=f"v{i}_disk",
+                    ),
+                    Input(
+                        value=(
+                            ""
+                            if vm["disk"] in ctx["disk_presets"]
+                            else str(vm["disk"])
+                        ),
+                        placeholder=t("Disk"),
+                        id=f"c{i}_disk",
+                        classes="freeval",
+                    ),
+                    Select(
+                        self._type_options(),
+                        value=vm.get("desktop") or SERVER,
+                        allow_blank=False,
+                        id=f"v{i}_type",
+                    ),
+                    classes="vmrow",
+                )
+                widgets.append(
+                    Vertical(
+                        Static(self._row_head(i, r), id=f"h{i}"),
+                        row,
+                        classes="vmcard",
+                    )
+                )
+            if widgets:
+                plan.mount_all(widgets)
+            self._shown_ids = self._row_ids()
+            # Les saisies libres ne se révèlent qu'après le montage : leur
+            # style ne peut pas être touché avant qu'elles existent.
+            self.call_after_refresh(self._sync_free_inputs)
+
+        def _sync_free_inputs(self) -> None:
+            for i, r in enumerate(self.rows):
+                vm = r["vm"]
+                for field, presets in (
+                    ("vcpus", ctx["cpu_presets"]),
+                    ("ram", ctx["ram_presets"]),
+                    ("disk", ctx["disk_presets"]),
+                ):
+                    try:
+                        widget = self.query_one(f"#c{i}_{field}", Input)
+                    except Exception:
+                        continue
+                    free = vm[field] not in presets
+                    widget.display = free
+                    widget.disabled = not free
+
+        def _row_head(self, index, row):
+            """Ligne de titre d'une VM : nom, origine, état, marque de
+            personnalisation. Sans elle, deux rangées aux réglages différents
+            n'ont aucune explication à l'écran."""
+            vm = row["vm"]
+            icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[row["state"]]
+            state = "" if row["state"] == "new" else f"  {icon}{row['note']}"
+            mark = "  ✎" if row.get("custom") else ""
+            return (
+                f"[b]{vm['name']}[/b]  {vm['distro']} {vm['version']} "
+                f"[{vm['arch']}]  {row['disk_gb']}G{state}{mark}"
+            )
 
         def _render_plan(self):
-            table = self.query_one("#plan", DataTable)
-            # « clear() » ramène le curseur en tête. Le plan étant recalculé à
-            # CHAQUE frappe, la ligne visée serait perdue entre deux saisies :
-            # on choisit debian, on tape 16384, le tableau se redessine, et la
-            # valeur suivante partirait sur ubuntu sans que rien ne le montre.
-            keep = table.cursor_row
-            table.clear()
-            # Le type ne concerne QUE les VM réellement créées : une VM déjà
-            # définie n'est pas retouchée, lui afficher « GNOME » laisserait
-            # croire qu'on va lui poser un bureau.
-            kind = self._desktop_label()
-            for r in self.rows:
-                vm = r["vm"]
-                icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[r["state"]]
-                status = kind if r["state"] == "new" else f"{icon}{r['note']}"
-                table.add_row(
-                    f"{vm['name']} ✎" if r.get("custom") else vm["name"],
-                    vm["distro"],
-                    vm["version"],
-                    vm["arch"],
-                    str(vm["vcpus"]),
-                    f"{vm['ram']}Mo",
-                    f"{r['disk_gb']}G",
-                    status,
-                )
-            if self.rows:
-                # Borné : décocher une entrée raccourcit la liste, et un rang
-                # devenu hors bornes ferait perdre la ligne visée pour de bon.
-                table.move_cursor(row=min(max(keep, 0), len(self.rows) - 1))
+            # Le JEU de VM a-t-il changé ? Si oui on remonte les widgets, sinon
+            # on se contente des titres : remonter à chaque frappe volerait le
+            # focus au champ en cours de saisie.
+            if self._row_ids() != self._shown_ids:
+                self._mount_rows()
+            else:
+                for i, r in enumerate(self.rows):
+                    try:
+                        self.query_one(f"#h{i}", Static).update(
+                            self._row_head(i, r)
+                        )
+                    except Exception:
+                        pass
             if not self.rows:
                 # Rien de coché : un total à zéro n'apprend rien, on dit
                 # plutôt comment remplir la liste.
@@ -746,7 +804,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             )
             self.query_one("#totals", Static).update(
                 f"  {n} {t('VMs')} · {cpus} vCPU · {ram} Mo · ~{disk} G"
-                f" · {self._desktop_label()}{warn}{dup_txt}"
+                f"{warn}{dup_txt}"
             )
 
         # -- réactions aux champs -------------------------------------- #
@@ -761,87 +819,34 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
-                self._sync_res_fields()
-                self._recompute()
-            elif event.radio_set.id == "f_scope":
-                self.scope = (
-                    "one" if event.radio_set.pressed_index == 1 else "all"
-                )
-                # Les champs repartent à vide : ils décrivent désormais une
-                # AUTRE cible, et y laisser la valeur précédente ferait croire
-                # qu'elle s'y applique déjà.
-                self._reset_res_widgets()
-                self._sync_res_fields()
-                if self.scope == "one":
-                    # Sans focus, le curseur du tableau reste invisible et on
-                    # modifierait une ligne qu'on ne voit pas désignée.
-                    self.query_one("#plan", DataTable).focus()
+                custom = self.profile == "custom"
+                for field, (sel, _inp) in RES_FIELDS.items():
+                    self.query_one(sel, Select).disabled = not custom
+                    self._show_free(field, custom and self._free.get(field))
                 self._recompute()
 
-        # -- portée des ressources -------------------------------------- #
-        def _cursor_index(self):
-            """Rang de la ligne visée dans le plan, ou None."""
-            index = self.query_one("#plan", DataTable).cursor_row
-            return index if 0 <= index < len(self.vms) else None
-
-        def _cursor_key(self):
-            """Identité de catalogue de la ligne visée, ou None. C'est elle qui
-            indexe les surcharges, pas le rang : cocher une autre distro ne doit
-            pas déplacer une personnalisation d'une VM à l'autre."""
-            index = self._cursor_index()
-            if index is None:
+        # -- rangées du panneau droit ------------------------------- #
+        def _focused_row(self):
+            """Rang de la VM dont un widget a le focus, ou None. C'est la seule
+            désignation qui ait un sens ici : il n'y a plus de curseur unique,
+            chaque rangée est éditable directement."""
+            wid = getattr(self.focused, "id", "") or ""
+            match = re.match(r"[vch](\d+)(?:_|$)", wid)
+            if not match:
                 return None
-            return entry_key(self._selected_entries()[index])
+            index = int(match.group(1))
+            return index if 0 <= index < len(self.rows) else None
 
-        def _scope_label(self):
-            """Ce que la saisie va toucher, dit en toutes lettres."""
-            if self.scope != "one":
-                n = len(self.overrides)
-                if not n:
-                    return ""
-                return f"  ✎ {n} {t('VM(s) customised (F4 resets one)')}"
-            index = self._cursor_index()
-            if index is None:
-                return f"  ⚠ {t('Pick a line in the plan (Tab, then arrows)')}"
-            vm = self.vms[index]
-            return (
-                f"  ✎ {vm['name']} — {vm['vcpus']} vCPU · "
-                f"{vm['ram']} Mo · {vm['disk']}"
-            )
+        def _row_key(self, index):
+            entries = self._selected_entries()
+            return entry_key(entries[index]) if index < len(entries) else None
 
-        def _sync_res_fields(self) -> None:
-            """Active les trois champs quand ils ont un sens, et redit la cible.
-
-            Portée « toutes » : ils ne servent que le profil personnalisé, comme
-            avant. Portée « une seule » : ils valent toujours, puisqu'on y saisit
-            la valeur absolue d'une VM et non un multiplicateur."""
-            live = self.scope == "one" or self.profile == "custom"
-            for field, (sel, _inp) in RES_FIELDS.items():
-                self.query_one(sel, Select).disabled = not live
-                self._show_free(field, live and self._free.get(field))
-            self.query_one("#scopetarget", Static).update(self._scope_label())
-
-        def _reset_res_widgets(self) -> None:
-            """Remet listes et saisies à vide SANS déclencher d'écriture."""
-            self._syncing = True
-            try:
-                for field, (sel, inp) in RES_FIELDS.items():
-                    self.query_one(sel, Select).value = SELECT_NULL
-                    self.query_one(inp, Input).value = ""
-                    self._free[field] = False
-                    self._show_free(field, False)
-            finally:
-                self._syncing = False
-
-        def _set_resource(self, field, value) -> None:
-            """Écrit une ressource là où la portée le demande."""
-            if self.scope != "one":
-                self.custom[field] = value
-                return
-            key = self._cursor_key()
+        def _set_override(self, index, field, value) -> None:
+            """Écrit — ou retire — la surcharge d'UNE VM."""
+            key = self._row_key(index)
             if key is None:
                 return
-            if value in ("", 0):
+            if value in ("", 0, None):
                 # Saisie vidée ou invalide : on RETIRE la surcharge au lieu
                 # d'écrire un zéro, qui donnerait une VM à 0 vCPU.
                 self.overrides.get(key, {}).pop(field, None)
@@ -849,6 +854,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                     self.overrides.pop(key, None)
             else:
                 self.overrides.setdefault(key, {})[field] = value
+
+        def _row_free(self, index, field, visible) -> None:
+            widget = self.query_one(f"#c{index}_{field}", Input)
+            widget.display = bool(visible)
+            widget.disabled = not visible
+            if visible:
+                widget.focus()
+
+        def _read_row_free(self, index, field):
+            raw = self.query_one(f"#c{index}_{field}", Input).value.strip()
+            if field == "disk":
+                return parse_disk(raw) or ""
+            return positive_int(raw, 0)
 
         def _show_free(self, field, visible) -> None:
             """Montre ou cache la saisie libre d'une ressource."""
@@ -862,6 +880,32 @@ def run_deploy_form(ctx, run_app: bool = True):
         def on_select_changed(self, event) -> None:
             if self._syncing:
                 return
+            wid = event.select.id or ""
+            row = re.match(r"v(\d+)_(vcpus|ram|disk|type)$", wid)
+            if row:
+                index, field = int(row.group(1)), row.group(2)
+                if field == "type":
+                    self._set_override(
+                        index,
+                        "desktop",
+                        "" if event.value == SERVER else event.value,
+                    )
+                    # « Serveur » est un choix légitime, pas un retrait : on le
+                    # note explicitement pour qu'il tienne face au défaut.
+                    if event.value == SERVER:
+                        key = self._row_key(index)
+                        if key is not None:
+                            self.overrides.setdefault(key, {})["desktop"] = ""
+                elif event.value is FREE:
+                    self._row_free(index, field, True)
+                    self._set_override(
+                        index, field, self._read_row_free(index, field)
+                    )
+                elif event.value is not SELECT_NULL:
+                    self._row_free(index, field, False)
+                    self._set_override(index, field, event.value)
+                self._recompute()
+                return
             field = SELECT_TO_FIELD.get(event.select.id)
             if not field:
                 return
@@ -874,7 +918,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.value is not SELECT_NULL:
                 self._free[field] = False
                 self._show_free(field, False)
-                self._set_resource(field, event.value)
+                self.custom[field] = event.value
             self._recompute()
 
         def _apply_free(self, field) -> None:
@@ -882,31 +926,26 @@ def run_deploy_form(ctx, run_app: bool = True):
             profil retombe alors sur celle du catalogue."""
             raw = self.query_one(RES_FIELDS[field][1], Input).value.strip()
             if field == "disk":
-                self._set_resource(field, parse_disk(raw) or "")
+                self.custom[field] = parse_disk(raw) or ""
             else:
-                self._set_resource(field, positive_int(raw, 0))
+                self.custom[field] = positive_int(raw, 0)
 
         def on_input_changed(self, event) -> None:
             if self._syncing:
+                return
+            wid = event.input.id or ""
+            row = re.match(r"c(\d+)_(vcpus|ram|disk)$", wid)
+            if row:
+                index, field = int(row.group(1)), row.group(2)
+                self._set_override(
+                    index, field, self._read_row_free(index, field)
+                )
+                self._recompute()
                 return
             field = INPUT_TO_FIELD.get(event.input.id)
             if field:
                 self._apply_free(field)
                 self._recompute()
-
-        def on_data_table_row_highlighted(self, event) -> None:
-            """Changer de ligne change la cible : on repart de champs vides,
-            pour ne pas reporter par mégarde le réglage de la VM précédente.
-
-            Le rang précédent est mémorisé plutôt que testé sur un verrou :
-            replacer le curseur après un redessin poste le même message, et
-            Textual le délivre APRÈS que le verrou soit retombé."""
-            if event.cursor_row == self._last_row:
-                return
-            self._last_row = event.cursor_row
-            if self.scope == "one":
-                self._reset_res_widgets()
-                self._sync_res_fields()
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
@@ -929,32 +968,21 @@ def run_deploy_form(ctx, run_app: bool = True):
                 if e.get("default"):
                     widget.select(i)
 
-        def action_edit_vm(self) -> None:
-            table = self.query_one("#plan", DataTable)
-            index = table.cursor_row
-            if not (0 <= index < len(self.vms)):
-                return
-            entries = self._selected_entries()
-            key = entry_key(entries[index])
-
-            def apply(changes):
-                if changes:
-                    self.overrides.setdefault(key, {}).update(changes)
-                    self._recompute()
-
-            self.push_screen(EditVMScreen(dict(self.vms[index])), apply)
-
         def action_clear_vm(self) -> None:
-            """Rend la VM visée au profil commun. Sans cette sortie, une
-            personnalisation posée par erreur ne se défaisait qu'en rouvrant le
-            formulaire."""
-            key = self._cursor_key()
+            """Rend au profil commun la VM dont un widget a le focus. Sans
+            cette sortie, un réglage posé par erreur ne se défaisait qu'en
+            rouvrant le formulaire."""
+            index = self._focused_row()
+            if index is None:
+                return
+            key = self._row_key(index)
             if key is None or key not in self.overrides:
                 return
             self.overrides.pop(key)
-            self._reset_res_widgets()
-            self._sync_res_fields()
+            # Les widgets de la rangée portent encore l'ancienne valeur : on
+            # les remonte pour qu'ils disent la vérité.
             self._recompute()
+            self._mount_rows()
 
         def _form_values(self):
             install = None
@@ -981,7 +1009,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "timezone": self.query_one("#f_tz", Input).value.strip()
                 or ctx.get("timezone")
                 or "",
-                "desktop": self._desktop(),
+                "desktop": self._default_desktop(),
                 "python_provider": self._python_provider(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
