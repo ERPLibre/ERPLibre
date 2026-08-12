@@ -15,6 +15,7 @@
 
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
+. ./script/install/lib_lowmem.sh
 
 EL_USER=${USER}
 
@@ -224,6 +225,12 @@ echo -e "\n--- Installing suse dependency --"
 # compiler ». Tumbleweed livre 1.94, bien au-dessus du 1.78 qu'exige le
 # Cargo.lock v4 de cryptography. On évite ainsi ~200 Mo inutiles sur amd64.
 if [ "$(uname -m)" = "s390x" ]; then
+  # La mémoire est la ressource qui manque en premier ici : cc1plus
+  # demande jusqu'à 2,5 Gio pour un seul fichier de matplotlib, et le
+  # tueur du noyau abrège sans jamais nommer la mémoire (« Killed signal
+  # terminated program cc1plus »). On complète par du swap avant d'en
+  # arriver là.
+  el_swap_ensure
   zyp_soft rust cargo
   if ! command -v cargo > /dev/null 2>&1; then
     # FATAL, et non plus un simple avertissement : sur s390x, bcrypt et
