@@ -95,15 +95,19 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | fedora | `41`, `42` (default), `43`, `44` | ✔ | ✔ | `43` only |
 | almalinux | `9` (default), `10` | ✔ | ✔ | ✔ |
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
-| opensuse | `tumbleweed` | ✔ | ✔ | ✔ |
+| opensuse | `16.0` (default), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
 
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
 
-`opensuse` is openSUSE Tumbleweed, the only entry whose qpdf (12.3.2) already
-clears the pikepdf threshold: the half-hour qpdf build never runs there, which
-matters under s390x emulation.
+`opensuse` covers two distinct products, not two versions of one. Leap `16.0`
+is numbered and stable (SLE base) and is the default. `tumbleweed` is the
+rolling one, kept as a bellwether for breakage to come: its snapshot drift is
+real, and it demands a full `zypper dup` before anything can be installed.
+
+Both ship a qpdf above the pikepdf threshold, so the half-hour qpdf build
+never runs there — which matters under s390x emulation.
 
 Provide an explicit image path as a positional argument to override the
 automatic download location.

@@ -7,7 +7,8 @@
 - **DNS** : `script/deployment/update_dns_cloudflare.py`
 
 Plateformes supportées : Ubuntu 24.04 / 25.10 / 26.04, Linux Mint 22.3,
-Debian 12, AlmaLinux 9+, Rocky Linux 9+, openSUSE Tumbleweed, Arch Linux,
+Debian 12, AlmaLinux 9+, Rocky Linux 9+, openSUSE Leap 16 et Tumbleweed,
+Arch Linux,
 macOS (mise ou pyenv),
 Windows (WSL/Docker).
 
