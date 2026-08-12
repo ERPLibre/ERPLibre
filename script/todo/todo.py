@@ -4371,23 +4371,34 @@ class TODO:
             "suffix": "mint",
         },
     }
-    # Sur Ubuntu, « firefox » et « chromium » ne sont plus que des paquets de
-    # TRANSITION : leur postinst lance « snap install ». Or on vient de couper
-    # snapd, quelques lignes plus haut, pour empêcher ses rafraîchissements
-    # automatiques pendant l'installation. Le postinst ne joint alors pas le
-    # store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES — l'installation
-    # semble figée, et rien dans le log ne dit pourquoi.
+    # Ubuntu remplace trois applications par des paquets de TRANSITION dont le
+    # postinst lance « snap install ». Or snapd est coupé juste avant, pour
+    # empêcher ses rafraîchissements pendant l'installation : le postinst ne
+    # joint alors pas le store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES.
+    # L'installation paraît figée et rien dans le log ne dit pourquoi.
     #
-    # gnome-core ne fait que les RECOMMANDER, avec des solutions de rechange :
+    # La famille est CLOSE et relevée dans l'index du dépôt, pas devinée : trois
+    # paquets sources portent une version « …snap1… », firefox, chromium-browser
+    # et thunderbird — avec toutes leurs déclinaisons (firefox-locale-*,
+    # chromium-codecs-*). Les corriger un à un a coûté deux VM figées : firefox
+    # sous GNOME, puis thunderbird sous Cinnamon.
+    #
+    # Les trois ne sont que RECOMMANDÉS, et avec des solutions de rechange :
     #   Recommends: firefox-esr | firefox | chromium | epiphany-browser | …
-    # On écarte donc les deux paquets-snap et on nomme epiphany-browser, un
-    # vrai .deb : la recommandation est satisfaite sans snap, et le résultat
-    # est déterministe plutôt que laissé au choix d'apt — qui retombait
-    # justement sur « chromium-browser », un paquet de transition lui aussi.
+    #   Recommends: thunderbird | evolution | geary | mail-reader
+    # On les écarte donc, et on nomme deux vrais .deb pour satisfaire les
+    # recommandations. Les nommer rend le résultat déterministe : laissé à apt,
+    # le premier repli était « chromium-browser », un paquet de transition lui
+    # aussi.
     #
-    # Relevé sur la VM : « firefox » était le SEUL paquet en « …snap1… » des
-    # 803 du lot, et l'exclusion en laisse zéro.
-    _QEMU_APT_NO_SNAP = "epiphany-browser firefox- chromium- chromium-browser-"
+    # Un épinglage apt sur « Pin: version *snap1* » aurait été plus général —
+    # essayé en glob et en regex, il ne bloque rien. Mesuré sur une VM 26.04 :
+    # avec cette liste, GNOME (844 paquets) et Cinnamon (1167) n'en tirent
+    # AUCUN, sans erreur apt.
+    _QEMU_APT_NO_SNAP = (
+        "epiphany-browser evolution"
+        " firefox- chromium- chromium-browser- thunderbird-"
+    )
 
     # Magasin d'applications d'une VM graphique. Ubuntu livre snapd dans son
     # image cloud (vérifié : 2.75.2 en 26.04) et gnome-core RECOMMANDE
