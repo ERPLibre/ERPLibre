@@ -2,6 +2,7 @@
 
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
+. ./script/install/lib_lowmem.sh
 
 EL_USER=${USER}
 #EL_INSTALL_WKHTMLTOPDF="True"
@@ -72,6 +73,11 @@ fi
 #--------------------------------------------------
 if [ "$(uname -m)" = "s390x" ]; then
   echo "Arch s390x detected"
+  # La mémoire est la ressource qui manque en premier ici : cc1plus demande
+  # jusqu'à 2,5 Gio pour un seul fichier de matplotlib, et le tueur du noyau
+  # abrège sans jamais nommer la mémoire (« Killed signal terminated program
+  # cc1plus »). On complète par du swap avant d'en arriver là.
+  el_swap_ensure
   # Sur une VM fraîche, l'index apt peut être vide : « apt install » échouerait
   # alors sur TOUT le lot, et l'absence d'un seul paquet ne se voit que bien
   # plus loin, sous la forme d'une commande introuvable.

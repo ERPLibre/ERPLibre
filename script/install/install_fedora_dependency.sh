@@ -11,6 +11,7 @@
 
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
+. ./script/install/lib_lowmem.sh
 
 EL_USER=${USER}
 
@@ -100,6 +101,12 @@ sudo dnf group install -y ${DNF_SKIP} development c-development \
 # « The headers or library files could not be found for jpeg » pour pillow.
 if [ "$(uname -m)" = "s390x" ]; then
   echo -e "\n---- Dependances de compilation s390x ----"
+  # La mémoire est la ressource qui manque en premier ici : cc1plus
+  # demande jusqu'à 2,5 Gio pour un seul fichier de matplotlib, et le
+  # tueur du noyau abrège sans jamais nommer la mémoire (« Killed signal
+  # terminated program cc1plus »). On complète par du swap avant d'en
+  # arriver là.
+  el_swap_ensure
   # Best-effort : un nom qui change d'une version à l'autre ne doit pas
   # emporter le lot. Ce qui est vraiment indispensable est déjà installé
   # au-dessus (compilateurs) ou plus bas (pyenv, PostgreSQL).

@@ -28,6 +28,8 @@ POETRY_ODOO_PATH=${VENV_ODOO_PATH}/bin/poetry
 # Choix pip/uv : un seul endroit décide, comme pour mise/pyenv.
 # shellcheck source=script/install/lib_pip_provider.sh
 . ./script/install/lib_pip_provider.sh
+# Bornage des compilations : voir el_build_limit_jobs.
+. ./script/install/lib_lowmem.sh
 export WITH_POETRY_INSTALLATION=1
 
 # Verbosité de l'installation Poetry. « -q » a été retiré du défaut : dans Cleo,
@@ -152,6 +154,14 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     if [[ ! -x "${POETRY_ODOO_PATH}" ]]; then
         echo "Poetry introuvable a ${POETRY_ODOO_PATH}, arret."
         exit 1
+    fi
+    # Là où rien n'a de roue, « poetry install » COMPILE des centaines de
+    # paquets, et le moteur de build de chacun lance nproc tâches en
+    # parallèle. cc1plus demande jusqu'à 2,5 Gio pour un seul fichier de
+    # matplotlib : six cœurs épuisent 8 Gio, et le noyau tue le compilateur
+    # sans jamais nommer la mémoire. On borne d'après la mémoire disponible.
+    if [[ "$(uname -m)" == "s390x" ]]; then
+        el_build_limit_jobs
     fi
     "${POETRY_ODOO_PATH}" --version
     # To fix keyring problem when installation is blocked, use
