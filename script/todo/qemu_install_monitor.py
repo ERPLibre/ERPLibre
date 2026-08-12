@@ -1777,6 +1777,23 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return None, None
             return table, keys[index]
 
+        def _apply_column_widths(self, table) -> None:
+            """Fait PRENDRE les largeurs à l'écran.
+
+            « refresh(layout=True) » ne suffit pas, et c'est le piège :
+            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
+            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
+            rien ne bouge. « clear_cached_dimensions » et « refresh_column »
+            n'y changent rien non plus ; seul le recalcul des dimensions la
+            porte à 93.
+
+            C'est une API privée, d'où le repli : une version future de
+            Textual dégradera l'ajustement au lieu de casser le suivi."""
+            try:
+                table._update_dimensions(list(table.rows))
+            except Exception:
+                table.refresh(layout=True)
+
         def _resize_column(self, delta) -> None:
             table, key = self._cursor_column()
             if key is None:
@@ -1785,12 +1802,21 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             width = max(
                 self.COL_MIN, min(self.COL_MAX, (col.width or 0) + delta)
             )
+            if width == col.width:
+                # Butée atteinte : le SEUL cas où il faut le dire, puisque
+                # rien ne bougera à l'écran pour l'expliquer.
+                self.notify(
+                    f"{col.label} : {width} (butee {self.COL_MIN}-{self.COL_MAX})",
+                    severity="warning",
+                )
+                return
             col.width = width
             # auto_width écraserait la largeur au prochain rendu : on la coupe,
             # sinon le réglage ne survit pas à la première mise à jour.
             col.auto_width = False
-            table.refresh(layout=True)
-            self.notify(f"{col.label} : {width}")
+            # Pas de notification quand ça marche : le changement se VOIT, et
+            # une bulle par frappe rendait l'ajustement pénible.
+            self._apply_column_widths(table)
 
         def action_col_grow(self) -> None:
             self._resize_column(self.COL_STEP)
@@ -1805,8 +1831,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 if key in table.columns:
                     table.columns[key].width = width
                     table.columns[key].auto_width = False
-            table.refresh(layout=True)
-            self.notify("Colonnes remises par défaut.")
+            self._apply_column_widths(table)
 
         def action_vm_actions(self) -> None:
             """Ouvre les actions de la VM sélectionnée."""
