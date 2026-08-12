@@ -273,10 +273,54 @@ def render_shape(finding):
         )
         lines += [f"      -> {shape}", ""]
     lines += [
-        "  A copy frozen in one shape cannot be applied in the other: Odoo",
-        "  stops on « cannot be located in parent view ».",
+        "  Odoo changing the shape of its own template is NOT the problem: on a",
+        "  database without a copy, the module upgrade rewrites the view and",
+        "  nothing breaks. It breaks here because a COPY exists and froze the",
+        "  old shape — the copy follows the module and becomes an extension,",
+        "  while still holding a standalone template. Odoo then applies that",
+        "  template as an inheritance spec and stops on « cannot be located in",
+        "  parent view ».",
+        "",
     ]
+    # Sans ceci, cette vue se lit comme « du code Odoo qui change », et l'on
+    # se demande pourquoi c'est notre affaire. Ce qui la rend nôtre est ce que
+    # la copie contient — la seule chose que neutraliser ferait perdre.
+    lines += _what_the_copy_holds(finding)
     return "\n".join(lines)
+
+
+def _what_the_copy_holds(finding):
+    """Ce que la copie porte en propre, dit en une ou deux lignes.
+
+    Relie les deux moitiés de la question : le mécanisme explique POURQUOI ça
+    casse, ceci dit CE QU'IL EN COÛTE. Une copie identique à sa jumelle ne
+    coûte rien, et le savoir change la décision.
+    """
+    if finding["module_id"] is None:
+        return [
+            "  This copy has no module view of that name: it is a page made in",
+            "  the website editor, and nothing else holds its content.",
+        ]
+    left = finding["module_arch"].splitlines()
+    right = finding["copy_arch"].splitlines()
+    diff = [
+        line
+        for line in difflib.unified_diff(left, right, lineterm="", n=0)
+        if line[:1] in "+-" and not line.startswith(("+++", "---"))
+    ]
+    if not diff:
+        return [
+            "  This copy is IDENTICAL to the module view it shadows: it holds no",
+            "  customization at all, so neutralizing it loses nothing.",
+        ]
+    n_plus = sum(1 for x in diff if x.startswith("+"))
+    n_minus = sum(1 for x in diff if x.startswith("-"))
+    return [
+        f"  This copy differs from the module view by +{n_plus}/-{n_minus}"
+        " line(s):",
+        "  that is the customization, and all that neutralizing gives up.",
+        "  Run without --shape to read it.",
+    ]
 
 
 def render_all(lst_finding, shape=False):
