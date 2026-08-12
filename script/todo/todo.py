@@ -4453,8 +4453,12 @@ class TODO:
             f"{rem['pacman']['packages']}; "
             "elif command -v zypper >/dev/null 2>&1; then "
             "sudo zypper --non-interactive refresh || true; "
-            "sudo zypper --non-interactive --auto-agree-with-licenses "
-            f"install {de['zypper']} {rem['zypper']['packages']}; "
+            # « --auto-agree-with-licenses » appartient à la SOUS-COMMANDE
+            # install, pas aux options globales : placé avant, zypper répond
+            # « The flag --auto-agree-with-licenses is not known ».
+            "sudo zypper --non-interactive install "
+            f"--auto-agree-with-licenses {de['zypper']} "
+            f"{rem['zypper']['packages']}; "
             "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
             # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
             # images cloud démarrent en multi-user.target.
@@ -4567,11 +4571,12 @@ class TODO:
             "sudo pacman -S --needed --noconfirm $PKGS; "
             "elif command -v zypper >/dev/null 2>&1; then "
             # openSUSE : « --non-interactive » vaut le -y des autres, et
-            # « --auto-agree-with-licenses » évite un blocage sur une licence.
+            # « --auto-agree-with-licenses », qui va APRÈS « install »,
+            # évite un blocage sur une licence à accepter.
             # Tumbleweed étant rolling, on rafraîchit avant d'installer.
             "sudo zypper --non-interactive refresh || true; "
-            "sudo zypper --non-interactive --auto-agree-with-licenses "
-            "install $PKGS; "
+            "sudo zypper --non-interactive install "
+            "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets "

@@ -13,14 +13,33 @@
 
 EL_USER=${USER}
 
-# « --non-interactive » vaut le -y des autres gestionnaires. Sans
-# « --auto-agree-with-licenses », zypper s'arrête sur une licence à accepter et
-# attend une réponse que personne ne donnera dans une installation détachée.
-ZYP="sudo zypper --non-interactive --auto-agree-with-licenses"
-# Certains paquets n'existent pas sous le même nom d'une version à l'autre.
-# « --ignore-unknown » saute l'inconnu au lieu de faire échouer tout le lot,
-# comme « --skip-unavailable » côté dnf.
-ZYP_SOFT="${ZYP} install --ignore-unknown"
+# « --non-interactive » est une option GLOBALE de zypper, elle précède la
+# sous-commande. Les deux autres appartiennent à « install » et doivent la
+# SUIVRE : placées avant, zypper répond « The flag
+# --auto-agree-with-licenses is not known » et s'arrête.
+#
+# On demande à zypper quelles options il accepte, plutôt que de le supposer :
+# la famille SUSE n'est pas testée ici, et un drapeau inconnu fait échouer la
+# commande entière au lieu du seul paquet visé.
+#   --auto-agree-with-licenses : sinon zypper attend l'acceptation d'une
+#     licence, réponse que personne ne donnera dans une installation détachée.
+#   --ignore-unknown : saute un nom de paquet absent au lieu de refuser tout
+#     le lot, l'équivalent de « --skip-unavailable » côté dnf.
+ZYP="sudo zypper --non-interactive"
+ZYP_HELP="$(zypper install --help 2>&1 || true)"
+ZYP_LIC=""
+ZYP_IGN=""
+case "${ZYP_HELP}" in
+  *--auto-agree-with-licenses*) ZYP_LIC="--auto-agree-with-licenses" ;;
+esac
+case "${ZYP_HELP}" in
+  *--ignore-unknown*) ZYP_IGN="--ignore-unknown" ;;
+esac
+echo "zypper : options retenues = ${ZYP_LIC} ${ZYP_IGN}"
+# Lot obligatoire : un paquet manquant doit se voir.
+ZYP_IN="${ZYP} install ${ZYP_LIC}"
+# Lot best-effort : un nom absent est sauté.
+ZYP_SOFT="${ZYP_IN} ${ZYP_IGN}"
 
 echo -e "\n---- Rafraichissement des depots ----"
 # Tumbleweed est ROLLING : installer sans rafraîchir mène à des paquets
@@ -33,14 +52,14 @@ sudo zypper --non-interactive refresh || true
 echo -e "\n---- Motif outils de developpement ----"
 # Chez SUSE ce sont des « patterns », l'équivalent des groupes dnf. Repli
 # explicite si le motif n'existe pas sous ce nom.
-${ZYP} install -t pattern devel_basis \
+${ZYP_IN} -t pattern devel_basis \
   || ${ZYP_SOFT} gcc gcc-c++ make automake patch
 
 #--------------------------------------------------
 # PostgreSQL
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-${ZYP} install postgresql-server postgresql-contrib postgresql-server-devel
+${ZYP_IN} postgresql-server postgresql-contrib postgresql-server-devel
 retVal=$?
 if [[ ${retVal} -ne 0 ]]; then
   echo "zypper install postgresql installation error."
@@ -75,7 +94,7 @@ fi
 
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
 echo -e "\n---- Dependances pyenv (compilation Python) ----"
-${ZYP} install \
+${ZYP_IN} \
   make gcc zlib-devel libbz2-devel readline-devel sqlite3-devel \
   libopenssl-devel tk-devel libffi-devel xz-devel patch findutils
 retVal=$?
@@ -97,7 +116,7 @@ echo -e "\n---- Installing nodeJS NPM and rtlcss ----"
 # toujours de méta-paquet « nodejs ». On prend le plus récent disponible.
 NODE_OK=0
 for pkg in nodejs24 nodejs22 nodejs20 nodejs; do
-  if ${ZYP} install "${pkg}" "${pkg/nodejs/npm}" 2> /dev/null; then
+  if ${ZYP_IN} "${pkg}" "${pkg/nodejs/npm}" 2> /dev/null; then
     NODE_OK=1
     echo "node fourni par ${pkg}"
     break
