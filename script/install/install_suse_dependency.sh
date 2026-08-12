@@ -273,6 +273,18 @@ if [[ ${retVal} -ne 0 ]]; then
 fi
 
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
+# Python de la DISTRIBUTION d'abord : Tumbleweed livre python312 en 3.12.13,
+# qui satisfait « >=3.12.10,<3.13 ». lib_python_provider.sh le prefere alors a
+# toute compilation — decisif sur s390x, ou gcc 15.2 s'arrete sur une erreur
+# interne en batissant Parser/parser.c de CPython 3.12.10.
+# Le nom suit la version demandee : python312 pour 3.12.x.
+PY_WANT="$(cat .python-odoo-version 2>/dev/null | xargs)"
+PY_PKG="python$(echo "${PY_WANT}" | awk -F. '{print $1 $2}')"
+if [ -n "${PY_WANT}" ]; then
+  echo -e "\n---- Python ${PY_WANT} depuis la distribution (${PY_PKG}) ----"
+  zyp_soft "${PY_PKG}" "${PY_PKG}-devel" "${PY_PKG}-pip"
+fi
+
 echo -e "\n---- Dependances pyenv (compilation Python) ----"
 zyp_in \
   make gcc zlib-devel libbz2-devel readline-devel sqlite3-devel \
