@@ -4467,14 +4467,47 @@ class TODO:
         # « $repo » et « $arch » restent littéraux : c'est pacman qui les
         # substitue, d'où les guillemets SIMPLES autour du format.
         lines = "".join(f"Server = {m}\\n" for m in self._QEMU_PACMAN_MIRRORS)
+        first = self._QEMU_PACMAN_MIRRORS[0].split("/")[2]
         return (
             '[ "$(uname -m)" = x86_64 ] && { '
+            # Idempotent : la préparation Arch passe deux fois quand une VM
+            # est graphique (bureau puis ERPLibre), et empiler les mêmes
+            # miroirs à chaque passage allongerait la liste sans rien gagner.
+            f'grep -q "{first}" /etc/pacman.d/mirrorlist 2>/dev/null || {{ '
             f"printf '{lines}' | sudo tee /etc/pacman.d/mirrorlist.el "
             "> /dev/null; "
             "sudo sh -c 'cat /etc/pacman.d/mirrorlist "
             ">> /etc/pacman.d/mirrorlist.el "
             "&& mv /etc/pacman.d/mirrorlist.el /etc/pacman.d/mirrorlist'; "
-            "}; "
+            "}; }; "
+        )
+
+    def _qemu_pacman_prepare_cmd(self):
+        """Préparation Arch : verrou, miroirs proches, mise à jour COMPLÈTE.
+
+        Les trois sont indissociables, et il faut les faire AVANT la moindre
+        installation. Une image cloud Arch est un instantané dont la base de
+        paquets pointe des versions déjà retirées des miroirs : « pacman -S »
+        s'y arrête sur « failed retrieving file … 404 » — vécu sur llvm-libs
+        et perl. Arch ne supporte pas la mise à jour partielle.
+
+        Ce bloc ne vivait QUE dans le chemin ERPLibre. Or le bureau s'installe
+        AVANT lui : une VM graphique échouait donc toujours, sans jamais
+        atteindre le code qui l'aurait sauvée."""
+        return (
+            "if command -v pacman >/dev/null 2>&1; then "
+            # Verrou périmé (cloud-init interrompu) : le retirer SEULEMENT si
+            # aucun pacman ne tourne, sinon on attend qu'il se libère.
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            # reflector d'abord, nos miroirs ensuite : « --save » écrase le
+            # fichier, écrire avant lui ne servirait à rien.
+            "sudo pacman -Sy --needed --noconfirm reflector || true; "
+            "sudo reflector --latest 20 --protocol https --sort rate "
+            "--save /etc/pacman.d/mirrorlist || true; "
+            + self._qemu_pacman_mirror_cmd()
+            + "sudo pacman -Syu --noconfirm || true; "
+            "fi; "
         )
 
     def _qemu_zypper_mirror_cmd(self):
@@ -4527,7 +4560,8 @@ class TODO:
             "elif command -v pacman >/dev/null 2>&1; then "
             "pgrep -x pacman >/dev/null 2>&1 "
             "|| sudo rm -f /var/lib/pacman/db.lck; "
-            f"sudo pacman -S --needed --noconfirm {de['pacman']} "
+            + self._qemu_pacman_prepare_cmd()
+            + f"sudo pacman -S --needed --noconfirm {de['pacman']} "
             f"{rem['pacman']['packages']}; "
             "elif command -v zypper >/dev/null 2>&1; then "
             "sudo zypper --non-interactive refresh || true; "
@@ -4679,20 +4713,8 @@ class TODO:
             "sudo dnf install -y --refresh $PKGS || "
             "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
             "elif command -v pacman >/dev/null 2>&1; then "
-            # Verrou pacman périmé (cloud-init interrompu) : le retirer SEULEMENT
-            # si aucun pacman ne tourne, sinon on attend qu'il se libère.
-            "pgrep -x pacman >/dev/null 2>&1 "
-            "|| sudo rm -f /var/lib/pacman/db.lck; "
-            # Arch : reflector sélectionne les miroirs HTTPS les plus rapides,
-            # puis MISE À JOUR COMPLÈTE (-Syu) : Arch (rolling) ne supporte pas
-            # les màj partielles ; sur une image cloud à la glibc ancienne, un
-            # « pacman -S <paquet récent> » casse avec « GLIBC_x.yy not found ».
-            "sudo pacman -Sy --needed --noconfirm reflector || true; "
-            "sudo reflector --latest 20 --protocol https --sort rate "
-            "--save /etc/pacman.d/mirrorlist || true; "
-            + self._qemu_pacman_mirror_cmd()
-            + "sudo pacman -Syu --noconfirm || true; "
-            "sudo pacman -S --needed --noconfirm $PKGS; "
+            + self._qemu_pacman_prepare_cmd()
+            + "sudo pacman -S --needed --noconfirm $PKGS; "
             "elif command -v zypper >/dev/null 2>&1; then "
             # openSUSE : « --non-interactive » vaut le -y des autres, et
             # « --auto-agree-with-licenses », qui va APRÈS « install »,
