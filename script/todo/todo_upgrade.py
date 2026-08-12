@@ -59,10 +59,11 @@ LOCAL_MANIFEST = os.path.join(
 # be dropped depends on the database, so that choice is never versioned.
 PATH_MIGRATION_GLOBAL = os.path.join("script", "odoo", "migration")
 PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
-# Steps of the migration, in order. Each one owns the progression keys prefixed
-# with « state_<index> ». Rewinding to a step drops its keys and every later
-# one, so the run replays from there. Labels go through t(): the key IS the
-# English string, as everywhere else in this project.
+# Steps of the migration, in order. What each one owns is declared just below,
+# by GLOBAL_PROGRESSION_KEY and STEP_OWNED_KEY — not by the prefix alone, which
+# lies on some keys and is missing on others. Rewinding to a step drops
+# everything it and the later steps own, so the run really replays from there.
+# Labels go through t(): the key IS the English string, as everywhere else.
 MIGRATION_STEP = [
     (0, "Prepare the environment"),
     (1, "Restore and neutralize the database"),
@@ -72,22 +73,69 @@ MIGRATION_STEP = [
 ]
 
 
-# Drapeaux dont l'ÉTAPE RÉELLE n'est pas celle que leur préfixe annonce.
+# Ce que le journal garde quoi qu'il arrive : des décisions et de la
+# métadonnée, jamais du progrès. Rembobiner ne doit pas faire oublier QUELLE
+# base on migre ni vers quelle version — on repartirait sur autre chose.
+GLOBAL_PROGRESSION_KEY = frozenset(
+    {
+        "command_executed",
+        "config_database_name",
+        "config_migrate_repo",
+        "date_create",
+        "date_update",
+        "migration_file",
+        "target_odoo_version",
+    }
+)
+
+# Clés que leur nom ne rattache à aucune étape, et l'étape qui les produit.
 #
-# `state_1_update_all` est posé par la mise à jour précoce, offerte avant la
-# neutralisation quand la base vient d'une vieille version. Le travail est
-# celui de l'étape 2 ; seul le nom dit 1. Sans cette table, rembobiner à
-# l'étape 2 gardait ce drapeau — son préfixe le rangeait dans l'étape 1 — et
-# l'étape sautait alors qu'on venait de demander à la rejouer.
-FLAG_REAL_STEP = {"state_1_update_all": 2}
+# Tout le reste s'auto-décrit : `state_<n>_` et `config_state_<n>_` nomment
+# leur étape. Ces huit-là sont les sorties de la recherche de modules de
+# l'étape 0 ; `dct_module_exist` est ensuite lu par l'étape 4.
+#
+# `state_1_update_all` est l'exception inverse : son nom dit 1, son travail
+# est celui de l'étape 2 — c'est la mise à jour précoce, offerte avant la
+# neutralisation quand la base vient d'une vieille version.
+STEP_OWNED_KEY = {
+    0: (
+        "dct_module_exist",
+        "dct_module_per_version",
+        "len_dct_module_exist",
+        "len_lst_module_duplicate",
+        "len_lst_module_missing",
+        "lst_module_duplicate",
+        "lst_module_missing",
+        "lst_module_per_version_origin",
+    ),
+    2: ("state_1_update_all",),
+}
+
+# Réponses de l'étape 4 indexées par bump de version, une entrée par palier —
+# exactement comme les drapeaux `state_4_*_odoo_lst`. Leur nom ne le dit pas,
+# d'où cette liste : rejouer un palier sans les vider réutilisait en silence
+# les modules choisis au passage précédent.
+STEP_4_PER_BUMP_KEY = (
+    "config_state_4_install_module",
+    "config_state_4_module_to_migrate_code",
+    "config_state_4_uninstall_module",
+)
+
+STEP_PREFIX_RE = re.compile(r"^(?:config_)?state_(\d+)_")
 
 
 def flag_step(key):
-    """Étape à laquelle un drapeau appartient réellement."""
-    if key in FLAG_REAL_STEP:
-        return FLAG_REAL_STEP[key]
-    index = key[len("state_") :].split("_", 1)[0]
-    return int(index) if index.isdigit() else None
+    """Étape dont relève une clé du journal, ou None si elle est globale.
+
+    Le préfixe ne suffit pas : une clé peut le porter à tort
+    (`state_1_update_all`) ou ne rien porter du tout (les listes de modules).
+    La table tranche d'abord, le nom ensuite.
+    """
+    for step, lst_key in STEP_OWNED_KEY.items():
+        if key in lst_key:
+            return step
+    match = STEP_PREFIX_RE.match(key)
+    return int(match.group(1)) if match else None
 
 
 class MigrationRewind(Exception):
@@ -684,18 +732,32 @@ class TodoUpgrade:
         the point — the intermediate database of a failed bump is half
         migrated, so it must be dropped and rebuilt from the previous version
         rather than upgraded again.
+
+        The answers given for a bump — STEP_4_PER_BUMP_KEY, indexed exactly
+        like the flags — are trimmed too. They were not, so replaying a bump
+        reused the modules chosen the previous time and asked nothing.
         """
         dct_kept = dict(old_dct_progression)
         for key, value in old_dct_progression.items():
-            if (
+            if not isinstance(value, list):
+                continue
+            per_bump = (
                 key.startswith("state_4_")
-                and isinstance(value, list)
                 and key.endswith(("_odoo_lst", "_module"))
-            ):
-                dct_kept[key] = [
-                    item if i < index else False
-                    for i, item in enumerate(value)
-                ]
+            ) or key in STEP_4_PER_BUMP_KEY
+            if not per_bump:
+                continue
+            # Vider en gardant le type : `config_state_4_module_to_migrate_code`
+            # porte des listes, sur lesquelles le code fait .append() sans les
+            # avoir revues. Un False à leur place plante le palier rejoué.
+            dct_kept[key] = [
+                (
+                    item
+                    if i < index
+                    else ([] if isinstance(item, list) else False)
+                )
+                for i, item in enumerate(value)
+            ]
         return dct_kept
 
     def ask_gate(self, prompt):
@@ -741,14 +803,23 @@ class TodoUpgrade:
 
     @staticmethod
     def rewind_progression(old_dct_progression, step):
-        """Drop the progression of `step` and of every later step.
+        """Drop everything `step` and the later steps own, not just their flags.
 
-        Configuration answers (config_*), the zip and the target version are
-        kept: they are decisions, not progress. Only « state_* » is rewound.
+        Rewinding used to keep every key that was not « state_* ». The chosen
+        step replayed, then the ones after it ran on the previous course's
+        leftovers: the per-bump answers of step 4 — `config_state_4_*`, one
+        entry per version bump — were still there, so the questions were not
+        asked again and the work was taken for decided.
+
+        So ownership is declared rather than guessed: GLOBAL_PROGRESSION_KEY
+        survives everything, STEP_OWNED_KEY and the « state_<n>_ » prefixes
+        say the rest. A key belonging to no one is progress by default and
+        goes: a replay that keeps an unknown leftover is the very defect
+        above, and `test_todo_upgrade_steps` fails on any unclassified key.
         """
         dct_kept = {}
         for key, value in old_dct_progression.items():
-            if not key.startswith("state_"):
+            if key in GLOBAL_PROGRESSION_KEY:
                 dct_kept[key] = value
                 continue
             index = flag_step(key)
