@@ -4797,8 +4797,17 @@ class TODO:
             run_monitor,
         )
 
+        # `desktop` accepte une SAVEUR unique (toutes les VM) ou un dict
+        # {nom: saveur} depuis que le type se choisit machine par machine. La
+        # commande distante en dépend, donc elle se construit par VM ; celle-ci
+        # reste le défaut pour les noms absents du dict.
+        desk_map = desktop if isinstance(desktop, dict) else {}
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop, python_provider
+            branch,
+            final_cmd,
+            prod,
+            "" if desk_map else desktop,
+            python_provider,
         )
         try:
             mod = self._qemu_import_module()
@@ -4815,15 +4824,22 @@ class TODO:
                     if mod
                     else (None, None, None)
                 )
-                vms.append(
-                    {
-                        "name": name,
-                        "ip": ip,
-                        "distro": d,
-                        "version": v,
-                        "arch": a,
-                    }
-                )
+                entry = {
+                    "name": name,
+                    "ip": ip,
+                    "distro": d,
+                    "version": v,
+                    "arch": a,
+                }
+                if desk_map:
+                    entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
+                        branch,
+                        final_cmd,
+                        prod,
+                        desk_map.get(name, ""),
+                        python_provider,
+                    )
+                vms.append(entry)
             else:
                 print(f"  {name}: {t('no IP, skipped.')}")
         if not vms:
@@ -5361,7 +5377,9 @@ class TODO:
             dry_run=dry_run,
             timezone=spec.get("timezone"),
             locale=spec.get("locale"),
-            desktop=bool(spec.get("desktop")),
+            # Le type suit la VM. Repli sur la valeur de spec pour la CLI,
+            # qui ne pose la question qu'une fois pour tout le parc.
+            desktop=bool(vm.get("desktop", spec.get("desktop"))),
         )
 
     # ---------------------------------------------------------------- #
@@ -6121,7 +6139,18 @@ class TODO:
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
         install_branch = install["branch"] if install else None
-        desktop = spec.get("desktop") or ""
+        # Le type de VM est choisi machine par machine dans la TUI ; la CLI n'en
+        # pose qu'un pour tout le parc. On ramene les deux a la meme carte, et
+        # `desktop` reste la reponse a « faut-il installer un bureau quelque
+        # part ? », qui declenche la phase d'installation.
+        desktop_default = spec.get("desktop") or ""
+        desktop_map = {
+            vm["name"]: (vm.get("desktop", desktop_default) or "")
+            for vm in pending
+        }
+        for _name in deployed:
+            desktop_map.setdefault(_name, desktop_default)
+        desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
@@ -6196,7 +6225,7 @@ class TODO:
                     ip_map,
                     install["cmd"] if install else None,
                     install["prod"] if install else False,
-                    desktop=desktop,
+                    desktop=desktop_map,
                     python_provider=python_provider,
                 )
             else:
@@ -6212,7 +6241,7 @@ class TODO:
                         ip_map.get(name),
                         install["cmd"],
                         install["prod"],
-                        desktop=desktop,
+                        desktop=desktop_map.get(name, ""),
                         python_provider=python_provider,
                     )
 
