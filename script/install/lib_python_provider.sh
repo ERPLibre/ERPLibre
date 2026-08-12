@@ -80,6 +80,16 @@ el_pyenv_install() {
   eval "$(pyenv init - 2> /dev/null)" || true
   eval "$(pyenv virtualenv-init - 2> /dev/null)" || true
   if [[ ! -d "${root}/versions/${version}" ]]; then
+    # pyenv COMPILE CPython : sans compilateur C, il télécharge l'archive,
+    # lance configure et s'arrête sur « no acceptable C compiler found », après
+    # avoir gaspillé le téléchargement. On le dit AVANT, et on nomme le paquet.
+    if ! command -v cc > /dev/null 2>&1 \
+      && ! command -v gcc > /dev/null 2>&1; then
+      echo "Aucun compilateur C : pyenv ne peut pas compiler Python." >&2
+      echo "  Installez le necessaire de compilation (build-essential," >&2
+      echo "  gcc/gcc-c++, ou le motif devel_basis) puis relancez." >&2
+      return 1
+    fi
     echo "---- Python ${version} via pyenv (compilation) ----" >&2
     # La liste des versions connues vient du dépôt git de pyenv : sans ce
     # « pull », une version récente est « not a known version ».

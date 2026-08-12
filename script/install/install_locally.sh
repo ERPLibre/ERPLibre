@@ -58,10 +58,21 @@ if [[ "${EL_PHASE}" != "poetry" ]]; then
     if [[ ! -n "${DOCKER_BUILD}" ]]; then
         # Install ERPLibre venv
         echo -e "Install ${VENV_ERPLIBRE_PATH} with ${EL_PYTHON_ERPLIBRE_VERSION}"
-        ./script/install/install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"
+        # Le code de retour n'était PAS regardé : quand l'interpréteur ne
+        # pouvait pas être obtenu, le script continuait, et tout ce qui suit
+        # échouait à son tour sur un venv inexistant. Le log devenait une
+        # cascade de « No such file or directory » répartie sur trois fichiers,
+        # où la cause réelle — pas de compilateur C — se perdait tout en haut.
+        if ! ./script/install/install_venv.sh "ERPLibre" "${VENV_ERPLIBRE_PATH}" "${EL_PYTHON_ERPLIBRE_VERSION}"; then
+            echo "Echec de creation de ${VENV_ERPLIBRE_PATH}, arret."
+            exit 1
+        fi
         # Install Odoo venv
         echo -e "Install ${VENV_ODOO_PATH} with ${EL_PYTHON_ODOO_VERSION}"
-        ./script/install/install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"
+        if ! ./script/install/install_venv.sh "Odoo" "${VENV_ODOO_PATH}" "${EL_PYTHON_ODOO_VERSION}"; then
+            echo "Echec de creation de ${VENV_ODOO_PATH}, arret."
+            exit 1
+        fi
     else
         mkdir .venv
     fi

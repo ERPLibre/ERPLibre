@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Le code de retour du script de distribution DOIT remonter : il est aujourd'hui
+# la derniere commande executee, donc propage par accident. « set -e » le rend
+# explicite, et update_env_version.py:818 s'en sert pour arreter l'installation
+# au lieu d'enchainer sur un systeme sans compilateur.
+set -e
 
 if [[ "${OSTYPE}" == "linux-gnu" ]]; then
   source /etc/os-release
