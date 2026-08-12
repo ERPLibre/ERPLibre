@@ -3872,6 +3872,33 @@ TRANSLATIONS = {
         "fr": "faite plus tôt, avant la neutralisation",
         "en": "done early, before the neutralization",
     },
+    "compare each website copy with the module view it shadows": {
+        "fr": "comparer chaque copie de site web à la vue de module qu'elle"
+        " masque",
+        "en": "compare each website copy with the module view it shadows",
+    },
+    "Compare the website copies with the view they shadow": {
+        "fr": "🪞 Comparer les copies de site web à la vue qu'elles masquent",
+        "en": "🪞 Compare the website copies with the view they shadow",
+    },
+    "website copies compared with their module view,": {
+        "fr": "copies de site web comparées à leur vue de module,",
+        "en": "website copies compared with their module view,",
+    },
+    "differ.": {"fr": "diffèrent.", "en": "differ."},
+    "Nothing to decide yet": {
+        "fr": "Rien à décider pour l'instant",
+        "en": "Nothing to decide yet",
+    },
+    "the migration will offer to neutralize these copies": {
+        "fr": "la migration proposera de neutraliser ces copies",
+        "en": "the migration will offer to neutralize these copies",
+    },
+    "at the version bump itself, showing what each one holds.": {
+        "fr": "au moment du palier lui-même, en montrant ce que chacune"
+        " contient.",
+        "en": "at the version bump itself, showing what each one holds.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",

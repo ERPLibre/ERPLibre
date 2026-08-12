@@ -313,7 +313,15 @@ def main():
                 f" : {mode} -> {target_mode} ({reason})"
             )
         print(
-            "   Arbitrate BEFORE launching the migration. To neutralize a copy,"
+            "   The migration will offer to neutralize them at the bump, and"
+            " shows what each copy holds before you answer. To do it now:"
+            "\n     ./script/odoo/migration/cow_drift.py -d DB -t odooXX.0"
+            "   (read what they hold)"
+            "\n     ./script/odoo/migration/neutralize_cow_views.py -d DB"
+            " -t odooXX.0 --apply   (reversible with --restore)"
+        )
+        print(
+            "   Or by hand. To neutralize a copy,"
             " rename its key (UPDATE ir_ui_view SET key='zz_cow_archive.'||key,"
             " active=false): an unmatched key is never paired with the module"
             " view, so the copy never receives the new inherit_id. Setting"
