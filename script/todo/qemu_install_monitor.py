@@ -814,13 +814,118 @@ def virsh_domstates() -> dict:
 # --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
+# Parties d'une remise à jour, dans l'ordre où elles doivent tourner : les
+# paquets système d'abord (compilateurs et en-têtes), le code ensuite, les
+# dépendances Python en dernier — elles se compilent contre les deux premiers.
+UPDATE_PARTS = (
+    ("system", "Paquets systeme (apt/dnf/pacman/zypper)"),
+    ("git", "Depots git (ERPLibre + addons)"),
+    ("python", "Dependances Python (poetry)"),
+)
+EL_DIR = "~/git/erplibre"
+
+
+def update_remote_cmd(parts) -> str:
+    """Commande exécutée DANS la VM pour remettre à jour ce qui est coché.
+
+    Rien n'est enchaîné par « && » : une partie qui échoue ne doit pas
+    empêcher les suivantes, et son code de retour se lit dans la sortie.
+    Chaque bloc s'annonce, sinon un log de mise à jour est illisible."""
+    chosen = [p for p in parts if p in dict(UPDATE_PARTS)]
+    if not chosen:
+        return ""
+    out = ["set -u"]
+    if "system" in chosen:
+        out.append(
+            'echo "== Paquets systeme =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq "
+            "&& sudo DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o DPkg::Lock::Timeout=600 -y upgrade; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            "sudo dnf -y upgrade --refresh; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            # Arch ne supporte pas la mise à jour partielle : -Syu, jamais -S.
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            "sudo pacman -Syu --noconfirm; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) '
+            "sudo zypper --non-interactive dup "
+            "--auto-agree-with-licenses --allow-vendor-change;; "
+            "*) sudo zypper --non-interactive up "
+            "--auto-agree-with-licenses;; esac; "
+            'else echo "Gestionnaire de paquets inconnu"; fi; '
+        )
+    if "git" in chosen:
+        out.append(
+            'echo "== Depots git =="; '
+            f"cd {EL_DIR} || exit 1; "
+            # --ff-only : une VM ne doit jamais fusionner toute seule. Un
+            # historique divergent s'arrête ici, visiblement.
+            "git pull --ff-only; "
+            # Les addons viennent de Google Repo, pas de git : c'est le script
+            # de l'installation qui sait les synchroniser.
+            "./script/install/install_git_repo.sh; "
+        )
+    if "python" in chosen:
+        out.append(
+            'echo "== Dependances Python =="; '
+            f"cd {EL_DIR} || exit 1; "
+            # La phase « poetry » seule : ni venvs ni repo, juste les paquets.
+            "EL_PHASE=poetry ./script/install/install_locally.sh; "
+        )
+    out.append('echo "== Mise a jour terminee =="')
+    return "".join(out[:1]) + "; " + "".join(out[1:])
+
+
+def restart_odoo_cmd() -> str:
+    """Redémarre le service ERPLibre, ou le lance à la main s'il n'existe pas.
+
+    Une VM installée sans profil de production n'a pas forcément l'unité
+    systemd : le repli dit quoi faire plutôt que d'échouer sans un mot."""
+    return (
+        "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
+        "sudo systemctl restart erplibre.service "
+        "&& sudo systemctl --no-pager --lines=15 status erplibre.service; "
+        "else echo 'Pas de service erplibre : lancez ./run.sh dans "
+        f"{EL_DIR}'; fi"
+    )
+
+
+def delete_vm_cmd(name: str, with_disks: bool) -> str:
+    """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
+    arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
+    disques à la demande."""
+    q = shlex.quote(name)
+    cmd = (
+        f"sudo virsh destroy {q} 2>/dev/null; "
+        f"sudo virsh undefine {q} --nvram 2>/dev/null "
+        f"|| sudo virsh undefine {q}"
+    )
+    if with_disks:
+        disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
+        seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
+        cmd += f"; sudo rm -f {disk} {seed}"
+    return cmd
+
+
 def run_monitor(manifest_path: str, run_app: bool = True):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
     à False renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import DataTable, Footer, Header, RichLog, Static
+    from textual.widgets import (
+        Button,
+        Checkbox,
+        DataTable,
+        Footer,
+        Header,
+        RichLog,
+        Static,
+    )
 
     manifest = json.loads(Path(manifest_path).read_text())
     started = manifest.get("started", time.time())
@@ -869,6 +974,84 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def action_dismiss(self) -> None:
             self.dismiss()
 
+    class ConfirmScreen(ModalScreen):
+        """Confirmation d'une action irréversible. Le bouton dangereux n'est
+        PAS le défaut : il faut le viser, pas juste appuyer sur Entrée."""
+
+        BINDINGS = [("escape", "cancel", "Annuler")]
+
+        def __init__(self, title, lines, danger_label):
+            super().__init__()
+            self._title = title
+            self._lines = lines
+            self._danger = danger_label
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="confbox"):
+                yield Static(self._title, id="conftitle")
+                for line in self._lines:
+                    yield Static(line)
+                with Horizontal(id="confbtns"):
+                    yield Button("Annuler", variant="primary", id="c_no")
+                    yield Button(self._danger, variant="error", id="c_yes")
+
+        def on_button_pressed(self, event) -> None:
+            self.dismiss(event.button.id == "c_yes")
+
+        def action_cancel(self) -> None:
+            self.dismiss(False)
+
+    class VmActionsScreen(ModalScreen):
+        """Les opérations d'une VM, rassemblées en un seul endroit.
+
+        Plutôt que trois touches de plus dans un pied de page qui en compte
+        déjà neuf : on voit ce qu'on va faire, et sur quelle machine."""
+
+        BINDINGS = [("escape", "cancel", "Fermer")]
+
+        def __init__(self, vm):
+            super().__init__()
+            self._vm = vm
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="actbox"):
+                yield Static(
+                    f"Actions — {self._vm['name']}  ({self._vm.get('ip') or '?'})",
+                    id="acttitle",
+                )
+                yield Static("Remettre à jour", classes="actgroup")
+                for key, label in UPDATE_PARTS:
+                    yield Checkbox(label, value=True, id=f"u_{key}")
+                yield Button(
+                    "Lancer la mise à jour",
+                    variant="primary",
+                    id="a_update",
+                )
+                yield Static("Service", classes="actgroup")
+                yield Button("Redémarrer Odoo", id="a_restart")
+                yield Static("Irréversible", classes="actdanger")
+                yield Button(
+                    "Supprimer la VM et ses disques",
+                    variant="error",
+                    id="a_delete",
+                )
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id == "a_update":
+                parts = [
+                    k
+                    for k, _lbl in UPDATE_PARTS
+                    if self.query_one(f"#u_{k}", Checkbox).value
+                ]
+                self.dismiss(("update", parts))
+            elif event.button.id == "a_restart":
+                self.dismiss(("restart", []))
+            elif event.button.id == "a_delete":
+                self.dismiss(("delete", []))
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
     ICON = {
         "pending": "⏳",
         "running": "⏳",
@@ -891,6 +1074,21 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         }
         #errtitle { height: 1; color: $accent; text-style: bold; }
         #errlog { height: 1fr; border: solid $accent; }
+        VmActionsScreen { align: center middle; }
+        #actbox {
+            width: 62; height: auto; padding: 1 2;
+            border: thick $accent; background: $surface;
+        }
+        #acttitle { color: $accent; text-style: bold; padding-bottom: 1; }
+        .actgroup { color: $accent; text-style: bold; padding: 1 0 0 0; }
+        .actdanger { color: $error; text-style: bold; padding: 1 0 0 0; }
+        ConfirmScreen { align: center middle; }
+        #confbox {
+            width: 66; height: auto; padding: 1 2;
+            border: thick $error; background: $surface;
+        }
+        #conftitle { color: $error; text-style: bold; padding-bottom: 1; }
+        #confbtns { height: auto; padding-top: 1; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
@@ -900,6 +1098,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
             ("d", "details", "Détails erreurs"),
+            ("a", "vm_actions", "Actions VM"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -1515,6 +1714,77 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     )
                 except (OSError, subprocess.SubprocessError):
                     pass
+
+        def action_vm_actions(self) -> None:
+            """Ouvre les actions de la VM sélectionnée."""
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+
+            def chosen(result):
+                if not result:
+                    return
+                kind, parts = result
+                if kind == "update":
+                    self._run_update(vm, parts)
+                elif kind == "restart":
+                    self._run_in_vm(
+                        vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
+                    )
+                elif kind == "delete":
+                    self._ask_delete(vm)
+
+            self.push_screen(VmActionsScreen(vm), chosen)
+
+        def _run_in_vm(self, vm, cmd, title) -> None:
+            """Exécute une commande DANS la VM, terminal rendu.
+
+            « suspend() » comme pour SSH et la console : sudo peut demander son
+            mot de passe et la sortie est longue ; la garder derrière Textual
+            la rendrait illisible. La pause finale évite que l'écran reparte
+            avant qu'on ait lu le résultat."""
+            if not vm.get("ip"):
+                self.notify("Pas d'IP pour cette VM.", severity="error")
+                return
+            with self.suspend():
+                print(f"\n=== {title} — {vm['name']} ===")
+                os.system(
+                    f"ssh {SSH_OPTS} erplibre@{vm['ip']} "
+                    f"{shlex.quote(cmd)} || true"
+                )
+                input("\nEntrée pour revenir au suivi… ")
+
+        def _run_update(self, vm, parts) -> None:
+            cmd = update_remote_cmd(parts)
+            if not cmd:
+                self.notify("Rien de coché.", severity="warning")
+                return
+            self._run_in_vm(vm, cmd, "Mise a jour")
+
+        def _ask_delete(self, vm) -> None:
+            """Suppression : jamais sans une seconde main."""
+
+            def confirmed(yes):
+                if not yes:
+                    return
+                with self.suspend():
+                    print(f"\n=== Suppression — {vm['name']} ===")
+                    os.system(delete_vm_cmd(vm["name"], True) + " || true")
+                    input("\nEntrée pour revenir au suivi… ")
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"Supprimer {vm['name']} ?",
+                    [
+                        "La VM est arrêtée, sa définition retirée,",
+                        "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+                        "",
+                        f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
+                    ],
+                    "Supprimer définitivement",
+                ),
+                confirmed,
+            )
 
         def action_pause_all(self) -> None:
             """Met en PAUSE (virsh suspend) toutes les VM en cours d'exécution.
