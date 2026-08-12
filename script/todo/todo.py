@@ -10374,6 +10374,8 @@ class TODO:
 
         def run(**kwargs):
             try:
+                # Une sauvegarde compare déjà ses copies COW à la lecture :
+                # les deux arch sont dans le dump, il n'y a rien à demander.
                 state["data"] = (
                     analyse.collect_from_backup(database)
                     if is_backup
@@ -10430,6 +10432,19 @@ class TODO:
                 print(analyse.render(data, verbose=True, hints=False))
 
         lst_choice = [{"prompt_description": t("Show every view")}]
+        # La comparaison des copies COW n'a besoin d'aucun registre : les deux
+        # arch sont dans la base, appariées par leur clé. Elle est donc offerte
+        # partout, y compris sur une sauvegarde et sur une base dont la version
+        # diffère du checkout — là où l'autre comparaison est refusée.
+        has_cow = bool(state["data"]["counts"].get("website_cow_copy"))
+        if has_cow:
+            lst_choice.append(
+                {
+                    "prompt_description": t(
+                        "Compare the website copies with the view they shadow"
+                    )
+                }
+            )
         if can_compare:
             lst_choice += [
                 {
@@ -10446,19 +10461,35 @@ class TODO:
             ]
         lst_choice.append({"prompt_description": t("Export as JSON")})
 
+        def compare_cow():
+            if not run(with_cow_diff=True):
+                return
+            state["tried"] = True
+            data = state["data"]
+            print(analyse.render(data, hints=False))
+            n = data.get("n_cow_compared") or 0
+            n_diff = len([r for r in data["findings"] if r.get("differs")])
+            print(
+                f"  {n} {t('website copies compared with their module view,')}"
+                f" {n_diff} {t('differ.')}"
+            )
+
         def handler(rank):
             data = state["data"]
+            offset = 1 if has_cow else 0
             if rank == 1:
                 print(analyse.render(data, verbose=True, hints=False))
-            elif not can_compare or rank == len(lst_choice):
+            elif has_cow and rank == 2:
+                compare_cow()
+            elif rank == len(lst_choice):
                 self._analyse_export_json(
                     data, os.path.basename(database), "view_custom"
                 )
-            elif rank == 2:
+            elif can_compare and rank == 2 + offset:
                 compare("flagged")
-            elif rank == 3:
+            elif can_compare and rank == 3 + offset:
                 compare("all")
-            elif rank == 4:
+            elif can_compare and rank == 4 + offset:
                 browse()
 
         self._analyse_follow_up(lst_choice, handler)

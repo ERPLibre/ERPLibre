@@ -268,3 +268,93 @@ class TestRender(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCowTwinDiff(unittest.TestCase):
+    """Comparer une copie de site web à la vue de module qu'elle masque.
+
+    C'est LA comparaison qui compte pour une copie, et elle n'a besoin d'aucun
+    registre : les deux arch sont dans la base, appariées par la clé. Elle
+    marche donc là où la comparaison avec la source du module est refusée —
+    une base dont la version diffère du checkout, et une sauvegarde .zip.
+    """
+
+    def finding(self, **override):
+        row = view(
+            id=10, key="website.homepage", website_id=1, has_module_twin=True
+        )
+        row["category"], row["reason"] = A.classify(row)
+        row.update(override)
+        return row
+
+    def test_a_copy_that_differs_is_measured(self):
+        row = self.finding()
+        n = A.attach_cow_twin_diff(
+            [row],
+            {"website.homepage": (5, "<t><div/></t>")},
+            {10: "<t><div/><span/></t>"},
+        )
+        self.assertEqual(n, 1)
+        self.assertTrue(row["differs"])
+        self.assertTrue(row["comparable"])
+        self.assertEqual(row["twin_id"], 5)
+        self.assertEqual(
+            row["diff_stats"]["added"] + row["diff_stats"]["changed"], 1
+        )
+
+    def test_a_copy_identical_to_its_twin(self):
+        # 35 des 62 copies d'une vraie base sont dans ce cas : elles ne
+        # portent aucune personnalisation, et le dire change la décision.
+        row = self.finding()
+        A.attach_cow_twin_diff(
+            [row], {"website.homepage": (5, "<t/>")}, {10: "<t/>"}
+        )
+        self.assertFalse(row["differs"])
+        self.assertTrue(row["comparable"])
+
+    def test_indentation_alone_is_not_a_difference(self):
+        row = self.finding()
+        A.attach_cow_twin_diff(
+            [row],
+            {"website.homepage": (5, "<t><div/></t>")},
+            {10: "<t>\n    <div/>\n</t>"},
+        )
+        self.assertFalse(row["differs"])
+
+    def test_a_copy_without_a_twin_is_left_alone(self):
+        # Une page faite dans l'éditeur web n'a rien à quoi se comparer.
+        row = self.finding(has_module_twin=False)
+        n = A.attach_cow_twin_diff([row], {}, {10: "<t/>"})
+        self.assertEqual(n, 0)
+        self.assertNotIn("arch_ref", row)
+        self.assertNotIn("differs", row)
+
+    def test_a_view_that_is_not_a_copy_is_left_alone(self):
+        row = view(id=11, key="sale.order_form", arch_fs="x.xml")
+        row["category"], row["reason"] = A.classify(row)
+        n = A.attach_cow_twin_diff(
+            [row], {"sale.order_form": (1, "<form/>")}, {11: "<form/>"}
+        )
+        self.assertEqual(n, 0)
+        self.assertNotIn("differs", row)
+
+    def test_it_uses_the_same_field_names_as_the_module_comparison(self):
+        # Le nom des champs EST le contrat : l'écran de navigation et le rendu
+        # texte marchent alors sans savoir laquelle des deux comparaisons a
+        # produit la donnée.
+        row = self.finding()
+        A.attach_cow_twin_diff(
+            [row], {"website.homepage": (5, "<t/>")}, {10: "<t><i/></t>"}
+        )
+        for field in ("arch_ref", "arch_db_text", "differs", "comparable"):
+            self.assertIn(field, row, field)
+
+    def test_a_missing_arch_is_not_a_false_verdict(self):
+        # Sans l'arch de la copie, il n'y a pas eu de comparaison : ne rien
+        # conclure vaut mieux que conclure « identique ».
+        row = self.finding()
+        n = A.attach_cow_twin_diff(
+            [row], {"website.homepage": (5, "<t/>")}, {}
+        )
+        self.assertEqual(n, 0)
+        self.assertNotIn("differs", row)
