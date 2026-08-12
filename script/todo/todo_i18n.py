@@ -2023,6 +2023,34 @@ TRANSLATIONS = {
         "fr": "Choix (numéro, vide = rouvrir) : ",
         "en": "Choice (number, blank = reopen): ",
     },
+    "Python interpreter:": {
+        "fr": "Interpreteur Python :",
+        "en": "Python interpreter:",
+    },
+    "mise (precompiled, faster)": {
+        "fr": "mise (precompile, plus rapide)",
+        "en": "mise (precompiled, faster)",
+    },
+    "pyenv (compiles from source)": {
+        "fr": "pyenv (compile depuis les sources)",
+        "en": "pyenv (compiles from source)",
+    },
+    "Choice (number, blank = mise): ": {
+        "fr": "Choix (numero, vide = mise) : ",
+        "en": "Choice (number, blank = mise): ",
+    },
+    "mise has no binary for:": {
+        "fr": "mise ne publie pas de binaire pour :",
+        "en": "mise has no binary for:",
+    },
+    "those VMs use pyenv": {
+        "fr": "ces VM utiliseront pyenv",
+        "en": "those VMs use pyenv",
+    },
+    "Installing mise (precompiled Python)": {
+        "fr": "Installation de mise (Python precompile)",
+        "en": "Installing mise (precompiled Python)",
+    },
     "VM type:": {
         "fr": "Type de VM :",
         "en": "VM type:",
