@@ -10,6 +10,7 @@
 # demi-heure sous émulation s390x, ne s'y déclenche pas.
 
 . ./env_var.sh
+. ./script/install/lib_qpdf.sh
 
 EL_USER=${USER}
 
