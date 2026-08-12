@@ -42,6 +42,45 @@ ZYP_IN="${ZYP} install ${ZYP_LIC}"
 # Lot best-effort : un nom absent est sauté.
 ZYP_SOFT="${ZYP_IN} ${ZYP_IGN}"
 
+# openSUSE remplace des paquets par des variantes « compat » qui les FOURNISSENT
+# sans en porter le nom : sur Tumbleweed, zlib-ng-compat-devel fournit
+# zlib-devel et se trouve posé d'office. Demander « zlib-devel » par son nom
+# force alors un échange, zypper soulève un conflit — et --non-interactive n'a
+# aucune solution par défaut : il énumère les choix, puis ABANDONNE le lot
+# entier. C'est ce qui a arrêté l'installation sur amd64, en emportant les huit
+# autres dépendances de pyenv qui, elles, ne posaient aucun problème.
+# « --ignore-unknown » ne couvre que les noms absents, jamais les conflits.
+#
+# On ne demande donc que ce que rien ne fournit déjà. rpm interroge les
+# « Provides », pas seulement les noms : c'est la seule autorité sur la
+# question. Effet de bord bienvenu, une relance ne redemande plus rien.
+zyp_filter() {
+  local p
+  for p in "$@"; do
+    rpm -q --whatprovides "${p}" > /dev/null 2>&1 || printf '%s\n' "${p}"
+  done
+}
+
+zyp_in() {
+  local todo
+  mapfile -t todo < <(zyp_filter "$@")
+  if [ "${#todo[@]}" -eq 0 ]; then
+    echo "  deja fourni : $*"
+    return 0
+  fi
+  ${ZYP_IN} "${todo[@]}"
+}
+
+zyp_soft() {
+  local todo
+  mapfile -t todo < <(zyp_filter "$@")
+  if [ "${#todo[@]}" -eq 0 ]; then
+    echo "  deja fourni : $*"
+    return 0
+  fi
+  ${ZYP_SOFT} "${todo[@]}"
+}
+
 #--------------------------------------------------
 # Miroir des dépôts
 #--------------------------------------------------
@@ -90,7 +129,7 @@ echo -e "\n---- Outils de developpement ----"
 # groupe « development-tools » n'existe pas et où le repli ne partait jamais.
 # Les noms non versionnés existent bien dans Tumbleweed (relevé dans le
 # primary.xml du dépôt oss) : « gcc » y est un méta-paquet qui tire gcc15.
-${ZYP_IN} gcc gcc-c++ make automake patch
+zyp_in gcc gcc-c++ make automake patch
 retVal=$?
 if [[ ${retVal} -ne 0 ]]; then
   echo "zypper install compilers error."
@@ -112,7 +151,7 @@ fi
 # PostgreSQL
 #--------------------------------------------------
 echo -e "\n---- Install PostgreSQL Server ----"
-${ZYP_IN} postgresql-server postgresql-contrib postgresql-server-devel
+zyp_in postgresql-server postgresql-contrib postgresql-server-devel
 retVal=$?
 if [[ ${retVal} -ne 0 ]]; then
   echo "zypper install postgresql installation error."
@@ -122,7 +161,7 @@ fi
 # mais seulement si le répertoire de données est vide.
 sudo systemctl enable --now postgresql 2> /dev/null || true
 # PostGIS : absent des dépôts Tumbleweed s390x. Optionnel, ne bloque pas.
-${ZYP_SOFT} postgis || echo "PostGIS non installe (optionnel)."
+zyp_soft postgis || echo "PostGIS non installe (optionnel)."
 
 echo -e "\n---- Creating the ERPLibre PostgreSQL User ----"
 sudo su - postgres -c "createuser -s ${EL_USER}" 2> /dev/null || true
@@ -140,7 +179,7 @@ echo -e "\n--- Installing suse dependency --"
 # compiler ». Tumbleweed livre 1.94, bien au-dessus du 1.78 qu'exige le
 # Cargo.lock v4 de cryptography. On évite ainsi ~200 Mo inutiles sur amd64.
 if [ "$(uname -m)" = "s390x" ]; then
-  ${ZYP_SOFT} rust cargo
+  zyp_soft rust cargo
   if ! command -v cargo > /dev/null 2>&1; then
     echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
   fi
@@ -150,11 +189,11 @@ if [ "$(uname -m)" = "s390x" ]; then
   # même règle, et pas seulement celle qui a signalé la panne. cmake et
   # pkg-config sont posés ici parce qu'ils lui sont nécessaires et n'arrivent
   # que plus bas dans le script.
-  ${ZYP_SOFT} qpdf-devel libjpeg8-devel cmake pkg-config
+  zyp_soft qpdf-devel libjpeg8-devel cmake pkg-config
   el_qpdf_ensure
 fi
 
-${ZYP_SOFT} \
+zyp_soft \
   git git-daemon wget libxslt-devel libzip-devel openldap2-devel \
   cyrus-sasl-devel libffi-devel libbz2-devel gnu_parallel swig cmake \
   portaudio-devel cups-devel xmlsec1 xmlsec1-openssl-devel \
@@ -167,7 +206,7 @@ fi
 
 # Dépendances de build pour pyenv (compilation de CPython) — CRITIQUE.
 echo -e "\n---- Dependances pyenv (compilation Python) ----"
-${ZYP_IN} \
+zyp_in \
   make gcc zlib-devel libbz2-devel readline-devel sqlite3-devel \
   libopenssl-devel tk-devel libffi-devel xz-devel patch findutils
 retVal=$?
@@ -177,7 +216,7 @@ if [[ ${retVal} -ne 0 ]]; then
 fi
 
 # Dépendances selenium / bindings.
-${ZYP_SOFT} \
+zyp_soft \
   cairo-devel python3-devel pkg-config gobject-introspection-devel \
   libXt-devel || echo "Dependances selenium partielles (optionnel)."
 
@@ -210,7 +249,7 @@ sudo ln -fs /usr/local/bin/lessc /usr/bin/lessc 2> /dev/null || true
 #--------------------------------------------------
 if [ "${EL_INSTALL_NGINX}" = "True" ]; then
   echo -e "\n---- Installing nginx ----"
-  ${ZYP_SOFT} nginx || echo "nginx: erreur (optionnel)."
+  zyp_soft nginx || echo "nginx: erreur (optionnel)."
 fi
 
 #--------------------------------------------------
@@ -222,7 +261,7 @@ if [ "${EL_INSTALL_WKHTMLTOPDF}" = "True" ]; then
     # wkhtmltopdf ne publie AUCUN paquet openSUSE. Le dépôt de la distribution
     # fournit « wkhtmltopdf » quand il existe pour l'architecture ; sinon on
     # renonce, Odoo sait imprimer sans lui (rendu dégradé des PDF).
-    ${ZYP_SOFT} wkhtmltopdf || echo "wkhtmltopdf non installe (optionnel)."
+    zyp_soft wkhtmltopdf || echo "wkhtmltopdf non installe (optionnel)."
   else
     echo -e "\n---- Already installed wkhtml ----"
   fi
