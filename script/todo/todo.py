@@ -4338,6 +4338,11 @@ class TODO:
             "pacman": "gnome gdm",
             "zypper": "patterns-gnome-gnome_basic gdm",
             "service": "gdm",
+            # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
+            # graphique se reconnaît alors d'un « virsh list », et deux VM de
+            # même distribution mais de types différents ne se marchent plus
+            # dessus — le nom sert aussi de clé de collision.
+            "suffix": "gnome",
         },
         "cinnamon": {
             "label": "Cinnamon (Linux Mint)",
@@ -4350,6 +4355,10 @@ class TODO:
             "pacman": "cinnamon lightdm lightdm-gtk-greeter",
             "zypper": "cinnamon lightdm",
             "service": "lightdm",
+            # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
+            # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
+            # de la distribution et non ceux de Mint.
+            "suffix": "mint",
         },
     }
     # Ubuntu remplace trois applications par des paquets de TRANSITION dont le
@@ -5708,6 +5717,7 @@ class TODO:
             "mise_arches": self.QEMU_MISE_ARCHES,
             "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
             "snap_distros": self.QEMU_SNAP_DISTROS,
+            "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
             ],
@@ -6109,8 +6119,14 @@ class TODO:
         desktop = self._qemu_ask_desktop()
         # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
         # VM avant de décider du magasin, qui ne concerne que les graphiques.
+        # Le nom suit le type, exactement comme dans le formulaire — c'est la
+        # même fonction, pas une seconde implémentation.
+        from script.todo.qemu_deploy_form import vm_name
+
+        suffixes = self._qemu_desktop_suffixes()
         for _vm in vms:
             _vm.setdefault("desktop", desktop)
+            _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
         app_store = self._qemu_ask_app_store(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
