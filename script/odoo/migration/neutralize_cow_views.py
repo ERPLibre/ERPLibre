@@ -40,7 +40,7 @@ DEFAULT_PREFIX = "zz_cow_archive"
 def run_psql(database, sql):
     """Run a statement and return stdout, raising on failure."""
     result = subprocess.run(
-        ["psql", "-d", database, "-tAc", sql],
+        ["psql", "-X", "-w", "-d", database, "-tAF", "|", "-c", sql],
         capture_output=True,
         text=True,
     )
@@ -64,6 +64,39 @@ def neutralize(database, lst_view_id, prefix):
         " RETURNING 1) SELECT count(*) FROM updated;",
     )
     return int(output or 0)
+
+
+def list_archived(database, prefix):
+    """The copies a previous neutralization put aside.
+
+    Knowing what was archived is the other half of --restore: a key renamed
+    months ago is invisible in the interface — the copy is inactive and no
+    longer pairs with anything — so without this listing the only trace is
+    someone's memory of having run --apply.
+    """
+    output = run_psql(
+        database,
+        "SELECT id, substring(key from " + str(len(prefix) + 2) + "),"
+        " COALESCE(website_id::text, ''), active,"
+        " octet_length(arch_db::text)"
+        f" FROM ir_ui_view WHERE key LIKE '{prefix}.%' ORDER BY id;",
+    )
+    lst_row = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) >= 5:
+            lst_row.append(
+                {
+                    "id": int(parts[0]),
+                    "key": parts[1],
+                    "website_id": parts[2] or None,
+                    "active": parts[3] == "t",
+                    "arch_bytes": int(parts[4] or 0),
+                }
+            )
+    return lst_row
 
 
 def restore(database, prefix):
@@ -105,7 +138,42 @@ def main():
         action="store_true",
         help="undo a previous neutralization and reactivate the copies",
     )
+    parser.add_argument(
+        "--list",
+        dest="list_archived",
+        action="store_true",
+        help="list the copies a previous neutralization put aside",
+    )
     config = parser.parse_args()
+
+    try:
+        return _run(config, parser)
+    except RuntimeError as exc:
+        # Une base absente ou un PostgreSQL arrêté est une erreur d'usage, pas
+        # un défaut de l'outil : une trace d'appel ferait chercher le bogue au
+        # mauvais endroit.
+        print(f"❌ {exc}")
+        return 2
+
+
+def _run(config, parser):
+    if config.list_archived:
+        lst_row = list_archived(config.database, config.prefix)
+        if not lst_row:
+            print(f"✅ -> No '{config.prefix}.' view on '{config.database}'.")
+            return 0
+        print(f"ℹ {len(lst_row)} archived COW view(s) on '{config.database}':")
+        for row in lst_row:
+            state = "active" if row["active"] else "inactive"
+            print(
+                f"   - id={row['id']} website={row['website_id'] or '-'}"
+                f" {row['key']} ({state}, {row['arch_bytes']} B)"
+            )
+        print(
+            "   Their arch is intact. Restore them all with --restore, once"
+            " the module view they shadow has the shape they expect."
+        )
+        return 0
 
     if config.restore:
         count = restore(config.database, config.prefix)
