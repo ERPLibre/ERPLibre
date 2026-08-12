@@ -2,17 +2,32 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Dépendances système ERPLibre pour Fedora (dnf). Équivalent Fedora de
-# install_debian_dependency.sh. « --skip-unavailable » tolère un nom de paquet
-# absent (dnf5) au lieu d'échouer sur tout le lot.
+# Dépendances système ERPLibre pour la famille dnf : Fedora, mais aussi
+# AlmaLinux, Rocky et RHEL, qu'install_dev.sh aiguille ici sur ID_LIKE=rhel.
+# Équivalent de install_debian_dependency.sh.
+#
+# Attention : Fedora 41+ livre dnf5, EL9 et EL10 encore dnf4. Les deux ne
+# comprennent pas les mêmes options — voir DNF_SKIP plus bas.
 
 . ./env_var.sh
 
 EL_USER=${USER}
 
+# « Sauter un paquet introuvable au lieu d'échouer sur tout le lot » ne
+# s'écrit PAS pareil selon la version de dnf : « --skip-unavailable » est une
+# option de dnf5 (Fedora 41+), et dnf4 — encore livré par EL9 et EL10, donc
+# par AlmaLinux et Rocky — la refuse net : « dnf install: error: unrecognized
+# arguments ». Son équivalent y est « --setopt=strict=0 ». On demande donc à
+# dnf lui-même ce qu'il comprend, plutôt que de deviner d'après la distro.
+if dnf install --help 2>&1 | grep -q -- "--skip-unavailable"; then
+  DNF_SKIP="--skip-unavailable"
+else
+  DNF_SKIP="--setopt=strict=0"
+fi
+echo "dnf : option de tolerance retenue = ${DNF_SKIP}"
 # dnf résilient : rafraîchit le cache (évite « checksum doesn't match » /
 # signature après un cache périmé) et saute les paquets introuvables.
-DNF="sudo dnf install -y --refresh --skip-unavailable"
+DNF="sudo dnf install -y --refresh ${DNF_SKIP}"
 
 #--------------------------------------------------
 # Dérivés RHEL : dépôts supplémentaires
@@ -21,8 +36,8 @@ DNF="sudo dnf install -y --refresh --skip-unavailable"
 # les aiguille sur ID_LIKE=rhel). Contrairement à Fedora, leur jeu de dépôts
 # par défaut est ÉTROIT : la plupart des paquets « -devel » vivent dans CRB
 # (CodeReady Builder), et tout ce qui est communautaire dans EPEL. Sans ces
-# deux dépôts, « --skip-unavailable » saute les paquets EN SILENCE et l'échec
-# n'apparaît qu'à la compilation, très loin d'ici.
+# deux dépôts, la tolérance aux paquets absents les saute EN SILENCE et
+# l'échec n'apparaît qu'à la compilation, très loin d'ici.
 if [ -r /etc/os-release ]; then
   # shellcheck disable=SC1091
   . /etc/os-release
@@ -32,11 +47,20 @@ case "${ID}" in
     echo -e "\n---- Depots EPEL et CRB (famille RHEL) ----"
     sudo dnf install -y epel-release \
       || echo "epel-release indisponible : certains paquets manqueront."
-    # « crb » sur EL9/EL10 ; « powertools » était le nom sur EL8.
-    sudo dnf config-manager --set-enabled crb 2> /dev/null \
+    # /usr/bin/crb est l'outil fourni par epel-release, et ce que son propre
+    # scriptlet recommande d'exécuter — plus fiable que de deviner le nom du
+    # dépôt, qui vaut « crb » sur EL9/EL10 et « powertools » sur EL8.
+    sudo /usr/bin/crb enable 2> /dev/null \
+      || sudo dnf config-manager --set-enabled crb 2> /dev/null \
       || sudo dnf config-manager --set-enabled powertools 2> /dev/null \
       || sudo dnf config-manager --enable crb 2> /dev/null \
       || echo "CRB/PowerTools non active : certains -devel manqueront."
+    # Un dépôt fraîchement activé dont les métadonnées ne descendent pas fait
+    # échouer TOUS les dnf suivants. On le voit ici, avec son nom, plutôt que
+    # trois sections plus loin sur un paquet sans rapport.
+    sudo dnf makecache 2> /dev/null \
+      || { sudo dnf clean all; sudo dnf makecache; } \
+      || echo "Attention : metadonnees de depot incompletes."
     ;;
 esac
 
@@ -45,7 +69,9 @@ esac
 #--------------------------------------------------
 echo -e "\n---- Groupe outils de développement ----"
 # Groupes par ID (le nom affiché « C Development Tools... » n'est pas matché).
-sudo dnf group install -y --skip-unavailable development-tools c-development \
+# « c-development » n'existe pas sur EL (l'équivalent y est « development »).
+sudo dnf group install -y ${DNF_SKIP} development-tools c-development \
+  || sudo dnf group install -y ${DNF_SKIP} development \
   || sudo dnf install -y gcc gcc-c++ make automake patch
 
 #--------------------------------------------------
