@@ -3872,6 +3872,20 @@ TRANSLATIONS = {
         "fr": "faite plus tôt, avant la neutralisation",
         "en": "done early, before the neutralization",
     },
+    "compare each website copy with the module view it shadows": {
+        "fr": "comparer chaque copie de site web à la vue de module qu'elle"
+        " masque",
+        "en": "compare each website copy with the module view it shadows",
+    },
+    "Compare the website copies with the view they shadow": {
+        "fr": "🪞 Comparer les copies de site web à la vue qu'elles masquent",
+        "en": "🪞 Compare the website copies with the view they shadow",
+    },
+    "website copies compared with their module view,": {
+        "fr": "copies de site web comparées à leur vue de module,",
+        "en": "website copies compared with their module view,",
+    },
+    "differ.": {"fr": "diffèrent.", "en": "differ."},
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",
