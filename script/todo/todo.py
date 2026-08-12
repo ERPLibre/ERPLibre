@@ -4419,6 +4419,34 @@ class TODO:
             ">/dev/null 2>&1 || true; "
         )
 
+    # Miroirs openSUSE préférés, du plus proche au dernier recours. Le
+    # redirecteur officiel n'est PAS géographique pour cette distribution :
+    # mesuré depuis Montréal sur les métadonnées oss s390x (15 Mo),
+    # download.opensuse.org met 23,8 s — il sert depuis l'Europe — contre
+    # 2,7 s pour mirrors.rit.edu. Les trois familles dnf, elles, choisissent
+    # déjà un miroir canadien toutes seules ; rien à faire de ce côté.
+    #
+    # Chaque miroir est SONDÉ sur le chemin de l'architecture courante : tous
+    # ne répliquent pas les architectures secondaires, et rit.edu sert
+    # justement zsystems mais pas x86_64. Aucun sondage concluant : on garde
+    # les dépôts de l'image, donc le comportement d'avant.
+    _QEMU_ZYPPER_MIRRORS = ("https://mirrors.rit.edu/opensuse",)
+
+    def _qemu_zypper_mirror_cmd(self):
+        """Réécrit l'hôte des dépôts zypper vers un miroir plus proche."""
+        mirrors = " ".join(self._QEMU_ZYPPER_MIRRORS)
+        return (
+            "zp=tumbleweed; "
+            '[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed; '
+            f"for zm in {mirrors}; do "
+            "if curl -fsS --max-time 20 -o /dev/null "
+            '"$zm/$zp/repo/oss/repodata/repomd.xml"; then '
+            "sudo sed -i "
+            '"s|https\\?://download\\.opensuse\\.org|$zm|g" '
+            "/etc/zypp/repos.d/*.repo 2>/dev/null || true; "
+            f'echo "   {t("openSUSE mirror:")} $zm"; break; fi; done; '
+        )
+
     def _qemu_desktop_remote_cmd(self, flavour="gnome"):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -4574,7 +4602,8 @@ class TODO:
             # « --auto-agree-with-licenses », qui va APRÈS « install »,
             # évite un blocage sur une licence à accepter.
             # Tumbleweed étant rolling, on rafraîchit avant d'installer.
-            "sudo zypper --non-interactive refresh || true; "
+            + self._qemu_zypper_mirror_cmd()
+            + "sudo zypper --non-interactive refresh || true; "
             "sudo zypper --non-interactive install "
             "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "

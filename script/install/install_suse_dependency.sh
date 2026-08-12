@@ -41,6 +41,30 @@ ZYP_IN="${ZYP} install ${ZYP_LIC}"
 # Lot best-effort : un nom absent est sauté.
 ZYP_SOFT="${ZYP_IN} ${ZYP_IGN}"
 
+#--------------------------------------------------
+# Miroir des dépôts
+#--------------------------------------------------
+# Le redirecteur officiel d'openSUSE n'est PAS géographique : mesuré depuis
+# Montréal sur les métadonnées oss s390x (15 Mo), download.opensuse.org met
+# 23,8 s — il sert depuis l'Europe — contre 2,7 s pour mirrors.rit.edu.
+#
+# Chaque miroir est SONDÉ sur le chemin de l'architecture courante : tous ne
+# répliquent pas les architectures secondaires, et rit.edu sert justement
+# zsystems mais pas x86_64. Aucun sondage concluant : on garde les dépôts de
+# l'image, donc le comportement d'avant.
+ZYP_MIRRORS="https://mirrors.rit.edu/opensuse"
+zp=tumbleweed
+[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed
+for zm in ${ZYP_MIRRORS}; do
+  if curl -fsS --max-time 20 -o /dev/null \
+    "${zm}/${zp}/repo/oss/repodata/repomd.xml"; then
+    sudo sed -i "s|https\?://download\.opensuse\.org|${zm}|g" \
+      /etc/zypp/repos.d/*.repo 2> /dev/null || true
+    echo "miroir openSUSE : ${zm}"
+    break
+  fi
+done
+
 echo -e "\n---- Rafraichissement des depots ----"
 # Tumbleweed est ROLLING : installer sans rafraîchir mène à des paquets
 # introuvables (l'index local pointe des versions déjà retirées du miroir).
