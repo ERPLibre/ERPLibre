@@ -102,10 +102,20 @@ if [ "$(uname -m)" = "s390x" ]; then
   # Best-effort : un nom qui change d'une version à l'autre ne doit pas
   # emporter le lot. Ce qui est vraiment indispensable est déjà installé
   # au-dessus (compilateurs) ou plus bas (pyenv, PostgreSQL).
+  # « rust » et « cargo » : plusieurs paquets Python portent une extension
+  # RUST, pas seulement C — bcrypt et cryptography en tête. Sur amd64 leurs
+  # roues masquent le besoin ; ici tout compile, et bcrypt s'arrête net sur
+  # « error: can't find Rust compiler ». Les versions livrées suffisent
+  # (AlmaLinux 1.92, Fedora plus récent) au Cargo.lock v4 qui exige 1.78.
   ${DNF} \
+    rust cargo \
     libjpeg-turbo-devel zlib-devel qpdf-devel geos-devel proj-devel \
     krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
     GeographicLib-devel
+  # Le dire ICI plutôt que de laisser bcrypt le découvrir une heure plus tard.
+  if ! command -v cargo > /dev/null 2>&1; then
+    echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
+  fi
   # pymupdf charge « libclang.so » par son nom nu, via ctypes. Le paquet le
   # livre sous un nom versionné : il ne manque que le lien.
   for d in /usr/lib64 /usr/lib; do

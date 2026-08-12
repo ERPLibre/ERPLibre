@@ -133,6 +133,18 @@ echo -e "\n--- Installing suse dependency --"
 # git-daemon : comme sur Fedora, « git daemon » n'est pas dans le paquet git de
 # base. ERPLibre sert son manifeste par git://127.0.0.1:9418/ pendant
 # « repo sync » — sans lui, « Connection refused » et synchro impossible.
+# Rust n'est nécessaire QUE là où les roues manquent : bcrypt et cryptography
+# portent une extension Rust, et sur amd64 leurs roues masquent le besoin. Sur
+# s390x tout compile, et bcrypt s'arrête sur « error: can't find Rust
+# compiler ». Tumbleweed livre 1.94, bien au-dessus du 1.78 qu'exige le
+# Cargo.lock v4 de cryptography. On évite ainsi ~200 Mo inutiles sur amd64.
+if [ "$(uname -m)" = "s390x" ]; then
+  ${ZYP_SOFT} rust cargo
+  if ! command -v cargo > /dev/null 2>&1; then
+    echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
+  fi
+fi
+
 ${ZYP_SOFT} \
   git git-daemon wget libxslt-devel libzip-devel openldap2-devel \
   cyrus-sasl-devel libffi-devel libbz2-devel gnu_parallel swig cmake \
