@@ -2139,6 +2139,26 @@ TRANSLATIONS = {
         "fr": "Éditer la VM",
         "en": "Edit VM",
     },
+    "Reset VM": {
+        "fr": "Réinit. VM",
+        "en": "Reset VM",
+    },
+    "Apply to all VMs": {
+        "fr": "Appliquer à toutes les VM",
+        "en": "Apply to all VMs",
+    },
+    "Apply to the selected VM only": {
+        "fr": "Appliquer à la VM sélectionnée seulement",
+        "en": "Apply to the selected VM only",
+    },
+    "VM(s) customised (F4 resets one)": {
+        "fr": "VM personnalisée(s) (F4 en réinitialise une)",
+        "en": "VM(s) customised (F4 resets one)",
+    },
+    "Pick a line in the plan (Tab, then arrows)": {
+        "fr": "Choisissez une ligne du plan (Tab, puis les flèches)",
+        "en": "Pick a line in the plan (Tab, then arrows)",
+    },
     "Preview": {
         "fr": "Aperçu",
         "en": "Preview",
