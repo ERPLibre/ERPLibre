@@ -109,6 +109,26 @@ class TodoUpgrade:
             return {}
 
     @staticmethod
+    def needs_update_all(dct_progression, already_done_early=False):
+        """Faut-il encore mettre à jour tous les modules ?
+
+        Trois façons de l'avoir déjà fait, et il faut les trois. Le drapeau de
+        l'étape ; celui de la mise à jour précoce, posée avant la
+        neutralisation quand la base vient d'une vieille version ; et la
+        variable de la session en cours.
+
+        Le second est ce qui manquait. Il n'est vrai que dans la session qui
+        l'a posé, alors qu'à la reprise seule la trace écrite subsiste : sans
+        le lire ici, reprendre une migration relançait `update_addons_all` sur
+        une base déjà à jour — des heures, pour rien.
+        """
+        return not (
+            dct_progression.get("state_2_update_all")
+            or dct_progression.get("state_1_update_all")
+            or already_done_early
+        )
+
+    @staticmethod
     def step_status(dct_progression, step):
         """Return (icon, detail) telling how far a migration step went.
 
@@ -121,6 +141,15 @@ class TodoUpgrade:
             for key, value in dct_progression.items()
             if key.startswith(prefix)
         }
+        # Un journal écrit avant que l'étape 2 n'enregistre son propre drapeau
+        # ne porte que state_1_update_all. Le travail a bien eu lieu ; le lire
+        # ici évite de dire « non démarrée » d'une étape terminée.
+        if (
+            step == 2
+            and not dct_flag
+            and dct_progression.get("state_1_update_all")
+        ):
+            return "✅", t("done early, before the neutralization")
         if not dct_flag:
             return "⬜", t("not started")
 
@@ -154,6 +183,10 @@ class TodoUpgrade:
             return ("✅" if total and done == total else "⏳"), detail
 
         if all(dct_flag.values()):
+            if step == 2 and dct_progression.get("state_2_done_early"):
+                # Le doute vient du moment, pas du résultat : le dire évite de
+                # relancer une mise à jour qui a déjà eu lieu.
+                return "✅", t("done early, before the neutralization")
             return "✅", t("done")
         return "⏳", t("partially done")
 
@@ -1313,6 +1346,13 @@ class TodoUpgrade:
                 if not status:
                     already_update_state_1 = True
                     self.dct_progression["state_1_update_all"] = True
+                    # La mise à jour de tous les modules EST l'étape 2, même
+                    # faite plus tôt. Ne l'enregistrer que sous state_1 la
+                    # laissait « non démarrée » à l'écran alors qu'elle venait
+                    # de tourner, et faisait la refaire entièrement à la
+                    # reprise suivante — sur une grosse base, des heures.
+                    self.dct_progression["state_2_update_all"] = True
+                    self.dct_progression["state_2_done_early"] = True
                     self.write_config()
 
             print("✅ -> Update database before neutralize by module")
@@ -1400,10 +1440,7 @@ class TodoUpgrade:
         print(f"🔷 {msg}")
         self.add_comment_progression(msg)
 
-        if (
-            not self.dct_progression.get("state_2_update_all")
-            and not already_update_state_1
-        ):
+        if self.needs_update_all(self.dct_progression, already_update_state_1):
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_addons_all.sh {database_name}",
                 single_source_odoo=True,
