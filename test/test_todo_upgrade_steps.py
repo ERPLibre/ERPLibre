@@ -100,6 +100,100 @@ class TestNeedsUpdateAll(unittest.TestCase):
         )
 
 
+class TestRewindReallyReplays(StatusCase):
+    """Rembobiner doit REJOUER l'étape, pas seulement effacer sa trace.
+
+    Un journal venant d'une vieille base porte `state_1_update_all` : la mise
+    à jour précoce, offerte avant la neutralisation. Le travail est celui de
+    l'étape 2, seul le nom dit 1. Rembobiner à l'étape 2 gardait donc ce
+    drapeau — son préfixe le rangeait dans l'étape 1 — et l'étape sautait
+    alors qu'on venait de demander à la rejouer.
+
+    Effacer les clés ne suffit pas à le prouver : il faut interroger les
+    gardes qui décident du travail.
+    """
+
+    def journal(self):
+        """La forme d'un vrai journal ayant fait la mise à jour précoce."""
+        return {
+            "config_database_name": "db",
+            "state_0_install_odoo": True,
+            "state_0_search_missing_module": True,
+            "state_1_restore_database": True,
+            "state_1_update_all": True,
+            "state_1_neutralize_database": True,
+            "state_3_clean_database": True,
+            "state_4_upgrade_odoo_lst": [True, False],
+        }
+
+    def rewind(self, step):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            return TodoUpgrade.rewind_progression(self.journal(), step)
+
+    def test_going_back_to_step_2_runs_the_update_again(self):
+        # LE défaut signalé : « il continue en ignorant l'étape que j'ai
+        # choisie ». Trois heures de mise à jour silencieusement sautées.
+        self.assertTrue(
+            TodoUpgrade.needs_update_all(self.rewind(2)),
+            "rembobiner à l'étape 2 doit rejouer la mise à jour",
+        )
+
+    def test_the_earlier_steps_replay_it_too(self):
+        for step in (0, 1):
+            self.assertTrue(
+                TodoUpgrade.needs_update_all(self.rewind(step)),
+                f"étape {step}",
+            )
+
+    def test_going_back_to_a_later_step_leaves_it_done(self):
+        # Le symétrique : reculer à l'étape 3 ne doit PAS relancer l'étape 2.
+        for step in (3, 4):
+            self.assertFalse(
+                TodoUpgrade.needs_update_all(self.rewind(step)),
+                f"étape {step}",
+            )
+
+    def test_no_work_guard_of_the_chosen_step_or_later_survives(self):
+        # Les gardes sont lues dans la SOURCE : une garde ajoutée plus tard
+        # sera couverte sans que ce test soit retouché.
+        import ast
+
+        from script.todo import todo_upgrade
+
+        guards = set()
+        with open(todo_upgrade.__file__) as handle:
+            tree = ast.parse(handle.read())
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.If) and isinstance(node.test, ast.UnaryOp)
+            ):
+                continue
+            for sub in ast.walk(node.test):
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "get"
+                    and sub.args
+                    and isinstance(sub.args[0], ast.Constant)
+                    and str(sub.args[0].value).startswith("state_")
+                ):
+                    guards.add(str(sub.args[0].value))
+        self.assertTrue(
+            guards, "aucune garde trouvée : le test ne prouve rien"
+        )
+        for step, _ in MIGRATION_STEP:
+            kept = self.rewind(step)
+            still_closed = [
+                key
+                for key in sorted(guards)
+                if todo_upgrade.flag_step(key) >= step and kept.get(key)
+            ]
+            self.assertEqual(still_closed, [], f"étape {step}")
+
+
 class TestBackGate(unittest.TestCase):
     """Revenir à une étape précédente depuis une invite en cours de route.
 

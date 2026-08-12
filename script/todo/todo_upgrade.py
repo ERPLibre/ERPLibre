@@ -72,6 +72,24 @@ MIGRATION_STEP = [
 ]
 
 
+# Drapeaux dont l'ÉTAPE RÉELLE n'est pas celle que leur préfixe annonce.
+#
+# `state_1_update_all` est posé par la mise à jour précoce, offerte avant la
+# neutralisation quand la base vient d'une vieille version. Le travail est
+# celui de l'étape 2 ; seul le nom dit 1. Sans cette table, rembobiner à
+# l'étape 2 gardait ce drapeau — son préfixe le rangeait dans l'étape 1 — et
+# l'étape sautait alors qu'on venait de demander à la rejouer.
+FLAG_REAL_STEP = {"state_1_update_all": 2}
+
+
+def flag_step(key):
+    """Étape à laquelle un drapeau appartient réellement."""
+    if key in FLAG_REAL_STEP:
+        return FLAG_REAL_STEP[key]
+    index = key[len("state_") :].split("_", 1)[0]
+    return int(index) if index.isdigit() else None
+
+
 class MigrationRewind(Exception):
     """L'utilisateur a demandé de revenir à une étape antérieure.
 
@@ -733,8 +751,8 @@ class TodoUpgrade:
             if not key.startswith("state_"):
                 dct_kept[key] = value
                 continue
-            index = key[len("state_") :].split("_", 1)[0]
-            if index.isdigit() and int(index) < step:
+            index = flag_step(key)
+            if index is not None and index < step:
                 dct_kept[key] = value
         # The module search fills an in-memory dict the later steps rely on;
         # it must run again even when step 0 itself is kept.
