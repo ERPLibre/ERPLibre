@@ -19,15 +19,27 @@ Color_Off='\033[0m'      # Text Reset
 PYTHON_VERSION_MAJOR=$(echo "$EL_PYTHON_ODOO_VERSION" | sed 's/\.[^\.]*$//')
 VENV_ERPLIBRE_PATH=$(cat "conf/python-erplibre-venv" | xargs)
 VENV_ODOO_PATH=".venv.${EL_ERPLIBRE_VERSION}"
-POETRY_ODOO_PATH=${VENV_ERPLIBRE_PATH}/bin/poetry
+# Poetry est installé dans le venv ODOO, pas dans celui des outils : le garde
+# d'idempotence visait le mauvais chemin, donc il était TOUJOURS vrai. Sans
+# conséquence visible — poetry se réinstallait pour rien — mais le jour où ce
+# fichier aurait existé, « poetry install » aurait été purement sauté.
+POETRY_ODOO_PATH=${VENV_ODOO_PATH}/bin/poetry
+
+# Choix pip/uv : un seul endroit décide, comme pour mise/pyenv.
+# shellcheck source=script/install/lib_pip_provider.sh
+. ./script/install/lib_pip_provider.sh
 export WITH_POETRY_INSTALLATION=1
 
-# Verbosité de l'installation Poetry : silencieuse (-q) par défaut, les logs
-# détaillés (-vvv) reviennent avec la variable d'environnement EL_VERBOSE=1.
+# Verbosité de l'installation Poetry. « -q » a été retiré du défaut : dans Cleo,
+# le mode silencieux coupe AUSSI la sortie d'erreur. Mesuré — « poetry -q
+# commande-inexistante » rend 1 sans imprimer un caractère, quand la même sans
+# « -q » nomme le problème. Un échec devenait donc parfaitement muet, et c'est
+# pour cela qu'il avait fallu ajouter un rejeu de diagnostic plus bas.
+# La verbosité par défaut de Poetry tient en une ligne par paquet.
 if [[ "${EL_VERBOSE:-0}" == "1" ]]; then
     POETRY_VERBOSE="-vvv"
 else
-    POETRY_VERBOSE="-q"
+    POETRY_VERBOSE=""
 fi
 
 # EL_PHASE controls which steps to execute.  Used by install_locally_dev.sh
@@ -72,7 +84,8 @@ if [[ "${EL_PHASE}" != "poetry" ]]; then
     source ./${VENV_ERPLIBRE_PATH}/bin/activate
     echo -e "Upgrade pip to ${VENV_ERPLIBRE_PATH}"
     pip install --upgrade pip
-    pip install -r requirement/erplibre_require-ments.txt
+    el_pip_install "${VENV_ERPLIBRE_PATH}" \
+      -r requirement/erplibre_require-ments.txt
 
     ./script/install/install_git_repo.sh
 fi
@@ -121,28 +134,50 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
         esac
     fi
 
-    # Delete artifacts created by pip, cause error in next "poetry install"
-    if [[ ! -f "${POETRY_ODOO_PATH}" ]]; then
+    # Le garde ne couvre QUE l'amorçage de Poetry. « poetry install » doit
+    # rejouer à chaque fois : c'est lui qui applique un lock régénéré par
+    # « make poetry_update ». L'englober rendrait la mise à jour sans effet
+    # dès la seconde installation.
+    if [[ ! -x "${POETRY_ODOO_PATH}" ]]; then
         echo -e "Install Poetry ${POETRY_ODOO_PATH}"
-        pip install ${PIP_CONSTRAINT_CRYPTO} poetry==${EL_POETRY_VERSION}
-        poetry --version
-        # Fix broken poetry by installing ignored dependence
-        #    poetry lock --no-update
-        # To fix keyring problem when installation is blocked, use
-        export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
-        if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
-            poetry install --no-root ${POETRY_VERBOSE}
-        fi
+        el_pip_install "${VENV_ODOO_PATH}" \
+          ${PIP_CONSTRAINT_CRYPTO} "poetry==${EL_POETRY_VERSION}"
+    fi
+    # Chemin EXPLICITE, jamais le « poetry » du PATH. Le script active pourtant
+    # le bon venv juste avant, mais poetry.toml porte « virtualenvs.create =
+    # false » : hors activation, Poetry installe dans l'interpréteur de BASE.
+    # Vérifié à la dure sur une VM — 772 paquets posés dans le CPython de mise,
+    # invisibles du venv qui a « include-system-site-packages = false », et
+    # promis à polluer tout autre venv bâti sur le même interpréteur.
+    if [[ ! -x "${POETRY_ODOO_PATH}" ]]; then
+        echo "Poetry introuvable a ${POETRY_ODOO_PATH}, arret."
+        exit 1
+    fi
+    "${POETRY_ODOO_PATH}" --version
+    # To fix keyring problem when installation is blocked, use
+    export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
+    # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
+    if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
+        "${POETRY_ODOO_PATH}" install --no-root ${POETRY_VERBOSE}
         retVal=$?
         if [[ $retVal -ne 0 ]]; then
             echo "Poetry installation error with status ${retVal}"
-            # « -q » masque la CAUSE. On rejoue en « -vvv » (debug) car c'est
-            # le SEUL niveau où Poetry affiche la sortie des sous-processus
-            # (git clone/checkout, build pip) — donc l'erreur réelle d'une
-            # dépendance VCS/build. Capturé dans le log pour diagnostic.
-            echo "---- Poetry: rejeu -vvv pour diagnostic ----"
-            poetry install --no-root -vvv 2>&1 || true
-            exit 1
+            # Un rejeu, parce qu'une partie des échecs sont des aléas de
+            # téléchargement : le lock est figé, rien ne dépend de l'instant.
+            # « -vvv » est le SEUL niveau où Poetry montre la sortie des
+            # sous-processus (git clone, build pip), donc l'erreur réelle.
+            #
+            # Le « exit 1 » était INCONDITIONNEL : un rejeu réussi laissait une
+            # installation complète... et la déclarait quand même en échec.
+            # C'est ce qui a arrêté openSUSE Leap 16 sur un pdfminer-six posé
+            # correctement au second essai.
+            echo "---- Poetry: rejeu -vvv (diagnostic et seconde chance) ----"
+            if "${POETRY_ODOO_PATH}" install --no-root -vvv 2>&1; then
+                echo "Le rejeu a REUSSI : le premier echec etait transitoire."
+            else
+                exit 1
+            fi
         fi
     fi
 

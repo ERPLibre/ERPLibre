@@ -19,6 +19,12 @@ EL_ERPLIBRE_VERSION=$(cat ".erplibre-version" | xargs)
 # precompile, quelques secondes), sinon pyenv (compilation). Voir
 # script/install/lib_python_provider.sh.
 EL_PYTHON_PROVIDER="${EL_PYTHON_PROVIDER:-auto}"
+# Installateur de paquets Python : auto | uv | pip.
+# « auto » prend uv s'il est present et si le venv vise est en Python >= 3.8,
+# sinon pip ; un echec d'uv retombe sur pip. Voir
+# script/install/lib_pip_provider.sh. Note : « poetry install » n'est PAS
+# concerne, uv ne lit pas poetry.lock.
+EL_PIP_PROVIDER="${EL_PIP_PROVIDER:-auto}"
 # The default port where this Odoo instance will run under (provided you use the command -c in the terminal)
 # Set to true if you want to install it, false if you don't need it or have it already installed.
 EL_INSTALL_WKHTMLTOPDF="True"

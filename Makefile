@@ -105,6 +105,25 @@ pyenv_update:
 #
 # Pas de binaire s390x publie a ce jour : sur cette architecture, la cible
 # le dit et n'installe rien.
+# uv installe les paquets Python nettement plus vite que pip, et met en cache
+# les roues qu'il CONSTRUIT — ce qui compte la ou rien n'a de roue publiee.
+# Contrairement a mise, uv publie une roue s390x : un « pip install uv » dans
+# le venv d'outils suffit, sans « curl | sh ». Reste EXPLICITE quand meme,
+# comme install_mise : EL_PIP_PROVIDER=auto s'en sert des qu'il est la.
+#
+# Attention a l'attente : « poetry install », qui domine le temps
+# d'installation, n'est PAS accelere — uv ne lit pas poetry.lock.
+.PHONY: install_uv
+install_uv:
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "uv deja present : $$(uv --version)"; \
+	else \
+		echo "Installation de uv dans le venv d outils"; \
+		./$$(cat conf/python-erplibre-venv | xargs)/bin/pip install uv; \
+		echo "uv : ./$$(cat conf/python-erplibre-venv | xargs)/bin/uv"; \
+		echo "Ajoutez ce repertoire au PATH, ou installez uv globalement."; \
+	fi
+
 .PHONY: install_mise
 install_mise:
 	@if command -v mise >/dev/null 2>&1; then \
