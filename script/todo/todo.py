@@ -4527,11 +4527,21 @@ class TODO:
     # 2,7 s pour mirrors.rit.edu. Les trois familles dnf, elles, choisissent
     # déjà un miroir canadien toutes seules ; rien à faire de ce côté.
     #
-    # Chaque miroir est SONDÉ sur le chemin de l'architecture courante : tous
-    # ne répliquent pas les architectures secondaires, et rit.edu sert
-    # justement zsystems mais pas x86_64. Aucun sondage concluant : on garde
+    # Chaque miroir est SONDÉ sur le chemin de l'architecture ET du produit
+    # courants, puis le premier qui répond gagne. C'est nécessaire : aucun ne
+    # réplique tout. Relevé le 2026-08-12 —
+    #   csclub    Leap oui, Tumbleweed non (404)
+    #   rit.edu   zsystems oui ; injoignable ce jour-là (curl 7)
+    #   leaseweb  Tumbleweed x86_64 et Leap oui, ports zsystems non
+    # D'où plusieurs entrées plutôt qu'une : avec la seule rit.edu, sa panne
+    # renvoyait tout le monde sur download.opensuse.org, servi d'Europe.
+    # Ordonnées par proximité de Montréal. Aucun sondage concluant : on garde
     # les dépôts de l'image, donc le comportement d'avant.
-    _QEMU_ZYPPER_MIRRORS = ("https://mirrors.rit.edu/opensuse",)
+    _QEMU_ZYPPER_MIRRORS = (
+        "https://mirror.csclub.uwaterloo.ca/opensuse",
+        "https://mirrors.rit.edu/opensuse",
+        "https://mirror.us.leaseweb.net/opensuse",
+    )
 
     # Miroirs Arch canadiens, du plus rapide au suivant. Mesuré depuis
     # Montréal sur extra.db : quantum5 2,0 s, xenyth 7,1 s, contre 8,0 s pour

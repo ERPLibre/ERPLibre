@@ -97,7 +97,12 @@ zyp_soft() {
 # répliquent pas les architectures secondaires, et rit.edu sert justement
 # zsystems mais pas x86_64. Aucun sondage concluant : on garde les dépôts de
 # l'image, donc le comportement d'avant.
-ZYP_MIRRORS="https://mirrors.rit.edu/opensuse"
+# Plusieurs miroirs, sondés dans l'ordre sur le chemin exact du produit et
+# de l'architecture : aucun ne réplique tout. Relevé le 2026-08-12 —
+# csclub sert Leap mais pas Tumbleweed, leaseweb sert Tumbleweed x86_64
+# mais pas les ports zsystems, et rit.edu — seule entrée jusqu'ici — était
+# injoignable ce jour-là, ce qui renvoyait tout le monde en Europe.
+ZYP_MIRRORS="https://mirror.csclub.uwaterloo.ca/opensuse https://mirrors.rit.edu/opensuse https://mirror.us.leaseweb.net/opensuse"
 # Leap et Tumbleweed sont deux PRODUITS, pas deux versions du même : arbres de
 # dépôts différents, et surtout une mise à jour de nature différente (plus bas).
 SUSE_ID="$([ -r /etc/os-release ] && . /etc/os-release && echo "${ID}")"
