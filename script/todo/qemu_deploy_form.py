@@ -149,15 +149,40 @@ def apply_overrides(vms, entries, overrides):
     return vms
 
 
+def vm_name(base, desktop, suffixes):
+    """Nom de VM, suffixé du bureau quand il y en a un.
+
+    Le nom sert de nom d'hôte ET de clé de collision : une VM graphique et sa
+    jumelle serveur doivent donc porter des noms différents, sinon la seconde
+    est signalée « existe déjà » et silencieusement ignorée. Idempotent, le
+    nom étant recalculé à chaque frappe."""
+    suffix = (suffixes or {}).get(desktop or "")
+    if not suffix or base.endswith(f"-{suffix}"):
+        return base
+    return f"{base}-{suffix}"
+
+
 def build_vms(
-    entries, profile, base_vcpus, host_cpu, custom, overrides, desktop=""
+    entries,
+    profile,
+    base_vcpus,
+    host_cpu,
+    custom,
+    overrides,
+    desktop="",
+    suffixes=None,
 ):
     """Catalogue choisi + profil + surcharges -> liste de VM de la spec."""
-    return apply_overrides(
+    vms = apply_overrides(
         apply_profile(entries, profile, base_vcpus, host_cpu, custom, desktop),
         entries,
         overrides,
     )
+    # APRÈS les surcharges : c'est là seulement que le type de chaque VM est
+    # connu, puisqu'il se choisit machine par machine.
+    for vm in vms:
+        vm["name"] = vm_name(vm["name"], vm.get("desktop"), suffixes)
+    return vms
 
 
 def vm_status(name, domains):
@@ -277,6 +302,9 @@ def run_deploy_form(ctx, run_app: bool = True):
     desktop_disk = ctx.get("desktop_disk_gb") or 0
     # [(clé, libellé)] — la liste vient de todo.py, source unique.
     desktops = list(ctx.get("desktops") or [])
+    # {clé de saveur: suffixe de nom}, fourni par todo.py qui décrit les
+    # saveurs — on ne le redéfinit pas ici.
+    desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
     # Architectures pour lesquelles mise publie un binaire.
     mise_arches = set(ctx.get("mise_arches") or ())
     # [(clé, libellé)] des magasins d'applications, et les distributions qui
@@ -647,6 +675,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.custom,
                 self.overrides,
                 self._default_desktop(),
+                desktop_suffixes,
             )
             # ERPLibre et GNOME pèsent chacun sur le disque, et se cumulent.
             grow = 0
