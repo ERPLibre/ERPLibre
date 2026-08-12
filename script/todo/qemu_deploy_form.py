@@ -178,6 +178,7 @@ def build_spec(vms, domains, form):
         "ssh_key": form["ssh_key"],
         "timezone": form.get("timezone", ""),
         "desktop": form.get("desktop", ""),
+        "python_provider": form.get("python_provider", ""),
         "install": form["install"],
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
@@ -245,6 +246,8 @@ def run_deploy_form(ctx, run_app: bool = True):
     desktop_disk = ctx.get("desktop_disk_gb") or 0
     # [(clé, libellé)] — la liste vient de todo.py, source unique.
     desktops = list(ctx.get("desktops") or [])
+    # Architectures pour lesquelles mise publie un binaire.
+    mise_arches = set(ctx.get("mise_arches") or ())
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -508,6 +511,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("add_ssh_config", True),
                         id="f_sshcfg",
                     )
+                    # mise pose un CPython précompilé, pyenv le compile.
+                    # Grisé quand AUCUNE des VM retenues n'est sur une
+                    # architecture que mise sert.
+                    yield Static(
+                        t("Python interpreter:"), classes="grouptitle"
+                    )
+                    with RadioSet(id="f_python"):
+                        yield RadioButton(
+                            t("mise (precompiled, faster)"), value=True
+                        )
+                        yield RadioButton(t("pyenv (compiles from source)"))
+                    yield Static("", id="miswarn")
                     yield Static(t("Parallelism"), classes="grouptitle")
                     # Cochée, la case donne une exécution PAR installation :
                     # le plafond du nombre de CPU ne s'applique plus. Décochée,
@@ -600,6 +615,38 @@ def run_deploy_form(ctx, run_app: bool = True):
                 grow += desktop_disk
             self.rows = plan_rows(self.vms, domains, grow)
             self._render_plan()
+            self._render_mise()
+
+        def _render_mise(self):
+            """Grise le choix quand aucune VM retenue n'est servie par mise,
+            et nomme les architectures qui retomberont sur pyenv."""
+            usable = self._mise_usable()
+            self.query_one("#f_python", RadioSet).disabled = not usable
+            skipped = sorted(
+                {
+                    vm["arch"]
+                    for vm in self.vms
+                    if vm["arch"] not in mise_arches
+                }
+            )
+            msg = ""
+            if skipped:
+                msg = (
+                    f"  ⚠ {t('mise has no binary for:')} "
+                    f"{', '.join(skipped)} — {t('those VMs use pyenv')}"
+                )
+            self.query_one("#miswarn", Static).update(msg)
+
+        def _python_provider(self):
+            """« mise » ou « pyenv ». Sans architecture servie par mise, le
+            choix n'a pas d'objet : on renvoie pyenv."""
+            if not self._mise_usable():
+                return "pyenv"
+            index = self.query_one("#f_python", RadioSet).pressed_index
+            return "pyenv" if index == 1 else "mise"
+
+        def _mise_usable(self):
+            return any(vm["arch"] in mise_arches for vm in self.vms)
 
         def _desktop(self):
             """« » pour un serveur, sinon la clé de la saveur choisie."""
@@ -783,6 +830,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 or ctx.get("timezone")
                 or "",
                 "desktop": self._desktop(),
+                "python_provider": self._python_provider(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 # Une exécution par installation : le nombre de VM retenues

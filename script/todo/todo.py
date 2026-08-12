@@ -4502,8 +4502,51 @@ class TODO:
             '(vncpasswd puis vncserver :1)"; fi; '
         )
 
+    # mise ne publie de binaire que pour ces architectures : 46 assets à la
+    # v2026.8.4, aucun s390x — son propre script d'installation refuse cette
+    # plateforme. Ailleurs, le choix « mise » est sans objet et on reste sur
+    # pyenv, ce que le formulaire et l'invite disent avant de déployer.
+    QEMU_MISE_ARCHES = ("amd64", "arm64")
+
+    def _qemu_mise_remote_cmd(self, python_provider):
+        """Pose mise DANS la VM et fixe EL_PYTHON_PROVIDER pour l'installation.
+
+        mise s'installe par défaut dans ~/.local/bin, qui n'est PAS dans le
+        PATH d'un « ssh hôte 'commande' » : ni ~/.profile ni ~/.bashrc n'y sont
+        lus. On le pose donc dans /usr/local/bin, présent dans le PATH par
+        défaut — même raison que pour cargo et rustc.
+
+        Sans mise utilisable, rien n'est écrit : lib_python_provider.sh
+        retombe alors sur pyenv toute seule."""
+        if python_provider == "pyenv":
+            # Explicite : même si mise se trouvait déjà dans l'image, on ne
+            # l'utilise pas. Sans cela le mode « auto » du dépôt le prendrait.
+            return "export EL_PYTHON_PROVIDER=pyenv; "
+        if python_provider != "mise":
+            return ""
+        return (
+            f'echo "== {t("Installing mise (precompiled Python)")} =="; '
+            "if command -v mise >/dev/null 2>&1; then "
+            'echo "   mise: $(mise --version)"; '
+            "else "
+            # La variable est passée À sudo, pas exportée avant : « sudo -E »
+            # dépend de env_reset dans sudoers et n'est pas garanti.
+            "curl -fsSL https://mise.run "
+            "| sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "
+            '|| echo "   mise indisponible ici : pyenv prendra le relais"; '
+            "fi; "
+            # « auto », et non « mise » : si l'installation ci-dessus a échoué,
+            # lib_python_provider.sh doit pouvoir retomber sur pyenv.
+            "export EL_PYTHON_PROVIDER=auto; "
+        )
+
     def _qemu_erplibre_remote_cmd(
-        self, branch, final_cmd=None, prod=False, desktop=False
+        self,
+        branch,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
+        python_provider="",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -4511,7 +4554,9 @@ class TODO:
 
         `final_cmd` par défaut : install_os + install_odoo_18. `prod` :
         installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
-        SELinux confiné. `desktop` : ajoute GNOME et son accès distant."""
+        SELinux confiné. `desktop` : ajoute GNOME et son accès distant.
+        `python_provider` : « mise » pour un CPython précompilé, sinon le
+        comportement par défaut du dépôt (pyenv, qui compile)."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
@@ -4615,6 +4660,7 @@ class TODO:
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
             '{ echo "Outil manquant apres installation: $t '
             '(reseau de la VM ?)"; exit 1; }; done; '
+            + self._qemu_mise_remote_cmd(python_provider)
             # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
             # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
             + (
@@ -4645,6 +4691,7 @@ class TODO:
         final_cmd=None,
         prod=False,
         desktop=False,
+        python_provider="",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -4657,7 +4704,7 @@ class TODO:
         )
 
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop
+            branch, final_cmd, prod, desktop, python_provider
         )
         try:
             mod = self._qemu_import_module()
@@ -4722,6 +4769,7 @@ class TODO:
         final_cmd=None,
         prod=False,
         desktop=False,
+        python_provider="",
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -4743,7 +4791,7 @@ class TODO:
             )
             return
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop
+            branch, final_cmd, prod, desktop, python_provider
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -5126,6 +5174,9 @@ class TODO:
             print(
                 f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
             )
+        prov = spec.get("python_provider")
+        if prov:
+            print(f"  {t('Python interpreter:')} {prov}")
         print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
         cfg = (
             t("one entry per VM") if spec["add_ssh_config"] else t("untouched")
@@ -5453,6 +5504,7 @@ class TODO:
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
+            "mise_arches": self.QEMU_MISE_ARCHES,
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
             ],
@@ -5743,6 +5795,29 @@ class TODO:
             return ""
         return flavours[index] if 0 <= index < len(flavours) else ""
 
+    def _qemu_ask_python_provider(self, arches):
+        """mise (CPython précompilé) ou pyenv (compilation).
+
+        `arches` : les architectures du parc à déployer. mise ne publie pas de
+        binaire pour toutes — hors de QEMU_MISE_ARCHES la question n'a pas de
+        sens et on ne la pose pas."""
+        usable = [a for a in arches if a in self.QEMU_MISE_ARCHES]
+        if not usable:
+            return "pyenv"
+        print(f"\n{t('Python interpreter:')}")
+        print(f"  [1] {t('mise (precompiled, faster)')} *")
+        print(f"  [2] {t('pyenv (compiles from source)')}")
+        skipped = [a for a in arches if a not in self.QEMU_MISE_ARCHES]
+        if skipped:
+            # Dit AVANT le déploiement plutôt que découvert dans un log.
+            print(
+                f"  ⚠ {t('mise has no binary for:')} "
+                f"{', '.join(sorted(set(skipped)))} — "
+                f"{t('those VMs use pyenv')}"
+            )
+        sel = input(t("Choice (number, blank = mise): ")).strip()
+        return "pyenv" if sel == "2" else "mise"
+
     def _qemu_host_timezone(self):
         """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
         est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
@@ -5802,6 +5877,9 @@ class TODO:
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
         desktop = self._qemu_ask_desktop()
+        python_provider = self._qemu_ask_python_provider(
+            [vm["arch"] for vm in vms]
+        )
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5879,6 +5957,7 @@ class TODO:
             "timezone": timezone,
             "locale": locale,
             "desktop": desktop,
+            "python_provider": python_provider,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
@@ -5947,6 +6026,7 @@ class TODO:
         install = spec.get("install")
         install_branch = install["branch"] if install else None
         desktop = spec.get("desktop") or ""
+        python_provider = spec.get("python_provider") or ""
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -6021,6 +6101,7 @@ class TODO:
                     install["cmd"] if install else None,
                     install["prod"] if install else False,
                     desktop=desktop,
+                    python_provider=python_provider,
                 )
             else:
                 print(
@@ -6036,6 +6117,7 @@ class TODO:
                         install["cmd"],
                         install["prod"],
                         desktop=desktop,
+                        python_provider=python_provider,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
