@@ -5,9 +5,13 @@
 # Dépendances système ERPLibre pour la famille SUSE (zypper). Équivalent SUSE
 # de install_debian_dependency.sh et install_fedora_dependency.sh.
 #
-# Visé : openSUSE Tumbleweed, la seule distribution du catalogue dont qpdf
-# (12.3.2) dépasse déjà le seuil de pikepdf 10 — la compilation de qpdf, une
-# demi-heure sous émulation s390x, ne s'y déclenche pas.
+# Visé : openSUSE Leap 16 (le défaut, numéroté et stable) et Tumbleweed (la
+# rolling, gardée comme banc d'essai). Les deux livrent un qpdf au-dessus du
+# seuil de pikepdf 10 — la compilation de qpdf, une demi-heure sous émulation
+# s390x, ne s'y déclenche pas.
+#
+# Ce qui les sépare dans ce script tient en deux points, tous deux marqués par
+# SUSE_ROLLING : le chemin des dépôts, et « dup » contre « up ».
 
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
@@ -93,8 +97,23 @@ zyp_soft() {
 # zsystems mais pas x86_64. Aucun sondage concluant : on garde les dépôts de
 # l'image, donc le comportement d'avant.
 ZYP_MIRRORS="https://mirrors.rit.edu/opensuse"
-zp=tumbleweed
-[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed
+# Leap et Tumbleweed sont deux PRODUITS, pas deux versions du même : arbres de
+# dépôts différents, et surtout une mise à jour de nature différente (plus bas).
+SUSE_ID="$([ -r /etc/os-release ] && . /etc/os-release && echo "${ID}")"
+SUSE_VER="$([ -r /etc/os-release ] && . /etc/os-release && echo "${VERSION_ID}")"
+case "${SUSE_ID}" in
+  *tumbleweed*) SUSE_ROLLING=1 ;;
+  *) SUSE_ROLLING=0 ;;
+esac
+if [ "${SUSE_ROLLING}" = 1 ]; then
+  # Tumbleweed isole les architectures secondaires sous /ports/.
+  zp=tumbleweed
+  [ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed
+else
+  # Leap 16 unifie tout : un seul arbre, avec s390x dedans. Les chemins
+  # /ports/ équivalents rendent 404 — relevé, pas déduit.
+  zp="distribution/leap/${SUSE_VER}"
+fi
 for zm in ${ZYP_MIRRORS}; do
   if curl -fsS --max-time 20 -o /dev/null \
     "${zm}/${zp}/repo/oss/repodata/repomd.xml"; then
@@ -116,8 +135,17 @@ sudo zypper --non-interactive refresh || true
 # réclamait un perl-Git bâti contre un perl-base plus ancien que celui de
 # l'image. zypper proposait alors trois solutions et ATTENDAIT un choix ;
 # « --non-interactive » prend le défaut, « c » = annuler, et tout s'arrêtait.
-echo -e "\n---- Mise a jour complete (dup) ----"
-${ZYP} dup ${ZYP_LIC} --allow-vendor-change || true
+if [ "${SUSE_ROLLING}" = 1 ]; then
+  echo -e "\n---- Mise a jour complete (dup) ----"
+  ${ZYP} dup ${ZYP_LIC} --allow-vendor-change || true
+else
+  # Sur Leap, « dup » sert à CHANGER de version, pas à mettre à jour : l'y
+  # appeler alignerait la machine sur ce que les dépôts contiennent, ce qui
+  # n'est pas ce qu'on veut d'une distribution justement choisie pour ne pas
+  # bouger. « up » suffit, l'image et ses dépôts étant de la même version.
+  echo -e "\n---- Mise a jour (up) ----"
+  ${ZYP} up ${ZYP_LIC} || true
+fi
 
 #--------------------------------------------------
 # Outils de compilation (build Python via pyenv, extensions Python)
