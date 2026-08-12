@@ -211,17 +211,42 @@ if [ "$(uname -m)" = "s390x" ]; then
   if ! command -v cargo > /dev/null 2>&1; then
     echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
   fi
-  # pillow et pikepdf compilent ici faute de roue : le premier veut jpeg, le
-  # second qpdf >= 12.2. Tumbleweed livre 12.3.2, donc el_qpdf_ensure ne fait
-  # que le constater — l'appel est là pour que les trois familles suivent la
-  # même règle, et pas seulement celle qui a signalé la panne. cmake et
-  # pkg-config sont posés ici parce qu'ils lui sont nécessaires et n'arrivent
-  # que plus bas dans le script.
-  # « pkgconf-pkg-config » et non « pkg-config » : aucun RPM ne porte ce dernier
-  # nom dans Tumbleweed, il n'existe plus que comme capacité fournie par le
-  # premier. La capacité résout aujourd'hui, le nom réel ne dépend de rien.
-  zyp_soft qpdf-devel libjpeg8-devel cmake pkgconf-pkg-config
+  # Sans roue s390x, TOUT se compile contre les en-têtes de la distribution.
+  # Cette liste reprend donc celles d'apt et de dnf, aux noms d'openSUSE près
+  # — relevés dans l'index oss de zsystems, jamais devinés. La tenir alignée
+  # ici plutôt que d'attendre : trois fois de suite, le même manque a été
+  # découvert d'abord par Debian, puis retrouvé une distribution à la fois.
+  #   tbb-devel   manifold3d refuse de configurer sans lui, et le dit dans un
+  #               message de CMake, pas de compilateur : « Parallel mode
+  #               enabled, but tbb was not found ».
+  #   clang-devel pymupdf charge libclang.so par ctypes (lien juste après).
+  #   cmake, pkgconf-pkg-config : nécessaires à el_qpdf_ensure, et ils
+  #               n'arrivent que plus bas dans le script.
+  #
+  # « pkgconf-pkg-config » et non « pkg-config » : aucun RPM ne porte ce
+  # dernier nom dans Tumbleweed, il n'existe plus que comme capacité fournie
+  # par le premier. La capacité résout aujourd'hui, le nom réel ne dépend
+  # de rien.
+  #
+  # GeographicLib est absent : openSUSE n'empaquette que le binding Python,
+  # pas la bibliothèque C++. Rien à poser, contrairement à apt et dnf.
+  zyp_soft qpdf-devel libjpeg8-devel cmake pkgconf-pkg-config \
+    tbb-devel geos-devel proj-devel krb5-devel ninja clang-devel llvm-devel
+  # Tumbleweed livre qpdf 12.3.2 : l'appel ne fait que le constater. Il est là
+  # pour que les trois familles suivent la même règle.
   el_qpdf_ensure
+  # pymupdf charge « libclang.so » par son nom nu, via ctypes ; le paquet ne
+  # livre qu'un nom versionné. Il ne manque que le lien — même correctif que
+  # côté apt et dnf.
+  for d in /usr/lib64 /usr/lib; do
+    if [ -d "${d}" ] && [ ! -e "${d}/libclang.so" ]; then
+      so="$(ls -1 "${d}"/libclang.so.* 2> /dev/null | sort -V | tail -1)"
+      if [ -n "${so}" ]; then
+        sudo ln -s "${so}" "${d}/libclang.so" && sudo ldconfig
+        echo "libclang.so -> ${so}"
+      fi
+    fi
+  done
 fi
 
 zyp_soft \
