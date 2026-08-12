@@ -67,12 +67,57 @@ esac
 #--------------------------------------------------
 # Outils de compilation (build Python via pyenv, extensions Python)
 #--------------------------------------------------
-echo -e "\n---- Groupe outils de développement ----"
-# Groupes par ID (le nom affiché « C Development Tools... » n'est pas matché).
-# « c-development » n'existe pas sur EL (l'équivalent y est « development »).
-sudo dnf group install -y ${DNF_SKIP} development-tools c-development \
-  || sudo dnf group install -y ${DNF_SKIP} development \
-  || sudo dnf install -y gcc gcc-c++ make automake patch
+echo -e "\n---- Outils de developpement ----"
+# Les GROUPES ne sont pas les mêmes d'une famille à l'autre : Fedora a
+# « c-development », EL ne connaît que « development » — vérifié dans le
+# comps.xml d'AlmaLinux 10, qui n'a même pas « development-tools ».
+#
+# Pire, la tolérance aux paquets absents les rend INOFFENSIFS : un
+# « dnf group install » de deux groupes inconnus REND ZÉRO sans rien poser,
+# donc le « || » de repli ne se déclenchait jamais. gcc arrivait par la
+# section pyenv plus bas, gcc-c++ par personne, et numpy s'arrêtait sur
+# « Unknown compiler(s): [['c++'], ['g++'], …] ».
+#
+# On installe donc les compilateurs EXPLICITEMENT, sans dépendre d'un groupe.
+# Le groupe reste ensuite, en complément et en best-effort.
+${DNF} gcc gcc-c++ make automake patch
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "dnf install compilers error."
+  exit 1
+fi
+sudo dnf group install -y ${DNF_SKIP} development c-development \
+  > /dev/null 2>&1 || true
+
+#--------------------------------------------------
+# Mainframe s390x
+#--------------------------------------------------
+# Sur s390x, AUCUNE roue PyPI n'existe : numpy, pillow, lxml, pikepdf,
+# psycopg2, cryptography… tout se compile contre les bibliothèques de la
+# distribution. Ces en-têtes ne servent à rien sur amd64, où pip pose des
+# roues, mais leur absence ici arrête l'installation très loin de sa cause —
+# « The headers or library files could not be found for jpeg » pour pillow.
+if [ "$(uname -m)" = "s390x" ]; then
+  echo -e "\n---- Dependances de compilation s390x ----"
+  # Best-effort : un nom qui change d'une version à l'autre ne doit pas
+  # emporter le lot. Ce qui est vraiment indispensable est déjà installé
+  # au-dessus (compilateurs) ou plus bas (pyenv, PostgreSQL).
+  ${DNF} \
+    libjpeg-turbo-devel zlib-devel qpdf-devel geos-devel proj-devel \
+    krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
+    GeographicLib-devel
+  # pymupdf charge « libclang.so » par son nom nu, via ctypes. Le paquet le
+  # livre sous un nom versionné : il ne manque que le lien.
+  for d in /usr/lib64 /usr/lib; do
+    if [ -d "${d}" ] && [ ! -e "${d}/libclang.so" ]; then
+      so="$(ls -1 "${d}"/libclang.so.* 2> /dev/null | sort -V | tail -1)"
+      if [ -n "${so}" ]; then
+        sudo ln -s "${so}" "${d}/libclang.so" && sudo ldconfig
+        echo "libclang.so -> ${so}"
+      fi
+    fi
+  done
+fi
 
 #--------------------------------------------------
 # PostgreSQL
