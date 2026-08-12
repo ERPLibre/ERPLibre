@@ -4352,6 +4352,78 @@ class TODO:
             "service": "lightdm",
         },
     }
+    # Ubuntu remplace trois applications par des paquets de TRANSITION dont le
+    # postinst lance « snap install ». Or snapd est coupé juste avant, pour
+    # empêcher ses rafraîchissements pendant l'installation : le postinst ne
+    # joint alors pas le store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES.
+    # L'installation paraît figée et rien dans le log ne dit pourquoi.
+    #
+    # La famille est CLOSE et relevée dans l'index du dépôt, pas devinée : trois
+    # paquets sources portent une version « …snap1… », firefox, chromium-browser
+    # et thunderbird — avec toutes leurs déclinaisons (firefox-locale-*,
+    # chromium-codecs-*). Les corriger un à un a coûté deux VM figées : firefox
+    # sous GNOME, puis thunderbird sous Cinnamon.
+    #
+    # Les trois ne sont que RECOMMANDÉS, et avec des solutions de rechange :
+    #   Recommends: firefox-esr | firefox | chromium | epiphany-browser | …
+    #   Recommends: thunderbird | evolution | geary | mail-reader
+    # On les écarte donc, et on nomme deux vrais .deb pour satisfaire les
+    # recommandations. Les nommer rend le résultat déterministe : laissé à apt,
+    # le premier repli était « chromium-browser », un paquet de transition lui
+    # aussi.
+    #
+    # Un épinglage apt sur « Pin: version *snap1* » aurait été plus général —
+    # essayé en glob et en regex, il ne bloque rien. Mesuré sur une VM 26.04 :
+    # avec cette liste, GNOME (844 paquets) et Cinnamon (1167) n'en tirent
+    # AUCUN, sans erreur apt.
+    _QEMU_APT_NO_SNAP = (
+        "epiphany-browser evolution"
+        " firefox- chromium- chromium-browser- thunderbird-"
+    )
+
+    # Magasin d'applications d'une VM graphique. Ubuntu livre snapd dans son
+    # image cloud (vérifié : 2.75.2 en 26.04) et gnome-core RECOMMANDE
+    # « firefox », qui n'y est plus qu'un paquet de transition lançant
+    # « snap install ». Trois réponses possibles, et il faut choisir :
+    #
+    #   deb      rien que des .deb. snapd coupé, paquets-snap écartés,
+    #            epiphany-browser comme navigateur. Le plus léger, et rien à
+    #            télécharger en plus pendant un déploiement déjà long.
+    #   flatpak  l'outillage Flatpak en plus, SANS dépôt Flathub ni
+    #            installation : la machine est prête, l'administrateur ajoute
+    #            les dépôts qu'il veut.
+    #   snap     le comportement d'Ubuntu, snapd laissé actif et Firefox en
+    #            snap. Lent sous émulation, mais c'est le défaut de la distro.
+    #
+    # La question n'a de sens que pour une VM Ubuntu GRAPHIQUE : sur un
+    # serveur, rien ne tire de snap.
+    QEMU_APP_STORES = (
+        ("deb", "deb only (epiphany-browser)"),
+        ("flatpak", "Flatpak tooling, no Flathub"),
+        ("snap", "snap (Ubuntu default, Firefox)"),
+    )
+    QEMU_SNAP_DISTROS = ("ubuntu",)
+
+    @classmethod
+    def _qemu_desktop_suffixes(cls):
+        """{clé de saveur: suffixe de nom}. La TUI le reçoit par son contexte
+        plutôt que de le redéfinir : un seul endroit décrit les saveurs."""
+        return {k: v["suffix"] for k, v in cls._QEMU_DESKTOP.items()}
+
+    @classmethod
+    def _qemu_apt_store_pkgs(cls, app_store):
+        """Paquets apt à ajouter au bureau selon le magasin retenu."""
+        if app_store == "snap":
+            # On ne retire rien : Firefox arrivera en snap, comme sur une
+            # Ubuntu ordinaire, et snapd est resté actif pour le servir.
+            return ""
+        pkgs = cls._QEMU_APT_NO_SNAP
+        if app_store == "flatpak":
+            # Le greffon donne à GNOME Logiciels la gestion des Flatpak.
+            # Aucun « remote-add » ici : le dépôt reste un choix explicite.
+            pkgs += " flatpak gnome-software-plugin-flatpak"
+        return pkgs
+
     # Accès distant, indépendant du bureau choisi.
     _QEMU_DESKTOP_REMOTE = {
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
@@ -4546,7 +4618,8 @@ class TODO:
             "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
-            f"{de['apt']} {rem['apt']['packages']}; "
+            f"{de['apt']} {rem['apt']['packages']} "
+            f"{self._QEMU_APT_NO_SNAP}; "
             "elif command -v dnf >/dev/null 2>&1; then "
             # Cascade d'environnements : le premier qui existe gagne. Un
             # environnement absent fait rendre 1 à dnf sans rien installer,
