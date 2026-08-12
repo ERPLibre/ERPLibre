@@ -249,7 +249,13 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # En-tête d'emblée (date/distro/version/arch) : le log n'est jamais
         # vide, l'utilisateur voit tout de suite QUOI s'installe.
         Path(log_path).write_text(_log_header(vm, branch, when))
-        _launch_one(vm["ip"], remote_cmd, log_path, vm["name"])
+        # Une VM peut porter SA commande : depuis que le type de VM (serveur
+        # ou bureau) se choisit machine par machine, le script distant n'est
+        # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
+        # intacts les appelants qui n'en fournissent qu'une.
+        _launch_one(
+            vm["ip"], vm.get("remote_cmd") or remote_cmd, log_path, vm["name"]
+        )
         entries.append(
             {
                 "name": vm["name"],

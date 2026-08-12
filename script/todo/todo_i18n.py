@@ -2139,25 +2139,145 @@ TRANSLATIONS = {
         "fr": "Éditer la VM",
         "en": "Edit VM",
     },
+    "Server": {
+        "fr": "Serveur",
+        "en": "Server",
+    },
+    "VM type (default):": {
+        "fr": "Type de VM (défaut) :",
+        "en": "VM type (default):",
+    },
+    "These values are the default for every VM;": {
+        "fr": "Ces valeurs sont le défaut de chaque VM ;",
+        "en": "These values are the default for every VM;",
+    },
+    "adjust any of them per VM on the right.": {
+        "fr": "ajustez-les VM par VM dans la vue de droite.",
+        "en": "adjust any of them per VM on the right.",
+    },
+    "Application store:": {
+        "fr": "Magasin d'applications :",
+        "en": "Application store:",
+    },
+    "Application store (graphical Ubuntu VMs):": {
+        "fr": "Magasin d'applications (VM Ubuntu graphiques) :",
+        "en": "Application store (graphical Ubuntu VMs):",
+    },
+    "deb only (epiphany-browser)": {
+        "fr": "deb uniquement (epiphany-browser)",
+        "en": "deb only (epiphany-browser)",
+    },
+    "Flatpak tooling, no Flathub": {
+        "fr": "outillage Flatpak, sans Flathub",
+        "en": "Flatpak tooling, no Flathub",
+    },
+    "snap (Ubuntu default, Firefox)": {
+        "fr": "snap (défaut Ubuntu, Firefox)",
+        "en": "snap (Ubuntu default, Firefox)",
+    },
+    "snap needs the store; slow under emulation.": {
+        "fr": "snap exige le store ; lent sous émulation.",
+        "en": "snap needs the store; slow under emulation.",
+    },
+    "No graphical VM on a snap-based distro.": {
+        "fr": "Aucune VM graphique sur une distribution à snap.",
+        "en": "No graphical VM on a snap-based distro.",
+    },
+    "Resources — applied to ALL VMs": {
+        "fr": "Ressources — appliquées à TOUTES les VM",
+        "en": "Resources — applied to ALL VMs",
+    },
+    "The profile and these fields change EVERY VM.": {
+        "fr": "Le profil et ces champs changent TOUTES les VM.",
+        "en": "The profile and these fields change EVERY VM.",
+    },
+    "A VM edited on the right (marked) keeps its own.": {
+        "fr": "Une VM modifiée à droite (marquée ✎) garde les siennes.",
+        "en": "A VM edited on the right (marked) keeps its own.",
+    },
+    "Rename the VM": {
+        "fr": "Renommer la VM",
+        "en": "Rename the VM",
+    },
+    "Rename": {
+        "fr": "Renommer",
+        "en": "Rename",
+    },
+    "Empty = back to the automatic name:": {
+        "fr": "Vide = revenir au nom automatique :",
+        "en": "Empty = back to the automatic name:",
+    },
+    "Invalid name: letters, digits, hyphens.": {
+        "fr": "Nom invalide : lettres, chiffres et traits d'union.",
+        "en": "Invalid name: letters, digits, hyphens.",
+    },
+    "default; a VM may differ, see its line": {
+        "fr": "défaut ; une VM peut s'en écarter, voir sa ligne",
+        "en": "default; a VM may differ, see its line",
+    },
+    "varies, see each line": {
+        "fr": "varie, voir chaque ligne",
+        "en": "varies, see each line",
+    },
+    "From your workstation:": {
+        "fr": "Depuis votre poste :",
+        "en": "From your workstation:",
+    },
+    "then point your client at": {
+        "fr": "puis pointez votre client sur",
+        "en": "then point your client at",
+    },
+    "Remote desktop tunnel (VNC/RDP through SSH)": {
+        "fr": "🖥  Tunnel bureau distant (VNC/RDP par SSH)",
+        "en": "🖥  Remote desktop tunnel (VNC/RDP through SSH)",
+    },
+    "Remote desktop tunnel": {
+        "fr": "Tunnel vers le bureau distant",
+        "en": "Remote desktop tunnel",
+    },
+    "Which VM?": {"fr": "Quelle VM ?", "en": "Which VM?"},
+    "No IP for this VM; is it running?": {
+        "fr": "Pas d'IP pour cette VM ; tourne-t-elle ?",
+        "en": "No IP for this VM; is it running?",
+    },
+    "Run this on YOUR workstation:": {
+        "fr": "À lancer sur VOTRE poste :",
+        "en": "Run this on YOUR workstation:",
+    },
+    "(through the ProxyJump already in ~/.ssh/config)": {
+        "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
+        "en": "(through the ProxyJump already in ~/.ssh/config)",
+    },
+    "No ~/.ssh/config entry; see SSH configuration.": {
+        "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
+        "en": "No ~/.ssh/config entry; see SSH configuration.",
+    },
+    "Not in an SSH session: check the host address.": {
+        "fr": "Hors session SSH : vérifiez l'adresse de l'hôte.",
+        "en": "Not in an SSH session: check the host address.",
+    },
+    "The tunnel stays open as long as that ssh runs.": {
+        "fr": "Le tunnel reste ouvert tant que ce ssh tourne.",
+        "en": "The tunnel stays open as long as that ssh runs.",
+    },
+    "No VM defined.": {"fr": "Aucune VM définie.", "en": "No VM defined."},
+    "No host in ~/.ssh/config and no local VM.": {
+        "fr": "Aucun hôte dans ~/.ssh/config et aucune VM locale.",
+        "en": "No host in ~/.ssh/config and no local VM.",
+    },
+    "local VM": {"fr": "VM locale", "en": "local VM"},
+    "Remote desktop kind:": {
+        "fr": "Type de bureau distant :",
+        "en": "Remote desktop kind:",
+    },
+    "already defined, not counted": {
+        "fr": "déjà définie(s), non comptée(s)",
+        "en": "already defined, not counted",
+    },
+    "RAM: 2048 or 8G": {"fr": "RAM : 2048 ou 8G", "en": "RAM: 2048 or 8G"},
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
-    },
-    "Apply to all VMs": {
-        "fr": "Appliquer à toutes les VM",
-        "en": "Apply to all VMs",
-    },
-    "Apply to the selected VM only": {
-        "fr": "Appliquer à la VM sélectionnée seulement",
-        "en": "Apply to the selected VM only",
-    },
-    "VM(s) customised (F4 resets one)": {
-        "fr": "VM personnalisée(s) (F4 en réinitialise une)",
-        "en": "VM(s) customised (F4 resets one)",
-    },
-    "Pick a line in the plan (Tab, then arrows)": {
-        "fr": "Choisissez une ligne du plan (Tab, puis les flèches)",
-        "en": "Pick a line in the plan (Tab, then arrows)",
     },
     "Preview": {
         "fr": "Aperçu",
