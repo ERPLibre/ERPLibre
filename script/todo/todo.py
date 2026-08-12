@@ -4379,6 +4379,44 @@ class TODO:
     # Relevé sur la VM : « firefox » était le SEUL paquet en « …snap1… » des
     # 803 du lot, et l'exclusion en laisse zéro.
     _QEMU_APT_NO_SNAP = "epiphany-browser firefox- chromium- chromium-browser-"
+
+    # Magasin d'applications d'une VM graphique. Ubuntu livre snapd dans son
+    # image cloud (vérifié : 2.75.2 en 26.04) et gnome-core RECOMMANDE
+    # « firefox », qui n'y est plus qu'un paquet de transition lançant
+    # « snap install ». Trois réponses possibles, et il faut choisir :
+    #
+    #   deb      rien que des .deb. snapd coupé, paquets-snap écartés,
+    #            epiphany-browser comme navigateur. Le plus léger, et rien à
+    #            télécharger en plus pendant un déploiement déjà long.
+    #   flatpak  l'outillage Flatpak en plus, SANS dépôt Flathub ni
+    #            installation : la machine est prête, l'administrateur ajoute
+    #            les dépôts qu'il veut.
+    #   snap     le comportement d'Ubuntu, snapd laissé actif et Firefox en
+    #            snap. Lent sous émulation, mais c'est le défaut de la distro.
+    #
+    # La question n'a de sens que pour une VM Ubuntu GRAPHIQUE : sur un
+    # serveur, rien ne tire de snap.
+    QEMU_APP_STORES = (
+        ("deb", "deb only (epiphany-browser)"),
+        ("flatpak", "Flatpak tooling, no Flathub"),
+        ("snap", "snap (Ubuntu default, Firefox)"),
+    )
+    QEMU_SNAP_DISTROS = ("ubuntu",)
+
+    @classmethod
+    def _qemu_apt_store_pkgs(cls, app_store):
+        """Paquets apt à ajouter au bureau selon le magasin retenu."""
+        if app_store == "snap":
+            # On ne retire rien : Firefox arrivera en snap, comme sur une
+            # Ubuntu ordinaire, et snapd est resté actif pour le servir.
+            return ""
+        pkgs = cls._QEMU_APT_NO_SNAP
+        if app_store == "flatpak":
+            # Le greffon donne à GNOME Logiciels la gestion des Flatpak.
+            # Aucun « remote-add » ici : le dépôt reste un choix explicite.
+            pkgs += " flatpak gnome-software-plugin-flatpak"
+        return pkgs
+
     # Accès distant, indépendant du bureau choisi.
     _QEMU_DESKTOP_REMOTE = {
         "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
@@ -4412,7 +4450,7 @@ class TODO:
         )
 
     @staticmethod
-    def _qemu_no_auto_upgrade(prod):
+    def _qemu_no_auto_upgrade(prod, app_store="deb"):
         """Coupe les mises à jour automatiques sur une VM de DÉVELOPPEMENT.
 
         Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
@@ -4440,13 +4478,20 @@ class TODO:
             "fi; "
             # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
             # « systemd-analyze critical-chain » sur une VM s390x —
-            # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
-            # n'installe de snap : c'est du temps payé pour rien, à chaque
-            # démarrage. On désactive plutôt que désinstaller, pour rester
-            # réversible d'un « systemctl enable ».
-            "sudo systemctl disable --now snapd.seeded.service "
-            "snapd.service snapd.socket snapd.apparmor.service "
-            ">/dev/null 2>&1 || true; "
+            # multi-user.target attend snapd.seeded. C'est du temps payé pour
+            # rien quand aucun snap n'est voulu. On désactive plutôt que
+            # désinstaller, pour rester réversible d'un « systemctl enable ».
+            #
+            # Sauf si le magasin RETENU est snap : le couper puis laisser un
+            # postinst appeler « snap install » est exactement ce qui figeait
+            # une VM graphique trente minutes durant.
+            + (
+                ""
+                if app_store == "snap"
+                else "sudo systemctl disable --now snapd.seeded.service "
+                "snapd.service snapd.socket snapd.apparmor.service "
+                ">/dev/null 2>&1 || true; "
+            )
         )
 
     # Miroirs openSUSE préférés, du plus proche au dernier recours. Le
@@ -4547,7 +4592,7 @@ class TODO:
             f'echo "   {t("openSUSE mirror:")} $zm"; break; fi; done; '
         )
 
-    def _qemu_desktop_remote_cmd(self, flavour="gnome"):
+    def _qemu_desktop_remote_cmd(self, flavour="gnome", app_store="deb"):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
         et même traitement du verrou apt : cette étape passe par la commande
@@ -4564,7 +4609,7 @@ class TODO:
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
             f"{de['apt']} {rem['apt']['packages']} "
-            f"{self._QEMU_APT_NO_SNAP}; "
+            f"{self._qemu_apt_store_pkgs(app_store)}; "
             "elif command -v dnf >/dev/null 2>&1; then "
             # Cascade d'environnements : le premier qui existe gagne. Un
             # environnement absent fait rendre 1 à dnf sans rien installer,
@@ -4649,6 +4694,7 @@ class TODO:
         prod=False,
         desktop=False,
         python_provider="",
+        app_store="deb",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -4668,8 +4714,8 @@ class TODO:
             return (
                 "set -e; "
                 + self._qemu_cloud_init_wait()
-                + self._qemu_no_auto_upgrade(prod)
-                + self._qemu_desktop_remote_cmd(desktop)
+                + self._qemu_no_auto_upgrade(prod, app_store)
+                + self._qemu_desktop_remote_cmd(desktop, app_store)
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
@@ -4694,7 +4740,7 @@ class TODO:
         # secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
-        no_auto_upgrade = self._qemu_no_auto_upgrade(prod)
+        no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
         return (
             "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
@@ -4703,7 +4749,12 @@ class TODO:
             # Le bureau d'abord : il repose sur les dépôts de la distribution,
             # là où l'installation ERPLibre compile longuement. Un échec ici se
             # voit donc tôt plutôt qu'après une heure.
-            + (self._qemu_desktop_remote_cmd(desktop) if desktop else "") +
+            + (
+                self._qemu_desktop_remote_cmd(desktop, app_store)
+                if desktop
+                else ""
+            )
+            +
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -4804,6 +4855,7 @@ class TODO:
         prod=False,
         desktop=False,
         python_provider="",
+        app_store="deb",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -4826,6 +4878,7 @@ class TODO:
             prod,
             "" if desk_map else desktop,
             python_provider,
+            app_store,
         )
         try:
             mod = self._qemu_import_module()
@@ -4856,6 +4909,7 @@ class TODO:
                         prod,
                         desk_map.get(name, ""),
                         python_provider,
+                        app_store,
                     )
                 vms.append(entry)
             else:
@@ -4898,6 +4952,7 @@ class TODO:
         prod=False,
         desktop=False,
         python_provider="",
+        app_store="deb",
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -4919,7 +4974,7 @@ class TODO:
             )
             return
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop, python_provider
+            branch, final_cmd, prod, desktop, python_provider, app_store
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -5635,6 +5690,8 @@ class TODO:
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
             "mise_arches": self.QEMU_MISE_ARCHES,
+            "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
+            "snap_distros": self.QEMU_SNAP_DISTROS,
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
             ],
@@ -5925,6 +5982,30 @@ class TODO:
             return ""
         return flavours[index] if 0 <= index < len(flavours) else ""
 
+    @classmethod
+    def _qemu_app_store_needed(cls, vms):
+        """Vrai si au moins une VM du parc est à la fois graphique et d'une
+        distribution qui livre snapd. Ailleurs la question n'a pas d'objet :
+        un serveur ne tire aucun snap, et Debian ou Fedora n'en livrent pas."""
+        return any(
+            vm.get("desktop") and vm.get("distro") in cls.QEMU_SNAP_DISTROS
+            for vm in vms
+        )
+
+    def _qemu_ask_app_store(self, vms):
+        """Magasin d'applications des VM graphiques Ubuntu."""
+        if not self._qemu_app_store_needed(vms):
+            return "deb"
+        print(f"\n{t('Application store (graphical Ubuntu VMs):')}")
+        for i, (_key, label) in enumerate(self.QEMU_APP_STORES, 1):
+            star = " *" if i == 1 else ""
+            print(f"  [{i}] {t(label)}{star}")
+        print(f"  ⚠ {t('snap needs the store; slow under emulation.')}")
+        answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        if answer.isdigit() and 1 <= int(answer) <= len(self.QEMU_APP_STORES):
+            return self.QEMU_APP_STORES[int(answer) - 1][0]
+        return "deb"
+
     def _qemu_ask_python_provider(self, arches):
         """mise (CPython précompilé) ou pyenv (compilation).
 
@@ -6007,6 +6088,11 @@ class TODO:
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
         desktop = self._qemu_ask_desktop()
+        # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
+        # VM avant de décider du magasin, qui ne concerne que les graphiques.
+        for _vm in vms:
+            _vm.setdefault("desktop", desktop)
+        app_store = self._qemu_ask_app_store(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )
@@ -6088,6 +6174,7 @@ class TODO:
             "locale": locale,
             "desktop": desktop,
             "python_provider": python_provider,
+            "app_store": app_store,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
@@ -6168,6 +6255,7 @@ class TODO:
             desktop_map.setdefault(_name, desktop_default)
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
+        app_store = spec.get("app_store") or "deb"
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -6243,6 +6331,7 @@ class TODO:
                     install["prod"] if install else False,
                     desktop=desktop_map,
                     python_provider=python_provider,
+                    app_store=app_store,
                 )
             else:
                 print(
@@ -6259,6 +6348,7 @@ class TODO:
                         install["prod"],
                         desktop=desktop_map.get(name, ""),
                         python_provider=python_provider,
+                        app_store=app_store,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install

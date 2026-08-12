@@ -188,6 +188,7 @@ def build_spec(vms, domains, form):
         "timezone": form.get("timezone", ""),
         "desktop": form.get("desktop", ""),
         "python_provider": form.get("python_provider", ""),
+        "app_store": form.get("app_store", "deb"),
         "install": form["install"],
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
@@ -254,6 +255,10 @@ def run_deploy_form(ctx, run_app: bool = True):
     desktops = list(ctx.get("desktops") or [])
     # Architectures pour lesquelles mise publie un binaire.
     mise_arches = set(ctx.get("mise_arches") or ())
+    # [(clé, libellé)] des magasins d'applications, et les distributions qui
+    # livrent snapd — la question n'a de sens que pour celles-là, graphiques.
+    app_stores = list(ctx.get("app_stores") or [])
+    snap_distros = set(ctx.get("snap_distros") or ())
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -439,6 +444,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                                 f"{t('Graphical (server + desktop):')} {label}",
                                 value=defaults.get("desktop", "") == key,
                             )
+                    if app_stores:
+                        yield Static(
+                            t("Application store:"), classes="grouptitle"
+                        )
+                        with RadioSet(id="f_store"):
+                            for i, (_k, label) in enumerate(app_stores):
+                                yield RadioButton(label, value=i == 0)
+                        yield Static("", id="storewarn")
                     yield Static("ERPLibre", classes="grouptitle")
                     yield Checkbox(
                         t("Install ERPLibre"),
@@ -594,6 +607,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 row["custom"] = bool(self.overrides.get(entry_key(entry)))
             self._render_plan()
             self._render_mise()
+            self._render_store()
 
         def _render_mise(self):
             """Grise le choix quand aucune VM retenue n'est servie par mise,
@@ -622,6 +636,36 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return "pyenv"
             index = self.query_one("#f_python", RadioSet).pressed_index
             return "pyenv" if index == 1 else "mise"
+
+        def _app_store(self):
+            """Magasin retenu. Sans VM concernée, la réponse est « deb » :
+            elle ne change rien, et laisser passer « snap » réactiverait snapd
+            pour rien."""
+            if not app_stores or not self._app_store_needed():
+                return "deb"
+            index = self.query_one("#f_store", RadioSet).pressed_index
+            if index is None or not (0 <= index < len(app_stores)):
+                return app_stores[0][0]
+            return app_stores[index][0]
+
+        def _app_store_needed(self):
+            """Au moins une VM graphique sur une distribution qui livre snapd."""
+            return any(
+                vm.get("desktop") and vm["distro"] in snap_distros
+                for vm in self.vms
+            )
+
+        def _render_store(self):
+            """Grise le choix quand aucune VM ne le concerne, et dit pourquoi."""
+            if not app_stores:
+                return
+            needed = self._app_store_needed()
+            self.query_one("#f_store", RadioSet).disabled = not needed
+            self.query_one("#storewarn", Static).update(
+                ""
+                if needed
+                else f"  {t('No graphical VM on a snap-based distro.')}"
+            )
 
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
@@ -1011,6 +1055,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 or "",
                 "desktop": self._default_desktop(),
                 "python_provider": self._python_provider(),
+                "app_store": self._app_store(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 # Une exécution par installation : le nombre de VM retenues

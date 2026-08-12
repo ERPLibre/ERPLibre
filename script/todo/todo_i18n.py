@@ -2155,6 +2155,34 @@ TRANSLATIONS = {
         "fr": "ajustez-les VM par VM dans la vue de droite.",
         "en": "adjust any of them per VM on the right.",
     },
+    "Application store:": {
+        "fr": "Magasin d'applications :",
+        "en": "Application store:",
+    },
+    "Application store (graphical Ubuntu VMs):": {
+        "fr": "Magasin d'applications (VM Ubuntu graphiques) :",
+        "en": "Application store (graphical Ubuntu VMs):",
+    },
+    "deb only (epiphany-browser)": {
+        "fr": "deb uniquement (epiphany-browser)",
+        "en": "deb only (epiphany-browser)",
+    },
+    "Flatpak tooling, no Flathub": {
+        "fr": "outillage Flatpak, sans Flathub",
+        "en": "Flatpak tooling, no Flathub",
+    },
+    "snap (Ubuntu default, Firefox)": {
+        "fr": "snap (défaut Ubuntu, Firefox)",
+        "en": "snap (Ubuntu default, Firefox)",
+    },
+    "snap needs the store; slow under emulation.": {
+        "fr": "snap exige le store ; lent sous émulation.",
+        "en": "snap needs the store; slow under emulation.",
+    },
+    "No graphical VM on a snap-based distro.": {
+        "fr": "Aucune VM graphique sur une distribution à snap.",
+        "en": "No graphical VM on a snap-based distro.",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
