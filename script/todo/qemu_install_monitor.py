@@ -1144,6 +1144,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("plus", "col_grow", "Colonne +"),
             ("minus", "col_shrink", "Colonne -"),
             ("0", "col_reset", "Colonnes par défaut"),
+            ("less_than_sign", "col_prev", "Colonne précédente"),
+            ("greater_than_sign", "col_next", "Colonne suivante"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -1151,6 +1153,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def __init__(self):
             super().__init__()
             self._offsets = {vm["name"]: 0 for vm in vms}
+            # Colonne visee par « + » / « - » : le nom de VM, celle qu'on a
+            # vraiment besoin d'elargir. « < » et « > » la deplacent.
+            self._col_target = list(COL_DEFAULT_WIDTHS).index("vm")
             self._selected = vms[0]["name"] if vms else None
             self._follow = True
             # Statuts TERMINAUX mémorisés : une VM finie n'est plus relue
@@ -1793,14 +1798,20 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         COL_MAX = 60
 
         def _cursor_column(self):
-            """Colonne sous le curseur, ou None. DataTable expose ses colonnes
-            dans un dictionnaire ORDONNÉ : le rang du curseur y donne la clé.
-            """
+            """Colonne VISEE par le redimensionnement.
+
+            Surtout pas « table.cursor_column » : le curseur est en mode
+            LIGNE, sa colonne reste donc a 0 quoi qu'on fasse. Chaque « + » ou
+            « - » tombait sur « # », large de 3 et deja a sa butee — d'ou un
+            avertissement en boucle et aucune colonne atteignable.
+
+            La cible se deplace avec « < » et « > », et part sur le nom de VM,
+            la seule qu'on ait vraiment besoin d'elargir."""
             table = self.query_one("#vms", DataTable)
             keys = list(table.columns)
-            index = table.cursor_column
-            if not (0 <= index < len(keys)):
+            if not keys:
                 return None, None
+            index = max(0, min(self._col_target, len(keys) - 1))
             return table, keys[index]
 
         def _apply_column_widths(self, table) -> None:
@@ -1843,6 +1854,23 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Pas de notification quand ça marche : le changement se VOIT, et
             # une bulle par frappe rendait l'ajustement pénible.
             self._apply_column_widths(table)
+
+        def _move_col_target(self, delta) -> None:
+            """Deplace la cible, en boucle sur les colonnes."""
+            table = self.query_one("#vms", DataTable)
+            keys = list(table.columns)
+            if not keys:
+                return
+            self._col_target = (self._col_target + delta) % len(keys)
+            self.notify(
+                f"Colonne visee : {table.columns[keys[self._col_target]].label}"
+            )
+
+        def action_col_prev(self) -> None:
+            self._move_col_target(-1)
+
+        def action_col_next(self) -> None:
+            self._move_col_target(1)
 
         def action_col_grow(self) -> None:
             self._resize_column(self.COL_STEP)
