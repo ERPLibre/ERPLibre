@@ -1087,14 +1087,19 @@ class TODO:
         print(f"{t('Invalid selection, using')} {default}")
         return default
 
-    # Distros publiant des images cloud par architecture (cohérent avec
-    # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
+    # Repli SEULEMENT : la table qui fait autorité est ARCH_DISTRO_SUPPORT de
+    # deploy_qemu.py, lue par _qemu_arch_distros. Ces tuples ont longtemps été
+    # une copie à la main, avec le commentaire « cohérent avec deploy_qemu » en
+    # guise de garantie — et la cohérence a rompu à la première évolution :
+    # Debian a gagné s390x là-bas sans l'obtenir ici, donc l'écran ne le
+    # proposait pas. On ne les garde que pour le cas où l'import échoue.
     _QEMU_S390X_DISTROS = (
         "ubuntu",
         "almalinux",
         "rocky",
         "fedora",
         "opensuse",
+        "debian",
     )
     _QEMU_ARM64_DISTROS = (
         "ubuntu",
@@ -1124,12 +1129,24 @@ class TODO:
         }.get(machine, "amd64")
 
     def _qemu_arch_distros(self, arch):
-        """Distros supportant `arch` (None = toutes, cas amd64)."""
-        if arch == "s390x":
-            return self._QEMU_S390X_DISTROS
-        if arch == "arm64":
-            return self._QEMU_ARM64_DISTROS
-        return None
+        """Distros supportant `arch` (None = toutes, cas amd64).
+
+        Lu dans deploy_qemu.py, qui refuse aussi les combinaisons qu'il
+        n'annonce pas : une seule table, donc aucun écran ne peut proposer un
+        choix rejeté ensuite. « amd64 » n'y figure pas et rend None, ce qui
+        veut bien dire « toutes » — c'est le contrat attendu ici.
+        """
+        try:
+            table = getattr(self._qemu_import_module(), "ARCH_DISTRO_SUPPORT")
+        except Exception:
+            # Repli sur les copies locales : mieux vaut un catalogue figé
+            # qu'un écran vide si deploy_qemu.py est absent ou cassé.
+            if arch == "s390x":
+                return self._QEMU_S390X_DISTROS
+            if arch == "arm64":
+                return self._QEMU_ARM64_DISTROS
+            return None
+        return table.get(arch)
 
     def _qemu_last_run_line(self):
         """Ligne « dernière install » (distro version [arch] en durée), depuis
@@ -4007,13 +4024,22 @@ class TODO:
     ERPLIBRE_GIT_URL = "https://github.com/erplibre/erplibre"
 
     def _qemu_import_module(self):
-        """Importe deploy_qemu.py comme module (source de vérité des specs)."""
+        """Importe deploy_qemu.py comme module (source de vérité des specs).
+
+        Mémorisé : le catalogue interroge cette source une fois par couple
+        (distro, version), et réexécuter un fichier de 2 700 lignes à chaque
+        passage se voyait à l'écran.
+        """
+        cached = getattr(self, "_qemu_mod_cache", None)
+        if cached is not None:
+            return cached
         import importlib.util
 
         path = self._qemu_script_path()
         spec = importlib.util.spec_from_file_location("deploy_qemu", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+        self._qemu_mod_cache = mod
         return mod
 
     @classmethod
@@ -5828,11 +5854,13 @@ class TODO:
         « all » = uniquement celles que la distro publie réellement."""
         if arch != "all":
             return [arch]
+        # Même source que _qemu_arch_distros : « all » ne doit jamais offrir
+        # une combinaison que deploy_qemu.py refusera.
         out = ["amd64"]
-        if distro in self._QEMU_ARM64_DISTROS:
-            out.append("arm64")
-        if distro in self._QEMU_S390X_DISTROS:
-            out.append("s390x")
+        for a in ("arm64", "s390x"):
+            supported = self._qemu_arch_distros(a)
+            if supported and distro in supported:
+                out.append(a)
         return out
 
     def _qemu_catalog_entries(self, mod, distros, arch):

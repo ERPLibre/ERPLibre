@@ -203,6 +203,10 @@ ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
 # cloud-init, un disque VIERGE et un amorçage kernel+initrd.
 INSTALLER_COMBOS: tuple[tuple[str, str], ...] = (("debian", "s390x"),)
 
+# Plancher mémoire de l'installateur : il déplie un système de fichiers entier
+# en RAM, là où une image cloud arrive déjà installée.
+INSTALLER_MIN_RAM = 2048
+
 # kernel.debian / initrd.debian du port s390x. « current » suit les mises à
 # jour de l'installateur sans figer un numéro qui périmerait.
 INSTALLER_URL = (
@@ -2585,6 +2589,19 @@ def main() -> None:
         kernel = cache / f"debian-{args.version}-s390x-kernel"
         initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
         initrd = cache / f"{args.name}-initrd.gz"
+        # Le dimensionnement du catalogue vient des images cloud, où le
+        # système est DÉJÀ installé. debian-installer, lui, déplie un système
+        # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
+        # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
+        # manque de mémoire s'y manifeste par un écran figé sans message.
+        # On relève le plancher, en le disant — un réglage explicite plus haut
+        # n'est jamais abaissé.
+        if args.memory < INSTALLER_MIN_RAM:
+            print(
+                f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
+                f" l'installateur (catalogue : {args.memory})."
+            )
+            args.memory = INSTALLER_MIN_RAM
         print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
         download_image(
             [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
