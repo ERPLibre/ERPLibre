@@ -6509,6 +6509,7 @@ description = "A high performance Python library for data extraction, analysis, 
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "platform_machine != \"s390x\""
 files = [
     {file = "pymupdf-1.28.2-cp310-abi3-macosx_10_15_x86_64.whl", hash = "sha256:5fc315b425ff1f7afdd1ea2f348205cb19b806767daae7ce4d64115799c2bae1"},
     {file = "pymupdf-1.28.2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:7113846b35dbf0a033f088e4f4fb543dabeb4b0b12c112966a1ca1ee2d5eacae"},
@@ -9487,4 +9488,4 @@ bindings = ["ghostscript"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12.10,<3.13"
-content-hash = "993d134251257f93580b02fd36c249d5f37c7957fe3aa314b19f6f17722f3a1f"
+content-hash = "7f1a4d558e493d667761a2a6cbe490ac7a01044a8dbb22c51999c5c79132db97"
