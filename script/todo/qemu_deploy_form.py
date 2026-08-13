@@ -145,6 +145,9 @@ def apply_profile(
                 # Branche ERPLibre. Même raison : « » signifie « celle du
                 # formulaire », et une surcharge la remplace pour cette VM.
                 "branch": "",
+                # Profil d'installation (« ERPLibre + Odoo 18 »). Même
+                # convention : « » = celui du formulaire.
+                "install_cmd": "",
             }
         )
     return out
@@ -440,7 +443,10 @@ def run_deploy_form(ctx, run_app: bool = True):
         /* La branche porte des noms longs (« 1.6.0 », « develop »,
         « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
         plus ce qu'on a choisi. */
-        .vmbranch { width: 18; }
+        .vmbranch { width: 24; }
+        /* Les libellés de profil sont longs (« ERPLibre + Odoo 18 ») :
+        tronqués, on ne sait plus quelle version d'Odoo on déploie. */
+        .vmprof { width: 28; }
         .vmcopy { width: 5; min-width: 5; }
         .vmhead { height: 1; }
         .vmrow { height: 3; align-vertical: middle; }
@@ -818,6 +824,24 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
 
+        def _profile_cmd(self):
+            """Commande du profil choisi en haut : le défaut de chaque VM."""
+            if not profiles:
+                return ""
+            index = self.query_one("#f_profile_install", Select).value
+            return profiles[index if isinstance(index, int) else 0][1]
+
+        def _row_profile_index(self, i):
+            """Rang du profil que la rangée doit AFFICHER."""
+            cmd = ""
+            if i < len(self.rows):
+                cmd = self.rows[i]["vm"].get("install_cmd") or ""
+            cmd = cmd or self._profile_cmd()
+            for k, (_lbl, c) in enumerate(profiles):
+                if c == cmd:
+                    return k
+            return 0
+
         def _branch(self):
             """Branche du formulaire : le défaut de chaque VM."""
             value = self.query_one("#f_branch", Select).value
@@ -952,6 +976,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id=f"v{i}_branch",
                     ),
+                    (
+                        Select(
+                            [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
+                            value=self._row_profile_index(i),
+                            allow_blank=False,
+                            classes="vmprof",
+                            id=f"v{i}_prof",
+                        )
+                        if profiles
+                        else Static("", classes="vmprof")
+                    ),
                     Select(
                         self._type_options(),
                         value=vm.get("desktop") or SERVER,
@@ -1023,6 +1058,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 for wid, value in (
                     (f"#v{i}_type", vm.get("desktop") or SERVER),
                     (f"#v{i}_branch", vm.get("branch") or self._branch()),
+                    (f"#v{i}_prof", self._row_profile_index(i)),
                 ):
                     try:
                         self.query_one(wid, Select).value = value
@@ -1187,7 +1223,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._syncing:
                 return
             wid = event.select.id or ""
-            row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch)$", wid)
+            row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
             if row:
                 index, field = int(row.group(1)), row.group(2)
                 if index >= len(self.rows):
@@ -1204,6 +1240,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # suivra donc le profil s'il change — ce qui est aussi le plus
                 # attendu quand on n'a rien changé de visible.
                 vm_now = self.rows[index]["vm"]
+                if field == "prof":
+                    cmd = profiles[event.value][1]
+                    if cmd == (
+                        vm_now.get("install_cmd") or self._profile_cmd()
+                    ):
+                        return
+                    self._set_override(
+                        index,
+                        "install_cmd",
+                        "" if cmd == self._profile_cmd() else cmd,
+                    )
+                    self._recompute()
+                    return
                 if field == "branch":
                     # « la branche du formulaire » n'est pas une surcharge :
                     # la VM doit suivre si on la change en haut.

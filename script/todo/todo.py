@@ -4912,9 +4912,13 @@ class TODO:
         # une carte {nom: branche} quand elles diffèrent d'une VM à l'autre.
         branch_map = branch if isinstance(branch, dict) else {}
         branch_def = "" if branch_map else branch
+        # Idem pour le profil : « ERPLibre + Odoo 18 » peut differer d'une
+        # machine a l'autre, on valide alors deux versions d'un coup.
+        cmd_map = final_cmd if isinstance(final_cmd, dict) else {}
+        cmd_def = None if cmd_map else final_cmd
         remote = self._qemu_erplibre_remote_cmd(
             branch_def,
-            final_cmd,
+            cmd_def,
             prod,
             "" if desk_map else desktop,
             python_provider,
@@ -4942,10 +4946,10 @@ class TODO:
                     "version": v,
                     "arch": a,
                 }
-                if desk_map or branch_map:
+                if desk_map or branch_map or cmd_map:
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
                         branch_map.get(name, branch_def),
-                        final_cmd,
+                        cmd_map.get(name, cmd_def),
                         prod,
                         desk_map.get(name, ""),
                         python_provider,
@@ -6313,6 +6317,13 @@ class TODO:
         for _n in deployed:
             branch_map.setdefault(_n, install_branch or "")
         branch_multi = len(set(branch_map.values())) > 1
+        base_cmd = install["cmd"] if install else None
+        cmd_map = {
+            vm["name"]: (vm.get("install_cmd") or base_cmd) for vm in pending
+        }
+        for _n in deployed:
+            cmd_map.setdefault(_n, base_cmd)
+        cmd_multi = len(set(cmd_map.values())) > 1
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -6384,7 +6395,7 @@ class TODO:
                     deployed,
                     branch_map if branch_multi else install_branch,
                     ip_map,
-                    install["cmd"] if install else None,
+                    cmd_map if cmd_multi else base_cmd,
                     install["prod"] if install else False,
                     desktop=desktop_map,
                     python_provider=python_provider,
