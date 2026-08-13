@@ -1083,14 +1083,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                         ),
                     )
                 )
-            if widgets:
-                plan.mount_all(widgets)
 
             # Marque de génération, posée sur CHAQUE widget de rangée.
             # « walk_children() » ne voit RIEN avant le montage : les enfants
-            # passés au constructeur attendent dans « _pending_children », et
-            # le montage est asynchrone. Marquer trop tard laisserait passer
-            # les premiers événements, ceux-là mêmes qu'il faut filtrer.
+            # passés au constructeur attendent dans « _pending_children ».
             def mark(node):
                 node._el_gen = self._gen
                 for child in getattr(node, "_pending_children", None) or []:
@@ -1098,6 +1094,14 @@ def run_deploy_form(ctx, run_app: bool = True):
 
             for card in widgets:
                 mark(card)
+            # Le montage vient APRÈS le marquage, jamais avant : « mount_all »
+            # consomme « _pending_children » et le vide. Marquer ensuite était
+            # une COURSE — gagnée sur une machine, perdue sur une autre. Perdue,
+            # les listes des rangées n'avaient plus de génération, TOUS les
+            # changements par VM étaient rejetés en silence, et seuls les
+            # réglages globaux semblaient agir.
+            if widgets:
+                plan.mount_all(widgets)
             self._shown_ids = self._row_ids()
             # Les saisies libres ne se révèlent qu'après le montage : leur
             # style ne peut pas être touché avant qu'elles existent.
