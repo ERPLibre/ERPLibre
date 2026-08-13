@@ -4750,6 +4750,26 @@ TRANSLATIONS = {
         "fr": "Le lancer avec",
         "en": "Run it with",
     },
+    "No leftover for theme": {
+        "fr": "Aucun reste pour le thème",
+        "en": "No leftover for theme",
+    },
+    "attachment(s) still under": {
+        "fr": "pièce(s) jointe(s) encore sous",
+        "en": "attachment(s) still under",
+    },
+    "view(s) whose key still names it": {
+        "fr": "vue(s) dont la clé le nomme encore",
+        "en": "view(s) whose key still names it",
+    },
+    "Nothing was deleted: their content may be the only trace": {
+        "fr": "Rien n'a été supprimé : leur contenu peut être la seule trace",
+        "en": "Nothing was deleted: their content may be the only trace",
+    },
+    "of a customization. Read before removing.": {
+        "fr": "d'une personnalisation. Lire avant de retirer.",
+        "en": "of a customization. Read before removing.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
