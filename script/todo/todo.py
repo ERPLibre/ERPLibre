@@ -4423,6 +4423,52 @@ class TODO:
     )
     QEMU_SNAP_DISTROS = ("ubuntu",)
 
+    # Fuseaux proposés au déploiement. Des NOMS IANA, pas des décalages :
+    # cloud-init écrit /etc/timezone et refuse « UTC-5 », qui ne dit d'ailleurs
+    # rien de l'heure d'été. Un nom porte ses propres règles de bascule.
+    #
+    # Liste courte et ordonnée par usage réel plutôt qu'exhaustive : la base
+    # IANA en compte près de six cents, illisibles dans une liste déroulante.
+    # Le Québec d'abord, le reste du Canada ensuite, puis les places qu'on
+    # rencontre en pratique. La saisie libre reste offerte pour le reste.
+    QEMU_TIMEZONES = (
+        "America/Montreal",
+        "America/Toronto",
+        "America/Halifax",
+        "America/Winnipeg",
+        "America/Edmonton",
+        "America/Vancouver",
+        "America/St_Johns",
+        "UTC",
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Sao_Paulo",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Brussels",
+        "Europe/Zurich",
+        "Europe/Madrid",
+        "Europe/Berlin",
+        "Africa/Casablanca",
+        "Asia/Dubai",
+        "Asia/Kolkata",
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+    )
+
+    @classmethod
+    def _qemu_timezone_choices(cls, current=""):
+        """Liste à proposer : le fuseau de l'hôte en tête, sans doublon.
+
+        Le mettre en premier plutôt que de le supposer présent : une machine
+        hors de cette liste doit quand même voir le sien en un coup d'œil."""
+        out = [current] if current else []
+        out += [z for z in cls.QEMU_TIMEZONES if z != current]
+        return out
+
     @classmethod
     def _qemu_desktop_suffixes(cls):
         """{clé de saveur: suffixe de nom}. La TUI le reçoit par son contexte
@@ -5772,6 +5818,9 @@ class TODO:
             "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
             "mise_arches": self.QEMU_MISE_ARCHES,
             "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
+            "timezones": self._qemu_timezone_choices(
+                self._qemu_host_timezone()
+            ),
             "snap_distros": self.QEMU_SNAP_DISTROS,
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktops": [
