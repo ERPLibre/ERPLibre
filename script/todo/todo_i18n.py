@@ -2183,6 +2183,18 @@ TRANSLATIONS = {
         "fr": "Aucune VM graphique sur une distribution à snap.",
         "en": "No graphical VM on a snap-based distro.",
     },
+    "Resources — applied to ALL VMs": {
+        "fr": "Ressources — appliquées à TOUTES les VM",
+        "en": "Resources — applied to ALL VMs",
+    },
+    "The profile and these fields change EVERY VM.": {
+        "fr": "Le profil et ces champs changent TOUTES les VM.",
+        "en": "The profile and these fields change EVERY VM.",
+    },
+    "A VM edited on the right (marked) keeps its own.": {
+        "fr": "Une VM modifiée à droite (marquée ✎) garde les siennes.",
+        "en": "A VM edited on the right (marked) keeps its own.",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",

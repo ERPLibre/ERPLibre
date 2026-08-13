@@ -402,7 +402,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                             yield RadioButton(label, value=a == self.arch)
                     yield Static(t("Catalog"), classes="grouptitle")
                     yield SelectionList(id="f_catalog")
-                    yield Static(t("Resources per VM"), classes="grouptitle")
+                    yield Static(
+                        t("Resources — applied to ALL VMs"),
+                        classes="grouptitle",
+                    )
                     with RadioSet(id="f_profile"):
                         for label in ("x1", "x2", "x3", "x4"):
                             yield RadioButton(label, value=label == "x1")
@@ -454,8 +457,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                         disabled=True,
                     )
                     yield Static(
-                        f"  {t('These values are the default for every VM;')}"
-                        f"\n  {t('adjust any of them per VM on the right.')}",
+                        f"  {t('The profile and these fields change EVERY VM.')}"
+                        f"\n  {t('A VM edited on the right (marked) keeps its own.')}",
                         id="scopetarget",
                     )
                     # Serveur par défaut : c'est ce que sert une image cloud,
@@ -720,7 +723,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             ]
 
         def _mount_rows(self) -> None:
-            """(Re)construit le panneau droit."""
+            """(Re)construit le panneau droit.
+
+            Le verrou couvre TOUT le montage : poser « value= » sur un Select
+            fait émettre un Changed à Textual, que on_select_changed prenait
+            pour une saisie. Résultat mesuré — les trois champs de CHAQUE VM
+            recevaient une surcharge dès l'affichage, le profil x1..x4 ne
+            pouvait plus rien changer, et toutes les lignes portaient la
+            marque ✎. Il est relâché après le rafraîchissement, une fois ces
+            messages consommés."""
+            self._syncing = True
             plan = self.query_one("#plan", VerticalScroll)
             plan.remove_children()
             widgets = []
@@ -810,7 +822,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._shown_ids = self._row_ids()
             # Les saisies libres ne se révèlent qu'après le montage : leur
             # style ne peut pas être touché avant qu'elles existent.
-            self.call_after_refresh(self._sync_free_inputs)
+            self.call_after_refresh(self._after_mount_rows)
+
+        def _after_mount_rows(self) -> None:
+            self._sync_free_inputs()
+            self._syncing = False
 
         def _sync_free_inputs(self) -> None:
             for i, r in enumerate(self.rows):
@@ -957,6 +973,29 @@ def run_deploy_form(ctx, run_app: bool = True):
             row = re.match(r"v(\d+)_(vcpus|ram|disk|type)$", wid)
             if row:
                 index, field = int(row.group(1)), row.group(2)
+                if index >= len(self.rows):
+                    return
+                # Poser « value= » au montage fait émettre un Changed que
+                # Textual délivre APRÈS coup : un verrou temporel ne l'attrape
+                # pas — mesuré, les trois champs de chaque VM se retrouvaient
+                # surchargés dès l'affichage et le profil x1..x4 devenait
+                # inopérant. On compare donc à ce que le modèle dit déjà : une
+                # valeur identique n'est pas une saisie, c'est l'écho.
+                #
+                # Cas limite assumé : choisir explicitement la valeur que le
+                # profil donne déjà n'enregistre pas de surcharge. La VM
+                # suivra donc le profil s'il change — ce qui est aussi le plus
+                # attendu quand on n'a rien changé de visible.
+                vm_now = self.rows[index]["vm"]
+                if field == "type":
+                    new_desk = "" if event.value == SERVER else event.value
+                    if new_desk == (vm_now.get("desktop") or ""):
+                        return
+                elif (
+                    event.value is not FREE and event.value is not SELECT_NULL
+                ):
+                    if event.value == vm_now.get(field):
+                        return
                 if field == "type":
                     self._set_override(
                         index,
