@@ -5421,7 +5421,7 @@ class TODO:
             "Group=$SVC_GROUP\n"
             "Restart=always\n"
             "RestartSec=5\n"
-            "ExecStart=$SVC_DIR/run.sh\n"
+            "ExecStart=/bin/bash $SVC_DIR/run.sh\n"
             "WorkingDirectory=$SVC_DIR\n"
             "StandardOutput=journal+console\n"
             "$SELINUX_LINE\n"
