@@ -4902,9 +4902,13 @@ class TODO:
         # une carte {nom: branche} quand elles diffèrent d'une VM à l'autre.
         branch_map = branch if isinstance(branch, dict) else {}
         branch_def = "" if branch_map else branch
+        # Idem pour le profil : « ERPLibre + Odoo 18 » peut differer d'une
+        # machine a l'autre, on valide alors deux versions d'un coup.
+        cmd_map = final_cmd if isinstance(final_cmd, dict) else {}
+        cmd_def = None if cmd_map else final_cmd
         remote = self._qemu_erplibre_remote_cmd(
             branch_def,
-            final_cmd,
+            cmd_def,
             prod,
             "" if desk_map else desktop,
             python_provider,
@@ -4932,10 +4936,10 @@ class TODO:
                     "version": v,
                     "arch": a,
                 }
-                if desk_map or branch_map:
+                if desk_map or branch_map or cmd_map:
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
                         branch_map.get(name, branch_def),
-                        final_cmd,
+                        cmd_map.get(name, cmd_def),
                         prod,
                         desk_map.get(name, ""),
                         python_provider,
@@ -5361,10 +5365,33 @@ class TODO:
             gigs = self._parse_disk_gb(vm["disk"]) + (
                 self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
             )
+            # Ce qui S'ECARTE du choix commun se dit sur la ligne de la VM.
+            # Sans cela le sommaire annoncait le profil general pour tout le
+            # monde, y compris pour une VM figee sur un autre — on lisait
+            # « Odoo 15 » avant de deployer une machine en Odoo 18.
+            apart = []
+            # Seul ce qui DIFFERE vaut d'etre signale : une VM figee sur la
+            # meme branche que le global n'a rien de particulier a montrer,
+            # et repeter la valeur commune sur chaque ligne la noierait.
+            if install and vm.get("branch") and vm["branch"] != branch:
+                apart.append(vm["branch"])
+            if (
+                vm.get("install_label")
+                and install
+                and vm.get("install_cmd") != install.get("cmd")
+            ):
+                apart.append(vm["install_label"])
+            if vm.get("desktop") and vm["desktop"] != spec.get("desktop"):
+                apart.append(
+                    (self._QEMU_DESKTOP.get(vm["desktop"]) or {}).get(
+                        "label", vm["desktop"]
+                    )
+                )
             print(
                 f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
                 f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
                 f"{t('disk')} {gigs}G"
+                + (f"  ⟵ {' · '.join(apart)}" if apart else "")
             )
         if existing:
             print(f"  {t('Existing, left untouched:')} {', '.join(existing)}")
@@ -5374,9 +5401,22 @@ class TODO:
                 if install["prod"]
                 else t("development (~/git)")
             )
+            # « par defaut » : chaque VM peut s'en ecarter, et sa ligne le dit.
+            # Ce qui sera REELLEMENT pose, pas le defaut du formulaire. Avec
+            # une seule VM figee sur un autre profil, annoncer le defaut
+            # revenait a nommer une version que rien n'installe — c'est
+            # exactement ce qu'on relit ici pour eviter de se tromper.
+            used_br = {vm.get("branch") or branch for vm in spec["vms"]}
+            used_lb = {
+                vm.get("install_label") or install["label"]
+                for vm in spec["vms"]
+            }
+            varies = t("varies, see each line")
+            br_txt = used_br.pop() if len(used_br) == 1 else varies
+            lb_txt = used_lb.pop() if len(used_lb) == 1 else varies
             print(
-                f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
-                f"{t('profile')} {install['label']}, {env}"
+                f"  {t('ERPLibre install:')} {t('branch')} {br_txt}, "
+                f"{t('profile')} {lb_txt}, {env}"
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
@@ -6305,6 +6345,13 @@ class TODO:
         for _n in deployed:
             branch_map.setdefault(_n, install_branch or "")
         branch_multi = len(set(branch_map.values())) > 1
+        base_cmd = install["cmd"] if install else None
+        cmd_map = {
+            vm["name"]: (vm.get("install_cmd") or base_cmd) for vm in pending
+        }
+        for _n in deployed:
+            cmd_map.setdefault(_n, base_cmd)
+        cmd_multi = len(set(cmd_map.values())) > 1
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -6376,7 +6423,7 @@ class TODO:
                     deployed,
                     branch_map if branch_multi else install_branch,
                     ip_map,
-                    install["cmd"] if install else None,
+                    cmd_map if cmd_multi else base_cmd,
                     install["prod"] if install else False,
                     desktop=desktop_map,
                     python_provider=python_provider,
