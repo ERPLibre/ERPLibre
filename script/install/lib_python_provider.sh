@@ -55,6 +55,45 @@ el_python_is_version() {
   [ "${got}" = "${want}" ]
 }
 
+# Vrai si l'exécutable CONVIENT : même majeure.mineure, et patch au moins
+# égal au demandé. C'est exactement ce qu'exige le pyproject — « >=3.12.10,
+# <3.13 » — et non l'égalité stricte que testait el_python_is_version.
+#
+# La distinction n'est pas théorique. Tumbleweed s390x livre python312 en
+# 3.12.13 : parfaitement utilisable, mais rejeté par l'égalité, ce qui forçait
+# pyenv à COMPILER CPython — et gcc 15.2 s'y arrête sur une erreur interne
+# dans Parser/parser.c, un fichier généré de quarante mille lignes.
+el_python_is_compatible() {
+  local exe="$1" want="$2" got
+  [ -x "${exe}" ] || return 1
+  got="$("${exe}" -c 'import platform;print(platform.python_version())' \
+    2> /dev/null)"
+  [ -n "${got}" ] || return 1
+  # Même majeure.mineure : 3.13 ne convient pas à un pyproject borné à <3.13.
+  [ "${got%.*}" = "${want%.*}" ] || return 1
+  # Patch au moins égal, comparé en version et non en chaîne (3.12.9 < 3.12.10).
+  [ "$(printf '%s\n%s\n' "${want}" "${got}" | sort -V | head -1)" = "${want}" ]
+}
+
+# Interpréteur de la DISTRIBUTION qui conviendrait, s'il y en a un.
+#
+# Cherché avant toute compilation : sur une architecture émulée, bâtir CPython
+# prend des dizaines de minutes quand il aboutit. Le nom suit la convention de
+# toutes les distributions, « python3.12 ».
+el_distro_python_exec() {
+  local want="$1" exe
+  # Des chemins SYSTEME, jamais « command -v » : dans un venv activé celui-ci
+  # rend le python DU VENV, et l'on bâtirait un venv depuis un venv. Le PATH
+  # d'une session interactive n'a rien à faire dans cette décision.
+  for exe in "/usr/bin/python${want%.*}" "/usr/local/bin/python${want%.*}"; do
+    if el_python_is_compatible "${exe}" "${want}"; then
+      echo "${exe}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Installe la version via mise. Renvoie le chemin, ou échoue.
 el_mise_install() {
   local version="$1" exe
@@ -128,7 +167,21 @@ el_python_exec() {
     fi
   fi
 
-  # 2) Rien de posé : il faut provisionner. mise d'abord quand il est là,
+  # 2) Un interpréteur de la DISTRIBUTION qui convient ? Rien à installer,
+  #    rien à compiler. Vérifié avant mise et pyenv : c'est le seul chemin
+  #    qui ne coûte rien, et sur s390x le seul qui aboutisse partout — mise
+  #    n'y publie aucun binaire, et pyenv doit compiler.
+  #    Uniquement en mode « auto » : demander mise ou pyenv explicitement doit
+  #    être respecté, sinon le réglage ne veut plus rien dire.
+  if [ "${provider}" = "auto" ] \
+    && exe="$(el_distro_python_exec "${version}")"; then
+    echo "Python $("${exe}" -V 2>&1 | awk '{print $2}') de la distribution :" \
+      "aucune compilation." >&2
+    echo "${exe}"
+    return 0
+  fi
+
+  # 3) Rien de posé : il faut provisionner. mise d'abord quand il est là,
   #    parce qu'il télécharge au lieu de compiler.
   if [ "${provider}" != "pyenv" ]; then
     if exe="$(el_mise_install "${version}")"; then
