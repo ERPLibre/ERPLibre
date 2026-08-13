@@ -262,8 +262,17 @@ if [ "$(uname -m)" = "s390x" ]; then
   #
   # GeographicLib est absent : openSUSE n'empaquette que le binding Python,
   # pas la bibliothèque C++. Rien à poser, contrairement à apt et dnf.
+  #   proj        le BINAIRE, pas seulement « proj-devel ». openSUSE éclate
+  #               PROJ en trois paquets : libproj25 la bibliothèque, proj-devel
+  #               les en-têtes, proj les outils en ligne de commande. pyproj ne
+  #               se contente pas des en-têtes — il EXÉCUTE « proj » pour
+  #               localiser l'installation, et sans lui s'arrête sur « proj
+  #               executable not found. Please set the PROJ_DIR variable ».
+  #               proj-devel ne le tire pas : la dépendance manque en silence
+  #               jusqu'au build, et aucune roue s390x ne vient l'éviter.
   zyp_soft qpdf-devel libjpeg8-devel cmake pkgconf-pkg-config \
-    tbb-devel geos-devel proj-devel krb5-devel ninja clang-devel llvm-devel
+    tbb-devel geos-devel proj proj-devel krb5-devel ninja clang-devel \
+    llvm-devel
   # Tumbleweed livre qpdf 12.3.2 : l'appel ne fait que le constater. Il est là
   # pour que les trois familles suivent la même règle.
   el_qpdf_ensure

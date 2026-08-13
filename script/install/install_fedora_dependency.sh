@@ -115,9 +115,16 @@ if [ "$(uname -m)" = "s390x" ]; then
   # roues masquent le besoin ; ici tout compile, et bcrypt s'arrête net sur
   # « error: can't find Rust compiler ». Les versions livrées suffisent
   # (AlmaLinux 1.92, Fedora plus récent) au Cargo.lock v4 qui exige 1.78.
+  # « proj » nommé À CÔTÉ de « proj-devel » : pyproj n'a pas de roue s390x, il
+  # compile, et sa configuration EXÉCUTE le binaire « proj » pour localiser
+  # l'installation — les en-têtes seules ne suffisent pas. Ici le paquet
+  # principal porte /usr/bin/proj et « proj-devel » l'exige, donc l'arriver
+  # transitivement fonctionnerait ; on le nomme quand même, comme apt le fait
+  # avec « proj-bin », parce que openSUSE a prouvé que cette arête n'existe pas
+  # partout — elle y manque, et l'échec n'apparaît qu'au build.
   ${DNF} \
     rust cargo \
-    libjpeg-turbo-devel zlib-devel geos-devel proj-devel \
+    libjpeg-turbo-devel zlib-devel geos-devel proj proj-devel \
     krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
     GeographicLib-devel pkgconf-pkg-config cmake
 
