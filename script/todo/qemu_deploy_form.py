@@ -1171,12 +1171,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.arch = arches[event.radio_set.pressed_index]
                 self._reload_catalog()
             elif event.radio_set.id == "f_type":
+                self._clear_overrides(("desktop",))
                 # Recalcul : le disque annonce inclut le bureau, et la
                 # colonne Statut affiche le type de VM.
                 self._recompute()
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
+                self._clear_overrides(("vcpus", "ram", "disk"))
                 custom = self.profile == "custom"
                 for field, (sel, _inp) in RES_FIELDS.items():
                     self.query_one(sel, Select).disabled = not custom
@@ -1198,6 +1200,36 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _row_key(self, index):
             entries = self._plan_entries()
             return entry_key(entries[index]) if index < len(entries) else None
+
+        def _clear_overrides(self, fields) -> None:
+            """Rend au choix commun les VM NON figées, pour ces champs-là.
+
+            Le cadenas est la seule chose qui résiste. Une valeur réglée à la
+            main sur une rangée cède donc au choix global suivant : c'est ce
+            qu'on attend d'un réglage « général », et le verrou existe
+            précisément pour dire « pas celle-ci ».
+
+            Par champ, pas en bloc : changer la RAM générale n'a aucune raison
+            d'effacer le disque qu'on a réglé sur une VM.
+
+            « name » n'y figure jamais : un renommage est explicite et ne
+            découle d'aucune valeur générale."""
+            changed = False
+            for key in list(self.overrides):
+                if key in self.locked:
+                    continue
+                for field in fields:
+                    changed |= self.overrides[key].pop(field, None) is not None
+                if not self.overrides[key]:
+                    self.overrides.pop(key, None)
+            if changed:
+                # Forcer le remontage : une rangée peut porter une saisie
+                # LIBRE, que le simple rafraîchissement laisse en place — on
+                # verrait « 12 » à l'écran pendant que la VM vaut 2. Le
+                # remontage rebâtit tout depuis le modèle. Sans risque de vol
+                # de focus : ce chemin part d'un widget GLOBAL, jamais d'une
+                # rangée.
+                self._shown_ids = ()
 
         def _set_override(self, index, field, value) -> None:
             """Écrit — ou retire — la surcharge d'UNE VM."""
@@ -1319,6 +1351,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             # l'ancienne version. Elles n'en gardent pas de copie — « » y
             # veut dire « celle du formulaire » — il suffit de redessiner.
             if event.select.id in ("f_branch", "f_profile_install"):
+                self._clear_overrides(
+                    ("branch",)
+                    if event.select.id == "f_branch"
+                    else ("install_cmd",)
+                )
                 self._recompute()
                 return
             field = SELECT_TO_FIELD.get(event.select.id)
@@ -1334,6 +1371,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._free[field] = False
                 self._show_free(field, False)
                 self.custom[field] = event.value
+                self._clear_overrides((field,))
             self._recompute()
 
         def _apply_free(self, field) -> None:
@@ -1344,6 +1382,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.custom[field] = parse_disk(raw) or ""
             else:
                 self.custom[field] = positive_int(raw, 0)
+            self._clear_overrides((field,))
 
         def on_input_changed(self, event) -> None:
             if self._syncing:
