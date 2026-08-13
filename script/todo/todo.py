@@ -5459,10 +5459,21 @@ class TODO:
                 else t("development (~/git)")
             )
             # « par defaut » : chaque VM peut s'en ecarter, et sa ligne le dit.
+            # Ce qui sera REELLEMENT pose, pas le defaut du formulaire. Avec
+            # une seule VM figee sur un autre profil, annoncer le defaut
+            # revenait a nommer une version que rien n'installe — c'est
+            # exactement ce qu'on relit ici pour eviter de se tromper.
+            used_br = {vm.get("branch") or branch for vm in spec["vms"]}
+            used_lb = {
+                vm.get("install_label") or install["label"]
+                for vm in spec["vms"]
+            }
+            varies = t("varies, see each line")
+            br_txt = used_br.pop() if len(used_br) == 1 else varies
+            lb_txt = used_lb.pop() if len(used_lb) == 1 else varies
             print(
-                f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
-                f"{t('profile')} {install['label']}, {env}"
-                f"  ({t('default; a VM may differ, see its line')})"
+                f"  {t('ERPLibre install:')} {t('branch')} {br_txt}, "
+                f"{t('profile')} {lb_txt}, {env}"
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")

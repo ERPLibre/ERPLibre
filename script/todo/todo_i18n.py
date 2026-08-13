@@ -2215,6 +2215,10 @@ TRANSLATIONS = {
         "fr": "défaut ; une VM peut s'en écarter, voir sa ligne",
         "en": "default; a VM may differ, see its line",
     },
+    "varies, see each line": {
+        "fr": "varie, voir chaque ligne",
+        "en": "varies, see each line",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
