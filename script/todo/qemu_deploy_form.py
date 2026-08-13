@@ -370,6 +370,8 @@ def run_deploy_form(ctx, run_app: bool = True):
     # livrent snapd — la question n'a de sens que pour celles-là, graphiques.
     app_stores = list(ctx.get("app_stores") or [])
     snap_distros = set(ctx.get("snap_distros") or ())
+    # Fuseaux proposés, celui de l'hôte en tête (voir todo.py).
+    timezones = list(ctx.get("timezones") or [])
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -683,10 +685,23 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_monitor",
                     )
                     yield Static(t("Timezone"), classes="grouptitle")
+                    # Une liste plutôt qu'une saisie : un nom IANA mal
+                    # orthographié n'est pas refusé par cloud-init, il est
+                    # IGNORÉ — la VM reste en UTC et on ne s'en aperçoit
+                    # qu'aux horodatages. « libre… » garde la porte ouverte
+                    # aux six cents autres fuseaux de la base.
+                    yield Select(
+                        [(z, z) for z in timezones]
+                        + [(t("free value…"), FREE)],
+                        value=(timezones[0] if timezones else SELECT_NULL),
+                        allow_blank=False,
+                        id="f_tz_sel",
+                    )
                     yield Input(
                         value=ctx.get("timezone") or "",
                         placeholder=t("Timezone for the VMs"),
                         id="f_tz",
+                        classes="freeval",
                     )
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
@@ -1452,6 +1467,19 @@ def run_deploy_form(ctx, run_app: bool = True):
             # ci-dessous sans rien recalculer, et les rangées restaient sur
             # l'ancienne version. Elles n'en gardent pas de copie — « » y
             # veut dire « celle du formulaire » — il suffit de redessiner.
+            if event.select.id == "f_tz_sel":
+                # « libre… » révèle la saisie ; un fuseau choisi la referme et
+                # y recopie le nom, seule valeur que lisent _form_values et la
+                # spec — un seul endroit porte la réponse.
+                free = event.value is FREE
+                field = self.query_one("#f_tz", Input)
+                field.display = free
+                field.disabled = not free
+                if free:
+                    field.focus()
+                elif isinstance(event.value, str):
+                    field.value = event.value
+                return
             if event.select.id in ("f_branch", "f_profile_install"):
                 self._clear_overrides(
                     ("branch",)
