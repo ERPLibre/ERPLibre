@@ -436,7 +436,11 @@ def run_deploy_form(ctx, run_app: bool = True):
         c'est ce qui permet de balayer le plan et de savoir d'un coup ce qui
         échappe au profil. */
         .vmcard.locked { background: $success 20%; }
-        .vmlock { width: 6; }
+        .vmlock { width: 5; min-width: 5; }
+        /* La branche porte des noms longs (« 1.6.0 », « develop »,
+        « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
+        plus ce qu'on a choisi. */
+        .vmbranch { width: 18; }
         .vmcopy { width: 5; min-width: 5; }
         .vmhead { height: 1; }
         .vmrow { height: 3; align-vertical: middle; }
@@ -863,10 +867,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # retirer l'original par mégarde.
                     Button("+", id=f"p{i}", classes="vmcopy"),
                     Button("✎", id=f"r{i}", classes="vmcopy"),
-                    Checkbox(
-                        "🔒",
-                        value=key in self.locked,
+                    Button(
+                        "🔒" if key in self.locked else "🔓",
                         id=f"l{i}",
+                        variant="success" if key in self.locked else "default",
                         classes="vmlock",
                     ),
                     Select(
@@ -939,6 +943,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     ),
                     Select(
                         [(b, b) for b in branches],
+                        classes="vmbranch",
                         value=(
                             item.get("branch")
                             or self.rows[i]["vm"].get("branch")
@@ -980,6 +985,44 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _after_mount_rows(self) -> None:
             self._sync_free_inputs()
             self._syncing = False
+
+        def _refresh_row_widgets(self) -> None:
+            """Remet les listes de chaque rangée sur ce que la VM vaut MAINTENANT.
+
+            Sans cela, changer le profil x1..x4 mettait les totaux à jour mais
+            laissait les listes sur leurs anciennes valeurs : l'écran affichait
+            8192 pendant que la VM valait 4096. Les rangées ne sont remontées
+            que si le JEU de VM change — pour ne pas voler le focus — donc ce
+            rafraîchissement doit se faire à la main.
+
+            Aucun risque de boucle : on_select_changed ignore une valeur déjà
+            égale à celle du modèle, et le modèle vient précisément d'être
+            recalculé."""
+            for i, r in enumerate(self.rows):
+                vm = r["vm"]
+                for field, presets in (
+                    ("vcpus", ctx["cpu_presets"]),
+                    ("ram", ctx["ram_presets"]),
+                    ("disk", ctx["disk_presets"]),
+                ):
+                    try:
+                        sel = self.query_one(f"#v{i}_{field}", Select)
+                    except Exception:
+                        continue
+                    # Une valeur libre n'est dans aucune liste : on laisse la
+                    # liste vide, la saisie juste à côté porte le nombre.
+                    sel.value = (
+                        vm[field] if vm[field] in presets else SELECT_NULL
+                    )
+                for wid, value in (
+                    (f"#v{i}_type", vm.get("desktop") or SERVER),
+                    (f"#v{i}_branch", vm.get("branch") or self._branch()),
+                ):
+                    try:
+                        self.query_one(wid, Select).value = value
+                    except Exception:
+                        pass
+            self._sync_free_inputs()
 
         def _sync_free_inputs(self) -> None:
             for i, r in enumerate(self.rows):
@@ -1029,6 +1072,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         )
                     except Exception:
                         pass
+                self._refresh_row_widgets()
             if not self.rows:
                 # Rien de coché : un total à zéro n'apprend rien, on dit
                 # plutôt comment remplir la liste.
@@ -1259,6 +1303,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             cards = self.query_one("#plan", VerticalScroll).children
             if index < len(cards):
                 cards[index].set_class(on, "locked")
+            btn = self.query_one(f"#l{index}", Button)
+            btn.label = "🔒" if on else "🔓"
+            btn.variant = "success" if on else "default"
 
         def _add_copy(self, index, delta) -> None:
             """Ajoute ou retire un exemplaire de l'entrée visée.
@@ -1297,6 +1344,13 @@ def run_deploy_form(ctx, run_app: bool = True):
             match = re.match(r"r(\d+)$", event.button.id or "")
             if match:
                 self._rename(int(match.group(1)))
+                return
+            match = re.match(r"l(\d+)$", event.button.id or "")
+            if match:
+                index = int(match.group(1))
+                key = self._row_key(index)
+                if key is not None:
+                    self._set_lock(index, key not in self.locked)
 
         def _rename(self, index) -> None:
             """Renomme une VM. Le nom saisi devient une surcharge comme les
@@ -1335,16 +1389,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             )
 
         def on_checkbox_changed(self, event) -> None:
-            row = re.match(r"l(\d+)$", event.checkbox.id or "")
-            if row:
-                index = int(row.group(1))
-                key = self._row_key(index)
-                # Même écho qu'au montage des listes : une case posée à sa
-                # valeur actuelle n'est pas un clic.
-                if key is None or event.value == (key in self.locked):
-                    return
-                self._set_lock(index, event.value)
-                return
             if event.checkbox.id == "f_install":
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
             elif event.checkbox.id == "f_par_all":
