@@ -466,7 +466,16 @@ def run_deploy_form(ctx, run_app: bool = True):
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
         .freeval { display: none; width: 9; }
-        .vmcard { height: auto; border-bottom: solid $panel; padding: 0 1; }
+        /* « width: auto » sur la CARTE, pas seulement sur la rangée. Un
+        conteneur Textual vaut « width: 1fr » par défaut : la carte se bornait
+        donc au panneau, et c'est ELLE que « #plan » mesure pour sa largeur
+        virtuelle. La rangée avait beau être en « auto », son débordement était
+        coupé dans une carte qui ne grandissait pas, et la barre horizontale
+        n'apparaissait jamais. */
+        .vmcard {
+            height: auto; width: auto;
+            border-bottom: solid $panel; padding: 0 1;
+        }
         /* Une VM figée se voit à la LIGNE, pas à une case perdue au bout :
         c'est ce qui permet de balayer le plan et de savoir d'un coup ce qui
         échappe au profil. */
