@@ -4664,6 +4664,22 @@ class TODO:
             f'echo "   {t("openSUSE mirror:")} $zm"; break; fi; done; '
         )
 
+    @staticmethod
+    def _qemu_tunnel_hint(port, kind):
+        """Deux lignes imprimees DANS la VM : le tunnel a monter depuis le
+        poste de travail, avec l'adresse deja remplie.
+
+        Un port annonce sans chemin pour y arriver n'aide personne : le reseau
+        libvirt n'est pas route depuis l'exterieur de son hote."""
+        local = port + 1
+        return (
+            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            f'echo "     {t("From your workstation:")} '
+            f'ssh -L {local}:$ip:{port} <user>@<hote-libvirt>"; '
+            f'echo "     {t("then point your client at")} '
+            f'localhost:{local}  ({kind})"; '
+        )
+
     def _qemu_desktop_remote_cmd(self, flavour="gnome", app_store="deb"):
         """Bloc shell installant le bureau choisi + son accès distant, quelle
         que soit la distribution. Même aiguillage que l'installation ERPLibre,
@@ -4716,9 +4732,18 @@ class TODO:
             "if command -v xrdp >/dev/null 2>&1; then "
             "sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
             f'echo "   {t("Remote desktop:")} RDP 3389"; '
-            "elif command -v vncserver >/dev/null 2>&1; then "
+            # L'IP est sur le reseau PRIVE de libvirt : annoncer le port sans
+            # dire comment l'atteindre ne sert a rien. La VM connait sa propre
+            # adresse ; seul le nom de l'hote libvirt manque, et c'est le
+            # lecteur qui l'a. La console SPICE, elle, est en « listen=none »
+            # et suppose virt-viewer SUR l'hote — inutilisable quand cet hote
+            # est lui-meme une VM sans interface graphique.
+            + self._qemu_tunnel_hint(3389, "RDP")
+            + "elif command -v vncserver >/dev/null 2>&1; then "
             f'echo "   {t("Remote desktop:")} VNC 5901 '
-            '(vncpasswd puis vncserver :1)"; fi; '
+            '(vncpasswd puis vncserver :1)"; '
+            + self._qemu_tunnel_hint(5901, "VNC")
+            + "fi; "
         )
 
     # mise ne publie de binaire que pour ces architectures : 46 assets à la
