@@ -515,6 +515,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             ("f5", "deploy", t("Deploy")),
             ("f4", "clear_vm", t("Reset VM")),
             ("f3", "preview", t("Preview")),
+            ("f9", "dump_state", t("Diagnostic dump")),
             ("f6", "select_all", t("All")),
             ("f7", "select_main", t("Main versions")),
             ("f8", "select_none", t("None")),
@@ -1741,6 +1742,61 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             lines = [build(vm, spec, True) for vm in spec["vms"]]
             self.push_screen(PreviewScreen(lines or [t("Nothing selected.")]))
+
+        def action_dump_state(self) -> None:
+            """Écrit l'état COMPLET dans un fichier, widgets ET modèle.
+
+            Une capture d'écran ne dit pas si l'écart vient de ce qu'on voit
+            ou de ce qui sera déployé. Ce vidage met les deux côte à côte, VM
+            par VM : si la liste affiche 16384 et que le modèle dit 1024, le
+            défaut est dans la prise en compte ; s'ils s'accordent et que la
+            VM déployée diffère, il est en aval."""
+            path = os.path.expanduser("~/.erplibre/deploy-form-dump.txt")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            out = [
+                "=== formulaire de deploiement ===",
+                f"profil={self.profile}  custom={self.custom}",
+                f"verrous={sorted(self.locked)}",
+                f"surcharges={self.overrides}",
+                f"generation={self._gen}  jeu_monte={self._shown_ids}",
+                f"branche_globale={self._branch()}",
+                f"profil_odoo_global={self._profile_cmd()}",
+                "",
+                "  # widget -> modele, VM par VM",
+            ]
+            for i, r in enumerate(self.rows):
+                vm = r["vm"]
+                shown = {}
+                for f in ("vcpus", "ram", "disk", "type", "branch", "prof"):
+                    try:
+                        shown[f] = self.query_one(f"#v{i}_{f}", Select).value
+                    except Exception:
+                        shown[f] = "-"
+                    try:
+                        free = self.query_one(f"#c{i}_{f}", Input)
+                        if free.display:
+                            shown[f] = f"libre:{free.value!r}"
+                    except Exception:
+                        pass
+                out.append(f"  [{i}] {vm['name']}  etat={r['state']}")
+                out.append(f"      widgets = {shown}")
+                out.append(
+                    f"      modele  = vcpus={vm['vcpus']} ram={vm['ram']} "
+                    f"disk={vm['disk']} desktop={vm.get('desktop')!r} "
+                    f"branch={vm.get('branch')!r} cmd={vm.get('install_cmd')!r}"
+                )
+            spec = build_spec(self.vms, domains, self._form_values())
+            out.append("")
+            out.append("  # spec qui partirait au deploiement")
+            for vm in spec["vms"]:
+                out.append(
+                    f"    {vm['name']}: ram={vm['ram']} vcpus={vm['vcpus']} "
+                    f"disk={vm['disk']}"
+                )
+            out.append(f"    ignorees (existent deja) = {spec['existing']}")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(out) + "\n")
+            self.notify(f"{t('State written to')} {path}")
 
         def action_deploy(self) -> None:
             if not self.vms:
