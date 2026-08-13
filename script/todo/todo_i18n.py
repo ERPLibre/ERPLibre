@@ -3836,6 +3836,42 @@ TRANSLATIONS = {
         "en": "website copies compared with their module view,",
     },
     "differ.": {"fr": "diffèrent.", "en": "differ."},
+    "What do you want to do with these COW copies?": {
+        "fr": "Que voulez-vous faire de ces copies COW ?",
+        "en": "What do you want to do with these COW copies?",
+    },
+    "Enter = decide at the version bump": {
+        "fr": "Entrée = décider au palier de version",
+        "en": "Enter = decide at the version bump",
+    },
+    "what each copy holds": {
+        "fr": "ce que chaque copie porte",
+        "en": "what each copy holds",
+    },
+    "why it breaks": {
+        "fr": "pourquoi ça casse",
+        "en": "why it breaks",
+    },
+    "full screen": {
+        "fr": "plein écran",
+        "en": "full screen",
+    },
+    "neutralize now, reversible": {
+        "fr": "neutraliser maintenant, réversible",
+        "en": "neutralize now, reversible",
+    },
+    "Undo with": {
+        "fr": "Annuler avec",
+        "en": "Undo with",
+    },
+    "Nothing decided": {
+        "fr": "Rien de décidé",
+        "en": "Nothing decided",
+    },
+    "the migration will ask again at the version bump.": {
+        "fr": "la migration reposera la question au palier de version.",
+        "en": "the migration will ask again at the version bump.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
