@@ -1555,7 +1555,7 @@ class TODO:
         print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
         kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
         if kind_answer == "3":
-            self._qemu_console_tunnel()
+            self._qemu_console_tunnel(name, src)
             return
         port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
@@ -1597,51 +1597,101 @@ class TODO:
         « listen=none » QEMU n'ouvre AUCUN socket, et aucun tunnel n'y peut
         rien tant que le domaine n'est pas redéfini.
         """
-        names = self._qemu_list_domains()
-        if not names:
-            print(f"  {t('No local VM.')}")
-            return
-        for i, name in enumerate(names, 1):
-            print(f"  [{i}] {name}")
-        raw = input(f"{t('Which VM?')} [1]: ").strip() or "1"
-        if not raw.isdigit() or not (1 <= int(raw) <= len(names)):
-            print(t("Cancelled."))
-            return
-        name = names[int(raw) - 1]
-        try:
-            res = subprocess.run(
-                ["sudo", "virsh", "vncdisplay", name],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            res = None
-        # « 127.0.0.1:0 » désigne le port 5900, « :1 » le 5901, etc.
-        port = None
-        if res and res.returncode == 0:
-            disp = res.stdout.strip().rsplit(":", 1)
-            if len(disp) == 2 and disp[1].isdigit():
-                port = 5900 + int(disp[1])
+        if src != "ssh_config":
+            jump, domain = "", name
+        else:
+            # L'écran VNC appartient à QEMU, donc à l'HYPERVISEUR — pas à
+            # l'invité. Tunneler vers la VM elle-même ne trouve rien : le
+            # socket n'existe pas de ce côté. Vécu, et c'est aussi ce qui
+            # rendait le premier jet de ce menu inutile hors machine locale.
+            #
+            # L'hyperviseur est le ProxyJump déclaré dans ssh_config, lu par
+            # « ssh -G » : c'est la seule lecture qui couvre toutes les formes
+            # d'écriture (Host, Match, wildcards, includes). Le nom composé
+            # « saut+vm » n'est qu'un libellé, il ne fait pas autorité.
+            jump = self._ssh_proxyjump(name)
+            domain = name.rsplit("+", 1)[-1]
+            if not jump:
+                print(f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}")
+                print(f"  {t('Cannot tell which machine runs its QEMU.')}")
+                return
+        port = self._qemu_vnc_port(domain, jump)
+        # Les commandes de réparation se lancent SUR l'hyperviseur : le préfixe
+        # évite de les copier sur la mauvaise machine, l'erreur naturelle ici.
+        pre = f"ssh {jump} " if jump else ""
         if not port:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
-            print(f"    sudo virsh dumpxml {name} | grep -A2 '<graphics'")
+            print(f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'")
             print(f"  {t('To open it on the loopback (VM restart required):')}")
-            print(f"    sudo virsh destroy {name}")
-            print(f"    sudo virsh edit {name}   # <graphics type='vnc'"
+            print(f"    {pre}sudo virsh destroy {domain}")
+            print(f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
                   " port='-1' autoport='yes' listen='127.0.0.1'/>")
-            print(f"    sudo virsh start {name}")
+            print(f"    {pre}sudo virsh start {domain}")
             print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
             return
-        host, from_ssh = self._qemu_self_address()
-        user = os.environ.get("USER", "user")
-        if not from_ssh:
-            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        if jump:
+            target = jump
+        else:
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            if not from_ssh:
+                print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+            target = f"{user}@{host}"
         print(f"\n  {t('Run this on YOUR workstation:')}")
-        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {user}@{host}\n")
+        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {target}\n")
+        if jump:
+            print(f"  {t('Target is the hypervisor')} ({jump}), "
+                  f"{t('not the VM: the socket is QEMU-side.')}")
         print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    @staticmethod
+    def _ssh_proxyjump(host):
+        """ProxyJump effectif d'un hôte, tel que ssh le calcule lui-même.
+
+        « ssh -G » rend la configuration RÉSOLUE : Match, wildcards et Include
+        compris. Relire ~/.ssh/config à la main raterait tout cela.
+        """
+        try:
+            res = subprocess.run(
+                ["ssh", "-G", host], capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        for line in res.stdout.splitlines():
+            if line.startswith("proxyjump "):
+                value = line.split(None, 1)[1].strip()
+                return "" if value.lower() == "none" else value
+        return ""
+
+    @staticmethod
+    def _qemu_vnc_port(domain, jump=""):
+        """Port VNC réel d'un domaine, localement ou sur un hyperviseur distant.
+
+        Il ne se devine pas : libvirt l'attribue au démarrage. « virsh
+        vncdisplay » rend « 127.0.0.1:0 », où le suffixe est le NUMÉRO d'écran
+        — 0 vaut 5900, 1 vaut 5901.
+
+        Sans sudo d'abord : l'appartenance au groupe libvirt suffit souvent, et
+        « sudo -n » distant échouerait sur l'absence de TTY. On ne retombe sur
+        « sudo -n » que si le premier essai n'a rien donné.
+        """
+        base = ["virsh", "--connect", "qemu:///system", "vncdisplay", domain]
+        for argv in (base, ["sudo", "-n"] + base):
+            cmd = (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            try:
+                res = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=25
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if res.returncode != 0:
+                continue
+            disp = res.stdout.strip().rsplit(":", 1)
+            if len(disp) == 2 and disp[1].isdigit():
+                return 5900 + int(disp[1])
+        return 0
 
     def _qemu_ssh_config_menu(self):
         """Écrit les entrées ~/.ssh/config du parc QEMU.
