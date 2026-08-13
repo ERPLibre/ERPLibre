@@ -347,6 +347,11 @@ def run_deploy_form(ctx, run_app: bool = True):
         RadioSet { height: auto; layout: horizontal; }
         .freeval { display: none; width: 9; }
         .vmcard { height: auto; border-bottom: solid $panel; padding: 0 1; }
+        /* Une VM figée se voit à la LIGNE, pas à une case perdue au bout :
+        c'est ce qui permet de balayer le plan et de savoir d'un coup ce qui
+        échappe au profil. */
+        .vmcard.locked { background: $success 20%; }
+        .vmlock { width: 6; }
         .vmhead { height: 1; }
         .vmrow { height: 3; align-vertical: middle; }
         .vmrow Select { width: 15; }
@@ -386,6 +391,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._syncing = False
             # Jeu de VM actuellement monté dans le panneau droit.
             self._shown_ids = ()
+            # VM dont les ressources sont FIGÉES, par identité de catalogue.
+            # Distinct des surcharges : une VM peut être modifiée sans être
+            # verrouillée, et le verrou fige TOUT, pas seulement ce qu'on a
+            # touché.
+            self.locked = set()
             self.rows = []
             self.vms = []
             self.rows = []
@@ -636,7 +646,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             # vit sur la ligne d'affichage, jamais sur la VM : celle-ci part
             # telle quelle dans la spec, que la CLI produit à l'identique.
             for row, entry in zip(self.rows, entries):
-                row["custom"] = bool(self.overrides.get(entry_key(entry)))
+                key = entry_key(entry)
+                row["custom"] = bool(self.overrides.get(key))
+                row["locked"] = key in self.locked
             self._render_plan()
             self._render_mise()
             self._render_store()
@@ -738,7 +750,14 @@ def run_deploy_form(ctx, run_app: bool = True):
             widgets = []
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
+                key = entry_key(self._selected_entries()[i])
                 row = Horizontal(
+                    Checkbox(
+                        "🔒",
+                        value=key in self.locked,
+                        id=f"l{i}",
+                        classes="vmlock",
+                    ),
                     Select(
                         [(str(c), c) for c in ctx["cpu_presets"]]
                         + [(t("free value…"), FREE)],
@@ -814,7 +833,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                     Vertical(
                         Static(self._row_head(i, r), id=f"h{i}"),
                         row,
-                        classes="vmcard",
+                        # Pas d'id sur la carte : « remove_children() » est
+                        # ASYNCHRONE, les anciennes sont encore là au montage
+                        # et Textual refuse deux frères de même id. Les ids
+                        # des champs vivent un niveau plus bas, dans un parent
+                        # neuf — la collision ne les touche pas. On atteint
+                        # donc la carte par son RANG.
+                        classes=(
+                            "vmcard locked" if key in self.locked else "vmcard"
+                        ),
                     )
                 )
             if widgets:
@@ -851,7 +878,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             vm = row["vm"]
             icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[row["state"]]
             state = "" if row["state"] == "new" else f"  {icon}{row['note']}"
-            mark = "  ✎" if row.get("custom") else ""
+            if row.get("locked"):
+                mark = "  🔒 figée"
+            elif row.get("custom"):
+                mark = "  ✎"
+            else:
+                mark = ""
             return (
                 f"[b]{vm['name']}[/b]  {vm['distro']} {vm['version']} "
                 f"[{vm['arch']}]  {row['disk_gb']}G{state}{mark}"
@@ -1059,7 +1091,47 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._apply_free(field)
                 self._recompute()
 
+        def _set_lock(self, index, on) -> None:
+            """Fige — ou libère — les ressources d'une VM.
+
+            Figer, c'est recopier les valeurs EFFECTIVES du moment dans les
+            surcharges : le profil commun ne les atteint plus. Libérer les
+            retire, et la VM retombe sous le profil. Le mécanisme est celui
+            des surcharges, déjà éprouvé ; le verrou n'en est que la commande
+            explicite, et il couvre les quatre champs d'un coup."""
+            key = self._row_key(index)
+            if key is None or index >= len(self.rows):
+                return
+            if on:
+                vm = self.rows[index]["vm"]
+                self.locked.add(key)
+                self.overrides[key] = {
+                    "vcpus": vm["vcpus"],
+                    "ram": vm["ram"],
+                    "disk": vm["disk"],
+                    "desktop": vm.get("desktop") or "",
+                }
+            else:
+                self.locked.discard(key)
+                self.overrides.pop(key, None)
+            self._recompute()
+            # La couleur de la ligne suit le verrou sans tout remonter : un
+            # remontage volerait le focus à la case qu'on vient de cocher.
+            cards = self.query_one("#plan", VerticalScroll).children
+            if index < len(cards):
+                cards[index].set_class(on, "locked")
+
         def on_checkbox_changed(self, event) -> None:
+            row = re.match(r"l(\d+)$", event.checkbox.id or "")
+            if row:
+                index = int(row.group(1))
+                key = self._row_key(index)
+                # Même écho qu'au montage des listes : une case posée à sa
+                # valeur actuelle n'est pas un clic.
+                if key is None or event.value == (key in self.locked):
+                    return
+                self._set_lock(index, event.value)
+                return
             if event.checkbox.id == "f_install":
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
             elif event.checkbox.id == "f_par_all":
