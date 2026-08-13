@@ -180,6 +180,20 @@ def apply_overrides(vms, entries, overrides):
     return vms
 
 
+def clean_hostname(value):
+    """Nom d'hote valide (RFC 1123) tire de la saisie, ou None.
+
+    Le nom d'une VM devient son NOM D'HOTE : une majuscule ou un point de
+    trop et cloud-init l'ignore en silence, la machine reste « ubuntu ».
+    Mieux vaut refuser ici que le decouvrir sur une VM deja deployee."""
+    txt = str(value or "").strip().lower()
+    if not txt or len(txt) > 63:
+        return None
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", txt):
+        return None
+    return txt
+
+
 def vm_name(base, desktop, suffixes):
     """Nom de VM, suffixé du bureau quand il y en a un.
 
@@ -211,7 +225,11 @@ def build_vms(
     )
     # APRÈS les surcharges : c'est là seulement que le type de chaque VM est
     # connu, puisqu'il se choisit machine par machine.
-    for vm in vms:
+    for vm, e in zip(vms, entries):
+        if (overrides or {}).get(entry_key(e), {}).get("name"):
+            # Nom donne a la main : il gagne, sans suffixe ajoute. Y coller
+            # « -gnome » reviendrait a corriger l'utilisateur.
+            continue
         vm["name"] = vm_name(vm["name"], vm.get("desktop"), suffixes)
     return vms
 
@@ -368,6 +386,38 @@ def run_deploy_form(ctx, run_app: bool = True):
             f"RAM≥{e['ram']}Mo  {e['disk']}"
         )
 
+    class RenameScreen(ModalScreen):
+        """Nom d'une VM. Vide = revenir au nom automatique."""
+
+        BINDINGS = [("escape", "cancel", t("Cancel"))]
+
+        def __init__(self, name, auto):
+            super().__init__()
+            self._name = name
+            self._auto = auto
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="renbox"):
+                yield Static(t("Rename the VM"), id="rentitle")
+                yield Input(value=self._name, id="renval")
+                yield Static(
+                    f"  {t('Empty = back to the automatic name:')} "
+                    f"{self._auto}",
+                    id="renhint",
+                )
+                with Horizontal(id="renbtns"):
+                    yield Button(t("Cancel"), id="ren_no")
+                    yield Button(t("Rename"), variant="primary", id="ren_ok")
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id != "ren_ok":
+                self.dismiss(None)
+                return
+            self.dismiss(self.query_one("#renval", Input).value)
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
     class PreviewScreen(ModalScreen):
         """Aperçu des commandes qui seraient lancées (aucune exécution)."""
 
@@ -427,6 +477,14 @@ def run_deploy_form(ctx, run_app: bool = True):
         .vmrow Select { width: 15; }
         .vmrow Input { width: 11; }
         #reslabel { color: $text-muted; }
+        RenameScreen { align: center middle; }
+        #renbox {
+            width: 60; height: auto; padding: 1 2;
+            border: thick $accent; background: $surface;
+        }
+        #rentitle { color: $accent; text-style: bold; }
+        #renhint { color: $text-muted; }
+        #renbtns { height: auto; padding-top: 1; }
         PreviewScreen { align: center middle; }
         #prevbox {
             width: 90%; height: 70%; padding: 1 2;
