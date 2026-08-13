@@ -277,6 +277,20 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
     return manifest_path
 
 
+def finished_at(log_path: str, fallback: float) -> float:
+    """Instant où l'installation s'est RÉELLEMENT arrêtée.
+
+    La dernière écriture dans le log, c'est-à-dire le marqueur de sortie. On
+    ne peut pas prendre « maintenant » : le suivi est détachable, et il
+    observe souvent l'état final longtemps après. Rouvrir le tableau de bord
+    une heure plus tard ajoutait cette heure à la durée affichée, comme si
+    l'installation avait tourné pendant tout ce temps."""
+    try:
+        return os.path.getmtime(log_path)
+    except OSError:
+        return fallback
+
+
 def read_status(log_path: str) -> tuple[str, int | None]:
     """(état, code) d'un log : pending / running / done / failed. Ne lit que
     la FIN du fichier (le marqueur de sortie est sur la dernière ligne) : lire
@@ -1369,7 +1383,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         continue
                     ds = self._domstate.get(name)
                     if ds == "gone":
-                        self._final[name] = ("deleted", None, now - started)
+                        # Même bornage que les autres états terminaux : une
+                        # VM effacée ne « tourne » plus depuis la dernière
+                        # ligne de son log.
+                        self._final[name] = (
+                            "deleted",
+                            None,
+                            max(0.0, finished_at(vm["log"], now) - started),
+                        )
                         # Icône seule (VM effacée) : évite « ❌ effacée » (10
                         # cellules) qui forçait une colonne État large.
                         self._set_cell(table, name, "state", "🗑")
@@ -1379,7 +1400,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         continue
                     state, code = st
                     if state in ("done", "failed"):
-                        elapsed = now - started
+                        # Bornée à la dernière écriture du log, pas à l'instant
+                        # présent : le suivi peut être rouvert bien plus tard.
+                        elapsed = max(
+                            0.0, finished_at(vm["log"], now) - started
+                        )
                         self._final[name] = (state, code, elapsed)
                         # Les échecs sont enregistrés eux aussi (ok=False) :
                         # sans eux, aucun taux de réussite n'est calculable.
@@ -1424,7 +1449,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 maxd = f" · max {self._fmt(max_dur)}" if max_dur else ""
                 self.sub_title = (
                     f"{done}/{len(vms)} {t('completed')} · "
-                    f"{self._fmt(now - started)}{eta}{maxd}"
+                    f"{self._fmt(self._total_elapsed(now, started))}"
+                    f"{eta}{maxd}"
                 )
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
@@ -1832,6 +1858,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     table.columns[key].width = width
                     table.columns[key].auto_width = False
             self._apply_column_widths(table)
+
+        def _total_elapsed(self, now, started):
+            """Durée globale. Elle se FIGE quand plus rien ne tourne : sinon
+            le total continuait de courir sur un parc entièrement terminé,
+            et repartait de plus belle à chaque réouverture."""
+            if len(self._final) < len(vms) or not self._final:
+                return now - started
+            return max(e for _s, _c, e in self._final.values())
 
         def action_vm_actions(self) -> None:
             """Ouvre les actions de la VM sélectionnée."""
