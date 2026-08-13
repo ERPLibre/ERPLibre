@@ -2219,6 +2219,14 @@ TRANSLATIONS = {
         "fr": "varie, voir chaque ligne",
         "en": "varies, see each line",
     },
+    "From your workstation:": {
+        "fr": "Depuis votre poste :",
+        "en": "From your workstation:",
+    },
+    "then point your client at": {
+        "fr": "puis pointez votre client sur",
+        "en": "then point your client at",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
