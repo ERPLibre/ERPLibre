@@ -1515,48 +1515,60 @@ class TODO:
         return socket.gethostname(), False
 
     def _qemu_tunnel_menu(self):
-        """Commande de tunnel SSH vers le bureau distant d'une VM.
+        """Commande de tunnel SSH vers le bureau distant d'une machine.
 
-        todo.py tourne sur l'HÔTE libvirt ; le tunnel, lui, part du poste de
-        travail. Impossible donc de l'ouvrir d'ici — mais cet hôte est le seul
-        à connaître l'IP privée de la VM, son port et l'adresse par laquelle on
-        l'a joint. Il compose donc la commande complète, à coller telle quelle.
+        La source des cibles est ~/.ssh/config, PAS le libvirt local. La VM
+        graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
+        VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
+        poste ne voit alors que l'orchestrateur, et proposer sa liste menait
+        droit a la mauvaise machine — vecu.
+
+        ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
+        seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
+        ajoutes en complement quand ils ne s'y trouvent pas deja.
         """
         print(f"\n🖥  {t('Remote desktop tunnel')}")
-        names = self._qemu_list_domains()
-        if not names:
-            print(f"  {t('No VM defined.')}")
+        hosts = list(self._ssh_config_hosts())
+        targets = [(h, "ssh_config") for h in hosts]
+        # Complement local, sans sudo tant qu'on n'en a pas besoin : la
+        # plupart des cibles utiles sont deja dans ssh_config.
+        if not targets:
+            for name in self._qemu_list_domains():
+                targets.append((name, "virsh"))
+        if not targets:
+            print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
             return
-        ip_map = self._qemu_resolve_ips(names)
-        host, from_ssh = self._qemu_self_address()
-        user = os.environ.get("USER", "user")
-        rows = [(i, n) for i, n in enumerate(names, 1)]
-        for i, name in rows:
-            print(f"  [{i}] {name}  {ip_map.get(name) or t('no IP')}")
+        for i, (name, src) in enumerate(targets, 1):
+            mark = "" if src == "ssh_config" else f"  ({t('local VM')})"
+            print(f"  [{i}] {name}{mark}")
         answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
-        if not answer.isdigit() or not (1 <= int(answer) <= len(names)):
+        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
             print(t("Cancelled."))
             return
-        name = names[int(answer) - 1]
-        ip = ip_map.get(name)
-        if not ip:
-            print(f"  {t('No IP for this VM; is it running?')}")
-            return
-        distro = (self._qemu_vm_meta(name, None) or (None,))[0] or ""
-        port, kind = self._qemu_desktop_port(distro)
+        name, src = targets[int(answer) - 1]
+
+        # Le port ne se devine pas pour un hote de ssh_config : on ne connait
+        # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
+        print(f"\n  {t('Remote desktop kind:')}")
+        print(f"  [1] RDP 3389 (xrdp) *")
+        print(f"  [2] VNC 5901 (TigerVNC, Arch)")
+        kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
-        # Si ~/.ssh/config porte deja une entree pour cette VM — c'est ce que
-        # pose « Configuration SSH » — elle contient le ProxyJump par l'hote.
-        # On s'en sert : plus d'IP privee ni d'adresse d'hote a deviner, et la
-        # cible du renvoi devient « localhost » DU POINT DE VUE DE LA VM,
-        # c'est-a-dire son propre bouclage. Le tunnel survit meme si son IP
-        # change, puisque c'est ssh_config qui resout la route.
-        via_config = name in self._ssh_config_hosts()
+
         print(f"\n  {t('Run this on YOUR workstation:')}")
-        if via_config:
+        if src == "ssh_config":
+            # « localhost » est resolu par le DERNIER saut, donc par la machine
+            # elle-meme : le ProxyJump de ssh_config traverse les niveaux.
             print(f"\n    ssh -N -L {local}:localhost:{port} {name}\n")
             print(f"  {t('(through the ProxyJump already in ~/.ssh/config)')}")
         else:
+            ip = self._qemu_resolve_ips([name]).get(name)
+            if not ip:
+                print(f"  {t('No IP for this VM; is it running?')}")
+                return
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
             if not from_ssh:
                 print(
                     f"  ⚠ {t('Not in an SSH session: check the host address.')}"

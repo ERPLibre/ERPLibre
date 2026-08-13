@@ -2261,6 +2261,15 @@ TRANSLATIONS = {
         "en": "The tunnel stays open as long as that ssh runs.",
     },
     "No VM defined.": {"fr": "Aucune VM définie.", "en": "No VM defined."},
+    "No host in ~/.ssh/config and no local VM.": {
+        "fr": "Aucun hôte dans ~/.ssh/config et aucune VM locale.",
+        "en": "No host in ~/.ssh/config and no local VM.",
+    },
+    "local VM": {"fr": "VM locale", "en": "local VM"},
+    "Remote desktop kind:": {
+        "fr": "Type de bureau distant :",
+        "en": "Remote desktop kind:",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
@@ -4245,6 +4254,298 @@ TRANSLATIONS = {
     "No change on the website COW views.": {
         "fr": "Aucun changement sur les vues COW de site.",
         "en": "No change on the website COW views.",
+    },
+    "Welcome to the Odoo database upgrade with ERPLibre": {
+        "fr": "Bienvenue dans la mise à niveau de base de données Odoo avec ERPLibre",
+        "en": "Welcome to the Odoo database upgrade with ERPLibre",
+    },
+    "Select the zip file of your database backup.": {
+        "fr": "Sélectionnez le fichier zip de votre sauvegarde de base de données.",
+        "en": "Select the zip file of your database backup.",
+    },
+    "Give the path of the file, or empty to use a file": {
+        "fr": "Donnez le chemin du fichier, ou rien pour utiliser un",
+        "en": "Give the path of the file, or empty to use a file",
+    },
+    "browser, or type": {
+        "fr": "navigateur de fichiers, ou tapez",
+        "en": "browser, or type",
+    },
+    "to download from production": {
+        "fr": "pour télécharger depuis la production",
+        "en": "to download from production",
+    },
+    "Cannot retrieve the database from remote, please retry the migration.": {
+        "fr": "Impossible de récupérer la base distante, veuillez relancer la migration.",
+        "en": "Cannot retrieve the database from remote, please retry the migration.",
+    },
+    "Open file": {
+        "fr": "Ouverture du fichier",
+        "en": "Open file",
+    },
+    "Detected Odoo CE version": {
+        "fr": "Version Odoo CE détectée",
+        "en": "Detected Odoo CE version",
+    },
+    "Which version do you want to upgrade to?": {
+        "fr": "Vers quelle version voulez-vous migrer ?",
+        "en": "Which version do you want to upgrade to?",
+    },
+    "Search the Odoo version": {
+        "fr": "Recherche de la version Odoo",
+        "en": "Search the Odoo version",
+    },
+    "Find the right environment, read the .zip file": {
+        "fr": "Recherche du bon environnement, lecture du fichier .zip",
+        "en": "Find the right environment, read the .zip file",
+    },
+    "Would you like to install": {
+        "fr": "Voulez-vous installer",
+        "en": "Would you like to install",
+    },
+    "You need an installed system before": {
+        "fr": "Il faut un système installé avant de",
+        "en": "You need an installed system before",
+    },
+    "continuing, check your Odoo installation.": {
+        "fr": "continuer, vérifiez votre installation Odoo.",
+        "en": "continuing, check your Odoo installation.",
+    },
+    "Install the environment if missing": {
+        "fr": "Installation de l'environnement s'il manque",
+        "en": "Install the environment if missing",
+    },
+    "Search missing modules": {
+        "fr": "Recherche des modules manquants",
+        "en": "Search missing modules",
+    },
+    "Install the missing modules, search for them or": {
+        "fr": "Installer les modules manquants, les chercher ou",
+        "en": "Install the missing modules, search for them or",
+    },
+    "ask to uninstall them (can break data)": {
+        "fr": "demander à les désinstaller (peut casser des données)",
+        "en": "ask to uninstall them (can break data)",
+    },
+    "Cannot set up the environment to begin.": {
+        "fr": "Impossible de préparer l'environnement pour commencer.",
+        "en": "Cannot set up the environment to begin.",
+    },
+    "Missing module": {
+        "fr": "Module manquant",
+        "en": "Missing module",
+    },
+    "Duplicate module": {
+        "fr": "Module en double",
+        "en": "Duplicate module",
+    },
+    "Missing or duplicate module detected at init,": {
+        "fr": "Module manquant ou en double détecté à l'init,",
+        "en": "Missing or duplicate module detected at init,",
+    },
+    "do you want to continue?": {
+        "fr": "voulez-vous continuer ?",
+        "en": "do you want to continue?",
+    },
+    "Missing or duplicate module detected at init, do": {
+        "fr": "Module manquant ou en double détecté à l'init,",
+        "en": "Missing or duplicate module detected at init, do",
+    },
+    "you want to continue?": {
+        "fr": "voulez-vous continuer ?",
+        "en": "you want to continue?",
+    },
+    "Which database name do you want to work with?": {
+        "fr": "Avec quel nom de base voulez-vous travailler ?",
+        "en": "Which database name do you want to work with?",
+    },
+    "Ignore the database neutralization": {
+        "fr": "Ignorer la neutralisation de la base",
+        "en": "Ignore the database neutralization",
+    },
+    "Working with database": {
+        "fr": "Travail sur la base",
+        "en": "Working with database",
+    },
+    "will copy": {
+        "fr": "va copier",
+        "en": "will copy",
+    },
+    "a file already exists, do you want to": {
+        "fr": "un fichier existe déjà, voulez-vous",
+        "en": "a file already exists, do you want to",
+    },
+    "continue?": {
+        "fr": "continuer ?",
+        "en": "continue?",
+    },
+    "Restore the database": {
+        "fr": "Restauration de la base",
+        "en": "Restore the database",
+    },
+    "Update all addons before neutralizing (already": {
+        "fr": "Mettre à jour tous les modules avant la neutralisation (déjà",
+        "en": "Update all addons before neutralizing (already",
+    },
+    "neutralized by Odoo if supported)": {
+        "fr": "neutralisée par Odoo si pris en charge)",
+        "en": "neutralized by Odoo if supported)",
+    },
+    "Do you need to upgrade before neutralizing the": {
+        "fr": "Faut-il mettre à jour avant de neutraliser la",
+        "en": "Do you need to upgrade before neutralizing the",
+    },
+    "database? Press enter to ignore": {
+        "fr": "base ? Entrée pour ignorer",
+        "en": "database? Press enter to ignore",
+    },
+    "Update the database before neutralizing, by module": {
+        "fr": "Mise à jour de la base avant neutralisation, par module",
+        "en": "Update the database before neutralizing, by module",
+    },
+    "Neutralize the database": {
+        "fr": "Neutralisation de la base",
+        "en": "Neutralize the database",
+    },
+    "Modules to uninstall before the migration": {
+        "fr": "Modules à désinstaller avant la migration",
+        "en": "Modules to uninstall before the migration",
+    },
+    "Uninstall modules": {
+        "fr": "Désinstallation des modules",
+        "en": "Uninstall modules",
+    },
+    "Install modules": {
+        "fr": "Installation des modules",
+        "en": "Install modules",
+    },
+    "Go to Settings / Technical / Cleanup... / Purge and": {
+        "fr": "Aller dans Configuration / Technique / Nettoyage... / Purger et",
+        "en": "Go to Settings / Technical / Cleanup... / Purge and",
+    },
+    "purge the obsolete modules": {
+        "fr": "purger les modules obsolètes",
+        "en": "purge the obsolete modules",
+    },
+    "Press enter to continue step 3": {
+        "fr": "Entrée pour continuer l'étape 3",
+        "en": "Press enter to continue step 3",
+    },
+    "Inspect zip": {
+        "fr": "Inspection du zip",
+        "en": "Inspect zip",
+    },
+    "Import database from zip": {
+        "fr": "Import de la base depuis le zip",
+        "en": "Import database from zip",
+    },
+    "Succeed update all addons": {
+        "fr": "Mise à jour de tous les modules",
+        "en": "Succeed update all addons",
+    },
+    "Clean up database before data migration": {
+        "fr": "Nettoyage de la base avant la migration des données",
+        "en": "Clean up database before data migration",
+    },
+    "Upgrade version with OpenUpgrade": {
+        "fr": "Montée de version avec OpenUpgrade",
+        "en": "Upgrade version with OpenUpgrade",
+    },
+    "Cleaning up database after upgrade": {
+        "fr": "Nettoyage de la base après la montée de version",
+        "en": "Cleaning up database after upgrade",
+    },
+    "Migration finished": {
+        "fr": "Migration terminée",
+        "en": "Migration finished",
+    },
+    "Clone to Odoo": {
+        "fr": "Clonage vers Odoo",
+        "en": "Clone to Odoo",
+    },
+    "FAILED (status": {
+        "fr": "ÉCHEC (statut",
+        "en": "FAILED (status",
+    },
+    "Stopping:": {
+        "fr": "Arrêt :",
+        "en": "Stopping:",
+    },
+    "is not usable.": {
+        "fr": "n'est pas utilisable.",
+        "en": "is not usable.",
+    },
+    "Clone Odoo": {
+        "fr": "Clonage Odoo",
+        "en": "Clone Odoo",
+    },
+    "nothing": {
+        "fr": "rien",
+        "en": "nothing",
+    },
+    "Switch Odoo": {
+        "fr": "Bascule Odoo",
+        "en": "Switch Odoo",
+    },
+    "done with update": {
+        "fr": "terminée avec mise à jour",
+        "en": "done with update",
+    },
+    "Module upgrade Odoo": {
+        "fr": "Mise à jour des modules Odoo",
+        "en": "Module upgrade Odoo",
+    },
+    "Database upgrade Odoo": {
+        "fr": "Migration de la base Odoo",
+        "en": "Database upgrade Odoo",
+    },
+    "Modules to uninstall before Odoo": {
+        "fr": "Modules à désinstaller avant Odoo",
+        "en": "Modules to uninstall before Odoo",
+    },
+    "to redo the command": {
+        "fr": "pour refaire la commande",
+        "en": "to redo the command",
+    },
+    "Error detected, press enter to continue or": {
+        "fr": "Erreur détectée, Entrée pour continuer ou",
+        "en": "Error detected, press enter to continue or",
+    },
+    "to stop": {
+        "fr": "pour arrêter",
+        "en": "to stop",
+    },
+    "Clone done for Odoo": {
+        "fr": "Clonage terminé pour Odoo",
+        "en": "Clone done for Odoo",
+    },
+    "Clone already done for Odoo": {
+        "fr": "Clonage déjà fait pour Odoo",
+        "en": "Clone already done for Odoo",
+    },
+    "Switch already done for Odoo": {
+        "fr": "Bascule déjà faite pour Odoo",
+        "en": "Switch already done for Odoo",
+    },
+    "Switch done with update for Odoo": {
+        "fr": "Bascule terminée avec mise à jour pour Odoo",
+        "en": "Switch done with update for Odoo",
+    },
+    "Module upgrade done for Odoo": {
+        "fr": "Mise à jour des modules terminée pour Odoo",
+        "en": "Module upgrade done for Odoo",
+    },
+    "Module upgrade already done for Odoo": {
+        "fr": "Mise à jour des modules déjà faite pour Odoo",
+        "en": "Module upgrade already done for Odoo",
+    },
+    "Database upgrade done for Odoo": {
+        "fr": "Migration de la base terminée pour Odoo",
+        "en": "Database upgrade done for Odoo",
+    },
+    "Database upgrade already done for Odoo": {
+        "fr": "Migration de la base déjà faite pour Odoo",
+        "en": "Database upgrade already done for Odoo",
     },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
