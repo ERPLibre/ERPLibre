@@ -2023,7 +2023,11 @@ def virt_install(
         cmd += [
             "--install",
             f"kernel={kernel},initrd={initrd},"
-            "kernel_args=auto=true priority=critical "
+            # PAS de « auto=true » : il vise le preseed par URL et réordonne
+            # l'installation pour monter le réseau AVANT tout le reste. Le
+            # nôtre est local, il n'y a rien à aller chercher — et c'est
+            # précisément là que netcfg dérapait.
+            "kernel_args=priority=critical "
             "preseed/file=/preseed.cfg console=ttysclp0",
         ]
     else:
