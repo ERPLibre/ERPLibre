@@ -37,6 +37,11 @@ SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
     "-o ConnectTimeout=8"
 )
+# Pour les ssh NON INTERACTIFS : « -n » branche leur entrée sur /dev/null.
+# Ceinture et bretelles avec le stdin du processus détaché — un ssh qui lit le
+# terminal vole les frappes du shell, et le diagnostic est très difficile.
+# Jamais pour un ssh interactif (touche « s »), qui doit garder le clavier.
+SSH_OPTS_BATCH = f"{SSH_OPTS} -n"
 
 
 def session_dir() -> Path:
@@ -184,7 +189,7 @@ def _launch_one(
         f"seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
-        f'st=$(ssh {SSH_OPTS} -o BatchMode=yes "erplibre@$ip" '
+        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
         f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
@@ -200,13 +205,22 @@ def _launch_one(
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
         f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
-        f'ssh {SSH_OPTS} "erplibre@$ip" {shlex.quote(remote_cmd)} '
+        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" {shlex.quote(remote_cmd)} '
         f">> {log_q} 2>&1; "
         f'echo "{EXIT_MARKER} $?" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
+    # stdin sur /dev/null : SANS lui, le descripteur 0 du processus détaché
+    # reste le TERMINAL. « setsid » lui retire le terminal de contrôle, mais ne
+    # ferme aucun descripteur — et ssh, lui, LIT son entrée pour la transmettre
+    # à la commande distante. Deux lecteurs se partagent alors le clavier : une
+    # frappe sur deux part vers l'installation au lieu du shell, et il faut
+    # appuyer plusieurs fois pour qu'une lettre arrive. Le symptôme survit à
+    # todo.py, puisque l'installation continue une demi-heure après sa
+    # fermeture — d'où un terminal qui « bogue » sans cause visible.
     subprocess.Popen(
         ["setsid", "-f", "bash", "-c", wrapper],
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
