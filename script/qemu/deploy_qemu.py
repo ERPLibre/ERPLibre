@@ -1809,6 +1809,31 @@ def build_preseed(
             f"chmod 700 /target/home/{user}/.ssh",
             f"chmod 600 /target/home/{user}/.ssh/authorized_keys",
         ]
+    # Diagnostic réseau, écrit sur la console AVANT que netcfg ne décide.
+    # netcfg n'essaie aucun DHCP sur s390x et tombe droit sur l'adressage
+    # statique ; ses propres traces vont dans le syslog INTERNE de d-i, qu'on
+    # ne peut lire qu'en ouvrant un shell à la main. Ces quelques lignes
+    # atterrissent, elles, dans le journal de console — donc dans un fichier
+    # qu'il suffit de lire après coup. La sonde DHCP est celle de busybox,
+    # bornée à trois essais, et ne configure rien de durable.
+    early = [
+        # LE correctif, pas un diagnostic : on ALLUME la carte.
+        #
+        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
+        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
+        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
+        # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
+        # pas, saute le DHCP et demande une adresse statique.
+        #
+        # Sur s390x c'est le udeb s390-netdevice qui active le périphérique.
+        # En preseedant sa question pour qu'il ne s'affiche plus, on
+        # court-circuite aussi cette activation. On la refait donc ici, avant
+        # que netcfg ne décide.
+        "ip link set enc1 up > /dev/console 2>&1",
+        "echo '=== EL: enc1 activee avant netcfg ===' > /dev/console",
+        "ip -o link show enc1 > /dev/console 2>&1",
+    ]
+    lines.append("d-i preseed/early_command string " + " ; ".join(early))
     lines.append("d-i preseed/late_command string " + " ; ".join(post))
     return "\n".join(lines) + "\n"
 
