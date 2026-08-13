@@ -161,8 +161,12 @@ class TestTheFullScreenViewGetsARealTerminal(PromptCase):
             "target_version": "odoo13.0",
         }
 
-        class FakeStdout:
+        # Un vrai objet fichier : run_tui ÉCRIT maintenant la raison de son
+        # refus, et un faux sans write() ne mesurait plus le comportement mais
+        # sa propre incomplétude.
+        class FakeStdout(io.StringIO):
             def __init__(self, tty):
+                super().__init__()
                 self.tty = tty
 
             def isatty(self):
@@ -170,10 +174,16 @@ class TestTheFullScreenViewGetsARealTerminal(PromptCase):
 
         real = sys.stdout
         self.addCleanup(setattr, sys, "stdout", real)
-        sys.stdout = FakeStdout(False)
-        self.assertFalse(run_tui([finding], run_app=False))
+        sys.stdout = piped = FakeStdout(False)
+        refused = run_tui([finding], run_app=False)
+        sys.stdout = real
+        self.assertFalse(refused)
+        self.assertIn("terminal", piped.getvalue())
+
         sys.stdout = FakeStdout(True)
-        self.assertTrue(run_tui([finding], run_app=False))
+        opened = run_tui([finding], run_app=False)
+        sys.stdout = real
+        self.assertTrue(opened)
 
 
 class TestTheBumpPromptSharesTheSameView(PromptCase):
