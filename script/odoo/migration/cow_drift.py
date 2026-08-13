@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from check_cow_views import analyse, find_module_dir  # noqa: E402
+from check_cow_views import analyse, find_module_dir, t  # noqa: E402
 
 # The declaration of a template spans a few lines; showing the opening tag and
 # what follows is enough to see its shape, and short enough to compare two
@@ -208,8 +208,8 @@ def render_diff(finding):
     ]
     if finding["module_id"] is None:
         lines += [
-            "  No module view carries this key, so there is nothing to compare",
-            "  against: this copy is a page made in the website editor.",
+            f"  {t('No module view carries this key, so there is nothing to')}",
+            f"  {t('compare: this copy is a page made in the website editor.')}",
         ]
         return "\n".join(lines)
 
@@ -227,7 +227,7 @@ def render_diff(finding):
         )
     ]
     if len(diff) <= 2:
-        lines.append("  The copy is identical to the module view.")
+        lines.append(f"  {t('The copy is identical to the module view.')}")
         return "\n".join(lines)
     lines += [f"  {line}" for line in diff]
     n_plus = sum(
@@ -238,8 +238,8 @@ def render_diff(finding):
     )
     lines += [
         "",
-        f"  {n_plus} line(s) added, {n_minus} removed — this is what"
-        " neutralizing gives up.",
+        f"  {n_plus} {t('line(s) added')}, {n_minus} {t('removed')} —"
+        f" {t('this is what neutralizing gives up.')}",
     ]
     return "\n".join(lines)
 
@@ -249,7 +249,7 @@ def render_shape(finding):
     lines = [
         f"── id={finding['id']} {finding['key']} ──",
         "",
-        f"  {finding['reason']}",
+        f"  {t(finding['reason'])}",
         "",
     ]
     for label, decl in (
@@ -259,7 +259,7 @@ def render_shape(finding):
         lines.append(f"  <!-- {label or '?'} -->")
         if decl is None:
             lines += [
-                "      (the module no longer declares this template)",
+                f"      ({t('the module no longer declares this template')})",
                 "",
             ]
             continue
@@ -267,19 +267,20 @@ def render_shape(finding):
         lines.append(f"  <!-- {path} -->")
         lines += [f"  {line}" for line in snippet.splitlines()]
         shape = (
-            "inheritance specs (needs inherit_id)"
+            t("inheritance specs (needs inherit_id)")
             if re.search(r"inherit_id\s*=", snippet)
-            else "a standalone template"
+            else t("a standalone template")
         )
         lines += [f"      -> {shape}", ""]
     lines += [
-        "  Odoo changing the shape of its own template is NOT the problem: on a",
-        "  database without a copy, the module upgrade rewrites the view and",
-        "  nothing breaks. It breaks here because a COPY exists and froze the",
-        "  old shape — the copy follows the module and becomes an extension,",
-        "  while still holding a standalone template. Odoo then applies that",
-        "  template as an inheritance spec and stops on « cannot be located in",
-        "  parent view ».",
+        f"  {t('Odoo changing the shape of its own template is NOT the')}",
+        f"  {t('problem: on a database without a copy, the module upgrade')}",
+        f"  {t('rewrites the view and nothing breaks. It breaks here because')}",
+        f"  {t('a COPY exists and froze the old shape — the copy follows the')}",
+        f"  {t('module and becomes an extension, while still holding a')}",
+        f"  {t('standalone template. Odoo then applies that template as an')}",
+        f"  {t('inheritance spec and stops on « cannot be located in parent')}",
+        f"  {t('view ».')}",
         "",
     ]
     # Sans ceci, cette vue se lit comme « du code Odoo qui change », et l'on
@@ -298,8 +299,8 @@ def _what_the_copy_holds(finding):
     """
     if finding["module_id"] is None:
         return [
-            "  This copy has no module view of that name: it is a page made in",
-            "  the website editor, and nothing else holds its content.",
+            f"  {t('This copy has no module view of that name: it is a page')}",
+            f"  {t('made in the website editor, and nothing holds its content.')}",
         ]
     left = finding["module_arch"].splitlines()
     right = finding["copy_arch"].splitlines()
@@ -310,23 +311,23 @@ def _what_the_copy_holds(finding):
     ]
     if not diff:
         return [
-            "  This copy is IDENTICAL to the module view it shadows: it holds no",
-            "  customization at all, so neutralizing it loses nothing.",
+            f"  {t('This copy is IDENTICAL to the module view it shadows: it')}",
+            f"  {t('holds no customization, so neutralizing it loses nothing.')}",
         ]
     n_plus = sum(1 for x in diff if x.startswith("+"))
     n_minus = sum(1 for x in diff if x.startswith("-"))
     return [
-        f"  This copy differs from the module view by +{n_plus}/-{n_minus}"
-        " line(s):",
-        "  that is the customization, and all that neutralizing gives up.",
-        "  Run without --shape to read it.",
+        f"  {t('This copy differs from the module view by')}"
+        f" +{n_plus}/-{n_minus} {t('line(s):')}",
+        f"  {t('that is the customization, and all neutralizing gives up.')}",
+        f"  {t('Run without --shape to read it.')}",
     ]
 
 
 def render_all(lst_finding, shape=False):
     """The whole report, one block per finding."""
     if not lst_finding:
-        return "✅ No website COW view is at risk.\n"
+        return f"✅ {t('No website COW view is at risk.')}\n"
     render = render_shape if shape else render_diff
     return "\n\n".join(render(f) for f in lst_finding) + "\n"
 
@@ -363,7 +364,10 @@ def main(argv=None):
     config = parser.parse_args(argv)
 
     if not os.path.isdir(config.target_version):
-        print(f"❌ Target version '{config.target_version}' not found.")
+        print(
+            f"❌ {t('Target version directory not found')} :"
+            f" '{config.target_version}'"
+        )
         return 2
     try:
         lst_finding = collect(

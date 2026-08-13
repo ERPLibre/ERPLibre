@@ -61,6 +61,17 @@ import re
 import subprocess
 import sys
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
 
 def run_psql(database, sql):
     """Run a statement and return stdout, raising on failure."""
@@ -142,7 +153,7 @@ def require_lxml():
         return etree
     except ImportError:
         sys.exit(
-            "❌ lxml is required to resolve the xpath expressions.\n"
+            f"❌ {t('lxml is required to resolve the xpath expressions.')}\n"
             "   Run this with an interpreter that has it, e.g.\n"
             "   ./.venv.erplibre/bin/python3 " + os.path.relpath(__file__)
         )
@@ -294,37 +305,37 @@ def main():
 
     findings = analyse(config.database)
     if not findings:
-        print("✅ No COW copy has drifted from its module view.")
+        print(f"✅ {t('No COW copy has drifted from its module view.')}")
         return 0
 
     print(
-        f"⚠️  {len(findings)} COW copy(ies) drifted from their module view"
-        f" in {config.database}"
+        f"⚠️  {len(findings)} {t('COW copy(ies) drifted from their module')}"
+        f" {t('view in')} {config.database}"
     )
     print(
-        "   Odoo surfaces this when the module view is rewritten (a version"
-        " bump) or when the page is rendered.\n"
+        f"   {t('Odoo surfaces this when the module view is rewritten (a')}"
+        f" {t('version bump) or when the page is rendered.')}\n"
     )
     for cow_view, module_view, broken in findings:
         twin = (
             f"module id={module_view['id']}"
             if module_view
-            else "NO module view with this key"
+            else t("NO module view with this key")
         )
         print(
             f"  id={cow_view['id']} key={cow_view['key']}"
             f" website_id={cow_view['website_id']}  [{twin}]"
         )
         for child_id, expr in broken:
-            print(f"      child {child_id} cannot apply: {expr}")
+            print(f"      {t('child')} {child_id} {t('cannot apply')}: {expr}")
         if module_view:
             show_diff(module_view, cow_view)
         print()
 
     if not config.reset:
         print(
-            "Nothing changed. Re-run with --reset <key> --apply to reset a"
-            " copy onto its module view."
+            f"{t('Nothing changed. Re-run with --reset <key> --apply to')}"
+            f" {t('reset a copy onto its module view.')}"
         )
         return 1
 
@@ -338,25 +349,26 @@ def main():
             continue
         if not module_view:
             print(
-                f"⏭  {cow_view['key']}: no module view to reset onto,"
-                " skipped."
+                f"⏭  {cow_view['key']} :"
+                f" {t('no module view to reset onto, skipped.')}"
             )
             continue
         if not config.apply:
             print(
-                f"[dry-run] would reset id={cow_view['id']}"
-                f" ({cow_view['key']}) onto id={module_view['id']}"
+                f"[{t('dry-run')}] {t('would reset')} id={cow_view['id']}"
+                f" ({cow_view['key']}) {t('onto')} id={module_view['id']}"
             )
             continue
         path = backup(config.database, cow_view, directory)
         reset(config.database, cow_view, module_view)
         done += 1
-        print(f"✅ reset id={cow_view['id']} ({cow_view['key']})")
-        print(f"   previous arch saved to {path}")
+        print(f"✅ {t('reset')} id={cow_view['id']} ({cow_view['key']})")
+        print(f"   {t('previous arch saved to')} {path}")
     if config.apply and done:
         print(
-            f"\n{done} copy(ies) reset. Re-apply any real customisation as an"
-            " INHERITING view, not a copy, so it cannot go stale again."
+            f"\n{done} {t('copy(ies) reset. Re-apply any real customisation')}"
+            f" {t('as an INHERITING view, not a copy, so it cannot go stale')}"
+            f" {t('again.')}"
         )
     return 0
 
