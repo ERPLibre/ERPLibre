@@ -510,6 +510,13 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._syncing = False
             # Jeu de VM actuellement monté dans le panneau droit.
             self._shown_ids = ()
+            # Génération du jeu de rangées monté. Les identifiants de widgets
+            # portent un RANG, et le rang se décale quand on coche ou décoche
+            # une entrée : un événement émis par un widget déjà détruit
+            # s'appliquerait alors à la VM qui a pris sa place. Chaque widget
+            # de rangée retient sa génération ; ceux d'une génération périmée
+            # sont ignorés.
+            self._gen = 0
             # VM dont les ressources sont FIGÉES, par identité de catalogue.
             # Distinct des surcharges : une VM peut être modifiée sans être
             # verrouillée, et le verrou fige TOUT, pas seulement ce qu'on a
@@ -912,6 +919,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             marque ✎. Il est relâché après le rafraîchissement, une fois ces
             messages consommés."""
             self._syncing = True
+            self._gen += 1
             plan = self.query_one("#plan", VerticalScroll)
             plan.remove_children()
             widgets = []
@@ -1052,6 +1060,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                 )
             if widgets:
                 plan.mount_all(widgets)
+
+            # Marque de génération, posée sur CHAQUE widget de rangée.
+            # « walk_children() » ne voit RIEN avant le montage : les enfants
+            # passés au constructeur attendent dans « _pending_children », et
+            # le montage est asynchrone. Marquer trop tard laisserait passer
+            # les premiers événements, ceux-là mêmes qu'il faut filtrer.
+            def mark(node):
+                node._el_gen = self._gen
+                for child in getattr(node, "_pending_children", None) or []:
+                    mark(child)
+
+            for card in widgets:
+                mark(card)
             self._shown_ids = self._row_ids()
             # Les saisies libres ne se révèlent qu'après le montage : leur
             # style ne peut pas être touché avant qu'elles existent.
@@ -1210,6 +1231,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()
 
         # -- rangées du panneau droit ------------------------------- #
+        def _is_current(self, widget):
+            """Le widget appartient-il au jeu de rangées ACTUEL ?"""
+            return getattr(widget, "_el_gen", None) == self._gen
+
         def _focused_row(self):
             """Rang de la VM dont un widget a le focus, ou None. C'est la seule
             désignation qui ait un sens ici : il n'y a plus de curseur unique,
@@ -1299,6 +1324,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             wid = event.select.id or ""
             row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
+            if row and not self._is_current(event.select):
+                # Widget d'une génération périmée : son rang ne désigne plus
+                # la même VM. L'appliquer écraserait le réglage d'une voisine.
+                return
             if row:
                 index, field = int(row.group(1)), row.group(2)
                 if index >= len(self.rows):
@@ -1431,6 +1460,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             wid = event.input.id or ""
             row = re.match(r"c(\d+)_(vcpus|ram|disk)$", wid)
+            if row and not self._is_current(event.input):
+                return
             if row:
                 index, field = int(row.group(1)), row.group(2)
                 self._set_override(
