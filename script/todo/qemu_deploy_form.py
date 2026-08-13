@@ -978,11 +978,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                     Select(
                         [(b, b) for b in branches],
                         classes="vmbranch",
+                        # Repli sur la branche du FORMULAIRE, jamais sur
+                        # branches[0] : les rangées sont remontées dès que le
+                        # jeu de VM change (une entrée cochée, une copie
+                        # ajoutée, un renommage), et elles retombaient alors
+                        # toutes sur « develop » quel que soit le choix commun.
                         value=(
-                            item.get("branch")
-                            or self.rows[i]["vm"].get("branch")
-                            or branches[0]
-                        ),
+                            self.rows[i]["vm"].get("branch")
+                            if i < len(self.rows)
+                            else ""
+                        )
+                        or self._branch(),
                         allow_blank=False,
                         id=f"v{i}_branch",
                     ),
