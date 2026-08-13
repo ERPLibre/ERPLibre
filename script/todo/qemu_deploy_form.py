@@ -169,6 +169,12 @@ def apply_profile(
                 # Branche ERPLibre. Même raison : « » signifie « celle du
                 # formulaire », et une surcharge la remplace pour cette VM.
                 "branch": "",
+                # Profil d'installation (« ERPLibre + Odoo 18 »). Même
+                # convention : « » = celui du formulaire.
+                "install_cmd": "",
+                # Libelle du profil, pour que le recapitulatif puisse dire
+                # « Odoo 18 » sans connaitre la liste des profils.
+                "install_label": "",
             }
         )
     return out
@@ -449,7 +455,10 @@ def run_deploy_form(ctx, run_app: bool = True):
         #body { height: 1fr; }
         #fields { width: 62; border: solid $accent; overflow-y: auto; }
         #right { width: 1fr; }
-        #plan { height: 1fr; border: solid $accent; }
+        #plan {
+            height: 1fr; border: solid $accent;
+            overflow-x: auto; scrollbar-size-horizontal: 1;
+        }
         #totals { height: auto; color: $text-muted; padding: 0 1; }
         .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
         SelectionList { height: 10; border: solid $panel; }
@@ -473,12 +482,22 @@ def run_deploy_form(ctx, run_app: bool = True):
         /* La branche porte des noms longs (« 1.6.0 », « develop »,
         « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
         plus ce qu'on a choisi. */
-        .vmbranch { width: 18; }
+
+
         .vmcopy { width: 5; min-width: 5; }
         .vmhead { height: 1; }
-        .vmrow { height: 3; align-vertical: middle; }
+        /* « width: auto » et le défilement du plan : sans eux, une rangée
+        plus large que le panneau est COUPÉE au lieu d'être atteignable. */
+        .vmrow { height: 3; width: auto; align-vertical: middle; }
         .vmrow Select { width: 15; }
         .vmrow Input { width: 11; }
+        /* Ces deux règles portent « .vmrow Select » EN PLUS de leur classe :
+        « .vmrow Select » (une classe + un type) l'emporte sur « .vmbranch »
+        (une classe) par spécificité CSS. Écrites simplement, elles étaient
+        silencieusement écrasées à 15 — et le test, qui ne vérifiait que la
+        présence de la classe, passait sans rien prouver. */
+        .vmrow Select.vmbranch { width: 34; }
+        .vmrow Select.vmprof { width: 40; }
         #reslabel { color: $text-muted; }
         RenameScreen { align: center middle; }
         #renbox {
@@ -864,6 +883,24 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
 
+        def _profile_cmd(self):
+            """Commande du profil choisi en haut : le défaut de chaque VM."""
+            if not profiles:
+                return ""
+            index = self.query_one("#f_profile_install", Select).value
+            return profiles[index if isinstance(index, int) else 0][1]
+
+        def _row_profile_index(self, i):
+            """Rang du profil que la rangée doit AFFICHER."""
+            cmd = ""
+            if i < len(self.rows):
+                cmd = self.rows[i]["vm"].get("install_cmd") or ""
+            cmd = cmd or self._profile_cmd()
+            for k, (_lbl, c) in enumerate(profiles):
+                if c == cmd:
+                    return k
+            return 0
+
         def _branch(self):
             """Branche du formulaire : le défaut de chaque VM."""
             value = self.query_one("#f_branch", Select).value
@@ -1005,6 +1042,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id=f"v{i}_branch",
                     ),
+                    (
+                        Select(
+                            [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
+                            value=self._row_profile_index(i),
+                            allow_blank=False,
+                            classes="vmprof",
+                            id=f"v{i}_prof",
+                        )
+                        if profiles
+                        else Static("", classes="vmprof")
+                    ),
                     Select(
                         self._type_options(),
                         value=vm.get("desktop") or SERVER,
@@ -1093,6 +1141,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 for wid, value in (
                     (f"#v{i}_type", vm.get("desktop") or SERVER),
                     (f"#v{i}_branch", vm.get("branch") or self._branch()),
+                    (f"#v{i}_prof", self._row_profile_index(i)),
                 ):
                     try:
                         self.query_one(wid, Select).value = value
@@ -1262,6 +1311,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     continue
                 for field in fields:
                     changed |= self.overrides[key].pop(field, None) is not None
+                    if field == "install_cmd":
+                        # Le libelle n'a pas de sens sans sa commande.
+                        self.overrides[key].pop("install_label", None)
                 if not self.overrides[key]:
                     self.overrides.pop(key, None)
             if changed:
@@ -1336,6 +1388,21 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # suivra donc le profil s'il change — ce qui est aussi le plus
                 # attendu quand on n'a rien changé de visible.
                 vm_now = self.rows[index]["vm"]
+                if field == "prof":
+                    label, cmd = profiles[event.value]
+                    if cmd == (
+                        vm_now.get("install_cmd") or self._profile_cmd()
+                    ):
+                        return
+                    same = cmd == self._profile_cmd()
+                    self._set_override(
+                        index, "install_cmd", "" if same else cmd
+                    )
+                    self._set_override(
+                        index, "install_label", "" if same else label
+                    )
+                    self._recompute()
+                    return
                 if field == "branch":
                     # « la branche du formulaire » n'est pas une surcharge :
                     # la VM doit suivre si on la change en haut.
@@ -1471,6 +1538,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                     "branch": vm.get("branch") or self._branch(),
                     "install_cmd": (
                         vm.get("install_cmd") or self._profile_cmd()
+                    ),
+                    "install_label": (
+                        vm.get("install_label")
+                        or (
+                            profiles[self._row_profile_index(index)][0]
+                            if profiles
+                            else ""
+                        )
                     ),
                 }
             else:
