@@ -108,6 +108,30 @@ def positive_int(value, fallback):
     return number if number > 0 else fallback
 
 
+def parse_ram(value):
+    """« 2048 », « 128G », « 1,5G » -> mébioctets, ou 0 si invalide.
+
+    Les valeurs proposées s'affichent en G — « 2G », « 16G » — alors que la
+    saisie libre comptait en Mo. Taper « 128G », ce que l'affichage invite à
+    faire, rendait 0 : la surcharge était alors RETIRÉE et la VM revenait à la
+    valeur du catalogue, sans un mot. On accepte donc les deux écritures, un
+    nombre nu restant des mébioctets."""
+    txt = str(value or "").strip().upper().replace(",", ".")
+    factor = 1
+    if txt.endswith("GI"):
+        factor, txt = 1024, txt[:-2]
+    elif txt.endswith(("G", "T")):
+        factor = 1024 * (1024 if txt.endswith("T") else 1)
+        txt = txt[:-1]
+    elif txt.endswith(("M", "MI")):
+        txt = txt.rstrip("IM")
+    try:
+        mib = int(float(txt) * factor)
+    except ValueError:
+        return 0
+    return mib if mib > 0 else 0
+
+
 def apply_profile(
     entries, profile, base_vcpus, host_cpu, custom=None, desktop=""
 ):
@@ -571,12 +595,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                             for m in ctx["ram_presets"]
                         ]
                         + [(t("free value…"), FREE)],
-                        prompt=t("RAM (MB)"),
+                        prompt=t("RAM: 2048 or 8G"),
                         id="f_ram",
                         disabled=True,
                     )
                     yield Input(
-                        placeholder=t("RAM (MB)"),
+                        placeholder=t("RAM: 2048 or 8G"),
                         id="c_ram",
                         classes="freeval",
                         disabled=True,
@@ -968,7 +992,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                             if vm["ram"] in ctx["ram_presets"]
                             else SELECT_NULL
                         ),
-                        prompt=t("RAM (MB)"),
+                        prompt=t("RAM: 2048 or 8G"),
                         id=f"v{i}_ram",
                     ),
                     Input(
@@ -977,7 +1001,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                             if vm["ram"] in ctx["ram_presets"]
                             else str(vm["ram"])
                         ),
-                        placeholder=t("RAM (MB)"),
+                        placeholder=t("RAM: 2048 or 8G"),
                         id=f"c{i}_ram",
                         classes="freeval",
                     ),
@@ -1328,6 +1352,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             raw = self.query_one(f"#c{index}_{field}", Input).value.strip()
             if field == "disk":
                 return parse_disk(raw) or ""
+            if field == "ram":
+                return parse_ram(raw)
             return positive_int(raw, 0)
 
         def _show_free(self, field, visible) -> None:
@@ -1471,6 +1497,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             raw = self.query_one(RES_FIELDS[field][1], Input).value.strip()
             if field == "disk":
                 self.custom[field] = parse_disk(raw) or ""
+            elif field == "ram":
+                self.custom[field] = parse_ram(raw)
             else:
                 self.custom[field] = positive_int(raw, 0)
             self._clear_overrides((field,))
