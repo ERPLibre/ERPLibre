@@ -1552,7 +1552,11 @@ class TODO:
         print(f"\n  {t('Remote desktop kind:')}")
         print(f"  [1] RDP 3389 (xrdp) *")
         print(f"  [2] VNC 5901 (TigerVNC, Arch)")
+        print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
         kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        if kind_answer == "3":
+            self._qemu_console_tunnel()
+            return
         port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
 
@@ -1578,6 +1582,65 @@ class TODO:
         print(
             f"  {t('then point your client at')} localhost:{local}  ({kind})"
         )
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    def _qemu_console_tunnel(self):
+        """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
+
+        Les deux autres choix du menu supposent un service DANS l'invité —
+        xrdp, TigerVNC — donc une session de bureau déjà ouverte et un mot de
+        passe posé. La console de l'hyperviseur, elle, existe dès l'amorçage et
+        ne demande rien à l'invité : c'est ce que montre virt-manager.
+
+        Le port n'est pas devinable : libvirt l'attribue au démarrage. On le
+        lit donc, et l'absence de port est un diagnostic à part entière — avec
+        « listen=none » QEMU n'ouvre AUCUN socket, et aucun tunnel n'y peut
+        rien tant que le domaine n'est pas redéfini.
+        """
+        names = self._qemu_list_domains()
+        if not names:
+            print(f"  {t('No local VM.')}")
+            return
+        for i, name in enumerate(names, 1):
+            print(f"  [{i}] {name}")
+        raw = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not raw.isdigit() or not (1 <= int(raw) <= len(names)):
+            print(t("Cancelled."))
+            return
+        name = names[int(raw) - 1]
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "vncdisplay", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            res = None
+        # « 127.0.0.1:0 » désigne le port 5900, « :1 » le 5901, etc.
+        port = None
+        if res and res.returncode == 0:
+            disp = res.stdout.strip().rsplit(":", 1)
+            if len(disp) == 2 and disp[1].isdigit():
+                port = 5900 + int(disp[1])
+        if not port:
+            print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
+            print(f"  {t('Its display is likely spice with listen=none:')}")
+            print(f"    sudo virsh dumpxml {name} | grep -A2 '<graphics'")
+            print(f"  {t('To open it on the loopback (VM restart required):')}")
+            print(f"    sudo virsh destroy {name}")
+            print(f"    sudo virsh edit {name}   # <graphics type='vnc'"
+                  " port='-1' autoport='yes' listen='127.0.0.1'/>")
+            print(f"    sudo virsh start {name}")
+            print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
+            return
+        host, from_ssh = self._qemu_self_address()
+        user = os.environ.get("USER", "user")
+        if not from_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        print(f"\n  {t('Run this on YOUR workstation:')}")
+        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {user}@{host}\n")
+        print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
     def _qemu_ssh_config_menu(self):
