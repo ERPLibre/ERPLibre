@@ -428,7 +428,10 @@ def run_deploy_form(ctx, run_app: bool = True):
         #body { height: 1fr; }
         #fields { width: 62; border: solid $accent; overflow-y: auto; }
         #right { width: 1fr; }
-        #plan { height: 1fr; border: solid $accent; }
+        #plan {
+            height: 1fr; border: solid $accent;
+            overflow-x: auto; scrollbar-size-horizontal: 1;
+        }
         #totals { height: auto; color: $text-muted; padding: 0 1; }
         .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
         SelectionList { height: 10; border: solid $panel; }
@@ -443,15 +446,22 @@ def run_deploy_form(ctx, run_app: bool = True):
         /* La branche porte des noms longs (« 1.6.0 », « develop »,
         « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
         plus ce qu'on a choisi. */
-        .vmbranch { width: 24; }
-        /* Les libellés de profil sont longs (« ERPLibre + Odoo 18 ») :
-        tronqués, on ne sait plus quelle version d'Odoo on déploie. */
-        .vmprof { width: 28; }
+
+
         .vmcopy { width: 5; min-width: 5; }
         .vmhead { height: 1; }
-        .vmrow { height: 3; align-vertical: middle; }
+        /* « width: auto » et le défilement du plan : sans eux, une rangée
+        plus large que le panneau est COUPÉE au lieu d'être atteignable. */
+        .vmrow { height: 3; width: auto; align-vertical: middle; }
         .vmrow Select { width: 15; }
         .vmrow Input { width: 11; }
+        /* Ces deux règles portent « .vmrow Select » EN PLUS de leur classe :
+        « .vmrow Select » (une classe + un type) l'emporte sur « .vmbranch »
+        (une classe) par spécificité CSS. Écrites simplement, elles étaient
+        silencieusement écrasées à 15 — et le test, qui ne vérifiait que la
+        présence de la classe, passait sans rien prouver. */
+        .vmrow Select.vmbranch { width: 34; }
+        .vmrow Select.vmprof { width: 40; }
         #reslabel { color: $text-muted; }
         RenameScreen { align: center middle; }
         #renbox {
