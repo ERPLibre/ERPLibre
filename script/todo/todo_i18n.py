@@ -4731,6 +4731,10 @@ TRANSLATIONS = {
         "fr": "Commande non trouvée",
         "en": "Command not found",
     },
+    "Execute command": {
+        "fr": "Exécution de la commande",
+        "en": "Execute command",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

@@ -16,10 +16,13 @@ texte de l'invite.
 import builtins
 import contextlib
 import io
+import os
 import unittest
 
 from script.todo import todo_i18n
 from script.todo.todo_upgrade import TodoUpgrade
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class PromptCase(unittest.TestCase):
@@ -41,6 +44,11 @@ class PromptCase(unittest.TestCase):
             lst_cmd.append(cmd),
             (False, cmd),
         )[1]
+        # Les afficheurs ne passent PLUS par todo_upgrade_execute : il capture
+        # la sortie par un tube, et un plein écran refuse de s'ouvrir sur un
+        # stdout qui n'est pas un terminal. Sans ce bouchon, ces tests
+        # lanceraient les vraies commandes.
+        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
         seq = iter(answers)
         original = builtins.input
         builtins.input = lambda *a: next(seq)
@@ -101,6 +109,73 @@ class TestNeutralizingNow(PromptCase):
         self.assertNotIn("ask again", text)
 
 
+class TestTheFullScreenViewGetsARealTerminal(PromptCase):
+    """« w » réaffichait le rapport texte au lieu d'ouvrir le plein écran.
+
+    `todo_upgrade_execute` capture la sortie par un tube pour que le pilote
+    puisse la relire. La TUI y voit un stdout qui n'est PAS un terminal,
+    renonce — c'est son repli délibéré — et retombe sur le même rapport que
+    « v » venait d'afficher. Aucune erreur, aucune trace : deux touches
+    différentes donnant le même écran.
+    """
+
+    def test_the_viewers_do_not_go_through_the_piped_executor(self):
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.show_cow_drift)
+        self.assertNotIn("todo_upgrade_execute", source)
+        self.assertIn("self.run_on_terminal(", source)
+
+    def test_run_on_terminal_does_not_capture_anything(self):
+        # Capturer, c'est justement ce qui referme le plein écran.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.run_on_terminal)
+        self.assertNotIn("PIPE", source)
+        self.assertNotIn("capture_output", source)
+        self.assertIn("subprocess.call(", source)
+
+    def test_the_tui_refuses_a_pipe_and_accepts_a_terminal(self):
+        # La raison même du défaut, vérifiée sur le code qui décide.
+        import sys
+
+        sys.path.insert(0, os.path.join(REPO, "script", "odoo", "migration"))
+        self.addCleanup(sys.path.remove, sys.path[0])
+        from cow_drift_tui import run_tui
+
+        finding = {
+            "id": 1,
+            "key": "k",
+            "website_id": 1,
+            "reason": "r",
+            "module_id": 2,
+            "module_arch": "a",
+            "copy_arch": "b",
+            "decl_current": None,
+            "decl_target": None,
+            "current_version": "odoo12.0",
+            "target_version": "odoo13.0",
+        }
+
+        class FakeStdout:
+            def __init__(self, tty):
+                self.tty = tty
+
+            def isatty(self):
+                return self.tty
+
+        real = sys.stdout
+        self.addCleanup(setattr, sys, "stdout", real)
+        sys.stdout = FakeStdout(False)
+        self.assertFalse(run_tui([finding], run_app=False))
+        sys.stdout = FakeStdout(True)
+        self.assertTrue(run_tui([finding], run_app=False))
+
+
 class TestTheBumpPromptSharesTheSameView(PromptCase):
     """Les deux invites doivent montrer la même chose, sans se dupliquer."""
 
@@ -109,10 +184,7 @@ class TestTheBumpPromptSharesTheSameView(PromptCase):
         upgrade.dct_progression = {}
         upgrade.lst_command_executed = []
         lst_cmd = []
-        upgrade.todo_upgrade_execute = lambda cmd, **kw: (
-            lst_cmd.append(cmd),
-            (False, cmd),
-        )[1]
+        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
         for mode in ("diff", "shape", "tui"):
             upgrade.show_cow_drift("db", 13, mode)
         self.assertNotIn("--", lst_cmd[0].split("odoo13.0")[1])

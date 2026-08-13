@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from uuid import uuid4
@@ -2720,7 +2721,27 @@ class TodoUpgrade:
             cmd += " --shape"
         elif mode == "tui":
             cmd += " --tui"
-        self.todo_upgrade_execute(cmd, wait_at_error=False)
+        self.run_on_terminal(cmd)
+
+    def run_on_terminal(self, cmd):
+        """Lance une commande en lui laissant le VRAI terminal.
+
+        `todo_upgrade_execute` capture la sortie par un tube. Un plein écran
+        y voit un stdout qui n'est pas un terminal, renonce, et retombe sur
+        son rapport texte : « w » réaffichait mot pour mot ce que « v »
+        venait de montrer, sans rien signaler.
+
+        Rien ne relit cette sortie — elle est REGARDÉE. Et le code de retour
+        d'un afficheur ne veut pas dire « erreur » : 1 signifie « il y a des
+        copies », ce qui est la raison même de l'avoir ouvert. L'annoncer
+        comme un échec inquiétait pour rien.
+        """
+        self.lst_command_executed.append(cmd)
+        self.dct_progression["command_executed"] = self.lst_command_executed
+        self.write_config()
+        print(f"\n🏠 ⬇ {t('Execute command')} :\n")
+        print(cmd)
+        return subprocess.call(cmd, shell=True, executable="/bin/bash")
 
     def prompt_cow_prediction(self, database_name, next_version):
         """Que faire des copies COW annoncées, dès l'étape 2.
