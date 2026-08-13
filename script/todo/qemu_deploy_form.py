@@ -1307,6 +1307,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                     self._set_override(index, field, event.value)
                 self._recompute()
                 return
+            # Les choix GLOBAUX de branche et de profil ne portent aucune
+            # valeur de ressource : ils tombaient donc dans le « return »
+            # ci-dessous sans rien recalculer, et les rangées restaient sur
+            # l'ancienne version. Elles n'en gardent pas de copie — « » y
+            # veut dire « celle du formulaire » — il suffit de redessiner.
+            if event.select.id in ("f_branch", "f_profile_install"):
+                self._recompute()
+                return
             field = SELECT_TO_FIELD.get(event.select.id)
             if not field:
                 return
