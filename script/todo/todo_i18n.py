@@ -2275,6 +2275,8 @@ TRANSLATIONS = {
         "en": "already defined, not counted",
     },
     "RAM: 2048 or 8G": {"fr": "RAM : 2048 ou 8G", "en": "RAM: 2048 or 8G"},
+    "Diagnostic dump": {"fr": "Diagnostic", "en": "Diagnostic dump"},
+    "State written to": {"fr": "État écrit dans", "en": "State written to"},
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
