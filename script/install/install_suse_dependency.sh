@@ -66,6 +66,18 @@ zyp_filter() {
   done
 }
 
+# Un telechargement tronque par le miroir fait echouer le LOT ENTIER, et
+# zypper ne reessaie pas. Vecu : « libLLVM22 ... OpenSSL SSL_read: unexpected
+# eof while reading » a emporte « rust cargo », et l'absence de cargo n'est
+# apparue qu'une heure plus tard, dans la compilation de bcrypt. Une seconde
+# tentative suffit dans la quasi-totalite des cas.
+zyp_retry() {
+  local cmd=("$@")
+  "${cmd[@]}" && return 0
+  echo "  zypper a echoue (reseau ?), seconde tentative..." >&2
+  "${cmd[@]}"
+}
+
 zyp_in() {
   local todo
   mapfile -t todo < <(zyp_filter "$@")
@@ -73,7 +85,7 @@ zyp_in() {
     echo "  deja fourni : $*"
     return 0
   fi
-  ${ZYP_IN} "${todo[@]}"
+  zyp_retry ${ZYP_IN} "${todo[@]}"
 }
 
 zyp_soft() {
@@ -83,7 +95,7 @@ zyp_soft() {
     echo "  deja fourni : $*"
     return 0
   fi
-  ${ZYP_SOFT} "${todo[@]}"
+  zyp_retry ${ZYP_SOFT} "${todo[@]}"
 }
 
 #--------------------------------------------------
@@ -221,7 +233,15 @@ if [ "$(uname -m)" = "s390x" ]; then
   el_swap_ensure
   zyp_soft rust cargo
   if ! command -v cargo > /dev/null 2>&1; then
-    echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
+    # FATAL, et non plus un simple avertissement : sur s390x, bcrypt et
+    # cryptography n'ont aucune roue et portent une extension Rust. Sans
+    # cargo l'installation est perdue d'avance — mais elle ne le montrait
+    # qu'une heure plus tard, au fond d'une trace pip. Mieux vaut s'arreter
+    # ici, ou la cause est encore lisible.
+    echo "cargo introuvable apres deux tentatives." >&2
+    echo "  bcrypt et cryptography ne peuvent pas se compiler sans lui." >&2
+    echo "  Verifiez le miroir zypper, puis relancez." >&2
+    exit 1
   fi
   # Sans roue s390x, TOUT se compile contre les en-têtes de la distribution.
   # Cette liste reprend donc celles d'apt et de dnf, aux noms d'openSUSE près
