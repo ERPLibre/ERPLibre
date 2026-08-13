@@ -86,7 +86,11 @@ ENV ODOO_RC /etc/odoo/odoo.conf
 
 COPY wait-for-psql.py /usr/local/bin/wait-for-psql.py
 
-RUN chmod +X /usr/local/bin/wait-for-psql.py
+# « +X » en majuscule n'ajoute le bit que si l'un des trois est DÉJÀ posé,
+# ou sur un répertoire. Sur le fichier que COPY vient de déposer en 644, il
+# ne faisait rien : le script restait non exécutable dans l'image, malgré
+# sa place dans /usr/local/bin.
+RUN chmod +x /usr/local/bin/wait-for-psql.py
 
 # Set default user when running the container
 USER odoo
