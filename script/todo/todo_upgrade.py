@@ -1160,7 +1160,7 @@ class TodoUpgrade:
         # TODO update dev environment for git project
         # TODO Redeploy new production after upgrade
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
-        print("Welcome to Odoo database upgrade processus with ERPLibre 🤖")
+        print(t("Welcome to the Odoo database upgrade with ERPLibre") + " 🤖")
         self.lst_command_executed = []
         self.dct_module_per_version = {}
         self.dct_module_per_dct_version_path = {}
@@ -1195,10 +1195,12 @@ class TodoUpgrade:
             self.file_path = self.dct_progression["migration_file"]
         else:
             print("")
-            print("Select the zip file of you database backup.")
+            print(t("Select the zip file of your database backup."))
 
             self.file_path = input(
-                "💬 Give the path of file, or empty to use a File Browser, or type 'remote' to download from production : "
+                f"💬 {t('Give the path of the file, or empty to use a file')}"
+                f" {t('browser, or type')} 'remote'"
+                f" {t('to download from production')} : "
             )
             if not self.file_path.strip():
                 self.file_path = None
@@ -1214,19 +1216,22 @@ class TodoUpgrade:
                 )
                 if status:
                     _logger.error(
-                        "Cannot retrieve database from remote, please retry migration."
+                        t(
+                            "Cannot retrieve the database from remote, please"
+                            " retry the migration."
+                        )
                     )
                     return
 
             self.dct_progression["migration_file"] = self.file_path
             self.write_config()
 
-        print(f"✅ Open file {self.file_path}")
+        print(f"✅ {t('Open file')} {self.file_path}")
         with zipfile.ZipFile(self.file_path, "r") as zip_ref:
             manifest_file_1 = zip_ref.open("manifest.json")
         json_manifest_file_1 = json.load(manifest_file_1)
         odoo_actual_version = json_manifest_file_1.get("version")
-        print(f"✅ Detect version Odoo CE '{odoo_actual_version}'.")
+        print(f"✅ {t('Detected Odoo CE version')} '{odoo_actual_version}'.")
 
         # print("What is your actual Odoo version?")
         lst_version, lst_version_installed, odoo_installed_version = (
@@ -1243,7 +1248,7 @@ class TodoUpgrade:
         if "target_odoo_version" in self.dct_progression:
             odoo_target_version = self.dct_progression["target_odoo_version"]
         else:
-            print("💬 Which version do you want to upgrade to?")
+            print(f"💬 {t('Which version do you want to upgrade to?')}")
             odoo_target_version = None
             cmd_no_found = True
             while cmd_no_found:
@@ -1258,7 +1263,7 @@ class TodoUpgrade:
                 except ValueError:
                     pass
                 if cmd_no_found:
-                    print("Commande non trouvée 🤖!")
+                    print(t("Command not found") + " 🤖!")
 
             self.dct_progression["target_odoo_version"] = odoo_target_version
             self.write_config()
@@ -1277,7 +1282,7 @@ class TodoUpgrade:
         self.dct_progression["lst_module_per_version_origin"] = lst_module
         # TODO need support minor version, example 18.2, the .2 (no need for OCE OCB)
 
-        print("✨ Show documentation version :")
+        print(f"✨ {t('Documentation for this version')} :")
         # TODO Generate it locally and show it if asked
 
         for next_version in range_version:
@@ -1287,10 +1292,10 @@ class TodoUpgrade:
 
         # ⚠️ ℹ 💬 ❗ 🔷 ✨ 🟦 🔹 🔵 ⟳ ⧖ ⚙ ✔ ✅ ❌ ⏵ ⏸ ⏹ ◆ ◇ … ➤ ⚑ ★ ☆ ☰ ⬍ ⍟ ⊗ ⌘ ⏻ ⍰
         msg = "0 - Inspect zip"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
-        print("✅ -> Search odoo version")
-        print("✅ -> Find good environment, read the .zip file")
+        print(f"✅ -> {t('Search the Odoo version')}")
+        print(f"✅ -> {t('Find the right environment, read the .zip file')}")
 
         is_state_4_reach_open_upgrade = self.dct_progression.get(
             "state_4_reach_open_upgrade"
@@ -1311,7 +1316,8 @@ class TodoUpgrade:
                     "odoo", ""
                 ).replace(".0", "")
                 want_continue = input(
-                    f"💬 Would you like to install '{odoo_version_to_install}' (y/Y) : "
+                    f"💬 {t('Would you like to install')}"
+                    f" '{odoo_version_to_install}' (y/Y) : "
                 )
                 if want_continue.strip().lower() != "y":
                     return
@@ -1321,7 +1327,8 @@ class TodoUpgrade:
 
                 if not os.path.isfile(FILENAME_ODOO_VERSION):
                     print(
-                        "⚠️ You need an installed system before continue, check your Odoo installation."
+                        f"⚠️ {t('You need an installed system before')}"
+                        f" {t('continuing, check your Odoo installation.')}"
                     )
                     return
 
@@ -1333,7 +1340,7 @@ class TodoUpgrade:
         # self.dct_progression["state_0_switch_odoo"] = True
         # self.write_config()
 
-        print("✅ -> Install environment if missing")
+        print(f"✅ -> {t('Install the environment if missing')}")
 
         if not self.dct_progression.get("state_0_search_missing_module"):
             self.switch_odoo(odoo_actual_version)
@@ -1374,15 +1381,16 @@ class TodoUpgrade:
             self.dct_progression["lst_module_duplicate"] = lst_module_duplicate
             self.write_config()
             if lst_module_missing or lst_module_duplicate:
-                print("Cannot setup environment to begin.")
+                print(t("Cannot set up the environment to begin."))
                 if lst_module_missing:
-                    print("Missing module :")
+                    print(f"{t('Missing module')} :")
                     print(lst_module_missing)
                 if lst_module_duplicate:
-                    print("Duplicate module :")
+                    print(f"{t('Duplicate module')} :")
                     print(lst_module_duplicate)
                 want_continue = input(
-                    "💬 Detect error missing/duplicate module init, do you want to continue? (Y/N): "
+                    f"💬 {t('Missing or duplicate module detected at init,')}"
+                    f" {t('do you want to continue?')} (Y/N) : "
                 )
                 if want_continue.strip().lower() != "y":
                     return
@@ -1393,21 +1401,23 @@ class TodoUpgrade:
             # TODO fill from config
             lst_module_missing = []
 
-        print("✅ -> Search missing module")
+        print(f"✅ -> {t('Search missing modules')}")
 
         print(
-            "❌ -> Install missing module, do a research or ask to uninstall it (can break data)"
+            f"❌ -> {t('Install the missing modules, search for them or')}"
+            f" {t('ask to uninstall them (can break data)')}"
         )
 
         msg = "1 - Import database from zip"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         database_name = self.dct_progression.get("config_database_name")
         if not database_name:
             database_name = (
                 input(
-                    f"💬 Witch database name do you want to work with? Default ({default_database_name}) : "
+                    f"💬 {t('Which database name do you want to work with?')}"
+                    f" {t('Default')} ({default_database_name}) : "
                 ).strip()
                 or default_database_name
             )
@@ -1416,7 +1426,7 @@ class TodoUpgrade:
 
         do_neutralize = False
         if not self.dct_progression.get("state_1_neutralize_database"):
-            print("[1] Ignore neutralize database")
+            print(f"[1] {t('Ignore the database neutralization')}")
             wait_continue = (
                 self.ask_gate(
                     "💬 "
@@ -1432,20 +1442,22 @@ class TodoUpgrade:
                 self.dct_progression["config_database_name"] = database_name
                 self.write_config()
 
-        print(f"★ Work with database '{database_name}'")
+        print(f"★ {t('Working with database')} '{database_name}'")
 
         if not self.dct_progression.get("state_1_restore_database"):
             file_name = os.path.basename(self.file_path)
             image_db_file_path = os.path.join("image_db", file_name)
             str_will_copy = (
-                f"🤖 will copy '{self.file_path}' to '{image_db_file_path}'"
+                f"🤖 {t('will copy')} '{self.file_path}'"
+                f" {t('to')} '{image_db_file_path}'"
             )
             if not shutil._samefile(self.file_path, image_db_file_path):
                 do_copy = False
                 if os.path.exists(image_db_file_path):
                     status_overwrite_image_db = input(
                         f"{str_will_copy}, "
-                        f"a file already exist, do you want to continue (y/Y) : "
+                        f"{t('a file already exists, do you want to')}"
+                        f" {t('continue?')} (y/Y) : "
                     ).strip()
                     if status_overwrite_image_db.lower() == "y":
                         do_copy = True
@@ -1469,16 +1481,18 @@ class TodoUpgrade:
                 self.dct_progression["state_1_restore_database"] = True
                 self.write_config()
 
-        print("✅ -> Restore database")
+        print(f"✅ -> {t('Restore the database')}")
         already_update_state_1 = False
 
         if not self.dct_progression.get("state_1_update_all"):
             print(
-                "[1] Update all addons before neutralize (already neutralize by odoo if supported)"
+                f"[1] {t('Update all addons before neutralizing (already')}"
+                f" {t('neutralized by Odoo if supported)')}"
             )
             wait_continue = (
                 input(
-                    "💬 Do you need to upgrade before a database neutralization, press to ignore : "
+                    f"💬 {t('Do you need to upgrade before neutralizing the')}"
+                    f" {t('database? Press enter to ignore')} : "
                 )
                 .strip()
                 .lower()
@@ -1501,9 +1515,11 @@ class TodoUpgrade:
                     self.dct_progression["state_2_done_early"] = True
                     self.write_config()
 
-            print("✅ -> Update database before neutralize by module")
+            print(
+                f"✅ -> {t('Update the database before neutralizing, by module')}"
+            )
 
-        print("✅ -> Neutralize database")
+        print(f"✅ -> {t('Neutralize the database')}")
         if do_neutralize:
             status, cmd_executed = self.todo_upgrade_execute(
                 f"./script/addons/update_prod_to_dev.sh {database_name}",
@@ -1541,7 +1557,7 @@ class TodoUpgrade:
                 self.read_uninstall_module_list(start_version, database_name)
             )
             if lst_uninstall_reason:
-                print("✨ Modules to uninstall before migration :")
+                print(f"✨ {t('Modules to uninstall before the migration')} :")
                 self.print_uninstall_reason(lst_uninstall_reason)
 
             if config_state_1_uninstall_module:
@@ -1562,9 +1578,9 @@ class TodoUpgrade:
 
         self.write_config()
 
-        print("✅ -> Uninstall module")
+        print(f"✅ -> {t('Uninstall modules')}")
 
-        print("✅ -> install module")
+        print(f"✅ -> {t('Install modules')}")
         if not is_state_4_reach_open_upgrade:
             lst_module_to_install = []
             if config_state_1_install_module:
@@ -1583,7 +1599,7 @@ class TodoUpgrade:
         self.write_config()
 
         msg = "2 - Succeed update all addons"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         if self.needs_update_all(self.dct_progression, already_update_state_1):
@@ -1614,11 +1630,14 @@ class TodoUpgrade:
         # ne remplace pas la possibilité de regarder maintenant. Les copies
         # sont visibles ici, et les neutraliser ici vaut pour tous les paliers
         # — chaque base de palier est un clone de celle-ci.
-        if output and "will break when moving to" in "\n".join(output):
+        # Le code de sortie, pas le texte : 1 = des copies casseront.
+        # Chercher une phrase anglaise dans la sortie rendait cette invite
+        # muette dès que l'outil parlait français.
+        if status == 1:
             self.prompt_cow_prediction(database_name, start_version + 1)
 
         msg = "3 - Clean up database before data migration"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         if not self.dct_progression.get("state_3_install_clean_database"):
@@ -1632,7 +1651,8 @@ class TodoUpgrade:
 
         if not self.dct_progression.get("state_3_clean_database"):
             print(
-                "✨ Aller dans «configuration/Technique/Nettoyage.../Purger» les modules obsolètes"
+                f"✨ {t('Go to Settings / Technical / Cleanup... / Purge and')}"
+                f" {t('purge the obsolete modules')}"
             )
             status = self.ask_gate(
                 "💬 Did you finish to clean database? Press y/Y to open"
@@ -1642,7 +1662,9 @@ class TodoUpgrade:
 
             if status.lower().strip() == "y":
                 self.todo.prompt_execute_selenium_and_run_db(database_name)
-                status = input("💬 Press to continue state.3 : ").strip()
+                status = input(
+                    f"💬 {t('Press enter to continue step 3')} : "
+                ).strip()
 
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
@@ -1650,7 +1672,7 @@ class TodoUpgrade:
         self.install_OCA_odoo_module_migrator()
 
         msg = "4 - Upgrade version with OpenUpgrade"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         self.dct_progression["state_4_reach_open_upgrade"] = True
@@ -1748,7 +1770,9 @@ class TodoUpgrade:
                 self.switch_odoo(next_version - 1)
 
                 print(
-                    f"⧖ -> Clone to odoo.'{next_version}', from '{database_name}' to '{database_name_upgrade}'."
+                    f"⧖ -> {t('Cloning to Odoo')}{next_version},"
+                    f" {t('from')} '{database_name}'"
+                    f" {t('to')} '{database_name_upgrade}'."
                 )
                 # Delete if exist database
                 self.todo_upgrade_execute(
@@ -1766,18 +1790,22 @@ class TodoUpgrade:
                 # a missing or truncated database).
                 if status:
                     print(
-                        f"❌ -> Clone to Odoo{next_version} FAILED (status"
-                        f" {status}). Stopping: '{database_name_upgrade}' is"
-                        " not usable."
+                        f"❌ -> {t('Clone to Odoo')}{next_version}"
+                        f" {t('FAILED (status')} {status})."
+                        f" {t('Stopping:')} '{database_name_upgrade}'"
+                        f" {t('is not usable.')}"
                     )
                     return
 
                 lst_clone_odoo[index] = True
                 self.dct_progression["state_4_clone_odoo_lst"] = lst_clone_odoo
                 self.write_config()
-                print(f"✅ -> Clone Odoo{next_version} done")
+                print(f"✅ -> {t('Clone done for Odoo')}{next_version}")
             else:
-                print(f"✅ -> Clone Odoo{next_version} - nothing")
+                print(
+                    f"✅ -> {t('Clone already done for Odoo')}"
+                    f"{next_version}"
+                )
 
             option_comment += 1
             msg = f"4.{index}.{chr(option_comment + 65)} - Uninstall module"
@@ -1801,7 +1829,8 @@ class TodoUpgrade:
                 )
                 if lst_detail:
                     print(
-                        f"✨ Modules to uninstall before Odoo{next_version} :"
+                        f"✨ {t('Modules to uninstall before Odoo')}"
+                        f"{next_version} :"
                     )
                     self.print_uninstall_reason(lst_detail)
                 lst_module_to_uninstall = list(
@@ -1886,9 +1915,15 @@ class TodoUpgrade:
                     lst_switch_odoo
                 )
                 self.write_config()
-                print(f"✅ -> Switch Odoo{next_version} done with update")
+                print(
+                    f"✅ -> {t('Switch done with update for Odoo')}"
+                    f"{next_version}"
+                )
             else:
-                print(f"✅ -> Switch Odoo{next_version} - nothing")
+                print(
+                    f"✅ -> {t('Switch already done for Odoo')}"
+                    f"{next_version}"
+                )
 
             lst_state_4_module_migrate_code = self.dct_progression.get(
                 "config_state_4_module_to_migrate_code",
@@ -1954,17 +1989,19 @@ class TodoUpgrade:
                 )
 
                 if lst_module_duplicate:
-                    print(f"Duplicate module into odoo{next_version} : ")
+                    print(f"{t('Duplicate module in Odoo')}{next_version} : ")
                     print(lst_module_duplicate)
                     input(
-                        f"💬 Detect error duplicate module, manage this problem manually and press to continue."
+                        f"💬 {t('Duplicate module error detected, handle it')}"
+                        f" {t('manually then press enter to continue.')}"
                     )
                 # if lst_module_missing_next_version and not lst_module_to_migrate:
                 if lst_module_missing_next_version:
                     # TODO support when lst_module_to_migrate is fill
                     lst_module_to_migrate = []
                     print(
-                        f"👹 Detect error missing module, missing module into odoo{next_version} :"
+                        f"👹 {t('Missing module error detected, missing in')}"
+                        f" Odoo{next_version} :"
                     )
                     for index_missing_module, module_missing in enumerate(
                         lst_module_missing_next_version
@@ -1975,13 +2012,14 @@ class TodoUpgrade:
                         print(
                             f"[{index_missing_module}] {module_missing} - {old_path}"
                         )
-                    print("[a] All list above")
-                    print("[e] Add extra custom")
+                    print(f"[a] {t('All of the list above')}")
+                    print(f"[e] {t('Add an extra custom one')}")
 
                     want_continue = (
                         input(
-                            f"💬 Enumerate missing module separate by coma to delete it"
-                            f". The others will be migrate : "
+                            f"💬 {t('List the missing modules to delete,')}"
+                            f" {t('separated by commas. The others will be')}"
+                            f" {t('migrated')} : "
                         )
                         .strip()
                         .lower()
@@ -2043,7 +2081,8 @@ class TodoUpgrade:
                         if "e" in lst_want_continue:
                             want_continue = (
                                 input(
-                                    f"💬 Enumerate module name to delete, separate by coma : "
+                                    f"💬 {t('List the module names to delete,')}"
+                                    f" {t('separated by commas')} : "
                                 )
                                 .strip()
                                 .lower()
@@ -2096,15 +2135,17 @@ class TodoUpgrade:
 
                         if lst_module_missing_last:
                             print(
-                                f"Error missing module : {lst_module_missing_last}"
+                                f"{t('Missing module error')} :"
+                                f" {lst_module_missing_last}"
                             )
                         if lst_module_duplicate_last:
                             print(
-                                f"Error duplicate module : {lst_module_duplicate_last}"
+                                f"{t('Duplicate module error')} :"
+                                f" {lst_module_duplicate_last}"
                             )
                         if lst_module_error_last:
                             print(
-                                f"Error error module : {lst_module_error_last}"
+                                f"{t('Module error')} : {lst_module_error_last}"
                             )
 
                         if lst_module_exist_last:
@@ -2247,9 +2288,15 @@ class TodoUpgrade:
                 )
                 self.write_config()
 
-                print(f"✅ -> Module upgrade Odoo{next_version} done")
+                print(
+                    f"✅ -> {t('Module upgrade done for Odoo')}"
+                    f"{next_version}"
+                )
             else:
-                print(f"✅ -> Module upgrade Odoo{next_version} - nothing")
+                print(
+                    f"✅ -> {t('Module upgrade already done for Odoo')}"
+                    f"{next_version}"
+                )
 
             option_comment += 1
             msg = f"4.{index}.{chr(option_comment + 65)} - Fix migrate code"
@@ -2292,8 +2339,8 @@ class TodoUpgrade:
                     # problem the fix exists to prevent.
                     if status:
                         print(
-                            f"❌ -> Fix migration Odoo{next_version} FAILED"
-                            f" (status {status}):"
+                            f"❌ -> {t('Migration fix for Odoo')}{next_version}"
+                            f" {t('FAILED (status')} {status}) :"
                             f" {file_path_fix_migration}"
                         )
                         return
@@ -2303,13 +2350,20 @@ class TodoUpgrade:
                         lst_fix_migration_odoo
                     )
                     self.write_config()
-                    print(f"✅ -> Fix migration Odoo{next_version} done")
+                    print(
+                        f"✅ -> {t('Migration fix done for Odoo')}"
+                        f"{next_version}"
+                    )
                 else:
                     print(
-                        f"✅ -> Fix migration Odoo{next_version} - no fix to execute"
+                        f"✅ -> {t('No migration fix to run for Odoo')}"
+                        f"{next_version}"
                     )
             else:
-                print(f"✅ -> Fix migration Odoo{next_version} - nothing")
+                print(
+                    f"✅ -> {t('Migration fix already done for Odoo')}"
+                    f"{next_version}"
+                )
 
             for path_git_clone_migrate in lst_path_git_clone_migrate:
                 cmd = f"./script/code/git_commit_migration_addons_path.py --path {path_git_clone_migrate} --odoo_version {next_version}.0"
@@ -2340,10 +2394,17 @@ class TodoUpgrade:
                 )
                 self.todo_upgrade_execute(cmd_update_config)
 
-                print("🚸 Please, validate commits after code migration.")
-                print("ℹ To show repo status :\nmake repo_show_status")
                 print(
-                    f"🚸 Please, validate this path into config.conf : '{path_addons_openupgrade}'."
+                    f"🚸 {t('Please validate the commits after the code')}"
+                    f" {t('migration.')}"
+                )
+                print(
+                    f"ℹ {t('To show the repo status')} :"
+                    "\nmake repo_show_status"
+                )
+                print(
+                    f"🚸 {t('Please validate this path in config.conf')} :"
+                    f" '{path_addons_openupgrade}'."
                 )
                 status = self.ask_gate(
                     f"💬 {t('Press to continue')} {msg}"
@@ -2401,15 +2462,17 @@ class TodoUpgrade:
                     )
                     self.write_config()
                     print(
-                        f"\n❌ -> Database migration to Odoo{next_version}"
-                        f" FAILED (status {status}).\n"
-                        f"   '{database_name_upgrade}' is now half migrated:"
-                        " replaying the command on it would never recover, so"
-                        " it is NOT offered.\n"
-                        "   The clone step has been reset. Fix the cause, then"
-                        " relaunch the migration and answer [c] (continue):"
-                        f" '{database_name_upgrade}' will be dropped and"
-                        " rebuilt from the previous version before retrying."
+                        f"\n❌ -> {t('Database migration to Odoo')}"
+                        f"{next_version} {t('FAILED (status')} {status}).\n"
+                        f"   '{database_name_upgrade}'"
+                        f" {t('is now half migrated: replaying the command on')}"
+                        f" {t('it would never recover, so it is NOT offered.')}"
+                        f"\n   {t('The clone step has been reset. Fix the')}"
+                        f" {t('cause, then relaunch the migration and answer')}"
+                        f" [c] ({t('continue')}) :"
+                        f" '{database_name_upgrade}'"
+                        f" {t('will be dropped and rebuilt from the previous')}"
+                        f" {t('version before retrying.')}"
                     )
                     return
 
@@ -2435,7 +2498,10 @@ class TodoUpgrade:
 
                 status = (
                     input(
-                        f"💬 Do you want to upgrade all{str_wait_next_version}? Press y/Y to upgrade all addons database : "
+                        f"💬 {t('Do you want to upgrade all')}"
+                        f"{str_wait_next_version} ?"
+                        f" {t('Press y/Y to upgrade all addons of the')}"
+                        f" {t('database')} : "
                     )
                     .strip()
                     .lower()
@@ -2446,15 +2512,19 @@ class TodoUpgrade:
                         f"./script/addons/update_addons_all.sh {database_name_upgrade}",
                     )
 
-                print(f"✅ -> Database upgrade Odoo{next_version} done")
+                print(
+                    f"✅ -> {t('Database upgrade done for Odoo')}"
+                    f"{next_version}"
+                )
 
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
-                print("[y] Open server with Selenium")
+                print(f"[y] {t('Open the server with Selenium')}")
                 status = (
                     input(
-                        "💬 Do you want to test this upgrade? Choose or press to ignore it : "
+                        f"💬 {t('Do you want to test this upgrade? Choose')}"
+                        f" {t('or press enter to ignore it')} : "
                     )
                     .strip()
                     .lower()
@@ -2465,39 +2535,44 @@ class TodoUpgrade:
                         database_name_upgrade
                     )
                     status = input(
-                        f"💬 Press to continue 4.{index} : "
+                        f"💬 {t('Press enter to continue')} 4.{index} : "
                     ).strip()
             else:
-                print(f"✅ -> Database upgrade Odoo{next_version} - nothing")
+                print(
+                    f"✅ -> {t('Database upgrade already done for Odoo')}"
+                    f"{next_version}"
+                )
 
         #
         # waiting_input = input("💬 Press any keyboard key to continue...")
         print("")
 
         msg = "5 - Cleaning up database after upgrade"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         print(
-            "✨ Re-update i18n, purger data, tables (except mail_test and mail_test_full)"
+            f"✨ {t('Re-update i18n, purge the data and the tables')}"
+            f" ({t('except mail_test and mail_test_full')})"
         )
         # waiting_input = input("💬print Press any keyboard key to continue...")
         msg = "6 - Migration finished"
-        print(f"🔷 {msg}")
+        self.print_step(msg)
         self.add_comment_progression(msg)
 
         cmd_backup_template = f"./odoo_bin.sh db --backup --database {database_name_upgrade} --restore_image"
         cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-        print(f"✨ Can execute backup creation :\n{cmd_backup}")
+        print(f"✨ {t('A backup can be created')} :\n{cmd_backup}")
         status = input(
-            "💬 Press y/Y or write filename.zip to export or enter to continue : "
+            f"💬 {t('Press y/Y or type filename.zip to export, or')}"
+            f" {t('enter to continue')} : "
         ).strip()
         if status.lower():
             if status.lower() != "y":
                 cmd_backup = f"{cmd_backup_template} {status}"
             self.todo_upgrade_execute(cmd_backup)
 
-        status = input("💬 Test the migration, press y/Y : ")
+        status = input(f"💬 {t('Test the migration, press y/Y')} : ")
         if status.lower().strip() == "y":
             self.todo.prompt_execute_selenium_and_run_db(database_name_upgrade)
 
@@ -2619,6 +2694,18 @@ class TodoUpgrade:
             wait_at_error=False,
         )
 
+    def print_step(self, msg):
+        """Affiche un en-tête d'étape en traduisant son seul libellé.
+
+        `msg` reste anglais : il part aussi dans le journal, que l'écran de
+        reprise relit. Traduire ce qui est ÉCRIT rendrait un journal
+        illisible pour l'autre langue, et l'étape 4 numérote ses en-têtes
+        (« 4.2.C - Install module ») — seule la partie après le tiret est
+        une phrase.
+        """
+        prefix, sep, label = msg.partition(" - ")
+        print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
+
     def show_cow_drift(self, database_name, next_version, mode="diff"):
         """Montre les copies COW à risque. Ne touche à rien.
 
@@ -2719,7 +2806,9 @@ class TodoUpgrade:
         status, cmd_executed, output = self.todo_upgrade_execute(
             cmd, get_output=True, wait_at_error=False
         )
-        if "No website COW view to neutralize" in "\n".join(output or []):
+        # 0 = rien à neutraliser. Lire une phrase anglaise dans la sortie
+        # faisait poser la question dès que l'outil parlait français.
+        if status == 0:
             return
 
         # « v » et « w » avant de répondre : la question demande de renoncer à
@@ -3072,7 +3161,7 @@ class TodoUpgrade:
         if (status is None or status) and wait_at_error:
             database_name = self.database_from_command(cmd)
             while True:
-                print("[1] to redo the command")
+                print(f"[1] {t('to redo the command')}")
                 if database_name:
                     print(
                         f"[2] {t('Check the COW views that drifted')}"
@@ -3080,8 +3169,8 @@ class TodoUpgrade:
                     )
                 wait_status = (
                     input(
-                        "💬 Error detected, press to continue or ctrl+c to"
-                        " stop : "
+                        f"💬 {t('Error detected, press enter to continue or')}"
+                        f" ctrl+c {t('to stop')} : "
                     )
                     .strip()
                     .lower()
