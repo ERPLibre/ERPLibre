@@ -2270,6 +2270,10 @@ TRANSLATIONS = {
         "fr": "Type de bureau distant :",
         "en": "Remote desktop kind:",
     },
+    "already defined, not counted": {
+        "fr": "déjà définie(s), non comptée(s)",
+        "en": "already defined, not counted",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",

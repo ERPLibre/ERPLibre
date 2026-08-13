@@ -1205,9 +1205,20 @@ def run_deploy_form(ctx, run_app: bool = True):
                 if dupes
                 else ""
             )
+            # Une VM DÉJÀ DÉFINIE n'est pas recréée : elle ne consomme rien
+            # de neuf, donc plan_totals l'écarte. Mais un total à zéro sans
+            # explication se lit comme un bogue — on a cru que les réglages
+            # par VM n'avaient aucun effet, alors qu'ils portaient sur une
+            # machine qui ne sera pas créée.
+            skipped = sum(1 for r in self.rows if r["state"] == "exists")
+            skip_txt = (
+                f"   ({skipped} {t('already defined, not counted')})"
+                if skipped
+                else ""
+            )
             self.query_one("#totals", Static).update(
                 f"  {n} {t('VMs')} · {cpus} vCPU · {ram} Mo · ~{disk} G"
-                f"{warn}{dup_txt}"
+                f"{skip_txt}{warn}{dup_txt}"
             )
 
         # -- réactions aux champs -------------------------------------- #
