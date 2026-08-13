@@ -1787,7 +1787,22 @@ def virt_install(
                 "\n  Le bureau sera accessible à distance, par le réseau."
             )
         else:
-            graphics = "spice,listen=none"
+            # VNC sur la boucle locale, PAS « spice,listen=none ».
+            #
+            # « listen=none » est le défaut de virt-install et il n'expose
+            # rien : QEMU crée l'affichage mais n'ouvre AUCUN socket TCP, seul
+            # le canal libvirt y mène. Un virt-manager tournant sur la machine
+            # même y accède ; rien d'autre. Or l'hôte QEMU est lui-même une VM
+            # ici — la console était donc inatteignable par construction, et
+            # aucun « ssh -L » ne pouvait y remédier : il n'y avait pas de port
+            # où aboutir.
+            #
+            # 127.0.0.1 n'expose rien au réseau non plus : le port n'est
+            # joignable que depuis l'hôte, donc à travers un tunnel SSH. VNC
+            # plutôt que SPICE parce qu'il tient en UN port — un seul « -L »
+            # suffit, avec n'importe quel client. Pour revenir au comportement
+            # d'avant : --graphics spice,listen=none
+            graphics = "vnc,listen=127.0.0.1"
             video = ["--video", "virtio"]
     cmd = [
         "virt-install",
