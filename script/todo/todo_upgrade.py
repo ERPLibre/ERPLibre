@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from uuid import uuid4
@@ -1608,16 +1609,13 @@ class TodoUpgrade:
             get_output=True,
             wait_at_error=False,
         )
-        # Cet avertissement n'est qu'un avertissement, et rien ne le disait :
-        # il annonce un problème, propose d'arbitrer, et aucune question ne
-        # suit. On en conclut que la question est passée — alors qu'elle vient
-        # au moment du palier, des dizaines de minutes plus tard.
+        # L'avertissement annonçait un problème, invitait à arbitrer, et
+        # aucune question ne suivait : dire « la question viendra au palier »
+        # ne remplace pas la possibilité de regarder maintenant. Les copies
+        # sont visibles ici, et les neutraliser ici vaut pour tous les paliers
+        # — chaque base de palier est un clone de celle-ci.
         if output and "will break when moving to" in "\n".join(output):
-            print(
-                f"ℹ -> {t('Nothing to decide yet')} :"
-                f" {t('the migration will offer to neutralize these copies')}"
-                f" {t('at the version bump itself, showing what each one holds.')}"
-            )
+            self.prompt_cow_prediction(database_name, start_version + 1)
 
         msg = "3 - Clean up database before data migration"
         print(f"🔷 {msg}")
@@ -2621,6 +2619,91 @@ class TodoUpgrade:
             wait_at_error=False,
         )
 
+    def show_cow_drift(self, database_name, next_version, mode="diff"):
+        """Montre les copies COW à risque. Ne touche à rien.
+
+        Un seul endroit construit la commande : les deux invites — celle de
+        l'étape 2 et celle du palier — montraient sinon des choses qui
+        pouvaient diverger sans que rien ne le signale.
+        """
+        cmd = (
+            f"{PYTHON_BIN} ./script/odoo/migration/cow_drift.py"
+            f" -d {database_name} -t odoo{next_version}.0"
+        )
+        if mode == "shape":
+            cmd += " --shape"
+        elif mode == "tui":
+            cmd += " --tui"
+        self.run_on_terminal(cmd)
+
+    def run_on_terminal(self, cmd):
+        """Lance une commande en lui laissant le VRAI terminal.
+
+        `todo_upgrade_execute` capture la sortie par un tube. Un plein écran
+        y voit un stdout qui n'est pas un terminal, renonce, et retombe sur
+        son rapport texte : « w » réaffichait mot pour mot ce que « v »
+        venait de montrer, sans rien signaler.
+
+        Rien ne relit cette sortie — elle est REGARDÉE. Et le code de retour
+        d'un afficheur ne veut pas dire « erreur » : 1 signifie « il y a des
+        copies », ce qui est la raison même de l'avoir ouvert. L'annoncer
+        comme un échec inquiétait pour rien.
+        """
+        self.lst_command_executed.append(cmd)
+        self.dct_progression["command_executed"] = self.lst_command_executed
+        self.write_config()
+        print(f"\n🏠 ⬇ {t('Execute command')} :\n")
+        print(cmd)
+        return subprocess.call(cmd, shell=True, executable="/bin/bash")
+
+    def prompt_cow_prediction(self, database_name, next_version):
+        """Que faire des copies COW annoncées, dès l'étape 2.
+
+        La neutralisation officielle a lieu au palier, sur la base de palier.
+        Mais celle-ci en est la source : ce qu'on neutralise ici vaut pour
+        tous les paliers, et la lecture n'écrit rien de toute façon. Attendre
+        des dizaines de minutes pour seulement REGARDER n'avait pas de raison
+        d'être.
+        """
+        neutralize = (
+            f"{PYTHON_BIN} ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database_name} -t odoo{next_version}.0"
+        )
+        while True:
+            answer = (
+                input(
+                    f"💬 {t('What do you want to do with these COW copies?')}"
+                    f" ({t('Enter = decide at the version bump')},"
+                    f" v = {t('what each copy holds')},"
+                    f" s = {t('why it breaks')},"
+                    f" w = {t('full screen')},"
+                    f" a = {t('neutralize now, reversible')}) : "
+                )
+                .strip()
+                .lower()
+            )
+            if answer in ("v", "s", "w"):
+                self.show_cow_drift(
+                    database_name,
+                    next_version,
+                    {"v": "diff", "s": "shape", "w": "tui"}[answer],
+                )
+                continue
+            if answer == "a":
+                self.todo_upgrade_execute(
+                    f"{neutralize} --apply", wait_at_error=False
+                )
+                print(
+                    f"ℹ -> {t('Undo with')} :"
+                    f" {neutralize.rsplit(' -t', 1)[0]} --restore"
+                )
+                return
+            break
+        print(
+            f"ℹ -> {t('Nothing decided')} :"
+            f" {t('the migration will ask again at the version bump.')}"
+        )
+
     def neutralize_cow_views(self, database_name, next_version):
         """Offer to neutralize the COW views that would break this bump.
 
@@ -2643,10 +2726,6 @@ class TodoUpgrade:
         # une personnalisation sans avoir montré laquelle. Souvent trois lignes
         # — un id, une largeur de conteneur — mais parfois une page entière, et
         # rien dans l'avertissement ne permet de les distinguer.
-        show = (
-            f"{PYTHON_BIN} ./script/odoo/migration/cow_drift.py"
-            f" -d {database_name} -t odoo{next_version}.0"
-        )
         while True:
             answer = (
                 input(
@@ -2658,13 +2737,11 @@ class TodoUpgrade:
                 .lower()
             )
             if answer == "v":
-                self.todo_upgrade_execute(show, wait_at_error=False)
-                self.todo_upgrade_execute(
-                    f"{show} --shape", wait_at_error=False
-                )
+                self.show_cow_drift(database_name, next_version, "diff")
+                self.show_cow_drift(database_name, next_version, "shape")
                 continue
             if answer == "w":
-                self.todo_upgrade_execute(f"{show} --tui", wait_at_error=False)
+                self.show_cow_drift(database_name, next_version, "tui")
                 continue
             break
 
