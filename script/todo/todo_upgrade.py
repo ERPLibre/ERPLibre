@@ -1613,7 +1613,10 @@ class TodoUpgrade:
         # ne remplace pas la possibilité de regarder maintenant. Les copies
         # sont visibles ici, et les neutraliser ici vaut pour tous les paliers
         # — chaque base de palier est un clone de celle-ci.
-        if output and "will break when moving to" in "\n".join(output):
+        # Le code de sortie, pas le texte : 1 = des copies casseront.
+        # Chercher une phrase anglaise dans la sortie rendait cette invite
+        # muette dès que l'outil parlait français.
+        if status == 1:
             self.prompt_cow_prediction(database_name, start_version + 1)
 
         msg = "3 - Clean up database before data migration"
@@ -2698,7 +2701,9 @@ class TodoUpgrade:
         status, cmd_executed, output = self.todo_upgrade_execute(
             cmd, get_output=True, wait_at_error=False
         )
-        if "No website COW view to neutralize" in "\n".join(output or []):
+        # 0 = rien à neutraliser. Lire une phrase anglaise dans la sortie
+        # faisait poser la question dès que l'outil parlait français.
+        if status == 0:
             return
 
         # « v » et « w » avant de répondre : la question demande de renoncer à

@@ -3906,6 +3906,346 @@ TRANSLATIONS = {
         "fr": "la migration reposera la question au palier de version.",
         "en": "the migration will ask again at the version bump.",
     },
+    "Target version directory not found": {
+        "fr": "Répertoire de la version cible introuvable",
+        "en": "Target version directory not found",
+    },
+    "No website COW view changes shape in": {
+        "fr": "Aucune vue COW de site ne change de forme dans",
+        "en": "No website COW view changes shape in",
+    },
+    "website COW view(s) will break when moving to": {
+        "fr": "vue(s) COW de site casseront au passage à",
+        "en": "website COW view(s) will break when moving to",
+    },
+    "the copy keeps an arch whose shape no longer matches what": {
+        "fr": "la copie garde une arch dont la forme ne correspond plus à ce que",
+        "en": "the copy keeps an arch whose shape no longer matches what",
+    },
+    "the target module view expects.": {
+        "fr": "la vue module cible attend.",
+        "en": "the target module view expects.",
+    },
+    "The migration offers to neutralize them, and shows what": {
+        "fr": "La migration propose de les neutraliser, et montre ce que",
+        "en": "The migration offers to neutralize them, and shows what",
+    },
+    "each copy holds before you answer. To look now:": {
+        "fr": "chaque copie porte avant que vous répondiez. Pour regarder maintenant :",
+        "en": "each copy holds before you answer. To look now:",
+    },
+    "reversible with --restore": {
+        "fr": "réversible avec --restore",
+        "en": "reversible with --restore",
+    },
+    "Or by hand. To neutralize a copy, rename its key": {
+        "fr": "Ou à la main. Pour neutraliser une copie, renommer sa clé",
+        "en": "Or by hand. To neutralize a copy, rename its key",
+    },
+    "an unmatched key is never paired with the": {
+        "fr": "une clé sans correspondance n'est jamais appariée à la",
+        "en": "an unmatched key is never paired with the",
+    },
+    "module view, so the copy never receives the new": {
+        "fr": "vue module, la copie ne reçoit donc jamais le nouveau",
+        "en": "module view, so the copy never receives the new",
+    },
+    "Setting active=false alone is NOT enough:": {
+        "fr": "Mettre active=false seul ne suffit PAS :",
+        "en": "Setting active=false alone is NOT enough:",
+    },
+    "an inactive copy keeping the same key still shadows it.": {
+        "fr": "une copie inactive gardant la même clé la masque toujours.",
+        "en": "an inactive copy keeping the same key still shadows it.",
+    },
+    "COW view(s) belong to a module absent from": {
+        "fr": "vue(s) COW appartiennent à un module absent de",
+        "en": "COW view(s) belong to a module absent from",
+    },
+    "COW view(s) are pages or records made in the website": {
+        "fr": "vue(s) COW sont des pages ou des enregistrements faits dans",
+        "en": "COW view(s) are pages or records made in the website",
+    },
+    "editor (no module view of that name): not at risk.": {
+        "fr": "l'éditeur de site (aucune vue module de ce nom) : hors de danger.",
+        "en": "editor (no module view of that name): not at risk.",
+    },
+    "Use -v to list them.": {
+        "fr": "Utiliser -v pour les lister.",
+        "en": "Use -v to list them.",
+    },
+    "No view with this prefix on": {
+        "fr": "Aucune vue avec ce préfixe sur",
+        "en": "No view with this prefix on",
+    },
+    "archived COW view(s) on": {
+        "fr": "vue(s) COW archivées sur",
+        "en": "archived COW view(s) on",
+    },
+    "Their arch is intact. Restore them all with --restore,": {
+        "fr": "Leur arch est intacte. Toutes les restaurer avec --restore,",
+        "en": "Their arch is intact. Restore them all with --restore,",
+    },
+    "once the module view they shadow has the right shape.": {
+        "fr": "une fois que la vue module qu'elles masquent a la bonne forme.",
+        "en": "once the module view they shadow has the right shape.",
+    },
+    "COW view(s) restored on": {
+        "fr": "vue(s) COW restaurées sur",
+        "en": "COW view(s) restored on",
+    },
+    "No website COW view to neutralize.": {
+        "fr": "Aucune vue COW de site à neutraliser.",
+        "en": "No website COW view to neutralize.",
+    },
+    "website COW view(s) would break the bump": {
+        "fr": "vue(s) COW de site casseraient le palier",
+        "en": "website COW view(s) would break the bump",
+    },
+    "to": {
+        "fr": "vers",
+        "en": "to",
+    },
+    "Dry-run. Add --apply to rename their key to": {
+        "fr": "Simulation. Ajouter --apply pour renommer leur clé en",
+        "en": "Dry-run. Add --apply to rename their key to",
+    },
+    "and deactivate them. Reversible": {
+        "fr": "et les désactiver. Réversible",
+        "en": "and deactivate them. Reversible",
+    },
+    "with --restore; the arch stays in database.": {
+        "fr": "avec --restore ; l'arch reste en base.",
+        "en": "with --restore; the arch stays in database.",
+    },
+    "COW view(s) neutralized (key prefixed with": {
+        "fr": "vue(s) COW neutralisées (clé préfixée par",
+        "en": "COW view(s) neutralized (key prefixed with",
+    },
+    "deactivated). The arch is kept as an": {
+        "fr": "désactivées). L'arch est conservée comme",
+        "en": "deactivated). The arch is kept as an",
+    },
+    "archive; use --restore to undo.": {
+        "fr": "archive ; utiliser --restore pour annuler.",
+        "en": "archive; use --restore to undo.",
+    },
+    "target inherits, copy holds a standalone template": {
+        "fr": "la cible hérite, la copie porte un modèle autonome",
+        "en": "target inherits, copy holds a standalone template",
+    },
+    "target is a root view, copy holds inheritance specs": {
+        "fr": "la cible est une vue racine, la copie porte des specs d'héritage",
+        "en": "target is a root view, copy holds inheritance specs",
+    },
+    "No module view carries this key, so there is nothing to": {
+        "fr": "Aucune vue module ne porte cette clé, il n'y a donc rien à",
+        "en": "No module view carries this key, so there is nothing to",
+    },
+    "compare: this copy is a page made in the website editor.": {
+        "fr": "comparer : cette copie est une page faite dans l'éditeur de site.",
+        "en": "compare: this copy is a page made in the website editor.",
+    },
+    "The copy is identical to the module view.": {
+        "fr": "La copie est identique à la vue module.",
+        "en": "The copy is identical to the module view.",
+    },
+    "line(s) added": {
+        "fr": "ligne(s) ajoutée(s)",
+        "en": "line(s) added",
+    },
+    "removed": {
+        "fr": "retirée(s)",
+        "en": "removed",
+    },
+    "this is what neutralizing gives up.": {
+        "fr": "c'est ce que la neutralisation abandonne.",
+        "en": "this is what neutralizing gives up.",
+    },
+    "the module no longer declares this template": {
+        "fr": "le module ne déclare plus ce modèle",
+        "en": "the module no longer declares this template",
+    },
+    "inheritance specs (needs inherit_id)": {
+        "fr": "des specs d'héritage (exige inherit_id)",
+        "en": "inheritance specs (needs inherit_id)",
+    },
+    "a standalone template": {
+        "fr": "un modèle autonome",
+        "en": "a standalone template",
+    },
+    "Odoo changing the shape of its own template is NOT the": {
+        "fr": "Qu'Odoo change la forme de son propre modèle n'est PAS le",
+        "en": "Odoo changing the shape of its own template is NOT the",
+    },
+    "problem: on a database without a copy, the module upgrade": {
+        "fr": "problème : sur une base sans copie, la mise à jour du module",
+        "en": "problem: on a database without a copy, the module upgrade",
+    },
+    "rewrites the view and nothing breaks. It breaks here because": {
+        "fr": "réécrit la vue et rien ne casse. Ça casse ici parce qu'une",
+        "en": "rewrites the view and nothing breaks. It breaks here because",
+    },
+    "a COPY exists and froze the old shape — the copy follows the": {
+        "fr": "COPIE existe et a figé l'ancienne forme — la copie suit le",
+        "en": "a COPY exists and froze the old shape — the copy follows the",
+    },
+    "module and becomes an extension, while still holding a": {
+        "fr": "module et devient une extension, tout en portant encore un",
+        "en": "module and becomes an extension, while still holding a",
+    },
+    "standalone template. Odoo then applies that template as an": {
+        "fr": "modèle autonome. Odoo applique alors ce modèle comme une",
+        "en": "standalone template. Odoo then applies that template as an",
+    },
+    "inheritance spec and stops on « cannot be located in parent": {
+        "fr": "spec d'héritage et s'arrête sur « cannot be located in parent",
+        "en": "inheritance spec and stops on « cannot be located in parent",
+    },
+    "view ».": {
+        "fr": "view ».",
+        "en": "view ».",
+    },
+    "This copy has no module view of that name: it is a page": {
+        "fr": "Cette copie n'a aucune vue module de ce nom : c'est une page",
+        "en": "This copy has no module view of that name: it is a page",
+    },
+    "made in the website editor, and nothing holds its content.": {
+        "fr": "faite dans l'éditeur de site, et rien d'autre ne porte son contenu.",
+        "en": "made in the website editor, and nothing holds its content.",
+    },
+    "This copy is IDENTICAL to the module view it shadows: it": {
+        "fr": "Cette copie est IDENTIQUE à la vue module qu'elle masque : elle",
+        "en": "This copy is IDENTICAL to the module view it shadows: it",
+    },
+    "holds no customization, so neutralizing it loses nothing.": {
+        "fr": "ne porte aucune personnalisation, la neutraliser ne perd rien.",
+        "en": "holds no customization, so neutralizing it loses nothing.",
+    },
+    "This copy differs from the module view by": {
+        "fr": "Cette copie diffère de la vue module de",
+        "en": "This copy differs from the module view by",
+    },
+    "line(s):": {
+        "fr": "ligne(s) :",
+        "en": "line(s):",
+    },
+    "that is the customization, and all neutralizing gives up.": {
+        "fr": "c'est la personnalisation, et tout ce que la neutralisation abandonne.",
+        "en": "that is the customization, and all neutralizing gives up.",
+    },
+    "Run without --shape to read it.": {
+        "fr": "Lancer sans --shape pour la lire.",
+        "en": "Run without --shape to read it.",
+    },
+    "No website COW view is at risk.": {
+        "fr": "Aucune vue COW de site n'est en danger.",
+        "en": "No website COW view is at risk.",
+    },
+    "No COW copy has drifted from its module view.": {
+        "fr": "Aucune copie COW n'a dérivé de sa vue module.",
+        "en": "No COW copy has drifted from its module view.",
+    },
+    "COW copy(ies) drifted from their module": {
+        "fr": "copie(s) COW ont dérivé de leur vue",
+        "en": "COW copy(ies) drifted from their module",
+    },
+    "view in": {
+        "fr": "module dans",
+        "en": "view in",
+    },
+    "Odoo surfaces this when the module view is rewritten (a": {
+        "fr": "Odoo le fait apparaître quand la vue module est réécrite (un",
+        "en": "Odoo surfaces this when the module view is rewritten (a",
+    },
+    "version bump) or when the page is rendered.": {
+        "fr": "palier de version) ou quand la page est rendue.",
+        "en": "version bump) or when the page is rendered.",
+    },
+    "NO module view with this key": {
+        "fr": "AUCUNE vue module avec cette clé",
+        "en": "NO module view with this key",
+    },
+    "child": {
+        "fr": "enfant",
+        "en": "child",
+    },
+    "cannot apply": {
+        "fr": "ne peut s'appliquer",
+        "en": "cannot apply",
+    },
+    "Nothing changed. Re-run with --reset <key> --apply to": {
+        "fr": "Rien n'a changé. Relancer avec --reset <clé> --apply pour",
+        "en": "Nothing changed. Re-run with --reset <key> --apply to",
+    },
+    "reset a copy onto its module view.": {
+        "fr": "réinitialiser une copie sur sa vue module.",
+        "en": "reset a copy onto its module view.",
+    },
+    "no module view to reset onto, skipped.": {
+        "fr": "aucune vue module sur laquelle réinitialiser, ignorée.",
+        "en": "no module view to reset onto, skipped.",
+    },
+    "dry-run": {
+        "fr": "simulation",
+        "en": "dry-run",
+    },
+    "would reset": {
+        "fr": "réinitialiserait",
+        "en": "would reset",
+    },
+    "onto": {
+        "fr": "sur",
+        "en": "onto",
+    },
+    "reset": {
+        "fr": "réinitialisé",
+        "en": "reset",
+    },
+    "previous arch saved to": {
+        "fr": "arch précédente sauvegardée dans",
+        "en": "previous arch saved to",
+    },
+    "copy(ies) reset. Re-apply any real customisation": {
+        "fr": "copie(s) réinitialisée(s). Réappliquer toute vraie personnalisation",
+        "en": "copy(ies) reset. Re-apply any real customisation",
+    },
+    "as an INHERITING view, not a copy, so it cannot go stale": {
+        "fr": "comme une vue HÉRITANTE, pas une copie, pour qu'elle ne périme plus",
+        "en": "as an INHERITING view, not a copy, so it cannot go stale",
+    },
+    "again.": {
+        "fr": "à l'avenir.",
+        "en": "again.",
+    },
+    "lxml is required to resolve the xpath expressions.": {
+        "fr": "lxml est requis pour résoudre les expressions xpath.",
+        "en": "lxml is required to resolve the xpath expressions.",
+    },
+    "COW view(s) recorded in": {
+        "fr": "vue(s) COW enregistrées dans",
+        "en": "COW view(s) recorded in",
+    },
+    "COW view(s) disappeared": {
+        "fr": "vue(s) COW ont disparu",
+        "en": "COW view(s) disappeared",
+    },
+    "COW view(s) appeared": {
+        "fr": "vue(s) COW sont apparues",
+        "en": "COW view(s) appeared",
+    },
+    "arch rewritten": {
+        "fr": "arch réécrite",
+        "en": "arch rewritten",
+    },
+    "COW view(s) changed": {
+        "fr": "vue(s) COW ont changé",
+        "en": "COW view(s) changed",
+    },
+    "No change on the website COW views.": {
+        "fr": "Aucun changement sur les vues COW de site.",
+        "en": "No change on the website COW views.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
