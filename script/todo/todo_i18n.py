@@ -2195,6 +2195,22 @@ TRANSLATIONS = {
         "fr": "Une VM modifiée à droite (marquée ✎) garde les siennes.",
         "en": "A VM edited on the right (marked) keeps its own.",
     },
+    "Rename the VM": {
+        "fr": "Renommer la VM",
+        "en": "Rename the VM",
+    },
+    "Rename": {
+        "fr": "Renommer",
+        "en": "Rename",
+    },
+    "Empty = back to the automatic name:": {
+        "fr": "Vide = revenir au nom automatique :",
+        "en": "Empty = back to the automatic name:",
+    },
+    "Invalid name: letters, digits, hyphens.": {
+        "fr": "Nom invalide : lettres, chiffres et traits d'union.",
+        "en": "Invalid name: letters, digits, hyphens.",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
