@@ -2227,6 +2227,40 @@ TRANSLATIONS = {
         "fr": "puis pointez votre client sur",
         "en": "then point your client at",
     },
+    "Remote desktop tunnel (VNC/RDP through SSH)": {
+        "fr": "Tunnel bureau distant (VNC/RDP par SSH)",
+        "en": "Remote desktop tunnel (VNC/RDP through SSH)",
+    },
+    "Remote desktop tunnel": {
+        "fr": "Tunnel vers le bureau distant",
+        "en": "Remote desktop tunnel",
+    },
+    "Which VM?": {"fr": "Quelle VM ?", "en": "Which VM?"},
+    "No IP for this VM; is it running?": {
+        "fr": "Pas d'IP pour cette VM ; tourne-t-elle ?",
+        "en": "No IP for this VM; is it running?",
+    },
+    "Run this on YOUR workstation:": {
+        "fr": "À lancer sur VOTRE poste :",
+        "en": "Run this on YOUR workstation:",
+    },
+    "(through the ProxyJump already in ~/.ssh/config)": {
+        "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
+        "en": "(through the ProxyJump already in ~/.ssh/config)",
+    },
+    "No ~/.ssh/config entry; see SSH configuration.": {
+        "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
+        "en": "No ~/.ssh/config entry; see SSH configuration.",
+    },
+    "Not in an SSH session: check the host address.": {
+        "fr": "Hors session SSH : vérifiez l'adresse de l'hôte.",
+        "en": "Not in an SSH session: check the host address.",
+    },
+    "The tunnel stays open as long as that ssh runs.": {
+        "fr": "Le tunnel reste ouvert tant que ce ssh tourne.",
+        "en": "The tunnel stays open as long as that ssh runs.",
+    },
+    "No VM defined.": {"fr": "Aucune VM définie.", "en": "No VM defined."},
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",
