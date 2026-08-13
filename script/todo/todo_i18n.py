@@ -4735,6 +4735,14 @@ TRANSLATIONS = {
         "fr": "Exécution de la commande",
         "en": "Execute command",
     },
+    "Textual is missing from this interpreter:": {
+        "fr": "Textual manque à cet interpréteur :",
+        "en": "Textual is missing from this interpreter:",
+    },
+    "Run it with": {
+        "fr": "Le lancer avec",
+        "en": "Run it with",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
