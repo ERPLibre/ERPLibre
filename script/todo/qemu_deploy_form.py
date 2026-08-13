@@ -1009,8 +1009,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                         sel = self.query_one(f"#v{i}_{field}", Select)
                     except Exception:
                         continue
-                    # Une valeur libre n'est dans aucune liste : on laisse la
-                    # liste vide, la saisie juste à côté porte le nombre.
+                    # Une liste posée sur « libre… » ne doit PAS être remise
+                    # sur une valeur : l'utilisateur vient de la choisir, et
+                    # tant qu'il n'a rien tapé la VM vaut encore celle du
+                    # profil — on la lui reprendrait sous les doigts.
+                    if sel.value is FREE:
+                        continue
+                    # Une valeur libre déjà saisie n'est dans aucune liste :
+                    # liste vide, la saisie à côté porte le nombre.
                     sel.value = (
                         vm[field] if vm[field] in presets else SELECT_NULL
                     )
@@ -1036,7 +1042,16 @@ def run_deploy_form(ctx, run_app: bool = True):
                         widget = self.query_one(f"#c{i}_{field}", Input)
                     except Exception:
                         continue
-                    free = vm[field] not in presets
+                    # Visible si la valeur EST libre, ou si la liste est
+                    # posée sur « libre… » en attente d'une saisie.
+                    try:
+                        chosen_free = (
+                            self.query_one(f"#v{i}_{field}", Select).value
+                            is FREE
+                        )
+                    except Exception:
+                        chosen_free = False
+                    free = chosen_free or vm[field] not in presets
                     widget.display = free
                     widget.disabled = not free
 
