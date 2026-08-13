@@ -36,9 +36,40 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 # Logique pure — aucune dépendance à Textual, testable telle quelle
 # --------------------------------------------------------------------------- #
 def entry_key(entry) -> tuple:
-    """Identité stable d'une entrée de catalogue, indépendante de son rang :
-    les surcharges par VM y survivent quand la sélection change."""
-    return (entry["distro"], entry["version"], entry["arch"])
+    """Identité stable d'une VM du plan, indépendante de son rang d'affichage :
+    surcharges et verrous y survivent quand la sélection change.
+
+    Le quatrième membre est le numéro d'EXEMPLAIRE. Sans lui, deux copies de
+    la même entrée de catalogue partageaient une identité : régler la première
+    réglait la seconde, et les verrous se marchaient dessus."""
+    return (
+        entry["distro"],
+        entry["version"],
+        entry["arch"],
+        entry.get("instance", 0),
+    )
+
+
+def copy_name(base: str, instance: int) -> str:
+    """Nom du n-ième exemplaire. Le premier garde le nom du catalogue, pour
+    que les déploiements d'avant gardent le leur."""
+    return base if not instance else f"{base}-{instance + 1}"
+
+
+def expand_copies(entries, copies):
+    """[entrée] + {clé de base: exemplaires en plus} -> [entrée par VM].
+
+    Chaque exemplaire est une COPIE du dictionnaire, avec son numéro et son
+    nom : rien n'est partagé, donc régler l'un ne touche pas l'autre."""
+    out = []
+    for e in entries:
+        base = (e["distro"], e["version"], e["arch"])
+        for i in range(1 + max(0, (copies or {}).get(base, 0))):
+            item = dict(e)
+            item["instance"] = i
+            item["name"] = copy_name(e["name"], i)
+            out.append(item)
+    return out
 
 
 def parse_disk(value):
@@ -273,6 +304,7 @@ def run_deploy_form(ctx, run_app: bool = True):
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen
     from textual.widgets import (
+        Button,
         Checkbox,
         Footer,
         Header,
@@ -629,6 +661,10 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._reload_catalog(first_load=True)
 
         # -- catalogue et recalcul ------------------------------------- #
+        def _plan_entries(self):
+            """Entrées du plan : la sélection, dépliée en exemplaires."""
+            return expand_copies(self._selected_entries(), self.copies)
+
         def _entries(self):
             return catalog.get(self.arch, [])
 
@@ -665,7 +701,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             return [entries[i] for i in sorted(widget.selected)]
 
         def _recompute(self):
-            entries = self._selected_entries()
+            entries = self._plan_entries()
             self.vms = build_vms(
                 entries,
                 self.profile,
@@ -780,7 +816,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             """Identité du JEU de VM affiché. Reconstruire les widgets à chaque
             frappe ferait perdre le focus en pleine saisie : on ne le fait que
             si la liste elle-même a changé."""
-            return tuple(entry_key(e) for e in self._selected_entries())
+            return tuple(entry_key(e) for e in self._plan_entries())
 
         def _type_options(self):
             return [(t("Server"), SERVER)] + [
@@ -804,7 +840,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             widgets = []
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
-                key = entry_key(self._selected_entries()[i])
+                item = self._plan_entries()[i]
+                key = entry_key(item)
                 row = Horizontal(
                     # « + » ajoute un exemplaire de CETTE entrée ; « - » ne
                     # s'affiche que sur une copie, pour qu'on ne puisse pas
@@ -1131,7 +1168,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             return index if 0 <= index < len(self.rows) else None
 
         def _row_key(self, index):
-            entries = self._selected_entries()
+            entries = self._plan_entries()
             return entry_key(entries[index]) if index < len(entries) else None
 
         def _clear_overrides(self, fields) -> None:
