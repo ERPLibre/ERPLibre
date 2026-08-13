@@ -20,6 +20,17 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
 
 CSS = """
 Screen { layout: vertical; }
@@ -143,18 +154,47 @@ def build_app(lst_finding):
 
 
 def run_tui(lst_finding, run_app=True):
-    """Open the screen. False when it could not be shown.
+    """Ouvrir l'écran. False si on n'a pas pu — et alors on DIT pourquoi.
 
-    False is not a failure: the caller prints the text report instead, which
-    is the same information without the navigation.
+    Trois refus, trois raisons, aucune n'est une panne : rien à montrer, pas
+    de terminal, ou Textual absent. Se taire faisait réafficher le rapport
+    texte à la place de l'écran demandé — la même sortie que la touche
+    précédente, sans rien qui distingue les deux.
+
+    Textual n'est installé que dans `.venv.erplibre`. Lancer ce script
+    directement, maintenant qu'il porte le bit d'exécution, prend le python
+    du système : le shebang ne connaît pas le venv. C'est le chemin qui rend
+    ce message nécessaire.
     """
     if not lst_finding:
         return False
     if not sys.stdout.isatty():
+        print(f"ℹ️  {t('Not a terminal: showing the text report instead.')}")
+        return False
+    try:
+        from script.todo import textual_setup
+    except Exception:
+        textual_setup = None
+    if textual_setup and not textual_setup.available():
+        # Le conseil AVANT la proposition d'installer : Textual est déjà là,
+        # dans le venv. Proposer de l'installer une seconde fois sous
+        # « --user » répond à côté de la question.
+        if not textual_setup.in_venv():
+            print(
+                f"ℹ️  {t('Textual is missing from this interpreter:')}"
+                f" {sys.executable}"
+            )
+            print(f"   {t('Run it with')} .venv.erplibre/bin/python3")
+    if textual_setup and not textual_setup.ensure():
         return False
     try:
         app = build_app(lst_finding)
     except ImportError:
+        print(
+            f"ℹ️  {t('Textual is missing from this interpreter:')}"
+            f" {sys.executable}"
+        )
+        print(f"   {t('Run it with')} .venv.erplibre/bin/python3")
         return False
     if not run_app:
         return app
