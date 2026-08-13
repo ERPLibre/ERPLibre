@@ -3060,8 +3060,8 @@ TRANSLATIONS = {
         "en": "select all",
     },
     "Delete VM(s)": {
-        "fr": "🗑 Effacer une ou plusieurs VM",
-        "en": "🗑 Delete VM(s)",
+        "fr": "🗑  Effacer une ou plusieurs VM",
+        "en": "🗑  Delete VM(s)",
     },
     "No VM found.": {
         "fr": "Aucune VM trouvée.",
@@ -3688,8 +3688,8 @@ TRANSLATIONS = {
         "en": "Verify SHA256 after download? (y/N, default: no): ",
     },
     "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
-        "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
-        "en": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
+        "fr": "🧰 QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
+        "en": "🧰 QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
     },
     # QEMU - statistics screen
     "Statistics (installs, durations, VMs)": {

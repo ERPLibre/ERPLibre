@@ -11,6 +11,7 @@ import inspect
 import json
 import logging
 import os
+import socket
 import re
 import shlex
 import shutil
@@ -1292,6 +1293,11 @@ class TODO:
                     "SSH configuration (~/.ssh/config, ProxyJump)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Remote desktop tunnel (VNC/RDP through SSH)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1332,6 +1338,8 @@ class TODO:
             elif status == "13":
                 self._qemu_ssh_config_menu()
             elif status == "14":
+                self._qemu_tunnel_menu()
+            elif status == "15":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1482,6 +1490,158 @@ class TODO:
                 continue
             roots.append({"alias": name, "ip": ip})
         return roots
+
+    # Ports du bureau distant, par gestionnaire de paquets de la VM. Ils
+    # viennent de _QEMU_DESKTOP_REMOTE, seule source : xrdp sur 3389 partout,
+    # sauf Arch qui reçoit TigerVNC sur 5901.
+    @classmethod
+    def _qemu_desktop_port(cls, distro):
+        if distro == "arch":
+            return cls._QEMU_DESKTOP_REMOTE["pacman"]["port"], "VNC"
+        return cls._QEMU_DESKTOP_REMOTE["apt"]["port"], "RDP"
+
+    @staticmethod
+    def _qemu_self_address():
+        """Adresse par laquelle l'utilisateur a JOINT cet hôte.
+
+        SSH_CONNECTION porte « ip_client port_client ip_serveur port_serveur » :
+        le troisième champ est exactement l'adresse à remettre dans la commande
+        de tunnel, bien mieux qu'un « hostname » qui peut ne rien résoudre
+        depuis le poste de travail. Hors session SSH, on retombe sur le nom
+        d'hôte, en le signalant."""
+        conn = os.environ.get("SSH_CONNECTION", "").split()
+        if len(conn) >= 3:
+            return conn[2], True
+        return socket.gethostname(), False
+
+    def _qemu_tunnel_menu(self):
+        """Commande de tunnel SSH vers le bureau distant d'une machine.
+
+        La source des cibles est ~/.ssh/config, PAS le libvirt local. La VM
+        graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
+        VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
+        poste ne voit alors que l'orchestrateur, et proposer sa liste menait
+        droit a la mauvaise machine — vecu.
+
+        ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
+        seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
+        ajoutes en complement quand ils ne s'y trouvent pas deja.
+        """
+        print(f"\n🖥  {t('Remote desktop tunnel')}")
+        hosts = list(self._ssh_config_hosts())
+        targets = [(h, "ssh_config") for h in hosts]
+        # Complement local, sans sudo tant qu'on n'en a pas besoin : la
+        # plupart des cibles utiles sont deja dans ssh_config.
+        if not targets:
+            for name in self._qemu_list_domains():
+                targets.append((name, "virsh"))
+        if not targets:
+            print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
+            return
+        for i, (name, src) in enumerate(targets, 1):
+            mark = "" if src == "ssh_config" else f"  ({t('local VM')})"
+            print(f"  [{i}] {name}{mark}")
+        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
+            print(t("Cancelled."))
+            return
+        name, src = targets[int(answer) - 1]
+
+        # Le port ne se devine pas pour un hote de ssh_config : on ne connait
+        # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
+        print(f"\n  {t('Remote desktop kind:')}")
+        print(f"  [1] RDP 3389 (xrdp) *")
+        print(f"  [2] VNC 5901 (TigerVNC, Arch)")
+        print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
+        kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        if kind_answer == "3":
+            self._qemu_console_tunnel()
+            return
+        port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
+        local = port + 1
+
+        print(f"\n  {t('Run this on YOUR workstation:')}")
+        if src == "ssh_config":
+            # « localhost » est resolu par le DERNIER saut, donc par la machine
+            # elle-meme : le ProxyJump de ssh_config traverse les niveaux.
+            print(f"\n    ssh -N -L {local}:localhost:{port} {name}\n")
+            print(f"  {t('(through the ProxyJump already in ~/.ssh/config)')}")
+        else:
+            ip = self._qemu_resolve_ips([name]).get(name)
+            if not ip:
+                print(f"  {t('No IP for this VM; is it running?')}")
+                return
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            if not from_ssh:
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
+            print(f"\n    ssh -N -L {local}:{ip}:{port} {user}@{host}\n")
+            print(f"  ⚠ {t('No ~/.ssh/config entry; see SSH configuration.')}")
+        print(
+            f"  {t('then point your client at')} localhost:{local}  ({kind})"
+        )
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    def _qemu_console_tunnel(self):
+        """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
+
+        Les deux autres choix du menu supposent un service DANS l'invité —
+        xrdp, TigerVNC — donc une session de bureau déjà ouverte et un mot de
+        passe posé. La console de l'hyperviseur, elle, existe dès l'amorçage et
+        ne demande rien à l'invité : c'est ce que montre virt-manager.
+
+        Le port n'est pas devinable : libvirt l'attribue au démarrage. On le
+        lit donc, et l'absence de port est un diagnostic à part entière — avec
+        « listen=none » QEMU n'ouvre AUCUN socket, et aucun tunnel n'y peut
+        rien tant que le domaine n'est pas redéfini.
+        """
+        names = self._qemu_list_domains()
+        if not names:
+            print(f"  {t('No local VM.')}")
+            return
+        for i, name in enumerate(names, 1):
+            print(f"  [{i}] {name}")
+        raw = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not raw.isdigit() or not (1 <= int(raw) <= len(names)):
+            print(t("Cancelled."))
+            return
+        name = names[int(raw) - 1]
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "vncdisplay", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            res = None
+        # « 127.0.0.1:0 » désigne le port 5900, « :1 » le 5901, etc.
+        port = None
+        if res and res.returncode == 0:
+            disp = res.stdout.strip().rsplit(":", 1)
+            if len(disp) == 2 and disp[1].isdigit():
+                port = 5900 + int(disp[1])
+        if not port:
+            print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
+            print(f"  {t('Its display is likely spice with listen=none:')}")
+            print(f"    sudo virsh dumpxml {name} | grep -A2 '<graphics'")
+            print(f"  {t('To open it on the loopback (VM restart required):')}")
+            print(f"    sudo virsh destroy {name}")
+            print(f"    sudo virsh edit {name}   # <graphics type='vnc'"
+                  " port='-1' autoport='yes' listen='127.0.0.1'/>")
+            print(f"    sudo virsh start {name}")
+            print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
+            return
+        host, from_ssh = self._qemu_self_address()
+        user = os.environ.get("USER", "user")
+        if not from_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        print(f"\n  {t('Run this on YOUR workstation:')}")
+        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {user}@{host}\n")
+        print(f"  {t('then point your VNC client at')} localhost:{port}")
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
     def _qemu_ssh_config_menu(self):
         """Écrit les entrées ~/.ssh/config du parc QEMU.
