@@ -1376,11 +1376,24 @@ def run_deploy_form(ctx, run_app: bool = True):
             if on:
                 vm = self.rows[index]["vm"]
                 self.locked.add(key)
+                # TOUT ce que la VM tient d'un choix commun est recopié, pas
+                # seulement les ressources : la branche et le profil Odoo en
+                # font partie. Les oublier laissait une VM « figée » changer
+                # de version d'ERPLibre dès qu'on touchait au choix générique,
+                # ce qui vide le mot de son sens.
+                #
+                # Les deux se résolvent AVANT d'être figés : « » y signifie
+                # « celle du formulaire », et geler une chaîne vide ne
+                # gèlerait rien du tout.
                 self.overrides[key] = {
                     "vcpus": vm["vcpus"],
                     "ram": vm["ram"],
                     "disk": vm["disk"],
                     "desktop": vm.get("desktop") or "",
+                    "branch": vm.get("branch") or self._branch(),
+                    "install_cmd": (
+                        vm.get("install_cmd") or self._profile_cmd()
+                    ),
                 }
             else:
                 self.locked.discard(key)
