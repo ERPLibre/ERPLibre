@@ -1223,7 +1223,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
-                self._clear_overrides(("vcpus", "ram", "disk"))
+                # Un multiplicateur x1..x4 ne touche QUE les vCPU et la RAM —
+                # apply_profile y laisse le disque du catalogue. Y effacer une
+                # taille de disque réglée à la main la faisait disparaître sans
+                # rien mettre à la place : on revenait à 20G sans l'avoir
+                # demandé. Le disque n'est rendu au commun que par le profil
+                # « personnalisé », qui en porte un.
+                fields = ("vcpus", "ram")
+                if self.profile == "custom":
+                    fields += ("disk",)
+                self._clear_overrides(fields)
                 custom = self.profile == "custom"
                 for field, (sel, _inp) in RES_FIELDS.items():
                     self.query_one(sel, Select).disabled = not custom
