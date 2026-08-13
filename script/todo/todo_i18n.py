@@ -4547,6 +4547,190 @@ TRANSLATIONS = {
         "fr": "Migration de la base déjà faite pour Odoo",
         "en": "Database upgrade already done for Odoo",
     },
+    "Cloning to Odoo": {
+        "fr": "Clonage vers Odoo",
+        "en": "Cloning to Odoo",
+    },
+    "from": {
+        "fr": "depuis",
+        "en": "from",
+    },
+    "Duplicate module in Odoo": {
+        "fr": "Module en double dans Odoo",
+        "en": "Duplicate module in Odoo",
+    },
+    "Duplicate module error detected, handle it": {
+        "fr": "Erreur de module en double détectée, la traiter",
+        "en": "Duplicate module error detected, handle it",
+    },
+    "manually then press enter to continue.": {
+        "fr": "manuellement puis Entrée pour continuer.",
+        "en": "manually then press enter to continue.",
+    },
+    "Missing module error detected, missing in": {
+        "fr": "Erreur de module manquant détectée, manquant dans",
+        "en": "Missing module error detected, missing in",
+    },
+    "All of the list above": {
+        "fr": "Toute la liste ci-dessus",
+        "en": "All of the list above",
+    },
+    "Add an extra custom one": {
+        "fr": "Ajouter un module personnalisé",
+        "en": "Add an extra custom one",
+    },
+    "List the missing modules to delete,": {
+        "fr": "Énumérer les modules manquants à supprimer,",
+        "en": "List the missing modules to delete,",
+    },
+    "separated by commas. The others will be": {
+        "fr": "séparés par des virgules. Les autres seront",
+        "en": "separated by commas. The others will be",
+    },
+    "migrated": {
+        "fr": "migrés",
+        "en": "migrated",
+    },
+    "Migration fix for Odoo": {
+        "fr": "Correctif de migration pour Odoo",
+        "en": "Migration fix for Odoo",
+    },
+    "Migration fix done for Odoo": {
+        "fr": "Correctif de migration terminé pour Odoo",
+        "en": "Migration fix done for Odoo",
+    },
+    "No migration fix to run for Odoo": {
+        "fr": "Aucun correctif de migration à exécuter pour Odoo",
+        "en": "No migration fix to run for Odoo",
+    },
+    "Migration fix already done for Odoo": {
+        "fr": "Correctif de migration déjà fait pour Odoo",
+        "en": "Migration fix already done for Odoo",
+    },
+    "List the module names to delete,": {
+        "fr": "Énumérer les noms de modules à supprimer,",
+        "en": "List the module names to delete,",
+    },
+    "separated by commas": {
+        "fr": "séparés par des virgules",
+        "en": "separated by commas",
+    },
+    "Missing module error": {
+        "fr": "Erreur de module manquant",
+        "en": "Missing module error",
+    },
+    "Duplicate module error": {
+        "fr": "Erreur de module en double",
+        "en": "Duplicate module error",
+    },
+    "Module error": {
+        "fr": "Erreur de module",
+        "en": "Module error",
+    },
+    "Please validate the commits after the code": {
+        "fr": "Veuillez valider les commits après la migration",
+        "en": "Please validate the commits after the code",
+    },
+    "migration.": {
+        "fr": "du code.",
+        "en": "migration.",
+    },
+    "To show the repo status": {
+        "fr": "Pour afficher l'état des dépôts",
+        "en": "To show the repo status",
+    },
+    "Please validate this path in config.conf": {
+        "fr": "Veuillez valider ce chemin dans config.conf",
+        "en": "Please validate this path in config.conf",
+    },
+    "Database migration to Odoo": {
+        "fr": "Migration de la base vers Odoo",
+        "en": "Database migration to Odoo",
+    },
+    "is now half migrated: replaying the command on": {
+        "fr": "est maintenant à moitié migrée : rejouer la commande dessus",
+        "en": "is now half migrated: replaying the command on",
+    },
+    "it would never recover, so it is NOT offered.": {
+        "fr": "ne s'en remettrait jamais, ce n'est donc PAS proposé.",
+        "en": "it would never recover, so it is NOT offered.",
+    },
+    "The clone step has been reset. Fix the": {
+        "fr": "L'étape de clonage a été réinitialisée. Corrigez la",
+        "en": "The clone step has been reset. Fix the",
+    },
+    "cause, then relaunch the migration and answer": {
+        "fr": "cause, puis relancez la migration et répondez",
+        "en": "cause, then relaunch the migration and answer",
+    },
+    "continue": {
+        "fr": "continuer",
+        "en": "continue",
+    },
+    "will be dropped and rebuilt from the previous": {
+        "fr": "sera supprimée et reconstruite depuis la version",
+        "en": "will be dropped and rebuilt from the previous",
+    },
+    "version before retrying.": {
+        "fr": "précédente avant de réessayer.",
+        "en": "version before retrying.",
+    },
+    "Do you want to upgrade all": {
+        "fr": "Voulez-vous tout mettre à jour",
+        "en": "Do you want to upgrade all",
+    },
+    "Press y/Y to upgrade all addons of the": {
+        "fr": "y/Y pour mettre à jour tous les modules de la",
+        "en": "Press y/Y to upgrade all addons of the",
+    },
+    "Open the server with Selenium": {
+        "fr": "Ouvrir le serveur avec Selenium",
+        "en": "Open the server with Selenium",
+    },
+    "Do you want to test this upgrade? Choose": {
+        "fr": "Voulez-vous tester cette migration ? Choisissez",
+        "en": "Do you want to test this upgrade? Choose",
+    },
+    "or press enter to ignore it": {
+        "fr": "ou Entrée pour ignorer",
+        "en": "or press enter to ignore it",
+    },
+    "Press enter to continue": {
+        "fr": "Entrée pour continuer",
+        "en": "Press enter to continue",
+    },
+    "Re-update i18n, purge the data and the tables": {
+        "fr": "Remise à jour de l'i18n, purge des données et des tables",
+        "en": "Re-update i18n, purge the data and the tables",
+    },
+    "except mail_test and mail_test_full": {
+        "fr": "sauf mail_test et mail_test_full",
+        "en": "except mail_test and mail_test_full",
+    },
+    "A backup can be created": {
+        "fr": "Une sauvegarde peut être créée",
+        "en": "A backup can be created",
+    },
+    "Press y/Y or type filename.zip to export, or": {
+        "fr": "y/Y ou un nom fichier.zip pour exporter, ou",
+        "en": "Press y/Y or type filename.zip to export, or",
+    },
+    "enter to continue": {
+        "fr": "Entrée pour continuer",
+        "en": "enter to continue",
+    },
+    "Test the migration, press y/Y": {
+        "fr": "Tester la migration, y/Y",
+        "en": "Test the migration, press y/Y",
+    },
+    "Documentation for this version": {
+        "fr": "Documentation de cette version",
+        "en": "Documentation for this version",
+    },
+    "Command not found": {
+        "fr": "Commande non trouvée",
+        "en": "Command not found",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

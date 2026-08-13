@@ -64,7 +64,11 @@ def displayed_strings(path):
             if id(sub) in translated or id(sub) in keys:
                 continue
             text = sub.value.strip()
-            if len(text.split()) < 2 or not any(c.isalpha() for c in text):
+            # De la prose, pas de la ponctuation d'invite ni un nom de
+            # commande : au moins deux mots réellement alphabétiques.
+            # « ' (y/Y) : » n'en a aucun, « make repo_show_status » un seul.
+            words = [w for w in text.split() if w.isalpha() and len(w) > 2]
+            if len(words) < 2:
                 continue
             if any(mark in text for mark in NOT_PROSE):
                 continue
@@ -94,6 +98,79 @@ class TestNoEnglishLeftInTheTools(unittest.TestCase):
         self.assertEqual(
             [text for _, text in found], ["this sentence is not translated"]
         )
+
+
+class TestTheDatabaseMigrationSpeaksFrench(unittest.TestCase):
+    """Le parcours que l'on suit pendant des heures, en une seule langue.
+
+    `execute_odoo_upgrade` est la migration de base : c'est ce qui défile à
+    l'écran de l'étape 0 à l'étape 6. Elle alternait les deux langues.
+    """
+
+    def driver(self):
+        path = os.path.join(REPO, "script", "todo", "todo_upgrade.py")
+        with open(path) as handle:
+            return ast.parse(handle.read()), path
+
+    def test_no_english_sentence_is_displayed_raw(self):
+        tree, path = self.driver()
+        target = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "execute_odoo_upgrade"
+        ]
+        self.assertEqual(len(target), 1, "fonction introuvable")
+        left = [
+            text
+            for _, text in displayed_strings(path)
+            if target[0].lineno <= _ <= target[0].end_lineno
+            # Ponctuation d'invite : « (y/Y) : » n'est pas une phrase.
+            and len(text.split()) > 2
+        ]
+        self.assertEqual(left, [])
+
+    def test_every_t_key_has_a_translation(self):
+        # `t()` rend sa CLÉ quand la traduction manque : une clé oubliée
+        # s'affiche en anglais sans que rien ne signale l'oubli.
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        tree, _ = self.driver()
+        missing = sorted(
+            {
+                arg.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and getattr(node.func, "id", "") == "t"
+                for arg in node.args
+                if isinstance(arg, ast.Constant)
+                and isinstance(arg.value, str)
+                and arg.value not in TRANSLATIONS
+            }
+        )
+        self.assertEqual(missing, [])
+
+    def test_the_step_headers_translate_only_their_label(self):
+        # L'en-tête part AUSSI dans le journal, que l'écran de reprise
+        # relit : traduire ce qui est écrit rendrait un journal illisible
+        # pour l'autre langue.
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo import todo_i18n
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "fr"
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            upgrade.print_step("2 - Succeed update all addons")
+        printed = out.getvalue()
+        self.assertIn("🔷 2 - ", printed)
+        self.assertNotIn("Succeed", printed)
 
 
 class TestTheDriverNoLongerReadsEnglish(unittest.TestCase):
