@@ -388,8 +388,7 @@ def run_deploy_form(ctx, run_app: bool = True):
         /* La branche porte des noms longs (« 1.6.0 », « develop »,
         « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
         plus ce qu'on a choisi. */
-
-
+        .vmbranch { width: 18; }
         .vmcopy { width: 5; min-width: 5; }
         .vmhead { height: 1; }
         .vmrow { height: 3; align-vertical: middle; }
@@ -694,7 +693,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             # vit sur la ligne d'affichage, jamais sur la VM : celle-ci part
             # telle quelle dans la spec, que la CLI produit à l'identique.
             for row, entry in zip(self.rows, entries):
-                row["custom"] = bool(self.overrides.get(entry_key(entry)))
+                key = entry_key(entry)
+                row["custom"] = bool(self.overrides.get(key))
+                row["locked"] = key in self.locked
             self._render_plan()
             self._render_mise()
             self._render_store()
@@ -803,7 +804,19 @@ def run_deploy_form(ctx, run_app: bool = True):
             widgets = []
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
+                key = entry_key(self._selected_entries()[i])
                 row = Horizontal(
+                    # « + » ajoute un exemplaire de CETTE entrée ; « - » ne
+                    # s'affiche que sur une copie, pour qu'on ne puisse pas
+                    # retirer l'original par mégarde.
+                    Button("+", id=f"p{i}", classes="vmcopy"),
+                    Button("✎", id=f"r{i}", classes="vmcopy"),
+                    Button(
+                        "🔒" if key in self.locked else "🔓",
+                        id=f"l{i}",
+                        variant="success" if key in self.locked else "default",
+                        classes="vmlock",
+                    ),
                     Select(
                         [(str(c), c) for c in ctx["cpu_presets"]]
                         + [(t("free value…"), FREE)],
@@ -867,6 +880,22 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id=f"c{i}_disk",
                         classes="freeval",
                     ),
+                    (
+                        Button("−", id=f"m{i}", classes="vmcopy")
+                        if item.get("instance")
+                        else Static("", classes="vmcopy")
+                    ),
+                    Select(
+                        [(b, b) for b in branches],
+                        classes="vmbranch",
+                        value=(
+                            item.get("branch")
+                            or self.rows[i]["vm"].get("branch")
+                            or branches[0]
+                        ),
+                        allow_blank=False,
+                        id=f"v{i}_branch",
+                    ),
                     Select(
                         self._type_options(),
                         value=vm.get("desktop") or SERVER,
@@ -879,7 +908,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                     Vertical(
                         Static(self._row_head(i, r), id=f"h{i}"),
                         row,
-                        classes="vmcard",
+                        # Pas d'id sur la carte : « remove_children() » est
+                        # ASYNCHRONE, les anciennes sont encore là au montage
+                        # et Textual refuse deux frères de même id. Les ids
+                        # des champs vivent un niveau plus bas, dans un parent
+                        # neuf — la collision ne les touche pas. On atteint
+                        # donc la carte par son RANG.
+                        classes=(
+                            "vmcard locked" if key in self.locked else "vmcard"
+                        ),
                     )
                 )
 
@@ -910,6 +947,50 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._sync_free_inputs()
             self._syncing = False
 
+        def _refresh_row_widgets(self) -> None:
+            """Remet les listes de chaque rangée sur ce que la VM vaut MAINTENANT.
+
+            Sans cela, changer le profil x1..x4 mettait les totaux à jour mais
+            laissait les listes sur leurs anciennes valeurs : l'écran affichait
+            8192 pendant que la VM valait 4096. Les rangées ne sont remontées
+            que si le JEU de VM change — pour ne pas voler le focus — donc ce
+            rafraîchissement doit se faire à la main.
+
+            Aucun risque de boucle : on_select_changed ignore une valeur déjà
+            égale à celle du modèle, et le modèle vient précisément d'être
+            recalculé."""
+            for i, r in enumerate(self.rows):
+                vm = r["vm"]
+                for field, presets in (
+                    ("vcpus", ctx["cpu_presets"]),
+                    ("ram", ctx["ram_presets"]),
+                    ("disk", ctx["disk_presets"]),
+                ):
+                    try:
+                        sel = self.query_one(f"#v{i}_{field}", Select)
+                    except Exception:
+                        continue
+                    # Une liste posée sur « libre… » ne doit PAS être remise
+                    # sur une valeur : l'utilisateur vient de la choisir, et
+                    # tant qu'il n'a rien tapé la VM vaut encore celle du
+                    # profil — on la lui reprendrait sous les doigts.
+                    if sel.value is FREE:
+                        continue
+                    # Une valeur libre déjà saisie n'est dans aucune liste :
+                    # liste vide, la saisie à côté porte le nombre.
+                    sel.value = (
+                        vm[field] if vm[field] in presets else SELECT_NULL
+                    )
+                for wid, value in (
+                    (f"#v{i}_type", vm.get("desktop") or SERVER),
+                    (f"#v{i}_branch", vm.get("branch") or self._branch()),
+                ):
+                    try:
+                        self.query_one(wid, Select).value = value
+                    except Exception:
+                        pass
+            self._sync_free_inputs()
+
         def _sync_free_inputs(self) -> None:
             for i, r in enumerate(self.rows):
                 vm = r["vm"]
@@ -922,7 +1003,16 @@ def run_deploy_form(ctx, run_app: bool = True):
                         widget = self.query_one(f"#c{i}_{field}", Input)
                     except Exception:
                         continue
-                    free = vm[field] not in presets
+                    # Visible si la valeur EST libre, ou si la liste est
+                    # posée sur « libre… » en attente d'une saisie.
+                    try:
+                        chosen_free = (
+                            self.query_one(f"#v{i}_{field}", Select).value
+                            is FREE
+                        )
+                    except Exception:
+                        chosen_free = False
+                    free = chosen_free or vm[field] not in presets
                     widget.display = free
                     widget.disabled = not free
 
@@ -933,7 +1023,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             vm = row["vm"]
             icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[row["state"]]
             state = "" if row["state"] == "new" else f"  {icon}{row['note']}"
-            mark = "  ✎" if row.get("custom") else ""
+            if row.get("locked"):
+                mark = "  🔒 figée"
+            elif row.get("custom"):
+                mark = "  ✎"
+            else:
+                mark = ""
             return (
                 f"[b]{vm['name']}[/b]  {vm['distro']} {vm['version']} "
                 f"[{vm['arch']}]  {row['disk_gb']}G{state}{mark}"
@@ -953,6 +1048,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         )
                     except Exception:
                         pass
+                self._refresh_row_widgets()
             if not self.rows:
                 # Rien de coché : un total à zéro n'apprend rien, on dit
                 # plutôt comment remplir la liste.
@@ -995,12 +1091,23 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.arch = arches[event.radio_set.pressed_index]
                 self._reload_catalog()
             elif event.radio_set.id == "f_type":
+                self._clear_overrides(("desktop",))
                 # Recalcul : le disque annonce inclut le bureau, et la
                 # colonne Statut affiche le type de VM.
                 self._recompute()
             elif event.radio_set.id == "f_profile":
                 index = event.radio_set.pressed_index
                 self.profile = "custom" if index == 4 else str(index + 1)
+                # Un multiplicateur x1..x4 ne touche QUE les vCPU et la RAM —
+                # apply_profile y laisse le disque du catalogue. Y effacer une
+                # taille de disque réglée à la main la faisait disparaître sans
+                # rien mettre à la place : on revenait à 20G sans l'avoir
+                # demandé. Le disque n'est rendu au commun que par le profil
+                # « personnalisé », qui en porte un.
+                fields = ("vcpus", "ram")
+                if self.profile == "custom":
+                    fields += ("disk",)
+                self._clear_overrides(fields)
                 custom = self.profile == "custom"
                 for field, (sel, _inp) in RES_FIELDS.items():
                     self.query_one(sel, Select).disabled = not custom
@@ -1026,6 +1133,36 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _row_key(self, index):
             entries = self._selected_entries()
             return entry_key(entries[index]) if index < len(entries) else None
+
+        def _clear_overrides(self, fields) -> None:
+            """Rend au choix commun les VM NON figées, pour ces champs-là.
+
+            Le cadenas est la seule chose qui résiste. Une valeur réglée à la
+            main sur une rangée cède donc au choix global suivant : c'est ce
+            qu'on attend d'un réglage « général », et le verrou existe
+            précisément pour dire « pas celle-ci ».
+
+            Par champ, pas en bloc : changer la RAM générale n'a aucune raison
+            d'effacer le disque qu'on a réglé sur une VM.
+
+            « name » n'y figure jamais : un renommage est explicite et ne
+            découle d'aucune valeur générale."""
+            changed = False
+            for key in list(self.overrides):
+                if key in self.locked:
+                    continue
+                for field in fields:
+                    changed |= self.overrides[key].pop(field, None) is not None
+                if not self.overrides[key]:
+                    self.overrides.pop(key, None)
+            if changed:
+                # Forcer le remontage : une rangée peut porter une saisie
+                # LIBRE, que le simple rafraîchissement laisse en place — on
+                # verrait « 12 » à l'écran pendant que la VM vaut 2. Le
+                # remontage rebâtit tout depuis le modèle. Sans risque de vol
+                # de focus : ce chemin part d'un widget GLOBAL, jamais d'une
+                # rangée.
+                self._shown_ids = ()
 
         def _set_override(self, index, field, value) -> None:
             """Écrit — ou retire — la surcharge d'UNE VM."""
@@ -1121,6 +1258,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                     self._set_override(index, field, event.value)
                 self._recompute()
                 return
+            # Les choix GLOBAUX de branche et de profil ne portent aucune
+            # valeur de ressource : ils tombaient donc dans le « return »
+            # ci-dessous sans rien recalculer, et les rangées restaient sur
+            # l'ancienne version. Elles n'en gardent pas de copie — « » y
+            # veut dire « celle du formulaire » — il suffit de redessiner.
+            if event.select.id in ("f_branch", "f_profile_install"):
+                self._clear_overrides(
+                    ("branch",)
+                    if event.select.id == "f_branch"
+                    else ("install_cmd",)
+                )
+                self._recompute()
+                return
             field = SELECT_TO_FIELD.get(event.select.id)
             if not field:
                 return
@@ -1134,6 +1284,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._free[field] = False
                 self._show_free(field, False)
                 self.custom[field] = event.value
+                self._clear_overrides((field,))
             self._recompute()
 
         def _apply_free(self, field) -> None:
@@ -1146,6 +1297,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self.custom[field] = parse_ram(raw)
             else:
                 self.custom[field] = positive_int(raw, 0)
+            self._clear_overrides((field,))
 
         def on_input_changed(self, event) -> None:
             if self._syncing:
@@ -1165,6 +1317,133 @@ def run_deploy_form(ctx, run_app: bool = True):
             if field:
                 self._apply_free(field)
                 self._recompute()
+
+        def _set_lock(self, index, on) -> None:
+            """Fige — ou libère — les ressources d'une VM.
+
+            Figer, c'est recopier les valeurs EFFECTIVES du moment dans les
+            surcharges : le profil commun ne les atteint plus. Libérer les
+            retire, et la VM retombe sous le profil. Le mécanisme est celui
+            des surcharges, déjà éprouvé ; le verrou n'en est que la commande
+            explicite, et il couvre les quatre champs d'un coup."""
+            key = self._row_key(index)
+            if key is None or index >= len(self.rows):
+                return
+            if on:
+                vm = self.rows[index]["vm"]
+                self.locked.add(key)
+                # TOUT ce que la VM tient d'un choix commun est recopié, pas
+                # seulement les ressources : la branche et le profil Odoo en
+                # font partie. Les oublier laissait une VM « figée » changer
+                # de version d'ERPLibre dès qu'on touchait au choix générique,
+                # ce qui vide le mot de son sens.
+                #
+                # Les deux se résolvent AVANT d'être figés : « » y signifie
+                # « celle du formulaire », et geler une chaîne vide ne
+                # gèlerait rien du tout.
+                self.overrides[key] = {
+                    "vcpus": vm["vcpus"],
+                    "ram": vm["ram"],
+                    "disk": vm["disk"],
+                    "desktop": vm.get("desktop") or "",
+                    "branch": vm.get("branch") or self._branch(),
+                    "install_cmd": (
+                        vm.get("install_cmd") or self._profile_cmd()
+                    ),
+                }
+            else:
+                self.locked.discard(key)
+                self.overrides.pop(key, None)
+            self._recompute()
+            # La couleur de la ligne suit le verrou sans tout remonter : un
+            # remontage volerait le focus à la case qu'on vient de cocher.
+            cards = self.query_one("#plan", VerticalScroll).children
+            if index < len(cards):
+                cards[index].set_class(on, "locked")
+            btn = self.query_one(f"#l{index}", Button)
+            btn.label = "🔒" if on else "🔓"
+            btn.variant = "success" if on else "default"
+
+        def _add_copy(self, index, delta) -> None:
+            """Ajoute ou retire un exemplaire de l'entrée visée.
+
+            Retirer enlève le DERNIER exemplaire, et avec lui ses réglages :
+            les garder ferait resurgir d'anciennes valeurs à la copie
+            suivante, sans que rien ne l'explique."""
+            entries = self._plan_entries()
+            if index >= len(entries):
+                return
+            item = entries[index]
+            base = (item["distro"], item["version"], item["arch"])
+            count = self.copies.get(base, 0)
+            if delta > 0:
+                self.copies[base] = count + 1
+            else:
+                if count <= 0:
+                    return
+                gone = (*base, count)
+                self.overrides.pop(gone, None)
+                self.locked.discard(gone)
+                self.copies[base] = count - 1
+                if not self.copies[base]:
+                    self.copies.pop(base, None)
+            self._recompute()
+            # Le JEU de VM a changé : les rangées doivent être rebâties.
+            self._mount_rows()
+
+        def on_button_pressed(self, event) -> None:
+            match = re.match(r"([pm])(\d+)$", event.button.id or "")
+            if match:
+                self._add_copy(
+                    int(match.group(2)), 1 if match.group(1) == "p" else -1
+                )
+                return
+            match = re.match(r"r(\d+)$", event.button.id or "")
+            if match:
+                self._rename(int(match.group(1)))
+                return
+            match = re.match(r"l(\d+)$", event.button.id or "")
+            if match:
+                index = int(match.group(1))
+                key = self._row_key(index)
+                if key is not None:
+                    self._set_lock(index, key not in self.locked)
+
+        def _rename(self, index) -> None:
+            """Renomme une VM. Le nom saisi devient une surcharge comme les
+            autres : il survit au recalcul, et F4 le retire avec le reste."""
+            key = self._row_key(index)
+            if key is None or index >= len(self.rows):
+                return
+            entries = self._plan_entries()
+            auto = vm_name(
+                entries[index]["name"],
+                self.rows[index]["vm"].get("desktop"),
+                desktop_suffixes,
+            )
+
+            def done(value):
+                if value is None:
+                    return
+                if not str(value).strip():
+                    self.overrides.get(key, {}).pop("name", None)
+                    if not self.overrides.get(key):
+                        self.overrides.pop(key, None)
+                else:
+                    clean = clean_hostname(value)
+                    if not clean:
+                        self.notify(
+                            t("Invalid name: letters, digits, hyphens."),
+                            severity="error",
+                        )
+                        return
+                    self.overrides.setdefault(key, {})["name"] = clean
+                self._recompute()
+                self._mount_rows()
+
+            self.push_screen(
+                RenameScreen(self.rows[index]["vm"]["name"], auto), done
+            )
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
