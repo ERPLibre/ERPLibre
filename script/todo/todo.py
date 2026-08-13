@@ -4898,8 +4898,12 @@ class TODO:
         # commande distante en dépend, donc elle se construit par VM ; celle-ci
         # reste le défaut pour les noms absents du dict.
         desk_map = desktop if isinstance(desktop, dict) else {}
+        # Même contrat que `desktop` : une chaîne pour tout le parc, ou
+        # une carte {nom: branche} quand elles diffèrent d'une VM à l'autre.
+        branch_map = branch if isinstance(branch, dict) else {}
+        branch_def = "" if branch_map else branch
         remote = self._qemu_erplibre_remote_cmd(
-            branch,
+            branch_def,
             final_cmd,
             prod,
             "" if desk_map else desktop,
@@ -4928,9 +4932,9 @@ class TODO:
                     "version": v,
                     "arch": a,
                 }
-                if desk_map:
+                if desk_map or branch_map:
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
-                        branch,
+                        branch_map.get(name, branch_def),
                         final_cmd,
                         prod,
                         desk_map.get(name, ""),
@@ -4943,7 +4947,9 @@ class TODO:
         if not vms:
             print(t("No VM to install."))
             return
-        manifest = launch_installs(vms, branch, remote)
+        manifest = launch_installs(
+            vms, branch_def or next(iter(branch_map.values()), ""), remote
+        )
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
         # Affiche tous les chemins de log (pour les consulter/partager même si
         # on quitte le dashboard avant la fin).
@@ -6291,6 +6297,14 @@ class TODO:
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"
+        # Branche par VM : « » sur une VM veut dire « celle du formulaire ».
+        branch_map = {
+            vm["name"]: (vm.get("branch") or install_branch or "")
+            for vm in pending
+        }
+        for _n in deployed:
+            branch_map.setdefault(_n, install_branch or "")
+        branch_multi = len(set(branch_map.values())) > 1
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -6360,7 +6374,7 @@ class TODO:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
                     deployed,
-                    install_branch,
+                    branch_map if branch_multi else install_branch,
                     ip_map,
                     install["cmd"] if install else None,
                     install["prod"] if install else False,

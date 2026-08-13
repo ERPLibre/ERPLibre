@@ -166,6 +166,9 @@ def apply_profile(
                 # spec entière depuis qu'il se choisit machine par machine ;
                 # `desktop` n'est plus que le défaut commun.
                 "desktop": desktop,
+                # Branche ERPLibre. Même raison : « » signifie « celle du
+                # formulaire », et une surcharge la remplace pour cette VM.
+                "branch": "",
             }
         )
     return out
@@ -861,6 +864,11 @@ def run_deploy_form(ctx, run_app: bool = True):
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
 
+        def _branch(self):
+            """Branche du formulaire : le défaut de chaque VM."""
+            value = self.query_one("#f_branch", Select).value
+            return value if isinstance(value, str) else branches[0]
+
         def _default_desktop(self):
             """« » pour un serveur, sinon la clé de la saveur choisie."""
             """Type de VM par défaut. Chaque rangée peut s'en écarter."""
@@ -983,11 +991,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                     Select(
                         [(b, b) for b in branches],
                         classes="vmbranch",
+                        # Repli sur la branche du FORMULAIRE, jamais sur
+                        # branches[0] : les rangées sont remontées dès que le
+                        # jeu de VM change (une entrée cochée, une copie
+                        # ajoutée, un renommage), et elles retombaient alors
+                        # toutes sur « develop » quel que soit le choix commun.
                         value=(
-                            item.get("branch")
-                            or self.rows[i]["vm"].get("branch")
-                            or branches[0]
-                        ),
+                            self.rows[i]["vm"].get("branch")
+                            if i < len(self.rows)
+                            else ""
+                        )
+                        or self._branch(),
                         allow_blank=False,
                         id=f"v{i}_branch",
                     ),
@@ -1322,6 +1336,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # suivra donc le profil s'il change — ce qui est aussi le plus
                 # attendu quand on n'a rien changé de visible.
                 vm_now = self.rows[index]["vm"]
+                if field == "branch":
+                    # « la branche du formulaire » n'est pas une surcharge :
+                    # la VM doit suivre si on la change en haut.
+                    current = vm_now.get("branch") or self._branch()
+                    if event.value == current:
+                        return
+                    self._set_override(
+                        index,
+                        "branch",
+                        "" if event.value == self._branch() else event.value,
+                    )
+                    self._recompute()
+                    return
                 if field == "type":
                     new_desk = "" if event.value == SERVER else event.value
                     if new_desk == (vm_now.get("desktop") or ""):
