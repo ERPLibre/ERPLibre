@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import grp
+import gzip
 import hashlib
 import os
 import re
@@ -173,6 +174,13 @@ S390X_DISTROS: tuple[str, ...] = (
     "rocky",
     "fedora",
     "opensuse",
+    # Debian n'a PAS d'image cloud s390x, et n'en aura pas par cette voie :
+    # vérifié sur cloud.debian.org, les arborescences bookworm et trixie ne
+    # publient que amd64, arm64, ppc64el et riscv64. Le port s390x existe
+    # pourtant — « binary-s390x » répond 200 — et debian-installer livre
+    # kernel + initrd pour les deux versions. On y passe donc par
+    # l'INSTALLATEUR au lieu d'un qcow2 tout fait : voir uses_installer().
+    "debian",
 )
 
 # Une distro peut ne publier qu'une PARTIE de ses versions sur une
@@ -184,8 +192,28 @@ S390X_DISTROS: tuple[str, ...] = (
 # (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
 # miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
-    "s390x": {"fedora": ("43",)},
+    # Debian sur s390x passe par debian-installer, dont les images sont
+    # publiées pour bookworm et trixie — vérifié. bullseye est écartée : elle
+    # est en fin de vie et son installateur n'a pas été éprouvé ici.
+    "s390x": {"fedora": ("43",), "debian": ("12", "13")},
 }
+
+# Distros installées par debian-installer plutôt que depuis une image cloud.
+# La différence n'est pas cosmétique : pas de qcow2 à convertir, pas de seed
+# cloud-init, un disque VIERGE et un amorçage kernel+initrd.
+INSTALLER_COMBOS: tuple[tuple[str, str], ...] = (("debian", "s390x"),)
+
+# kernel.debian / initrd.debian du port s390x. « current » suit les mises à
+# jour de l'installateur sans figer un numéro qui périmerait.
+INSTALLER_URL = (
+    "https://deb.debian.org/debian/dists/{code}/main/installer-s390x"
+    "/current/images/generic/{fichier}"
+)
+
+
+def uses_installer(distro: str, arch: str) -> bool:
+    """Vrai si cette combinaison s'installe par debian-installer."""
+    return (distro, arch) in INSTALLER_COMBOS
 
 
 def arch_versions(distro: str, arch: str, versions) -> list[str]:
@@ -1679,6 +1707,141 @@ def prepare_disk(
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
+def build_preseed(
+    args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
+) -> str:
+    """Preseed debian-installer équivalent au cloud-config des autres distros.
+
+    Il doit couvrir EXACTEMENT ce que cloud-init fait ailleurs : nom d'hôte,
+    utilisateur, clés SSH, sudo sans mot de passe, fuseau, paquets de base.
+    Tout ce qui manque ici devient une question posée à l'écran, et
+    l'installation s'arrête sur une console que personne ne regarde.
+
+    « priority=critical » suffit à ne pas poser les questions restantes ; il
+    ne dispense PAS de répondre à celles qui n'ont pas de défaut, d'où le
+    partitionnement et le miroir écrits explicitement.
+    """
+    user = args.user
+    # Sans mot de passe utilisable, d-i s'arrête sur la création du compte :
+    # « ! » est un hachage volontairement invalide — la connexion se fera par
+    # clé, comme le cloud-config le prévoit lui aussi.
+    crypted = pw_hash or "!"
+    lines = [
+        "d-i debian-installer/locale string en_US.UTF-8",
+        "d-i keyboard-configuration/xkb-keymap select us",
+        # « auto » évite la question du choix d'interface : sous virtio-ccw
+        # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
+        "d-i netcfg/choose_interface select auto",
+        f"d-i netcfg/get_hostname string {args.hostname}",
+        "d-i netcfg/get_domain string localdomain",
+        "d-i netcfg/hostname string " + args.hostname,
+        "d-i mirror/country string manual",
+        "d-i mirror/http/hostname string deb.debian.org",
+        "d-i mirror/http/directory string /debian",
+        "d-i mirror/http/proxy string",
+        "d-i passwd/root-login boolean false",
+        "d-i passwd/user-fullname string ERPLibre",
+        f"d-i passwd/username string {user}",
+        f"d-i passwd/user-password-crypted password {crypted}",
+        "d-i clock-setup/utc boolean true",
+        f"d-i time/zone string {args.timezone}",
+        "d-i clock-setup/ntp boolean true",
+        # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
+        # d-i pose quand même la question quand rien ne le désigne.
+        "d-i partman-auto/disk string /dev/vda",
+        "d-i partman-auto/method string regular",
+        "d-i partman-auto/choose_recipe select atomic",
+        "d-i partman/default_filesystem string ext4",
+        "d-i partman-partitioning/confirm_write_new_label boolean true",
+        "d-i partman/choose_partition select finish",
+        "d-i partman/confirm boolean true",
+        "d-i partman/confirm_nooverwrite boolean true",
+        "tasksel tasksel/first multiselect ssh-server",
+        "d-i pkgsel/include string openssh-server sudo python3"
+        " qemu-guest-agent ca-certificates",
+        "d-i pkgsel/upgrade select none",
+        "popularity-contest popularity-contest/participate boolean false",
+        "d-i finish-install/reboot_in_progress note",
+    ]
+    # late_command : tout ce que le preseed ne sait pas exprimer. « in-target »
+    # exécute DANS le système installé ; les redirections, elles, restent dans
+    # l'installateur et doivent donc viser /target.
+    post = [
+        f"in-target usermod -aG sudo {user}",
+        f"echo '{user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/{user}",
+        f"chmod 440 /target/etc/sudoers.d/{user}",
+    ]
+    if ssh_keys:
+        post.append(f"mkdir -p /target/home/{user}/.ssh")
+        for key in ssh_keys:
+            post.append(
+                f"echo '{key}' >> /target/home/{user}/.ssh/authorized_keys"
+            )
+        post += [
+            f"in-target chown -R {user}:{user} /home/{user}/.ssh",
+            f"chmod 700 /target/home/{user}/.ssh",
+            f"chmod 600 /target/home/{user}/.ssh/authorized_keys",
+        ]
+    lines.append("d-i preseed/late_command string " + " ; ".join(post))
+    return "\n".join(lines) + "\n"
+
+
+def build_installer_initrd(
+    preseed: str, initrd_src: Path, out: Path, runner: Runner
+) -> None:
+    """Glisse le preseed DANS l'initrd de l'installateur.
+
+    Servir le preseed en HTTP est l'autre voie documentée, mais elle ajoute un
+    serveur à faire vivre pendant toute l'installation et une dépendance à
+    l'ordre d'obtention de l'adresse. Embarquer le fichier ne dépend de rien :
+    d-i lit « /preseed.cfg » à la racine de l'initrd avant même le réseau.
+
+    La méthode est celle de la documentation Debian — décompresser, ajouter le
+    fichier au cpio, recompresser — et non une concaténation d'archives, que
+    le noyau accepte mais que d-i ne parcourt pas de la même façon.
+    """
+    if runner.dry_run:
+        print(f"[dry-run] preseed -> {out}")
+        return
+    if not shutil.which("cpio"):
+        sys.exit(
+            "cpio est requis pour embarquer le preseed dans l'initrd.\n"
+            "  Debian/Ubuntu : sudo apt-get install cpio"
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        (work / "preseed.cfg").write_text(preseed, encoding="utf-8")
+        plain = work / "initrd"
+        with gzip.open(initrd_src, "rb") as src, open(plain, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        subprocess.run(
+            ["cpio", "-H", "newc", "-o", "-A", "-F", str(plain)],
+            input="preseed.cfg\n",
+            text=True,
+            cwd=work,
+            check=True,
+            capture_output=True,
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(plain, "rb") as src, gzip.open(out, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+    print(f"  preseed embarqué dans {out} ({out.stat().st_size} octets)")
+
+
+def create_blank_disk(
+    disk: Path, size: str, runner: Runner, force: bool
+) -> None:
+    """Disque VIERGE : l'installateur écrit tout, il n'y a rien à convertir."""
+    if disk.exists() and not force:
+        sys.exit(
+            f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser."
+        )
+    runner.run(
+        ["qemu-img", "create", "-f", "qcow2", str(disk), size],
+        privileged=True,
+    )
+
+
 def network_name(network_arg: str) -> str | None:
     """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
     for part in network_arg.split(","):
@@ -1749,6 +1912,7 @@ def virt_install(
     seed: Path,
     osinfo: str,
     runner: Runner,
+    installer: tuple[Path, Path] | None = None,
 ) -> None:
     # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
     # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
@@ -1817,17 +1981,41 @@ def virt_install(
         str(args.memory),
         "--vcpus",
         str(args.vcpus),
-        "--import",
+    ]
+    if installer:
+        kernel, initrd = installer
+        # « --install » et non « --boot » : virt-install écrit alors DEUX
+        # configurations — celle de l'installation, transitoire, et celle du
+        # système installé. Avec « --boot kernel=… » la VM repartirait sur
+        # l'installateur à chaque démarrage, indéfiniment.
+        #
+        # console=ttysclp0 : s390x n'a pas de port série ISA. Sans cet
+        # argument l'installateur tourne sur une console invisible, et un
+        # échec ne laisse aucune trace lisible.
+        cmd += [
+            "--install",
+            f"kernel={kernel},initrd={initrd},"
+            "kernel_args=auto=true priority=critical "
+            "preseed/file=/preseed.cfg console=ttysclp0",
+        ]
+    else:
+        cmd.append("--import")
+    cmd += [
         "--disk",
         f"path={disk},format=qcow2,bus=virtio",
+    ]
+    # Le seed n'existe QUE sur la voie image cloud. Sous debian-installer, le
+    # preseed voyage dans l'initrd et un second disque ne ferait qu'ajouter un
+    # /dev/vdb dont partman-auto devrait être protégé.
+    if not installer:
         # Seed cloud-init attaché comme DISQUE virtio en lecture seule (et non
         # en CD-ROM) : le pilote virtio-blk est dans l'initramfs, donc le
         # volume « cidata » est visible dès init-local et cloud-init le lit.
         # En CD-ROM, l'initramfs Debian ne charge pas sr_mod à temps -> le
         # seed n'est pas vu et rien ne s'applique (Ubuntu, lui, tolère le CD).
         # Sur s390x, bus=virtio est mappé en virtio-ccw par libvirt.
-        "--disk",
-        f"path={seed},readonly=on,bus=virtio",
+        cmd += ["--disk", f"path={seed},readonly=on,bus=virtio"]
+    cmd += [
         "--osinfo",
         osinfo,
         "--network",
@@ -1881,6 +2069,13 @@ def virt_install(
         cmd += ["--virt-type", "qemu"]
     if not args.attach_console:
         cmd.append("--noautoconsole")
+        if installer:
+            # Sans « --wait 0 », virt-install RESTE au premier plan jusqu'à la
+            # fin de l'installation. Sous émulation s390x elle se compte en
+            # heures, et le déploiement parallèle attendrait chaque VM l'une
+            # après l'autre. La configuration finale est déjà écrite : rendre
+            # la main n'abandonne rien.
+            cmd += ["--wait", "0"]
     # virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
     # sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
     # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
@@ -2382,22 +2577,53 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
-    print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
-    download_image(urls, args.image_path, args.dry_run)
-    if do_verify:
-        verify_sha256(url, args.image_path, args.dry_run)
+    installer: tuple[Path, Path] | None = None
+    if uses_installer(args.distro, args.arch):
+        # Voie debian-installer : aucune image cloud n'existe pour cette
+        # combinaison, on télécharge l'installateur et on part d'un disque nu.
+        cache = args.image_path.parent
+        kernel = cache / f"debian-{args.version}-s390x-kernel"
+        initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
+        initrd = cache / f"{args.name}-initrd.gz"
+        print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
+        download_image(
+            [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
+            kernel,
+            args.dry_run,
+        )
+        download_image(
+            [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
+            initrd_src,
+            args.dry_run,
+        )
 
-    print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
-    prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+        print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
+        create_blank_disk(disk, args.disk_size, runner, args.force)
 
-    print(f"\n== 4/5 Seed cloud-init {seed} ==")
-    cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-    build_seed(cloud_cfg, args.hostname, seed, runner)
+        print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
+        build_installer_initrd(
+            build_preseed(args, pw_hash, ssh_keys), initrd_src, initrd, runner
+        )
+        installer = (kernel, initrd)
+    else:
+        print(
+            f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
+        )
+        download_image(urls, args.image_path, args.dry_run)
+        if do_verify:
+            verify_sha256(url, args.image_path, args.dry_run)
+
+        print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
+        prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+
+        print(f"\n== 4/5 Seed cloud-init {seed} ==")
+        cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
+        build_seed(cloud_cfg, args.hostname, seed, runner)
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
-    virt_install(args, disk, seed, resolved_osinfo, runner)
+    virt_install(args, disk, seed, resolved_osinfo, runner, installer)
 
     has_key = bool(ssh_keys)
     print("\nTerminé. Suivi :")
