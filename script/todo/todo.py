@@ -6171,7 +6171,10 @@ class TODO:
         sens et on ne la pose pas."""
         usable = [a for a in arches if a in self.QEMU_MISE_ARCHES]
         if not usable:
-            return "pyenv"
+            # Rien, pas « pyenv » : le mode automatique doit rester libre de
+            # préférer un Python de la distribution. Voir _python_provider()
+            # dans le formulaire, même raisonnement.
+            return ""
         print(f"\n{t('Python interpreter:')}")
         print(f"  [1] {t('mise (precompiled, faster)')} *")
         print(f"  [2] {t('pyenv (compiles from source)')}")

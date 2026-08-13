@@ -812,10 +812,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.query_one("#miswarn", Static).update(msg)
 
         def _python_provider(self):
-            """« mise » ou « pyenv ». Sans architecture servie par mise, le
-            choix n'a pas d'objet : on renvoie pyenv."""
+            """« mise », « pyenv », ou rien — c'est-à-dire « automatique ».
+
+            Rien, et surtout pas « pyenv », quand mise n'est servi par aucune
+            architecture retenue. « mise est indisponible » ne veut pas dire
+            « l'utilisateur exige pyenv » : la nuance décide de tout, puisqu'un
+            choix EXPLICITE écarte le Python de la distribution. Sur s390x,
+            renvoyer « pyenv » forçait la compilation de CPython — celle dont
+            gcc 15.2 ne revient pas."""
             if not self._mise_usable():
-                return "pyenv"
+                return ""
             index = self.query_one("#f_python", RadioSet).pressed_index
             return "pyenv" if index == 1 else "mise"
 
