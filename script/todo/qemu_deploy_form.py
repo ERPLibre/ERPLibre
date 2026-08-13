@@ -148,6 +148,9 @@ def apply_profile(
                 # Profil d'installation (« ERPLibre + Odoo 18 »). Même
                 # convention : « » = celui du formulaire.
                 "install_cmd": "",
+                # Libelle du profil, pour que le recapitulatif puisse dire
+                # « Odoo 18 » sans connaitre la liste des profils.
+                "install_label": "",
             }
         )
     return out
@@ -1235,6 +1238,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     continue
                 for field in fields:
                     changed |= self.overrides[key].pop(field, None) is not None
+                    if field == "install_cmd":
+                        # Le libelle n'a pas de sens sans sa commande.
+                        self.overrides[key].pop("install_label", None)
                 if not self.overrides[key]:
                     self.overrides.pop(key, None)
             if changed:
@@ -1304,15 +1310,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # attendu quand on n'a rien changé de visible.
                 vm_now = self.rows[index]["vm"]
                 if field == "prof":
-                    cmd = profiles[event.value][1]
+                    label, cmd = profiles[event.value]
                     if cmd == (
                         vm_now.get("install_cmd") or self._profile_cmd()
                     ):
                         return
+                    same = cmd == self._profile_cmd()
                     self._set_override(
-                        index,
-                        "install_cmd",
-                        "" if cmd == self._profile_cmd() else cmd,
+                        index, "install_cmd", "" if same else cmd
+                    )
+                    self._set_override(
+                        index, "install_label", "" if same else label
                     )
                     self._recompute()
                     return
@@ -1460,6 +1468,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                     "branch": vm.get("branch") or self._branch(),
                     "install_cmd": (
                         vm.get("install_cmd") or self._profile_cmd()
+                    ),
+                    "install_label": (
+                        vm.get("install_label")
+                        or (
+                            profiles[self._row_profile_index(index)][0]
+                            if profiles
+                            else ""
+                        )
                     ),
                 }
             else:

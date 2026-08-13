@@ -2211,6 +2211,10 @@ TRANSLATIONS = {
         "fr": "Nom invalide : lettres, chiffres et traits d'union.",
         "en": "Invalid name: letters, digits, hyphens.",
     },
+    "default; a VM may differ, see its line": {
+        "fr": "défaut ; une VM peut s'en écarter, voir sa ligne",
+        "en": "default; a VM may differ, see its line",
+    },
     "Reset VM": {
         "fr": "Réinit. VM",
         "en": "Reset VM",

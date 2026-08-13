@@ -5422,10 +5422,33 @@ class TODO:
             gigs = self._parse_disk_gb(vm["disk"]) + (
                 self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
             )
+            # Ce qui S'ECARTE du choix commun se dit sur la ligne de la VM.
+            # Sans cela le sommaire annoncait le profil general pour tout le
+            # monde, y compris pour une VM figee sur un autre — on lisait
+            # « Odoo 15 » avant de deployer une machine en Odoo 18.
+            apart = []
+            # Seul ce qui DIFFERE vaut d'etre signale : une VM figee sur la
+            # meme branche que le global n'a rien de particulier a montrer,
+            # et repeter la valeur commune sur chaque ligne la noierait.
+            if install and vm.get("branch") and vm["branch"] != branch:
+                apart.append(vm["branch"])
+            if (
+                vm.get("install_label")
+                and install
+                and vm.get("install_cmd") != install.get("cmd")
+            ):
+                apart.append(vm["install_label"])
+            if vm.get("desktop") and vm["desktop"] != spec.get("desktop"):
+                apart.append(
+                    (self._QEMU_DESKTOP.get(vm["desktop"]) or {}).get(
+                        "label", vm["desktop"]
+                    )
+                )
             print(
                 f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
                 f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
                 f"{t('disk')} {gigs}G"
+                + (f"  ⟵ {' · '.join(apart)}" if apart else "")
             )
         if existing:
             print(f"  {t('Existing, left untouched:')} {', '.join(existing)}")
@@ -5435,9 +5458,11 @@ class TODO:
                 if install["prod"]
                 else t("development (~/git)")
             )
+            # « par defaut » : chaque VM peut s'en ecarter, et sa ligne le dit.
             print(
                 f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
                 f"{t('profile')} {install['label']}, {env}"
+                f"  ({t('default; a VM may differ, see its line')})"
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
