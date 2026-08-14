@@ -18,9 +18,30 @@ APT_GET="sudo apt-get -o DPkg::Lock::Timeout=600"
 ## in order to have correct version of wkhtmltopdf installed, for a danger note refer to
 ## https://github.com/odoo/odoo/wiki/Wkhtmltopdf ):
 # Ubuntu 20.04
-UBUNTU_VERSION=$(lsb_release -rs)
-DEBIAN_VERSION=$(lsb_release -cs)
-OS=$(lsb_release -si)
+# /etc/os-release D'ABORD, lsb_release seulement en repli.
+#
+# « lsb_release » vient du paquet lsb-release, qui arrive avec la tâche
+# « standard ». Les images cloud l'ont ; une Debian posée par
+# debian-installer, non. Les trois variables devenaient alors VIDES, et le
+# script concluait « Your version of Ubuntu is not supported » sur une Debian
+# — vécu sur s390x, la seule architecture qui passe par l'installateur.
+#
+# /etc/os-release, lui, appartient à systemd et est toujours là. Il donne
+# ID=debian, VERSION_ID=13 et VERSION_CODENAME=trixie sans rien installer.
+if [[ -r /etc/os-release ]]; then
+  # Sous-shell : « source » importerait NAME, PRETTY_NAME et le reste dans
+  # un script qui n'en veut pas.
+  UBUNTU_VERSION=$(. /etc/os-release && echo "${VERSION_ID}")
+  DEBIAN_VERSION=$(. /etc/os-release && echo "${VERSION_CODENAME}")
+  OS=$(. /etc/os-release && echo "${ID}")
+  # lsb_release rend « Ubuntu » et « Debian » ; os-release rend « ubuntu » et
+  # « debian ». Les comparaisons plus bas attendent la première forme.
+  OS="${OS^}"
+else
+  UBUNTU_VERSION=$(lsb_release -rs)
+  DEBIAN_VERSION=$(lsb_release -cs)
+  OS=$(lsb_release -si)
+fi
 
 # Ubuntu 18.04, 20.04 et 22.04 ne sont plus supportées, sur AUCUNE
 # architecture. Le mur le plus net est pikepdf, qui réclame qpdf >= 12.2,

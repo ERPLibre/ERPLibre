@@ -1712,6 +1712,43 @@ def prepare_disk(
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
+def _ip_taken(ip: str) -> bool:
+    """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
+
+    Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
+    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
+    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
+    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
+    journal ne le disait qu'à demi-mot : « git is already the newest
+    version », impossible sur un système que d-i vient de poser.
+
+    On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
+    ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
+    """
+    try:
+        neigh = subprocess.run(
+            ["ip", "neigh", "show", ip],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+        # « FAILED » signifie justement que personne n'a répondu.
+        if ip in neigh and "FAILED" not in neigh:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        if subprocess.run(
+            ["ping", "-c", "1", "-W", "1", ip],
+            capture_output=True,
+            timeout=5,
+        ).returncode == 0:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return _ip_reachable(ip, port=22, timeout=1.5)
+
+
 def static_net_plan(net: str | None, use_sudo: bool, name: str) -> dict[str, str] | None:
     """Adresse fixe libre pour une VM installée par debian-installer.
 
@@ -1762,7 +1799,7 @@ def static_net_plan(net: str | None, use_sudo: bool, name: str) -> dict[str, str
     for offset in range(50):
         last = 200 + (start + offset) % 50
         ip = f"{base}.{last}"
-        if ip in taken or _ip_reachable(ip, port=22, timeout=0.4):
+        if ip in taken or _ip_taken(ip):
             continue
         return {
             "ip": ip,
