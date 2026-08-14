@@ -1845,6 +1845,23 @@ def build_preseed(
         "d-i clock-setup/ntp boolean true",
         # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
         # d-i pose quand même la question quand rien ne le désigne.
+        # Ce que partman voit reellement, ecrit sur la console : « No root
+        # file system is defined » ne distingue pas « disque absent » de
+        # « recette non appliquee », et les deux se corrigent differemment.
+        # Toute commande preseedee DOIT rendre 0 : d-i bloque sur « Failed to
+        # run preseeded command » sinon, et le diagnostic devient le blocage.
+        # Vecu — un « ls /dev/dasd* » sans correspondance suffisait.
+        "d-i partman/early_command string cat /proc/partitions > /dev/console"
+        " ; ls /lib/partman/automatically_partition/ > /dev/console 2>&1"
+        " ; true",
+        # partman-auto RECLAME explicitement : il n'est pas tire d'office sur
+        # s390x, ou la voie attendue est le partitionnement DASD manuel.
+        # Mesure dans l'installateur : « /lib/partman/automatically_partition/
+        # No such file or directory », et la liste des udebs recuperes montre
+        # partman-base, -utils, -partitioning, -target… mais jamais -auto.
+        # Sans lui, aucune recette ne s'applique et partman s'arrete sur
+        # « No root file system is defined ».
+        "d-i anna/choose_modules string partman-auto",
         "d-i partman-auto/disk string /dev/vda",
         "d-i partman-auto/method string regular",
         "d-i partman-auto/choose_recipe select atomic",
@@ -1933,12 +1950,30 @@ def build_installer_initrd(
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
         (work / "preseed.cfg").write_text(preseed, encoding="utf-8")
+        # network-console DÉSACTIVÉ, par le levier que d-i prévoit pour cela.
+        #
+        # Sur IBM Z, d-i propose de poursuivre par SSH — la console y est
+        # historiquement limitée. Ce n'est pas une question à laquelle
+        # répondre : le composant démarre sshd puis ATTEND une connexion de
+        # l'utilisateur « installer », indéfiniment. Preseeder son mot de
+        # passe le fait avancer d'un écran, pas davantage — mesuré.
+        #
+        # Un composant dont « .isinstallable » sort en erreur est retiré du
+        # menu. L'original le fait déjà quand sshd tourne ; on le remplace par
+        # un refus inconditionnel. Le fichier ajouté APRÈS l'original prend sa
+        # place : le noyau déplie le cpio séquentiellement et le dernier
+        # écrit gagne.
+        gate = work / "var/lib/dpkg/info"
+        gate.mkdir(parents=True, exist_ok=True)
+        target = gate / "network-console.isinstallable"
+        target.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        target.chmod(0o755)
         plain = work / "initrd"
         with gzip.open(initrd_src, "rb") as src, open(plain, "wb") as dst:
             shutil.copyfileobj(src, dst)
         subprocess.run(
             ["cpio", "-H", "newc", "-o", "-A", "-F", str(plain)],
-            input="preseed.cfg\n",
+            input="preseed.cfg\nvar/lib/dpkg/info/network-console.isinstallable\n",
             text=True,
             cwd=work,
             check=True,
