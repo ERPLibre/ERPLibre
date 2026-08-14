@@ -1742,23 +1742,6 @@ def build_preseed(
         "d-i s390-netdevice/choose_networktype select virtio",
         # « auto » évite la question du choix d'interface : sous virtio-ccw
         # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
-        # « enc1 » et non « auto ». Sur s390x la liste d'interfaces est bâtie
-        # par le udeb s390-netdevice, et « auto » ne s'y résout pas : netcfg
-        # n'essaie alors AUCUN DHCP — aucun bail côté dnsmasq — et tombe
-        # droit sur la saisie d'une adresse statique. Mesuré deux fois.
-        # Le nom est déterministe sous s390-ccw-virtio : le premier NIC
-        # virtio-ccw est enc1, comme le journal du noyau le montre
-        # (« virtio_net virtio2 enc1: renamed from eth0 »).
-        "d-i netcfg/choose_interface select enc1",
-        # Émulation TCG : le lien met bien plus longtemps à monter qu'en
-        # natif — « enc1 » n'est renommé qu'à 4,7 s de temps invité, et
-        # netcfg sonde avant. Sans lien détecté il n'ESSAIE MÊME PAS le DHCP
-        # et tombe droit sur la saisie d'une adresse statique. Mesuré : zéro
-        # DHCPDISCOVER côté dnsmasq, aucun bail. On lui laisse le temps, et
-        # un échec repart en autoconfiguration au lieu de poser la question.
-        "d-i netcfg/link_wait_timeout string 60",
-        "d-i netcfg/dhcp_timeout string 120",
-        "d-i netcfg/dhcp_options select Retry network autoconfiguration",
         f"d-i netcfg/get_hostname string {args.hostname}",
         "d-i netcfg/get_domain string localdomain",
         "d-i netcfg/hostname string " + args.hostname,
