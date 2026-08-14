@@ -50,6 +50,7 @@ import getpass
 import grp
 import gzip
 import hashlib
+import zlib
 import os
 import re
 import shutil
@@ -1711,7 +1712,7 @@ def prepare_disk(
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
-def static_net_plan(net: str | None, use_sudo: bool) -> dict[str, str] | None:
+def static_net_plan(net: str | None, use_sudo: bool, name: str) -> dict[str, str] | None:
     """Adresse fixe libre pour une VM installée par debian-installer.
 
     L'initrd s390x ne contient QUE « netcfg-static » : le journal de d-i
@@ -1750,7 +1751,16 @@ def static_net_plan(net: str | None, use_sudo: bool) -> dict[str, str] | None:
         taken |= set(re.findall(r"(\d+\.\d+\.\d+\.\d+)/\d+", out))
     except (OSError, subprocess.SubprocessError):
         pass
-    for last in range(250, 200, -1):
+    # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
+    # en partant du haut » donne la MÊME adresse à deux VM déployées en
+    # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
+    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
+    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # Le nom, lui, diffère toujours, et le tirage reste stable d'un
+    # redéploiement à l'autre.
+    start = zlib.crc32(name.encode()) % 50
+    for offset in range(50):
+        last = 200 + (start + offset) % 50
         ip = f"{base}.{last}"
         if ip in taken or _ip_reachable(ip, port=22, timeout=0.4):
             continue
@@ -2738,7 +2748,9 @@ def main() -> None:
         create_blank_disk(disk, args.disk_size, runner, args.force)
 
         print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
-        static = static_net_plan(network_name(args.network), not args.dry_run)
+        static = static_net_plan(
+            network_name(args.network), not args.dry_run, args.name
+        )
         if static:
             print(f"  Adresse fixe retenue : {static['ip']}"
                   f" (passerelle {static['gateway']})")
