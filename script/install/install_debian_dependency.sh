@@ -2,6 +2,7 @@
 
 . ./env_var.sh
 . ./script/install/lib_qpdf.sh
+. ./script/install/lib_proj.sh
 . ./script/install/lib_lowmem.sh
 
 EL_USER=${USER}
@@ -163,7 +164,7 @@ if [ "$(uname -m)" = "s390x" ]; then
   apt_install_batch rust-all libqpdf-dev libgeos-dev libproj-dev proj-bin \
     proj-data "${GEO_DEV}" freetds-dev freetds-bin libkrb5-dev libssl-dev \
     pkg-config build-essential zlib1g-dev libjpeg-dev libtbb-dev cmake \
-    ninja-build
+      ninja-build libsqlite3-dev sqlite3 libtiff-dev libcurl4-openssl-dev
   if [[ -n "${APT_FAILED}" ]]; then
     # Seul un paquet dont dépend la SUITE immédiate est bloquant. Les autres
     # servent des modules Odoo optionnels : les rendre fatals immobiliserait
@@ -202,6 +203,10 @@ if [ "$(uname -m)" = "s390x" ]; then
   # -- seuil, version batie, chemin d'installation -- est dans lib_qpdf.sh,
   # partage avec les scripts dnf et zypper qui butaient sur le meme mur.
   el_qpdf_ensure
+  # pyproj exige PROJ 9.4 ; bookworm en livre 9.1.1. Meme mecanique que
+  # qpdf, et meme portee etroite : ailleurs pyproj pose une roue qui
+  # embarque sa propre PROJ, ici il compile contre celle du systeme.
+  el_proj_ensure
   # cryptography ne publie aucune roue s390x : elle se compile, et son
   # Cargo.lock est en version 4, que seul cargo >= 1.78 sait lire. Ubuntu 24.04
   # livre 1.75 et s'arrête sur « lock file version 4 requires
