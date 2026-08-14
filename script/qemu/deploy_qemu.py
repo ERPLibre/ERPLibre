@@ -1823,6 +1823,13 @@ def build_preseed(
         "d-i passwd/user-fullname string ERPLibre",
         f"d-i passwd/username string {user}",
         f"d-i passwd/user-password-crypted password {crypted}",
+        # network-console : sur IBM Z, d-i propose systématiquement de
+        # poursuivre par SSH — la console y est historiquement limitée. Il
+        # refuse un mot de passe vide et bloque l'installation non assistée.
+        # Ce secret ne vit QUE le temps de l'installateur, sur le réseau
+        # libvirt, et disparaît avec lui : il ne donne accès à rien ensuite.
+        "d-i network-console/password password erplibre",
+        "d-i network-console/password-again password erplibre",
         "d-i clock-setup/utc boolean true",
         f"d-i time/zone string {args.timezone}",
         "d-i clock-setup/ntp boolean true",
