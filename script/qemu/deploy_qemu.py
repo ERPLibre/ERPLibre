@@ -1711,8 +1711,63 @@ def prepare_disk(
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
+def static_net_plan(net: str | None, use_sudo: bool) -> dict[str, str] | None:
+    """Adresse fixe libre pour une VM installée par debian-installer.
+
+    L'initrd s390x ne contient QUE « netcfg-static » : le journal de d-i
+    montre « Menu item 'netcfg-static' selected », jamais netcfg-dhcp, puis
+    « Taking down interface enc1 ». Aucun DHCP n'est tenté — c'est la
+    convention IBM Z, où la configuration réseau se donne au parmfile. Il
+    faut donc fournir une adresse, et elle doit être libre.
+
+    On la prend en HAUT de la plage : dnsmasq attribue depuis le bas, donc
+    les collisions avec un bail futur sont les plus improbables là.
+    """
+    if not net:
+        return None
+    cmd = ["virsh", "-c", LIBVIRT_URI, "net-dumpxml", net]
+    if use_sudo:
+        cmd.insert(0, "sudo")
+    try:
+        xml = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=20
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
+    if not m:
+        return None
+    gateway, netmask = m.group(1), m.group(2)
+    base = gateway.rsplit(".", 1)[0]
+    taken = {gateway}
+    lease_cmd = ["virsh", "-c", LIBVIRT_URI, "net-dhcp-leases", net]
+    if use_sudo:
+        lease_cmd.insert(0, "sudo")
+    try:
+        out = subprocess.run(
+            lease_cmd, capture_output=True, text=True, timeout=20
+        ).stdout
+        taken |= set(re.findall(r"(\d+\.\d+\.\d+\.\d+)/\d+", out))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for last in range(250, 200, -1):
+        ip = f"{base}.{last}"
+        if ip in taken or _ip_reachable(ip, port=22, timeout=0.4):
+            continue
+        return {
+            "ip": ip,
+            "netmask": netmask,
+            "gateway": gateway,
+            "dns": gateway,
+        }
+    return None
+
+
 def build_preseed(
-    args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
+    args: argparse.Namespace,
+    pw_hash: str | None,
+    ssh_keys: list[str],
+    static: dict[str, str] | None = None,
 ) -> str:
     """Preseed debian-installer équivalent au cloud-config des autres distros.
 
@@ -1743,6 +1798,21 @@ def build_preseed(
         # « auto » évite la question du choix d'interface : sous virtio-ccw
         # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
         f"d-i netcfg/get_hostname string {args.hostname}",
+        # Adresse fixe : sans elle, netcfg-static pose la question a l'ecran
+        # et l'installation s'arrete la, indefiniment.
+        *(
+            [
+                "d-i netcfg/disable_autoconfig boolean true",
+                "d-i netcfg/disable_dhcp boolean true",
+                f"d-i netcfg/get_ipaddress string {static['ip']}",
+                f"d-i netcfg/get_netmask string {static['netmask']}",
+                f"d-i netcfg/get_gateway string {static['gateway']}",
+                f"d-i netcfg/get_nameservers string {static['dns']}",
+                "d-i netcfg/confirm_static boolean true",
+            ]
+            if static
+            else []
+        ),
         "d-i netcfg/get_domain string localdomain",
         "d-i netcfg/hostname string " + args.hostname,
         "d-i mirror/country string manual",
@@ -2661,8 +2731,18 @@ def main() -> None:
         create_blank_disk(disk, args.disk_size, runner, args.force)
 
         print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
+        static = static_net_plan(network_name(args.network), not args.dry_run)
+        if static:
+            print(f"  Adresse fixe retenue : {static['ip']}"
+                  f" (passerelle {static['gateway']})")
+        else:
+            print("  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
+                  " la question à l'écran et l'installation s'arrêtera.")
         build_installer_initrd(
-            build_preseed(args, pw_hash, ssh_keys), initrd_src, initrd, runner
+            build_preseed(args, pw_hash, ssh_keys, static),
+            initrd_src,
+            initrd,
+            runner,
         )
         installer = (kernel, initrd)
     else:
