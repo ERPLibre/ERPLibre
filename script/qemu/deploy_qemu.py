@@ -2266,6 +2266,54 @@ def virt_install(
     runner.run(log_env + cmd, privileged=True)
 
 
+def watch_and_restart(name: str, runner: Runner) -> None:
+    """Rallume la VM quand debian-installer a fini et l'a éteinte.
+
+    virt-install mène l'installation en DEUX temps : un amorçage transitoire
+    sur kernel+initrd, puis la configuration définitive, qui démarre sur le
+    disque. Le passage de l'un à l'autre se fait par un arrêt — l'installateur
+    redémarre, libvirt détruit le domaine transitoire — et c'est virt-install
+    qui rallume ensuite. Avec « --wait 0 » il est déjà parti : le domaine
+    reste « shut off », disque installé et XML correct, mais éteint.
+
+    On ne peut pas pour autant laisser virt-install attendre : sous émulation
+    l'installation dure des heures, et le déploiement rendrait la main à ce
+    rythme-là. Un veilleur détaché fait donc le dernier geste.
+    """
+    if runner.dry_run:
+        print(f"[dry-run] veilleur de redémarrage pour {name}")
+        return
+    sudo = "sudo " if runner.use_sudo else ""
+    # 6 h de garde : bien au-delà d'une installation émulée, et le veilleur
+    # meurt de lui-même si quelque chose a mal tourné.
+    script = (
+        f"for i in $(seq 1 720); do "
+        f"  s=$({sudo}virsh -c {LIBVIRT_URI} domstate {name} 2>/dev/null); "
+        f'  if [ "$s" = "shut off" ]; then '
+        f"    {sudo}virsh -c {LIBVIRT_URI} start {name} >/dev/null 2>&1; "
+        f"    exit 0; "
+        f"  fi; "
+        f"  sleep 30; "
+        f"done"
+    )
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", script],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"  ⚠ veilleur non lancé ({exc}) ; démarrer à la main :")
+        print(f"      sudo virsh start {name}")
+        return
+    print(
+        f"  Veilleur lancé : {name} sera rallumée dès que l'installateur"
+        " l'aura éteinte."
+    )
+
+
 def _ip_reachable(ip: str, port: int = 22, timeout: float = 3) -> bool:
     """Vrai si le port SSH répond (distingue le bail actif du bail périmé)."""
     try:
@@ -2818,6 +2866,8 @@ def main() -> None:
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
+    if installer:
+        watch_and_restart(args.name, runner)
 
     has_key = bool(ssh_keys)
     print("\nTerminé. Suivi :")
