@@ -303,6 +303,113 @@ class TestTheMigrationRunsIt(unittest.TestCase):
         )
 
 
+class TestTheFixCannotRunTooEarly(unittest.TestCase):
+    """Corriger exige la version d'ARRIVÉE, pas celle de départ.
+
+    Mesuré sur une vraie migration : la question a été posée avant le palier,
+    alors que le checkout était encore sur odoo12.0. Répondre « a » a lancé
+    reset_asset dans un shell Odoo 12, qui ne connaît pas `web_editor.assets`
+    — KeyError, rien de modifié, et la migration a continué jusqu'à casser au
+    palier suivant.
+
+    Prédire tôt reste juste. C'est corriger tôt qui ne l'est pas.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def test_a_version_without_reset_asset_is_refused(self):
+        import os
+        import tempfile
+
+        root = tempfile.mkdtemp()
+        old = os.path.join(root, "odoo12.0", "addons", "web_editor", "models")
+        os.makedirs(old)
+        with open(os.path.join(old, "assets.py"), "w") as handle:
+            handle.write("class Assets:\n    pass\n")
+        self.assertFalse(scss.reset_supported(os.path.join(root, "odoo12.0")))
+
+    def test_a_version_with_it_is_allowed(self):
+        import os
+        import tempfile
+
+        root = tempfile.mkdtemp()
+        new = os.path.join(root, "odoo13.0", "addons", "web_editor", "models")
+        os.makedirs(new)
+        with open(os.path.join(new, "assets.py"), "w") as handle:
+            handle.write("def reset_asset(self, url, bundle):\n    pass\n")
+        self.assertTrue(scss.reset_supported(os.path.join(root, "odoo13.0")))
+
+    def test_an_unknown_checkout_does_not_block(self):
+        # Rien pour trancher : refuser sur une supposition empêcherait de
+        # corriger là où c'est possible.
+        self.assertTrue(scss.reset_supported("odoo_no_such_dir_zz"))
+
+    def test_the_prompt_hides_the_fix_when_it_cannot_work(self):
+        # Offrir un choix qui échouera, c'est le faire prendre.
+        import contextlib
+        import io
+
+        original = scss.reset_supported
+        scss.reset_supported = lambda odoo_dir=None: False
+        self.addCleanup(setattr, scss, "reset_supported", original)
+        finding = {
+            "id": 1,
+            "url": "/a/b.custom.web.assets_frontend.scss",
+            "missing": ["x"],
+            "custom": "a",
+            "base_url": "/a/b.scss",
+            "bundle": "web.assets_frontend",
+            "module_path": None,
+            "module_content": "",
+            "version_dir": "odoo13.0",
+            "database": "db",
+        }
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            wrote = scss.prompt([finding], "db", ask=lambda p: "a")
+        self.assertFalse(wrote)
+        self.assertIn("KeyError", out.getvalue())
+        self.assertNotIn("a = reset", out.getvalue())
+
+
+class TestTheMigrationAsksAtTheRightMoment(unittest.TestCase):
+    """Prédire avant le palier, corriger après — jamais l'inverse."""
+
+    def source(self):
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        return inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+
+    def test_the_early_call_cannot_offer_the_fix(self):
+        source = self.source()
+        premier = source.index("check_stale_scss.py")
+        fenetre = source[premier : premier + 400]
+        self.assertIn("--report-only", fenetre)
+
+    def test_a_second_call_comes_after_the_bump(self):
+        # Sans elle, la prédiction n'aurait jamais de suite : on saurait ce
+        # qui va casser sans jamais pouvoir le réparer.
+        source = self.source()
+        self.assertEqual(source.count("check_stale_scss.py"), 2)
+        second = source.rindex("check_stale_scss.py")
+        self.assertGreater(second, source.index("state_4_upgrade_odoo_lst"))
+
+    def test_the_second_call_targets_the_upgraded_database(self):
+        source = self.source()
+        second = source.rindex("check_stale_scss.py")
+        fenetre = source[second : second + 300]
+        self.assertIn("database_name_upgrade", fenetre)
+        self.assertNotIn("--report-only", fenetre)
+
+
 class TestThePromptStaysOutOfAPipe(unittest.TestCase):
     def test_it_only_asks_in_front_of_a_terminal(self):
         # Une invite dans un tube bloquerait l'appelant sur une question que

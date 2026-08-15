@@ -4906,6 +4906,26 @@ TRANSLATIONS = {
         "fr": "Commande de réinitialisation copiée.",
         "en": "Reset command copied.",
     },
+    "Resetting needs Odoo 13.0 or later; this checkout is on": {
+        "fr": "La réinitialisation exige Odoo 13.0 ou plus ; ce checkout est sur",
+        "en": "Resetting needs Odoo 13.0 or later; this checkout is on",
+    },
+    "The prediction stands, the fix does not: run it again once": {
+        "fr": "La prédiction tient, pas la correction : relancer une fois",
+        "en": "The prediction stands, the fix does not: run it again once",
+    },
+    "the bump is done, on the upgraded database.": {
+        "fr": "le palier passé, sur la base montée de version.",
+        "en": "the bump is done, on the upgraded database.",
+    },
+    "Applying it from here fails with": {
+        "fr": "L'appliquer d'ici échoue sur",
+        "en": "Applying it from here fails with",
+    },
+    "and changes nothing.": {
+        "fr": "et ne change rien.",
+        "en": "and changes nothing.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

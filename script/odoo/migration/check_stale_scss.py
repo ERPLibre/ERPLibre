@@ -326,6 +326,54 @@ def render_diff(finding):
     return "\n".join(lines)
 
 
+def running_odoo_dir():
+    """Le répertoire de la version qui répondra au shell, d'après le checkout.
+
+    Ce n'est PAS la cible : au moment où l'on prédit ce que le palier
+    cassera, le checkout est encore sur la version d'avant. C'est elle qui
+    exécutera reset_asset — ou ne le saura pas.
+    """
+    try:
+        with open(".odoo-version", "r", encoding="utf-8") as handle:
+            return "odoo" + handle.read().strip()
+    except OSError:
+        return None
+
+
+def reset_supported(odoo_dir=None):
+    """Cette version sait-elle faire reset_asset ?
+
+    Mesuré : `web_editor.assets` et `reset_asset` n'existent qu'à partir de
+    13.0. Lancé sous odoo12.0, l'appel lève « KeyError: 'web_editor.assets' »
+    et ne change rien — c'est arrivé sur une vraie migration, et le correctif
+    a été cru appliqué alors qu'il avait échoué.
+
+    On regarde les sources plutôt qu'un numéro : c'est ce qui répondra.
+    """
+    odoo_dir = odoo_dir or running_odoo_dir()
+    if not odoo_dir or not os.path.isdir(odoo_dir):
+        return True  # Rien pour trancher : ne pas bloquer sur une supposition.
+    pattern = os.path.join(odoo_dir, "**", "web_editor", "models", "assets.py")
+    for path in glob.iglob(pattern, recursive=True):
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            if "def reset_asset" in handle.read():
+                return True
+    return False
+
+
+def too_early_message(odoo_dir, database):
+    """Pourquoi on ne peut pas encore corriger, et quand on pourra."""
+    return (
+        f"⛔ {t('Resetting needs Odoo 13.0 or later; this checkout is on')}"
+        f" {odoo_dir or '?'}.\n"
+        f"   {t('The prediction stands, the fix does not: run it again once')}"
+        f" {t('the bump is done, on the upgraded database.')}\n"
+        f"   {t('Applying it from here fails with')}"
+        " KeyError: 'web_editor.assets'"
+        f" {t('and changes nothing.')}"
+    )
+
+
 def reset_command(lst_finding, database, config_path="./config.conf"):
     """La commande qui rend les fichiers de module. Rien n'est lancé ici."""
     lines = [f"./odoo_bin.sh shell -c {config_path} -d {database} <<'PY'"]
@@ -418,14 +466,20 @@ def prompt(lst_finding, database, config_path="./config.conf", ask=input):
     perdre on ne sait quoi. L'invite revient donc après chaque lecture :
     regarder ne répond pas à la question.
     """
+    odoo_dir = running_odoo_dir()
+    can_reset = reset_supported(odoo_dir)
+    if not can_reset:
+        print(too_early_message(odoo_dir, database))
     while True:
+        choix = (
+            f" a = {t('reset them onto the module file')}" if can_reset else ""
+        )
         answer = (
             ask(
                 f"💬 {t('What do you want to do with these customizations?')}"
                 f" ({t('Enter = nothing')},"
                 f" v = {t('what the copy changed')},"
-                f" w = {t('full screen')},"
-                f" a = {t('reset them onto the module file')}) : "
+                f" w = {t('full screen')}{choix}) : "
             )
             .strip()
             .lower()
@@ -445,7 +499,7 @@ def prompt(lst_finding, database, config_path="./config.conf", ask=input):
                 for finding in lst_finding:
                     print(render_diff(finding))
             continue
-        if answer == "a":
+        if answer == "a" and can_reset:
             lst_path = backup_custom(lst_finding, database)
             print(f"📦 {t('Saved before resetting')} :")
             for path in lst_path:
@@ -499,6 +553,11 @@ def main(argv=None):
         help="Odoo config used by the shell for --apply",
     )
     parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="never ask anything, even in front of a terminal",
+    )
+    parser.add_argument(
         "--diff",
         action="store_true",
         help="print what each copy changed, without asking",
@@ -544,6 +603,10 @@ def main(argv=None):
             for finding in lst_finding:
                 print(render_diff(finding))
     if config.apply:
+        odoo_dir = running_odoo_dir()
+        if not reset_supported(odoo_dir):
+            print(too_early_message(odoo_dir, config.database))
+            return 2
         lst_path = backup_custom(lst_finding, config.database)
         print(f"📦 {t('Saved before resetting')} :")
         for path in lst_path:
@@ -562,7 +625,10 @@ def main(argv=None):
     # laisser retrouver soi-même les deux arguments de reset_asset. Mais
     # seulement devant un terminal — dans un tube, une invite bloquerait
     # l'appelant sans que personne ne voie la question.
-    if not (config.diff or config.tui) and sys.stdin.isatty():
+    if (
+        not (config.diff or config.tui or config.report_only)
+        and sys.stdin.isatty()
+    ):
         if prompt(lst_finding, config.database, config.config):
             return 0
     return 1

@@ -1645,12 +1645,14 @@ class TodoUpgrade:
         # une copie figée, et un palier renomme aussi des variables. Celle-ci
         # ne se voit qu'à l'écran d'une page — « Style error », sans dire quel
         # fichier ni depuis quand — et seulement une fois le palier passé.
-        # Sur le VRAI terminal : l'outil pose lui-même ses questions — voir
-        # l'écart, l'ouvrir en plein écran, réinitialiser — et un tube les
-        # rendrait toutes injoignables, comme il fermait déjà la TUI.
+        # Ici on PRÉDIT, on ne corrige pas : le checkout est encore sur la
+        # version d'avant, et reset_asset n'existe qu'à partir de 13.0.
+        # Appliquer depuis là lève « KeyError: 'web_editor.assets' » — c'est
+        # arrivé sur une vraie migration, et l'échec est passé pour un
+        # succès. La correction est proposée après le palier, plus bas.
         self.run_on_terminal(
             f"{PYTHON_BIN} ./script/odoo/migration/check_stale_scss.py"
-            f" -d {database_name} -t odoo{start_version + 1}.0"
+            f" -d {database_name} -t odoo{start_version + 1}.0 --report-only"
         )
 
         msg = "3 - Clean up database before data migration"
@@ -2506,6 +2508,17 @@ class TodoUpgrade:
                     lst_upgrade_odoo
                 )
                 self.write_config()
+
+                # ICI seulement la correction est possible : le checkout est
+                # passé à la version cible, donc le shell sait faire
+                # reset_asset. Et c'est le dernier moment utile — la mise à
+                # jour des modules qui suit est ce qui compile les bundles,
+                # donc ce qui échoue si un SCSS figé reste en place.
+                self.run_on_terminal(
+                    f"{PYTHON_BIN}"
+                    " ./script/odoo/migration/check_stale_scss.py"
+                    f" -d {database_name_upgrade} -t odoo{next_version}.0"
+                )
 
                 str_wait_next_version = (
                     " (or wait next version 🤖)"
