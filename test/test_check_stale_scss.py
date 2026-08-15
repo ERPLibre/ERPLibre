@@ -101,43 +101,173 @@ class TestTheReport(unittest.TestCase):
         )
         todo_i18n._current_lang = "en"
 
+    def finding(self, **override):
+        data = {
+            "id": 1110,
+            "url": "/a/b.custom.web.assets_frontend.scss",
+            "missing": ["o-theme-font-number"],
+            "custom": "a { b: $o-theme-font-number; }",
+            "base_url": "/a/b.scss",
+            "bundle": "web.assets_frontend",
+            "module_path": "odoo13.0/a/b.scss",
+            "module_content": "a { b: 1; }",
+            "version_dir": "odoo13.0",
+            "database": "db",
+        }
+        data.update(override)
+        return data
+
     def test_nothing_at_risk_says_so(self):
         text = scss.render([], "db", "odoo13.0")
         self.assertIn("✅", text)
 
     def test_a_finding_names_the_attachment_and_the_variable(self):
-        text = scss.render(
-            [
-                (
-                    1110,
-                    "/a/b.custom.web.assets_frontend.scss",
-                    ["o-theme-font-number"],
-                )
-            ],
-            "db",
-            "odoo13.0",
-        )
+        text = scss.render([self.finding()], "db", "odoo13.0")
         self.assertIn("1110", text)
         self.assertIn("$o-theme-font-number", text)
 
     def test_it_prints_a_command_that_can_be_pasted(self):
         # Un diagnostic sans le geste qui répare oblige à rechercher les deux
         # arguments de reset_asset au pire moment.
-        text = scss.render(
-            [(1110, "/a/b.custom.web.assets_frontend.scss", ["x"])],
-            "mydb",
-            "odoo13.0",
-        )
+        text = scss.render([self.finding()], "mydb", "odoo13.0")
         self.assertIn("reset_asset('/a/b.scss', 'web.assets_frontend')", text)
         self.assertIn("-d mydb", text)
 
     def test_it_warns_before_dropping(self):
-        text = scss.render(
-            [(1110, "/a/b.custom.web.assets_frontend.scss", ["x"])],
-            "db",
-            "odoo13.0",
-        )
+        text = scss.render([self.finding()], "db", "odoo13.0")
         self.assertIn("real customization", text)
+
+
+class TestTheDiff(unittest.TestCase):
+    """Ce que la copie a changé : la seule chose que réinitialiser perd."""
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def finding(self, **override):
+        data = {
+            "id": 1110,
+            "url": "/a/b.custom.web.assets_frontend.scss",
+            "missing": ["x"],
+            "custom": "a { b: 2; }",
+            "base_url": "/a/b.scss",
+            "bundle": "web.assets_frontend",
+            "module_path": "odoo13.0/a/b.scss",
+            "module_content": "a { b: 1; }",
+            "version_dir": "odoo13.0",
+            "database": "db",
+        }
+        data.update(override)
+        return data
+
+    def test_it_counts_what_would_be_lost(self):
+        text = scss.render_diff(self.finding())
+        self.assertIn("+1/-1", text)
+
+    def test_an_identical_copy_says_it_loses_nothing(self):
+        text = scss.render_diff(self.finding(custom="a { b: 1; }"))
+        self.assertIn("identical", text)
+
+    def test_a_missing_module_file_is_said_not_guessed(self):
+        # Si la cible ne livre plus le fichier, il n'y a rien sur quoi
+        # retomber : le taire ferait accepter une réinitialisation vide.
+        text = scss.render_diff(self.finding(module_path=None))
+        self.assertIn("no longer ships", text)
+
+
+class TestThePrompt(unittest.TestCase):
+    """Regarder ne doit pas répondre à la question."""
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def finding(self):
+        return {
+            "id": 1,
+            "url": "/a/b.custom.web.assets_frontend.scss",
+            "missing": ["x"],
+            "custom": "a { b: 2; }",
+            "base_url": "/a/b.scss",
+            "bundle": "web.assets_frontend",
+            "module_path": "odoo13.0/a/b.scss",
+            "module_content": "a { b: 1; }",
+            "version_dir": "odoo13.0",
+            "database": "db",
+        }
+
+    def run_prompt(self, answers):
+        import contextlib
+        import io
+
+        seq = iter(answers)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            wrote = scss.prompt(
+                [self.finding()], "db", ask=lambda prompt: next(seq)
+            )
+        return wrote, out.getvalue()
+
+    def test_enter_writes_nothing(self):
+        wrote, text = self.run_prompt([""])
+        self.assertFalse(wrote)
+        self.assertEqual(text, "")
+
+    def test_v_shows_the_diff_and_asks_again(self):
+        # Sans le « asks again », montrer vaudrait réponse : on aurait vu le
+        # diff et perdu la main sur la décision.
+        wrote, text = self.run_prompt(["v", ""])
+        self.assertFalse(wrote)
+        self.assertIn("+1/-1", text)
+
+    def test_apply_saves_a_copy_before_writing(self):
+        # reset_asset SUPPRIME la pièce jointe : sans sauvegarde préalable,
+        # les lignes personnalisées ne seraient plus nulle part.
+        import os
+        import tempfile
+
+        previous = os.getcwd()
+        self.addCleanup(os.chdir, previous)
+        os.chdir(tempfile.mkdtemp())
+        seen = {}
+        original = scss.apply_reset
+        scss.apply_reset = lambda lst, db, cfg="./config.conf": (
+            seen.update(called=True),
+            (0, "ok"),
+        )[1]
+        self.addCleanup(setattr, scss, "apply_reset", original)
+        wrote, text = self.run_prompt(["a"])
+        self.assertTrue(wrote)
+        self.assertTrue(seen.get("called"))
+        import glob
+
+        saved = glob.glob("private/odoo/migration/db/scss_backup/*")
+        self.assertEqual(len(saved), 1)
+        with open(saved[0]) as handle:
+            self.assertEqual(handle.read(), "a { b: 2; }")
+
+    def test_a_failed_reset_says_nothing_changed(self):
+        import os
+        import tempfile
+
+        previous = os.getcwd()
+        self.addCleanup(os.chdir, previous)
+        os.chdir(tempfile.mkdtemp())
+        original = scss.apply_reset
+        scss.apply_reset = lambda lst, db, cfg="./config.conf": (1, "boom")
+        self.addCleanup(setattr, scss, "apply_reset", original)
+        wrote, text = self.run_prompt(["a"])
+        self.assertFalse(wrote)
+        self.assertIn("nothing was changed", text)
 
 
 class TestTheMigrationRunsIt(unittest.TestCase):
@@ -154,6 +284,32 @@ class TestTheMigrationRunsIt(unittest.TestCase):
             source.index("check_stale_scss.py"),
             source.index("4 - Upgrade version with OpenUpgrade"),
         )
+
+    def test_it_gets_a_real_terminal(self):
+        # L'outil pose lui-même ses questions et peut ouvrir un plein écran :
+        # un tube les rendrait toutes injoignables, sans rien signaler.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        # On ne compare pas à une mise en forme — black la change — mais à
+        # l'appel le plus proche EN AMONT : c'est lui qui exécute.
+        avant = source[: source.index("check_stale_scss.py")]
+        self.assertGreater(
+            avant.rfind("run_on_terminal("),
+            avant.rfind("todo_upgrade_execute("),
+            "l'outil repasse par l'exécuteur à tube",
+        )
+
+
+class TestThePromptStaysOutOfAPipe(unittest.TestCase):
+    def test_it_only_asks_in_front_of_a_terminal(self):
+        # Une invite dans un tube bloquerait l'appelant sur une question que
+        # personne ne voit.
+        with open(scss.__file__) as handle:
+            source = handle.read()
+        self.assertIn("sys.stdin.isatty()", source)
 
 
 if __name__ == "__main__":

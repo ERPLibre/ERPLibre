@@ -4822,6 +4822,90 @@ TRANSLATIONS = {
         "fr": "Lire les personnalisations ci-dessus avant de continuer.",
         "en": "Read the customizations above before continuing.",
     },
+    "Missing:": {
+        "fr": "Manquantes :",
+        "en": "Missing:",
+    },
+    "No module file of that name in": {
+        "fr": "Aucun fichier de module de ce nom dans",
+        "en": "No module file of that name in",
+    },
+    "the target no longer ships it, so there is nothing to": {
+        "fr": "la cible ne le livre plus, il n'y a donc rien sur quoi",
+        "en": "the target no longer ships it, so there is nothing to",
+    },
+    "fall back on. Read the copy before dropping it.": {
+        "fr": "retomber. Lire la copie avant de l'abandonner.",
+        "en": "fall back on. Read the copy before dropping it.",
+    },
+    "The copy is identical to the module file.": {
+        "fr": "La copie est identique au fichier du module.",
+        "en": "The copy is identical to the module file.",
+    },
+    "line(s): that is what resetting gives up.": {
+        "fr": "ligne(s) : c'est ce que la réinitialisation abandonne.",
+        "en": "line(s): that is what resetting gives up.",
+    },
+    "What do you want to do with these customizations?": {
+        "fr": "Que voulez-vous faire de ces personnalisations ?",
+        "en": "What do you want to do with these customizations?",
+    },
+    "Enter = nothing": {
+        "fr": "Entrée = rien",
+        "en": "Enter = nothing",
+    },
+    "what the copy changed": {
+        "fr": "ce que la copie a changé",
+        "en": "what the copy changed",
+    },
+    "reset them onto the module file": {
+        "fr": "les réinitialiser sur le fichier du module",
+        "en": "reset them onto the module file",
+    },
+    "Full screen view unavailable.": {
+        "fr": "Vue plein écran indisponible.",
+        "en": "Full screen view unavailable.",
+    },
+    "Saved before resetting": {
+        "fr": "Sauvegardé avant réinitialisation",
+        "en": "Saved before resetting",
+    },
+    "Reset failed, nothing was changed.": {
+        "fr": "La réinitialisation a échoué, rien n'a été modifié.",
+        "en": "Reset failed, nothing was changed.",
+    },
+    "Reset done.": {
+        "fr": "Réinitialisation faite.",
+        "en": "Reset done.",
+    },
+    "This copy uses variables that": {
+        "fr": "Cette copie utilise des variables que",
+        "en": "This copy uses variables that",
+    },
+    "no longer defines": {
+        "fr": "ne définit plus",
+        "en": "no longer defines",
+    },
+    "The copy was written against an older version and frozen": {
+        "fr": "La copie a été écrite contre une version antérieure et figée",
+        "en": "The copy was written against an older version and frozen",
+    },
+    "there. The module has since renamed what it relies on.": {
+        "fr": "là. Le module a depuis renommé ce dont elle dépend.",
+        "en": "there. The module has since renamed what it relies on.",
+    },
+    "Resetting restores": {
+        "fr": "La réinitialisation rend",
+        "en": "Resetting restores",
+    },
+    "(nothing: the target no longer ships this file)": {
+        "fr": "(rien : la cible ne livre plus ce fichier)",
+        "en": "(nothing: the target no longer ships this file)",
+    },
+    "Reset command copied.": {
+        "fr": "Commande de réinitialisation copiée.",
+        "en": "Reset command copied.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

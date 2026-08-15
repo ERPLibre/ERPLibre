@@ -218,8 +218,29 @@ def defined_in_sources(version_dir, lst_module):
     return defined
 
 
+def module_file(base_url, version_dir):
+    """Le fichier du module que la personnalisation masque, ou None.
+
+    Le premier segment de l'URL est le nom du module ; le reste est son
+    chemin. C'est ce fichier que reset_asset rendrait, donc c'est contre lui
+    que se lit ce que la copie a réellement changé.
+    """
+    parts = base_url.strip("/").split("/")
+    if len(parts) < 2:
+        return None
+    pattern = os.path.join(version_dir, "**", parts[0], *parts[1:])
+    for candidate in glob.iglob(pattern, recursive=True):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
 def analyse(database, version_dir, filestore=None):
-    """[(id, url, [variables absentes])] pour les personnalisations à risque."""
+    """Un dictionnaire par personnalisation à risque.
+
+    Le contenu et le fichier du module y sont joints : l'appelant qui veut
+    montrer l'écart ne doit pas relire la base ni retrouver le chemin.
+    """
     filestore = filestore_dir(database, filestore)
     lst_module = installed_modules(database)
     defined = defined_in_sources(version_dir, lst_module)
@@ -233,9 +254,131 @@ def analyse(database, version_dir, filestore=None):
                 if name not in own and name not in defined
             }
         )
-        if missing:
-            lst_finding.append((att_id, url, missing))
+        if not missing:
+            continue
+        base_url, bundle = split_custom_url(url)
+        path = module_file(base_url, version_dir)
+        module_content = ""
+        if path:
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                module_content = handle.read()
+        lst_finding.append(
+            {
+                "id": att_id,
+                "url": url,
+                "missing": missing,
+                "custom": content,
+                "base_url": base_url,
+                "bundle": bundle,
+                "module_path": path,
+                "module_content": module_content,
+                "version_dir": version_dir,
+                "database": database,
+            }
+        )
     return lst_finding
+
+
+def render_diff(finding):
+    """Ce que la copie a changé, comparée au fichier du module de la cible.
+
+    C'est la seule chose qu'abandonner la copie ferait perdre. Sans elle, on
+    répond « oui, réinitialise » sans savoir si l'on jette trois lignes ou
+    une page entière.
+    """
+    import difflib
+
+    lines = [
+        f"── id={finding['id']} {finding['url']} ──",
+        "",
+        f"  {t('Missing:')} "
+        + ", ".join("$" + name for name in finding["missing"]),
+        "",
+    ]
+    if not finding["module_path"]:
+        lines += [
+            f"  {t('No module file of that name in')}"
+            f" {finding['version_dir']} :",
+            f"  {t('the target no longer ships it, so there is nothing to')}",
+            f"  {t('fall back on. Read the copy before dropping it.')}",
+        ]
+        return "\n".join(lines)
+    diff = list(
+        difflib.unified_diff(
+            finding["module_content"].splitlines(),
+            finding["custom"].splitlines(),
+            fromfile=finding["module_path"],
+            tofile=f"custom id={finding['id']}",
+            lineterm="",
+            n=2,
+        )
+    )
+    if len(diff) <= 2:
+        lines.append(f"  {t('The copy is identical to the module file.')}")
+        return "\n".join(lines)
+    lines += [f"  {line}" for line in diff]
+    plus = sum(1 for x in diff if x[:1] == "+" and not x.startswith("+++"))
+    minus = sum(1 for x in diff if x[:1] == "-" and not x.startswith("---"))
+    lines += [
+        "",
+        f"  +{plus}/-{minus} {t('line(s): that is what resetting gives up.')}",
+    ]
+    return "\n".join(lines)
+
+
+def reset_command(lst_finding, database, config_path="./config.conf"):
+    """La commande qui rend les fichiers de module. Rien n'est lancé ici."""
+    lines = [f"./odoo_bin.sh shell -c {config_path} -d {database} <<'PY'"]
+    for finding in lst_finding:
+        lines.append(
+            "env['web_editor.assets'].reset_asset"
+            f"('{finding['base_url']}', '{finding['bundle']}')"
+        )
+    lines += ["env.cr.commit()", "PY"]
+    return "\n".join(lines)
+
+
+def apply_reset(lst_finding, database, config_path="./config.conf"):
+    """Rendre les fichiers de module. ÉCRIT en base — le seul endroit ici.
+
+    Réversible seulement au sens où la personnalisation peut être réécrite :
+    reset_asset supprime la pièce jointe. D'où la sauvegarde préalable, qui
+    n'est pas une politesse mais la condition pour dire « oui » sans risque.
+    """
+    script = "\n".join(
+        "env['web_editor.assets'].reset_asset"
+        f"('{f['base_url']}', '{f['bundle']}')"
+        for f in lst_finding
+    )
+    done = subprocess.run(
+        ["./odoo_bin.sh", "shell", "-c", config_path, "-d", database],
+        input=script + "\nenv.cr.commit()\n",
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode, done.stdout + done.stderr
+
+
+def backup_custom(lst_finding, database):
+    """Écrire les copies sur disque AVANT de les abandonner.
+
+    reset_asset supprime la pièce jointe : sans ceci, les lignes réellement
+    personnalisées ne seraient plus nulle part.
+    """
+    directory = os.path.join(
+        "private", "odoo", "migration", database, "scss_backup"
+    )
+    os.makedirs(directory, exist_ok=True)
+    lst_path = []
+    for finding in lst_finding:
+        name = f"{finding['id']}_" + finding["url"].strip("/").replace(
+            "/", "_"
+        )
+        path = os.path.join(directory, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(finding["custom"])
+        lst_path.append(path)
+    return lst_path
 
 
 def render(lst_finding, database, version_dir):
@@ -248,27 +391,73 @@ def render(lst_finding, database, version_dir):
         f" {t('customized SCSS use(s) a variable that')} {version_dir}"
         f" {t('no longer defines: the bundle will not compile.')}"
     ]
-    for att_id, url, missing in lst_finding:
-        lines.append(f"   - id={att_id} {url}")
-        lines.append(f"       {', '.join('$' + m for m in missing)}")
+    for finding in lst_finding:
+        lines.append(f"   - id={finding['id']} {finding['url']}")
+        lines.append(
+            "       " + ", ".join("$" + name for name in finding["missing"])
+        )
     lines += [
         f"   {t('Each one is a copy frozen on an older version. Dropping it')}"
         f" {t('restores the module file:')}",
-        f"     ./odoo_bin.sh shell -c ./config.conf -d {database} <<'PY'",
     ]
-    for _att_id, url, _missing in lst_finding:
-        base, bundle = split_custom_url(url)
-        lines.append(
-            f"     env['web_editor.assets'].reset_asset("
-            f"'{base}', '{bundle}')"
-        )
     lines += [
-        "     env.cr.commit()",
-        "     PY",
-        f"   {t('Read it first: what it holds beyond the stale variable is')}"
-        f" {t('a real customization, to re-apply as a small file.')}",
+        "     " + line
+        for line in reset_command(lst_finding, database).splitlines()
     ]
+    lines.append(
+        f"   {t('Read it first: what it holds beyond the stale variable is')}"
+        f" {t('a real customization, to re-apply as a small file.')}"
+    )
     return "\n".join(lines) + "\n"
+
+
+def prompt(lst_finding, database, config_path="./config.conf", ask=input):
+    """Montrer, puis proposer de corriger. Rend True si l'on a écrit.
+
+    Répondre « oui, réinitialise » sans avoir vu l'écart, c'est accepter de
+    perdre on ne sait quoi. L'invite revient donc après chaque lecture :
+    regarder ne répond pas à la question.
+    """
+    while True:
+        answer = (
+            ask(
+                f"💬 {t('What do you want to do with these customizations?')}"
+                f" ({t('Enter = nothing')},"
+                f" v = {t('what the copy changed')},"
+                f" w = {t('full screen')},"
+                f" a = {t('reset them onto the module file')}) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer == "v":
+            for finding in lst_finding:
+                print(render_diff(finding))
+                print()
+            continue
+        if answer == "w":
+            try:
+                from check_stale_scss_tui import run_tui
+            except ImportError:
+                print(f"ℹ️  {t('Full screen view unavailable.')}")
+                continue
+            if not run_tui(lst_finding):
+                for finding in lst_finding:
+                    print(render_diff(finding))
+            continue
+        if answer == "a":
+            lst_path = backup_custom(lst_finding, database)
+            print(f"📦 {t('Saved before resetting')} :")
+            for path in lst_path:
+                print(f"   {path}")
+            status, output = apply_reset(lst_finding, database, config_path)
+            print(output.strip()[-2000:])
+            if status:
+                print(f"❌ {t('Reset failed, nothing was changed.')}")
+                return False
+            print(f"✅ -> {t('Reset done.')}")
+            return True
+        return False
 
 
 def split_custom_url(url):
@@ -287,8 +476,8 @@ def split_custom_url(url):
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=(
-            "Predict which customized SCSS will break on the target version"
-            " (read-only)."
+            "Predict which customized SCSS will break on the target version."
+            " Read-only unless --apply."
         )
     )
     parser.add_argument("-d", "--database", required=True)
@@ -302,6 +491,27 @@ def main(argv=None):
         "--filestore",
         default=None,
         help="filestore directory (default: ~/.local/share/Odoo/filestore/<db>)",
+    )
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="./config.conf",
+        help="Odoo config used by the shell for --apply",
+    )
+    parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="print what each copy changed, without asking",
+    )
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="browse the differences full screen",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="reset them onto the module file (WRITES; saves a copy first)",
     )
     config = parser.parse_args(argv)
 
@@ -318,8 +528,44 @@ def main(argv=None):
     except RuntimeError as exc:
         print(f"❌ {exc}")
         return 2
+
     print(render(lst_finding, config.database, config.target_version))
-    return 1 if lst_finding else 0
+    if not lst_finding:
+        return 0
+
+    if config.diff:
+        for finding in lst_finding:
+            print(render_diff(finding))
+            print()
+    if config.tui:
+        from check_stale_scss_tui import run_tui
+
+        if not run_tui(lst_finding):
+            for finding in lst_finding:
+                print(render_diff(finding))
+    if config.apply:
+        lst_path = backup_custom(lst_finding, config.database)
+        print(f"📦 {t('Saved before resetting')} :")
+        for path in lst_path:
+            print(f"   {path}")
+        status, output = apply_reset(
+            lst_finding, config.database, config.config
+        )
+        print(output.strip()[-2000:])
+        if status:
+            print(f"❌ {t('Reset failed, nothing was changed.')}")
+            return 2
+        print(f"✅ -> {t('Reset done.')}")
+        return 0
+
+    # Aucun drapeau : on demande, plutôt que d'imprimer un rapport et de
+    # laisser retrouver soi-même les deux arguments de reset_asset. Mais
+    # seulement devant un terminal — dans un tube, une invite bloquerait
+    # l'appelant sans que personne ne voie la question.
+    if not (config.diff or config.tui) and sys.stdin.isatty():
+        if prompt(lst_finding, config.database, config.config):
+            return 0
+    return 1
 
 
 if __name__ == "__main__":

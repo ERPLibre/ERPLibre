@@ -1645,17 +1645,13 @@ class TodoUpgrade:
         # une copie figée, et un palier renomme aussi des variables. Celle-ci
         # ne se voit qu'à l'écran d'une page — « Style error », sans dire quel
         # fichier ni depuis quand — et seulement une fois le palier passé.
-        status_scss, _cmd, _out = self.todo_upgrade_execute(
+        # Sur le VRAI terminal : l'outil pose lui-même ses questions — voir
+        # l'écart, l'ouvrir en plein écran, réinitialiser — et un tube les
+        # rendrait toutes injoignables, comme il fermait déjà la TUI.
+        self.run_on_terminal(
             f"{PYTHON_BIN} ./script/odoo/migration/check_stale_scss.py"
-            f" -d {database_name} -t odoo{start_version + 1}.0",
-            get_output=True,
-            wait_at_error=False,
+            f" -d {database_name} -t odoo{start_version + 1}.0"
         )
-        if status_scss == 1:
-            self.ask_gate(
-                f"💬 {t('Read the customizations above before continuing.')}"
-                f" {t('(b = go back to a previous step)')} : "
-            )
 
         msg = "3 - Clean up database before data migration"
         self.print_step(msg)
