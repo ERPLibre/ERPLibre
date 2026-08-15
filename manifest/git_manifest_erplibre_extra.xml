@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <manifest>
-	<remote name="alliance-boreale" fetch="https://forge.alliance-boreale.ca/Alliance-Boreale" />
-https://forge.alliance-boreale.ca/Alliance-Boreale/Set-OPS-Public.git
+    <remote name="alliance-boreale" fetch="https://forge.alliance-boreale.ca/Alliance-Boreale" />
 
     <project
         name="Set-OPS-Public.git"

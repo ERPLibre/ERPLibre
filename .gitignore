@@ -23,6 +23,7 @@ odoo*/odoo
 doc/itpp*
 doc/odoo*
 script/OCA*
+script/set-ops
 odoo*/OCA_OpenUpgrade
 odoo*/odoo_documentation-user
 image_db
