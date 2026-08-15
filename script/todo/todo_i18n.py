@@ -4790,6 +4790,38 @@ TRANSLATIONS = {
         "fr": "Conservés. Rien n'a été désinstallé.",
         "en": "Kept. Nothing was uninstalled.",
     },
+    "No customized SCSS is at risk in": {
+        "fr": "Aucun SCSS personnalisé n'est en danger dans",
+        "en": "No customized SCSS is at risk in",
+    },
+    "customized SCSS use(s) a variable that": {
+        "fr": "SCSS personnalisé(s) utilisent une variable que",
+        "en": "customized SCSS use(s) a variable that",
+    },
+    "no longer defines: the bundle will not compile.": {
+        "fr": "ne définit plus : le bundle ne compilera pas.",
+        "en": "no longer defines: the bundle will not compile.",
+    },
+    "Each one is a copy frozen on an older version. Dropping it": {
+        "fr": "Chacun est une copie figée sur une version antérieure. L'abandonner",
+        "en": "Each one is a copy frozen on an older version. Dropping it",
+    },
+    "restores the module file:": {
+        "fr": "rend le fichier du module :",
+        "en": "restores the module file:",
+    },
+    "Read it first: what it holds beyond the stale variable is": {
+        "fr": "Le lire d'abord : ce qu'il porte au-delà de la variable périmée est",
+        "en": "Read it first: what it holds beyond the stale variable is",
+    },
+    "a real customization, to re-apply as a small file.": {
+        "fr": "une vraie personnalisation, à réappliquer en petit fichier.",
+        "en": "a real customization, to re-apply as a small file.",
+    },
+    "Read the customizations above before continuing.": {
+        "fr": "Lire les personnalisations ci-dessus avant de continuer.",
+        "en": "Read the customizations above before continuing.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

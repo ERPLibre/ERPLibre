@@ -1641,6 +1641,22 @@ class TodoUpgrade:
         if status == 1:
             self.prompt_cow_prediction(database_name, start_version + 1)
 
+        # Même prédiction, autre matière : un SCSS personnalisé est lui aussi
+        # une copie figée, et un palier renomme aussi des variables. Celle-ci
+        # ne se voit qu'à l'écran d'une page — « Style error », sans dire quel
+        # fichier ni depuis quand — et seulement une fois le palier passé.
+        status_scss, _cmd, _out = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./script/odoo/migration/check_stale_scss.py"
+            f" -d {database_name} -t odoo{start_version + 1}.0",
+            get_output=True,
+            wait_at_error=False,
+        )
+        if status_scss == 1:
+            self.ask_gate(
+                f"💬 {t('Read the customizations above before continuing.')}"
+                f" {t('(b = go back to a previous step)')} : "
+            )
+
         msg = "3 - Clean up database before data migration"
         self.print_step(msg)
         self.add_comment_progression(msg)
