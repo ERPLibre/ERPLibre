@@ -4770,6 +4770,26 @@ TRANSLATIONS = {
         "fr": "d'une personnalisation. Lire avant de retirer.",
         "en": "of a customization. Read before removing.",
     },
+    "Installed theme(s) on": {
+        "fr": "Thème(s) installé(s) sur",
+        "en": "Installed theme(s) on",
+    },
+    "A theme carries view copies and SCSS through every": {
+        "fr": "Un thème traîne des copies de vues et des SCSS à travers chaque",
+        "en": "A theme carries view copies and SCSS through every",
+    },
+    "version bump, and a bump can rename what they rely on.": {
+        "fr": "palier de version, et un palier peut renommer ce dont ils dépendent.",
+        "en": "version bump, and a bump can rename what they rely on.",
+    },
+    "Uninstall them properly before migrating?": {
+        "fr": "Les désinstaller proprement avant de migrer ?",
+        "en": "Uninstall them properly before migrating?",
+    },
+    "Kept. Nothing was uninstalled.": {
+        "fr": "Conservés. Rien n'a été désinstallé.",
+        "en": "Kept. Nothing was uninstalled.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

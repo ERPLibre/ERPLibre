@@ -1545,6 +1545,11 @@ class TodoUpgrade:
             self.dct_progression["state_1_neutralize_database"] = True
             self.write_config()
 
+        if not self.dct_progression.get("state_1_theme_uninstalled"):
+            self.prompt_uninstall_theme(database_name)
+            self.dct_progression["state_1_theme_uninstalled"] = True
+            self.write_config()
+
         config_state_1_uninstall_module = self.dct_progression.get(
             "config_state_1_uninstall_module"
         )
@@ -2705,6 +2710,62 @@ class TodoUpgrade:
         """
         prefix, sep, label = msg.partition(" - ")
         print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
+
+    def installed_theme(self, database_name):
+        """Thèmes installés, hors theme_default qui EST l'absence de thème."""
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
+            " ir_module_module WHERE name LIKE 'theme%' AND"
+            " state = 'installed' AND name <> 'theme_default'"
+            ' ORDER BY name;"',
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return []
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def prompt_uninstall_theme(self, database_name):
+        """Proposer de retirer les thèmes AVANT de monter de version.
+
+        Un thème installé traverse la migration : ses copies de vues et ses
+        SCSS suivent chaque palier, et chaque palier peut renommer ce dont
+        ils dépendent. Le retirer d'abord enlève d'un coup une famille
+        entière de pannes, et se refait après.
+
+        « non » par défaut : retirer un thème change l'apparence du site, et
+        ce n'est pas à une migration de le décider à la place de quelqu'un.
+        La question n'est posée que s'il y a un thème à retirer.
+        """
+        lst_theme = self.installed_theme(database_name)
+        if not lst_theme:
+            return
+        print(
+            f"\n✨ {t('Installed theme(s) on')} '{database_name}' :"
+            f" {', '.join(lst_theme)}"
+        )
+        print(
+            f"   {t('A theme carries view copies and SCSS through every')}"
+            f" {t('version bump, and a bump can rename what they rely on.')}"
+        )
+        answer = (
+            self.ask_gate(
+                f"💬 {t('Uninstall them properly before migrating?')}"
+                f" (y/N, {t('(b = go back to a previous step)')}) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer != "y":
+            print(f"ℹ -> {t('Kept. Nothing was uninstalled.')}")
+            return
+        for theme in lst_theme:
+            self.todo_upgrade_execute(
+                f"./script/addons/uninstall_addons_theme.sh"
+                f" {database_name} {theme}",
+                wait_at_error=False,
+            )
 
     def show_cow_drift(self, database_name, next_version, mode="diff"):
         """Montre les copies COW à risque. Ne touche à rien.

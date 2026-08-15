@@ -122,6 +122,97 @@ class TestTheLeftoverReport(unittest.TestCase):
         self.assertIn("default_transaction_read_only=on", source)
 
 
+class TestTheMigrationOffersIt(unittest.TestCase):
+    """La question doit venir AVANT le premier palier, et par défaut non.
+
+    Un thème installé traverse la migration : ses copies de vues et ses SCSS
+    suivent chaque palier, et chaque palier peut renommer ce dont ils
+    dépendent. Le proposer tôt retire d'un coup une famille de pannes.
+
+    Par défaut non : retirer un thème change l'apparence d'un site, et ce
+    n'est pas à une migration de trancher cela à la place de quelqu'un.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def upgrade(self, lst_theme, answer):
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.dct_progression = {}
+        obj.lst_command_executed = []
+        obj.write_config = lambda: None
+        obj.installed_theme = lambda db: lst_theme
+        self.lst_cmd = []
+        obj.todo_upgrade_execute = lambda cmd, **kw: (
+            self.lst_cmd.append(cmd),
+            (False, cmd, []),
+        )[1]
+        obj.ask_gate = lambda prompt: answer
+        return obj
+
+    def run_prompt(self, lst_theme, answer):
+        import contextlib
+        import io
+
+        obj = self.upgrade(lst_theme, answer)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            obj.prompt_uninstall_theme("db")
+        return self.lst_cmd, out.getvalue()
+
+    def test_the_default_answer_uninstalls_nothing(self):
+        # « Entrée » ne doit RIEN faire : la migration ne décide pas de
+        # l'apparence d'un site à la place de son propriétaire.
+        lst_cmd, text = self.run_prompt(["theme_technolibre"], "")
+        self.assertEqual(lst_cmd, [])
+        self.assertIn("Kept", text)
+
+    def test_no_theme_means_no_question(self):
+        lst_cmd, text = self.run_prompt([], "y")
+        self.assertEqual(lst_cmd, [])
+        self.assertEqual(text, "")
+
+    def test_yes_runs_the_proper_uninstaller(self):
+        lst_cmd, _ = self.run_prompt(["theme_technolibre"], "y")
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn(
+            "uninstall_addons_theme.sh db theme_technolibre", lst_cmd[0]
+        )
+
+    def test_every_theme_is_offered_together(self):
+        lst_cmd, _ = self.run_prompt(["theme_a", "theme_b"], "Y")
+        self.assertEqual(len(lst_cmd), 2)
+
+    def test_it_is_asked_before_the_first_bump(self):
+        # L'ordre est le point : posée après le premier palier, la question
+        # arrive quand les copies ont déjà traversé un renommage.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        appel = source.index("prompt_uninstall_theme")
+        palier = source.index("4 - Upgrade version with OpenUpgrade")
+        self.assertLess(appel, palier)
+
+    def test_theme_default_is_not_a_theme_to_remove(self):
+        # theme_default EST l'absence de thème : le proposer au retrait
+        # ferait poser une question sans objet à chaque migration.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.installed_theme)
+        self.assertIn("name <> 'theme_default'", source)
+
+
 class TestExitCodes(unittest.TestCase):
     """0 rien, 1 des restes, 2 l'outil a échoué — comme les outils voisins."""
 
