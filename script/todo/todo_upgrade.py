@@ -1248,11 +1248,36 @@ class TodoUpgrade:
         if "target_odoo_version" in self.dct_progression:
             odoo_target_version = self.dct_progression["target_odoo_version"]
         else:
-            print(f"💬 {t('Which version do you want to upgrade to?')}")
+            # La plus haute, pas la dernière de la liste : l'ordre
+            # d'affichage n'est pas une garantie, la comparaison en est une.
+            default_version = (
+                max(
+                    lst_odoo_version,
+                    key=lambda a: float(a.get("prompt_description")),
+                ).get("prompt_description")
+                if lst_odoo_version
+                else None
+            )
+            print(
+                f"💬 {t('Which version do you want to upgrade to?')}"
+                + (
+                    f" ({t('Enter =')} {default_version})"
+                    if default_version
+                    else ""
+                )
+            )
             odoo_target_version = None
             cmd_no_found = True
             while cmd_no_found:
-                status = click.prompt(help_info)
+                # `default=""` est nécessaire : sans lui, click redemande sur
+                # une ligne vide sans rien dire, et Entrée n'atteint jamais
+                # ce code — la valeur par défaut n'existait qu'en intention.
+                status = click.prompt(
+                    help_info, default="", show_default=False
+                )
+                if not str(status).strip() and default_version:
+                    odoo_target_version = default_version
+                    break
                 try:
                     int_cmd = int(status)
                     if 0 < int_cmd <= len(lst_odoo_version):

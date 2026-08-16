@@ -5062,6 +5062,10 @@ TRANSLATIONS = {
         "fr": "il serait testé à la place de cette base.",
         "en": "it would be tested instead of this database.",
     },
+    "Enter =": {
+        "fr": "Entrée =",
+        "en": "Enter =",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
