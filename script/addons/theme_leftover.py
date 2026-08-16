@@ -121,12 +121,118 @@ def render(theme, attachments, views):
     return "\n".join(lines) + "\n"
 
 
+def backup_attachments(database, theme, lst_row, filestore=None):
+    """Écrire le contenu des pièces jointes AVANT de les supprimer.
+
+    C'est la condition pour pouvoir répondre « efface ». Sans elle, on
+    détruirait ce dont on vient d'écrire qu'il peut être la seule trace
+    d'une personnalisation.
+    """
+    base = filestore or os.path.join(
+        os.path.expanduser("~"),
+        ".local",
+        "share",
+        "Odoo",
+        "filestore",
+        database,
+    )
+    directory = os.path.join(
+        "private", "odoo", "migration", database, "theme_backup", theme
+    )
+    os.makedirs(directory, exist_ok=True)
+    lst_saved = []
+    for row in lst_row:
+        att_id = row.split("|")[0]
+        rows = run_psql(
+            database,
+            "SELECT COALESCE(store_fname, '') FROM ir_attachment"
+            f" WHERE id = {int(att_id)};",
+        )
+        store_fname = rows[0].strip() if rows else ""
+        if not store_fname:
+            continue
+        source = os.path.join(base, store_fname)
+        if not os.path.isfile(source):
+            continue
+        target = os.path.join(
+            directory, f"{att_id}_" + os.path.basename(row.split("|")[1])
+        )
+        with open(source, "rb") as src, open(target, "wb") as dst:
+            dst.write(src.read())
+        lst_saved.append(target)
+    return lst_saved
+
+
+def delete_attachments(database, lst_row, config_path="./config.conf"):
+    """Supprimer par le shell d'Odoo, pour qu'il gère aussi le filestore.
+
+    Un DELETE en SQL laisserait les fichiers orphelins et les caches
+    incohérents ; unlink() fait le ménage complet, dans toutes les versions.
+    """
+    lst_id = [row.split("|")[0] for row in lst_row]
+    script = (
+        f"env['ir.attachment'].browse({lst_id!r}).unlink()\n"
+        "env.cr.commit()\n"
+    )
+    done = subprocess.run(
+        ["./odoo_bin.sh", "shell", "-c", config_path, "-d", database],
+        input=script,
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode, done.stdout + done.stderr
+
+
+def prompt(database, theme, attachments, views, config_path, ask=input):
+    """Garder ou effacer. « Garder » par défaut, et la sauvegarde d'abord."""
+    if not attachments:
+        return False
+    answer = (
+        ask(
+            f"💬 {t('Delete these leftovers, or keep them?')}"
+            f" ({t('Enter = keep')}, d = {t('delete, after saving them')}) : "
+        )
+        .strip()
+        .lower()
+    )
+    if answer != "d":
+        print(f"ℹ -> {t('Kept. Nothing was deleted.')}")
+        return False
+    lst_saved = backup_attachments(database, theme, attachments)
+    print(f"📦 {t('Saved before deleting')} : {len(lst_saved)}")
+    if lst_saved:
+        print(f"   {os.path.dirname(lst_saved[0])}")
+    status, output = delete_attachments(database, attachments, config_path)
+    print(output.strip()[-1500:])
+    if status:
+        print(f"❌ {t('Deletion failed, nothing was removed.')}")
+        return False
+    print(f"✅ -> {len(attachments)} {t('attachment(s) deleted.')}")
+    return True
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description=("List what an uninstalled theme left behind (read-only).")
     )
     parser.add_argument("-d", "--database", required=True)
     parser.add_argument("-t", "--theme", required=True)
+    parser.add_argument(
+        "-c",
+        "--config",
+        default="./config.conf",
+        help="Odoo config used by the shell for --delete",
+    )
+    parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="delete them (WRITES; saves their content first)",
+    )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="never ask anything, even in front of a terminal",
+    )
     config = parser.parse_args(argv)
     try:
         attachments, views = collect(config.database, config.theme)
@@ -134,7 +240,32 @@ def main(argv=None):
         print(f"❌ {exc}")
         return 2
     print(render(config.theme, attachments, views))
-    return 1 if (attachments or views) else 0
+    if not attachments and not views:
+        return 0
+    if config.delete:
+        lst_saved = backup_attachments(
+            config.database, config.theme, attachments
+        )
+        print(f"📦 {t('Saved before deleting')} : {len(lst_saved)}")
+        status, output = delete_attachments(
+            config.database, attachments, config.config
+        )
+        print(output.strip()[-1500:])
+        if status:
+            print(f"❌ {t('Deletion failed, nothing was removed.')}")
+            return 2
+        print(f"✅ -> {len(attachments)} {t('attachment(s) deleted.')}")
+        return 0
+    if not config.report_only and sys.stdin.isatty():
+        if prompt(
+            config.database,
+            config.theme,
+            attachments,
+            views,
+            config.config,
+        ):
+            return 0
+    return 1
 
 
 if __name__ == "__main__":

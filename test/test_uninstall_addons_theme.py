@@ -213,6 +213,124 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         self.assertIn("name <> 'theme_default'", source)
 
 
+class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
+    """Signaler sans offrir le geste oblige à le composer soi-même.
+
+    Le rapport listait quinze pièces jointes et s'arrêtait là. Les effacer
+    demandait de retrouver les identifiants et d'écrire un unlink() à la
+    main — au milieu d'une migration, c'est ce qu'on ne fait pas.
+
+    « Garder » reste le défaut, et rien n'est effacé sans avoir été écrit sur
+    disque d'abord : c'est la condition pour pouvoir répondre « efface ».
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        self.rows = ["4457|/theme_x/static/a.scss|2021-03-04"]
+        self.saved = []
+        self.deleted = []
+        self.original_backup = theme_leftover.backup_attachments
+        self.original_delete = theme_leftover.delete_attachments
+        theme_leftover.backup_attachments = (
+            lambda db, th, rows, fs=None: self.saved.append(rows) or ["/tmp/x"]
+        )
+        theme_leftover.delete_attachments = (
+            lambda db, rows, cfg="./config.conf": (
+                self.deleted.append(rows),
+                (0, "ok"),
+            )[1]
+        )
+        self.addCleanup(
+            setattr,
+            theme_leftover,
+            "backup_attachments",
+            self.original_backup,
+        )
+        self.addCleanup(
+            setattr, theme_leftover, "delete_attachments", self.original_delete
+        )
+
+    def run_prompt(self, answer, rows=None):
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            done = theme_leftover.prompt(
+                "db",
+                "theme_x",
+                self.rows if rows is None else rows,
+                [],
+                "./config.conf",
+                ask=lambda prompt: answer,
+            )
+        return done, out.getvalue()
+
+    def test_enter_keeps_them(self):
+        done, text = self.run_prompt("")
+        self.assertFalse(done)
+        self.assertEqual(self.deleted, [])
+        self.assertIn("Kept", text)
+
+    def test_d_saves_before_deleting(self):
+        # L'ORDRE est le point : effacer d'abord rendrait la sauvegarde vide.
+        done, _ = self.run_prompt("d")
+        self.assertTrue(done)
+        self.assertEqual(len(self.saved), 1)
+        self.assertEqual(len(self.deleted), 1)
+
+    def test_a_failed_deletion_says_nothing_was_removed(self):
+        theme_leftover.delete_attachments = (
+            lambda db, rows, cfg="./config.conf": (1, "boom")
+        )
+        done, text = self.run_prompt("d")
+        self.assertFalse(done)
+        self.assertIn("nothing was removed", text)
+
+    def test_no_leftover_asks_nothing(self):
+        done, text = self.run_prompt("d", rows=[])
+        self.assertFalse(done)
+        self.assertEqual(text, "")
+
+    def test_the_prompt_stays_out_of_a_pipe(self):
+        with open(theme_leftover.__file__) as handle:
+            self.assertIn("sys.stdin.isatty()", handle.read())
+
+
+class TestTheMisleadingErrorCode(unittest.TestCase):
+    """« 1 » veut dire « il reste des choses », pas « ça a raté »."""
+
+    def test_the_uninstaller_does_not_fail_on_leftovers(self):
+        # Le rapport était la dernière commande du script : son code
+        # devenait celui du script, et la migration annonçait une erreur sur
+        # un thème correctement retiré.
+        with open(SCRIPT) as handle:
+            source = handle.read()
+        self.assertIn("theme_leftover.py", source)
+        queue = source[source.index("theme_leftover.py") :]
+        self.assertIn("|| true", queue)
+        self.assertIn("exit 0", queue)
+
+    def test_the_cow_check_no_longer_goes_through_the_capturing_executor(self):
+        # exec_command_live imprime « Command returned error code: 1 » dès
+        # qu'un code non nul sort, y compris sur un rapport qui va bien.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        avant = source[: source.index("check_cow_views.py")]
+        self.assertGreater(
+            avant.rfind("run_on_terminal("),
+            avant.rfind("todo_upgrade_execute("),
+        )
+
+
 class TestExitCodes(unittest.TestCase):
     """0 rien, 1 des restes, 2 l'outil a échoué — comme les outils voisins."""
 

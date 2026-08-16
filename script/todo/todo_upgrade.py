@@ -1624,11 +1624,13 @@ class TodoUpgrade:
         # -- before hours of migration -- leaves time to arbitrate.
         # Only the next bump can be predicted: the modes in database describe
         # the current version.
-        status, cmd_executed, output = self.todo_upgrade_execute(
+        # Sur le terminal, sans capturer : plus rien ne relit cette sortie —
+        # la décision se prend sur le code de retour — et la capture faisait
+        # annoncer « Command returned error code: 1 » sur un rapport qui va
+        # bien. 1 veut dire « des copies casseront », pas « l'outil a raté ».
+        status = self.run_on_terminal(
             f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
-            f" -d {database_name} -t odoo{start_version + 1}.0",
-            get_output=True,
-            wait_at_error=False,
+            f" -d {database_name} -t odoo{start_version + 1}.0"
         )
         # L'avertissement annonçait un problème, invitait à arbitrer, et
         # aucune question ne suivait : dire « la question viendra au palier »

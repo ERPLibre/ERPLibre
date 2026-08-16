@@ -89,4 +89,8 @@ fi
 # sont parties, mais elles survivent à toutes les migrations suivantes et
 # personne ne sait plus d'où elles viennent. On les signale, on ne les
 # supprime pas : leur contenu peut être la seule trace d'une personnalisation.
-./script/addons/theme_leftover.py -d "$DATABASE" -t "$THEME"
+# Son code de sortie dit « il reste des choses », pas « la désinstallation a
+# échoué » : le laisser devenir celui du script faisait annoncer une erreur
+# sur un thème correctement retiré.
+./script/addons/theme_leftover.py -d "$DATABASE" -t "$THEME" -c "$CONFIG" || true
+exit 0

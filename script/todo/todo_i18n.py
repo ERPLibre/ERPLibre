@@ -4950,6 +4950,34 @@ TRANSLATIONS = {
         "fr": "Choix inconnu, rien n'a été réinitialisé.",
         "en": "Unknown choice, nothing was reset.",
     },
+    "Delete these leftovers, or keep them?": {
+        "fr": "Effacer ces restes, ou les garder ?",
+        "en": "Delete these leftovers, or keep them?",
+    },
+    "Enter = keep": {
+        "fr": "Entrée = garder",
+        "en": "Enter = keep",
+    },
+    "delete, after saving them": {
+        "fr": "effacer, après les avoir sauvegardés",
+        "en": "delete, after saving them",
+    },
+    "Kept. Nothing was deleted.": {
+        "fr": "Conservés. Rien n'a été effacé.",
+        "en": "Kept. Nothing was deleted.",
+    },
+    "Saved before deleting": {
+        "fr": "Sauvegardé avant effacement",
+        "en": "Saved before deleting",
+    },
+    "Deletion failed, nothing was removed.": {
+        "fr": "L'effacement a échoué, rien n'a été retiré.",
+        "en": "Deletion failed, nothing was removed.",
+    },
+    "attachment(s) deleted.": {
+        "fr": "pièce(s) jointe(s) effacée(s).",
+        "en": "attachment(s) deleted.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
