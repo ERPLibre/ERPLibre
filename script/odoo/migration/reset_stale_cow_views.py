@@ -284,6 +284,11 @@ def main():
     )
     parser.add_argument("-d", "--database", required=True)
     parser.add_argument(
+        "--list-keys",
+        action="store_true",
+        help="print one drifted key per line, and nothing else",
+    )
+    parser.add_argument(
         "--reset",
         metavar="KEY",
         action="append",
@@ -304,6 +309,14 @@ def main():
     config = parser.parse_args()
 
     findings = analyse(config.database)
+    # Une sortie sans décor, pour que l'appelant construise un menu : on ne
+    # connaît pas les clés de tête, et les recopier depuis un diff de mille
+    # lignes est le genre de recopie où l'on se trompe.
+    if config.list_keys:
+        for cow_view, _module_view, _broken in findings:
+            print(cow_view["key"])
+        return 1 if findings else 0
+
     if not findings:
         print(f"✅ {t('No COW copy has drifted from its module view.')}")
         return 0

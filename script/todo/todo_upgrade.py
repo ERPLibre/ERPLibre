@@ -2792,6 +2792,69 @@ class TodoUpgrade:
                 wait_at_error=False,
             )
 
+    def stale_cow_keys(self, database_name):
+        """Les clés des copies COW en retard, sans décor."""
+        script_path = os.path.join(
+            PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
+        )
+        if not os.path.exists(script_path):
+            return []
+        status, _cmd, output = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{script_path} -d {database_name} --list-keys",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status == 2:
+            return []
+        return [line.strip() for line in (output or []) if line.strip()]
+
+    def prompt_reset_stale_cow_views(self, database_name):
+        """Choisir quoi réinitialiser dans une LISTE, pas de mémoire.
+
+        L'aide disait « --reset <key> --apply » et laissait retrouver la clé
+        dans un diff de mille lignes. On la recopie, on se trompe d'un
+        caractère, et la commande ne fait rien sans le dire — une clé qui ne
+        correspond à rien n'est pas une erreur pour l'outil.
+        """
+        lst_key = self.stale_cow_keys(database_name)
+        if not lst_key:
+            print(
+                f"✅ -> {t('No COW copy has drifted from its module view.')}"
+            )
+            return
+        print(f"\n✨ {t('Drifted COW copies')} :")
+        for index, key in enumerate(lst_key, start=1):
+            print(f"   [{index}] {key}")
+        print(f"   [a] {t('All of the list above')}")
+        answer = (
+            self.ask_gate(
+                f"💬 {t('Which one(s) to reset onto the module view?')}"
+                f" ({t('numbers separated by commas, a = all, empty =')}"
+                f" {t('nothing')}) : "
+            )
+            .strip()
+            .lower()
+        )
+        if not answer:
+            print(f"ℹ -> {t('Kept. Nothing was reset.')}")
+            return
+        if answer == "a":
+            lst_chosen = ["all"]
+        else:
+            lst_chosen = []
+            for part in answer.replace(" ", "").split(","):
+                if part.isdigit() and 1 <= int(part) <= len(lst_key):
+                    lst_chosen.append(lst_key[int(part) - 1])
+            if not lst_chosen:
+                print(f"⚠️ {t('Unknown choice, nothing was reset.')}")
+                return
+        args = " ".join(f"--reset {key}" for key in lst_chosen)
+        self.run_on_terminal(
+            f"{PYTHON_BIN} ./{os.path.join(PATH_MIGRATION_GLOBAL, 'reset_stale_cow_views.py')}"
+            f" -d {database_name} {args} --apply"
+        )
+
     def show_cow_drift(self, database_name, next_version, mode="diff"):
         """Montre les copies COW à risque. Ne touche à rien.
 
@@ -3253,6 +3316,7 @@ class TodoUpgrade:
                         f"[2] {t('Check the COW views that drifted')}"
                         f" ({database_name})"
                     )
+                    print(f"[3] {t('Reset one of them onto its module view')}")
                 wait_status = (
                     input(
                         f"💬 {t('Error detected, press enter to continue or')}"
@@ -3271,6 +3335,9 @@ class TodoUpgrade:
                     # COW en retard sur sa vue module. On propose l'outil sur
                     # place, puis on repose le choix pour rejouer.
                     self.check_stale_cow_views(database_name)
+                    continue
+                if wait_status == "3" and database_name:
+                    self.prompt_reset_stale_cow_views(database_name)
                     continue
                 break
 

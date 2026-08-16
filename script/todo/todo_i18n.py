@@ -4926,6 +4926,30 @@ TRANSLATIONS = {
         "fr": "et ne change rien.",
         "en": "and changes nothing.",
     },
+    "Reset one of them onto its module view": {
+        "fr": "Réinitialiser l'une d'elles sur sa vue module",
+        "en": "Reset one of them onto its module view",
+    },
+    "Drifted COW copies": {
+        "fr": "Copies COW ayant dérivé",
+        "en": "Drifted COW copies",
+    },
+    "Which one(s) to reset onto the module view?": {
+        "fr": "Laquelle ou lesquelles réinitialiser sur la vue module ?",
+        "en": "Which one(s) to reset onto the module view?",
+    },
+    "numbers separated by commas, a = all, empty =": {
+        "fr": "numéros séparés par des virgules, a = toutes, vide =",
+        "en": "numbers separated by commas, a = all, empty =",
+    },
+    "Kept. Nothing was reset.": {
+        "fr": "Conservées. Rien n'a été réinitialisé.",
+        "en": "Kept. Nothing was reset.",
+    },
+    "Unknown choice, nothing was reset.": {
+        "fr": "Choix inconnu, rien n'a été réinitialisé.",
+        "en": "Unknown choice, nothing was reset.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
