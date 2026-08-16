@@ -35,9 +35,9 @@ TRANSLATIONS = {
         "fr": "📦 Installation",
         "en": "📦 Install",
     },
-    "Question": {
-        "fr": "❓ Question",
-        "en": "❓ Question",
+    "Assistant": {
+        "fr": "🤖 Assistant",
+        "en": "🤖 Assistant",
     },
     "Fork - Open TODO in a new tab": {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
@@ -724,6 +724,14 @@ TRANSLATIONS = {
     "ERPLibre unit tests": {
         "fr": "Tests unitaires ERPLibre",
         "en": "ERPLibre unit tests",
+    },
+    "Mail unit tests": {
+        "fr": "Tests unitaires courriel",
+        "en": "Mail unit tests",
+    },
+    "Analyse unit tests": {
+        "fr": "Tests unitaires analyse",
+        "en": "Analyse unit tests",
     },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
@@ -1623,6 +1631,14 @@ TRANSLATIONS = {
         "fr": "pas de QEMU/libvirt ici",
         "en": "no QEMU/libvirt here",
     },
+    "virsh present but not accessible": {
+        "fr": "virsh présent mais inaccessible (droits)",
+        "en": "virsh present but not accessible (permissions)",
+    },
+    "Add the user to the libvirt group there:": {
+        "fr": "Ajoutez l'utilisateur au groupe libvirt là-bas :",
+        "en": "Add the user to the libvirt group there:",
+    },
     "QEMU present, no VM": {
         "fr": "QEMU présent, aucune VM",
         "en": "QEMU present, no VM",
@@ -1690,6 +1706,200 @@ TRANSLATIONS = {
     "via": {
         "fr": "via",
         "en": "via",
+    },
+    "Odoo migration interface": {
+        "fr": "🚚 Interface de la migration Odoo",
+        "en": "🚚 Odoo migration interface",
+    },
+    "modules of the list have no code in the active Odoo:": {
+        "fr": "modules de la liste n'ont plus de code dans l'Odoo actif :",
+        "en": "modules of the list have no code in the active Odoo:",
+    },
+    "Odoo cannot uninstall a module whose code is gone;": {
+        "fr": "Odoo ne peut pas désinstaller un module dont le code a"
+        " disparu ;",
+        "en": "Odoo cannot uninstall a module whose code is gone;",
+    },
+    "one of them fails the whole uninstall command.": {
+        "fr": "un seul d'entre eux fait échouer toute la désinstallation.",
+        "en": "one of them fails the whole uninstall command.",
+    },
+    "are present and can be uninstalled:": {
+        "fr": "sont présents et peuvent être désinstallés :",
+        "en": "are present and can be uninstalled:",
+    },
+    "No module of the list is present.": {
+        "fr": "Aucun module de la liste n'est présent.",
+        "en": "No module of the list is present.",
+    },
+    "Uninstall the present ones, skip the missing": {
+        "fr": "Désinstaller les présents, ignorer les manquants",
+        "en": "Uninstall the present ones, skip the missing",
+    },
+    "Try the whole list anyway (it will fail)": {
+        "fr": "Tout tenter quand même (ça échouera)",
+        "en": "Try the whole list anyway (it will fail)",
+    },
+    "Uninstall nothing, continue": {
+        "fr": "Ne rien désinstaller, continuer",
+        "en": "Uninstall nothing, continue",
+    },
+    "Nothing uninstalled.": {
+        "fr": "Rien de désinstallé.",
+        "en": "Nothing uninstalled.",
+    },
+    "Check the COW views that drifted": {
+        "fr": "Vérifier les vues COW en retard sur leur vue module",
+        "en": "Check the COW views that drifted",
+    },
+    "Tool not found": {
+        "fr": "Outil introuvable",
+        "en": "Tool not found",
+    },
+    "To reset one of them onto its module view:": {
+        "fr": "Pour réinitialiser l'une d'elles sur sa vue module :",
+        "en": "To reset one of them onto its module view:",
+    },
+    "Read the diff first: a copy can hold a customisation.": {
+        "fr": "Lire le diff d'abord : une copie peut porter une"
+        " personnalisation.",
+        "en": "Read the diff first: a copy can hold a customisation.",
+    },
+    "Migration statistics (read-only)": {
+        "fr": "📊 Statistiques de la migration (lecture seule)",
+        "en": "📊 Migration statistics (read-only)",
+    },
+    "Choice (0-3, default 1): ": {
+        "fr": "Choix (0-3, défaut 1) : ",
+        "en": "Choice (0-3, default 1): ",
+    },
+    "Migration statistics": {
+        "fr": "Statistiques de la migration",
+        "en": "Migration statistics",
+    },
+    "elapsed": {
+        "fr": "écoulé",
+        "en": "elapsed",
+    },
+    "Level reached": {
+        "fr": "Niveau atteint",
+        "en": "Level reached",
+    },
+    "Modules": {
+        "fr": "Modules",
+        "en": "Modules",
+    },
+    "modules": {
+        "fr": "modules",
+        "en": "modules",
+    },
+    "At the start": {
+        "fr": "Au départ",
+        "en": "At the start",
+    },
+    "Removed in total": {
+        "fr": "Supprimés au total",
+        "en": "Removed in total",
+    },
+    "Reported missing": {
+        "fr": "Signalés manquants",
+        "en": "Reported missing",
+    },
+    "Duplicated": {
+        "fr": "En double",
+        "en": "Duplicated",
+    },
+    "Migration fixes": {
+        "fr": "Correctifs de migration",
+        "en": "Migration fixes",
+    },
+    "COW views": {
+        "fr": "Vues COW",
+        "en": "COW views",
+    },
+    "views": {
+        "fr": "vues",
+        "en": "views",
+    },
+    "no snapshot": {
+        "fr": "aucun instantané",
+        "en": "no snapshot",
+    },
+    "Journal": {
+        "fr": "Journal",
+        "en": "Journal",
+    },
+    "commands": {
+        "fr": "commandes",
+        "en": "commands",
+    },
+    "recorded decisions": {
+        "fr": "décisions annotées",
+        "en": "recorded decisions",
+    },
+    "Removed modules, with their reason": {
+        "fr": "Modules supprimés, avec leur justification",
+        "en": "Removed modules, with their reason",
+    },
+    "Removed modules, comma-separated (copy)": {
+        "fr": "Modules supprimés, séparés par des virgules (à copier)",
+        "en": "Removed modules, comma-separated (copy)",
+    },
+    "COW views: snapshots and differences": {
+        "fr": "Vues COW : instantanés et différences",
+        "en": "COW views: snapshots and differences",
+    },
+    "Recorded decisions (journal)": {
+        "fr": "Décisions annotées (journal)",
+        "en": "Recorded decisions (journal)",
+    },
+    "Executed commands (last 30)": {
+        "fr": "Commandes exécutées (30 dernières)",
+        "en": "Executed commands (last 30)",
+    },
+    "nothing recorded": {
+        "fr": "rien d'annoté",
+        "en": "nothing recorded",
+    },
+    "Need two snapshots to diff.": {
+        "fr": "Il faut deux instantanés pour comparer.",
+        "en": "Need two snapshots to diff.",
+    },
+    "Diff which two? (e.g. 1,2 — blank to skip)": {
+        "fr": "Comparer lesquels ? (ex. 1,2 — vide pour passer)",
+        "en": "Diff which two? (e.g. 1,2 — blank to skip)",
+    },
+    "No migration in progress to resume.": {
+        "fr": "Aucune migration en cours à reprendre.",
+        "en": "No migration in progress to resume.",
+    },
+    "Quit without doing anything": {
+        "fr": "Quitter sans rien faire",
+        "en": "Quit without doing anything",
+    },
+    "Version bumps": {
+        "fr": "Montées de version",
+        "en": "Version bumps",
+    },
+    "Step": {
+        "fr": "Étape",
+        "en": "Step",
+    },
+    "Detail": {
+        "fr": "Détail",
+        "en": "Detail",
+    },
+    "Enter on a step or a version = replay from there": {
+        "fr": "Entrée sur une étape ou une version = rejouer depuis là",
+        "en": "Enter on a step or a version = replay from there",
+    },
+    "New migration": {
+        "fr": "Nouvelle migration",
+        "en": "New migration",
+    },
+    "Keep the zip only": {
+        "fr": "Garder seulement le zip",
+        "en": "Keep the zip only",
     },
     "Reset all preferences": {
         "fr": "🧹 Réinitialiser toutes les préférences",
@@ -1955,6 +2165,26 @@ TRANSLATIONS = {
     "Command failed: ": {
         "fr": "Échec de la commande : ",
         "en": "Command failed: ",
+    },
+    "Textual is required for this screen.": {
+        "fr": "Textual est nécessaire pour cet écran.",
+        "en": "Textual is required for this screen.",
+    },
+    "Install it now? (Y/n): ": {
+        "fr": "L'installer maintenant ? (O/n, défaut : oui) : ",
+        "en": "Install it now? (Y/n, default: yes): ",
+    },
+    "Textual is installed.": {
+        "fr": "Textual est installé.",
+        "en": "Textual is installed.",
+    },
+    "Installation finished but textual is still missing.": {
+        "fr": "Installation terminée mais textual reste introuvable.",
+        "en": "Installation finished but textual is still missing.",
+    },
+    "pip exited with": {
+        "fr": "pip a retourné",
+        "en": "pip exited with",
     },
     "Your distribution may package it as python3-textual.": {
         "fr": "Votre distribution le fournit peut-être en python3-textual.",
@@ -3067,6 +3297,106 @@ TRANSLATIONS = {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
     },
+    "Timezone": {
+        "fr": "Fuseau horaire",
+        "en": "Timezone",
+    },
+    "virsh cannot reach qemu:///system without sudo.": {
+        "fr": "virsh ne peut pas joindre qemu:///system sans sudo.",
+        "en": "virsh cannot reach qemu:///system without sudo.",
+    },
+    "The install monitor runs detached and cannot type a": {
+        "fr": "Le suivi d'installation tourne détaché et ne peut pas saisir",
+        "en": "The install monitor runs detached and cannot type a",
+    },
+    "password: it would lose the VM when its lease moves.": {
+        "fr": "de mot de passe : il perdrait la VM au changement de bail.",
+        "en": "password: it would lose the VM when its lease moves.",
+    },
+    "You are in the libvirt group, but this session": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session est",
+        "en": "You are in the libvirt group, but this session",
+    },
+    "predates it. Log out and back in, or run:": {
+        "fr": "antérieure. Reconnectez-vous, ou lancez :",
+        "en": "predates it. Log out and back in, or run:",
+    },
+    "Group is active, so the cause is elsewhere:": {
+        "fr": "Le groupe est actif : la cause est donc ailleurs.",
+        "en": "Group is active, so the cause is elsewhere:",
+    },
+    "Add your user to the libvirt group?": {
+        "fr": "Ajouter votre utilisateur au groupe libvirt ?",
+        "en": "Add your user to the libvirt group?",
+    },
+    "Run it now? (Y/n): ": {
+        "fr": "L'exécuter maintenant ? (O/n) : ",
+        "en": "Run it now? (Y/n): ",
+    },
+    "Command failed.": {
+        "fr": "La commande a échoué.",
+        "en": "Command failed.",
+    },
+    "Added. Log out and back in for it to take effect,": {
+        "fr": "Ajouté. Reconnectez-vous pour que ça prenne effet,",
+        "en": "Added. Log out and back in for it to take effect,",
+    },
+    "or start a new shell with: newgrp libvirt": {
+        "fr": "ou ouvrez un shell neuf avec : newgrp libvirt",
+        "en": "or start a new shell with: newgrp libvirt",
+    },
+    "Timezone for the VMs": {
+        "fr": "Fuseau horaire des VM",
+        "en": "Timezone for the VMs",
+    },
+    "Locale for the VMs": {
+        "fr": "Locale des VM",
+        "en": "Locale for the VMs",
+    },
+    "KVM is unavailable: the VMs will be EMULATED.": {
+        "fr": "KVM indisponible : les VM seront ÉMULÉES.",
+        "en": "KVM is unavailable: the VMs will be EMULATED.",
+    },
+    "A boot then takes 10-15 min, not under a minute.": {
+        "fr": "Un démarrage prend alors 10 à 15 min, pas moins d'une minute.",
+        "en": "A boot then takes 10-15 min, not under a minute.",
+    },
+    "Cause: /dev/kvm is missing. This host is itself a VM": {
+        "fr": "Cause : /dev/kvm est absent. Cet hôte est lui-même une VM",
+        "en": "Cause: /dev/kvm is missing. This host is itself a VM",
+    },
+    "whose hypervisor does not expose nested virtualization.": {
+        "fr": "dont l'hyperviseur n'expose pas la virtualisation imbriquée.",
+        "en": "whose hypervisor does not expose nested virtualization.",
+    },
+    "To fix it ON THE PARENT HYPERVISOR, not here:": {
+        "fr": "Pour corriger, SUR L'HYPERVISEUR PARENT, pas ici :",
+        "en": "To fix it ON THE PARENT HYPERVISOR, not here:",
+    },
+    "then set this VM to the host-passthrough CPU mode and": {
+        "fr": "puis donner à cette VM le mode CPU « host-passthrough », et",
+        "en": "then set this VM to the host-passthrough CPU mode and",
+    },
+    "stop it and start it again - a reboot is not enough.": {
+        "fr": "l'arrêter puis la redémarrer — un reboot ne suffit pas.",
+        "en": "stop it and start it again - a reboot is not enough.",
+    },
+    "Without access to that hypervisor, nothing to do here.": {
+        "fr": "Sans accès à cet hyperviseur, il n'y a rien à régler ici.",
+        "en": "Without access to that hypervisor, nothing to do here.",
+    },
+    "Usual cause: this host is itself a VM without nested": {
+        "fr": "Cause habituelle : cet hôte est lui-même une VM sans",
+        "en": "Usual cause: this host is itself a VM without nested",
+    },
+    "virtualization. Check: systemd-detect-virt": {
+        "fr": "virtualisation imbriquée. Vérifier : systemd-detect-virt",
+        "en": "virtualization. Check: systemd-detect-virt",
+    },
+    "Unknown timezone, keeping": {
+        "fr": "Fuseau inconnu, on garde",
+        "en": "Unknown timezone, keeping",
+    },
     "none": {
         "fr": "aucune",
         "en": "none",
@@ -3129,6 +3459,1299 @@ TRANSLATIONS = {
     "recorded runs": {"fr": "runs enregistrés", "en": "recorded runs"},
     "runs erased": {"fr": "runs effacés", "en": "runs erased"},
     "Cancelled.": {"fr": "Annulé.", "en": "Cancelled."},
+    # Database migration - resume menu
+    "Migration in progress": {
+        "fr": "Migration en cours",
+        "en": "Migration in progress",
+    },
+    "File": {"fr": "Fichier", "en": "File"},
+    "Database": {"fr": "Base", "en": "Database"},
+    "Target": {"fr": "Cible", "en": "Target"},
+    "Started": {"fr": "Démarrée", "en": "Started"},
+    "Steps": {"fr": "Étapes", "en": "Steps"},
+    "Prepare the environment": {
+        "fr": "Préparer l'environnement",
+        "en": "Prepare the environment",
+    },
+    "Restore and neutralize the database": {
+        "fr": "Restaurer et neutraliser la base",
+        "en": "Restore and neutralize the database",
+    },
+    "Update all addons": {
+        "fr": "Mettre à jour tous les modules",
+        "en": "Update all addons",
+    },
+    "Clean up before data migration": {
+        "fr": "Nettoyer avant la migration des données",
+        "en": "Clean up before data migration",
+    },
+    "Upgrade version by version (OpenUpgrade)": {
+        "fr": "Monter de version en version (OpenUpgrade)",
+        "en": "Upgrade version by version (OpenUpgrade)",
+    },
+    "not started": {"fr": "non démarrée", "en": "not started"},
+    "done": {"fr": "terminée", "en": "done"},
+    "partially done": {"fr": "partielle", "en": "partially done"},
+    "version bumps migrated": {
+        "fr": "montées de version faites",
+        "en": "version bumps migrated",
+    },
+    "Continue where it stopped": {
+        "fr": "Continuer là où ça s'est arrêté",
+        "en": "Continue where it stopped",
+    },
+    "Replay from that step": {
+        "fr": "Reprendre à partir de cette étape",
+        "en": "Replay from that step",
+    },
+    "erases the progression of that step and the next ones": {
+        "fr": "efface la progression de cette étape et des suivantes",
+        "en": "erases the progression of that step and the next ones",
+    },
+    "New migration, erase everything": {
+        "fr": "Nouvelle migration, tout effacer",
+        "en": "New migration, erase everything",
+    },
+    "Keep the zip only, ask every question again": {
+        "fr": "Garder seulement le zip, reposer toutes les questions",
+        "en": "Keep the zip only, ask every question again",
+    },
+    "Your choice": {"fr": "Votre choix", "en": "Your choice"},
+    "Unknown choice, continuing where it stopped": {
+        "fr": "Choix inconnu, on continue là où ça s'est arrêté",
+        "en": "Unknown choice, continuing where it stopped",
+    },
+    "Replaying from step": {
+        "fr": "Reprise à partir de l'étape",
+        "en": "Replaying from step",
+    },
+    "Replay the upgrade from version N": {
+        "fr": "Reprendre la montée à partir de la version N",
+        "en": "Replay the upgrade from version N",
+    },
+    "rebuilds the intermediate database": {
+        "fr": "recrée la base intermédiaire",
+        "en": "rebuilds the intermediate database",
+    },
+    "Unknown version": {"fr": "Version inconnue", "en": "Unknown version"},
+    "The progression file is invalid, ignoring it": {
+        "fr": "Le fichier de progression est invalide, on l'ignore",
+        "en": "The progression file is invalid, ignoring it",
+    },
+    # --- Menu Execute › Analyse ---
+    # L'émoji vit dans la valeur, jamais dans la clé. Deux clés distinctes,
+    # comme « Data » / « Database » : l'entrée de menu porte l'émoji,
+    # l'étiquette du fil d'Ariane est nue — _todo_telemetry_tui traduit le
+    # dernier segment du chemin, et un émoji y détonnerait.
+    "Analyse - Odoo database analysis": {
+        "fr": "🔬 Analyse - Analyse de base de données Odoo",
+        "en": "🔬 Analyse - Odoo database analysis",
+    },
+    "Analyse": {"fr": "Analyse", "en": "Analysis"},
+    "Analyse a database, without ever writing to it!": {
+        "fr": "Analyser une base, sans jamais y écrire !",
+        "en": "Analyse a database, without ever writing to it!",
+    },
+    # Les icônes du sous-menu Analyse. Elles sont réservées d'avance pour la
+    # famille entière — 🧱 index, 🎈 ballonnement, 📎 pièces jointes,
+    # 🔗 ir_model_data — pour qu'ajouter un outil ne demande pas d'en
+    # rechercher une libre, et que deux outils voisins ne se ressemblent pas.
+    "Structure": {"fr": "🗄  Structure", "en": "🗄  Structure"},
+    "Tables and database size": {
+        "fr": "📏 Tables et poids de la base",
+        "en": "📏 Tables and database size",
+    },
+    "Customisation": {"fr": "🎭 Personnalisation", "en": "🎭 Customisation"},
+    "Customised views, website copies included": {
+        "fr": "🖼  Vues personnalisées, copies de site web comprises",
+        "en": "🖼  Customised views, website copies included",
+    },
+    "Analysis failed: ": {
+        "fr": "L'analyse a échoué : ",
+        "en": "Analysis failed: ",
+    },
+    "Full list and JSON output:": {
+        "fr": "Liste complète et sortie JSON :",
+        "en": "Full list and JSON output:",
+    },
+    "A backup holds no registry, so nothing was compared with the module"
+    " source. The classification above needs none; only the differences do."
+    " Restore it, or run this on the database.": {
+        "fr": "Une sauvegarde n'a pas de registre, donc rien n'a été comparé"
+        " avec la source du module. Le classement ci-dessus n'en a pas besoin"
+        " ; seuls les écarts en ont. Restaurez-la, ou lancez ceci sur la base.",
+        "en": "A backup holds no registry, so nothing was compared with the"
+        " module source. The classification above needs none; only the"
+        " differences do. Restore it, or run this on the database.",
+    },
+    # --- script/analyse : vues personnalisées ---
+    "Customised views": {
+        "fr": "Vues personnalisées",
+        "en": "Customised views",
+    },
+    "Views": {"fr": "Vues", "en": "Views"},
+    "why": {"fr": "pourquoi", "en": "why"},
+    "more": {"fr": "de plus", "en": "more"},
+    "From an installed theme": {
+        "fr": "Posée par un thème installé",
+        "en": "From an installed theme",
+    },
+    "Website copy (COW)": {
+        "fr": "Copie de site web (COW)",
+        "en": "Website copy (COW)",
+    },
+    "Made with Studio": {"fr": "Faite avec Studio", "en": "Made with Studio"},
+    "Imported or exported": {
+        "fr": "Importée ou exportée",
+        "en": "Imported or exported",
+    },
+    "Created from the interface": {
+        "fr": "Créée depuis l'interface",
+        "en": "Created from the interface",
+    },
+    "From a module, flagged as touched": {
+        "fr": "D'un module, signalée comme retouchée",
+        "en": "From a module, flagged as touched",
+    },
+    "Straight from a module": {
+        "fr": "Telle quelle depuis un module",
+        "en": "Straight from a module",
+    },
+    "Every view comes straight from a module.": {
+        "fr": "Toutes les vues viennent telles quelles d'un module.",
+        "en": "Every view comes straight from a module.",
+    },
+    "Views that did not come straight from a module": {
+        "fr": "Vues qui ne viennent pas telles quelles d'un module",
+        "en": "Views that did not come straight from a module",
+    },
+    "Website copies are user data: Odoo copies a view instead of editing it."
+    " Whether they will survive the next version is another question, and"
+    " these tools answer it:": {
+        "fr": "Les copies de site web sont des données utilisateur : Odoo"
+        " copie une vue au lieu de la modifier. Savoir si elles survivront à"
+        " la prochaine version est une autre question, et ces outils y"
+        " répondent :",
+        "en": "Website copies are user data: Odoo copies a view instead of"
+        " editing it. Whether they will survive the next version is another"
+        " question, and these tools answer it:",
+    },
+    "Flags say a view was touched, not how. They are incomplete both ways: a"
+    " direct SQL write does not set arch_updated, and reset_arch clears it."
+    " Comparing with the module source is what settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. Ils"
+        " sont incomplets dans les deux sens : un write SQL direct n'arme pas"
+        " arch_updated, et reset_arch l'efface. Seule la comparaison avec la"
+        " source du module tranche.",
+        "en": "Flags say a view was touched, not how. They are incomplete"
+        " both ways: a direct SQL write does not set arch_updated, and"
+        " reset_arch clears it. Comparing with the module source is what"
+        " settles it.",
+    },
+    "List the views of an Odoo database that did not come straight from a"
+    " module, website copies included (read-only).": {
+        "fr": "Lister les vues d'une base Odoo qui ne viennent pas telles"
+        " quelles d'un module, copies de site web comprises (lecture seule).",
+        "en": "List the views of an Odoo database that did not come straight"
+        " from a module, website copies included (read-only).",
+    },
+    "only show this category": {
+        "fr": "n'afficher que cette catégorie",
+        "en": "only show this category",
+    },
+    "how many views to show (default: 20)": {
+        "fr": "nombre de vues à afficher (défaut : 20)",
+        "en": "how many views to show (default: 20)",
+    },
+    "list every view": {
+        "fr": "afficher toutes les vues",
+        "en": "list every view",
+    },
+    "which views to compare (default: flagged)": {
+        "fr": "quelles vues comparer (défaut : celles qui sont signalées)",
+        "en": "which views to compare (default: flagged)",
+    },
+    "From a module, silently drifted": {
+        "fr": "D'un module, dérivée en silence",
+        "en": "From a module, silently drifted",
+    },
+    "In --scope all, a difference is a lead, not a verdict:"
+    " read_arch_from_file returns the raw file, while the database holds the"
+    " arch AFTER load-time processing. Measured on a freshly installed 18.0"
+    " database, 160 of its 974 views already differ this way.": {
+        "fr": "En --scope all, un écart est une piste, pas un verdict :"
+        " read_arch_from_file rend le fichier brut, alors que la base porte"
+        " l'arch APRÈS traitement au chargement. Mesuré sur une base 18.0"
+        " fraîchement installée, 160 de ses 974 vues diffèrent déjà ainsi.",
+        "en": "In --scope all, a difference is a lead, not a verdict:"
+        " read_arch_from_file returns the raw file, while the database holds"
+        " the arch AFTER load-time processing. Measured on a freshly installed"
+        " 18.0 database, 160 of its 974 views already differ this way.",
+    },
+    "Compare with the module source? (Y/n): ": {
+        "fr": "Comparer avec la source du module ? (O/n) : ",
+        "en": "Compare with the module source? (Y/n): ",
+    },
+    # --- Menu Analyse : les actions « aller plus loin ». Ce qui était
+    # conseillé en options de ligne de commande est devenu des entrées :
+    # dire « utilisez -v » à quelqu'un qui est dans un menu, c'est lui
+    # demander d'en sortir pour obtenir ce que le menu pouvait offrir.
+    "Browse the differences (TUI)": {
+        "fr": "🖥  Naviguer dans les écarts (plein écran)",
+        "en": "🖥  Browse the differences (TUI)",
+    },
+    "Compare every view (slower, noisier)": {
+        "fr": "🔬 Comparer toutes les vues (plus long, plus bruyant)",
+        "en": "🔬 Compare every view (slower, noisier)",
+    },
+    "Compare first, then browse.": {
+        "fr": "Comparez d'abord, vous naviguerez ensuite.",
+        "en": "Compare first, then browse.",
+    },
+    "Compare the flagged views with the module source": {
+        "fr": "🔍 Comparer les vues signalées avec la source du module",
+        "en": "🔍 Compare the flagged views with the module source",
+    },
+    "Count rows exactly (full scan)": {
+        "fr": "🔢 Compter les lignes exactement (balayage complet)",
+        "en": "🔢 Count rows exactly (full scan)",
+    },
+    "Counting rows exactly, one scan per table…": {
+        "fr": "Comptage exact des lignes, un balayage par table…",
+        "en": "Counting rows exactly, one scan per table…",
+    },
+    "Export as JSON": {"fr": "💾 Exporter en JSON", "en": "💾 Export as JSON"},
+    "Go further": {"fr": "🔎 Aller plus loin", "en": "🔎 Go further"},
+    "Loading the Odoo registry, this takes a moment…": {
+        "fr": "Chargement du registre Odoo, cela prend un moment…",
+        "en": "Loading the Odoo registry, this takes a moment…",
+    },
+    "No view differs from its module source.": {
+        "fr": "Aucune vue ne diffère de la source de son module.",
+        "en": "No view differs from its module source.",
+    },
+    "Show every table": {
+        "fr": "📜 Afficher toutes les tables",
+        "en": "📜 Show every table",
+    },
+    "Show every view": {
+        "fr": "📜 Afficher toutes les vues",
+        "en": "📜 Show every view",
+    },
+    "Written to: ": {"fr": "Écrit dans : ", "en": "Written to: "},
+    "Flags say a view was touched, not how: only comparing with the module"
+    " source settles it.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment :"
+        " seule la comparaison avec la source du module tranche.",
+        "en": "Flags say a view was touched, not how: only comparing with the"
+        " module source settles it.",
+    },
+    "blocking": {"fr": "bloquants", "en": "blocking"},
+    "Studio and hand-made x_ fields": {
+        "fr": "🧩 Champs x_ (Studio et faits à la main)",
+        "en": "🧩 Studio and hand-made x_ fields",
+    },
+    "Show every field": {
+        "fr": "📜 Afficher tous les champs",
+        "en": "📜 Show every field",
+    },
+    "A database": {"fr": "💾 Une base de données", "en": "💾 A database"},
+    "A backup .zip, without restoring it": {
+        "fr": "🗜  Une sauvegarde .zip, sans la restaurer",
+        "en": "🗜  A backup .zip, without restoring it",
+    },
+    "Path to the backup .zip (empty to cancel): ": {
+        "fr": "Chemin de la sauvegarde .zip (vide pour annuler) : ",
+        "en": "Path to the backup .zip (empty to cancel): ",
+    },
+    "No such file: ": {"fr": "Fichier introuvable : ", "en": "No such file: "},
+    "from a backup": {"fr": "depuis une sauvegarde", "en": "from a backup"},
+    "Odoo backup .zip to inspect, without restoring it": {
+        "fr": "sauvegarde Odoo .zip à examiner, sans la restaurer",
+        "en": "Odoo backup .zip to inspect, without restoring it",
+    },
+    "Not an Odoo backup (no manifest.json): ": {
+        "fr": "Pas une sauvegarde Odoo (aucun manifest.json) : ",
+        "en": "Not an Odoo backup (no manifest.json): ",
+    },
+    "Cannot read the backup: ": {
+        "fr": "Lecture impossible de la sauvegarde : ",
+        "en": "Cannot read the backup: ",
+    },
+    "This backup holds no dump.sql: ": {
+        "fr": "Cette sauvegarde ne contient aucun dump.sql : ",
+        "en": "This backup holds no dump.sql: ",
+    },
+    # --- script/analyse : champs et modèles hors module ---
+    "Nothing declares these in a file, so no module will "
+    "recreate them. What a version upgrade keeps is what "
+    "someone carried over.": {
+        "fr": "Rien ne les déclare dans un fichier, donc aucun module "
+        "ne les recréera. Ce qu'une montée de version conserve "
+        "est ce que quelqu'un a reporté.",
+        "en": "Nothing declares these in a file, so no module will "
+        "recreate them. What a version upgrade keeps is what "
+        "someone carried over.",
+    },
+    "A stored field without its column stops the registry "
+    "from loading, so the upgrade will not even start. Settle "
+    "these before anything else.": {
+        "fr": "Un champ stocké sans sa colonne empêche le registre de "
+        "charger, donc la montée de version ne démarrera même "
+        "pas. Réglez cela avant tout le reste.",
+        "en": "A stored field without its column stops the registry "
+        "from loading, so the upgrade will not even start. Settle "
+        "these before anything else.",
+    },
+    "Use -v to list them all, --json for the raw data.": {
+        "fr": "Utilisez -v pour tout afficher, --json pour la donnée "
+        "brute.",
+        "en": "Use -v to list them all, --json for the raw data.",
+    },
+    "List the fields and models added outside a module — "
+    "Studio or by hand (read-only).": {
+        "fr": "Lister les champs et modèles ajoutés hors module — "
+        "Studio ou faits à la main (lecture seule).",
+        "en": "List the fields and models added outside a module — "
+        "Studio or by hand (read-only).",
+    },
+    "how many to show (default: 30)": {
+        "fr": "nombre à afficher (défaut : 30)",
+        "en": "how many to show (default: 30)",
+    },
+    "list every one": {"fr": "tout afficher", "en": "list every one"},
+    "Studio": {"fr": "Studio", "en": "Studio"},
+    "Made by hand": {"fr": "Fait à la main", "en": "Made by hand"},
+    "Declared by a module": {
+        "fr": "Déclaré par un module",
+        "en": "Declared by a module",
+    },
+    "stored, but its column is missing": {
+        "fr": "stocké, mais sa colonne manque",
+        "en": "stored, but its column is missing",
+    },
+    "points at a model that no longer exists": {
+        "fr": "pointe vers un modèle qui n'existe plus",
+        "en": "points at a model that no longer exists",
+    },
+    "its model no longer exists": {
+        "fr": "son modèle n'existe plus",
+        "en": "its model no longer exists",
+    },
+    "its table could not be resolved": {
+        "fr": "sa table n'a pas pu être résolue",
+        "en": "its table could not be resolved",
+    },
+    "origin": {"fr": "provenance", "en": "origin"},
+    "Fields added outside a module": {
+        "fr": "Champs ajoutés hors module",
+        "en": "Fields added outside a module",
+    },
+    "Custom fields": {"fr": "Champs personnalisés", "en": "Custom fields"},
+    "Custom models": {"fr": "Modèles personnalisés", "en": "Custom models"},
+    "No field or model was added outside a module.": {
+        "fr": "Aucun champ ni modèle n'a été ajouté hors module.",
+        "en": "No field or model was added outside a module.",
+    },
+    "Blocking": {"fr": "Bloquant", "en": "Blocking"},
+    "To carry over by hand": {
+        "fr": "À reporter à la main",
+        "en": "To carry over by hand",
+    },
+    # --- script/analyse : comparaison et navigation des écarts ---
+    "Differences only": {
+        "fr": "Écarts seuls",
+        "en": "Differences only",
+    },
+    "Ignore indentation": {
+        "fr": "Ignorer l'indentation",
+        "en": "Ignore indentation",
+    },
+    "Copy": {
+        "fr": "Copier",
+        "en": "Copy",
+    },
+    "Reset command": {
+        "fr": "Commande de réinitialisation",
+        "en": "Reset command",
+    },
+    "module (file)": {
+        "fr": "module (fichier)",
+        "en": "module (file)",
+    },
+    "database": {
+        "fr": "base",
+        "en": "database",
+    },
+    "Difference copied.": {
+        "fr": "Écart copié.",
+        "en": "Difference copied.",
+    },
+    "No Odoo configuration file found.": {
+        "fr": "Aucun fichier de configuration Odoo trouvé.",
+        "en": "No Odoo configuration file found.",
+    },
+    "odoo_bin.sh not found.": {
+        "fr": "odoo_bin.sh est introuvable.",
+        "en": "odoo_bin.sh not found.",
+    },
+    "The Odoo shell returned no result: ": {
+        "fr": "Le shell Odoo n'a rien renvoyé : ",
+        "en": "The Odoo shell returned no result: ",
+    },
+    "The Odoo shell exceeded the timeout (s): ": {
+        "fr": "Le shell Odoo a dépassé le délai imparti (s) : ",
+        "en": "The Odoo shell exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from the Odoo shell: ": {
+        "fr": "JSON illisible en sortie du shell Odoo : ",
+        "en": "Unreadable JSON from the Odoo shell: ",
+    },
+    "To restore a view to what its module declares — this "
+    "WRITES to the database, so read the difference first:": {
+        "fr": "Pour rendre à une vue ce que déclare son module — ceci "
+        "ÉCRIT dans la base, lisez donc l'écart d'abord :",
+        "en": "To restore a view to what its module declares — this "
+        "WRITES to the database, so read the difference first:",
+    },
+    "compare with the module source (opens an Odoo shell)": {
+        "fr": "comparer avec la source du module (ouvre un shell Odoo)",
+        "en": "compare with the module source (opens an Odoo shell)",
+    },
+    "fail if the comparison could not be made": {
+        "fr": "échouer si la comparaison n'a pas pu être faite",
+        "en": "fail if the comparison could not be made",
+    },
+    "browse the differences in a full-screen view": {
+        "fr": "naviguer dans les écarts en plein écran",
+        "en": "browse the differences in a full-screen view",
+    },
+    "Flags say a view was touched, not how. They are incomplete "
+    "both ways: a direct SQL write does not set arch_updated, "
+    "and reset_arch clears it. Comparing with the module source "
+    "is what settles it — add --diff.": {
+        "fr": "Les drapeaux disent qu'une vue a été touchée, pas comment. "
+        "Ils sont incomplets dans les deux sens : un write SQL "
+        "direct n'arme pas arch_updated, et reset_arch l'efface. "
+        "Seule la comparaison avec la source du module tranche — "
+        "ajoutez --diff.",
+        "en": "Flags say a view was touched, not how. They are incomplete "
+        "both ways: a direct SQL write does not set arch_updated, "
+        "and reset_arch clears it. Comparing with the module source "
+        "is what settles it — add --diff.",
+    },
+    "Database is Odoo": {
+        "fr": "La base est en Odoo",
+        "en": "Database is Odoo",
+    },
+    "checkout is": {
+        "fr": "le checkout est en",
+        "en": "checkout is",
+    },
+    "views were flagged but hold exactly what their module "
+    "declares: only the comparison could tell.": {
+        "fr": "vues étaient signalées mais portent exactement ce que "
+        "déclare leur module : seule la comparaison pouvait le "
+        "dire.",
+        "en": "views were flagged but hold exactly what their module "
+        "declares: only the comparison could tell.",
+    },
+    "No reference arch, so nothing was compared: ": {
+        "fr": "Aucune arch de référence, donc rien n'a été comparé : ",
+        "en": "No reference arch, so nothing was compared: ",
+    },
+    "Not a terminal: showing the text report instead.": {
+        "fr": "Pas un terminal : affichage du rapport texte à la place.",
+        "en": "Not a terminal: showing the text report instead.",
+    },
+    "To restore this view to what its module declares:": {
+        "fr": "Pour rendre à cette vue ce que déclare son module :",
+        "en": "To restore this view to what its module declares:",
+    },
+    # --- script/analyse : erreurs du socle ---
+    "Invalid database name: ": {
+        "fr": "Nom de base invalide : ",
+        "en": "Invalid database name: ",
+    },
+    "Cannot read from the database: ": {
+        "fr": "Lecture impossible dans la base : ",
+        "en": "Cannot read from the database: ",
+    },
+    "is not an Odoo database.": {
+        "fr": "n'est pas une base Odoo.",
+        "en": "is not an Odoo database.",
+    },
+    "psql is not installed or not in PATH.": {
+        "fr": "psql n'est pas installé, ou absent du PATH.",
+        "en": "psql is not installed or not in PATH.",
+    },
+    "Query exceeded the timeout (s): ": {
+        "fr": "La requête a dépassé le délai imparti (s) : ",
+        "en": "Query exceeded the timeout (s): ",
+    },
+    "Unreadable JSON from psql: ": {
+        "fr": "JSON illisible en sortie de psql : ",
+        "en": "Unreadable JSON from psql: ",
+    },
+    "shared library, nothing to run here.": {
+        "fr": "bibliothèque partagée, rien à lancer ici.",
+        "en": "shared library, nothing to run here.",
+    },
+    "Runnable tools in this directory:": {
+        "fr": "Outils exécutables de ce répertoire :",
+        "en": "Runnable tools in this directory:",
+    },
+    "No analysis tool here yet.": {
+        "fr": "Aucun outil d'analyse ici pour l'instant.",
+        "en": "No analysis tool here yet.",
+    },
+    "From the menu:": {"fr": "Depuis le menu :", "en": "From the menu:"},
+    "in the dump": {"fr": "dans le dump", "en": "in the dump"},
+    "Weight in the dump": {
+        "fr": "Poids dans le dump",
+        "en": "Weight in the dump",
+    },
+    # --- script/analyse : poids du schéma ---
+    "Schema analysis": {
+        "fr": "Analyse du schéma",
+        "en": "Schema analysis",
+    },
+    "Database size": {
+        "fr": "Poids de la base",
+        "en": "Database size",
+    },
+    "Tables": {"fr": "Tables", "en": "Tables"},
+    "Models": {"fr": "Modèles", "en": "Models"},
+    "rows": {"fr": "lignes", "en": "rows"},
+    "Models without table": {
+        "fr": "Modèles sans table",
+        "en": "Models without table",
+    },
+    "abstract models have none, by design": {
+        "fr": "les modèles abstraits n'en ont pas, par construction",
+        "en": "abstract models have none, by design",
+    },
+    "ir_model_relation is absent, so m2m tables cannot be told apart from"
+    " orphans: the list below is unreliable.": {
+        "fr": "ir_model_relation est absente : impossible de distinguer une"
+        " table m2m d'une orpheline, la liste ci-dessous n'est pas fiable.",
+        "en": "ir_model_relation is absent, so m2m tables cannot be told apart"
+        " from orphans: the list below is unreliable.",
+    },
+    "Heaviest tables": {
+        "fr": "Tables les plus lourdes",
+        "en": "Heaviest tables",
+    },
+    "All tables, heaviest first": {
+        "fr": "Toutes les tables, de la plus lourde à la plus légère",
+        "en": "All tables, heaviest first",
+    },
+    "use -v to list them all": {
+        "fr": "utilisez -v pour toutes les afficher",
+        "en": "use -v to list them all",
+    },
+    "Every table belongs to an installed model.": {
+        "fr": "Chaque table appartient à un modèle installé.",
+        "en": "Every table belongs to an installed model.",
+    },
+    "Orphan tables": {
+        "fr": "Tables orphelines",
+        "en": "Orphan tables",
+    },
+    "No installed model claims these tables. They are usually left over from"
+    " modules uninstalled without DROP TABLE, and every version upgrade"
+    " carries them along.": {
+        "fr": "Aucun modèle installé ne réclame ces tables. Ce sont le plus"
+        " souvent des reliquats de modules désinstallés sans DROP TABLE, que"
+        " chaque montée de version transporte avec elle.",
+        "en": "No installed model claims these tables. They are usually left"
+        " over from modules uninstalled without DROP TABLE, and every version"
+        " upgrade carries them along.",
+    },
+    "Check what they hold before dropping anything.": {
+        "fr": "Regardez ce qu'elles contiennent avant de supprimer quoi que ce"
+        " soit.",
+        "en": "Check what they hold before dropping anything.",
+    },
+    "Row counts are estimates from the last ANALYZE. Use --exact for real"
+    " counts, at the cost of one full scan per table.": {
+        "fr": "Les nombres de lignes sont estimés d'après le dernier ANALYZE."
+        " Utilisez --exact pour un comptage réel, au prix d'un balayage"
+        " complet par table.",
+        "en": "Row counts are estimates from the last ANALYZE. Use --exact for"
+        " real counts, at the cost of one full scan per table.",
+    },
+    "Report the size of an Odoo database and the tables no installed model"
+    " claims (read-only).": {
+        "fr": "Rapporter le poids d'une base Odoo et les tables qu'aucun"
+        " modèle installé ne réclame (lecture seule).",
+        "en": "Report the size of an Odoo database and the tables no installed"
+        " model claims (read-only).",
+    },
+    "database to inspect": {
+        "fr": "base à examiner",
+        "en": "database to inspect",
+    },
+    "count rows exactly: one full scan per table": {
+        "fr": "compter les lignes exactement : un balayage complet par table",
+        "en": "count rows exactly: one full scan per table",
+    },
+    "how many tables to show (default: 20)": {
+        "fr": "nombre de tables à afficher (défaut : 20)",
+        "en": "how many tables to show (default: 20)",
+    },
+    "list every table": {
+        "fr": "afficher toutes les tables",
+        "en": "list every table",
+    },
+    "output JSON": {"fr": "sortie JSON", "en": "output JSON"},
+    "path to an Odoo config file": {
+        "fr": "chemin d'un fichier de configuration Odoo",
+        "en": "path to an Odoo config file",
+    },
+    # Courriel
+    "mail_menu": {
+        "fr": "Courriel - Lire et envoyer du courriel",
+        "en": "Mail - Read and send email",
+    },
+    "mail_ai_question": {
+        "fr": "Question IA - Poser une question à un modèle",
+        "en": "AI question - Ask a model a question",
+    },
+    "mail_open_tui": {
+        "fr": "Ouvrir le client courriel (TUI)",
+        "en": "Open the mail client (TUI)",
+    },
+    "mail_accounts_menu": {"fr": "Comptes", "en": "Accounts"},
+    "mail_sync_now": {
+        "fr": "Synchroniser maintenant",
+        "en": "Synchronise now",
+    },
+    "mail_cache_menu": {"fr": "Cache", "en": "Cache"},
+    "mail_account_list": {"fr": "Lister les comptes", "en": "List accounts"},
+    "mail_account_add": {"fr": "Ajouter un compte", "en": "Add an account"},
+    "mail_account_delete": {
+        "fr": "Supprimer un compte",
+        "en": "Delete an account",
+    },
+    "mail_account_template": {
+        "fr": "Générer un modèle accounts.json",
+        "en": "Generate an accounts.json template",
+    },
+    "mail_account_test": {
+        "fr": "Tester la connexion d'un compte",
+        "en": "Test an account connection",
+    },
+    "mail_cache_default_mode": {
+        "fr": "Mode de cache par défaut",
+        "en": "Default cache mode",
+    },
+    "mail_cache_account_mode": {
+        "fr": "Mode de cache d'un compte",
+        "en": "Cache mode of one account",
+    },
+    "mail_cache_size_purge": {
+        "fr": "Taille du cache et purge",
+        "en": "Cache size and purge",
+    },
+    "mail_no_account": {
+        "fr": "Aucun compte configuré. Ajoutez-en un d'abord.",
+        "en": "No account configured. Add one first.",
+    },
+    "mail_ask_name": {
+        "fr": "Nom court du compte : ",
+        "en": "Short account name: ",
+    },
+    "mail_ask_email": {"fr": "Adresse courriel : ", "en": "Email address: "},
+    "mail_ask_display_name": {
+        "fr": "Nom affiché (facultatif) : ",
+        "en": "Display name (optional): ",
+    },
+    "mail_ask_preset": {"fr": "Fournisseur : ", "en": "Provider: "},
+    "mail_ask_password": {"fr": "Mot de passe : ", "en": "Password: "},
+    "mail_ask_imap_host": {"fr": "Serveur IMAP : ", "en": "IMAP server: "},
+    "mail_ask_smtp_host": {"fr": "Serveur SMTP : ", "en": "SMTP server: "},
+    "mail_ask_account": {"fr": "Quel compte ? ", "en": "Which account? "},
+    "mail_ask_mode": {
+        "fr": "Mode (clear / encrypted / ephemeral) : ",
+        "en": "Mode (clear / encrypted / ephemeral): ",
+    },
+    "mail_app_password_note": {
+        "fr": "Ce fournisseur exige un mot de passe d'application.",
+        "en": "This provider requires an app password.",
+    },
+    "mail_account_saved": {"fr": "Compte enregistré.", "en": "Account saved."},
+    "mail_account_save": {"fr": "Enregistrer", "en": "Save"},
+    "mail_account_missing_fields": {
+        "fr": "Nom, adresse et mot de passe sont requis.",
+        "en": "Name, address and password are required.",
+    },
+    "mail_account_add_unavailable": {
+        "fr": "Ajout de compte indisponible dans ce contexte.",
+        "en": "Adding an account is unavailable in this context.",
+    },
+    "mail_account_deleted": {
+        "fr": "Compte supprimé.",
+        "en": "Account deleted.",
+    },
+    "mail_connection_ok": {
+        "fr": "Connexion réussie.",
+        "en": "Connection succeeded.",
+    },
+    "mail_connection_failed": {
+        "fr": "Connexion échouée :",
+        "en": "Connection failed:",
+    },
+    "mail_template_written": {
+        "fr": "Modèle écrit dans",
+        "en": "Template written to",
+    },
+    "mail_purge_confirm": {
+        "fr": "Effacer tout le cache de ce compte ? (o/N) ",
+        "en": "Erase this account's whole cache? (y/N) ",
+    },
+    "mail_purged": {"fr": "Cache effacé.", "en": "Cache erased."},
+    "mail_no_vault": {
+        "fr": "Aucun coffre disponible : installez pykeepass ou déverrouillez un trousseau système.",
+        "en": "No vault available: install pykeepass or unlock a system keyring.",
+    },
+    # Coffre KeePass, côté infrastructure partagée (`kdbx_manager`) : ces
+    # messages servent à TOUT le CLI, pas seulement au courriel.
+    "kdbx_vault_is": {
+        "fr": "Coffre KeePass :",
+        "en": "KeePass vault:",
+    },
+    "kdbx_ask_password": {
+        "fr": "Mot de passe du coffre (vide pour abandonner) : ",
+        "en": "Vault password (empty to give up): ",
+    },
+    "kdbx_wrong_password": {
+        "fr": "Mot de passe incorrect pour ce coffre KeePass.",
+        "en": "Wrong password for this KeePass vault.",
+    },
+    "kdbx_give_up": {
+        "fr": "Coffre non ouvert : on abandonne.",
+        "en": "Vault not opened: giving up.",
+    },
+    "mail_kdbx_none_configured": {
+        "fr": "Aucun fichier kdbx n'est configuré.",
+        "en": "No kdbx file is configured.",
+    },
+    "mail_kdbx_menu_create": {
+        "fr": "Créer un nouveau fichier .kdbx",
+        "en": "Create a new .kdbx file",
+    },
+    "mail_kdbx_menu_choose": {
+        "fr": "Choisir un fichier existant",
+        "en": "Choose an existing file",
+    },
+    "mail_kdbx_menu_cancel": {"fr": "Annuler", "en": "Cancel"},
+    "mail_kdbx_ask_choice": {"fr": "Votre choix : ", "en": "Your choice: "},
+    "mail_kdbx_ask_path_new": {
+        "fr": "Chemin du nouveau fichier kdbx",
+        "en": "Path for the new kdbx file",
+    },
+    "mail_kdbx_ask_path_existing": {
+        "fr": "Chemin du fichier kdbx existant : ",
+        "en": "Path to the existing kdbx file: ",
+    },
+    "mail_kdbx_ask_password": {
+        "fr": "Mot de passe du coffre : ",
+        "en": "Vault password: ",
+    },
+    "mail_kdbx_ask_password_confirm": {
+        "fr": "Confirmez le mot de passe : ",
+        "en": "Confirm the password: ",
+    },
+    "mail_kdbx_password_mismatch": {
+        "fr": "Les mots de passe ne correspondent pas.",
+        "en": "Passwords do not match.",
+    },
+    "mail_kdbx_path_not_found": {
+        "fr": "Ce fichier n'existe pas :",
+        "en": "This file does not exist:",
+    },
+    "mail_kdbx_created": {
+        "fr": "Fichier kdbx créé :",
+        "en": "Kdbx file created:",
+    },
+    "mail_kdbx_path_recorded": {
+        "fr": "Fichier kdbx configuré :",
+        "en": "Kdbx file configured:",
+    },
+    "mail_no_password_stored": {
+        "fr": "Aucun mot de passe enregistré pour ce compte.",
+        "en": "No password stored for this account.",
+    },
+    "mail_install_textual": {
+        "fr": "Installez textual pour le client courriel (pip).",
+        "en": "Install textual for the mail client (pip).",
+    },
+    "mail_accounts": {"fr": "Comptes", "en": "Accounts"},
+    "mail_search": {"fr": "Rechercher…", "en": "Search…"},
+    "mail_search_clear": {
+        "fr": "Effacer la recherche",
+        "en": "Clear search",
+    },
+    "mail_from": {"fr": "De :", "en": "From:"},
+    "mail_to": {"fr": "À :", "en": "To:"},
+    "mail_cc": {"fr": "Cc :", "en": "Cc:"},
+    "mail_subject": {"fr": "Objet :", "en": "Subject:"},
+    "mail_date": {"fr": "Date", "en": "Date"},
+    "mail_send": {"fr": "Envoyer", "en": "Send"},
+    "mail_attachments": {"fr": "Pièces jointes :", "en": "Attachments:"},
+    "mail_attachments_paths": {
+        "fr": "Pièces jointes (chemins séparés par des points-virgules)",
+        "en": "Attachments (semicolon-separated paths)",
+    },
+    "mail_browse": {"fr": "Parcourir…", "en": "Browse…"},
+    "mail_browse_failed": {
+        "fr": "Sélecteur de fichiers impossible :",
+        "en": "File browser unavailable:",
+    },
+    "mail_no_subject": {"fr": "(sans objet)", "en": "(no subject)"},
+    "mail_body_needs_network": {
+        "fr": "Corps non téléchargé — connexion requise.",
+        "en": "Body not downloaded — connection required.",
+    },
+    "mail_body_error": {
+        "fr": "Lecture du corps impossible :",
+        "en": "Cannot read the body:",
+    },
+    "mail_flag_error": {
+        "fr": "Drapeau non transmis au serveur :",
+        "en": "Flag not sent to the server:",
+    },
+    "mail_syncing": {"fr": "Synchronisation de", "en": "Synchronising"},
+    "mail_new_messages": {"fr": "nouveaux messages", "en": "new messages"},
+    "mail_errors": {"fr": "erreurs", "en": "errors"},
+    "mail_folders_resynced": {
+        "fr": "dossiers resynchronisés (UIDVALIDITY changé) :",
+        "en": "folders resynchronised (UIDVALIDITY changed):",
+    },
+    "mail_offline_cannot_send": {
+        "fr": "Compte hors ligne : envoi impossible.",
+        "en": "Account offline: cannot send.",
+    },
+    "mail_sent_to": {"fr": "Envoyé à", "en": "Sent to"},
+    "mail_sent_not_filed": {
+        "fr": "envoyé, mais pas classé dans Envoyés",
+        "en": "sent, but not filed in Sent",
+    },
+    "mail_nothing_to_reply_to": {
+        "fr": "Aucun message sélectionné.",
+        "en": "No message selected.",
+    },
+    "mail_nothing_to_forward": {
+        "fr": "Aucun message à transférer.",
+        "en": "No message to forward.",
+    },
+    "mail_attachment_not_found": {
+        "fr": "Pièce jointe introuvable.",
+        "en": "Attachment not found.",
+    },
+    "mail_no_attachment": {
+        "fr": "Ce message n'a pas de pièce jointe.",
+        "en": "This message has no attachment.",
+    },
+    "mail_save_failed": {
+        "fr": "Enregistrement impossible :",
+        "en": "Cannot save:",
+    },
+    "mail_saved_to": {"fr": "Enregistré dans", "en": "Saved to"},
+    "mail_log_binding": {"fr": "Journal", "en": "Log"},
+    "mail_log_close": {"fr": "Fermer", "en": "Close"},
+    "mail_log_tail_heading": {
+        "fr": "Journal (fin) :",
+        "en": "Log (tail):",
+    },
+    "mail_log_errors_heading": {
+        "fr": "Erreurs de synchronisation (session en cours) :",
+        "en": "Sync errors (current session):",
+    },
+    "mail_log_missing": {
+        "fr": "journal introuvable",
+        "en": "log not found",
+    },
+    "mail_log_empty": {"fr": "journal vide", "en": "log empty"},
+    "mail_log_unreadable": {
+        "fr": "journal illisible",
+        "en": "log unreadable",
+    },
+    "mail_log_no_errors": {
+        "fr": "Aucune erreur de synchronisation dans cette session.",
+        "en": "No sync errors in this session.",
+    },
+    "mail_layout_binding": {"fr": "Vue", "en": "View"},
+    "mail_layout_switched": {"fr": "Disposition :", "en": "Layout:"},
+    "mail_layout_columns": {"fr": "Colonnes", "en": "Columns"},
+    "mail_layout_split": {"fr": "Partagée", "en": "Split"},
+    "mail_layout_stacked": {"fr": "Empilée", "en": "Stacked"},
+    "mail_pane_grow_binding": {"fr": "Agrandir volet", "en": "Grow pane"},
+    "mail_pane_shrink_binding": {
+        "fr": "Rétrécir volet",
+        "en": "Shrink pane",
+    },
+    "mail_pane_reset_binding": {
+        "fr": "Tailles par défaut",
+        "en": "Reset sizes",
+    },
+    "mail_pane_reset_done": {
+        "fr": "Tailles des volets réinitialisées.",
+        "en": "Pane sizes reset.",
+    },
+    "mail_pane_splitter_tooltip": {
+        "fr": "Glisser pour redimensionner",
+        "en": "Drag to resize",
+    },
+    "mail_fullscreen_binding": {"fr": "Plein écran", "en": "Full screen"},
+    # -- Libellés des raccourcis de MailApp (suffixe _binding) -------------
+    # Ce sont les descriptions des `Binding` de `MailApp` : elles s'affichent
+    # au pied d'écran ET, depuis la tâche 26, dans la fenêtre d'aide (`h`),
+    # qui les lit directement dans `MailApp.BINDINGS`. Le français est repris
+    # MOT POUR MOT de ce qui était écrit en dur avant cette tâche — le pied
+    # d'écran d'un utilisateur francophone ne change pas.
+    "mail_quit_binding": {"fr": "Quitter", "en": "Quit"},
+    "mail_sync_current_binding": {"fr": "Sync", "en": "Sync"},
+    "mail_sync_all_binding": {"fr": "Sync tout", "en": "Sync all"},
+    "mail_back_binding": {"fr": "Retour", "en": "Back"},
+    "mail_search_binding": {"fr": "Rechercher", "en": "Search"},
+    "mail_mark_seen_binding": {"fr": "Lu", "en": "Read"},
+    "mail_mark_unseen_binding": {"fr": "Non lu", "en": "Unread"},
+    "mail_save_attachment_binding": {
+        "fr": "Enregistrer PJ",
+        "en": "Save attachment",
+    },
+    "mail_compose_binding": {"fr": "Écrire", "en": "Compose"},
+    "mail_reply_binding": {"fr": "Répondre", "en": "Reply"},
+    "mail_reply_all_binding": {"fr": "Répondre à tous", "en": "Reply all"},
+    "mail_forward_binding": {"fr": "Transférer", "en": "Forward"},
+    "mail_add_account_binding": {
+        "fr": "Nouveau compte",
+        "en": "New account",
+    },
+    # -- Fenêtre d'aide (touche h) -----------------------------------------
+    # La liste des touches n'est PAS ici : elle est engendrée depuis
+    # `MailApp.BINDINGS` (voir `HelpScreen`), avec les libellés ci-dessus.
+    # Seul ce qu'une liste de touches ne peut pas dire est rédigé ici.
+    "mail_help_binding": {"fr": "Aide", "en": "Help"},
+    "mail_help_close": {"fr": "Fermer", "en": "Close"},
+    "mail_help_title": {
+        "fr": "Aide — client courriel",
+        "en": "Help — mail client",
+    },
+    "mail_help_keys_heading": {
+        "fr": "Raccourcis clavier :",
+        "en": "Keyboard shortcuts:",
+    },
+    "mail_help_notes_heading": {"fr": "Bon à savoir :", "en": "Good to know:"},
+    "mail_help_mouse": {
+        "fr": (
+            "Souris : glisser une barre entre deux volets les redimensionne."
+            " Au clavier, + et - font de même sur le volet qui a le focus, et"
+            " 0 remet les tailles par défaut. Les tailles sont retenues par"
+            " disposition."
+        ),
+        "en": (
+            "Mouse: drag a bar between two panes to resize them. From the"
+            " keyboard, + and - do the same to the focused pane, and 0 resets"
+            " the sizes. Sizes are remembered per layout."
+        ),
+    },
+    "mail_help_layouts": {
+        "fr": (
+            "Dispositions : v passe de colonnes à partagée, puis empilée, puis"
+            " revient à colonnes."
+        ),
+        "en": (
+            "Layouts: v cycles columns, split, stacked, then back to columns."
+        ),
+    },
+    "mail_help_sync": {
+        "fr": (
+            "Synchronisation : r synchronise le compte du dossier sélectionné"
+            " (tous ses dossiers), R synchronise tous les comptes. La"
+            " synchronisation automatique ne tourne QUE tant que le client est"
+            " ouvert, à l'intervalle mail_refresh_sec (300 s par défaut ; 0 la"
+            " désactive)."
+        ),
+        "en": (
+            "Sync: r syncs the account of the selected folder (all its"
+            " folders), R syncs every account. The automatic refresh runs ONLY"
+            " while the client is open, at the mail_refresh_sec interval (300 s"
+            " by default; 0 disables it)."
+        ),
+    },
+    "mail_help_files": {
+        "fr": (
+            "Fichiers : le journal est dans ~/.erplibre/mail.log (la touche l"
+            " en montre la fin), les comptes dans"
+            " ~/.erplibre/mail/accounts.json. Les mots de passe n'y sont JAMAIS"
+            " écrits : ils vivent dans le coffre kdbx ou le trousseau du"
+            " système."
+        ),
+        "en": (
+            "Files: the log lives in ~/.erplibre/mail.log (the l key shows its"
+            " tail), the accounts in ~/.erplibre/mail/accounts.json. Passwords"
+            " are NEVER written there: they live in the kdbx vault or in the"
+            " system keyring."
+        ),
+    },
+    "mail_help_close_hint": {
+        "fr": "Échap ferme cette fenêtre.",
+        "en": "Esc closes this window.",
+    },
+    # -- Exceptions internes au paquet courriel (préfixe mail_err_) --------
+    # Label traduit, données dynamiques (chemins, texte serveur, valeurs de
+    # config) concaténées crues : jamais de traduction d'un message serveur
+    # ou d'un chemin de fichier.
+    #
+    # Quelques messages ont la donnée dynamique AU MILIEU de la phrase : ils
+    # sont donc assemblés à partir de deux clés (voire trois), dans un ordre
+    # FIXE codé au site d'appel plutôt que par une seule clé avec un
+    # emplacement — mail_err_unknown_security + mail_err_expected,
+    # mail_err_key_wrong_length + mail_err_octets_unit,
+    # mail_err_mode_prefix + mail_err_mode_requires_key(_no_vault),
+    # mail_err_imap_connection_prefix / mail_err_smtp_connection_prefix +
+    # mail_err_connection_refused_suffix, et mail_err_keyring_plaintext +
+    # mail_err_keyring_plaintext_hint. L'ordre des mots vit donc dans le
+    # code, pas dans les chaînes traduisibles : une langue à l'ordre des
+    # mots différent devra remplacer ces paires par une convention à
+    # emplacement (ex. `.format()`), pas par une simple concaténation.
+    "mail_err_envelope_too_short": {
+        "fr": "enveloppe trop courte",
+        "en": "envelope too short",
+    },
+    "mail_err_sealed_in_clear_mode": {
+        "fr": "donnée chiffrée lue en mode clair : la clé du compte manque",
+        "en": "encrypted data read in clear mode: the account key is missing",
+    },
+    "mail_err_unknown_envelope": {
+        "fr": "enveloppe inconnue :",
+        "en": "unknown envelope:",
+    },
+    "mail_err_key_wrong_length": {
+        "fr": "la clé doit faire",
+        "en": "the key must be",
+    },
+    "mail_err_octets_unit": {"fr": "octets", "en": "bytes"},
+    "mail_err_cryptography_not_installed": {
+        "fr": "le paquet cryptography n'est pas installé",
+        "en": "the cryptography package is not installed",
+    },
+    "mail_err_decrypt_refused": {
+        "fr": "déchiffrement refusé : clé fausse ou donnée altérée",
+        "en": "decryption refused: wrong key or corrupted data",
+    },
+    "mail_err_envelope_unreadable": {
+        "fr": "enveloppe illisible :",
+        "en": "unreadable envelope:",
+    },
+    "mail_err_mode_prefix": {"fr": "le mode", "en": "mode"},
+    "mail_err_mode_requires_key": {
+        "fr": "exige une clé",
+        "en": "requires a key",
+    },
+    "mail_err_unknown_cache_mode": {
+        "fr": "mode de cache inconnu :",
+        "en": "unknown cache mode:",
+    },
+    "mail_err_file_already_exists": {
+        "fr": "le fichier existe déjà :",
+        "en": "the file already exists:",
+    },
+    "mail_err_invalid_secret_ref": {
+        "fr": "référence de secret invalide :",
+        "en": "invalid secret reference:",
+    },
+    # Notes par fournisseur. Affichées à l'ajout d'un compte ET juste avant
+    # de redemander un mot de passe après un refus : elles doivent donner
+    # l'adresse EXACTE, pas un chemin de menu — Google et Apple déplacent
+    # régulièrement ces pages, et Google cache la sienne.
+    "mail_preset_note_gmail": {
+        "fr": (
+            "Générez-le sur https://myaccount.google.com/apppasswords"
+            " (16 caractères, les espaces sont acceptés). La validation en"
+            " deux étapes doit être active, sinon la page est vide."
+        ),
+        "en": (
+            "Generate one at https://myaccount.google.com/apppasswords"
+            " (16 characters, spaces are accepted). Two-step verification"
+            " must be on, otherwise the page is empty."
+        ),
+    },
+    "mail_preset_note_outlook": {
+        "fr": (
+            "Générez-le sur https://account.microsoft.com/security."
+            " Microsoft ferme l'authentification simple sur les comptes"
+            " grand public : sans mot de passe d'application, il faudra"
+            " OAuth (phase 2, non implémentée)."
+        ),
+        "en": (
+            "Generate one at https://account.microsoft.com/security."
+            " Microsoft is closing basic authentication on consumer"
+            " accounts: without an app password this needs OAuth (phase 2,"
+            " not implemented)."
+        ),
+    },
+    "mail_preset_note_icloud": {
+        "fr": (
+            "Générez-le sur https://account.apple.com, section « Connexion"
+            " et sécurité ». L'authentification à deux facteurs doit être"
+            " active."
+        ),
+        "en": (
+            'Generate one at https://account.apple.com, under "Sign-In and'
+            ' Security". Two-factor authentication must be on.'
+        ),
+    },
+    "mail_preset_note_generic": {
+        "fr": "Saisissez les serveurs de votre fournisseur.",
+        "en": "Enter your provider's servers.",
+    },
+    "mail_ask_app_password": {
+        "fr": "Mot de passe d'application : ",
+        "en": "App password: ",
+    },
+    "mail_err_password_not_ascii": {
+        "fr": (
+            "le mot de passe contient un caractère non ASCII, que ce client"
+            " IMAP ne sait pas transmettre — il n'a pas été envoyé au"
+            " serveur"
+        ),
+        "en": (
+            "the password contains a non-ASCII character this IMAP client"
+            " cannot transmit — it was never sent to the server"
+        ),
+    },
+    "mail_err_no_kdbx_configured": {
+        "fr": "aucun fichier kdbx configuré",
+        "en": "no kdbx file configured",
+    },
+    "mail_err_kdbx_unreadable": {
+        "fr": "le fichier kdbx n'a pas pu être ouvert",
+        "en": "the kdbx file could not be opened",
+    },
+    "mail_err_no_vault_available": {
+        "fr": "aucun coffre disponible : ni kdbx, ni trousseau système",
+        "en": "no vault available: neither kdbx nor system keyring",
+    },
+    "mail_err_keyring_plaintext": {
+        "fr": (
+            "le trousseau du système écrirait le mot de passe en clair"
+            " (backend"
+        ),
+        "en": (
+            "the system keyring would store the password in plaintext"
+            " (backend"
+        ),
+    },
+    "mail_err_keyring_plaintext_hint": {
+        "fr": "Utilisez un fichier kdbx, ou déverrouillez un vrai trousseau.",
+        "en": "Use a kdbx file, or unlock a real keyring.",
+    },
+    "mail_err_unknown_security": {
+        "fr": "sécurité inconnue :",
+        "en": "unknown security:",
+    },
+    "mail_err_expected": {"fr": "(attendu", "en": "(expected"},
+    "mail_err_account_needs_name": {
+        "fr": "un compte doit avoir un nom",
+        "en": "an account must have a name",
+    },
+    "mail_err_invalid_account_name": {
+        "fr": "nom de compte invalide :",
+        "en": "invalid account name:",
+    },
+    "mail_err_account_name_reason": {
+        "fr": "(il sert de nom de dossier et de référence de coffre)",
+        "en": "(it is used as a folder name and vault reference)",
+    },
+    "mail_err_account_unreadable": {
+        "fr": "compte illisible :",
+        "en": "unreadable account:",
+    },
+    "mail_err_unknown_preset": {
+        "fr": "préréglage inconnu :",
+        "en": "unknown preset:",
+    },
+    "mail_err_not_valid_json": {
+        "fr": "n'est pas du JSON valide :",
+        "en": "is not valid JSON:",
+    },
+    "mail_err_should_contain_json_object": {
+        "fr": "devrait contenir un objet JSON",
+        "en": "should contain a JSON object",
+    },
+    "mail_err_duplicate_account_names": {
+        "fr": "noms de compte en double :",
+        "en": "duplicate account names:",
+    },
+    "mail_err_already_exists_relaunch": {
+        "fr": "existe déjà — relancez avec l'option de remplacement",
+        "en": "already exists — rerun with the overwrite option",
+    },
+    "mail_err_symlink_refused": {
+        "fr": "est un lien symbolique : cache refusé",
+        "en": "is a symlink: cache refused",
+    },
+    "mail_err_owned_by_other_user": {
+        "fr": "appartient à un autre utilisateur : cache refusé",
+        "en": "belongs to another user: cache refused",
+    },
+    "mail_err_cache_unreadable": {
+        "fr": "cache illisible, purgez-le et resynchronisez :",
+        "en": "unreadable cache, purge it and resynchronise:",
+    },
+    "mail_err_mode_requires_key_no_vault": {
+        "fr": "exige une clé : aucun coffre fourni",
+        "en": "requires a key: no vault provided",
+    },
+    "mail_err_cache_not_open": {
+        "fr": "cache non ouvert : appelez open() d'abord",
+        "en": "cache not open: call open() first",
+    },
+    "mail_err_unknown_folder_fields": {
+        "fr": "champs de dossier inconnus :",
+        "en": "unknown folder fields:",
+    },
+    "mail_err_unterminated_ampersand": {
+        "fr": "séquence & non terminée",
+        "en": "unterminated & sequence",
+    },
+    "mail_err_server_replied": {
+        "fr": ": le serveur a répondu",
+        "en": ": the server replied",
+    },
+    "mail_err_no_body_for_uid": {
+        "fr": "aucun corps rendu pour l'UID",
+        "en": "no body returned for UID",
+    },
+    "mail_err_imap_connection_prefix": {
+        "fr": "connexion IMAP à",
+        "en": "IMAP connection to",
+    },
+    "mail_err_smtp_connection_prefix": {
+        "fr": "connexion SMTP à",
+        "en": "SMTP connection to",
+    },
+    "mail_err_connection_refused_suffix": {
+        "fr": "refusée :",
+        "en": "refused:",
+    },
+    "mail_err_message_needs_recipient": {
+        "fr": "un message doit avoir au moins un destinataire",
+        "en": "a message must have at least one recipient",
+    },
+    "mail_err_attachment_missing": {
+        "fr": "pièce jointe introuvable :",
+        "en": "attachment not found:",
+    },
+    "mail_err_no_recipient_nothing_sent": {
+        "fr": "aucun destinataire : rien n'a été envoyé",
+        "en": "no recipient: nothing was sent",
+    },
+    "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
 }
 
 

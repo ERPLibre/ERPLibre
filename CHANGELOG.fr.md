@@ -31,12 +31,84 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Application mobile ERPLibre Home, utiliser TODO pour compiler, déployer et personnaliser
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
+- Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
+  Debian, Fedora, Arch) en amd64, arm64 et s390x, avec un menu pour lister,
+  tester, redimensionner, supprimer et nettoyer
+- Interfaces Textual : tableau de bord d'installation, formulaire de
+  déploiement de VM, écran de reprise de migration ; Textual s'installe à la
+  demande
+- Télémétrie de navigation pour TODO, en arbre, en kanban ou en liste
+- Outils de migration pour les vues copy-on-write du site web : prévoir,
+  photographier, comparer, neutraliser et réinitialiser
+- Boîte à outils d'analyse en lecture seule d'une base Odoo
+- Configuration SSH avec ProxyJump récursif, redirection de port et
+  enregistrement des hôtes QEMU dans virt-manager
+- Serveur de notifications NTFY auto-hébergé
+- Politique d'IA générative, adoptant celle de l'OCA
+- Agents et commandes Claude Code
+- Serveur git local pour partager du code entre machines
+- Tests unitaires pour la configuration, la refactorisation et les composants
+  non couverts, avec un plan de test bilingue
+- Lecture et envoi de courriel depuis le CLI TODO, en IMAP et SMTP
+- L'analyse de base lit un zip de sauvegarde tel quel, sans le restaurer
+- Menu de gestion RTK
+- Menu d'outils d'assistance IA, avec la commande de commit Claude Code
+- Menu de déploiement : cloner ERPLibre sur un hôte distant, configurer sshfs,
+  et des cibles make pour le déploiement SSH
+- Commandes de sauvegarde et d'effacement de base, et un nommage plus clair à
+  la restauration
+- Correctif git, dépôt distant git et configuration vim depuis le menu
+- Vérification de sécurité de l'environnement Python
+- Odoo 18 lit les fichiers STL (OpenCAD)
+- Mobile : whisper.cpp et sentencepiece au manifeste, un script de test mobile,
+  et le contrat d'API de synchronisation Odoo
+- Entrée de FAQ sur wkhtmltopdf pour les distributions récentes
+- brin_advisor et brin_cluster : recommander et appliquer le bon index
+  PostgreSQL pour un modèle Odoo
 
 ## Modifié
 
 - Support Docker postgresql 18
 - Script de formatage recherche les fichiers diff dans chaque dépôt
 - Support de la neutralisation de base de données depuis Odoo
+- L'installation prend en charge Fedora, Debian, Ubuntu et Arch Linux
+- La synchronisation des dépôts et l'installation poetry tournent en
+  parallèle, jusqu'à 50 % plus rapide sur une connexion lente
+- Les modules extra CybroOdoo deviennent optionnels, suivis par version d'Odoo
+- Node.js 22, exigé par Capacitor 8 pour l'application mobile
+- Poetry et repo sont silencieux par défaut ; EL_VERBOSE rétablit la sortie
+- Menus TODO regroupés en sections avec icônes, et texte anglais utilisé comme
+  clé i18n
+- Documentation bilingue, générée depuis les sources .base.md
+- Une VM hérite du fuseau horaire de l'hôte qui la crée
+- Le premier démarrage n'attend plus snapd, la génération de locales ni l'agent
+- apt prend le miroir joignable le plus rapide avant le dépôt officiel
+- Selenium : téléchargement via un hub réseau, SVG vers PNG, détection
+  d'erreurs, clics multiples et pilotes à jour
+- Odoo peut tourner sur une base personnalisée ; configuration de queue_job et
+  options de redirection SSH dans le menu
+- Tuer un processus par son port demande confirmation, avec un menu interactif
+- LinuxMint 22.3 pris en charge
+- Dépendances Odoo 18 : flanker, orjson, python-magic, tldextract, PyYAML
+- Année de copyright portée à 2026
+
+## Corrigé
+
+- Une installation en échec n'est plus rapportée comme réussie : le code de
+  sortie remonte toute la chaîne
+- --with_extra s'applique désormais à un environnement déjà installé
+- Le chemin d'addons ne pointe plus vers un dépôt que le manifeste Odoo 18 ne
+  clone jamais
+- repo init reçoit un nom de branche, une installation neuve n'échoue plus
+- Le suivi d'installation suit une VM dont le bail DHCP change
+- Installation sur Debian 13, Fedora et Ubuntu 26.04 : verrou apt, wkhtmltopdf,
+  SELinux et le compilateur C manquant
+- Accents de la documentation et génération markdown en parallèle
+
+## Sécurité
+
+- Les mots de passe et jetons sont caviardés avant l'affichage ou la
+  journalisation d'une commande
 
 
 ## [1.6.0] - 2025-04-25

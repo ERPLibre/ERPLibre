@@ -6,6 +6,7 @@ import ast
 import configparser
 import datetime
 import getpass
+import grp
 import inspect
 import json
 import logging
@@ -26,9 +27,9 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
+from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
-from script.todo import todo_prefs
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
@@ -129,7 +130,7 @@ class TODO:
         help_info = f"""{self._menu_header()}
 [1] {t("Execute")}
 [2] {t("Install")}
-[3] {t("Question")}
+[3] {t("Assistant")}
 [4] {t("Fork - Open TODO in a new tab")}
 [5] {t("Navigation telemetry (TUI)")}
 [6] {t("Configuration")}
@@ -156,7 +157,7 @@ class TODO:
             elif status == "2":
                 self.prompt_install()
             elif status == "3":
-                self.execute_prompt_ia()
+                self.prompt_assistant()
             elif status == "4":
                 # cmd = (
                 #     f"gnome-terminal --tab -- bash -c 'source"
@@ -176,7 +177,27 @@ class TODO:
         print(status)
         # manipuler()
 
-    def execute_prompt_ia(self):
+    def prompt_assistant(self):
+        """Ce qui s'adresse à l'humain : poser une question, lire son courriel."""
+        from script.todo.mail.menu import prompt_execute_mail
+
+        while True:
+            help_info = f"""{self._menu_header()}
+[1] {t("mail_ai_question")}
+[2] {t("mail_menu")}
+[0] {t("Back")}"""
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._assistant_question()
+            elif status == "2":
+                prompt_execute_mail(self)
+            else:
+                print(t("Command not found !"))
+
+    def _assistant_question(self):
         while True:
             help_info = f"""{self._menu_header()}
 [0] {t("Back")}
@@ -215,22 +236,23 @@ class TODO:
 
 ── {t("Data")} ──
 [6] {t("Database - Database tools")}
+[7] {t("Analyse - Odoo database analysis")}
 
 ── {t("Sources & documentation")} ──
-[7] {t("Git - Git tools")}
-[8] {t("Doc - Documentation search")}
+[8] {t("Git - Git tools")}
+[9] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[9] {t("GPT code - AI assistant tools")}
-[10] {t("Automation - Demonstration of developed features")}
+[10] {t("GPT code - AI assistant tools")}
+[11] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[11] {t("Deploy - Deploy ERPLibre locally")}
-[12] {t("Network - Network tools")}
-[13] {t("Security - Dependency security audit")}
+[12] {t("Deploy - Deploy ERPLibre locally")}
+[13] {t("Network - Network tools")}
+[14] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[14] {t("Language - Change language / Changer la langue")}
+[15] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -263,34 +285,38 @@ class TODO:
                 if status is not False:
                     return
             elif status == "7":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_analyse()
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "14":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "15":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -519,7 +545,12 @@ class TODO:
             print(f"{t('Will execute:')} {bash_command}")
             self.execute.exec_command_live(bash_command, source_erplibre=False)
 
-        command = instance.get("Command:")
+        # Clé de CONFIGURATION, pas une chaîne d'interface : le passage aux
+        # clés i18n en texte anglais (4fc15c3) a renommé celle-ci en
+        # « Command: », le libellé affiché. Plus aucune entrée de todo.json
+        # ne correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait
+        # plus rien — sans erreur, puisque le `if` était simplement faux.
+        command = instance.get("command")
         if command:
             self.prompt_execute_selenium(
                 command=command, extra_cmd_web_login=extra_cmd_web_login
@@ -535,12 +566,13 @@ class TODO:
     _MENU_LABELS = {
         "run": "TODO",
         "prompt_execute": "Execute",
-        "execute_prompt_ia": "Question",
+        "prompt_assistant": "Assistant",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
         "prompt_execute_config": "Config",
         "prompt_execute_database": "Database",
+        "prompt_execute_analyse": "Analyse",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
@@ -582,9 +614,8 @@ class TODO:
         """Ouvre le TUI de télémétrie (arbre/Kanban). Une commande choisie est
         exécutée au retour (hors du TUI) ; on propose ensuite de REVENIR (l'état
         et la position du curseur sont restaurés) ou de quitter."""
-        from script.todo.todo_telemetry import run_tui
-
         from script.todo import textual_setup
+        from script.todo.todo_telemetry import run_tui
 
         if not textual_setup.ensure():
             return
@@ -1307,17 +1338,34 @@ class TODO:
     # La première ligne est indispensable : sans virsh, la boucle ne tourne
     # simplement pas et la sonde sortirait VIDE avec un code 0 — impossible
     # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
+    # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
+    #
+    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
+    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
+    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
+    # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
+    #
+    # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
+    # utilisateur non root tombe sur qemu:///session, qui répond correctement…
+    # une liste VIDE. On aurait alors « QEMU présent, aucune VM », ce qui est
+    # pire qu'une erreur puisque c'est plausible.
+    #
+    # Trois réponses et non deux : « denied » distingue « virsh est là mais
+    # inaccessible » de « pas de QEMU ici », deux situations qui appellent des
+    # gestes opposés.
     _QEMU_SSH_PROBE = (
+        'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
+        '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
         "if ! command -v virsh >/dev/null 2>&1; then "
         "printf 'LIBVIRT\\tno\\n'; exit 0; fi; "
-        "vms=$(sudo virsh list --all --name 2>/dev/null) || "
-        "{ printf 'LIBVIRT\\tno\\n'; exit 0; }; "
+        "vms=$(vsh list --all --name) || "
+        "{ printf 'LIBVIRT\\tdenied\\n'; exit 0; }; "
         "printf 'LIBVIRT\\tyes\\n'; "
         "for n in $vms; do "
-        'ip=$(sudo virsh domifaddr "$n" --source lease 2>/dev/null '
+        'ip=$(vsh domifaddr "$n" --source lease '
         "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' | head -1); "
         'if [ -z "$ip" ]; then '
-        'ip=$(sudo virsh domifaddr "$n" --source agent 2>/dev/null '
+        'ip=$(vsh domifaddr "$n" --source agent '
         "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
         "| grep -v '^127\\.' | head -1); fi; "
         'printf "%s\\t%s\\n" "$n" "$ip"; done'
@@ -1750,17 +1798,22 @@ class TODO:
             detail = (res.stderr or "").strip().splitlines()
             message = detail[-1] if detail else f"exit {res.returncode}"
             return self._ssh_error_kind(res.stderr), message
-        has_libvirt = False
+        libvirt = "no"
         found = []
         for line in res.stdout.splitlines():
             parts = line.strip().split("\t")
             if len(parts) != 2 or not parts[0]:
                 continue
             if parts[0] == "LIBVIRT":
-                has_libvirt = parts[1].strip() == "yes"
+                libvirt = parts[1].strip()
                 continue
             found.append((parts[0], parts[1].strip()))
-        return ("ok" if has_libvirt else "nolibvirt"), found
+        if libvirt == "yes":
+            return "ok", found
+        # « denied » : virsh est installé mais refuse de répondre — sudo
+        # interactif, ou utilisateur hors du groupe libvirt. Le confondre avec
+        # « pas de QEMU » envoyait chercher un problème qui n'existe pas.
+        return ("denied" if libvirt == "denied" else "nolibvirt"), found
 
     def _qemu_ssh_walk(self, roots, max_depth):
         """Descend le parc depuis `roots` et écrit un ProxyJump par niveau.
@@ -1837,8 +1890,18 @@ class TODO:
                     )
                     print(f"  ⏭  {parent}: {label} — {found}")
                     continue
-                has_libvirt = status == "ok"
-                if not has_libvirt:
+                if status == "denied":
+                    # virsh est là mais ne répond pas : c'est un DROIT qui
+                    # manque, pas un logiciel. Le dire, et donner le geste.
+                    print(
+                        f"  🔒 {parent}: "
+                        f"{t('virsh present but not accessible')}"
+                    )
+                    print(
+                        f"       {t('Add the user to the libvirt group there:')}"
+                    )
+                    continue
+                if status != "ok":
                     print(f"  ·  {parent}: {t('no QEMU/libvirt here')}")
                     continue
                 # Une machine avec QEMU vaut sa connexion virt-manager, même
@@ -3850,8 +3913,9 @@ class TODO:
         `timeout` : délai max PAR VM (borne l'attente d'une VM sans IP). Un
         BATTEMENT toutes les 30 s liste les VM encore en attente -> jamais de
         silence prolongé qui donne l'impression d'un blocage."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         from concurrent.futures import TimeoutError as _FTimeout
+        from concurrent.futures import as_completed
 
         labels = labels or {}
         print(
@@ -4182,7 +4246,15 @@ class TODO:
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
         if "install_odoo" in final_cmd:
-            final_cmd = f"{final_cmd} && {self._qemu_odoo_service_cmd(prod)}"
+            # Le snippet de service est une SUITE d'instructions séparées par
+            # « ; ». Collé tel quel après « && », l'opérateur ne lie que la
+            # première : tout le reste s'exécute même quand le make a échoué, et
+            # comme « systemctl enable » réussit, la commande distante rend 0 —
+            # l'install était rapportée ✅ alors qu'elle avait échoué. « set -e »
+            # ne rattrape pas : il n'interrompt pas sur un maillon d'une liste
+            # « && ». Les accolades font porter le && sur le bloc entier.
+            svc = self._qemu_odoo_service_cmd(prod).strip().rstrip(";")
+            final_cmd = f"{final_cmd} && {{ {svc}; }}"
         # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
         # Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
         # pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
@@ -4207,6 +4279,15 @@ class TODO:
                 "sudo systemctl disable --now dnf-automatic.timer "
                 "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
                 "fi; "
+                # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
+                # « systemd-analyze critical-chain » sur une VM s390x —
+                # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
+                # n'installe de snap : c'est du temps payé pour rien, à chaque
+                # démarrage. On désactive plutôt que désinstaller, pour rester
+                # réversible d'un « systemctl enable ».
+                "sudo systemctl disable --now snapd.seeded.service "
+                "snapd.service snapd.socket snapd.apparmor.service "
+                ">/dev/null 2>&1 || true; "
             )
         return (
             "set -e; "
@@ -4762,7 +4843,19 @@ class TODO:
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
 
     def _qemu_build_deploy_parts(
-        self, d, v, arch, name, eram, evcpus, disk, ssh_key, branch, dry_run
+        self,
+        d,
+        v,
+        arch,
+        name,
+        eram,
+        evcpus,
+        disk,
+        ssh_key,
+        branch,
+        dry_run,
+        timezone=None,
+        locale=None,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -4789,6 +4882,13 @@ class TODO:
             parts += ["--arch", arch]
         if ssh_key:
             parts += ["--ssh-key", ssh_key]
+        if timezone:
+            # Toujours explicite, jamais implicite : la commande affichée en
+            # dry-run doit produire la même VM si on la rejoue depuis une autre
+            # machine, dont le fuseau serait différent.
+            parts += ["--timezone", timezone]
+        if locale:
+            parts += ["--locale", locale]
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
             bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
@@ -4814,6 +4914,8 @@ class TODO:
             spec.get("ssh_key"),
             install["branch"] if install else None,
             dry_run=dry_run,
+            timezone=spec.get("timezone"),
+            locale=spec.get("locale"),
         )
 
     # ---------------------------------------------------------------- #
@@ -4877,6 +4979,112 @@ class TODO:
         existing = [vm["name"] for vm in vms if vm["name"] in known]
         return pending, existing
 
+    def _qemu_check_libvirt_group(self):
+        """Prévient si virsh n'est pas joignable sans sudo, et propose de régler.
+
+        Le suivi d'installation tourne DÉTACHÉ, sans tty : il ne peut pas
+        répondre à une demande de mot de passe. « sudo -n » y échoue sur tout
+        hôte exigeant une authentification interactive (vécu sur erplibre01 avec
+        sudo-rs), et la VM devient alors introuvable dès que son bail DHCP
+        change. Le groupe libvirt est la seule voie qui n'exige ni root ni tty.
+
+        Vérifié AVANT de créer quoi que ce soit : découvrir le problème après
+        vingt minutes d'installation coûte bien plus cher qu'une question ici.
+        """
+        probe = subprocess.run(
+            ["virsh", "--connect", "qemu:///system", "list", "--name"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode == 0:
+            return  # joignable sans sudo : rien à signaler
+
+        user = getpass.getuser()
+        # Être dans /etc/group ne suffit pas : les groupes d'un processus sont
+        # figés à l'ouverture de session. Distinguer les deux cas évite de
+        # proposer un usermod déjà fait, et dit la vraie action attendue.
+        try:
+            declared = user in grp.getgrnam("libvirt").gr_mem
+        except KeyError:
+            declared = False
+        try:
+            active = grp.getgrnam("libvirt").gr_gid in os.getgroups()
+        except KeyError:
+            active = False
+
+        print(f"\n⚠  {t('virsh cannot reach qemu:///system without sudo.')}")
+        print(f"   {t('The install monitor runs detached and cannot type a')}")
+        print(
+            f"   {t('password: it would lose the VM when its lease moves.')}"
+        )
+
+        if declared and not active:
+            print(
+                f"\n   {t('You are in the libvirt group, but this session')}"
+            )
+            print(f"   {t('predates it. Log out and back in, or run:')}")
+            print(f"     newgrp libvirt")
+            return
+        if active:
+            # Groupe présent mais virsh échoue quand même : libvirtd arrêté,
+            # socket absente… La cause n'est pas le groupe, ne pas la maquiller.
+            print(f"\n   {t('Group is active, so the cause is elsewhere:')}")
+            print(f"     {(probe.stderr or '').strip()[:200]}")
+            return
+
+        cmd = f"sudo usermod -aG libvirt {shlex.quote(user)}"
+        print(f"\n   {t('Add your user to the libvirt group?')}")
+        print(f"     {cmd}")
+        if not self._is_yes_default_yes(input(t("Run it now? (Y/n): "))):
+            return
+        if os.system(cmd) != 0:
+            print(f"   ⚠ {t('Command failed.')}")
+            return
+        print(f"\n✅ {t('Added. Log out and back in for it to take effect,')}")
+        print(f"   {t('or start a new shell with: newgrp libvirt')}")
+
+    def _qemu_check_kvm(self):
+        """Prévient quand les VM seront ÉMULÉES faute de KVM.
+
+        « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
+        VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
+        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
+        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
+        d'attendre vaut mieux que de chercher la cause après."""
+        try:
+            mod = self._qemu_import_module()
+            if mod.kvm_available():
+                return
+        except Exception:
+            return
+        try:
+            module = mod.nested_module()
+        except Exception:
+            module = "kvm"
+        print(f"\n⚠  {t('KVM is unavailable: the VMs will be EMULATED.')}")
+        print(f"   {t('A boot then takes 10-15 min, not under a minute.')}")
+        print(
+            f"   {t('Cause: /dev/kvm is missing. This host is itself a VM')}"
+        )
+        print(
+            f"   {t('whose hypervisor does not expose nested virtualization.')}"
+        )
+        print(f"\n   {t('To fix it ON THE PARENT HYPERVISOR, not here:')}")
+        print(
+            f'     echo "options {module} nested=1"'
+            f" | sudo tee /etc/modprobe.d/kvm-nested.conf"
+        )
+        print(f"     sudo modprobe -r {module} && sudo modprobe {module}")
+        print(
+            f"   {t('then set this VM to the host-passthrough CPU mode and')}"
+        )
+        print(
+            f"   {t('stop it and start it again - a reboot is not enough.')}"
+        )
+        print(
+            f"\n   {t('Without access to that hypervisor, nothing to do here.')}"
+        )
+
     def _qemu_ask_ui(self):
         """Interface du déploiement : formulaire TUI ou invites en ligne.
         La préférence peut trancher d'avance (menu Configuration) ; « ask »
@@ -4927,6 +5135,7 @@ class TODO:
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
             "ssh_key": self._qemu_default_ssh_key(),
+            "timezone": self._qemu_host_timezone(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             "base_vcpus": self._QEMU_BASE_VCPUS,
@@ -4961,6 +5170,9 @@ class TODO:
         last = self._qemu_last_run_line()
         if last:
             print(last)
+
+        self._qemu_check_libvirt_group()
+        self._qemu_check_kvm()
 
         if self._qemu_ask_ui() == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
@@ -5197,6 +5409,41 @@ class TODO:
                 )
                 print(f"  ⚠ {warn}")
 
+    def _qemu_host_timezone(self):
+        """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
+        est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
+        pas proposer un défaut différent de celui réellement appliqué."""
+        try:
+            mod = self._qemu_import_module()
+            return mod.host_timezone()
+        except Exception:
+            return "UTC"
+
+    def _qemu_ask_timezone(self):
+        """Fuseau des VM à créer, celui de l'hôte par défaut.
+
+        Une VM qui hérite du fuseau de son opérateur horodate ses journaux et
+        ses bases comme lui ; en UTC l'écart ne se remarque qu'après coup."""
+        default = self._qemu_host_timezone()
+        answer = input(f"{t('Timezone for the VMs')} ({default}): ").strip()
+        if not answer:
+            return default
+        # Un fuseau inconnu ne casse pas cloud-init : il l'ignore en silence et
+        # la VM reste en UTC. Mieux vaut le refuser ici que le découvrir plus
+        # tard sur des horodatages faux.
+        if not os.path.exists(os.path.join("/usr/share/zoneinfo", answer)):
+            print(f"⚠  {t('Unknown timezone, keeping')} {default}")
+            return default
+        return answer
+
+    def _qemu_ask_locale(self):
+        """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
+        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        déploiement pour un confort dont une VM jetable n'a pas besoin."""
+        default = "C.UTF-8"
+        answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
+        return answer or default
+
     def _qemu_collect_options_cli(self, vms, res_label):
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
@@ -5217,6 +5464,9 @@ class TODO:
             ssh_key = default_key
         if ssh_key:
             ssh_key = os.path.expanduser(ssh_key)
+
+        timezone = self._qemu_ask_timezone()
+        locale = self._qemu_ask_locale()
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5280,6 +5530,8 @@ class TODO:
             "vms": pending,
             "existing": existing,
             "ssh_key": ssh_key,
+            "timezone": timezone,
+            "locale": locale,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
@@ -6417,6 +6669,314 @@ class TODO:
             else:
                 print(t("Command not found !"))
 
+    def prompt_execute_analyse(self):
+        """Analyses en lecture seule d'une base Odoo.
+
+        Aucune entrée de ce menu n'écrit : la connexion psql est ouverte avec
+        `default_transaction_read_only=on`, donc c'est le serveur qui refuse
+        toute écriture, pas une promesse du code.
+        """
+        print(f"🤖 {t('Analyse a database, without ever writing to it!')}")
+        choices = [
+            {"section": t("Structure")},
+            {"prompt_description": t("Tables and database size")},
+            {"section": t("Customisation")},
+            {
+                "prompt_description": t(
+                    "Customised views, website copies included"
+                )
+            },
+            {"prompt_description": t("Studio and hand-made x_ fields")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self.execute_analyse_schema_size()
+            elif status == "2":
+                self.execute_analyse_view_custom()
+            elif status == "3":
+                self.execute_analyse_custom_field()
+            else:
+                print(t("Command not found !"))
+
+    def _analyse_select_source(self):
+        """(est_une_sauvegarde, cible), ou None si l'on renonce.
+
+        La sauvegarde n'est pas un cas dégradé : restaurer celle d'une
+        instance Enterprise sur une installation Community échoue — Odoo veut
+        charger des modules qu'on n'a pas — donc c'est souvent la SEULE façon
+        de lire ce qu'elle contient.
+        """
+        print()
+        print(f"[1] {t('A database')}")
+        print(f"[2] {t('A backup .zip, without restoring it')}")
+        print(f"[0] {t('Back')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        if answer == "1":
+            database = self._analyse_select_database()
+            return (False, database) if database else None
+        if answer == "2":
+            path = self.db_manager.select_backup_path()
+            return (True, path) if path else None
+        return None
+
+    def _analyse_select_database(self):
+        """Faire choisir la base à analyser, ou None si on abandonne."""
+        database = self.db_manager.select_database()
+        return database or None
+
+    def _analyse_json_path(self, database, tool):
+        """Où écrire un export JSON. Le dossier est créé au besoin."""
+        directory = os.path.join("private", "analyse", database)
+        os.makedirs(directory, exist_ok=True)
+        return os.path.join(directory, f"{tool}.json")
+
+    def _analyse_export_json(self, data, database, tool):
+        """Écrire le résultat brut, et dire où.
+
+        Sous `private/`, qui n'est pas versionné par convention : un rapport
+        d'analyse porte des noms de vues, de champs et de sociétés du client.
+        """
+        path = self._analyse_json_path(database, tool)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False, default=str)
+        print(f"✅ {t('Written to: ')}{path}")
+
+    def _analyse_follow_up(self, choices, handler):
+        """Boucle « aller plus loin » après une analyse.
+
+        Le rapport suggérait « utilisez -v », « --exact », « ajoutez --diff ».
+        Dans un menu, c'est demander à l'utilisateur de sortir et de retaper
+        une commande pour obtenir ce que le menu pouvait lui offrir. Les
+        options sont donc devenues des entrées, et les conseils en ligne de
+        commande ne s'affichent plus que dans la vraie ligne de commande.
+        """
+        help_info = self.fill_help_info(
+            [{"section": t("Go further")}] + choices
+        )
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return
+            try:
+                rank = int(status)
+            except ValueError:
+                rank = 0
+            if not 1 <= rank <= len(choices):
+                print(t("Command not found !"))
+                continue
+            if handler(rank) is False:
+                return
+
+    def execute_analyse_schema_size(self):
+        """Poids de la base et tables qu'aucun modèle installé ne réclame.
+
+        L'outil est importé et appelé, pas lancé en sous-processus : `todo.py`
+        tourne déjà sous le même interpréteur, donc le sous-processus
+        n'apporterait aucun isolement et coûterait un second démarrage.
+
+        Contrepartie assumée de cet appel direct : une exception remonterait
+        dans la boucle du menu et ferait sortir du TODO. D'où le `try`.
+        """
+        from script.analyse import analyse_schema_size as analyse
+
+        target = self._analyse_select_source()
+        if not target:
+            return
+        is_backup, database = target
+        state = {"data": None, "exact": is_backup}
+
+        def run(exact=False):
+            try:
+                state["data"] = (
+                    analyse.collect_from_backup(database)
+                    if is_backup
+                    else analyse.collect(database, exact=exact)
+                )
+                state["exact"] = exact or is_backup
+            except Exception as exc:
+                print(f"❌ {t('Analysis failed: ')}{exc}")
+                return False
+            return True
+
+        if not run():
+            return
+        print(analyse.render(state["data"], hints=False))
+
+        def handler(rank):
+            data = state["data"]
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            elif rank == 2:
+                print(f"⏳ {t('Counting rows exactly, one scan per table…')}")
+                if run(exact=True):
+                    print(analyse.render(state["data"], hints=False))
+            else:
+                self._analyse_export_json(
+                    data, os.path.basename(database), "schema_size"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every table")},
+                {"prompt_description": t("Count rows exactly (full scan)")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_view_custom(self):
+        """Vues qui ne viennent pas telles quelles d'un module, COW comprises."""
+        from script.analyse import analyse_view_custom as analyse
+
+        target = self._analyse_select_source()
+        if not target:
+            return
+        is_backup, database = target
+        state = {"data": None}
+
+        def run(**kwargs):
+            try:
+                state["data"] = (
+                    analyse.collect_from_backup(database)
+                    if is_backup
+                    else analyse.collect(database, **kwargs)
+                )
+            except Exception as exc:
+                print(f"❌ {t('Analysis failed: ')}{exc}")
+                return False
+            return True
+
+        if not run():
+            return
+        print(analyse.render(state["data"], hints=False))
+        if not state["data"]["findings"]:
+            return
+
+        # Comparer exige un registre Odoo chargé. Une sauvegarde n'en a pas,
+        # et rien ne peut l'y ajouter : proposer quand même la comparaison
+        # ferait trois entrées qui ne répondent pas, et une quatrième qui
+        # réclamerait indéfiniment une comparaison impossible.
+        can_compare = not is_backup
+        state["tried"] = False
+
+        def compare(scope):
+            print(f"⏳ {t('Loading the Odoo registry, this takes a moment…')}")
+            if not run(with_diff=True, scope=scope):
+                return
+            state["tried"] = True
+            data = state["data"]
+            print(analyse.render(data, hints=False))
+            if data["compared_with_module_source"] and not [
+                row for row in data["findings"] if row.get("differs")
+            ]:
+                print(f"✅ {t('No view differs from its module source.')}")
+
+        def browse():
+            """Ouvrir l'écran, ou dire précisément ce qui l'en empêche.
+
+            Trois raisons distinctes, trois messages. Répondre « comparez
+            d'abord » à quelqu'un qui vient de comparer lui reproche ce que
+            l'outil n'a pas pu faire, et le laisse recommencer sans fin.
+            """
+            data = state["data"]
+            if not state["tried"]:
+                print(f"ℹ️  {t('Compare first, then browse.')}")
+            elif not data.get("compared_with_module_source"):
+                print(
+                    f"⚠️  {t('No reference arch, so nothing was compared: ')}"
+                    f"{data.get('arch_ref_error') or ''}"
+                )
+            elif not [row for row in data["findings"] if row.get("differs")]:
+                print(f"✅ {t('No view differs from its module source.')}")
+            elif not analyse.open_tui(data):
+                print(analyse.render(data, verbose=True, hints=False))
+
+        lst_choice = [{"prompt_description": t("Show every view")}]
+        if can_compare:
+            lst_choice += [
+                {
+                    "prompt_description": t(
+                        "Compare the flagged views with the module source"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "Compare every view (slower, noisier)"
+                    )
+                },
+                {"prompt_description": t("Browse the differences (TUI)")},
+            ]
+        lst_choice.append({"prompt_description": t("Export as JSON")})
+
+        def handler(rank):
+            data = state["data"]
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            elif not can_compare or rank == len(lst_choice):
+                self._analyse_export_json(
+                    data, os.path.basename(database), "view_custom"
+                )
+            elif rank == 2:
+                compare("flagged")
+            elif rank == 3:
+                compare("all")
+            elif rank == 4:
+                browse()
+
+        self._analyse_follow_up(lst_choice, handler)
+
+    def execute_analyse_custom_field(self):
+        """Champs et modèles ajoutés hors module : Studio, ou faits à la main.
+
+        Deux provenances, parce que la plus utile est souvent la sauvegarde :
+        restaurer celle d'une instance Enterprise sur une installation
+        Community échoue — Odoo veut charger des modules qu'on n'a pas — alors
+        que les champs Studio ne sont que des lignes de `ir_model_fields`, et
+        qu'un dump.sql est du texte.
+        """
+        from script.analyse import analyse_custom_field as analyse
+
+        target = self._analyse_select_source()
+        if not target:
+            return
+        is_backup, database = target
+        try:
+            data = (
+                analyse.collect_from_backup(database)
+                if is_backup
+                else analyse.collect(database)
+            )
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        print(analyse.render(data, hints=False))
+        if not data["fields"] and not data["models"]:
+            return
+
+        def handler(rank):
+            if rank == 1:
+                print(analyse.render(data, verbose=True, hints=False))
+            else:
+                self._analyse_export_json(
+                    data, os.path.basename(database), "custom_field"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every field")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
     def prompt_execute_process(self):
         print(f"🤖 {t('Manage execution processes!')}")
         choices = [
@@ -6669,6 +7229,8 @@ class TODO:
             {"prompt_description": t("Test a module")},
             {"prompt_description": t("Test a module with code coverage")},
             {"prompt_description": t("ERPLibre unit tests")},
+            {"prompt_description": t("Mail unit tests")},
+            {"prompt_description": t("Analyse unit tests")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -6683,6 +7245,10 @@ class TODO:
                 self.execute_test_module(coverage=True)
             elif status == "3":
                 self.execute_unit_tests()
+            elif status == "4":
+                self.execute_unit_tests("test_mail*.py")
+            elif status == "5":
+                self.execute_unit_tests("test_analyse*.py")
             else:
                 print(t("Command not found !"))
 
@@ -6775,11 +7341,24 @@ class TODO:
                 single_source_erplibre=True,
             )
 
-    def execute_unit_tests(self):
+    def execute_unit_tests(self, pattern="test_*.py"):
+        """Lance `unittest discover` sur un SOUS-ENSEMBLE de la suite.
+
+        Le motif est le seul paramètre : la suite complète dure plusieurs
+        minutes, dominées par les tests TUI montés, et attendre tout pour
+        vérifier un coin précis décourage de lancer les tests du tout. Une
+        entrée de menu supplémentaire coûte donc un motif, pas une méthode.
+        """
         print(f"\n--- {t('Running unit tests')} ---")
+        # `-u` : unittest écrit son verdict sur STDERR, les `print()` des
+        # tests sur STDOUT. Capturés ensemble, stderr passe sans tampon
+        # tandis que stdout est tamponné par blocs — tout le stdout se
+        # déversait donc APRÈS le « OK », qui se retrouvait noyé au milieu
+        # de la sortie au lieu d'en être le dernier mot. Sans tampon, les
+        # deux flux s'entrelacent dans l'ordre réel.
         cmd = (
-            ".venv.erplibre/bin/python -m unittest discover"
-            " -s test -p 'test_*.py' -v"
+            ".venv.erplibre/bin/python -u -m unittest discover"
+            f" -s test -p '{pattern}' -v"
         )
         status_code, output = self.execute.exec_command_live(
             cmd,
@@ -7297,7 +7876,11 @@ if __name__ == "__main__":
         if ENABLE_CRASH:
             todo.crash_diagnostic(CRASH_E)
         todo.run()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, click.exceptions.Abort):
+        # click.prompt() raises Abort (not a KeyboardInterrupt subclass) on
+        # both Ctrl+C and Ctrl+D/EOF. run() only catches it for its own
+        # top-level prompt; every submenu's click.prompt() would otherwise
+        # let Abort escape here as an uncaught exception.
         print(t("Keyboard interrupt"))
     finally:
         end_time = time.time()

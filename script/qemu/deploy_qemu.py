@@ -1163,6 +1163,130 @@ def hash_password(plain: str) -> str:
         return out.stdout.strip()
 
 
+# Miroirs apt, du plus rapide au dernier recours. cloud-init prend le PREMIER
+# joignable de la liste « search » : l'ordre est donc la priorité.
+#
+# Mesuré depuis Montréal sur l'index main/s390x (1,6 Mo) :
+#   ports.ubuntu.com              1,61 s   1,0 Mo/s
+#   mirror.csclub.uwaterloo.ca    0,32 s   5,2 Mo/s
+#   mirror.us.leaseweb.net        0,88 s   1,9 Mo/s
+#
+# Le chemin diffère selon l'architecture : les arches « ports » (s390x, arm64,
+# ppc64el, riscv64) ne sont PAS sur archive.ubuntu.com, et amd64 n'est pas sur
+# ports.ubuntu.com. Une seule liste servirait donc la moitié des cas en 404.
+APT_MIRRORS_PORTS = [
+    "http://mirror.csclub.uwaterloo.ca/ubuntu-ports",
+    "http://mirror.us.leaseweb.net/ubuntu-ports",
+    "http://ports.ubuntu.com/ubuntu-ports",
+]
+APT_MIRRORS_MAIN = [
+    "http://mirror.csclub.uwaterloo.ca/ubuntu",
+    "http://mirror.us.leaseweb.net/ubuntu",
+    "http://archive.ubuntu.com/ubuntu",
+]
+PORTS_ARCHES = ("s390x", "arm64", "aarch64", "ppc64el", "riscv64")
+
+
+def apt_mirror_lines(arch: str, override: str | None = None) -> list[str]:
+    """Bloc « apt: » du cloud-config, ou [] si rien à écrire.
+
+    Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
+    « search » y écrirait des URI qui n'existent pas.
+    """
+    mirrors = (
+        [override]
+        if override
+        else (APT_MIRRORS_PORTS if arch in PORTS_ARCHES else APT_MIRRORS_MAIN)
+    )
+    lines = ["apt:", "  primary:", "    - arches: [default]", "      search:"]
+    lines += [f"        - {m}" for m in mirrors]
+    # La sécurité suit le même dépôt pour les arches ports ; sur amd64 elle a
+    # son propre hôte, que les miroirs répliquent sous le même chemin.
+    lines += ["  security:", "    - arches: [default]", "      search:"]
+    lines += [f"        - {m}" for m in mirrors]
+    return lines
+
+
+def kvm_available() -> bool:
+    """L'accélération matérielle est-elle réellement utilisable ici ?
+
+    « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
+    VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
+    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
+    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
+    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
+    que rien ne le signale.
+
+    /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
+    que si on est root : libvirt, lui, tourne en root et se moque de notre
+    appartenance au groupe kvm. Tester nos propres droits en non-root ferait
+    crier « pas de KVM » à un utilisateur simplement hors du groupe.
+    """
+    if not os.path.exists("/dev/kvm"):
+        return False
+    if os.geteuid() == 0:
+        return os.access("/dev/kvm", os.R_OK | os.W_OK)
+    return True
+
+
+def nested_module() -> str:
+    """Module noyau portant le paramètre « nested » sur CET hôte.
+
+    Le nom change selon l'architecture, et se tromper de module fait lire un
+    « 0 » rassurant sur un fichier qui ne commande rien : s390x et arm64
+    l'exposent sur « kvm », x86 sur « kvm_intel » ou « kvm_amd » selon le
+    fabricant — et /sys/module/kvm/parameters/nested n'y existe même pas.
+    """
+    arch = host_arch()
+    if arch != "amd64":
+        return "kvm"
+    try:
+        info = Path("/proc/cpuinfo").read_text(errors="replace")
+    except OSError:
+        return "kvm_intel"
+    return "kvm_amd" if " svm" in info else "kvm_intel"
+
+
+def host_timezone() -> str:
+    """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
+
+    Défaut des VM déployées : une VM qui hérite du fuseau de la machine qui la
+    crée horodate ses journaux, ses commits et ses bases comme son opérateur.
+    Sans cela elle démarre en UTC, ce qui ne se voit qu'après coup — des commits
+    à +0000 alors que tout le reste du dépôt est en -0400.
+
+    Trois sources, de la plus fiable à la plus rustique ; « UTC » en dernier
+    recours plutôt qu'une exception, car un fuseau indéterminable ne doit pas
+    empêcher un déploiement.
+    """
+    try:
+        out = subprocess.run(
+            ["timedatectl", "show", "-p", "Timezone", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+        if out:
+            return out
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        tz = Path("/etc/timezone").read_text(encoding="utf-8").strip()
+        if tz:
+            return tz
+    except OSError:
+        pass
+    try:
+        # /etc/localtime est un lien vers /usr/share/zoneinfo/<Zone>
+        target = Path("/etc/localtime").resolve()
+        parts = target.parts
+        if "zoneinfo" in parts:
+            return "/".join(parts[parts.index("zoneinfo") + 1 :])
+    except OSError:
+        pass
+    return "UTC"
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -1189,6 +1313,11 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
+    lines.append(f"timezone: {args.timezone}")
+    if getattr(args, "distro", "ubuntu") == "ubuntu":
+        lines += apt_mirror_lines(
+            getattr(args, "arch", "amd64"), getattr(args, "apt_mirror", None)
+        )
     lines += [
         "keyboard:",
         f"  layout: {args.keyboard_layout}",
@@ -1220,15 +1349,41 @@ def build_cloud_config(
         "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
         " || systemctl enable --now sshd 2>/dev/null || true",
-        # qemu-guest-agent : installé + activé APRÈS sshd (donc SSH reste
-        # disponible tout de suite, sans attendre le réseau). Tout est
-        # « || true » : si l'installation échoue (réseau lent/absent), le boot
-        # n'est pas bloqué. La plupart des images cloud l'incluent déjà.
-        # Rafraîchit d'abord l'index (les images cloud n'ont PAS de listes apt
-        # -> sinon « Unable to locate package »), puis installe. timeout : un
-        # miroir lent ne bloque JAMAIS cloud-init. Non fatal (|| true).
-        # Sous-shell ( ) et NON accolades { } : « { » est un indicateur YAML.
-        "  - (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
+        # Getty sur la console qui EXISTE VRAIMENT.
+        #
+        # Sur s390x, l'image attend /dev/ttysclp0 (généré depuis la ligne de
+        # commande noyau) alors que le périphérique réellement présent porte un
+        # autre nom : « Timed out waiting for device dev-ttysclp0.device », puis
+        # « Dependency failed for serial-getty@ttysclp0 ». La console affiche
+        # donc tout le démarrage mais n'offre AUCUNE invite de connexion — elle
+        # est en lecture seule par accident, et c'est justement le seul recours
+        # quand SSH ne répond pas. On active le getty sur le premier
+        # périphérique console présent. Ailleurs (x86/arm64) ttyS0 existe et son
+        # getty tourne déjà : « enable --now » n'y change rien.
+        "  - for d in ttysclp0 sclp_line0 hvc0 ttyS0; do"
+        " test -c /dev/$d && systemctl enable --now serial-getty@$d.service"
+        " 2>/dev/null && break; done || true",
+        # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
+        #
+        # Mesuré sur Ubuntu 26.04 s390x : « apt-get install qemu-guest-agent »
+        # tire liburing2, ubuntu-helper-virt-hwe et ubuntu-virt depuis
+        # ports.ubuntu.com, et cloud-final tourne 9 min 47. Or le suivi
+        # d'installation attend « cloud-init status: done » : dix minutes
+        # d'attente pour un paquet accessoire, avant même de commencer le
+        # travail utile.
+        #
+        # systemd-run --no-block rend la main tout de suite : cloud-init termine
+        # en quelques secondes et l'agent apparaît quand il apparaît. On saute
+        # aussi l'installation quand qemu-ga est déjà là, ce qui est le cas de
+        # beaucoup d'images. Repli en ligne si systemd-run manque.
+        "  - command -v qemu-ga >/dev/null 2>&1 ||"
+        " systemd-run --no-block --unit=erplibre-qga --collect"
+        " /bin/sh -c 'command -v apt-get >/dev/null && { apt-get update -qq"
+        " || true; apt-get install -y qemu-guest-agent; }"
+        " || command -v dnf >/dev/null && dnf install -y qemu-guest-agent"
+        " || command -v pacman >/dev/null && pacman -Sy --noconfirm"
+        " qemu-guest-agent' 2>/dev/null"
+        " || (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
         " || true; timeout 300 apt-get install -y qemu-guest-agent)) ||"
         " (command -v dnf >/dev/null && timeout 300 dnf install -y"
         " qemu-guest-agent) || (command -v pacman >/dev/null && timeout 300"
@@ -1429,7 +1584,25 @@ def virt_install(
     runner: Runner,
 ) -> None:
     # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
+    # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
+    # (voulue, on la choisit), et une absence de KVM (subie, et invisible). La
+    # seconde ne se déduit PAS de l'architecture — dans une VM sans
+    # virtualisation imbriquée, libvirt retombe en TCG sans rien dire.
     emulated = args.arch != host_arch()
+    if not emulated and not kvm_available():
+        emulated = True
+        print(
+            "⚠  KVM indisponible (/dev/kvm) : cette VM sera ÉMULÉE, donc TRÈS"
+            " lente."
+        )
+        print(
+            "   Cause habituelle : l'hôte est lui-même une VM sans"
+            " virtualisation imbriquée."
+        )
+        print(
+            "   Vérifier :  systemd-detect-virt  et"
+            '  virsh capabilities | grep "domain type"'
+        )
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
     # ttyS0. Ailleurs (x86/arm64), console série classique.
     console_target = "sclp" if args.arch == "s390x" else "serial"
@@ -1729,6 +1902,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--locale",
         default="fr_CA.UTF-8",
         help="Locale (défaut : fr_CA.UTF-8).",
+    )
+    g_cloud.add_argument(
+        "--apt-mirror",
+        metavar="URI",
+        help=(
+            "Miroir apt unique (Ubuntu). Par défaut, cloud-init essaie dans"
+            " l'ordre les miroirs les plus rapides mesurés puis le dépôt"
+            " officiel."
+        ),
+    )
+    g_cloud.add_argument(
+        "--timezone",
+        default=host_timezone(),
+        metavar="ZONE",
+        help=(
+            "Fuseau horaire de la VM, au format zoneinfo "
+            f"(défaut : celui de l'hôte, {host_timezone()})."
+        ),
     )
     g_cloud.add_argument(
         "--keyboard-layout",

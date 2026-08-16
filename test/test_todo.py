@@ -4,9 +4,11 @@
 
 import json
 import os
+import subprocess
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
 from script.todo.todo import (
     ANDROID_DIR,
@@ -190,6 +192,42 @@ class TestExecuteFromConfiguration(unittest.TestCase):
         todo.execute_from_configuration(dct)
         todo.execute.exec_command_live.assert_called()
 
+    def test_every_command_entry_of_the_real_config_is_reachable(self):
+        """Le dict synthétique du test précédent ne suffisait pas.
+
+        `4fc15c3` a renommé la clé cherchée par le code en « Command: »,
+        le libellé affiché. Plus aucune entrée de todo.json ne
+        correspondait, et « Open ERPLibre with TODO 🤖 » ne faisait plus
+        rien — sans erreur, le `if` étant simplement faux. Seule la VRAIE
+        configuration relie les deux côtés.
+        """
+        with open(CONFIG_FILE) as fh:
+            config = json.load(fh)
+
+        entrees = []
+
+        def parcourir(noeud):
+            if isinstance(noeud, dict):
+                if "command" in noeud:
+                    entrees.append(noeud)
+                for valeur in noeud.values():
+                    parcourir(valeur)
+            elif isinstance(noeud, list):
+                for element in noeud:
+                    parcourir(element)
+
+        parcourir(config)
+        self.assertTrue(entrees, "todo.json n'a plus d'entrée `command`")
+
+        for entree in entrees:
+            todo = TODO()
+            todo.execute = MagicMock()
+            todo.execute_from_configuration(entree)
+            self.assertTrue(
+                todo.execute.exec_command_live.called,
+                f"entrée ignorée en silence : {entree.get('command')}",
+            )
+
     def test_with_makefile_cmd(self):
         todo = TODO()
         todo.execute = MagicMock()
@@ -297,6 +335,72 @@ class TestExecuteUnitTests(unittest.TestCase):
             todo.execute_unit_tests()
         # Verify it was called - error handling path
 
+    def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
+        """Signalé à l'usage : « pas clair si les tests ont passé ».
+
+        unittest écrit son verdict sur stderr et les tests impriment sur
+        stdout ; capturés ensemble, le stdout tamponné se déversait après
+        le « OK ». Le lecteur voyait donc du bruit en dernier, pas le
+        résultat.
+        """
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("python -u -m unittest", cmd)
+
+    def test_the_pattern_reaches_the_command(self):
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests("test_mail*.py")
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_mail*.py'", cmd)
+
+    def test_the_default_pattern_is_still_the_whole_suite(self):
+        """La signature a gagné un paramètre : l'entrée [3] ne doit pas
+        s'être mise à ne lancer qu'un sous-ensemble en silence."""
+        todo = TODO()
+        todo.execute = MagicMock()
+        todo.execute.exec_command_live.return_value = (0, ["OK"])
+        with patch("builtins.print"):
+            todo.execute_unit_tests()
+        cmd = todo.execute.exec_command_live.call_args[0][0]
+        self.assertIn("-p 'test_*.py'", cmd)
+
+
+class TestTestMenuDispatch(unittest.TestCase):
+    """Le câblage des entrées, pas leur contenu.
+
+    Un `elif` qui pointe le mauvais motif lancerait une suite verte sans
+    rien tester de ce que l'utilisateur a demandé — panne silencieuse que
+    seul ce test attrape.
+    """
+
+    def _choose(self, entry):
+        todo = TODO()
+        with patch.object(
+            todo, "execute_unit_tests"
+        ) as mock_run, patch.object(todo, "execute_test_module"), patch(
+            "click.prompt", side_effect=[entry, "0"]
+        ), patch(
+            "builtins.print"
+        ):
+            todo.prompt_execute_test()
+        return mock_run
+
+    def test_entry_4_runs_the_mail_tests(self):
+        self.assertEqual(self._choose("4").call_args[0], ("test_mail*.py",))
+
+    def test_entry_5_runs_the_analyse_tests(self):
+        self.assertEqual(self._choose("5").call_args[0], ("test_analyse*.py",))
+
+    def test_entry_3_still_runs_everything(self):
+        self.assertEqual(self._choose("3").call_args[0], ())
+
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
     def test_empty_kdbx_key(self):
@@ -317,13 +421,47 @@ class TestKdbxGetExtraCommandUser(unittest.TestCase):
 
 
 class TestSetupClaudeCommit(unittest.TestCase):
-    def test_existing_file_skips(self):
+    """Le déploiement d'une commande `/…` dans ~/.claude/commands.
+
+    La méthode a été généralisée depuis : elle prend le nom de la commande
+    et son gabarit, et quand la cible existe elle DEMANDE confirmation au
+    lieu de passer son tour. Le test ne détournait pas `input` — il aurait
+    bloqué si l'appel n'avait pas échoué avant.
+    """
+
+    def test_existing_file_and_refusal_writes_nothing(self):
         todo = TODO()
         with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="n"
+        ), patch("builtins.open") as mock_open, patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
             "builtins.print"
-        ) as mock_print:
-            todo._setup_claude_commit()
-        # Should print exists message without asking for input
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        # Un refus doit sortir AVANT toute écriture : ni lecture du gabarit,
+        # ni création du dossier. Sans ces deux assertions, le test passait
+        # aussi bien si la méthode écrasait le fichier.
+        mock_open.assert_not_called()
+        mock_makedirs.assert_not_called()
+
+    def test_existing_file_and_acceptance_writes(self):
+        """Le pendant : sans lui, la méthode pourrait ne JAMAIS écrire et
+        le test ci-dessus resterait vert."""
+        todo = TODO()
+        with patch("os.path.exists", return_value=True), patch(
+            "builtins.input", return_value="y"
+        ), patch("builtins.open", mock_open(read_data="gabarit")), patch(
+            "os.makedirs"
+        ) as mock_makedirs, patch(
+            "builtins.print"
+        ):
+            todo._setup_claude_command(
+                "commit", "template_claude_commands_commit.md"
+            )
+        mock_makedirs.assert_called_once()
 
 
 class TestSelectDatabase(unittest.TestCase):
@@ -405,6 +543,49 @@ class TestCreateBackupFromDatabase(unittest.TestCase):
         ]
         self.assertIn("--backup", cmd)
         self.assertIn("test_db", cmd)
+
+
+class TestModuleLevelAbortExit(unittest.TestCase):
+    """`click.exceptions.Abort` (raised by `click.prompt` on both Ctrl+C and
+    Ctrl+D/EOF - see click's own `termui.prompt_func`) is NOT a
+    `KeyboardInterrupt` subclass. Only the top-level menu's `click.prompt`
+    call is wrapped locally, inside `run()` (todo.py around line 149) -
+    every submenu (`prompt_assistant`, etc.) lets `Abort` propagate
+    uncaught. These tests drive the real script end to end (not a mock of
+    the dispatch chain) to prove the module-level guard around
+    `todo.run()` (todo.py around line 7159) now catches it too.
+    """
+
+    def _run_todo(self, stdin_text):
+        repo_root = Path(__file__).resolve().parent.parent
+        python_bin = repo_root / ".venv.erplibre" / "bin" / "python3"
+        env = os.environ.copy()
+        with tempfile.TemporaryDirectory() as home_dir:
+            env["HOME"] = home_dir
+            return subprocess.run(
+                [str(python_bin), "script/todo/todo.py"],
+                cwd=repo_root,
+                input=stdin_text,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30,
+            )
+
+    def test_ctrl_d_in_a_submenu_exits_cleanly(self):
+        # "3" enters the Assistant submenu; the immediate EOF that follows
+        # raises Abort from a click.prompt() call that run() does not wrap.
+        result = self._run_todo("3\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertNotIn("click.exceptions.Abort", result.stderr)
+
+    def test_ctrl_d_on_the_top_menu_still_exits_cleanly(self):
+        # Regression guard: the pre-existing local handler in run() must
+        # keep working once the module-level guard is added alongside it.
+        result = self._run_todo("")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,42 @@ class ConfigFile:
                 config_data = config_data.get(param)
         return config_data
 
+    def set_config_value(self, keys: list[str], value: Any) -> None:
+        """Écrit `value` sous le chemin `keys` dans
+        CONFIG_OVERRIDE_PRIVATE_FILE.
+
+        C'est le seul des trois fichiers fusionnés par `get_config` qui
+        soit gitignored (`git check-ignore` le confirme ; `private/` lui-
+        même est un dossier versionné, et CONFIG_OVERRIDE_FILE ne l'est
+        pas) — donc le seul où une valeur personnelle comme `kdbx.path`
+        peut être écrite sans finir commitée.
+
+        Fusionne avec le contenu existant plutôt que de l'écraser, et
+        écrit de façon atomique : fichier temporaire créé en 0600 dans le
+        même dossier, puis `os.replace` (qui hérite du mode de la source).
+        Le fichier réel n'est donc jamais vu à moitié écrit, et un fichier
+        déjà présent avec des permissions trop larges se retrouve corrigé.
+        """
+        data: Dict[str, Any] = {}
+        if os.path.exists(CONFIG_OVERRIDE_PRIVATE_FILE):
+            with open(CONFIG_OVERRIDE_PRIVATE_FILE) as cfg:
+                data = json.load(cfg)
+
+        node = data
+        for key in keys[:-1]:
+            node = node.setdefault(key, {})
+        node[keys[-1]] = value
+
+        parent = os.path.dirname(CONFIG_OVERRIDE_PRIVATE_FILE) or "."
+        os.makedirs(parent, exist_ok=True)
+        os.chmod(parent, 0o700)
+
+        tmp_path = f"{CONFIG_OVERRIDE_PRIVATE_FILE}.tmp"
+        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as tmp_file:
+            json.dump(data, tmp_file, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, CONFIG_OVERRIDE_PRIVATE_FILE)
+
     def get_logo_ascii_file_path(self) -> str:
         return LOGO_ASCII_FILE
 

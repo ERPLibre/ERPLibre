@@ -12,3 +12,6 @@ A database is installed but cannot be executed
 HEALTHCHECK CMD curl --fail http://localhost:8069/web || exit 1
 
 TODO: having the DB variable configurable
+
+See also: [EMAIL.md](EMAIL.md) — the mail client built into the TODO CLI
+(`Assistant > Mail`).

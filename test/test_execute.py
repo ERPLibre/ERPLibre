@@ -130,7 +130,11 @@ class TestExecCommandLive(unittest.TestCase):
                 source_odoo="",
                 quiet=True,
             )
-        self.assertEqual(result, -1)
+        # `1`, pas `-1` : e24b185 a rendu à ce chemin la FORME que
+        # l'appelant demande (un tuple s'il en attend un) et en a profité
+        # pour donner un vrai code de sortie. Aucun appelant ne compare à
+        # -1, qui n'est d'ailleurs pas un code de sortie valide.
+        self.assertEqual(result, 1)
 
     def test_single_source_odoo_with_version(self):
         status, cmd = self.exe.exec_command_live(

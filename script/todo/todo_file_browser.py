@@ -61,21 +61,42 @@ class FileBrowser(urwid.WidgetWrap):
             self.refresh_list()
 
     def select_directory(self, button):
-        """Selects a file and calls the callback function."""
+        """Selects a directory, and closes the browser."""
         self.callback(self.current_path)
+        exit_program()
 
     def select_file(self, button):
-        """Selects a file and calls the callback function."""
+        """Selects a file, and closes the browser.
+
+        The callback records the choice; leaving the loop is what ENDS the
+        browser. Without it the selection worked and nothing seemed to happen:
+        the screen stayed up, no key closed it, and only Ctrl+C got out — so
+        the browser looked frozen at the exact moment it had done its job.
+        """
         filename = button.label
         selected_file_path = os.path.join(self.current_path, filename)
         self.callback(selected_file_path)
+        exit_program()
+
+    def unhandled_input(self, key):
+        """Leaving without choosing has to be possible.
+
+        Every other way out of this browser selects something. A caller that
+        offers an alternative — typing a path — can only be reached by
+        cancelling, so cancelling has to exist.
+        """
+        if key in ("q", "Q", "esc"):
+            exit_program()
 
     def run_main_frame(self):
         main_frame = urwid.Frame(
             body=self,
             header=urwid.Text(("header", f"Navigate: {self.current_path}")),
             footer=urwid.Text(
-                ("footer", "Use arrow keys to navigate and Enter to select.")
+                (
+                    "footer",
+                    "Arrow keys to navigate, Enter to select, q to cancel.",
+                )
             ),
         )
 
@@ -88,7 +109,9 @@ class FileBrowser(urwid.WidgetWrap):
             ("bold", "bold", "black"),
         ]
 
-        loop = urwid.MainLoop(main_frame, palette)
+        loop = urwid.MainLoop(
+            main_frame, palette, unhandled_input=self.unhandled_input
+        )
         loop.run()
 
 

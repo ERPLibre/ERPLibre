@@ -1,1 +1,6 @@
 *.kdbx
+
+# Per-database migration lists (modules to uninstall/install before a version
+# bump). They describe one specific database, never a shared default, so they
+# must not be versioned. Shared defaults belong to script/odoo/migration/.
+odoo/

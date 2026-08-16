@@ -33,3 +33,11 @@ TODO: having the DB variable configurable
 
 <!-- [fr] -->
 À FAIRE : rendre la variable DB configurable
+
+<!-- [en] -->
+See also: [EMAIL.md](EMAIL.md) — the mail client built into the TODO CLI
+(`Assistant > Mail`).
+
+<!-- [fr] -->
+Voir aussi : [EMAIL.fr.md](EMAIL.fr.md) — le client courriel intégré au CLI
+TODO (`Assistant > Courriel`).
