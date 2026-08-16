@@ -1248,16 +1248,30 @@ class TodoUpgrade:
         if "target_odoo_version" in self.dct_progression:
             odoo_target_version = self.dct_progression["target_odoo_version"]
         else:
-            # La plus haute, pas la dernière de la liste : l'ordre
-            # d'affichage n'est pas une garantie, la comparaison en est une.
-            default_version = (
-                max(
-                    lst_odoo_version,
-                    key=lambda a: float(a.get("prompt_description")),
-                ).get("prompt_description")
-                if lst_odoo_version
-                else None
-            )
+            # Le défaut est le NUMÉRO de la version la plus haute, calculé
+            # sur la liste réellement affichée : « 6 » n'est pas une
+            # constante, c'est le rang de 18.0 aujourd'hui. Une version de
+            # plus dans le catalogue le déplace, et l'écrire en dur ferait
+            # choisir 18.0 quand l'écran propose 19.0.
+            #
+            # La plus haute se COMPARE, elle ne se lit pas au bout de la
+            # liste : l'ordre d'affichage n'est pas une garantie, et « 9.0 »
+            # se trie après « 18.0 » en chaînes.
+            default_index = None
+            default_version = None
+            if lst_odoo_version:
+                default_index = (
+                    max(
+                        range(len(lst_odoo_version)),
+                        key=lambda i: float(
+                            lst_odoo_version[i].get("prompt_description")
+                        ),
+                    )
+                    + 1
+                )
+                default_version = lst_odoo_version[default_index - 1].get(
+                    "prompt_description"
+                )
             print(
                 f"💬 {t('Which version do you want to upgrade to?')}"
                 + (
@@ -1269,15 +1283,14 @@ class TodoUpgrade:
             odoo_target_version = None
             cmd_no_found = True
             while cmd_no_found:
-                # `default=""` est nécessaire : sans lui, click redemande sur
-                # une ligne vide sans rien dire, et Entrée n'atteint jamais
-                # ce code — la valeur par défaut n'existait qu'en intention.
+                # click affiche « [6] » et rend « 6 » sur Entrée : le chemin
+                # normal traite la réponse, sans cas particulier à tenir
+                # d'accord avec lui.
                 status = click.prompt(
-                    help_info, default="", show_default=False
+                    help_info,
+                    default=str(default_index) if default_index else "",
+                    show_default=bool(default_index),
                 )
-                if not str(status).strip() and default_version:
-                    odoo_target_version = default_version
-                    break
                 try:
                     int_cmd = int(status)
                     if 0 < int_cmd <= len(lst_odoo_version):
