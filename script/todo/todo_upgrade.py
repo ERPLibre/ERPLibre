@@ -2552,6 +2552,13 @@ class TodoUpgrade:
                 # Update config without OCA_OpenUpgrade
                 cmd_update_config = f"./script/git/git_repo_update_group.py && ./script/generate_config.sh"
                 self.todo_upgrade_execute(cmd_update_config)
+
+                # Une migration peut charger tous ses modules et servir
+                # quand même un 500 sur une page que personne n'ouvre. Mesuré
+                # ici : /blog/<blog>/post/<billet> et /contactus, alors que
+                # le journal de migration n'avait rien signalé.
+                self.prompt_smoke_public_url(database_name_upgrade)
+
                 print(f"[y] {t('Open the server with Selenium')}")
                 status = (
                     input(
@@ -2855,6 +2862,33 @@ class TodoUpgrade:
         self.run_on_terminal(
             f"{PYTHON_BIN} ./{os.path.join(PATH_MIGRATION_GLOBAL, 'reset_stale_cow_views.py')}"
             f" -d {database_name} {args} --apply"
+        )
+
+    def prompt_smoke_public_url(self, database_name):
+        """Proposer d'interroger toutes les pages publiques de la base.
+
+        La liste vient du sitemap — celle qu'Odoo publie pour les moteurs de
+        recherche. Une page qui y figure et ne répond pas est une page que
+        les visiteurs n'atteignent pas non plus.
+
+        « non » par défaut : cela démarre un serveur et peut prendre quelques
+        minutes sur un gros site, et rien n'oblige à le faire à chaque
+        palier.
+        """
+        answer = (
+            self.ask_gate(
+                f"💬 {t('Request every public URL of this database now?')}"
+                f" (y/N, {t('(b = go back to a previous step)')}) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer != "y":
+            return
+        self.run_on_terminal(
+            f"{PYTHON_BIN}"
+            " ./script/odoo/migration/smoke_public_url.py"
+            f" -d {database_name}"
         )
 
     def show_cow_drift(self, database_name, next_version, mode="diff"):

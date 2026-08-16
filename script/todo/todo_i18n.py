@@ -4978,6 +4978,50 @@ TRANSLATIONS = {
         "fr": "pièce(s) jointe(s) effacée(s).",
         "en": "attachment(s) deleted.",
     },
+    "Request every public URL of this database now?": {
+        "fr": "Interroger maintenant toutes les URL publiques de cette base ?",
+        "en": "Request every public URL of this database now?",
+    },
+    "The sitemap listed no URL: nothing was tested.": {
+        "fr": "Le sitemap n'a listé aucune URL : rien n'a été testé.",
+        "en": "The sitemap listed no URL: nothing was tested.",
+    },
+    "public URL(s) answered without error.": {
+        "fr": "URL publique(s) ont répondu sans erreur.",
+        "en": "public URL(s) answered without error.",
+    },
+    "public URL(s) failed": {
+        "fr": "URL publique(s) ont échoué",
+        "en": "public URL(s) failed",
+    },
+    "no answer": {
+        "fr": "aucune réponse",
+        "en": "no answer",
+    },
+    "A page listed for search engines that does not answer is": {
+        "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
+        "en": "A page listed for search engines that does not answer is",
+    },
+    "a page your visitors do not reach either.": {
+        "fr": "une page que vos visiteurs n'atteignent pas non plus.",
+        "en": "a page your visitors do not reach either.",
+    },
+    "The server never answered on": {
+        "fr": "Le serveur n'a jamais répondu sur",
+        "en": "The server never answered on",
+    },
+    "Could not read": {
+        "fr": "Impossible de lire",
+        "en": "Could not read",
+    },
+    "Starting Odoo on": {
+        "fr": "Démarrage d'Odoo sur",
+        "en": "Starting Odoo on",
+    },
+    "port": {
+        "fr": "port",
+        "en": "port",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
