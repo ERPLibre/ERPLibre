@@ -107,7 +107,7 @@ class TestWhatCountsAsAFailure(unittest.TestCase):
     def test_a_500_fails(self):
         self.answers["http://h/bad"] = (500, "")
         self.assertEqual(
-            smoke.check_urls(["http://h/bad"]), [("http://h/bad", 500)]
+            smoke.check_urls(["http://h/bad"]), [("http://h/bad", 500, [])]
         )
 
     def test_a_404_fails_too(self):
@@ -119,7 +119,7 @@ class TestWhatCountsAsAFailure(unittest.TestCase):
     def test_no_answer_at_all_fails(self):
         self.answers["http://h/dead"] = (0, "")
         self.assertEqual(
-            smoke.check_urls(["http://h/dead"]), [("http://h/dead", 0)]
+            smoke.check_urls(["http://h/dead"]), [("http://h/dead", 0, [])]
         )
 
     def test_a_200_passes(self):
@@ -141,7 +141,7 @@ class TestTheReport(unittest.TestCase):
         self.assertIn("✅", text)
 
     def test_a_failure_shows_the_status_and_the_url(self):
-        text = smoke.render(["a"], [("http://h/blog/x", 500)])
+        text = smoke.render(["a"], [("http://h/blog/x", 500, [])])
         self.assertIn("500", text)
         self.assertIn("http://h/blog/x", text)
 
@@ -169,10 +169,18 @@ class TestTheServerIsAlwaysStopped(unittest.TestCase):
 
         original_start = smoke.start_server
         original_wait = smoke.wait_ready
-        smoke.start_server = lambda db, port, cfg="./config.conf": FakeServer()
+        original_stop = smoke.stop_server
+        original_port = smoke.port_is_taken
+        smoke.start_server = (
+            lambda db, port, cfg="./config.conf", log_path=None: FakeServer()
+        )
         smoke.wait_ready = lambda base, timeout=180, sleep=2: False
+        smoke.stop_server = lambda server: stopped.append("terminate")
+        smoke.port_is_taken = lambda port, host="127.0.0.1": False
         self.addCleanup(setattr, smoke, "start_server", original_start)
         self.addCleanup(setattr, smoke, "wait_ready", original_wait)
+        self.addCleanup(setattr, smoke, "stop_server", original_stop)
+        self.addCleanup(setattr, smoke, "port_is_taken", original_port)
         with self.assertRaises(RuntimeError):
             smoke.run("db", 8169, "./config.conf")
         self.assertEqual(stopped, ["terminate"])
@@ -181,6 +189,130 @@ class TestTheServerIsAlwaysStopped(unittest.TestCase):
         # 8069 est souvent pris par l'instance de travail : le lui voler
         # ferait échouer le test pour une raison sans rapport.
         self.assertNotEqual(smoke.DEFAULT_PORT, 8069)
+
+
+class TestTheCulpritViewsAreNamed(unittest.TestCase):
+    """Détecter sans nommer laisse relever des ids dans une trace à la main."""
+
+    def test_the_parent_is_read_from_the_error_context(self):
+        # C'est le PARENT le coupable : la copie figée dans laquelle
+        # l'enfant ne trouve plus son xpath.
+        line = "[view_id: 3282, xml_id: n/a, model: n/a, parent_id: 3281]"
+        self.assertEqual(smoke.RE_CONTEXT.findall(line), [("3282", "3281")])
+
+    def test_the_context_line_is_not_translated(self):
+        # La phrase qui précède l'est, celle-ci non : la lire marche donc
+        # sur un système français comme anglais.
+        self.assertEqual(
+            smoke.RE_CONTEXT.findall("[view_id: 1, parent_id: 2]"),
+            [("1", "2")],
+        )
+
+    def test_a_late_context_is_still_attached(self):
+        # Odoo vide son tampon à l'arrêt : le journal se lit APRÈS, et rien
+        # ne doit dépendre du moment où la ligne est apparue.
+        lst_failure = [("http://h/a", 500, [])]
+        log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
+        rebuilt = smoke.attach_missing_parents(lst_failure, log)
+        self.assertEqual(rebuilt[0][2], ["2841"])
+
+    def test_an_already_attributed_parent_is_not_duplicated(self):
+        lst_failure = [("http://h/a", 500, ["2841"])]
+        log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
+        rebuilt = smoke.attach_missing_parents(lst_failure, log)
+        self.assertEqual(rebuilt[0][2], ["2841"])
+
+
+class TestTheServerIsKilledForReal(unittest.TestCase):
+    """« ./run.sh » est un script bash : il ne transmet pas les signaux."""
+
+    def test_it_starts_its_own_process_group(self):
+        # Sans cela, terminate() tue l'enveloppe et laisse odoo-bin vivant.
+        # Mesuré : six serveurs orphelins, un par essai, et les essais
+        # suivants interrogeaient sans le savoir celui d'avant.
+        import inspect
+
+        source = inspect.getsource(smoke.start_server)
+        self.assertIn("start_new_session=True", source)
+
+    def test_it_kills_the_group_not_just_the_wrapper(self):
+        import inspect
+
+        source = inspect.getsource(smoke.stop_server)
+        self.assertIn("killpg", source)
+
+    def test_a_taken_port_is_refused_not_tested(self):
+        # Un serveur resté d'un essai précédent répond « prêt » : on
+        # testerait sa base à lui en croyant tester la sienne.
+        original = smoke.port_is_taken
+        smoke.port_is_taken = lambda port, host="127.0.0.1": True
+        self.addCleanup(setattr, smoke, "port_is_taken", original)
+        with self.assertRaises(RuntimeError) as caught:
+            smoke.run("db", 8169, "./config.conf")
+        self.assertIn("8169", str(caught.exception))
+
+
+class TestOfferingTheFix(unittest.TestCase):
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        self.applied = []
+        original = smoke.apply_reset
+        smoke.apply_reset = lambda db, keys: (
+            self.applied.append(keys),
+            (0, "ok"),
+        )[1]
+        self.addCleanup(setattr, smoke, "apply_reset", original)
+
+    def run_prompt(self, answer, lst_key=None):
+        import contextlib
+        import io
+
+        if lst_key is None:
+            lst_key = ["website_blog.blog_post_complete", "website_form.x"]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            done = smoke.prompt(
+                "db",
+                [("http://h/a", 500, ["2841"])],
+                lst_key,
+                ask=lambda prompt: answer,
+            )
+        return done, out.getvalue()
+
+    def test_every_key_is_numbered(self):
+        _done, text = self.run_prompt("")
+        self.assertIn("[1] website_blog.blog_post_complete", text)
+        self.assertIn("[a]", text)
+
+    def test_a_number_applies_only_that_one(self):
+        done, _text = self.run_prompt("1")
+        self.assertEqual(done, ["website_blog.blog_post_complete"])
+        self.assertEqual(self.applied, [["website_blog.blog_post_complete"]])
+
+    def test_a_applies_them_all(self):
+        done, _text = self.run_prompt("a")
+        self.assertEqual(len(done), 2)
+
+    def test_empty_applies_nothing(self):
+        done, text = self.run_prompt("")
+        self.assertEqual(done, [])
+        self.assertEqual(self.applied, [])
+        self.assertIn("Kept", text)
+
+    def test_an_unknown_answer_applies_nothing(self):
+        done, text = self.run_prompt("9")
+        self.assertEqual(self.applied, [])
+        self.assertIn("Unknown choice", text)
+
+    def test_no_key_found_says_so(self):
+        done, text = self.run_prompt("a", lst_key=[])
+        self.assertEqual(done, [])
+        self.assertIn("nothing to offer", text)
 
 
 class TestTheMigrationOffersIt(unittest.TestCase):

@@ -5022,6 +5022,46 @@ TRANSLATIONS = {
         "fr": "port",
         "en": "port",
     },
+    "parent view(s) in cause": {
+        "fr": "vue(s) parente(s) en cause",
+        "en": "parent view(s) in cause",
+    },
+    "Those parents are copies frozen on an older version;": {
+        "fr": "Ces parents sont des copies figées sur une version antérieure ;",
+        "en": "Those parents are copies frozen on an older version;",
+    },
+    "resetting them onto the module view is the fix": {
+        "fr": "les réinitialiser sur la vue module est le correctif",
+        "en": "resetting them onto the module view is the fix",
+    },
+    "No parent view named: nothing to offer.": {
+        "fr": "Aucune vue parente nommée : rien à proposer.",
+        "en": "No parent view named: nothing to offer.",
+    },
+    "Copies to reset onto their module view": {
+        "fr": "Copies à réinitialiser sur leur vue module",
+        "en": "Copies to reset onto their module view",
+    },
+    "Which one(s) to reset?": {
+        "fr": "Laquelle ou lesquelles réinitialiser ?",
+        "en": "Which one(s) to reset?",
+    },
+    "Re-checked the": {
+        "fr": "Revérification des",
+        "en": "Re-checked the",
+    },
+    "failing URL(s) after the reset": {
+        "fr": "URL en échec après la réinitialisation",
+        "en": "failing URL(s) after the reset",
+    },
+    "Something already listens on port": {
+        "fr": "Quelque chose écoute déjà sur le port",
+        "en": "Something already listens on port",
+    },
+    "it would be tested instead of this database.": {
+        "fr": "il serait testé à la place de cette base.",
+        "en": "it would be tested instead of this database.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
