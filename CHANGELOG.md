@@ -66,6 +66,22 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - FAQ entry on wkhtmltopdf for recent distributions
 - brin_advisor and brin_cluster: recommend and apply the right PostgreSQL
   index for an Odoo model
+- Per-VM settings in the deployment form: vCPU, RAM, disk, type, ERPLibre
+  branch, Odoo version and timezone, a lock that shields a VM from the global
+  profile, renaming, and several copies of one entry
+- Python interpreter provider chosen through EL_PYTHON_PROVIDER — mise lays
+  down a precompiled CPython, pyenv builds one — and picked per deployment
+- uv places the Python packages, pip as fallback, through EL_PIP_PROVIDER
+- openSUSE Leap 16.0 and Fedora 43 in the VM catalogue
+- Application store of a graphical VM: .deb only, Flatpak tooling, or snap
+- Remote desktop tunnel: the SSH command is composed from ~/.ssh/config, with
+  the hypervisor console as a third route
+- The install dashboard acts on a VM without leaving it: update by parts,
+  restart Odoo, delete; architecture column and resizable columns
+- Migration: go back to a step from the resume screen or from a prompt, and
+  act on the COW copies as soon as they are announced
+- The website copy analysis diffs each copy against the view it shadows
+- A test checks that what the tooling imports is declared
 
 ## Removed
 
@@ -98,6 +114,11 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - LinuxMint 22.3 supported
 - Odoo 18 dependencies: flanker, orjson, python-magic, tldextract, PyYAML
 - Copyright year updated to 2026
+- Canadian pacman mirrors placed first on Arch, the official geographic mirror
+  measuring four times slower from Montréal
+- A Poetry dependency can be declined per architecture: factur-x is pinned to
+  3.x on s390x, where saxonche publishes no wheel, and PyMuPDF is set aside
+  there
 
 ## Fixed
 
@@ -111,6 +132,16 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Installation on Debian 13, Fedora and Ubuntu 26.04: apt lock, wkhtmltopdf,
   SELinux and the missing C compiler
 - Documentation accents and the parallel markdown generation
+- The s390x build chain, on Debian as on EL9, EL10, Fedora and openSUSE:
+  missing compilers and headers, Rust for cryptography and bcrypt, qpdf for
+  pikepdf, libclang for pymupdf, package names that change across releases,
+  and a batch that failed on one unknown name without ever naming it
+- A graphical desktop install froze for thirty minutes on a snap package that
+  could not reach the store
+- The compiler was killed for lack of memory while building CPython on a small
+  s390x guest
+- The COW migration tools and the database upgrade speak the system language
+- The analysis and migration tools are executable
 
 ## Security
 
