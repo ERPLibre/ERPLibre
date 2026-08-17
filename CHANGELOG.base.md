@@ -95,6 +95,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Application store of a graphical VM: .deb only, Flatpak tooling, or snap
 - Remote desktop tunnel: the SSH command is composed from ~/.ssh/config, with the hypervisor console as a third route
 - The install dashboard acts on a VM without leaving it: update by parts, restart Odoo, delete; architecture column and resizable columns
+- Migration: go back to a step from the resume screen or from a prompt, and act on the COW copies as soon as they are announced
+- The website copy analysis diffs each copy against the view it shadows
 - A test checks that what the tooling imports is declared
 
 <!-- [fr] -->
@@ -155,6 +157,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Magasin d'applications d'une VM graphique : .deb seul, outillage Flatpak, ou snap
 - Tunnel vers le bureau distant : la commande SSH est composée depuis ~/.ssh/config, avec la console de l'hyperviseur comme troisième voie
 - Le tableau de bord d'installation agit sur une VM sans la quitter : mise à jour par parties, redémarrage d'Odoo, suppression ; colonne d'architecture et colonnes ajustables
+- Migration : revenir à une étape depuis l'écran de reprise ou depuis une invite, et agir sur les copies COW dès leur annonce
+- L'analyse des copies de site compare chaque copie à la vue qu'elle masque
 - Un test vérifie que ce qu'importe l'outillage est bien déclaré
 
 <!-- [en] -->
@@ -249,6 +253,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - A graphical desktop install froze for thirty minutes on a snap package that could not reach the store
 - The compiler was killed for lack of memory while building CPython on a small s390x guest
 - The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
+- The COW migration tools and the database upgrade speak the system language
+- The analysis and migration tools are executable
 
 <!-- [fr] -->
 
@@ -266,6 +272,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - L'installation d'un bureau graphique figeait trente minutes sur un paquet snap qui ne joignait pas le magasin
 - Le compilateur était tué faute de mémoire en bâtissant CPython sur une petite VM s390x
 - Le README ne listait ni Fedora, ni openSUSE, ni Linux Mint, ni Debian 13, toutes supportées
+- Les outils de migration COW et la mise à niveau de la base parlent la langue du système
+- Les outils d'analyse et de migration sont exécutables
 
 <!-- [en] -->
 ## Security
