@@ -5082,6 +5082,18 @@ TRANSLATIONS = {
         "fr": "(un palier de version) ou quand la page est rendue.",
         "en": "(a version bump) or when the page is rendered.",
     },
+    "Before starting: what already answers, and what": {
+        "fr": "Avant de commencer : ce qui répond déjà, et ce qui",
+        "en": "Before starting: what already answers, and what",
+    },
+    "does not. A page broken now will still be broken": {
+        "fr": "ne répond pas. Une page cassée maintenant le sera encore",
+        "en": "does not. A page broken now will still be broken",
+    },
+    "after — and that is not the migration.": {
+        "fr": "après — et ce ne sera pas la migration.",
+        "en": "after — and that is not the migration.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

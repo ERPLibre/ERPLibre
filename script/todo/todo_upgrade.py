@@ -1695,6 +1695,12 @@ class TodoUpgrade:
             f" -d {database_name} -t odoo{start_version + 1}.0 --report-only"
         )
 
+        # La mesure de DÉPART. Sans elle, une page qui rendait déjà 500 avant
+        # la migration se lit comme un dégât de la migration, et l'on cherche
+        # des heures du côté du palier. Mesuré : deux URL cassaient avant même
+        # de commencer.
+        self.prompt_smoke_public_url(database_name, baseline=True)
+
         msg = "3 - Clean up database before data migration"
         self.print_step(msg)
         self.add_comment_progression(msg)
@@ -2907,17 +2913,27 @@ class TodoUpgrade:
             f" -d {database_name} {args} --apply"
         )
 
-    def prompt_smoke_public_url(self, database_name):
+    def prompt_smoke_public_url(self, database_name, baseline=False):
         """Proposer d'interroger toutes les pages publiques de la base.
 
         La liste vient du sitemap — celle qu'Odoo publie pour les moteurs de
         recherche. Une page qui y figure et ne répond pas est une page que
         les visiteurs n'atteignent pas non plus.
 
+        `baseline` marque la mesure d'AVANT le premier palier. Elle ne sert
+        pas à réparer — elle sert à savoir ce qui cassait déjà. Sans ce point
+        de départ, les mêmes 500 après le palier passent pour un dégât de la
+        migration, et l'on cherche du mauvais côté.
+
         « non » par défaut : cela démarre un serveur et peut prendre quelques
-        minutes sur un gros site, et rien n'oblige à le faire à chaque
-        palier.
+        minutes sur un gros site.
         """
+        if baseline:
+            print(
+                f"\n✨ {t('Before starting: what already answers, and what')}"
+                f" {t('does not. A page broken now will still be broken')}"
+                f" {t('after — and that is not the migration.')}"
+            )
         answer = (
             self.ask_gate(
                 f"💬 {t('Request every public URL of this database now?')}"

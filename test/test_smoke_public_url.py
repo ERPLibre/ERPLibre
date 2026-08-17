@@ -365,6 +365,63 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         self.assertIn("smoke_public_url.py", lst_cmd[0])
         self.assertIn("-d db_upgrade_13", lst_cmd[0])
 
+    def test_it_is_also_asked_before_the_first_bump(self):
+        # LA mesure de départ : sans elle, une page qui rendait déjà 500
+        # avant la migration se lit comme un dégât du palier, et l'on
+        # cherche des heures du mauvais côté.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        self.assertEqual(source.count("prompt_smoke_public_url"), 2)
+        premier = source.index("prompt_smoke_public_url")
+        self.assertLess(
+            premier, source.index("4 - Upgrade version with OpenUpgrade")
+        )
+
+    def test_the_baseline_runs_on_the_database_before_the_bump(self):
+        # Sur la base d'AVANT, pas sur une base de palier qui n'existe pas
+        # encore : la mesurer après ne dirait plus d'où vient la panne.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        premier = source.index("prompt_smoke_public_url")
+        fenetre = source[premier : premier + 90]
+        self.assertIn("database_name", fenetre)
+        self.assertNotIn("database_name_upgrade", fenetre)
+        self.assertIn("baseline=True", fenetre)
+
+    def test_the_baseline_says_what_it_measures(self):
+        # Un même écran à deux moments différents : sans un mot, on croit
+        # que la migration a déjà eu lieu.
+        import contextlib
+        import io
+
+        from script.todo import todo_i18n
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.lst_command_executed = []
+        upgrade.write_config = lambda: None
+        upgrade.run_on_terminal = lambda cmd: 0
+        upgrade.ask_gate = lambda prompt: ""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            upgrade.prompt_smoke_public_url("db", baseline=True)
+        self.assertIn("Before starting", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            upgrade.prompt_smoke_public_url("db")
+        self.assertNotIn("Before starting", out.getvalue())
+
     def test_it_is_asked_before_the_selenium_prompt(self):
         # Après, la question arriverait une fois le navigateur ouvert : on
         # aurait déjà cherché à la main ce que le test nomme.
