@@ -31,12 +31,8 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
 - Support Selenium grid from selenium_lib.py
 - Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
-- Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora,
-  AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) on amd64,
-  arm64 and s390x, with a menu to list,
-  test, resize, delete and clean up
-- Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the
-  Linux Mint desktop), with remote access through xrdp — TigerVNC on Arch
+- Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) on amd64, arm64 and s390x, with a menu to list, test, resize, delete and clean up
+- Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the Linux Mint desktop), with remote access through xrdp — TigerVNC on Arch
 - Textual interfaces: install dashboard, VM deployment form, migration resume
   screen; Textual is installed on demand
 - Navigation telemetry for TODO, as a tree, a kanban or a list
@@ -66,12 +62,18 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - FAQ entry on wkhtmltopdf for recent distributions
 - brin_advisor and brin_cluster: recommend and apply the right PostgreSQL
   index for an Odoo model
+- Per-VM settings in the deployment form: vCPU, RAM, disk, type, ERPLibre branch, Odoo version and timezone, a lock that shields a VM from the global profile, renaming, and several copies of one entry
+- Python interpreter provider chosen through EL_PYTHON_PROVIDER — mise lays down a precompiled CPython, pyenv builds one — and picked per deployment
+- uv places the Python packages, pip as fallback, through EL_PIP_PROVIDER
+- openSUSE Leap 16.0 and Fedora 43 in the VM catalogue
+- Application store of a graphical VM: .deb only, Flatpak tooling, or snap
+- Remote desktop tunnel: the SSH command is composed from ~/.ssh/config, with the hypervisor console as a third route
+- The install dashboard acts on a VM without leaving it: update by parts, restart Odoo, delete; architecture column and resizable columns
+- A test checks that what the tooling imports is declared
 
 ## Removed
 
-- Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf
-  12.2, whose build requires C++20, while focal ships GCC 9 and publishes no
-  `g++-10` for s390x
+- Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf 12.2, whose build requires C++20, while focal ships GCC 9 and publishes no `g++-10` for s390x
 
 ## Changed
 
@@ -98,6 +100,8 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - LinuxMint 22.3 supported
 - Odoo 18 dependencies: flanker, orjson, python-magic, tldextract, PyYAML
 - Copyright year updated to 2026
+- Canadian pacman mirrors placed first on Arch, the official geographic mirror measuring four times slower from Montréal
+- A Poetry dependency can be declined per architecture: factur-x is pinned to 3.x on s390x, where saxonche publishes no wheel, and PyMuPDF is set aside there
 
 ## Fixed
 
@@ -111,6 +115,10 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Installation on Debian 13, Fedora and Ubuntu 26.04: apt lock, wkhtmltopdf,
   SELinux and the missing C compiler
 - Documentation accents and the parallel markdown generation
+- The s390x build chain, on Debian as on EL9, EL10, Fedora and openSUSE: missing compilers and headers, Rust for cryptography and bcrypt, qpdf for pikepdf, libclang for pymupdf, package names that change across releases, and a batch that failed on one unknown name without ever naming it
+- A graphical desktop install froze for thirty minutes on a snap package that could not reach the store
+- The compiler was killed for lack of memory while building CPython on a small s390x guest
+- The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
 
 ## Security
 
