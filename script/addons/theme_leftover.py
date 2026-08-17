@@ -37,6 +37,18 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+def can_ask():
+    """Peut-on poser une question ICI ?
+
+    Il faut deux choses, pas une : de quoi LIRE la réponse (stdin sur un
+    terminal) et de quoi MONTRER la question (stdout aussi). Ne tester que
+    stdin laisse poser une invite qui part dans un tube : elle reste en
+    tampon, invisible, pendant que le processus attend — on croit à un
+    blocage et l'on tape Entrée à l'aveugle.
+    """
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 def run_psql(database, sql):
     """Interroger la base en lecture seule, garantie côté serveur.
 
@@ -256,7 +268,10 @@ def main(argv=None):
             return 2
         print(f"✅ -> {len(attachments)} {t('attachment(s) deleted.')}")
         return 0
-    if not config.report_only and sys.stdin.isatty():
+    # Voir ET pouvoir répondre : une invite dont la sortie part dans un
+    # tube reste invisible — Python bufferise par blocs — pendant que le
+    # processus attend. Mesuré : l'utilisateur tape Entrée à l'aveugle.
+    if not config.report_only and can_ask():
         if prompt(
             config.database,
             config.theme,

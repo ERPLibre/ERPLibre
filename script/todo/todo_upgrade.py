@@ -2833,10 +2833,15 @@ class TodoUpgrade:
             print(f"ℹ -> {t('Kept. Nothing was uninstalled.')}")
             return
         for theme in lst_theme:
-            self.todo_upgrade_execute(
+            # Sur le VRAI terminal : ce script finit par theme_leftover.py,
+            # qui pose une question. L'exécuteur capture la sortie par un
+            # tube — Python la met alors en tampon par blocs — et l'invite
+            # restait invisible pendant que le processus attendait une
+            # réponse. On tape Entrée à l'aveugle, plusieurs fois, et les
+            # frappes en trop vont à la question suivante.
+            self.run_on_terminal(
                 f"./script/addons/uninstall_addons_theme.sh"
-                f" {database_name} {theme}",
-                wait_at_error=False,
+                f" {database_name} {theme}"
             )
 
     def stale_cow_keys(self, database_name):

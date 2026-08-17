@@ -154,6 +154,9 @@ class TestTheMigrationOffersIt(unittest.TestCase):
             self.lst_cmd.append(cmd),
             (False, cmd, []),
         )[1]
+        # Le désinstalleur ne passe PLUS par l'exécuteur qui capture : il
+        # pose une question, et un tube la rendrait invisible.
+        obj.run_on_terminal = lambda cmd: self.lst_cmd.append(cmd) or 0
         obj.ask_gate = lambda prompt: answer
         return obj
 
@@ -300,6 +303,77 @@ class TestKeepOrDeleteTheLeftovers(unittest.TestCase):
     def test_the_prompt_stays_out_of_a_pipe(self):
         with open(theme_leftover.__file__) as handle:
             self.assertIn("sys.stdin.isatty()", handle.read())
+
+
+class TestTheQuestionMustBeVisible(unittest.TestCase):
+    """Une invite qu'on ne voit pas est une invite à laquelle on répond mal.
+
+    Le script se termine par theme_leftover.py, qui pose une question. Lancé
+    par l'exécuteur qui CAPTURE la sortie, son stdout est un tube : Python
+    bufferise par blocs et l'invite reste invisible pendant que le processus
+    attend. Vécu — on croit à un blocage, on tape Entrée plusieurs fois, la
+    première frappe répond à l'aveugle et les suivantes vont à la question
+    d'après.
+
+    Deux verrous, car un seul ne suffit pas : la migration lance ce script
+    sur le vrai terminal, ET l'outil refuse de questionner s'il ne peut pas
+    se faire voir.
+    """
+
+    def test_the_migration_runs_it_on_the_real_terminal(self):
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.prompt_uninstall_theme)
+        self.assertIn("run_on_terminal", source)
+        self.assertNotIn("todo_upgrade_execute", source)
+
+    def test_asking_needs_stdout_not_just_stdin(self):
+        # LE défaut : ne tester que stdin laisse poser une question dans un
+        # tube. Il faut de quoi LIRE la réponse ET MONTRER la question.
+        import io
+        import sys
+
+        class Fake(io.StringIO):
+            def __init__(self, tty):
+                super().__init__()
+                self.tty = tty
+
+            def isatty(self):
+                return self.tty
+
+        real_in, real_out = sys.stdin, sys.stdout
+        self.addCleanup(setattr, sys, "stdin", real_in)
+        self.addCleanup(setattr, sys, "stdout", real_out)
+        for stdin_tty, stdout_tty, expected in (
+            (True, True, True),
+            (True, False, False),  # le cas mesuré
+            (False, True, False),
+            (False, False, False),
+        ):
+            sys.stdin, sys.stdout = Fake(stdin_tty), Fake(stdout_tty)
+            got = theme_leftover.can_ask()
+            sys.stdin, sys.stdout = real_in, real_out
+            with self.subTest(stdin=stdin_tty, stdout=stdout_tty):
+                self.assertEqual(got, expected)
+
+    def test_the_other_tools_guard_the_same_way(self):
+        # Trois outils posent des questions ; un seul corrigé laisserait le
+        # même piège ailleurs.
+        import os
+
+        REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for relative in (
+            "script/odoo/migration/smoke_public_url.py",
+            "script/odoo/migration/check_stale_scss.py",
+            "script/addons/theme_leftover.py",
+        ):
+            with open(os.path.join(REPO_ROOT, relative)) as handle:
+                source = handle.read()
+            with self.subTest(tool=relative):
+                self.assertIn("def can_ask()", source)
+                self.assertIn("sys.stdout.isatty()", source)
 
 
 class TestTheMisleadingErrorCode(unittest.TestCase):

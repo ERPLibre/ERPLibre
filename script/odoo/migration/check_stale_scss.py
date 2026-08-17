@@ -64,6 +64,18 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+def can_ask():
+    """Peut-on poser une question ICI ?
+
+    Il faut deux choses, pas une : de quoi LIRE la réponse (stdin sur un
+    terminal) et de quoi MONTRER la question (stdout aussi). Ne tester que
+    stdin laisse poser une invite qui part dans un tube : elle reste en
+    tampon, invisible, pendant que le processus attend — on croit à un
+    blocage et l'on tape Entrée à l'aveugle.
+    """
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 # Une variable SCSS commence par $ ; celles dont le nom commence par un tiret
 # sont locales au fichier par convention Odoo ($-seen, $-font-numbers) et se
 # définissent toujours au-dessus de leur usage.
@@ -625,10 +637,7 @@ def main(argv=None):
     # laisser retrouver soi-même les deux arguments de reset_asset. Mais
     # seulement devant un terminal — dans un tube, une invite bloquerait
     # l'appelant sans que personne ne voie la question.
-    if (
-        not (config.diff or config.tui or config.report_only)
-        and sys.stdin.isatty()
-    ):
+    if not (config.diff or config.tui or config.report_only) and can_ask():
         if prompt(lst_finding, config.database, config.config):
             return 0
     return 1

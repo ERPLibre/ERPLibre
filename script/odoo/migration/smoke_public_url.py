@@ -54,6 +54,18 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+def can_ask():
+    """Peut-on poser une question ICI ?
+
+    Il faut deux choses, pas une : de quoi LIRE la réponse (stdin sur un
+    terminal) et de quoi MONTRER la question (stdout aussi). Ne tester que
+    stdin laisse poser une invite qui part dans un tube : elle reste en
+    tampon, invisible, pendant que le processus attend — on croit à un
+    blocage et l'on tape Entrée à l'aveugle.
+    """
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
 RE_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
 
 # « [view_id: 3282, xml_id: n/a, model: n/a, parent_id: 3281] ». Seule la
@@ -515,7 +527,7 @@ def main(argv=None):
         f"⧖ {t('Starting Odoo on')} '{config.database}'"
         f" ({t('port')} {config.port})…"
     )
-    interactive = not config.report_only and sys.stdin.isatty()
+    interactive = not config.report_only and can_ask()
     try:
         lst_url, lst_failure, lst_key, lst_again = run(
             config.database,
