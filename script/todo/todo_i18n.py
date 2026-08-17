@@ -5066,6 +5066,22 @@ TRANSLATIONS = {
         "fr": "Entrée =",
         "en": "Enter =",
     },
+    "No COW copy carries this key": {
+        "fr": "Aucune copie COW ne porte cette clé",
+        "en": "No COW copy carries this key",
+    },
+    "already identical to the module view.": {
+        "fr": "déjà identique à la vue module.",
+        "en": "already identical to the module view.",
+    },
+    "Odoo surfaces this when the module view is rewritten": {
+        "fr": "Odoo le fait apparaître quand la vue module est réécrite",
+        "en": "Odoo surfaces this when the module view is rewritten",
+    },
+    "(a version bump) or when the page is rendered.": {
+        "fr": "(un palier de version) ou quand la page est rendue.",
+        "en": "(a version bump) or when the page is rendered.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

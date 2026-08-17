@@ -215,9 +215,14 @@ def attach_missing_parents(lst_failure, lst_log):
     known = {pid for _u, _s, lst in lst_failure for pid in lst}
     extra = []
     for line in lst_log:
-        for _view_id, parent_id in RE_CONTEXT.findall(line):
-            if parent_id not in known and parent_id not in extra:
-                extra.append(parent_id)
+        # LES DEUX : le parent ET l'enfant. Mesuré sur /contactus — le
+        # parent était identique à sa vue module, et c'est l'ENFANT qui
+        # portait l'arch périmée. Ne proposer que le parent envoyait
+        # réinitialiser une copie qui allait déjà bien.
+        for view_id, parent_id in RE_CONTEXT.findall(line):
+            for candidate in (parent_id, view_id):
+                if candidate not in known and candidate not in extra:
+                    extra.append(candidate)
     if not extra:
         return lst_failure
     rebuilt = []

@@ -214,13 +214,30 @@ class TestTheCulpritViewsAreNamed(unittest.TestCase):
         lst_failure = [("http://h/a", 500, [])]
         log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
-        self.assertEqual(rebuilt[0][2], ["2841"])
+        self.assertIn("2841", rebuilt[0][2])
 
-    def test_an_already_attributed_parent_is_not_duplicated(self):
+    def test_both_the_parent_and_the_child_are_proposed(self):
+        # LE défaut mesuré sur /contactus : le parent (3281) était IDENTIQUE
+        # à sa vue module, et c'est l'enfant (3282) qui portait l'arch
+        # périmée. Ne nommer que le parent envoyait réinitialiser une copie
+        # qui allait déjà bien, et la page restait en 500.
+        lst_failure = [("http://h/contactus", 500, [])]
+        log = ["[view_id: 3282, model: n/a, parent_id: 3281]"]
+        rebuilt = smoke.attach_missing_parents(lst_failure, log)
+        self.assertEqual(rebuilt[0][2], ["3281", "3282"])
+
+    def test_the_parent_comes_first(self):
+        # C'est le cas le plus fréquent — le blogue — donc en tête de liste.
+        lst_failure = [("http://h/a", 500, [])]
+        log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
+        rebuilt = smoke.attach_missing_parents(lst_failure, log)
+        self.assertEqual(rebuilt[0][2][0], "2841")
+
+    def test_an_already_attributed_id_is_not_duplicated(self):
         lst_failure = [("http://h/a", 500, ["2841"])]
         log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
-        self.assertEqual(rebuilt[0][2], ["2841"])
+        self.assertEqual(rebuilt[0][2].count("2841"), 1)
 
 
 class TestTheServerIsKilledForReal(unittest.TestCase):
