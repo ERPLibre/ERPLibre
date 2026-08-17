@@ -69,6 +69,8 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - Application store of a graphical VM: .deb only, Flatpak tooling, or snap
 - Remote desktop tunnel: the SSH command is composed from ~/.ssh/config, with the hypervisor console as a third route
 - The install dashboard acts on a VM without leaving it: update by parts, restart Odoo, delete; architecture column and resizable columns
+- Migration: go back to a step from the resume screen or from a prompt, and act on the COW copies as soon as they are announced
+- The website copy analysis diffs each copy against the view it shadows
 - A test checks that what the tooling imports is declared
 
 ## Removed
@@ -119,6 +121,8 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - A graphical desktop install froze for thirty minutes on a snap package that could not reach the store
 - The compiler was killed for lack of memory while building CPython on a small s390x guest
 - The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
+- The COW migration tools and the database upgrade speak the system language
+- The analysis and migration tools are executable
 
 ## Security
 
