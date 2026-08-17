@@ -1767,32 +1767,12 @@ class TodoUpgrade:
         self.print_step(msg)
         self.add_comment_progression(msg)
 
-        if not self.dct_progression.get("state_3_install_clean_database"):
-            status, cmd_executed = self.todo_upgrade_execute(
-                f"./script/addons/install_addons.sh {database_name} database_cleanup",
-                single_source_odoo=True,
-            )
-            if not status:
-                self.dct_progression["state_3_install_clean_database"] = True
-                self.write_config()
-
+        # Le nettoyage est fait à l'étape 2, par l'outil, et il pose lui-même
+        # le module s'il manque. Redemander ici « avez-vous fini de nettoyer
+        # dans l'interface ? » ferait faire à la main ce qui vient d'être
+        # fait — et l'installation qui suivait arrivait APRÈS l'usage.
         if not self.dct_progression.get("state_3_clean_database"):
-            print(
-                f"✨ {t('Go to Settings / Technical / Cleanup... / Purge and')}"
-                f" {t('purge the obsolete modules')}"
-            )
-            status = self.ask_gate(
-                "💬 Did you finish to clean database? Press y/Y to open"
-                " server with selenium, else ignore it"
-                f" {t('(b = go back to a previous step)')} : "
-            ).strip()
-
-            if status.lower().strip() == "y":
-                self.todo.prompt_execute_selenium_and_run_db(database_name)
-                status = self.ask(
-                    f"💬 {t('Press enter to continue step 3')} : "
-                ).strip()
-
+            self.dct_progression["state_3_install_clean_database"] = True
             self.dct_progression["state_3_clean_database"] = True
             self.write_config()
 

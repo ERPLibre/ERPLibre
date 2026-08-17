@@ -89,6 +89,39 @@ class FakeEnv(dict):
         self.cr = FakeCursor(journal)
 
 
+class UserError(Exception):
+    """Celle que le script poussé importera : on fournit odoo.exceptions.
+
+    Refaire une classe de son côté ne servirait à rien — « except » compare
+    des identités, pas des noms, et le test passerait à côté.
+    """
+
+
+def install_fake_odoo_exceptions(case):
+    """Rendre `from odoo.exceptions import UserError` possible ici."""
+    import types
+
+    odoo = sys.modules.get("odoo") or types.ModuleType("odoo")
+    exceptions = types.ModuleType("odoo.exceptions")
+    exceptions.UserError = UserError
+    avant_odoo = sys.modules.get("odoo")
+    avant_exc = sys.modules.get("odoo.exceptions")
+    sys.modules["odoo"] = odoo
+    sys.modules["odoo.exceptions"] = exceptions
+
+    def remettre():
+        for nom, valeur in (
+            ("odoo", avant_odoo),
+            ("odoo.exceptions", avant_exc),
+        ):
+            if valeur is None:
+                sys.modules.pop(nom, None)
+            else:
+                sys.modules[nom] = valeur
+
+    case.addCleanup(remettre)
+
+
 def run_script(models, max_round=10, dry_run=False):
     """Exécuter le script réellement poussé, et rendre (rapport, journal)."""
     import json
@@ -146,7 +179,9 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         ]
         models = {cleanup.ORDER[0][1]: FakeModel(lines)}
         _report, got = run_script(models, max_round=1)
-        self.assertEqual(got.count(("savepoint", "enter")), 2)
+        # Un point de reprise par entrée, PLUS un pour la création et la
+        # lecture des noms : c'est là que la transaction s'était avortée.
+        self.assertEqual(got.count(("savepoint", "enter")), 3)
 
     def test_a_refusal_rolls_back_only_its_own(self):
         journal = []
@@ -161,13 +196,63 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         self.assertEqual(entry["purged"], 2)
         self.assertEqual([name for name, _msg in entry["errors"]], ["bad"])
         self.assertEqual(got.count(("savepoint", "rollback")), 1)
-        self.assertEqual(got.count(("savepoint", "release")), 2)
+        # Deux entrées purgées + la création : trois relâchements.
+        self.assertEqual(got.count(("savepoint", "release")), 3)
 
     def test_a_wizard_that_cannot_even_be_created_is_recorded(self):
         models = {cleanup.ORDER[0][1]: FakeModel([], raise_on_create="boom")}
         report, _got = run_script(models, max_round=1)
         self.assertEqual(report["failed"][0][0], "models")
         self.assertIn("boom", report["failed"][0][2])
+
+
+class TestTheReportSurvivesAnything(unittest.TestCase):
+    """Sans rapport, on ne sait même pas si la base a été touchée.
+
+    Vécu : `create({})` échouait, l'erreur était notée mais la transaction
+    restait AVORTÉE. La lecture de nom suivante mourait dessus, hors de tout
+    garde, et le script entier s'arrêtait — aucun rapport, juste une trace.
+    """
+
+    def test_reading_the_names_is_inside_the_savepoint(self):
+        # C'est la lecture des noms qui déclenche la requête, pas la
+        # création : la laisser dehors était le défaut.
+        source = cleanup.build_script(1, False)
+        creation = source.index("wizard = env[model].create({})")
+        garde = source.rindex("with env.cr.savepoint():", 0, creation)
+        noms = source.index("line.name or str(line.id)")
+        self.assertLess(garde, creation)
+        self.assertLess(creation, noms)
+
+    def test_a_failure_on_create_does_not_kill_the_run(self):
+        models = {
+            cleanup.ORDER[0][1]: FakeModel([], raise_on_create="boom"),
+            cleanup.ORDER[2][1]: FakeModel([FakeLine("colonne")]),
+        }
+        report, _got = run_script(models, max_round=1)
+        # La catégorie suivante a bien travaillé malgré l'échec de la
+        # première.
+        purged = {e["kind"]: e["purged"] for e in report["rounds"][0]}
+        self.assertEqual(purged.get("columns"), 1)
+        self.assertEqual(report["failed"][0][0], "models")
+
+    def test_an_unexpected_failure_still_yields_a_report(self):
+        class Explosive(dict):
+            def __init__(self, journal):
+                super().__init__()
+                self.cr = FakeCursor(journal)
+
+            def __contains__(self, key):
+                raise RuntimeError("registre en miettes")
+
+        import json as _json
+
+        journal = []
+        namespace = {"env": Explosive(journal)}
+        exec(cleanup.build_script(1, False), namespace)  # noqa: S102
+        report = _json.loads(_json.dumps(namespace["report"]))
+        self.assertEqual(report["failed"][0][:2], ["*", "fatal"])
+        self.assertIn("miettes", report["failed"][0][2])
 
 
 class TestGoingRoundAgain(unittest.TestCase):
@@ -383,6 +468,94 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         self.assertEqual(len(lst_cmd), 1)
         self.assertIn("database_cleanup.py", lst_cmd[0])
         self.assertIn("-d db_upgrade_18", lst_cmd[0])
+
+
+class TestNothingToPurgeIsNotAFailure(unittest.TestCase):
+    """Le module signale le VIDE par une exception.
+
+    `raise UserError("No orphaned models found")` : le compter comme un
+    échec faisait passer une base saine pour une base cassée, avec quatre
+    avertissements sur cinq catégories.
+    """
+
+    def test_the_pushed_script_separates_it(self):
+        source = cleanup.build_script(1, False)
+        self.assertIn("except UserError:", source)
+        vide = source.index("except UserError:")
+        echec = source.index("except Exception as exc:\n                note")
+        self.assertLess(vide, echec, "l'ordre des except décide")
+
+    def test_it_is_reported_as_zero_not_as_an_error(self):
+        install_fake_odoo_exceptions(self)
+
+        class Empty(FakeModel):
+            def create(self, values):
+                raise UserError("No orphaned models found")
+
+        models = {cleanup.ORDER[0][1]: Empty([])}
+        report, _got = run_script(models, max_round=1)
+        entry = report["rounds"][0][0]
+        self.assertEqual(entry["purged"], 0)
+        self.assertEqual(entry["errors"], [])
+        self.assertEqual(report["failed"], [])
+
+
+class TestTheModuleIsInstalledFirst(unittest.TestCase):
+    """Sans le module, aucun assistant n'existe et l'outil dit « rien ».
+
+    Ce silence se lit comme un succès. La migration l'installait à l'étape
+    3, donc APRÈS le nettoyage de l'étape 2 : l'ordre rendait l'outil
+    inutile au premier passage.
+    """
+
+    def test_it_checks_the_state_before_cleaning(self):
+        import inspect
+
+        source = inspect.getsource(cleanup.main)
+        self.assertIn("module_state(", source)
+        self.assertLess(
+            source.index("module_state("), source.index("run_shell(")
+        )
+
+    def test_it_installs_when_absent(self):
+        import inspect
+
+        source = inspect.getsource(cleanup.main)
+        self.assertIn('state != "installed"', source)
+        self.assertIn("install_module(", source)
+
+    def test_a_failed_install_stops_there(self):
+        # Nettoyer sans le module rendrait « rien à faire » sur une base qui
+        # en avait besoin.
+        import inspect
+
+        source = inspect.getsource(cleanup.main)
+        install = source.index("install_module(")
+        self.assertIn("return 2", source[install : install + 400])
+
+
+class TestTheMigrationNoLongerAsksTwice(unittest.TestCase):
+    def test_the_manual_cleanup_prompt_is_gone(self):
+        # Le faire à la main après l'avoir fait automatiquement.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        self.assertNotIn("Did you finish to clean database", source)
+        self.assertNotIn("Go to Settings / Technical / Cleanup", source)
+
+    def test_the_late_install_is_gone_too(self):
+        # Elle arrivait à l'étape 3, après l'usage de l'étape 2 : l'outil
+        # pose désormais le module lui-même, au bon moment.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        self.assertNotIn(
+            "install_addons.sh {database_name} database_cleanup", source
+        )
 
 
 class TestItRefusesTheWrongOdooVersion(unittest.TestCase):

@@ -5266,6 +5266,18 @@ TRANSLATIONS = {
         "fr": "(défaut)",
         "en": "(default)",
     },
+    "database_cleanup is not installed on this base;": {
+        "fr": "database_cleanup n'est pas installé sur cette base ;",
+        "en": "database_cleanup is not installed on this base;",
+    },
+    "installing it first.": {
+        "fr": "installation préalable.",
+        "en": "installing it first.",
+    },
+    "Could not install database_cleanup.": {
+        "fr": "Impossible d'installer database_cleanup.",
+        "en": "Could not install database_cleanup.",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

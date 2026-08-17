@@ -79,53 +79,90 @@ END = "ERPLIBRE_CLEANUP_END"
 
 SHELL_SCRIPT = """
 import json
+
+try:
+    from odoo.exceptions import UserError
+except Exception:
+    class UserError(Exception):
+        pass
+
 ORDER = %(order)r
 MAX_ROUND = %(max_round)d
 DRY_RUN = %(dry_run)s
 
 report = {"rounds": [], "missing": [], "failed": []}
-for index in range(MAX_ROUND):
-    this_round = []
-    purged_this_round = 0
-    for label, model in ORDER:
-        if model not in env:
-            if label not in report["missing"]:
-                report["missing"].append(label)
-            continue
-        ok = 0
-        errors = []
-        would = []
-        try:
-            wizard = env[model].create({})
-            lines = wizard.purge_line_ids
-        except Exception as exc:
-            report["failed"].append([label, "-", str(exc)[:200]])
-            continue
-        for line in lines:
-            name = line.name or str(line.id)
-            if DRY_RUN:
-                would.append(name)
+
+
+def note(label, name, exc):
+    report["failed"].append([label, name, str(exc)[:200]])
+
+
+try:
+    for index in range(MAX_ROUND):
+        this_round = []
+        purged_this_round = 0
+        for label, model in ORDER:
+            if model not in env:
+                if label not in report["missing"]:
+                    report["missing"].append(label)
                 continue
+            ok = 0
+            errors = []
+            would = []
             try:
-                # Un point de reprise par ENTRÉE : un refus n'emporte que la
-                # sienne, et la passe continue. Sans cela, le premier échec
-                # ferait perdre tout ce que la passe avait réparé.
+                # La CRÉATION et la lecture des noms sont dans le point de
+                # reprise, pas seulement la purge. Un échec ici laissait la
+                # transaction avortée ; la lecture suivante mourait dessus,
+                # hors de tout garde, et le rapport entier était perdu.
+                # Les noms sont matérialisés tout de suite : après un retour
+                # arrière, les relire relancerait une requête.
                 with env.cr.savepoint():
-                    line.purge()
-                ok += 1
+                    wizard = env[model].create({})
+                    todo = [
+                        (line, line.name or str(line.id))
+                        for line in wizard.purge_line_ids
+                    ]
+            except UserError:
+                # « Aucun modèle orphelin trouvé » : le module signale le
+                # VIDE par une exception. Le compter comme un échec faisait
+                # passer une base saine pour une base cassée.
+                this_round.append({"kind": label, "purged": 0,
+                                   "errors": [], "would": []})
+                continue
             except Exception as exc:
-                errors.append([name, str(exc)[:160]])
-        if not DRY_RUN and ok:
-            env.cr.commit()
-        purged_this_round += ok
-        this_round.append({"kind": label, "purged": ok,
-                           "errors": errors, "would": would})
-    report["rounds"].append(this_round)
-    # On s'arrête quand une passe ENTIÈRE n'a plus rien réparé : ce qui
-    # résistait au tour d'avant résistera encore. En simulation, une seule
-    # passe suffit — rien ne change, donc rien ne se libère.
-    if purged_this_round == 0 or DRY_RUN:
-        break
+                note(label, "-", exc)
+                continue
+            for line, name in todo:
+                if DRY_RUN:
+                    would.append(name)
+                    continue
+                try:
+                    # Un point de reprise par ENTRÉE : un refus n'emporte que
+                    # la sienne, et la passe continue. Sans cela, le premier
+                    # échec ferait perdre tout ce que la passe avait réparé.
+                    with env.cr.savepoint():
+                        line.purge()
+                    ok += 1
+                except Exception as exc:
+                    errors.append([name, str(exc)[:160]])
+            if not DRY_RUN and ok:
+                try:
+                    env.cr.commit()
+                except Exception as exc:
+                    note(label, "commit", exc)
+            purged_this_round += ok
+            this_round.append({"kind": label, "purged": ok,
+                               "errors": errors, "would": would})
+        report["rounds"].append(this_round)
+        # On s'arrête quand une passe ENTIÈRE n'a plus rien réparé : ce qui
+        # résistait au tour d'avant résistera encore. En simulation, une
+        # seule passe suffit — rien ne change, donc rien ne se libère.
+        if purged_this_round == 0 or DRY_RUN:
+            break
+except Exception as exc:
+    # Le rapport de CE QUI A ÉTÉ FAIT vaut plus que la trace de ce qui a
+    # cassé : sans lui, on ne sait même pas si la base a été touchée.
+    note("*", "fatal", exc)
 
 print("%(start)s")
 print(json.dumps(report))
@@ -200,6 +237,47 @@ def require_matching_version(database):
     return None
 
 
+def module_state(database, module="database_cleanup"):
+    """L'état du module dans cette base, ou None si on ne peut pas lire."""
+    env = os.environ.copy()
+    env["PGOPTIONS"] = "-c default_transaction_read_only=on"
+    env["PSQLRC"] = ""
+    done = subprocess.run(
+        [
+            "psql",
+            "-X",
+            "-w",
+            "-d",
+            database,
+            "-tAc",
+            f"SELECT state FROM ir_module_module WHERE name='{module}';",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if done.returncode:
+        return None
+    return done.stdout.strip() or None
+
+
+def install_module(database, module="database_cleanup", timeout=1800):
+    """Poser le module avant de s'en servir.
+
+    Sans lui, aucun assistant n'existe et l'outil rend « rien à faire » sur
+    une base qui en aurait eu besoin — un silence qu'on prend pour un
+    succès. La migration l'installait plus tard, à l'étape 3 ; l'attendre
+    revenait à nettoyer trop tard.
+    """
+    done = subprocess.run(
+        ["./script/addons/install_addons.sh", database, module],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return done.returncode, done.stdout + done.stderr
+
+
 def run_shell(database, config_path, script, timeout=3600):
     """Pousser le script dans « odoo-bin shell » et rendre son rapport.
 
@@ -267,6 +345,15 @@ def render(report, database):
             by_kind[kind] = by_kind.get(kind, 0) + 1
         for kind, count in by_kind.items():
             lines.append(f"   - {t(LABEL.get(kind, kind))} : {count}")
+        # Les échecs comptent AUSSI en simulation : une catégorie qui ne
+        # s'ouvre même pas est une information, pas un silence.
+        for kind, name, message in report.get("failed", []):
+            lines.append(f"   ⚠ [{kind}] {name} : {message[:90]}")
+        for kind in report.get("missing", []):
+            lines.append(
+                f"   ℹ {t(LABEL.get(kind, kind))} :"
+                f" {t('no such wizard in this version, skipped.')}"
+            )
         return "\n".join(lines) + "\n"
     total = 0
     for index, this_round in enumerate(report.get("rounds", []), start=1):
@@ -332,6 +419,18 @@ def main(argv=None):
     if mismatch:
         print(f"⛔ {mismatch}")
         return 2
+
+    state = module_state(config.database)
+    if state != "installed":
+        print(
+            f"⧖ {t('database_cleanup is not installed on this base;')}"
+            f" {t('installing it first.')}"
+        )
+        code, output = install_module(config.database)
+        if code:
+            print(output.strip()[-1500:])
+            print(f"❌ {t('Could not install database_cleanup.')}")
+            return 2
 
     print(f"⧖ {t('Cleaning')} '{config.database}'…")
     try:
