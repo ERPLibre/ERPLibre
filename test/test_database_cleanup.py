@@ -60,33 +60,72 @@ class FakeModel:
 
 
 class FakeCursor:
+    """Volontairement SANS `savepoint` : c'est l'invariant du correctif.
+
+    Le module OCA valide de lui-même — `purge_modules.find()` purge (ligne
+    91) et `purge_columns.purge()` appelle `cr.commit()` (ligne 57). Un
+    COMMIT détruit tous les points de reprise. En reprendre un ici ferait
+    revivre le défaut sans que rien ne le dise ; l'absence de la méthode
+    le fait échouer tout de suite.
+    """
+
     def __init__(self, journal):
         self.journal = journal
-
-    def savepoint(self):
-        journal = self.journal
-
-        class Guard:
-            def __enter__(self_inner):
-                journal.append(("savepoint", "enter"))
-                return self_inner
-
-            def __exit__(self_inner, exc_type, exc, tb):
-                journal.append(
-                    ("savepoint", "rollback" if exc_type else "release")
-                )
-                return False
-
-        return Guard()
 
     def commit(self):
         self.journal.append(("commit", None))
 
+    def rollback(self):
+        self.journal.append(("rollback", None))
+
+
+class AbortingCursor(FakeCursor):
+    """Ce que PostgreSQL fait VRAIMENT après une erreur.
+
+    La transaction reste avortée et refuse tout ordre jusqu'au rollback.
+    C'est ce qui changeait une panne sur « modules » en sept catégories
+    mortes, toutes sur « current transaction is aborted ».
+    """
+
+    def __init__(self, journal):
+        super().__init__(journal)
+        self.aborted = False
+
+    def commit(self):
+        if self.aborted:
+            raise RuntimeError(
+                "current transaction is aborted, commands ignored"
+                " until end of transaction block"
+            )
+        super().commit()
+
+    def rollback(self):
+        super().rollback()
+        self.aborted = False
+
+
+class CommittingLine(FakeLine):
+    """Une purge qui valide toute seule, comme `purge_columns` le fait.
+
+    Le COMMIT emporte le point de reprise ; l'ordre suivant meurt sur
+    « savepoint ... does not exist » et laisse la transaction avortée.
+    """
+
+    def __init__(self, name, cursor, journal=None):
+        super().__init__(name, journal=journal)
+        self.cursor = cursor
+
+    def purge(self):
+        self.journal.append(("purge", self.name))
+        self.cursor.commit()
+        self.cursor.aborted = True
+        raise RuntimeError('savepoint "10eb69719a9211f1" does not exist')
+
 
 class FakeEnv(dict):
-    def __init__(self, mapping, journal):
+    def __init__(self, mapping, journal, cursor=None):
         super().__init__(mapping)
-        self.cr = FakeCursor(journal)
+        self.cr = cursor if cursor is not None else FakeCursor(journal)
 
 
 class UserError(Exception):
@@ -122,12 +161,12 @@ def install_fake_odoo_exceptions(case):
     case.addCleanup(remettre)
 
 
-def run_script(models, max_round=10, dry_run=False):
+def run_script(models, max_round=10, dry_run=False, cursor=None):
     """Exécuter le script réellement poussé, et rendre (rapport, journal)."""
     import json
 
-    journal = []
-    env = FakeEnv(models, journal)
+    journal = cursor.journal if cursor is not None else []
+    env = FakeEnv(models, journal, cursor=cursor)
     namespace = {"env": env}
     exec(cleanup.build_script(max_round, dry_run), namespace)  # noqa: S102
     # Le script imprime le rapport entre deux sentinelles ; ici on le relit
@@ -169,9 +208,9 @@ class TestTheOrder(unittest.TestCase):
 
 
 class TestOneEntryCannotSinkThePass(unittest.TestCase):
-    def test_each_entry_gets_its_own_savepoint(self):
+    def test_each_entry_is_committed_on_its_own(self):
         # Sans cela, le premier refus emporterait tout ce que la passe avait
-        # déjà réparé.
+        # déjà réparé — et un rollback, ici, remonte jusqu'au début.
         journal = []
         lines = [
             FakeLine("a", journal=journal),
@@ -179,11 +218,11 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         ]
         models = {cleanup.ORDER[0][1]: FakeModel(lines)}
         _report, got = run_script(models, max_round=1)
-        # Un point de reprise par entrée, PLUS un pour la création et la
-        # lecture des noms : c'est là que la transaction s'était avortée.
-        self.assertEqual(got.count(("savepoint", "enter")), 3)
+        # Une validation par entrée, PLUS une après la création : `find()`
+        # peut avoir purgé de lui-même, et ce travail-là doit tenir.
+        self.assertEqual(got.count(("commit", None)), 3)
 
-    def test_a_refusal_rolls_back_only_its_own(self):
+    def test_a_refusal_gives_up_only_its_own(self):
         journal = []
         lines = [
             FakeLine("ok1", journal=journal),
@@ -195,9 +234,15 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         entry = report["rounds"][0][0]
         self.assertEqual(entry["purged"], 2)
         self.assertEqual([name for name, _msg in entry["errors"]], ["bad"])
-        self.assertEqual(got.count(("savepoint", "rollback")), 1)
-        # Deux entrées purgées + la création : trois relâchements.
-        self.assertEqual(got.count(("savepoint", "release")), 3)
+        self.assertEqual(got.count(("rollback", None)), 1)
+        # Deux entrées purgées + la création : trois validations.
+        self.assertEqual(got.count(("commit", None)), 3)
+
+    def test_the_script_never_takes_a_savepoint(self):
+        # L'invariant du correctif, dit une fois pour toutes : le module OCA
+        # valide de lui-même, et un COMMIT détruit le point de reprise
+        # qu'on aurait pris. Le reprendre serait revenir au défaut.
+        self.assertNotIn("env.cr.savepoint", cleanup.build_script(1, False))
 
     def test_a_wizard_that_cannot_even_be_created_is_recorded(self):
         models = {cleanup.ORDER[0][1]: FakeModel([], raise_on_create="boom")}
@@ -214,15 +259,18 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
     garde, et le script entier s'arrêtait — aucun rapport, juste une trace.
     """
 
-    def test_reading_the_names_is_inside_the_savepoint(self):
+    def test_reading_the_names_is_inside_the_guard(self):
         # C'est la lecture des noms qui déclenche la requête, pas la
-        # création : la laisser dehors était le défaut.
+        # création : la laisser hors du `try` était le défaut — elle mourait
+        # sur une transaction déjà avortée, sans rien pour la rattraper.
         source = cleanup.build_script(1, False)
         creation = source.index("wizard = env[model].create({})")
-        garde = source.rindex("with env.cr.savepoint():", 0, creation)
+        garde = source.rindex("try:", 0, creation)
         noms = source.index("line.name or str(line.id)")
+        rattrapage = source.index("except UserError:", noms)
         self.assertLess(garde, creation)
         self.assertLess(creation, noms)
+        self.assertLess(noms, rattrapage)
 
     def test_a_failure_on_create_does_not_kill_the_run(self):
         models = {
@@ -253,6 +301,91 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
         report = _json.loads(_json.dumps(namespace["report"]))
         self.assertEqual(report["failed"][0][:2], ["*", "fatal"])
         self.assertIn("miettes", report["failed"][0][2])
+
+
+class TestTheCascadeThatKilledEverything(unittest.TestCase):
+    """Vécu, sur test_neutralize_upgrade_13 : sept catégories mortes d'une.
+
+       passe 1 : 0 purgés
+    ⚠️ 0 purgés ; 7 n'ont pas pu l'être :
+       - [modules] - : savepoint "10eb6971..." does not exist
+       - [columns] - : current transaction is aborted, commands ignored
+       ... et ainsi de suite jusqu'à la dernière.
+
+    Une seule panne, six victimes. La cause n'était pas dans OCA mais chez
+    nous : on n'a jamais remis la transaction d'aplomb après l'échec.
+    """
+
+    def build(self):
+        journal = []
+        cursor = AbortingCursor(journal)
+        coupable = CommittingLine("colonne_morte", cursor, journal=journal)
+        models = {
+            cleanup.ORDER[1][1]: FakeModel([coupable]),
+            cleanup.ORDER[2][1]: FakeModel(
+                [FakeLine("suivante", journal=journal)]
+            ),
+            cleanup.ORDER[3][1]: FakeModel(
+                [FakeLine("encore", journal=journal)]
+            ),
+        }
+        return run_script(models, max_round=1, cursor=cursor)
+
+    def test_the_categories_after_it_still_work(self):
+        report, _got = self.build()
+        purged = {e["kind"]: e["purged"] for e in report["rounds"][0]}
+        self.assertEqual(purged.get("columns"), 1)
+        self.assertEqual(purged.get("tables"), 1)
+
+    def test_nobody_else_reports_an_aborted_transaction(self):
+        # C'est la SIGNATURE de la cascade : six lignes qui ne disent rien
+        # de leur propre catégorie, seulement qu'une autre a échoué avant.
+        report, _got = self.build()
+        contamines = [
+            entry
+            for round_ in report["rounds"]
+            for entry in round_
+            for _name, message in entry["errors"]
+            if "transaction is aborted" in message
+        ]
+        self.assertEqual(contamines, [])
+        self.assertEqual(report["failed"], [])
+
+    def test_the_real_failure_is_still_reported(self):
+        # Rattraper ne veut pas dire taire : la colonne n'a PAS été purgée.
+        report, _got = self.build()
+        entry = [e for e in report["rounds"][0] if e["kind"] == "modules"][0]
+        self.assertEqual(entry["purged"], 0)
+        self.assertIn("savepoint", entry["errors"][0][1])
+
+    def test_the_transaction_is_put_back_on_its_feet(self):
+        _report, got = self.build()
+        self.assertIn(("rollback", None), got)
+
+
+class TestADeadCreateDoesNotContaminate(unittest.TestCase):
+    def test_the_next_category_is_not_dragged_down(self):
+        # `create({})` qui échoue laisse la transaction avortée : sans
+        # rollback, la catégorie suivante mourait sur l'erreur d'une autre.
+        journal = []
+        cursor = AbortingCursor(journal)
+
+        class MortAuDepart(FakeModel):
+            def create(self, values):
+                cursor.aborted = True
+                raise RuntimeError("registre indisponible")
+
+        models = {
+            cleanup.ORDER[0][1]: MortAuDepart([]),
+            cleanup.ORDER[2][1]: FakeModel(
+                [FakeLine("colonne", journal=journal)]
+            ),
+        }
+        report, _got = run_script(models, max_round=1, cursor=cursor)
+        purged = {e["kind"]: e["purged"] for e in report["rounds"][0]}
+        self.assertEqual(purged.get("columns"), 1)
+        self.assertEqual(report["failed"][0][0], "models")
+        self.assertIn("registre", report["failed"][0][2])
 
 
 class TestGoingRoundAgain(unittest.TestCase):
@@ -335,6 +468,19 @@ class TestTheDryRun(unittest.TestCase):
         self.assertEqual(journal, [])
         self.assertNotIn(("commit", None), got)
         self.assertEqual(report["rounds"][0][0]["would"], ["a"])
+
+    def test_it_undoes_what_merely_looking_caused(self):
+        # `purge_modules.find()` PURGE de lui-même : une simulation écrivait
+        # donc pour de bon, ce qui lui retire tout son sens. On défait ce
+        # que la lecture a provoqué — possible ici, justement parce qu'on
+        # n'a validé aucune entrée.
+        journal = []
+        models = {
+            cleanup.ORDER[0][1]: FakeModel([FakeLine("a", journal=journal)])
+        }
+        _report, got = run_script(models, max_round=5, dry_run=True)
+        self.assertIn(("rollback", None), got)
+        self.assertNotIn(("commit", None), got)
 
     def test_it_does_a_single_pass(self):
         # Rien ne change, donc rien ne se libère : boucler serait du vent.
@@ -482,7 +628,7 @@ class TestNothingToPurgeIsNotAFailure(unittest.TestCase):
         source = cleanup.build_script(1, False)
         self.assertIn("except UserError:", source)
         vide = source.index("except UserError:")
-        echec = source.index("except Exception as exc:\n                note")
+        echec = source.index('note(label, "-", exc)')
         self.assertLess(vide, echec, "l'ordre des except décide")
 
     def test_it_is_reported_as_zero_not_as_an_error(self):

@@ -97,6 +97,23 @@ def note(label, name, exc):
     report["failed"].append([label, name, str(exc)[:200]])
 
 
+def recover():
+    # Rendre la transaction utilisable, quoi qu'il vienne de se passer.
+    #
+    # PAS de point de reprise ici, et c'est mesure : purge_modules.find()
+    # purge lui-meme (purge_modules.py:91), et purge_columns appelle
+    # cr.commit() (purge_columns.py:57). Or un COMMIT DETRUIT tous les
+    # points de reprise : le notre disparaissait sous nos pieds, d'ou
+    # « savepoint ... does not exist », puis tout ce qui suivait mourait
+    # sur une transaction avortee. Un rollback franc remet les compteurs
+    # a zero ; ce qu'on perd est borne, puisqu'on valide apres chaque
+    # entree reussie.
+    try:
+        env.cr.rollback()
+    except Exception:
+        pass
+
+
 try:
     for index in range(MAX_ROUND):
         this_round = []
@@ -110,46 +127,45 @@ try:
             errors = []
             would = []
             try:
-                # La CRÉATION et la lecture des noms sont dans le point de
-                # reprise, pas seulement la purge. Un échec ici laissait la
-                # transaction avortée ; la lecture suivante mourait dessus,
-                # hors de tout garde, et le rapport entier était perdu.
-                # Les noms sont matérialisés tout de suite : après un retour
-                # arrière, les relire relancerait une requête.
-                with env.cr.savepoint():
-                    wizard = env[model].create({})
-                    todo = [
-                        (line, line.name or str(line.id))
-                        for line in wizard.purge_line_ids
-                    ]
+                wizard = env[model].create({})
+                # Les noms sont matérialisés TOUT DE SUITE : les relire plus
+                # tard relancerait une requête, et c'est là que le script
+                # mourait quand la transaction avait été avortée entre-temps.
+                todo = [
+                    (line, line.name or str(line.id))
+                    for line in wizard.purge_line_ids
+                ]
             except UserError:
-                # « Aucun modèle orphelin trouvé » : le module signale le
-                # VIDE par une exception. Le compter comme un échec faisait
-                # passer une base saine pour une base cassée.
+                # « No orphaned models found » : le module signale le VIDE
+                # en levant. Le compter comme un échec faisait passer une
+                # base saine pour cassée.
+                recover()
                 this_round.append({"kind": label, "purged": 0,
                                    "errors": [], "would": []})
                 continue
             except Exception as exc:
+                recover()
                 note(label, "-", exc)
                 continue
+            # find() peut avoir purgé de lui-même : on garde ce qu'il a fait.
+            if not DRY_RUN:
+                try:
+                    env.cr.commit()
+                except Exception:
+                    recover()
             for line, name in todo:
                 if DRY_RUN:
                     would.append(name)
                     continue
                 try:
-                    # Un point de reprise par ENTRÉE : un refus n'emporte que
-                    # la sienne, et la passe continue. Sans cela, le premier
-                    # échec ferait perdre tout ce que la passe avait réparé.
-                    with env.cr.savepoint():
-                        line.purge()
+                    line.purge()
+                    # Valider ENTRÉE PAR ENTRÉE : un refus plus loin ne doit
+                    # pas emporter ce qui vient d'être réparé.
+                    env.cr.commit()
                     ok += 1
                 except Exception as exc:
+                    recover()
                     errors.append([name, str(exc)[:160]])
-            if not DRY_RUN and ok:
-                try:
-                    env.cr.commit()
-                except Exception as exc:
-                    note(label, "commit", exc)
             purged_this_round += ok
             this_round.append({"kind": label, "purged": ok,
                                "errors": errors, "would": would})
@@ -163,6 +179,14 @@ except Exception as exc:
     # Le rapport de CE QUI A ÉTÉ FAIT vaut plus que la trace de ce qui a
     # cassé : sans lui, on ne sait même pas si la base a été touchée.
     note("*", "fatal", exc)
+
+if DRY_RUN:
+    # Une simulation qui écrit n'est pas une simulation. Et celle-ci
+    # écrivait : purge_modules.find() purge de lui-meme, avant meme
+    # qu'on ait rien decide. On defait tout ce que la lecture a
+    # provoque — c'est possible ici, justement parce qu'on n'a valide
+    # aucune entree.
+    recover()
 
 print("%(start)s")
 print(json.dumps(report))
