@@ -2,21 +2,24 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Un script avec shebang doit être exécutable — et pas inscriptible en groupe.
+"""Un script avec shebang doit être exécutable — dans ce que git STOCKE.
 
 Le bit d'exécution n'accorde rien : qui peut lire le fichier peut déjà faire
-« python3 fichier ». Ce qui compte est la PAIRE : un fichier à la fois
-exécuté par d'autres et modifiable par le groupe laisse un membre du groupe
-changer ce que les autres lancent. L'umask 0002 du poste crée exactement
-cette paire dès qu'on ajoute +x sans y penser (664 -> 775).
+« python3 fichier ». Il décide seulement si « ./script/... » fonctionne.
 
-Git ne stocke que le bit d'exécution, jamais 664 contre 644 : le mode complet
-ne se vérifie donc que sur le disque, ici.
+La première version de ce test exigeait aussi l'absence d'écriture par le
+groupe, mesurée sur le disque. C'était une faute : git ne stocke QUE le bit
+d'exécution — 100644 ou 100755 — et le reste vient de l'umask de celui qui
+fait le checkout. Sur un poste en umask 0002, chaque checkout produit 775 et
+le test échouait treize fois, pour une raison qui n'est pas dans le dépôt.
+
+On vérifie donc l'index, seul mode que le dépôt porte et propage. Le mode du
+disque reste l'affaire de la machine, pas d'un test.
 """
 
 import glob
 import os
-import stat
+import subprocess
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -38,32 +41,67 @@ def scripts():
     return found
 
 
+def index_mode(path):
+    """Le mode que GIT porte pour ce fichier : 100644 ou 100755."""
+    done = subprocess.run(
+        ["git", "ls-files", "-s", "--", os.path.relpath(path, REPO)],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+    )
+    if done.returncode or not done.stdout.strip():
+        return None
+    return done.stdout.split()[0]
+
+
 class TestExecutableBit(unittest.TestCase):
     def test_the_inventory_is_not_empty(self):
         # Un test qui ne trouve rien passe toujours.
         self.assertGreater(len(scripts()), 10)
 
-    def test_every_shebang_script_is_executable(self):
+    def test_every_shebang_script_is_executable_in_git(self):
+        # Dans l'index, pas sur le disque : c'est ce que reçoivent les
+        # autres. Un fichier rendu exécutable localement sans être commité
+        # marcherait ici et nulle part ailleurs.
         for path, has_shebang in scripts():
             if not has_shebang:
                 continue
-            with self.subTest(script=os.path.relpath(path, REPO)):
-                self.assertTrue(os.access(path, os.X_OK))
+            relative = os.path.relpath(path, REPO)
+            mode = index_mode(path)
+            if mode is None:
+                continue  # non suivi : rien à garantir pour personne
+            with self.subTest(script=relative):
+                self.assertEqual(mode, "100755", relative)
 
-    def test_none_is_writable_by_group_or_others(self):
-        # LE point qui compte : exécuté par d'autres ET modifiable par eux.
-        for path, _ in scripts():
-            mode = stat.S_IMODE(os.stat(path).st_mode)
+    def test_a_file_without_shebang_is_not_marked_executable(self):
+        # Le symétrique : un bit d'exécution sur un fichier qu'aucun
+        # interpréteur ne réclame dit une intention qui n'existe pas.
+        for path, has_shebang in scripts():
+            if has_shebang:
+                continue
+            mode = index_mode(path)
+            if mode is None:
+                continue
             with self.subTest(script=os.path.relpath(path, REPO)):
-                self.assertFalse(
-                    mode & (stat.S_IWGRP | stat.S_IWOTH), oct(mode)
-                )
+                self.assertEqual(mode, "100644")
 
-    def test_none_is_setuid_or_setgid(self):
-        for path, _ in scripts():
-            mode = os.stat(path).st_mode
-            with self.subTest(script=os.path.relpath(path, REPO)):
-                self.assertFalse(mode & (stat.S_ISUID | stat.S_ISGID))
+    def test_the_check_reads_git_not_the_filesystem(self):
+        # Le défaut corrigé : l'umask du poste décide de 755 contre 775, et
+        # un test qui le lit échoue sur la machine des autres. On le vérifie
+        # par les IMPORTS — chercher un nom de constante dans la source d'un
+        # fichier qui contient ce test échouerait sur lui-même.
+        import ast
+
+        with open(__file__) as handle:
+            tree = ast.parse(handle.read())
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+        self.assertIn("subprocess", imported)
+        self.assertNotIn("stat", imported)
 
 
 class TestTheTuiSaysWhyItRefuses(unittest.TestCase):
