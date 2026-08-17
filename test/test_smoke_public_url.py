@@ -240,6 +240,70 @@ class TestTheCulpritViewsAreNamed(unittest.TestCase):
         self.assertEqual(rebuilt[0][2].count("2841"), 1)
 
 
+class TestARenderFailureNamesItsTemplate(unittest.TestCase):
+    """Une QWebException ne porte pas de bloc [view_id …] : elle nomme le
+    gabarit.
+
+    Mesuré au palier 17 : une copie figée appelait `submenu.clean_url()`,
+    méthode renommée `_clean_url()` par la version. 34 URL sur 37 rendaient
+    500, et l'outil répondait « aucune vue parente nommée » — il ne lisait
+    que le contexte d'héritage, absent ici.
+    """
+
+    def test_the_template_line_is_read(self):
+        self.assertEqual(
+            smoke.RE_TEMPLATE.findall("Template: website.submenu"),
+            ["website.submenu"],
+        )
+
+    def test_prose_is_not_mistaken_for_a_key(self):
+        # « Template: » suivi d'une phrase n'est pas un gabarit.
+        self.assertEqual(
+            smoke.RE_TEMPLATE.findall("Template: not a key, just words"), []
+        )
+
+    def test_only_keys_with_a_copy_are_proposed(self):
+        # Proposer une clé sans copie COW enverrait réinitialiser une vue
+        # module : la commande tournerait sans rien faire.
+        seen = {}
+        original = smoke.run_psql
+        smoke.run_psql = lambda db, sql: (
+            seen.update(sql=sql),
+            [["website.submenu"]],
+        )[1]
+        self.addCleanup(setattr, smoke, "run_psql", original)
+        got = smoke.template_keys(
+            ["Template: website.submenu", "Template: website.layout"], "db"
+        )
+        self.assertEqual(got, ["website.submenu"])
+        self.assertIn("website_id IS NOT NULL", seen["sql"])
+
+    def test_no_template_line_asks_nothing_of_the_database(self):
+        called = []
+        original = smoke.run_psql
+        smoke.run_psql = lambda db, sql: called.append(sql) or []
+        self.addCleanup(setattr, smoke, "run_psql", original)
+        self.assertEqual(smoke.template_keys(["rien ici"], "db"), [])
+        self.assertEqual(called, [])
+
+    def test_a_quote_in_a_key_is_escaped(self):
+        seen = {}
+        original = smoke.run_psql
+        smoke.run_psql = lambda db, sql: (seen.update(sql=sql), [])[1]
+        self.addCleanup(setattr, smoke, "run_psql", original)
+        smoke.template_keys(["Template: a.b"], "db")
+        self.assertIn("'a.b'", seen["sql"])
+
+    def test_both_sources_feed_the_proposal(self):
+        # Le contexte d'héritage quand il existe, le gabarit quand l'échec
+        # vient du rendu : l'un ne remplace pas l'autre.
+        import inspect
+
+        source = inspect.getsource(smoke.run)
+        self.assertIn("culprit_keys(", source)
+        self.assertIn("template_keys(", source)
+
+
 class TestTheServerIsKilledForReal(unittest.TestCase):
     """« ./run.sh » est un script bash : il ne transmet pas les signaux."""
 

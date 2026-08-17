@@ -74,6 +74,13 @@ RE_LOC = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.I)
 # figée dans laquelle l'enfant ne trouve plus son xpath.
 RE_CONTEXT = re.compile(r"\[view_id: (\d+),.*?parent_id: (\d+)\]")
 
+# « Template: website.submenu ». Une QWebException de RENDU ne porte pas le
+# bloc [view_id …] : elle nomme le gabarit. Mesuré au palier 17 — une copie
+# figée appelait `submenu.clean_url()`, méthode renommée `_clean_url()` dans
+# la version, et 34 URL sur 37 rendaient 500 sans que rien ne désigne la vue
+# fautive.
+RE_TEMPLATE = re.compile(r"^Template:\s*([\w.]+)\s*$", re.M)
+
 # Un port à part : la migration tourne souvent à côté d'une instance vivante,
 # et lui voler 8069 ferait échouer le test pour une raison sans rapport.
 DEFAULT_PORT = 8169
@@ -253,6 +260,29 @@ def check_urls(lst_url, timeout=30):
     return lst_failure
 
 
+def template_keys(lst_log, database):
+    """Les gabarits nommés par une QWebException, s'ils ont une copie COW.
+
+    Nommer une clé sans copie enverrait réinitialiser une vue module — donc
+    ne rien faire, en silence. On ne propose que ce qui peut l'être.
+    """
+    lst_key = []
+    for line in lst_log:
+        for key in RE_TEMPLATE.findall(line):
+            if key not in lst_key:
+                lst_key.append(key)
+    if not lst_key:
+        return []
+    quoted = ",".join("'" + k.replace("'", "''") + "'" for k in lst_key)
+    rows = run_psql(
+        database,
+        "SELECT DISTINCT key FROM ir_ui_view"
+        f" WHERE website_id IS NOT NULL AND key IN ({quoted});",
+    )
+    with_copy = {row[0] for row in rows if row and row[0]}
+    return [key for key in lst_key if key in with_copy]
+
+
 def culprit_keys(database, lst_failure):
     """Les clés des vues parentes mises en cause, sans doublon.
 
@@ -426,9 +456,16 @@ def run(
     finally:
         stop_server(server)
 
+    lst_key = []
     if lst_failure:
-        lst_failure = attach_missing_parents(lst_failure, read_log(log_path))
-    lst_key = culprit_keys(database, lst_failure)
+        lst_log = read_log(log_path)
+        lst_failure = attach_missing_parents(lst_failure, lst_log)
+        lst_key = culprit_keys(database, lst_failure)
+        # Les deux sources : le contexte d'héritage quand il existe, le nom
+        # du gabarit quand l'échec vient du rendu.
+        for key in template_keys(lst_log, database):
+            if key not in lst_key:
+                lst_key.append(key)
     if not lst_failure or not (interactive or auto_apply):
         return lst_url, lst_failure, lst_key, None
 
