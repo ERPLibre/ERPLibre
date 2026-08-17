@@ -376,6 +376,44 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
                 self.assertIn("sys.stdout.isatty()", source)
 
 
+class TestTheIdentifiersSentToOdoo(unittest.TestCase):
+    """browse() veut des ENTIERS ; psql rend des chaînes.
+
+    Mesuré sur une vraie base : browse(['4457']) fait échouer Odoo sur
+    « la recherche en base n'a pas les identifiants (('4457',)) et a des
+    identifiants supplémentaires ((4457,)) ». Il compare des chaînes à des
+    entiers, ne retrouve rien, et refuse. L'effacement n'a rien retiré —
+    heureusement, la sauvegarde était déjà faite.
+    """
+
+    def test_the_script_browses_integers(self):
+        import inspect
+
+        source = inspect.getsource(theme_leftover.delete_attachments)
+        self.assertIn("int(row.split", source)
+
+    def test_the_pushed_script_carries_no_quoted_id(self):
+        # Le rendu exact de ce qui part dans le shell : une seule apostrophe
+        # autour d'un identifiant et Odoo refuse tout le lot.
+        pushed = {}
+        original = theme_leftover.subprocess.run
+        theme_leftover.subprocess.run = (
+            lambda *a, **kw: pushed.update(script=kw.get("input", ""))
+            or type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        )
+        self.addCleanup(setattr, theme_leftover.subprocess, "run", original)
+        theme_leftover.delete_attachments(
+            "db", ["4457|/theme_x/a.scss|2021-03-04", "4768|/b.css|d"]
+        )
+        self.assertIn("browse([4457, 4768])", pushed["script"])
+        self.assertNotIn("'4457'", pushed["script"])
+
+    def test_a_non_numeric_row_is_not_sent_silently(self):
+        # Mieux vaut échouer ici que pousser un script qu'Odoo refusera.
+        with self.assertRaises(ValueError):
+            theme_leftover.delete_attachments("db", ["zz|/a|d"])
+
+
 class TestTheMisleadingErrorCode(unittest.TestCase):
     """« 1 » veut dire « il reste des choses », pas « ça a raté »."""
 

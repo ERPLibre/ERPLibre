@@ -181,7 +181,11 @@ def delete_attachments(database, lst_row, config_path="./config.conf"):
     Un DELETE en SQL laisserait les fichiers orphelins et les caches
     incohérents ; unlink() fait le ménage complet, dans toutes les versions.
     """
-    lst_id = [row.split("|")[0] for row in lst_row]
+    # int(), pas la chaîne du psql : browse(['4457']) fait échouer Odoo sur
+    # « n'a pas les identifiants (('4457',)) et a des identifiants
+    # supplémentaires ((4457,)) » — il compare des chaînes à des entiers.
+    # Mesuré sur une vraie base, l'effacement n'a rien retiré.
+    lst_id = [int(row.split("|")[0]) for row in lst_row]
     script = (
         f"env['ir.attachment'].browse({lst_id!r}).unlink()\n"
         "env.cr.commit()\n"
