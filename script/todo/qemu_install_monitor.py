@@ -37,6 +37,11 @@ SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
     "-o ConnectTimeout=8"
 )
+# Pour les ssh NON INTERACTIFS : « -n » branche leur entrée sur /dev/null.
+# Ceinture et bretelles avec le stdin du processus détaché — un ssh qui lit le
+# terminal vole les frappes du shell, et le diagnostic est très difficile.
+# Jamais pour un ssh interactif (touche « s »), qui doit garder le clavier.
+SSH_OPTS_BATCH = f"{SSH_OPTS} -n"
 
 
 def session_dir() -> Path:
@@ -98,6 +103,15 @@ def _launch_one(
     msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
     msg_slow = t("(an emulated architecture can be slow; this is normal)")
     msg_ready = t("VM ready - starting the ERPLibre install")
+    msg_giveup = t(
+        "cloud-init still running after 20 min - install starts anyway"
+        " (it waits for cloud-init first)"
+    )
+    msg_novirsh = t(
+        "WARNING libvirt unreachable: the IP will not be refreshed"
+        " (libvirt group? re-login required)"
+    )
+    msg_moved = t("DHCP lease moved:")
     # L'IP est RÉSOLUE À CHAQUE TOUR, jamais figée. Au 1er boot la VM prend un
     # bail sous le nom par défaut de l'image, puis cloud-init pose le vrai nom
     # d'hôte et le client DHCP en redemande un AUTRE. L'adresse connue au
@@ -130,17 +144,38 @@ def _launch_one(
         'vsh() { virsh --connect qemu:///system "$@" 2>/dev/null '
         '|| sudo -n virsh --connect qemu:///system "$@" 2>/dev/null; }; '
     )
+    # Deux trous rendaient cette ré-résolution incapable de rattraper une IP
+    # qui bouge — le cas exact où elle sert :
+    #
+    # - « vsh » est muet des deux côtés. Quand libvirt est injoignable (hors du
+    #   groupe libvirt, et « sudo -n » refusé faute de tty dans ce processus
+    #   détaché), la ré-résolution ne renvoie JAMAIS rien : l'IP de départ est
+    #   gardée jusqu'au bout sans qu'une seule ligne du log ne le dise.
+    # - le repli sur les baux exigeait une réponse sur le port 22. Or dnsmasq
+    #   ne garde qu'un bail par MAC : quand cloud-init pose le vrai nom d'hôte
+    #   et que le client DHCP redemande, le bail DÉPLACE l'adresse. L'ancienne
+    #   n'appartient plus à cette VM, mais on l'attendait quand même — et sshd
+    #   n'y répondra jamais.
     refresh = (
         (
+            f"raw=$(vsh domifaddr {name_q} --source lease); vrc=$?; "
+            'if [ $vrc -ne 0 ] && [ -z "$vwarn" ]; then vwarn=1; '
+            f"echo {shlex.quote('   ' + msg_novirsh)} >> {log_q}; fi; "
+            "cands=$(echo \"$raw\" | grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
+            "| grep -v '^127\\.'); "
             f"n=$(vsh domifaddr {name_q} --source agent "
             "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
             "| grep -v '^127\\.' | head -1); "
             'if [ -z "$n" ]; then '
-            f"for c in $(vsh domifaddr {name_q} --source lease "
-            "| grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' "
-            "| grep -v '^127\\.'); do "
+            "for c in $cands; do "
             'timeout 2 bash -c "echo > /dev/tcp/$c/22" 2>/dev/null '
             '&& n="$c"; done; fi; '
+            # Le bail ne mentionne plus l'adresse courante : elle est périmée,
+            # on suit le bail sans attendre que sshd réponde.
+            'if [ -z "$n" ] && [ -n "$cands" ] && '
+            '! echo "$cands" | grep -Fqx "$ip"; then '
+            'n=$(echo "$cands" | tail -1); '
+            f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
         if name
@@ -151,25 +186,41 @@ def _launch_one(
         f"{vsh if name else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
+        f"seen=0; "
         f"for i in $(seq 1 240); do "
         f"{refresh}"
-        f'st=$(ssh {SSH_OPTS} -o BatchMode=yes "erplibre@$ip" '
+        f'st=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
         f"{shlex.quote(ci_probe)} 2>/dev/null); "
         f'case "$st" in '
-        f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) break;; "
+        f"*done*|*disabled*|*error*|*degraded*|*nocloudinit*) seen=1; break;; "
         f"esac; "
         f"if [ $((i % 6)) -eq 0 ]; then "
         f'echo "   ... $((i*5))s ($ip)" >> {log_q}; fi; '
         f"sleep 5; done; "
+        # La boucle peut s'ÉPUISER au lieu de rompre : sous émulation,
+        # cloud-init dépasse volontiers 20 min. Annoncer « VM prête » dans les
+        # deux cas donnait un message faux juste avant le plus long silence du
+        # log — c'est l'installation qui attend alors la fin de cloud-init.
+        f'if [ "$seen" = 1 ]; then '
         f"echo {shlex.quote('== ' + msg_ready + ' ==')} >> {log_q}; "
+        f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
-        f'ssh {SSH_OPTS} "erplibre@$ip" {shlex.quote(remote_cmd)} '
+        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" {shlex.quote(remote_cmd)} '
         f">> {log_q} 2>&1; "
         f'echo "{EXIT_MARKER} $?" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
+    # stdin sur /dev/null : SANS lui, le descripteur 0 du processus détaché
+    # reste le TERMINAL. « setsid » lui retire le terminal de contrôle, mais ne
+    # ferme aucun descripteur — et ssh, lui, LIT son entrée pour la transmettre
+    # à la commande distante. Deux lecteurs se partagent alors le clavier : une
+    # frappe sur deux part vers l'installation au lieu du shell, et il faut
+    # appuyer plusieurs fois pour qu'une lettre arrive. Le symptôme survit à
+    # todo.py, puisque l'installation continue une demi-heure après sa
+    # fermeture — d'où un terminal qui « bogue » sans cause visible.
     subprocess.Popen(
         ["setsid", "-f", "bash", "-c", wrapper],
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
@@ -212,7 +263,13 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # En-tête d'emblée (date/distro/version/arch) : le log n'est jamais
         # vide, l'utilisateur voit tout de suite QUOI s'installe.
         Path(log_path).write_text(_log_header(vm, branch, when))
-        _launch_one(vm["ip"], remote_cmd, log_path, vm["name"])
+        # Une VM peut porter SA commande : depuis que le type de VM (serveur
+        # ou bureau) se choisit machine par machine, le script distant n'est
+        # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
+        # intacts les appelants qui n'en fournissent qu'une.
+        _launch_one(
+            vm["ip"], vm.get("remote_cmd") or remote_cmd, log_path, vm["name"]
+        )
         entries.append(
             {
                 "name": vm["name"],
@@ -232,6 +289,20 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
     manifest_path = str(logdir / "session.json")
     Path(manifest_path).write_text(json.dumps(manifest, indent=2))
     return manifest_path
+
+
+def finished_at(log_path: str, fallback: float) -> float:
+    """Instant où l'installation s'est RÉELLEMENT arrêtée.
+
+    La dernière écriture dans le log, c'est-à-dire le marqueur de sortie. On
+    ne peut pas prendre « maintenant » : le suivi est détachable, et il
+    observe souvent l'état final longtemps après. Rouvrir le tableau de bord
+    une heure plus tard ajoutait cette heure à la durée affichée, comme si
+    l'installation avait tourné pendant tout ce temps."""
+    try:
+        return os.path.getmtime(log_path)
+    except OSError:
+        return fallback
 
 
 def read_status(log_path: str) -> tuple[str, int | None]:
@@ -259,6 +330,46 @@ def read_status(log_path: str) -> tuple[str, int | None]:
                 code = 1
             return ("done" if code == 0 else "failed"), code
     return "running", None
+
+
+def run_progress(run: dict) -> dict:
+    """Avancement d'un run : combien de VM tournent encore, et depuis quand
+    plus rien n'a été écrit. `idle` sert à distinguer une install vivante d'un
+    run laissé pour mort — le marqueur de sortie manque dans les deux cas."""
+    active = final = 0
+    latest = 0.0
+    for vm in run.get("vms", []):
+        log = vm.get("log") or ""
+        state, _code = read_status(log)
+        if state in ("done", "failed"):
+            final += 1
+        else:
+            active += 1
+        try:
+            latest = max(latest, os.path.getmtime(log))
+        except OSError:
+            pass
+    return {
+        "active": active,
+        "final": final,
+        "total": active + final,
+        "idle": (time.time() - latest) if latest else None,
+    }
+
+
+def active_run():
+    """Le run le PLUS RÉCENT s'il a encore des VM en cours, sinon None.
+
+    Les installs tournent détachées (`setsid -f`) : fermer le terminal laisse
+    le travail se poursuivre mais fait perdre la seule vue dessus. On ne
+    regarde que le dernier run — un run ancien resté sans marqueur de sortie
+    signalerait éternellement une install fantôme."""
+    runs = list_install_runs()
+    if not runs:
+        return None
+    run = dict(runs[0])
+    run.update(run_progress(run))
+    return run if run["total"] and run["active"] else None
 
 
 # Listes d'ignore reprises de script/test/run_parallel_test.py (erreurs/
@@ -731,13 +842,134 @@ def virsh_domstates() -> dict:
 # --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
+# Largeurs de colonnes du tableau de suivi. Une seule source : la
+# construction du tableau les lit ici, et « 0 » y revient. Les redéclarer à
+# deux endroits, c'est garantir qu'un jour la remise à zéro rendra autre chose
+# que ce qui était affiché au départ.
+COL_DEFAULT_WIDTHS = {
+    "seq": 3,
+    "vm": 22,
+    "arch": 7,
+    "err": 4,
+    "state": 8,
+    "odoo": 6,
+    "elapsed": 7,
+    "disk": 8,
+}
+
+
+# Parties d'une remise à jour, dans l'ordre où elles doivent tourner : les
+# paquets système d'abord (compilateurs et en-têtes), le code ensuite, les
+# dépendances Python en dernier — elles se compilent contre les deux premiers.
+UPDATE_PARTS = (
+    ("system", "Paquets systeme (apt/dnf/pacman/zypper)"),
+    ("git", "Depots git (ERPLibre + addons)"),
+    ("python", "Dependances Python (poetry)"),
+)
+EL_DIR = "~/git/erplibre"
+
+
+def update_remote_cmd(parts) -> str:
+    """Commande exécutée DANS la VM pour remettre à jour ce qui est coché.
+
+    Rien n'est enchaîné par « && » : une partie qui échoue ne doit pas
+    empêcher les suivantes, et son code de retour se lit dans la sortie.
+    Chaque bloc s'annonce, sinon un log de mise à jour est illisible."""
+    chosen = [p for p in parts if p in dict(UPDATE_PARTS)]
+    if not chosen:
+        return ""
+    out = ["set -u"]
+    if "system" in chosen:
+        out.append(
+            'echo "== Paquets systeme =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo apt-get -o DPkg::Lock::Timeout=600 update -qq "
+            "&& sudo DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o DPkg::Lock::Timeout=600 -y upgrade; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            "sudo dnf -y upgrade --refresh; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            # Arch ne supporte pas la mise à jour partielle : -Syu, jamais -S.
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            "sudo pacman -Syu --noconfirm; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) '
+            "sudo zypper --non-interactive dup "
+            "--auto-agree-with-licenses --allow-vendor-change;; "
+            "*) sudo zypper --non-interactive up "
+            "--auto-agree-with-licenses;; esac; "
+            'else echo "Gestionnaire de paquets inconnu"; fi; '
+        )
+    if "git" in chosen:
+        out.append(
+            'echo "== Depots git =="; '
+            f"cd {EL_DIR} || exit 1; "
+            # --ff-only : une VM ne doit jamais fusionner toute seule. Un
+            # historique divergent s'arrête ici, visiblement.
+            "git pull --ff-only; "
+            # Les addons viennent de Google Repo, pas de git : c'est le script
+            # de l'installation qui sait les synchroniser.
+            "./script/install/install_git_repo.sh; "
+        )
+    if "python" in chosen:
+        out.append(
+            'echo "== Dependances Python =="; '
+            f"cd {EL_DIR} || exit 1; "
+            # La phase « poetry » seule : ni venvs ni repo, juste les paquets.
+            "EL_PHASE=poetry ./script/install/install_locally.sh; "
+        )
+    out.append('echo "== Mise a jour terminee =="')
+    return "".join(out[:1]) + "; " + "".join(out[1:])
+
+
+def restart_odoo_cmd() -> str:
+    """Redémarre le service ERPLibre, ou le lance à la main s'il n'existe pas.
+
+    Une VM installée sans profil de production n'a pas forcément l'unité
+    systemd : le repli dit quoi faire plutôt que d'échouer sans un mot."""
+    return (
+        "if systemctl list-unit-files 2>/dev/null | grep -q '^erplibre'; then "
+        "sudo systemctl restart erplibre.service "
+        "&& sudo systemctl --no-pager --lines=15 status erplibre.service; "
+        "else echo 'Pas de service erplibre : lancez ./run.sh dans "
+        f"{EL_DIR}'; fi"
+    )
+
+
+def delete_vm_cmd(name: str, with_disks: bool) -> str:
+    """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
+    arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
+    disques à la demande."""
+    q = shlex.quote(name)
+    cmd = (
+        f"sudo virsh destroy {q} 2>/dev/null; "
+        f"sudo virsh undefine {q} --nvram 2>/dev/null "
+        f"|| sudo virsh undefine {q}"
+    )
+    if with_disks:
+        disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
+        seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
+        cmd += f"; sudo rm -f {disk} {seed}"
+    return cmd
+
+
 def run_monitor(manifest_path: str, run_app: bool = True):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
     à False renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import DataTable, Footer, Header, RichLog, Static
+    from textual.widgets import (
+        Button,
+        Checkbox,
+        DataTable,
+        Footer,
+        Header,
+        RichLog,
+        Static,
+    )
 
     manifest = json.loads(Path(manifest_path).read_text())
     started = manifest.get("started", time.time())
@@ -786,6 +1018,84 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def action_dismiss(self) -> None:
             self.dismiss()
 
+    class ConfirmScreen(ModalScreen):
+        """Confirmation d'une action irréversible. Le bouton dangereux n'est
+        PAS le défaut : il faut le viser, pas juste appuyer sur Entrée."""
+
+        BINDINGS = [("escape", "cancel", "Annuler")]
+
+        def __init__(self, title, lines, danger_label):
+            super().__init__()
+            self._title = title
+            self._lines = lines
+            self._danger = danger_label
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="confbox"):
+                yield Static(self._title, id="conftitle")
+                for line in self._lines:
+                    yield Static(line)
+                with Horizontal(id="confbtns"):
+                    yield Button("Annuler", variant="primary", id="c_no")
+                    yield Button(self._danger, variant="error", id="c_yes")
+
+        def on_button_pressed(self, event) -> None:
+            self.dismiss(event.button.id == "c_yes")
+
+        def action_cancel(self) -> None:
+            self.dismiss(False)
+
+    class VmActionsScreen(ModalScreen):
+        """Les opérations d'une VM, rassemblées en un seul endroit.
+
+        Plutôt que trois touches de plus dans un pied de page qui en compte
+        déjà neuf : on voit ce qu'on va faire, et sur quelle machine."""
+
+        BINDINGS = [("escape", "cancel", "Fermer")]
+
+        def __init__(self, vm):
+            super().__init__()
+            self._vm = vm
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="actbox"):
+                yield Static(
+                    f"Actions — {self._vm['name']}  ({self._vm.get('ip') or '?'})",
+                    id="acttitle",
+                )
+                yield Static("Remettre à jour", classes="actgroup")
+                for key, label in UPDATE_PARTS:
+                    yield Checkbox(label, value=True, id=f"u_{key}")
+                yield Button(
+                    "Lancer la mise à jour",
+                    variant="primary",
+                    id="a_update",
+                )
+                yield Static("Service", classes="actgroup")
+                yield Button("Redémarrer Odoo", id="a_restart")
+                yield Static("Irréversible", classes="actdanger")
+                yield Button(
+                    "Supprimer la VM et ses disques",
+                    variant="error",
+                    id="a_delete",
+                )
+
+        def on_button_pressed(self, event) -> None:
+            if event.button.id == "a_update":
+                parts = [
+                    k
+                    for k, _lbl in UPDATE_PARTS
+                    if self.query_one(f"#u_{k}", Checkbox).value
+                ]
+                self.dismiss(("update", parts))
+            elif event.button.id == "a_restart":
+                self.dismiss(("restart", []))
+            elif event.button.id == "a_delete":
+                self.dismiss(("delete", []))
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
     ICON = {
         "pending": "⏳",
         "running": "⏳",
@@ -795,7 +1105,17 @@ def run_monitor(manifest_path: str, run_app: bool = True):
 
     class Monitor(App):
         CSS = """
-        DataTable { width: 74; height: 1fr; overflow-x: auto; border: solid $accent; }
+        /* « width: 74 » figeait la table : au-delà, les colonnes élargies
+        n'étaient plus atteignables, et la barre horizontale ne s'affichait
+        pas faute de place réservée. « scrollbar-size » la rend VISIBLE plutôt
+        que devinable, et « max-width » laisse la table suivre l'élargissement
+        des colonnes sans manger tout l'écran. */
+        DataTable {
+            width: auto; max-width: 60%; height: 1fr;
+            overflow-x: auto; overflow-y: auto;
+            scrollbar-size-horizontal: 1; scrollbar-size-vertical: 1;
+            border: solid $accent;
+        }
         RichLog { border: solid $accent; }
         #telemetry { height: 1; color: $text-muted; }
         #stats { height: 1; color: $accent; }
@@ -808,6 +1128,21 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         }
         #errtitle { height: 1; color: $accent; text-style: bold; }
         #errlog { height: 1fr; border: solid $accent; }
+        VmActionsScreen { align: center middle; }
+        #actbox {
+            width: 62; height: auto; padding: 1 2;
+            border: thick $accent; background: $surface;
+        }
+        #acttitle { color: $accent; text-style: bold; padding-bottom: 1; }
+        .actgroup { color: $accent; text-style: bold; padding: 1 0 0 0; }
+        .actdanger { color: $error; text-style: bold; padding: 1 0 0 0; }
+        ConfirmScreen { align: center middle; }
+        #confbox {
+            width: 66; height: auto; padding: 1 2;
+            border: thick $error; background: $surface;
+        }
+        #conftitle { color: $error; text-style: bold; padding-bottom: 1; }
+        #confbtns { height: auto; padding-top: 1; }
         """
         BINDINGS = [
             ("q", "quit", "Quitter (détaché)"),
@@ -817,6 +1152,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("f", "follow", "Suivre"),
             ("c", "copy_log", "Copier log"),
             ("d", "details", "Détails erreurs"),
+            ("a", "vm_actions", "Actions VM"),
+            # Mêmes touches que la TUI mail, qui redimensionne ses volets :
+            # « + » élargit, « - » rétrécit, « 0 » remet tout d'aplomb.
+            ("plus", "col_grow", "Colonne +"),
+            ("minus", "col_shrink", "Colonne -"),
+            ("0", "col_reset", "Colonnes par défaut"),
+            ("less_than_sign", "col_prev", "Colonne précédente"),
+            ("greater_than_sign", "col_next", "Colonne suivante"),
             ("p", "pause_all", "Pause tout"),
             ("o", "resume_all", "Reprendre tout"),
         ]
@@ -824,6 +1167,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def __init__(self):
             super().__init__()
             self._offsets = {vm["name"]: 0 for vm in vms}
+            # Colonne visee par « + » / « - » : le nom de VM, celle qu'on a
+            # vraiment besoin d'elargir. « < » et « > » la deplacent.
+            self._col_target = list(COL_DEFAULT_WIDTHS).index("vm")
             self._selected = vms[0]["name"] if vms else None
             self._follow = True
             # Statuts TERMINAUX mémorisés : une VM finie n'est plus relue
@@ -873,20 +1219,35 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # tronqué (« ❌ effacée », « ⏸ en pause » lisibles) ; la table
             # défile horizontalement (overflow-x) pour les noms de VM longs.
             # « # » : numéro de séquence de la VM (première colonne).
-            table.add_column("#", key="seq", width=3)
-            table.add_column("VM", key="vm", width=22)
-            table.add_column("⚠", key="err", width=4)
+            table.add_column("#", key="seq", width=COL_DEFAULT_WIDTHS["seq"])
+            table.add_column("VM", key="vm", width=COL_DEFAULT_WIDTHS["vm"])
+            # L'architecture explique à elle seule qu'une installation dure
+            # dix fois plus longtemps : s390x et arm64 sont ÉMULÉES sur un
+            # hôte amd64. La voir évite de chercher la panne ailleurs.
+            table.add_column(
+                "Arch", key="arch", width=COL_DEFAULT_WIDTHS["arch"]
+            )
+            table.add_column("⚠", key="err", width=COL_DEFAULT_WIDTHS["err"])
             # width=8 : le plus long libellé restant est « ⏸ pause » (7) —
             # « effacée » (10) est remplacé par l'icône 🗑 (voir plus bas).
-            table.add_column("État", key="state", width=8)
+            table.add_column(
+                "État", key="state", width=COL_DEFAULT_WIDTHS["state"]
+            )
             # « Odoo » : l'UI web répond-elle sur :8069 ? (🟢 up / — down)
-            table.add_column("Odoo", key="odoo", width=6)
-            table.add_column("Durée", key="elapsed", width=7)
-            table.add_column("Disque", key="disk", width=8)
+            table.add_column(
+                "Odoo", key="odoo", width=COL_DEFAULT_WIDTHS["odoo"]
+            )
+            table.add_column(
+                "Durée", key="elapsed", width=COL_DEFAULT_WIDTHS["elapsed"]
+            )
+            table.add_column(
+                "Disque", key="disk", width=COL_DEFAULT_WIDTHS["disk"]
+            )
             for i, vm in enumerate(vms, 1):
                 table.add_row(
                     str(i),
                     vm["name"],
+                    vm.get("arch") or "?",
                     "",
                     "⏳",
                     "—",
@@ -1041,7 +1402,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         continue
                     ds = self._domstate.get(name)
                     if ds == "gone":
-                        self._final[name] = ("deleted", None, now - started)
+                        # Même bornage que les autres états terminaux : une
+                        # VM effacée ne « tourne » plus depuis la dernière
+                        # ligne de son log.
+                        self._final[name] = (
+                            "deleted",
+                            None,
+                            max(0.0, finished_at(vm["log"], now) - started),
+                        )
                         # Icône seule (VM effacée) : évite « ❌ effacée » (10
                         # cellules) qui forçait une colonne État large.
                         self._set_cell(table, name, "state", "🗑")
@@ -1051,7 +1419,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         continue
                     state, code = st
                     if state in ("done", "failed"):
-                        elapsed = now - started
+                        # Bornée à la dernière écriture du log, pas à l'instant
+                        # présent : le suivi peut être rouvert bien plus tard.
+                        elapsed = max(
+                            0.0, finished_at(vm["log"], now) - started
+                        )
                         self._final[name] = (state, code, elapsed)
                         # Les échecs sont enregistrés eux aussi (ok=False) :
                         # sans eux, aucun taux de réussite n'est calculable.
@@ -1096,7 +1468,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 maxd = f" · max {self._fmt(max_dur)}" if max_dur else ""
                 self.sub_title = (
                     f"{done}/{len(vms)} {t('completed')} · "
-                    f"{self._fmt(now - started)}{eta}{maxd}"
+                    f"{self._fmt(self._total_elapsed(now, started))}"
+                    f"{eta}{maxd}"
                 )
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
@@ -1432,6 +1805,180 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     )
                 except (OSError, subprocess.SubprocessError):
                     pass
+
+        # -- largeur des colonnes ---------------------------------------- #
+        COL_STEP = 2
+        COL_MIN = 3
+        COL_MAX = 60
+
+        def _cursor_column(self):
+            """Colonne VISEE par le redimensionnement.
+
+            Surtout pas « table.cursor_column » : le curseur est en mode
+            LIGNE, sa colonne reste donc a 0 quoi qu'on fasse. Chaque « + » ou
+            « - » tombait sur « # », large de 3 et deja a sa butee — d'ou un
+            avertissement en boucle et aucune colonne atteignable.
+
+            La cible se deplace avec « < » et « > », et part sur le nom de VM,
+            la seule qu'on ait vraiment besoin d'elargir."""
+            table = self.query_one("#vms", DataTable)
+            keys = list(table.columns)
+            if not keys:
+                return None, None
+            index = max(0, min(self._col_target, len(keys) - 1))
+            return table, keys[index]
+
+        def _apply_column_widths(self, table) -> None:
+            """Fait PRENDRE les largeurs à l'écran.
+
+            « refresh(layout=True) » ne suffit pas, et c'est le piège :
+            mesuré sur Textual 8.2.8, la largeur de la colonne passe bien de
+            22 à 34, mais la taille virtuelle du tableau reste à 81 — donc
+            rien ne bouge. « clear_cached_dimensions » et « refresh_column »
+            n'y changent rien non plus ; seul le recalcul des dimensions la
+            porte à 93.
+
+            C'est une API privée, d'où le repli : une version future de
+            Textual dégradera l'ajustement au lieu de casser le suivi."""
+            try:
+                table._update_dimensions(list(table.rows))
+            except Exception:
+                table.refresh(layout=True)
+
+        def _resize_column(self, delta) -> None:
+            table, key = self._cursor_column()
+            if key is None:
+                return
+            col = table.columns[key]
+            width = max(
+                self.COL_MIN, min(self.COL_MAX, (col.width or 0) + delta)
+            )
+            if width == col.width:
+                # Butée atteinte : le SEUL cas où il faut le dire, puisque
+                # rien ne bougera à l'écran pour l'expliquer.
+                self.notify(
+                    f"{col.label} : {width} (butee {self.COL_MIN}-{self.COL_MAX})",
+                    severity="warning",
+                )
+                return
+            col.width = width
+            # auto_width écraserait la largeur au prochain rendu : on la coupe,
+            # sinon le réglage ne survit pas à la première mise à jour.
+            col.auto_width = False
+            # Pas de notification quand ça marche : le changement se VOIT, et
+            # une bulle par frappe rendait l'ajustement pénible.
+            self._apply_column_widths(table)
+
+        def _move_col_target(self, delta) -> None:
+            """Deplace la cible, en boucle sur les colonnes."""
+            table = self.query_one("#vms", DataTable)
+            keys = list(table.columns)
+            if not keys:
+                return
+            self._col_target = (self._col_target + delta) % len(keys)
+            self.notify(
+                f"Colonne visee : {table.columns[keys[self._col_target]].label}"
+            )
+
+        def action_col_prev(self) -> None:
+            self._move_col_target(-1)
+
+        def action_col_next(self) -> None:
+            self._move_col_target(1)
+
+        def action_col_grow(self) -> None:
+            self._resize_column(self.COL_STEP)
+
+        def action_col_shrink(self) -> None:
+            self._resize_column(-self.COL_STEP)
+
+        def action_col_reset(self) -> None:
+            """Rend aux colonnes les largeurs déclarées à la construction."""
+            table = self.query_one("#vms", DataTable)
+            for key, width in COL_DEFAULT_WIDTHS.items():
+                if key in table.columns:
+                    table.columns[key].width = width
+                    table.columns[key].auto_width = False
+            self._apply_column_widths(table)
+
+        def _total_elapsed(self, now, started):
+            """Durée globale. Elle se FIGE quand plus rien ne tourne : sinon
+            le total continuait de courir sur un parc entièrement terminé,
+            et repartait de plus belle à chaque réouverture."""
+            if len(self._final) < len(vms) or not self._final:
+                return now - started
+            return max(e for _s, _c, e in self._final.values())
+
+        def action_vm_actions(self) -> None:
+            """Ouvre les actions de la VM sélectionnée."""
+            vm = self._vm_by_name(self._selected)
+            if not vm:
+                return
+
+            def chosen(result):
+                if not result:
+                    return
+                kind, parts = result
+                if kind == "update":
+                    self._run_update(vm, parts)
+                elif kind == "restart":
+                    self._run_in_vm(
+                        vm, restart_odoo_cmd(), "Redemarrage d'Odoo"
+                    )
+                elif kind == "delete":
+                    self._ask_delete(vm)
+
+            self.push_screen(VmActionsScreen(vm), chosen)
+
+        def _run_in_vm(self, vm, cmd, title) -> None:
+            """Exécute une commande DANS la VM, terminal rendu.
+
+            « suspend() » comme pour SSH et la console : sudo peut demander son
+            mot de passe et la sortie est longue ; la garder derrière Textual
+            la rendrait illisible. La pause finale évite que l'écran reparte
+            avant qu'on ait lu le résultat."""
+            if not vm.get("ip"):
+                self.notify("Pas d'IP pour cette VM.", severity="error")
+                return
+            with self.suspend():
+                print(f"\n=== {title} — {vm['name']} ===")
+                os.system(
+                    f"ssh {SSH_OPTS} erplibre@{vm['ip']} "
+                    f"{shlex.quote(cmd)} || true"
+                )
+                input("\nEntrée pour revenir au suivi… ")
+
+        def _run_update(self, vm, parts) -> None:
+            cmd = update_remote_cmd(parts)
+            if not cmd:
+                self.notify("Rien de coché.", severity="warning")
+                return
+            self._run_in_vm(vm, cmd, "Mise a jour")
+
+        def _ask_delete(self, vm) -> None:
+            """Suppression : jamais sans une seconde main."""
+
+            def confirmed(yes):
+                if not yes:
+                    return
+                with self.suspend():
+                    print(f"\n=== Suppression — {vm['name']} ===")
+                    os.system(delete_vm_cmd(vm["name"], True) + " || true")
+                    input("\nEntrée pour revenir au suivi… ")
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"Supprimer {vm['name']} ?",
+                    [
+                        "La VM est arrêtée, sa définition retirée,",
+                        "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+                        "",
+                        f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
+                    ],
+                    "Supprimer définitivement",
+                ),
+                confirmed,
+            )
 
         def action_pause_all(self) -> None:
             """Met en PAUSE (virsh suspend) toutes les VM en cours d'exécution.

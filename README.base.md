@@ -94,19 +94,31 @@ Changez de version avec `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 # Supported platforms
 
-- **Linux** : Ubuntu 20.04, 22.04, 24.04, 25.04; Debian 12; Arch Linux
-- **macOS** : via pyenv
-- **Windows** : via WSL or Docker
-- **Mainframe** : 390x architecture
+- **Ubuntu** : 24.04, 25.10, 26.04 — 20.04 and 22.04 are dropped, pikepdf requiring a qpdf 12.2 built in C++20
+- **Linux Mint** : 22.3
+- **Debian** : 12 (bookworm) and 13 (trixie)
+- **Fedora** : 41 and later
+- **AlmaLinux, Rocky Linux** : 9 and 10 — RHEL and CentOS Stream take the same path
+- **openSUSE** : Leap 16.0 and Tumbleweed
+- **Arch Linux** : rolling release
+- **macOS** : through mise or pyenv
+- **Windows** : through WSL or Docker
+- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe)
 
 <!-- [fr] -->
 
 # Plateformes supportées
 
-- **Linux** : Ubuntu 20.04, 22.04, 24.04, 25.04; Debian 12; Arch Linux
-- **macOS** : via pyenv
-- **Windows** : via WSL ou Docker
-- **Mainframe** : architecture 390x
+- **Ubuntu** : 24.04, 25.10, 26.04 — 20.04 et 22.04 sont retirées, pikepdf réclamant un qpdf 12.2 bâti en C++20
+- **Linux Mint** : 22.3
+- **Debian** : 12 (bookworm) et 13 (trixie)
+- **Fedora** : 41 et suivantes
+- **AlmaLinux, Rocky Linux** : 9 et 10 — RHEL et CentOS Stream empruntent le même chemin
+- **openSUSE** : Leap 16.0 et Tumbleweed
+- **Arch Linux** : rolling release
+- **macOS** : par mise ou pyenv
+- **Windows** : par WSL ou Docker
+- **Architectures** : amd64, arm64 et s390x (mainframe IBM Z)
 
 <!-- [en] -->
 
@@ -276,11 +288,11 @@ cd ERPLibre
 
 <!-- [en] -->
 
-Support Ubuntu 20.04, 22.04, 24.04, 25.04 and OSX.
+`make install_os` detects the distribution and picks the right dependency script: apt for Ubuntu, Linux Mint and Debian, dnf for Fedora and the RHEL family, zypper for openSUSE, pacman for Arch. See the supported platforms above.
 
 <!-- [fr] -->
 
-Support Ubuntu 20.04, 22.04, 24.04, 25.04 et OSX.
+`make install_os` détecte la distribution et choisit le bon script de dépendances : apt pour Ubuntu, Linux Mint et Debian, dnf pour Fedora et la famille RHEL, zypper pour openSUSE, pacman pour Arch. Voir les plateformes supportées ci-dessus.
 
 <!-- [common] -->
 

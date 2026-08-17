@@ -31,9 +31,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Application mobile ERPLibre Home, utiliser TODO pour compiler, déployer et personnaliser
 - Support de la grille Selenium depuis selenium_lib.py
 - Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
-- Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu,
-  Debian, Fedora, Arch) en amd64, arm64 et s390x, avec un menu pour lister,
-  tester, redimensionner, supprimer et nettoyer
+- Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) en amd64, arm64 et s390x, avec un menu pour lister, tester, redimensionner, supprimer et nettoyer
+- VM graphiques : un choix serveur / bureau proposant GNOME ou Cinnamon (le bureau de Linux Mint), avec accès distant par xrdp — TigerVNC sur Arch
 - Interfaces Textual : tableau de bord d'installation, formulaire de
   déploiement de VM, écran de reprise de migration ; Textual s'installe à la
   demande
@@ -65,6 +64,18 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Entrée de FAQ sur wkhtmltopdf pour les distributions récentes
 - brin_advisor et brin_cluster : recommander et appliquer le bon index
   PostgreSQL pour un modèle Odoo
+- Réglages par VM dans le formulaire de déploiement : vCPU, RAM, disque, type, branche ERPLibre, version d'Odoo et fuseau horaire, un verrou qui soustrait une VM au profil global, le renommage, et plusieurs exemplaires d'une entrée
+- Fournisseur d'interpréteur Python choisi par EL_PYTHON_PROVIDER — mise pose un CPython précompilé, pyenv en compile un — et retenu par déploiement
+- uv pose les paquets Python, pip en repli, par EL_PIP_PROVIDER
+- openSUSE Leap 16.0 et Fedora 43 au catalogue de VM
+- Magasin d'applications d'une VM graphique : .deb seul, outillage Flatpak, ou snap
+- Tunnel vers le bureau distant : la commande SSH est composée depuis ~/.ssh/config, avec la console de l'hyperviseur comme troisième voie
+- Le tableau de bord d'installation agit sur une VM sans la quitter : mise à jour par parties, redémarrage d'Odoo, suppression ; colonne d'architecture et colonnes ajustables
+- Un test vérifie que ce qu'importe l'outillage est bien déclaré
+
+## Retiré
+
+- Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9 et ne publie pas de `g++-10` pour s390x
 
 ## Modifié
 
@@ -91,6 +102,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - LinuxMint 22.3 pris en charge
 - Dépendances Odoo 18 : flanker, orjson, python-magic, tldextract, PyYAML
 - Année de copyright portée à 2026
+- Miroirs pacman canadiens placés en tête sur Arch, le miroir « géographique » officiel mesurant quatre fois plus lent depuis Montréal
+- Une dépendance Poetry peut être déclinée par architecture : factur-x est épinglé en 3.x sur s390x, où saxonche ne publie pas de roue, et PyMuPDF y est écarté
 
 ## Corrigé
 
@@ -104,6 +117,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Installation sur Debian 13, Fedora et Ubuntu 26.04 : verrou apt, wkhtmltopdf,
   SELinux et le compilateur C manquant
 - Accents de la documentation et génération markdown en parallèle
+- La chaîne de compilation s390x, sur Debian comme sur EL9, EL10, Fedora et openSUSE : compilateurs et en-têtes manquants, Rust pour cryptography et bcrypt, qpdf pour pikepdf, libclang pour pymupdf, des noms de paquets qui changent d'une version à l'autre, et un lot en échec sur un seul nom inconnu sans jamais le nommer
+- L'installation d'un bureau graphique figeait trente minutes sur un paquet snap qui ne joignait pas le magasin
+- Le compilateur était tué faute de mémoire en bâtissant CPython sur une petite VM s390x
+- Le README ne listait ni Fedora, ni openSUSE, ni Linux Mint, ni Debian 13, toutes supportées
 
 ## Sécurité
 

@@ -11,6 +11,7 @@ import inspect
 import json
 import logging
 import os
+import socket
 import re
 import shlex
 import shutil
@@ -1022,12 +1023,15 @@ class TODO:
     # distro -> (versions affichées, version par défaut). Source de vérité =
     # deploy_qemu.py ; ceci ne sert qu'au sélecteur interactif.
     _QEMU_DISTROS = {
-        "ubuntu": (
-            ["20.04", "22.04", "24.04", "25.10", "26.04"],
-            "24.04",
-        ),
+        "ubuntu": (["24.04", "25.10", "26.04"], "24.04"),
         "debian": (["11", "12", "13"], "12"),
         "fedora": (["41", "42", "43", "44"], "42"),
+        "almalinux": (["9", "10"], "9"),
+        "rocky": (["9", "10"], "10"),
+        # Leap 16.0 par défaut : numérotée et stable. Tumbleweed reste offerte,
+        # comme banc d'essai des ruptures à venir. Voir OPENSUSE_VERSIONS dans
+        # deploy_qemu.py, qui fait autorité sur le catalogue.
+        "opensuse": (["16.0", "tumbleweed"], "16.0"),
         "arch": (["latest"], "latest"),
     }
 
@@ -1075,8 +1079,21 @@ class TODO:
 
     # Distros publiant des images cloud par architecture (cohérent avec
     # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
-    _QEMU_S390X_DISTROS = ("ubuntu",)
-    _QEMU_ARM64_DISTROS = ("ubuntu", "debian", "fedora")
+    _QEMU_S390X_DISTROS = (
+        "ubuntu",
+        "almalinux",
+        "rocky",
+        "fedora",
+        "opensuse",
+    )
+    _QEMU_ARM64_DISTROS = (
+        "ubuntu",
+        "debian",
+        "fedora",
+        "almalinux",
+        "rocky",
+        "opensuse",
+    )
     # Alias distro pour l'affichage (jeton générique -> nom courant).
     _QEMU_ARCH_ALIAS = {"amd64": "x86_64", "arm64": "aarch64"}
 
@@ -1243,6 +1260,11 @@ class TODO:
                 )
             },
             {"prompt_description": t("Download a cloud image only")},
+            {
+                "prompt_description": t(
+                    "Reopen install monitoring (last run / history)"
+                )
+            },
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
@@ -1255,15 +1277,15 @@ class TODO:
                     "Test a VM (open Odoo in a CLI browser)"
                 )
             },
-            {
-                "prompt_description": t(
-                    "Reopen install monitoring (last run / history)"
-                )
-            },
             {"prompt_description": t("Statistics (installs, durations, VMs)")},
             {
                 "prompt_description": t(
                     "SSH configuration (~/.ssh/config, ProxyJump)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Remote desktop tunnel (VNC/RDP through SSH)"
                 )
             },
             {"section": t("Catalog")},
@@ -1286,26 +1308,28 @@ class TODO:
             elif status == "3":
                 self._qemu_download_image()
             elif status == "4":
-                self._qemu_list_vms(ask_advanced=True)
-            elif status == "5":
-                self._qemu_show_ip()
-            elif status == "6":
-                self._qemu_console()
-            elif status == "7":
-                self._qemu_resize_disk()
-            elif status == "8":
-                self._qemu_delete_vm()
-            elif status == "9":
-                self._qemu_cleanup()
-            elif status == "10":
-                self._qemu_test_vm()
-            elif status == "11":
                 self._qemu_reopen_monitor()
+            elif status == "5":
+                self._qemu_list_vms(ask_advanced=True)
+            elif status == "6":
+                self._qemu_show_ip()
+            elif status == "7":
+                self._qemu_console()
+            elif status == "8":
+                self._qemu_resize_disk()
+            elif status == "9":
+                self._qemu_delete_vm()
+            elif status == "10":
+                self._qemu_cleanup()
+            elif status == "11":
+                self._qemu_test_vm()
             elif status == "12":
                 self._qemu_stats()
             elif status == "13":
                 self._qemu_ssh_config_menu()
             elif status == "14":
+                self._qemu_tunnel_menu()
+            elif status == "15":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1456,6 +1480,158 @@ class TODO:
                 continue
             roots.append({"alias": name, "ip": ip})
         return roots
+
+    # Ports du bureau distant, par gestionnaire de paquets de la VM. Ils
+    # viennent de _QEMU_DESKTOP_REMOTE, seule source : xrdp sur 3389 partout,
+    # sauf Arch qui reçoit TigerVNC sur 5901.
+    @classmethod
+    def _qemu_desktop_port(cls, distro):
+        if distro == "arch":
+            return cls._QEMU_DESKTOP_REMOTE["pacman"]["port"], "VNC"
+        return cls._QEMU_DESKTOP_REMOTE["apt"]["port"], "RDP"
+
+    @staticmethod
+    def _qemu_self_address():
+        """Adresse par laquelle l'utilisateur a JOINT cet hôte.
+
+        SSH_CONNECTION porte « ip_client port_client ip_serveur port_serveur » :
+        le troisième champ est exactement l'adresse à remettre dans la commande
+        de tunnel, bien mieux qu'un « hostname » qui peut ne rien résoudre
+        depuis le poste de travail. Hors session SSH, on retombe sur le nom
+        d'hôte, en le signalant."""
+        conn = os.environ.get("SSH_CONNECTION", "").split()
+        if len(conn) >= 3:
+            return conn[2], True
+        return socket.gethostname(), False
+
+    def _qemu_tunnel_menu(self):
+        """Commande de tunnel SSH vers le bureau distant d'une machine.
+
+        La source des cibles est ~/.ssh/config, PAS le libvirt local. La VM
+        graphique est souvent imbriquee : un orchestrateur QEMU tourne dans une
+        VM, et la machine a bureau vit DANS cet orchestrateur. Le « virsh » du
+        poste ne voit alors que l'orchestrateur, et proposer sa liste menait
+        droit a la mauvaise machine — vecu.
+
+        ~/.ssh/config, lui, connait les deux, ProxyJump compris : c'est la
+        seule vue qui traverse les niveaux. Les domaines libvirt LOCAUX sont
+        ajoutes en complement quand ils ne s'y trouvent pas deja.
+        """
+        print(f"\n🖥  {t('Remote desktop tunnel')}")
+        hosts = list(self._ssh_config_hosts())
+        targets = [(h, "ssh_config") for h in hosts]
+        # Complement local, sans sudo tant qu'on n'en a pas besoin : la
+        # plupart des cibles utiles sont deja dans ssh_config.
+        if not targets:
+            for name in self._qemu_list_domains():
+                targets.append((name, "virsh"))
+        if not targets:
+            print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
+            return
+        for i, (name, src) in enumerate(targets, 1):
+            mark = "" if src == "ssh_config" else f"  ({t('local VM')})"
+            print(f"  [{i}] {name}{mark}")
+        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
+            print(t("Cancelled."))
+            return
+        name, src = targets[int(answer) - 1]
+
+        # Le port ne se devine pas pour un hote de ssh_config : on ne connait
+        # ni sa distribution ni son bureau. On propose, l'utilisateur tranche.
+        print(f"\n  {t('Remote desktop kind:')}")
+        print(f"  [1] RDP 3389 (xrdp) *")
+        print(f"  [2] VNC 5901 (TigerVNC, Arch)")
+        print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
+        kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        if kind_answer == "3":
+            self._qemu_console_tunnel()
+            return
+        port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
+        local = port + 1
+
+        print(f"\n  {t('Run this on YOUR workstation:')}")
+        if src == "ssh_config":
+            # « localhost » est resolu par le DERNIER saut, donc par la machine
+            # elle-meme : le ProxyJump de ssh_config traverse les niveaux.
+            print(f"\n    ssh -N -L {local}:localhost:{port} {name}\n")
+            print(f"  {t('(through the ProxyJump already in ~/.ssh/config)')}")
+        else:
+            ip = self._qemu_resolve_ips([name]).get(name)
+            if not ip:
+                print(f"  {t('No IP for this VM; is it running?')}")
+                return
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            if not from_ssh:
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
+            print(f"\n    ssh -N -L {local}:{ip}:{port} {user}@{host}\n")
+            print(f"  ⚠ {t('No ~/.ssh/config entry; see SSH configuration.')}")
+        print(
+            f"  {t('then point your client at')} localhost:{local}  ({kind})"
+        )
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    def _qemu_console_tunnel(self):
+        """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
+
+        Les deux autres choix du menu supposent un service DANS l'invité —
+        xrdp, TigerVNC — donc une session de bureau déjà ouverte et un mot de
+        passe posé. La console de l'hyperviseur, elle, existe dès l'amorçage et
+        ne demande rien à l'invité : c'est ce que montre virt-manager.
+
+        Le port n'est pas devinable : libvirt l'attribue au démarrage. On le
+        lit donc, et l'absence de port est un diagnostic à part entière — avec
+        « listen=none » QEMU n'ouvre AUCUN socket, et aucun tunnel n'y peut
+        rien tant que le domaine n'est pas redéfini.
+        """
+        names = self._qemu_list_domains()
+        if not names:
+            print(f"  {t('No local VM.')}")
+            return
+        for i, name in enumerate(names, 1):
+            print(f"  [{i}] {name}")
+        raw = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not raw.isdigit() or not (1 <= int(raw) <= len(names)):
+            print(t("Cancelled."))
+            return
+        name = names[int(raw) - 1]
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "vncdisplay", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            res = None
+        # « 127.0.0.1:0 » désigne le port 5900, « :1 » le 5901, etc.
+        port = None
+        if res and res.returncode == 0:
+            disp = res.stdout.strip().rsplit(":", 1)
+            if len(disp) == 2 and disp[1].isdigit():
+                port = 5900 + int(disp[1])
+        if not port:
+            print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
+            print(f"  {t('Its display is likely spice with listen=none:')}")
+            print(f"    sudo virsh dumpxml {name} | grep -A2 '<graphics'")
+            print(f"  {t('To open it on the loopback (VM restart required):')}")
+            print(f"    sudo virsh destroy {name}")
+            print(f"    sudo virsh edit {name}   # <graphics type='vnc'"
+                  " port='-1' autoport='yes' listen='127.0.0.1'/>")
+            print(f"    sudo virsh start {name}")
+            print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
+            return
+        host, from_ssh = self._qemu_self_address()
+        user = os.environ.get("USER", "user")
+        if not from_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        print(f"\n  {t('Run this on YOUR workstation:')}")
+        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {user}@{host}\n")
+        print(f"  {t('then point your VNC client at')} localhost:{port}")
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
     def _qemu_ssh_config_menu(self):
         """Écrit les entrées ~/.ssh/config du parc QEMU.
@@ -2137,20 +2313,34 @@ class TODO:
         if not names:
             print(f"\n{t('No VM found.')}")
             return
-        print(f"\n{t('Available VMs:')} {', '.join(names)}")
-        raw = input(t("VMs to change (comma-separated): ")).strip()
-        targets = [n.strip() for n in raw.split(",") if n.strip()]
-        if not targets:
+        # Liste NUMÉROTÉE, comme l'écran de suppression : les noms de VM sont
+        # longs et se ressemblent, les retaper invite à la faute de frappe sur
+        # une commande qui change l'état d'une machine.
+        print(f"\n{t('Available VMs:')}")
+        for i, n in enumerate(names, 1):
+            print(f"  [{i}] {n}")
+        print(f"  [all] {t('select all')}")
+        raw = input(t("Selection (numbers, or 'all'): ")).strip()
+        if not raw:
             print(t("Nothing selected."))
             return
-        # Résoudre les ID -> noms et valider l'existence.
-        resolved, unknown = [], []
-        known = set(names)
-        for tgt in targets:
-            real = self._qemu_domname(tgt)
-            (resolved if real in known else unknown).append(real)
-        if unknown:
-            print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
+        if raw.lower() in ("all", "*"):
+            resolved = list(names)
+        else:
+            resolved = self._parse_index_selection(raw.lower(), names)
+            # Le parseur ignore en silence ce qu'il ne reconnaît pas. Sur une
+            # sélection qui va démarrer ou éteindre des VM, un numéro hors
+            # liste doit être dit, pas escamoté.
+            unknown = [
+                tok
+                for tok in re.split(r"[\s,]+", raw.strip())
+                if tok and tok not in names and not self._is_index(tok, names)
+            ]
+            if unknown:
+                print(f"{t('Unknown VM(s):')} {', '.join(unknown)}")
+                return
+        if not resolved:
+            print(t("Nothing selected."))
             return
         # Choix de l'état cible : ouvrir (démarrer) ou fermer (éteindre).
         print(f"\n{t('Target state:')}")
@@ -2367,15 +2557,61 @@ class TODO:
             except ValueError:
                 print(t("Invalid selection."))
                 return
+        self._qemu_open_monitor(run["manifest"])
+
+    def _qemu_open_monitor(self, manifest):
+        """Ouvre le dashboard sur un manifeste, en installant Textual au
+        besoin. Deux entrées y mènent — l'historique et la reprise proposée
+        avant un déploiement — d'où une seule définition."""
+        from script.todo import qemu_install_monitor as mon
+
         try:
-            mon.run_monitor(run["manifest"])
+            mon.run_monitor(manifest)
         except ImportError:
             from script.todo import textual_setup
 
             if textual_setup.ensure():
-                mon.run_monitor(run["manifest"])
+                mon.run_monitor(manifest)
         except Exception as exc:
             print(f"{t('Command failed: ')}{exc}")
+
+    def _qemu_active_install(self):
+        """Propose de reprendre le suivi quand une installation tourne encore.
+
+        Les installs partent détachées (`setsid -f`) : fermer le terminal ne
+        les arrête pas, mais faisait perdre la seule vue dessus, et la seule
+        issue connue était de tout effacer pour recommencer.
+
+        True si l'on ne doit PAS enchaîner sur un déploiement."""
+        try:
+            from script.todo import qemu_install_monitor as mon
+
+            run = mon.active_run()
+        except Exception:
+            return False
+        if not run:
+            return False
+        names = ", ".join(v.get("name", "?") for v in run["vms"])
+        print(
+            f"\n⏳ {t('An install is still running:')} {run['label']} — "
+            f"{run['active']}/{run['total']} {t('VM(s) in progress')}"
+        )
+        print(f"     {names}")
+        if run.get("idle") is not None:
+            # Un silence prolongé trahit un run mort dont le marqueur de sortie
+            # ne viendra jamais : l'utilisateur tranche mieux que nous.
+            print(
+                f"     {t('Last activity:')} {mon._fmt_secs(int(run['idle']))}"
+            )
+        print(f"\n  [1] {t('Reopen that monitoring')} *")
+        print(f"  [2] {t('Deploy anyway (new run)')}")
+        print(f"  [0] {t('Back')}")
+        sel = input(t("Choice (number, blank = reopen): ")).strip()
+        if sel == "2":
+            return False
+        if sel != "0":
+            self._qemu_open_monitor(run["manifest"])
+        return True
 
     def _qemu_choose_cli_browser(self):
         """Offre la LISTE des navigateurs CLI installés, plus une option pour
@@ -3767,6 +4003,14 @@ class TODO:
         return 0
 
     @staticmethod
+    def _is_index(token, options):
+        """Vrai si le jeton est un numéro valide dans la liste (1-based)."""
+        try:
+            return 1 <= int(token) <= len(options)
+        except ValueError:
+            return False
+
+    @staticmethod
     def _parse_index_selection(raw, options):
         """« 1 3 » ou « 1,3 » -> sous-liste d'options (indices 1-based)."""
         chosen = []
@@ -4235,11 +4479,501 @@ class TODO:
             "sudo systemctl enable --now erplibre.service"
         )
 
-    def _qemu_erplibre_remote_cmd(self, branch, final_cmd=None, prod=False):
-        """Script d'installation ERPLibre exécuté DANS la VM (curl/git/make
-        puis clone + `final_cmd`). `final_cmd` par défaut : install_os +
-        install_odoo_18. `prod` : installe dans /opt/erplibre (au lieu de
-        ~/git/erplibre) + service SELinux confiné."""
+    # Bureaux disponibles, par gestionnaire de paquets. Une seule source pour
+    # la TUI et la CLI. Les noms ont été relevés distribution par
+    # distribution, pas déduits : Arch n'a PAS xrdp dans ses dépôts officiels
+    # (AUR seulement) et prend TigerVNC, avec un port et un client différents.
+    #
+    # Côté dnf on installe un ENVIRONNEMENT, pas un groupe : le groupe
+    # « gnome-desktop » d'AlmaLinux apporte gdm et gnome-shell mais PAS
+    # « base-x », donc aucun serveur X — vérifié dans son comps.xml. Les
+    # environnements diffèrent selon la famille (RHEL / Fedora), d'où la
+    # cascade : le premier qui existe gagne.
+    _QEMU_DESKTOP = {
+        "gnome": {
+            "label": "GNOME",
+            "apt": "gnome-core dbus-x11",
+            "dnf_env": "graphical-server-environment "
+            "workstation-product-environment gnome-desktop",
+            "pacman": "gnome gdm",
+            "zypper": "patterns-gnome-gnome_basic gdm",
+            "service": "gdm",
+            # Suffixe ajouté au nom de VM, donc au nom d'hôte. Une VM
+            # graphique se reconnaît alors d'un « virsh list », et deux VM de
+            # même distribution mais de types différents ne se marchent plus
+            # dessus — le nom sert aussi de clé de collision.
+            "suffix": "gnome",
+        },
+        "cinnamon": {
+            "label": "Cinnamon (Linux Mint)",
+            # Le bureau de Linux Mint, depuis les dépôts de la distribution :
+            # Ubuntu 24.04 livre Cinnamon 6.0.4, la 25.10 la 6.4.12. Le dépôt
+            # de Mint lui-même n'est pas utilisé — il est en HTTP nu et ne
+            # publie que i386/amd64, ce qui exclurait arm64 et s390x.
+            "apt": "cinnamon-desktop-environment dbus-x11",
+            "dnf_env": "cinnamon-desktop",
+            "pacman": "cinnamon lightdm lightdm-gtk-greeter",
+            "zypper": "cinnamon lightdm",
+            "service": "lightdm",
+            # « mint » plutôt que « cinnamon » : c'est le nom retenu pour le
+            # parc. Le paquet installé reste bien Cinnamon, depuis les dépôts
+            # de la distribution et non ceux de Mint.
+            "suffix": "mint",
+        },
+    }
+    # Ubuntu remplace trois applications par des paquets de TRANSITION dont le
+    # postinst lance « snap install ». Or snapd est coupé juste avant, pour
+    # empêcher ses rafraîchissements pendant l'installation : le postinst ne
+    # joint alors pas le store et RÉESSAIE UNE MINUTE DURANT TRENTE MINUTES.
+    # L'installation paraît figée et rien dans le log ne dit pourquoi.
+    #
+    # La famille est CLOSE et relevée dans l'index du dépôt, pas devinée : trois
+    # paquets sources portent une version « …snap1… », firefox, chromium-browser
+    # et thunderbird — avec toutes leurs déclinaisons (firefox-locale-*,
+    # chromium-codecs-*). Les corriger un à un a coûté deux VM figées : firefox
+    # sous GNOME, puis thunderbird sous Cinnamon.
+    #
+    # Les trois ne sont que RECOMMANDÉS, et avec des solutions de rechange :
+    #   Recommends: firefox-esr | firefox | chromium | epiphany-browser | …
+    #   Recommends: thunderbird | evolution | geary | mail-reader
+    # On les écarte donc, et on nomme deux vrais .deb pour satisfaire les
+    # recommandations. Les nommer rend le résultat déterministe : laissé à apt,
+    # le premier repli était « chromium-browser », un paquet de transition lui
+    # aussi.
+    #
+    # Un épinglage apt sur « Pin: version *snap1* » aurait été plus général —
+    # essayé en glob et en regex, il ne bloque rien. Mesuré sur une VM 26.04 :
+    # avec cette liste, GNOME (844 paquets) et Cinnamon (1167) n'en tirent
+    # AUCUN, sans erreur apt.
+    _QEMU_APT_NO_SNAP = (
+        "epiphany-browser evolution"
+        " firefox- chromium- chromium-browser- thunderbird-"
+    )
+
+    # Magasin d'applications d'une VM graphique. Ubuntu livre snapd dans son
+    # image cloud (vérifié : 2.75.2 en 26.04) et gnome-core RECOMMANDE
+    # « firefox », qui n'y est plus qu'un paquet de transition lançant
+    # « snap install ». Trois réponses possibles, et il faut choisir :
+    #
+    #   deb      rien que des .deb. snapd coupé, paquets-snap écartés,
+    #            epiphany-browser comme navigateur. Le plus léger, et rien à
+    #            télécharger en plus pendant un déploiement déjà long.
+    #   flatpak  l'outillage Flatpak en plus, SANS dépôt Flathub ni
+    #            installation : la machine est prête, l'administrateur ajoute
+    #            les dépôts qu'il veut.
+    #   snap     le comportement d'Ubuntu, snapd laissé actif et Firefox en
+    #            snap. Lent sous émulation, mais c'est le défaut de la distro.
+    #
+    # La question n'a de sens que pour une VM Ubuntu GRAPHIQUE : sur un
+    # serveur, rien ne tire de snap.
+    QEMU_APP_STORES = (
+        ("deb", "deb only (epiphany-browser)"),
+        ("flatpak", "Flatpak tooling, no Flathub"),
+        ("snap", "snap (Ubuntu default, Firefox)"),
+    )
+    QEMU_SNAP_DISTROS = ("ubuntu",)
+
+    # Fuseaux proposés au déploiement. Des NOMS IANA, pas des décalages :
+    # cloud-init écrit /etc/timezone et refuse « UTC-5 », qui ne dit d'ailleurs
+    # rien de l'heure d'été. Un nom porte ses propres règles de bascule.
+    #
+    # Liste courte et ordonnée par usage réel plutôt qu'exhaustive : la base
+    # IANA en compte près de six cents, illisibles dans une liste déroulante.
+    # Le Québec d'abord, le reste du Canada ensuite, puis les places qu'on
+    # rencontre en pratique. La saisie libre reste offerte pour le reste.
+    QEMU_TIMEZONES = (
+        "America/Montreal",
+        "America/Toronto",
+        "America/Halifax",
+        "America/Winnipeg",
+        "America/Edmonton",
+        "America/Vancouver",
+        "America/St_Johns",
+        "UTC",
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Sao_Paulo",
+        "Europe/London",
+        "Europe/Paris",
+        "Europe/Brussels",
+        "Europe/Zurich",
+        "Europe/Madrid",
+        "Europe/Berlin",
+        "Africa/Casablanca",
+        "Asia/Dubai",
+        "Asia/Kolkata",
+        "Asia/Shanghai",
+        "Asia/Tokyo",
+        "Australia/Sydney",
+    )
+
+    @classmethod
+    def _qemu_timezone_choices(cls, current=""):
+        """Liste à proposer : le fuseau de l'hôte en tête, sans doublon.
+
+        Le mettre en premier plutôt que de le supposer présent : une machine
+        hors de cette liste doit quand même voir le sien en un coup d'œil."""
+        out = [current] if current else []
+        out += [z for z in cls.QEMU_TIMEZONES if z != current]
+        return out
+
+    @classmethod
+    def _qemu_desktop_suffixes(cls):
+        """{clé de saveur: suffixe de nom}. La TUI le reçoit par son contexte
+        plutôt que de le redéfinir : un seul endroit décrit les saveurs."""
+        return {k: v["suffix"] for k, v in cls._QEMU_DESKTOP.items()}
+
+    @classmethod
+    def _qemu_apt_store_pkgs(cls, app_store):
+        """Paquets apt à ajouter au bureau selon le magasin retenu."""
+        if app_store == "snap":
+            # On ne retire rien : Firefox arrivera en snap, comme sur une
+            # Ubuntu ordinaire, et snapd est resté actif pour le servir.
+            return ""
+        pkgs = cls._QEMU_APT_NO_SNAP
+        if app_store == "flatpak":
+            # Le greffon donne à GNOME Logiciels la gestion des Flatpak.
+            # Aucun « remote-add » ici : le dépôt reste un choix explicite.
+            pkgs += " flatpak gnome-software-plugin-flatpak"
+        return pkgs
+
+    # Accès distant, indépendant du bureau choisi.
+    _QEMU_DESKTOP_REMOTE = {
+        "apt": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+        "dnf": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+        "pacman": {"packages": "tigervnc", "port": 5901, "client": "VNC"},
+        "zypper": {"packages": "xrdp", "port": 3389, "client": "RDP"},
+    }
+    # Place que prend un bureau complet, annoncée dans le plan : sur une image
+    # cloud de 40 G, l'oublier remplit le disque en pleine installation.
+    QEMU_DESKTOP_EXTRA_DISK_GB = 6
+
+    @staticmethod
+    def _qemu_cloud_init_wait():
+        """Attend la fin de cloud-init, qui tient le verrou apt/dnf/pacman
+        pendant sa phase « paquets ».
+
+        L'attente dure jusqu'à 15 min et n'écrivait RIEN : sur une architecture
+        émulée, le log restait muet un quart d'heure juste après avoir annoncé
+        le début de l'installation, ce qui se lit comme un blocage. Deux lignes
+        l'encadrent, et le « status » final dit si elle a abouti ou expiré."""
+        return (
+            "if command -v cloud-init >/dev/null 2>&1; then "
+            'echo "== '
+            + t("Waiting for cloud-init to finish (up to 15 min)")
+            + ' =="; '
+            "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
+            "|| true; "
+            + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
+            '| head -1)"; '
+            "fi; "
+        )
+
+    @staticmethod
+    def _qemu_no_auto_upgrade(prod, app_store="deb"):
+        """Coupe les mises à jour automatiques sur une VM de DÉVELOPPEMENT.
+
+        Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
+        pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
+        (« received fast shutdown request » x3) -> OpenUpgrade a perdu sa
+        connexion et la base intermédiaire est restée à moitié migrée. Effet
+        secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
+        apt pendant l'installation. En PROD on ne touche à rien : les
+        correctifs de sécurité automatiques doivent rester actifs."""
+        if prod:
+            return ""
+        return (
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo systemctl disable --now unattended-upgrades.service "
+            "apt-daily.timer apt-daily-upgrade.timer "
+            ">/dev/null 2>&1 || true; "
+            'printf \'APT::Periodic::Update-Package-Lists "0";\\n'
+            'APT::Periodic::Unattended-Upgrade "0";\\n\' '
+            "| sudo tee /etc/apt/apt.conf.d/99-erplibre-no-auto-upgrade "
+            ">/dev/null; "
+            "fi; "
+            "if command -v dnf >/dev/null 2>&1; then "
+            "sudo systemctl disable --now dnf-automatic.timer "
+            "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
+            "fi; "
+            # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
+            # « systemd-analyze critical-chain » sur une VM s390x —
+            # multi-user.target attend snapd.seeded. C'est du temps payé pour
+            # rien quand aucun snap n'est voulu. On désactive plutôt que
+            # désinstaller, pour rester réversible d'un « systemctl enable ».
+            #
+            # Sauf si le magasin RETENU est snap : le couper puis laisser un
+            # postinst appeler « snap install » est exactement ce qui figeait
+            # une VM graphique trente minutes durant.
+            + (
+                ""
+                if app_store == "snap"
+                else "sudo systemctl disable --now snapd.seeded.service "
+                "snapd.service snapd.socket snapd.apparmor.service "
+                ">/dev/null 2>&1 || true; "
+            )
+        )
+
+    # Miroirs openSUSE préférés, du plus proche au dernier recours. Le
+    # redirecteur officiel n'est PAS géographique pour cette distribution :
+    # mesuré depuis Montréal sur les métadonnées oss s390x (15 Mo),
+    # download.opensuse.org met 23,8 s — il sert depuis l'Europe — contre
+    # 2,7 s pour mirrors.rit.edu. Les trois familles dnf, elles, choisissent
+    # déjà un miroir canadien toutes seules ; rien à faire de ce côté.
+    #
+    # Chaque miroir est SONDÉ sur le chemin de l'architecture ET du produit
+    # courants, puis le premier qui répond gagne. C'est nécessaire : aucun ne
+    # réplique tout. Relevé le 2026-08-12 —
+    #   csclub    Leap oui, Tumbleweed non (404)
+    #   rit.edu   zsystems oui ; injoignable ce jour-là (curl 7)
+    #   leaseweb  Tumbleweed x86_64 et Leap oui, ports zsystems non
+    # D'où plusieurs entrées plutôt qu'une : avec la seule rit.edu, sa panne
+    # renvoyait tout le monde sur download.opensuse.org, servi d'Europe.
+    # Ordonnées par proximité de Montréal. Aucun sondage concluant : on garde
+    # les dépôts de l'image, donc le comportement d'avant.
+    _QEMU_ZYPPER_MIRRORS = (
+        "https://mirror.csclub.uwaterloo.ca/opensuse",
+        "https://mirrors.rit.edu/opensuse",
+        "https://mirror.us.leaseweb.net/opensuse",
+    )
+
+    # Miroirs Arch canadiens, du plus rapide au suivant. Mesuré depuis
+    # Montréal sur extra.db : quantum5 2,0 s, xenyth 7,1 s, contre 8,0 s pour
+    # geo.mirror.pkgbuild.com — le miroir « géographique » officiel n'est donc
+    # pas le meilleur ici. Arch n'est proposé qu'en amd64 dans le catalogue,
+    # et ces deux-là ne servent que x86_64 (Arch Linux ARM a ses propres
+    # miroirs) : la garde d'architecture le dit quand même.
+    _QEMU_PACMAN_MIRRORS = (
+        "https://mirror.quantum5.ca/archlinux/$repo/os/$arch",
+        "https://mirror.xenyth.net/archlinux/$repo/os/$arch",
+    )
+
+    def _qemu_pacman_mirror_cmd(self):
+        """Place les miroirs canadiens EN TÊTE de la mirrorlist.
+
+        reflector écrase le fichier avec « --save » : il faut donc écrire
+        après lui, pas avant. Ses miroirs restent dessous, comme repli."""
+        # « \\n » et non un vrai saut de ligne : la commande distante est UNE
+        # chaîne, passée à bash -c après shlex.quote. Un retour littéral y
+        # survivrait, mais rendrait la chaîne illisible et fragile à relire.
+        # « $repo » et « $arch » restent littéraux : c'est pacman qui les
+        # substitue, d'où les guillemets SIMPLES autour du format.
+        lines = "".join(f"Server = {m}\\n" for m in self._QEMU_PACMAN_MIRRORS)
+        first = self._QEMU_PACMAN_MIRRORS[0].split("/")[2]
+        return (
+            '[ "$(uname -m)" = x86_64 ] && { '
+            # Idempotent : la préparation Arch passe deux fois quand une VM
+            # est graphique (bureau puis ERPLibre), et empiler les mêmes
+            # miroirs à chaque passage allongerait la liste sans rien gagner.
+            f'grep -q "{first}" /etc/pacman.d/mirrorlist 2>/dev/null || {{ '
+            f"printf '{lines}' | sudo tee /etc/pacman.d/mirrorlist.el "
+            "> /dev/null; "
+            "sudo sh -c 'cat /etc/pacman.d/mirrorlist "
+            ">> /etc/pacman.d/mirrorlist.el "
+            "&& mv /etc/pacman.d/mirrorlist.el /etc/pacman.d/mirrorlist'; "
+            "}; }; "
+        )
+
+    def _qemu_pacman_prepare_cmd(self):
+        """Préparation Arch : verrou, miroirs proches, mise à jour COMPLÈTE.
+
+        Les trois sont indissociables, et il faut les faire AVANT la moindre
+        installation. Une image cloud Arch est un instantané dont la base de
+        paquets pointe des versions déjà retirées des miroirs : « pacman -S »
+        s'y arrête sur « failed retrieving file … 404 » — vécu sur llvm-libs
+        et perl. Arch ne supporte pas la mise à jour partielle.
+
+        Ce bloc ne vivait QUE dans le chemin ERPLibre. Or le bureau s'installe
+        AVANT lui : une VM graphique échouait donc toujours, sans jamais
+        atteindre le code qui l'aurait sauvée."""
+        return (
+            "if command -v pacman >/dev/null 2>&1; then "
+            # Verrou périmé (cloud-init interrompu) : le retirer SEULEMENT si
+            # aucun pacman ne tourne, sinon on attend qu'il se libère.
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            # reflector d'abord, nos miroirs ensuite : « --save » écrase le
+            # fichier, écrire avant lui ne servirait à rien.
+            "sudo pacman -Sy --needed --noconfirm reflector || true; "
+            "sudo reflector --latest 20 --protocol https --sort rate "
+            "--save /etc/pacman.d/mirrorlist || true; "
+            + self._qemu_pacman_mirror_cmd()
+            + "sudo pacman -Syu --noconfirm || true; "
+            "fi; "
+        )
+
+    def _qemu_zypper_mirror_cmd(self):
+        """Réécrit l'hôte des dépôts zypper vers un miroir plus proche."""
+        mirrors = " ".join(self._QEMU_ZYPPER_MIRRORS)
+        # Leap et Tumbleweed n'ont pas le même arbre de dépôts : la rolling
+        # isole les architectures secondaires sous /ports/, Leap 16 unifie tout
+        # et garde s390x dans l'arbre principal (les /ports/ y rendent 404).
+        return (
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) zp=tumbleweed; '
+            '[ "$(uname -m)" = s390x ] && zp=ports/zsystems/tumbleweed;; '
+            '*) zp="distribution/leap/$VERSION_ID";; esac; '
+            f"for zm in {mirrors}; do "
+            "if curl -fsS --max-time 20 -o /dev/null "
+            '"$zm/$zp/repo/oss/repodata/repomd.xml"; then '
+            "sudo sed -i "
+            '"s|https\\?://download\\.opensuse\\.org|$zm|g" '
+            "/etc/zypp/repos.d/*.repo 2>/dev/null || true; "
+            f'echo "   {t("openSUSE mirror:")} $zm"; break; fi; done; '
+        )
+
+    @staticmethod
+    def _qemu_tunnel_hint(port, kind):
+        """Deux lignes imprimees DANS la VM : le tunnel a monter depuis le
+        poste de travail, avec l'adresse deja remplie.
+
+        Un port annonce sans chemin pour y arriver n'aide personne : le reseau
+        libvirt n'est pas route depuis l'exterieur de son hote."""
+        local = port + 1
+        return (
+            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            f'echo "     {t("From your workstation:")} '
+            f'ssh -L {local}:$ip:{port} <user>@<hote-libvirt>"; '
+            f'echo "     {t("then point your client at")} '
+            f'localhost:{local}  ({kind})"; '
+        )
+
+    def _qemu_desktop_remote_cmd(self, flavour="gnome", app_store="deb"):
+        """Bloc shell installant le bureau choisi + son accès distant, quelle
+        que soit la distribution. Même aiguillage que l'installation ERPLibre,
+        et même traitement du verrou apt : cette étape passe par la commande
+        distante et non par cloud-init, où ses 1 à 2 Go allongeraient un
+        démarrage déjà long sans laisser la moindre trace dans le suivi."""
+        de = self._QEMU_DESKTOP.get(flavour) or self._QEMU_DESKTOP["gnome"]
+        rem = self._QEMU_DESKTOP_REMOTE
+        label = de["label"]
+        return (
+            f'echo "== {t("Installing the desktop (long):")} {label} =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
+            "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
+            "sudo DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o DPkg::Lock::Timeout=600 install -y "
+            f"{de['apt']} {rem['apt']['packages']} "
+            f"{self._qemu_apt_store_pkgs(app_store)}; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            # Cascade d'environnements : le premier qui existe gagne. Un
+            # environnement absent fait rendre 1 à dnf sans rien installer,
+            # d'où le « || » plutôt qu'une détection préalable.
+            "de_ok=0; "
+            f"for e in {de['dnf_env']}; do "
+            'sudo dnf -y group install "$e" && { de_ok=1; break; }; done; '
+            '[ "$de_ok" = 1 ] || echo "Aucun environnement graphique dnf '
+            "trouve pour " + label + '"; '
+            f"sudo dnf install -y {rem['dnf']['packages']}; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            "pgrep -x pacman >/dev/null 2>&1 "
+            "|| sudo rm -f /var/lib/pacman/db.lck; "
+            + self._qemu_pacman_prepare_cmd()
+            + f"sudo pacman -S --needed --noconfirm {de['pacman']} "
+            f"{rem['pacman']['packages']}; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive refresh || true; "
+            # « --auto-agree-with-licenses » appartient à la SOUS-COMMANDE
+            # install, pas aux options globales : placé avant, zypper répond
+            # « The flag --auto-agree-with-licenses is not known ».
+            "sudo zypper --non-interactive install "
+            f"--auto-agree-with-licenses {de['zypper']} "
+            f"{rem['zypper']['packages']}; "
+            "else echo 'Gestionnaire de paquets inconnu'; exit 1; fi; "
+            # Le bureau ne sert à rien s'il ne démarre pas tout seul : les
+            # images cloud démarrent en multi-user.target.
+            "sudo systemctl set-default graphical.target || true; "
+            f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
+            # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
+            # par utilisateur et n'a pas de service à activer d'office.
+            "if command -v xrdp >/dev/null 2>&1; then "
+            "sudo systemctl enable --now xrdp >/dev/null 2>&1 || true; "
+            f'echo "   {t("Remote desktop:")} RDP 3389"; '
+            # L'IP est sur le reseau PRIVE de libvirt : annoncer le port sans
+            # dire comment l'atteindre ne sert a rien. La VM connait sa propre
+            # adresse ; seul le nom de l'hote libvirt manque, et c'est le
+            # lecteur qui l'a. La console SPICE, elle, est en « listen=none »
+            # et suppose virt-viewer SUR l'hote — inutilisable quand cet hote
+            # est lui-meme une VM sans interface graphique.
+            + self._qemu_tunnel_hint(3389, "RDP")
+            + "elif command -v vncserver >/dev/null 2>&1; then "
+            f'echo "   {t("Remote desktop:")} VNC 5901 '
+            '(vncpasswd puis vncserver :1)"; '
+            + self._qemu_tunnel_hint(5901, "VNC")
+            + "fi; "
+        )
+
+    # mise ne publie de binaire que pour ces architectures : 46 assets à la
+    # v2026.8.4, aucun s390x — son propre script d'installation refuse cette
+    # plateforme. Ailleurs, le choix « mise » est sans objet et on reste sur
+    # pyenv, ce que le formulaire et l'invite disent avant de déployer.
+    QEMU_MISE_ARCHES = ("amd64", "arm64")
+
+    def _qemu_mise_remote_cmd(self, python_provider):
+        """Pose mise DANS la VM et fixe EL_PYTHON_PROVIDER pour l'installation.
+
+        mise s'installe par défaut dans ~/.local/bin, qui n'est PAS dans le
+        PATH d'un « ssh hôte 'commande' » : ni ~/.profile ni ~/.bashrc n'y sont
+        lus. On le pose donc dans /usr/local/bin, présent dans le PATH par
+        défaut — même raison que pour cargo et rustc.
+
+        Sans mise utilisable, rien n'est écrit : lib_python_provider.sh
+        retombe alors sur pyenv toute seule."""
+        if python_provider == "pyenv":
+            # Explicite : même si mise se trouvait déjà dans l'image, on ne
+            # l'utilise pas. Sans cela le mode « auto » du dépôt le prendrait.
+            return "export EL_PYTHON_PROVIDER=pyenv; "
+        if python_provider != "mise":
+            return ""
+        return (
+            f'echo "== {t("Installing mise (precompiled Python)")} =="; '
+            "if command -v mise >/dev/null 2>&1; then "
+            'echo "   mise: $(mise --version)"; '
+            "else "
+            # La variable est passée À sudo, pas exportée avant : « sudo -E »
+            # dépend de env_reset dans sudoers et n'est pas garanti.
+            "curl -fsSL https://mise.run "
+            "| sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "
+            '|| echo "   mise indisponible ici : pyenv prendra le relais"; '
+            "fi; "
+            # « auto », et non « mise » : si l'installation ci-dessus a échoué,
+            # lib_python_provider.sh doit pouvoir retomber sur pyenv.
+            "export EL_PYTHON_PROVIDER=auto; "
+        )
+
+    def _qemu_erplibre_remote_cmd(
+        self,
+        branch,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
+        python_provider="",
+        app_store="deb",
+    ):
+        """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
+        — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
+        voulue en bureau seul.
+
+        `final_cmd` par défaut : install_os + install_odoo_18. `prod` :
+        installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
+        SELinux confiné. `desktop` : ajoute GNOME et son accès distant.
+        `python_provider` : « mise » pour un CPython précompilé, sinon le
+        comportement par défaut du dépôt (pyenv, qui compile)."""
+        if not branch:
+            # Bureau seul : ni clone ni make, mais on garde le prologue —
+            # attente de cloud-init et coupure des mises à jour automatiques,
+            # sans quoi le verrou apt ferait échouer l'installation du bureau.
+            if not desktop:
+                return "true"
+            return (
+                "set -e; "
+                + self._qemu_cloud_init_wait()
+                + self._qemu_no_auto_upgrade(prod, app_store)
+                + self._qemu_desktop_remote_cmd(desktop, app_store)
+            )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
@@ -4263,44 +4997,21 @@ class TODO:
         # secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
-        no_auto_upgrade = ""
-        if not prod:
-            no_auto_upgrade = (
-                "if command -v apt-get >/dev/null 2>&1; then "
-                "sudo systemctl disable --now unattended-upgrades.service "
-                "apt-daily.timer apt-daily-upgrade.timer "
-                ">/dev/null 2>&1 || true; "
-                'printf \'APT::Periodic::Update-Package-Lists "0";\\n'
-                'APT::Periodic::Unattended-Upgrade "0";\\n\' '
-                "| sudo tee /etc/apt/apt.conf.d/99-erplibre-no-auto-upgrade "
-                ">/dev/null; "
-                "fi; "
-                "if command -v dnf >/dev/null 2>&1; then "
-                "sudo systemctl disable --now dnf-automatic.timer "
-                "dnf-automatic-install.timer >/dev/null 2>&1 || true; "
-                "fi; "
-                # snapd : 57 s sur le CHEMIN CRITIQUE du démarrage, mesurés par
-                # « systemd-analyze critical-chain » sur une VM s390x —
-                # multi-user.target attend snapd.seeded. Aucune VM ERPLibre
-                # n'installe de snap : c'est du temps payé pour rien, à chaque
-                # démarrage. On désactive plutôt que désinstaller, pour rester
-                # réversible d'un « systemctl enable ».
-                "sudo systemctl disable --now snapd.seeded.service "
-                "snapd.service snapd.socket snapd.apparmor.service "
-                ">/dev/null 2>&1 || true; "
-            )
+        no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
         return (
-            "set -e; "
-            # Attendre la FIN de cloud-init : pendant sa phase « paquets » il
-            # tient le verrou apt/dnf/pacman -> sinon « unable to lock
-            # database » (Arch) / « Could not get lock » (apt). timeout pour ne
-            # pas bloquer indéfiniment si cloud-init traîne.
-            "command -v cloud-init >/dev/null 2>&1 && "
-            "sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 "
-            "|| true; "
+            "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
             # le verrou entre l'attente cloud-init et l'installation.
-            + no_auto_upgrade +
+            + no_auto_upgrade
+            # Le bureau d'abord : il repose sur les dépôts de la distribution,
+            # là où l'installation ERPLibre compile longuement. Un échec ici se
+            # voit donc tôt plutôt qu'après une heure.
+            + (
+                self._qemu_desktop_remote_cmd(desktop, app_store)
+                if desktop
+                else ""
+            )
+            +
             # Outils d'amorçage (absents des images cloud minimales) : curl,
             # git, make. Chaque branche RAFRAÎCHIT d'abord les dépôts pour que
             # la VM soit la plus rapide possible (miroirs à jour / les plus
@@ -4328,28 +5039,48 @@ class TODO:
             "sudo dnf install -y --refresh $PKGS || "
             "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
             "elif command -v pacman >/dev/null 2>&1; then "
-            # Verrou pacman périmé (cloud-init interrompu) : le retirer SEULEMENT
-            # si aucun pacman ne tourne, sinon on attend qu'il se libère.
-            "pgrep -x pacman >/dev/null 2>&1 "
-            "|| sudo rm -f /var/lib/pacman/db.lck; "
-            # Arch : reflector sélectionne les miroirs HTTPS les plus rapides,
-            # puis MISE À JOUR COMPLÈTE (-Syu) : Arch (rolling) ne supporte pas
-            # les màj partielles ; sur une image cloud à la glibc ancienne, un
-            # « pacman -S <paquet récent> » casse avec « GLIBC_x.yy not found ».
-            "sudo pacman -Sy --needed --noconfirm reflector || true; "
-            "sudo reflector --latest 20 --protocol https --sort rate "
-            "--save /etc/pacman.d/mirrorlist || true; "
-            "sudo pacman -Syu --noconfirm || true; "
-            "sudo pacman -S --needed --noconfirm $PKGS; "
+            + self._qemu_pacman_prepare_cmd()
+            + "sudo pacman -S --needed --noconfirm $PKGS; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            # openSUSE : « --non-interactive » vaut le -y des autres, et
+            # « --auto-agree-with-licenses », qui va APRÈS « install »,
+            # évite un blocage sur une licence à accepter.
+            # Tumbleweed étant rolling, on rafraîchit avant d'installer.
+            + self._qemu_zypper_mirror_cmd()
+            + "sudo zypper --non-interactive refresh || true; "
+            # Tumbleweed est ROLLING et ne supporte pas les mises à jour
+            # partielles, exactement comme Arch. L'image cloud est un
+            # instantané figé : ses dépôts ont avancé depuis, et un
+            # « install » simple bute sur une incohérence — vécu, git 2.54
+            # réclamait perl-Git bâti contre un perl-base plus ancien que
+            # celui de l'image. zypper proposait alors trois solutions et
+            # attendait un choix ; « --non-interactive » prend le défaut,
+            # « c » = annuler, et l'installation s'arrêtait là.
+            #
+            # Sur Leap, « dup » sert à CHANGER de version : l'y appeler irait
+            # contre la raison même de la choisir. « up » y suffit, l'image et
+            # ses dépôts portant la même version.
+            # $ID est déjà posé par le bloc miroir juste au-dessus ; on le
+            # relit quand même, pour ne pas dépendre de l'ordre de deux
+            # méthodes qui s'ignorent.
+            ". /etc/os-release; "
+            'case "$ID" in *tumbleweed*) '
+            "sudo zypper --non-interactive dup --auto-agree-with-licenses "
+            "--allow-vendor-change || true;; "
+            "*) sudo zypper --non-interactive up "
+            "--auto-agree-with-licenses || true;; esac; "
+            "sudo zypper --non-interactive install "
+            "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
             "else echo 'Aucun gestionnaire de paquets "
-            "(apt/dnf/pacman/yum)'; exit 1; fi; "
+            "(apt/dnf/pacman/zypper/yum)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
             '{ echo "Outil manquant apres installation: $t '
             '(reseau de la VM ?)"; exit 1; }; done; '
+            + self._qemu_mise_remote_cmd(python_provider)
             # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
             # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
             + (
@@ -4373,7 +5104,15 @@ class TODO:
         )
 
     def _qemu_install_erplibre_monitored(
-        self, names, branch, ip_map=None, final_cmd=None, prod=False
+        self,
+        names,
+        branch,
+        ip_map=None,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
+        python_provider="",
+        app_store="deb",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -4385,7 +5124,27 @@ class TODO:
             run_monitor,
         )
 
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
+        # `desktop` accepte une SAVEUR unique (toutes les VM) ou un dict
+        # {nom: saveur} depuis que le type se choisit machine par machine. La
+        # commande distante en dépend, donc elle se construit par VM ; celle-ci
+        # reste le défaut pour les noms absents du dict.
+        desk_map = desktop if isinstance(desktop, dict) else {}
+        # Même contrat que `desktop` : une chaîne pour tout le parc, ou
+        # une carte {nom: branche} quand elles diffèrent d'une VM à l'autre.
+        branch_map = branch if isinstance(branch, dict) else {}
+        branch_def = "" if branch_map else branch
+        # Idem pour le profil : « ERPLibre + Odoo 18 » peut differer d'une
+        # machine a l'autre, on valide alors deux versions d'un coup.
+        cmd_map = final_cmd if isinstance(final_cmd, dict) else {}
+        cmd_def = None if cmd_map else final_cmd
+        remote = self._qemu_erplibre_remote_cmd(
+            branch_def,
+            cmd_def,
+            prod,
+            "" if desk_map else desktop,
+            python_provider,
+            app_store,
+        )
         try:
             mod = self._qemu_import_module()
         except Exception:
@@ -4401,21 +5160,31 @@ class TODO:
                     if mod
                     else (None, None, None)
                 )
-                vms.append(
-                    {
-                        "name": name,
-                        "ip": ip,
-                        "distro": d,
-                        "version": v,
-                        "arch": a,
-                    }
-                )
+                entry = {
+                    "name": name,
+                    "ip": ip,
+                    "distro": d,
+                    "version": v,
+                    "arch": a,
+                }
+                if desk_map or branch_map or cmd_map:
+                    entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
+                        branch_map.get(name, branch_def),
+                        cmd_map.get(name, cmd_def),
+                        prod,
+                        desk_map.get(name, ""),
+                        python_provider,
+                        app_store,
+                    )
+                vms.append(entry)
             else:
                 print(f"  {name}: {t('no IP, skipped.')}")
         if not vms:
             print(t("No VM to install."))
             return
-        manifest = launch_installs(vms, branch, remote)
+        manifest = launch_installs(
+            vms, branch_def or next(iter(branch_map.values()), ""), remote
+        )
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
         # Affiche tous les chemins de log (pour les consulter/partager même si
         # on quitte le dashboard avant la fin).
@@ -4441,7 +5210,16 @@ class TODO:
         print(f"  {t('Read the logs:')} tail -n +1 {logdir}/*.log")
 
     def _qemu_install_erplibre_vm(
-        self, name, ssh_key, branch, ip=None, final_cmd=None, prod=False
+        self,
+        name,
+        ssh_key,
+        branch,
+        ip=None,
+        final_cmd=None,
+        prod=False,
+        desktop=False,
+        python_provider="",
+        app_store="deb",
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -4462,7 +5240,9 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
-        remote = self._qemu_erplibre_remote_cmd(branch, final_cmd, prod)
+        remote = self._qemu_erplibre_remote_cmd(
+            branch, final_cmd, prod, desktop, python_provider, app_store
+        )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
             "-o ConnectTimeout=15"
@@ -4479,10 +5259,14 @@ class TODO:
     # saisie commençant par un chiffre est lue comme la valeur elle-même.
     _QEMU_DISK_PRESETS = (
         "20G",
+        "30G",
         "40G",
+        "50G",
         "60G",
         "80G",
+        "100G",
         "120G",
+        "160G",
         "200G",
         "400G",
         "600G",
@@ -4496,8 +5280,19 @@ class TODO:
     _QEMU_RAM_PRESETS = (
         1024,
         2048,
+        3072,
         4096,
+        5120,
+        6144,
+        7168,
         8192,
+        9216,
+        10240,
+        11264,
+        12288,
+        13312,
+        14336,
+        15360,
         16384,
         32768,
         65536,
@@ -4507,7 +5302,9 @@ class TODO:
     # KVM autorise plus de vCPU que de cœurs (surengagement) : on prévient
     # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
     # est un calcul automatique et se borne aux cœurs de l'hôte.
-    _QEMU_CPU_PRESETS = (1, 2, 4, 6, 8, 16, 24, 32)
+    _QEMU_CPU_PRESETS = (
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32
+    )
 
     @staticmethod
     def _plural(word, count):
@@ -4816,10 +5613,33 @@ class TODO:
             gigs = self._parse_disk_gb(vm["disk"]) + (
                 self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
             )
+            # Ce qui S'ECARTE du choix commun se dit sur la ligne de la VM.
+            # Sans cela le sommaire annoncait le profil general pour tout le
+            # monde, y compris pour une VM figee sur un autre — on lisait
+            # « Odoo 15 » avant de deployer une machine en Odoo 18.
+            apart = []
+            # Seul ce qui DIFFERE vaut d'etre signale : une VM figee sur la
+            # meme branche que le global n'a rien de particulier a montrer,
+            # et repeter la valeur commune sur chaque ligne la noierait.
+            if install and vm.get("branch") and vm["branch"] != branch:
+                apart.append(vm["branch"])
+            if (
+                vm.get("install_label")
+                and install
+                and vm.get("install_cmd") != install.get("cmd")
+            ):
+                apart.append(vm["install_label"])
+            if vm.get("desktop") and vm["desktop"] != spec.get("desktop"):
+                apart.append(
+                    (self._QEMU_DESKTOP.get(vm["desktop"]) or {}).get(
+                        "label", vm["desktop"]
+                    )
+                )
             print(
                 f"     {vm['name']:<30} {vm['distro']} {vm['version']:<7} "
                 f"[{vm['arch']:<5}] {vm['vcpus']} vCPU  RAM {vm['ram']}Mo  "
                 f"{t('disk')} {gigs}G"
+                + (f"  ⟵ {' · '.join(apart)}" if apart else "")
             )
         if existing:
             print(f"  {t('Existing, left untouched:')} {', '.join(existing)}")
@@ -4829,12 +5649,36 @@ class TODO:
                 if install["prod"]
                 else t("development (~/git)")
             )
+            # « par defaut » : chaque VM peut s'en ecarter, et sa ligne le dit.
+            # Ce qui sera REELLEMENT pose, pas le defaut du formulaire. Avec
+            # une seule VM figee sur un autre profil, annoncer le defaut
+            # revenait a nommer une version que rien n'installe — c'est
+            # exactement ce qu'on relit ici pour eviter de se tromper.
+            used_br = {vm.get("branch") or branch for vm in spec["vms"]}
+            used_lb = {
+                vm.get("install_label") or install["label"]
+                for vm in spec["vms"]
+            }
+            varies = t("varies, see each line")
+            br_txt = used_br.pop() if len(used_br) == 1 else varies
+            lb_txt = used_lb.pop() if len(used_lb) == 1 else varies
             print(
-                f"  {t('ERPLibre install:')} {t('branch')} {branch}, "
-                f"{t('profile')} {install['label']}, {env}"
+                f"  {t('ERPLibre install:')} {t('branch')} {br_txt}, "
+                f"{t('profile')} {lb_txt}, {env}"
             )
         else:
             print(f"  {t('ERPLibre install:')} {t('no')}")
+        flavour = spec.get("desktop")
+        if flavour:
+            label = (self._QEMU_DESKTOP.get(flavour) or {}).get(
+                "label", flavour
+            )
+            print(
+                f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
+            )
+        prov = spec.get("python_provider")
+        if prov:
+            print(f"  {t('Python interpreter:')} {prov}")
         print(f"  {t('SSH key:')} {spec.get('ssh_key') or t('none')}")
         cfg = (
             t("one entry per VM") if spec["add_ssh_config"] else t("untouched")
@@ -4856,6 +5700,7 @@ class TODO:
         dry_run,
         timezone=None,
         locale=None,
+        desktop=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -4889,9 +5734,18 @@ class TODO:
             parts += ["--timezone", timezone]
         if locale:
             parts += ["--locale", locale]
+        if desktop:
+            parts.append("--desktop")
+        extra = 0
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
-            bigger = self._parse_disk_gb(disk) + self.ERPLIBRE_EXTRA_DISK_GB
+            extra += self.ERPLIBRE_EXTRA_DISK_GB
+        if desktop:
+            # GNOME et ses dépendances pèsent autant qu'ERPLibre : sans cette
+            # marge, le disque se remplit en pleine installation du bureau.
+            extra += self.QEMU_DESKTOP_EXTRA_DISK_GB
+        if extra:
+            bigger = self._parse_disk_gb(disk) + extra
             parts += ["--disk-size", f"{bigger}G"]
         parts.append("--dry-run" if dry_run else "-y")
         return parts
@@ -4916,6 +5770,9 @@ class TODO:
             dry_run=dry_run,
             timezone=spec.get("timezone"),
             locale=spec.get("locale"),
+            # Le type suit la VM. Repli sur la valeur de spec pour la CLI,
+            # qui ne pose la question qu'une fois pour tout le parc.
+            desktop=bool(vm.get("desktop", spec.get("desktop"))),
         )
 
     # ---------------------------------------------------------------- #
@@ -4941,10 +5798,17 @@ class TODO:
         déployable, aussi bien pour la liste granulaire de la CLI que pour la
         liste à cocher du formulaire TUI."""
         flat = []
+        # Une distro peut ne publier qu'une partie de ses versions sur une
+        # architecture (Fedora ne construit que la courante en s390x). La
+        # table vit dans deploy_qemu.py, qui refuse aussi ces combinaisons :
+        # une seule source, donc aucun écran n'offre un choix rejeté ensuite.
+        only = getattr(mod, "arch_versions", None)
         for d in distros:
             versions_map, default_v = mod.DISTROS[d]
             for v, (_c, _o, ram, disk) in versions_map.items():
                 for a in self._qemu_arches_for(d, arch):
+                    if only and v not in only(d, a, versions_map):
+                        continue
                     flat.append(
                         {
                             "distro": d,
@@ -5143,6 +6007,17 @@ class TODO:
             "ram_presets": self._QEMU_RAM_PRESETS,
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
+            "mise_arches": self.QEMU_MISE_ARCHES,
+            "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
+            "timezones": self._qemu_timezone_choices(
+                self._qemu_host_timezone()
+            ),
+            "snap_distros": self.QEMU_SNAP_DISTROS,
+            "desktop_suffixes": self._qemu_desktop_suffixes(),
+            "desktops": [
+                (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
+            ],
             "defaults": {
                 "install": True,
                 "add_ssh_config": True,
@@ -5170,6 +6045,9 @@ class TODO:
         last = self._qemu_last_run_line()
         if last:
             print(last)
+        # Un aperçu ne crée rien : il n'a pas à interroger sur un run en cours.
+        if not dry_run and self._qemu_active_install():
+            return
 
         self._qemu_check_libvirt_group()
         self._qemu_check_kvm()
@@ -5409,6 +6287,74 @@ class TODO:
                 )
                 print(f"  ⚠ {warn}")
 
+    def _qemu_ask_desktop(self):
+        """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
+
+        Serveur par défaut : c'est ce que sert une image cloud, et le bureau
+        ajoute une à deux heures d'installation sur une architecture émulée."""
+        print(f"\n{t('VM type:')}")
+        print(f"  [1] {t('Server (no graphical interface)')} *")
+        flavours = list(self._QEMU_DESKTOP)
+        for i, key in enumerate(flavours, 2):
+            label = self._QEMU_DESKTOP[key]["label"]
+            print(f"  [{i}] {t('Graphical (server + desktop):')} {label}")
+        sel = input(t("Choice (number, blank = server): ")).strip()
+        try:
+            index = int(sel) - 2
+        except ValueError:
+            return ""
+        return flavours[index] if 0 <= index < len(flavours) else ""
+
+    @classmethod
+    def _qemu_app_store_needed(cls, vms):
+        """Vrai si au moins une VM du parc est à la fois graphique et d'une
+        distribution qui livre snapd. Ailleurs la question n'a pas d'objet :
+        un serveur ne tire aucun snap, et Debian ou Fedora n'en livrent pas."""
+        return any(
+            vm.get("desktop") and vm.get("distro") in cls.QEMU_SNAP_DISTROS
+            for vm in vms
+        )
+
+    def _qemu_ask_app_store(self, vms):
+        """Magasin d'applications des VM graphiques Ubuntu."""
+        if not self._qemu_app_store_needed(vms):
+            return "deb"
+        print(f"\n{t('Application store (graphical Ubuntu VMs):')}")
+        for i, (_key, label) in enumerate(self.QEMU_APP_STORES, 1):
+            star = " *" if i == 1 else ""
+            print(f"  [{i}] {t(label)}{star}")
+        print(f"  ⚠ {t('snap needs the store; slow under emulation.')}")
+        answer = input(f"{t('Choice')} [1]: ").strip() or "1"
+        if answer.isdigit() and 1 <= int(answer) <= len(self.QEMU_APP_STORES):
+            return self.QEMU_APP_STORES[int(answer) - 1][0]
+        return "deb"
+
+    def _qemu_ask_python_provider(self, arches):
+        """mise (CPython précompilé) ou pyenv (compilation).
+
+        `arches` : les architectures du parc à déployer. mise ne publie pas de
+        binaire pour toutes — hors de QEMU_MISE_ARCHES la question n'a pas de
+        sens et on ne la pose pas."""
+        usable = [a for a in arches if a in self.QEMU_MISE_ARCHES]
+        if not usable:
+            # Rien, pas « pyenv » : le mode automatique doit rester libre de
+            # préférer un Python de la distribution. Voir _python_provider()
+            # dans le formulaire, même raisonnement.
+            return ""
+        print(f"\n{t('Python interpreter:')}")
+        print(f"  [1] {t('mise (precompiled, faster)')} *")
+        print(f"  [2] {t('pyenv (compiles from source)')}")
+        skipped = [a for a in arches if a not in self.QEMU_MISE_ARCHES]
+        if skipped:
+            # Dit AVANT le déploiement plutôt que découvert dans un log.
+            print(
+                f"  ⚠ {t('mise has no binary for:')} "
+                f"{', '.join(sorted(set(skipped)))} — "
+                f"{t('those VMs use pyenv')}"
+            )
+        sel = input(t("Choice (number, blank = mise): ")).strip()
+        return "pyenv" if sel == "2" else "mise"
+
     def _qemu_host_timezone(self):
         """Fuseau de l'hôte. Défini une seule fois, dans deploy_qemu.py, qui
         est aussi ce qui l'écrit dans le cloud-config : l'invite ne peut donc
@@ -5467,6 +6413,21 @@ class TODO:
 
         timezone = self._qemu_ask_timezone()
         locale = self._qemu_ask_locale()
+        desktop = self._qemu_ask_desktop()
+        # La CLI ne pose qu'un type pour tout le parc : on le recopie sur chaque
+        # VM avant de décider du magasin, qui ne concerne que les graphiques.
+        # Le nom suit le type, exactement comme dans le formulaire — c'est la
+        # même fonction, pas une seconde implémentation.
+        from script.todo.qemu_deploy_form import vm_name
+
+        suffixes = self._qemu_desktop_suffixes()
+        for _vm in vms:
+            _vm.setdefault("desktop", desktop)
+            _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
+        app_store = self._qemu_ask_app_store(vms)
+        python_provider = self._qemu_ask_python_provider(
+            [vm["arch"] for vm in vms]
+        )
 
         # 4) Option : installer ERPLibre dans ~/git/erplibre de chaque VM.
         install = None
@@ -5513,17 +6474,28 @@ class TODO:
             print(t("Nothing to create - every VM already exists."))
             return None
 
-        # Nombre de déploiements en parallèle. Défaut = nombre de CPU de l'hôte
-        # (borné par le nombre de VM). On affiche aussi le NB DE VM à déployer.
-        default_par = min(n_jobs, os.cpu_count() or 4) or 1
-        raw = input(
-            f"{t('Parallel deployments (default:')} {default_par}, "
-            f"{n_jobs} {t('VMs')}): "
-        ).strip()
-        try:
-            parallelism = max(1, int(raw)) if raw else default_par
-        except ValueError:
-            parallelism = default_par
+        # Nombre de déploiements en parallèle. Par défaut UNE EXÉCUTION PAR
+        # INSTALLATION : le plafond du nombre de CPU ne s'applique pas, c'est
+        # le nombre de VM qui fait foi. « n » retombe sur ce plafond, et un
+        # chiffre vaut pour lui-même — même règle que les autres invites.
+        default_par = n_jobs or 1
+        cpu_par = min(n_jobs, os.cpu_count() or 4) or 1
+        print(f"  [n] {t('limit to host cores')} ({cpu_par})")
+        raw = (
+            input(
+                f"{t('Parallel deployments (default:')} {default_par}, "
+                f"{n_jobs} {t('VMs')}): "
+            )
+            .strip()
+            .lower()
+        )
+        if raw == "n":
+            parallelism = cpu_par
+        else:
+            try:
+                parallelism = max(1, int(raw)) if raw else default_par
+            except ValueError:
+                parallelism = default_par
 
         spec = {
             "res_label": res_label,
@@ -5532,6 +6504,9 @@ class TODO:
             "ssh_key": ssh_key,
             "timezone": timezone,
             "locale": locale,
+            "desktop": desktop,
+            "python_provider": python_provider,
+            "app_store": app_store,
             "install": install,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
@@ -5599,6 +6574,35 @@ class TODO:
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
         install_branch = install["branch"] if install else None
+        # Le type de VM est choisi machine par machine dans la TUI ; la CLI n'en
+        # pose qu'un pour tout le parc. On ramene les deux a la meme carte, et
+        # `desktop` reste la reponse a « faut-il installer un bureau quelque
+        # part ? », qui declenche la phase d'installation.
+        desktop_default = spec.get("desktop") or ""
+        desktop_map = {
+            vm["name"]: (vm.get("desktop", desktop_default) or "")
+            for vm in pending
+        }
+        for _name in deployed:
+            desktop_map.setdefault(_name, desktop_default)
+        desktop = next((d for d in desktop_map.values() if d), "")
+        python_provider = spec.get("python_provider") or ""
+        app_store = spec.get("app_store") or "deb"
+        # Branche par VM : « » sur une VM veut dire « celle du formulaire ».
+        branch_map = {
+            vm["name"]: (vm.get("branch") or install_branch or "")
+            for vm in pending
+        }
+        for _n in deployed:
+            branch_map.setdefault(_n, install_branch or "")
+        branch_multi = len(set(branch_map.values())) > 1
+        base_cmd = install["cmd"] if install else None
+        cmd_map = {
+            vm["name"]: (vm.get("install_cmd") or base_cmd) for vm in pending
+        }
+        for _n in deployed:
+            cmd_map.setdefault(_n, base_cmd)
+        cmd_multi = len(set(cmd_map.values())) > 1
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
@@ -5640,7 +6644,9 @@ class TODO:
         # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
         # émulée SANS sortie -> le dashboard « n'ouvrait jamais ».
         ip_map = {}
-        if deployed and (add_ssh_config or install_branch):
+        # `desktop` compte aussi : sans IP résolue, l'installation du bureau
+        # n'aurait aucune VM à joindre.
+        if deployed and (add_ssh_config or install_branch or desktop):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
@@ -5657,16 +6663,22 @@ class TODO:
                         name, "erplibre", ip, identity_file=identity
                     )
 
-        # 7) Installation ERPLibre (clone + make) si demandée.
-        if install:
-            if install["monitor"]:
+        # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
+        # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
+        # Il passe par la même commande distante, donc par le même suivi.
+        if install or desktop:
+            monitor = install["monitor"] if install else True
+            if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
                     deployed,
-                    install_branch,
+                    branch_map if branch_multi else install_branch,
                     ip_map,
-                    install["cmd"],
-                    install["prod"],
+                    cmd_map if cmd_multi else base_cmd,
+                    install["prod"] if install else False,
+                    desktop=desktop_map,
+                    python_provider=python_provider,
+                    app_store=app_store,
                 )
             else:
                 print(
@@ -5681,6 +6693,9 @@ class TODO:
                         ip_map.get(name),
                         install["cmd"],
                         install["prod"],
+                        desktop=desktop_map.get(name, ""),
+                        python_provider=python_provider,
+                        app_store=app_store,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install

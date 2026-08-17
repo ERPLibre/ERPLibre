@@ -97,6 +97,47 @@ version:
 pyenv_update:
 	~/.pyenv/bin/pyenv update
 
+# mise pose un CPython PRECOMPILE la ou pyenv le compile : quelques secondes
+# contre une a trois minutes, et aucun paquet -dev requis. Volontairement
+# EXPLICITE : « curl | sh » engage, et ce n'est pas a un script d'installation
+# de le decider a la place de l'utilisateur. Une fois mise present,
+# EL_PYTHON_PROVIDER=auto s'en sert tout seul.
+#
+# Pas de binaire s390x publie a ce jour : sur cette architecture, la cible
+# le dit et n'installe rien.
+# uv installe les paquets Python nettement plus vite que pip, et met en cache
+# les roues qu'il CONSTRUIT — ce qui compte la ou rien n'a de roue publiee.
+# Contrairement a mise, uv publie une roue s390x : un « pip install uv » dans
+# le venv d'outils suffit, sans « curl | sh ». Reste EXPLICITE quand meme,
+# comme install_mise : EL_PIP_PROVIDER=auto s'en sert des qu'il est la.
+#
+# Attention a l'attente : « poetry install », qui domine le temps
+# d'installation, n'est PAS accelere — uv ne lit pas poetry.lock.
+.PHONY: install_uv
+install_uv:
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "uv deja present : $$(uv --version)"; \
+	else \
+		echo "Installation de uv dans le venv d outils"; \
+		./$$(cat conf/python-erplibre-venv | xargs)/bin/pip install uv; \
+		echo "uv : ./$$(cat conf/python-erplibre-venv | xargs)/bin/uv"; \
+		echo "Ajoutez ce repertoire au PATH, ou installez uv globalement."; \
+	fi
+
+.PHONY: install_mise
+install_mise:
+	@if command -v mise >/dev/null 2>&1; then \
+		echo "mise deja present : $$(mise --version)"; \
+	elif command -v pacman >/dev/null 2>&1; then \
+		sudo pacman -S --needed --noconfirm mise; \
+	elif [ "$$(uname -m)" = "s390x" ]; then \
+		echo "mise ne publie pas de binaire s390x : on reste sur pyenv."; \
+	else \
+		echo "Installation de mise depuis https://mise.run"; \
+		curl -fsSL https://mise.run | sh; \
+		echo "Ajoutez ~/.local/bin a votre PATH, puis relancez l installation."; \
+	fi
+
 .PHONY: db_create_db_test
 db_create_db_test:
 	./script/make.sh db_drop_db_test

@@ -46,10 +46,16 @@ Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 
 # Supported platforms
 
-- **Linux** : Ubuntu 20.04, 22.04, 24.04, 25.04; Debian 12; Arch Linux
-- **macOS** : via pyenv
-- **Windows** : via WSL or Docker
-- **Mainframe** : 390x architecture
+- **Ubuntu** : 24.04, 25.10, 26.04 — 20.04 and 22.04 are dropped, pikepdf requiring a qpdf 12.2 built in C++20
+- **Linux Mint** : 22.3
+- **Debian** : 12 (bookworm) and 13 (trixie)
+- **Fedora** : 41 and later
+- **AlmaLinux, Rocky Linux** : 9 and 10 — RHEL and CentOS Stream take the same path
+- **openSUSE** : Leap 16.0 and Tumbleweed
+- **Arch Linux** : rolling release
+- **macOS** : through mise or pyenv
+- **Windows** : through WSL or Docker
+- **Architectures** : amd64, arm64 and s390x (IBM Z mainframe)
 
 
 # Installation in production
@@ -139,7 +145,7 @@ cd ERPLibre
 ```
 
 
-Support Ubuntu 20.04, 22.04, 24.04, 25.04 and OSX.
+`make install_os` detects the distribution and picks the right dependency script: apt for Ubuntu, Linux Mint and Debian, dnf for Fedora and the RHEL family, zypper for openSUSE, pacman for Arch. See the supported platforms above.
 
 
 ```bash

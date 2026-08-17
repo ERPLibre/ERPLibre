@@ -45,7 +45,7 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 A service is running by SystemD. You can access it with the DNS name found in `env_var.sh`
 
-#### Ubuntu 20.04 server
+#### Ubuntu 24.04 server
 
 Apply fix libpng12-0: https://www.linuxuprising.com/2018/05/fix-libpng12-0-missing-in-ubuntu-1804.html
 

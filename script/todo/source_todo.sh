@@ -7,10 +7,23 @@ DIR_VENV_ERPLIBRE=".venv.erplibre"
 if [[ ! -d "$DIR_VENV_ERPLIBRE" ]]; then
   DIR_VENV_ERPLIBRE_EXIST=0
   echo "$DIR_VENV_ERPLIBRE does not exist."
-  if [[ ! -d "~/.pyenv/versions/$(< ./conf/python-erplibre-version)/bin/python" ]]; then
-    "~/.pyenv/versions/$(< ./conf/python-erplibre-version)/bin/python" -m venv $DIR_VENV_ERPLIBRE
+  # Le test d'origine etait inoperant : le tilde entre guillemets n'est pas
+  # etendu, et « -d » testait un FICHIER comme un repertoire. La condition
+  # etait donc toujours vraie, la commande echouait en « No such file or
+  # directory », et le repli « python -m venv » ne servait jamais.
+  # shellcheck source=script/install/lib_python_provider.sh
+  . ./script/install/lib_python_provider.sh
+  EL_PY_WANT="$(< ./conf/python-erplibre-version)"
+  # Ici on ne PROVISIONNE pas : ce script s'execute au demarrage de TODO, il
+  # doit rester rapide et hors reseau. On prend ce qui est deja pose, sinon
+  # le python du systeme.
+  EL_PY_EXEC="$(el_pyenv_exec_path "${EL_PY_WANT}")"
+  el_python_is_version "${EL_PY_EXEC}" "${EL_PY_WANT}" \
+    || EL_PY_EXEC="$(el_mise_exec_path "${EL_PY_WANT}" 2> /dev/null)"
+  if [[ -n "${EL_PY_EXEC}" ]] && [[ -x "${EL_PY_EXEC}" ]]; then
+    "${EL_PY_EXEC}" -m venv $DIR_VENV_ERPLIBRE
   else
-    python -m venv $DIR_VENV_ERPLIBRE
+    python3 -m venv $DIR_VENV_ERPLIBRE
   fi
 fi
 

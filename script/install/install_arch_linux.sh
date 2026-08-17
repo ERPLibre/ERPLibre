@@ -16,6 +16,21 @@ EL_USER=${USER}
 # pacman résilient : --needed saute ce qui est déjà là, --noconfirm en non
 # interactif.
 PAC="sudo pacman -S --needed --noconfirm"
+# Miroirs canadiens EN TÊTE de la mirrorlist. Mesuré depuis Montreal sur
+# extra.db : quantum5 2,0 s, xenyth 7,1 s, contre 8,0 s pour
+# geo.mirror.pkgbuild.com — le miroir « geographique » officiel n'est donc pas
+# le meilleur ici. Les deux ne servent que x86_64 (Arch Linux ARM a ses propres
+# miroirs), d'où la garde. On les AJOUTE en tete sans effacer l'existant : les
+# miroirs deja configures restent en repli.
+if [ "$(uname -m)" = "x86_64" ] \
+  && ! grep -q "mirror.quantum5.ca" /etc/pacman.d/mirrorlist 2> /dev/null; then
+  echo -e "\n---- Miroirs pacman canadiens ----"
+  printf 'Server = https://mirror.quantum5.ca/archlinux/$repo/os/$arch\nServer = https://mirror.xenyth.net/archlinux/$repo/os/$arch\n' \
+    | sudo tee /etc/pacman.d/mirrorlist.el > /dev/null
+  sudo sh -c 'cat /etc/pacman.d/mirrorlist >> /etc/pacman.d/mirrorlist.el \
+    && mv /etc/pacman.d/mirrorlist.el /etc/pacman.d/mirrorlist'
+fi
+
 # Mise à jour COMPLÈTE obligatoire : Arch est en rolling release et NE SUPPORTE
 # PAS les mises à jour partielles. Sur une image cloud dont la glibc est
 # ancienne, un « pacman -S <paquet récent> » lie le binaire à une glibc plus

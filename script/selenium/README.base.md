@@ -4,10 +4,10 @@
 <!---------------------------->
 
 <!-- [en] -->
-# Installation Ubuntu 20.04
+# Installation Ubuntu 24.04
 
 <!-- [fr] -->
-# Installation Ubuntu 20.04
+# Installation Ubuntu 24.04
 
 <!-- [common] -->
  sudo apt install libcairo2-dev

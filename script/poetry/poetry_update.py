@@ -191,6 +191,9 @@ def combine_requirements(config):
                     # remove comments at the end of module
                     b = b[: b.index("#")].strip()
                 comment_depend = ""
+                # Défini pour TOUTE ligne : il est relu plus bas, y compris
+                # pour les lignes sans marqueur.
+                keep_marker = ""
                 if except_sign in b:
                     # current_python_version = platform.python_version()
                     # current_platform = sys.platform
@@ -205,9 +208,20 @@ def combine_requirements(config):
                         config.set_version_python
                     )
                     req = Requirement(b)
-                    is_compatible = req.marker.evaluate(current_platform_2)
-                    if not is_compatible:
-                        continue
+                    # Le nom de l'artefact généré — pyproject.odooXX_pythonYY —
+                    # fige la version d'Odoo et celle de Python, PAS
+                    # l'architecture. Évaluer « python_version » ici est donc
+                    # juste ; évaluer « platform_machine » y graverait
+                    # silencieusement l'architecture de la machine qui génère,
+                    # et le lock produit sur x86 devient faux sur s390x.
+                    # Un tel marqueur est donc CONSERVÉ et transmis à Poetry,
+                    # qui sait résoudre les deux branches dans un seul lock.
+                    if "platform_machine" in str(req.marker):
+                        keep_marker = str(req.marker)
+                    else:
+                        is_compatible = req.marker.evaluate(current_platform_2)
+                        if not is_compatible:
+                            continue
                     # this support python_version into comment_depend, check odoo/requirements.txt
                     # b, comment_depend = b.split(except_sign)
                     # b = b.strip()
@@ -215,6 +229,26 @@ def combine_requirements(config):
                     # print(comment_depend)
                     # Rewrite dependancy : module==version
                     b = req.name + str(req.specifier)
+                    if keep_marker:
+                        b += f" ; {keep_marker}"
+
+                # Deux lignes du même module portant des marqueurs DIFFÉRENTS
+                # ne sont pas un conflit : elles s'excluent mutuellement. La
+                # clé inclut donc le marqueur, sans quoi la détection de
+                # versions divergentes les opposerait et en éliminerait une.
+                #
+                # Le nom vient de PEP 508 et non d'un découpage : avec un
+                # marqueur, le premier opérateur de la ligne est souvent celui
+                # du marqueur (« != »), et le découpage rendrait
+                # « factur-x>=4.2 » comme nom de module — que la liste des
+                # ignorés ne retrouverait plus.
+                if keep_marker:
+                    module_name = f"{req.name} ; {keep_marker}"
+                    dct_requirements[module_name].add(b)
+                    dct_requirements_module_filename[b].append(
+                        str(requirements_filename)
+                    )
+                    continue
 
                 # Regroup requirement
                 for sign in lst_sign:
@@ -257,6 +291,22 @@ def combine_requirements(config):
     dct_requirements = get_manifest_external_dependencies(
         config, dct_requirements, lst_sign
     )
+
+    # Un module dont les requirements donnent des variantes par marqueur ne doit
+    # pas recevoir en plus une entrée NUE. Les manifest.py des addons déclarent
+    # « factur-x » sans version ni marqueur : cette entrée s'ajouterait aux deux
+    # branches et poetry recevrait trois contraintes pour le même paquet, dont
+    # une sans condition — ce qui annulerait la distinction par architecture.
+    marked_names = {
+        key.split(";")[0].strip() for key in dct_requirements if ";" in key
+    }
+    for name in marked_names:
+        if name in dct_requirements:
+            del dct_requirements[name]
+            print(
+                f"{Fore.YELLOW}WARNING{Style.RESET_ALL} - '{name}' est déjà"
+                " décliné par marqueur : l'entrée sans condition est ignorée."
+            )
 
     # Merge all requirement by insensitive
     dct_requirement_insensitive = {}
@@ -418,8 +468,13 @@ def combine_requirements(config):
     lst_ignore, ignore_requirement_file = get_list_ignored()
     lst_ignored_key = []
     for key in dct_requirements.keys():
+        # La clé n'est pas toujours un nom nu : selon la branche qui l'a créée
+        # elle porte un marqueur (« paquet ; platform_machine … ») ou une
+        # version (« pymssql<=2.2.5 »). La liste d'ignorés ne nomme que le
+        # module, on ramène donc la clé à son nom avant de comparer.
+        bare_key = re.split(r"[\[<>=!~;]", key)[0].strip()
         for ignored in lst_ignore:
-            if ignored == key.strip():
+            if ignored == bare_key:
                 lst_ignored_key.append(key)
     for key in lst_ignored_key:
         del dct_requirements[key]
@@ -514,6 +569,68 @@ def get_manifest_external_dependencies(config, dct_requirements, lst_sign):
     return dct_requirements
 
 
+def apply_marker_variants(pyproject_filename, build_dependency_filename):
+    """Rétablit les paquets déclinés en plusieurs branches par marqueur.
+
+    « poetry add » déduplique par nom : des deux branches de factur-x, seule la
+    dernière survit, et l'architecture qui n'est pas la sienne hérite de la
+    mauvaise version. Poetry sait pourtant exprimer le cas — mais uniquement
+    dans le pyproject, en liste de contraintes, hors de portée du CLI. On la
+    reconstruit depuis build_dependency.txt, qui porte toutes les branches.
+
+    :return: True si le pyproject a été réécrit, donc si le lock est à refaire
+    """
+    dct_variant = defaultdict(list)
+    with open(build_dependency_filename, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or ";" not in line:
+                continue
+            req = Requirement(line)
+            dct_variant[req.name].append(
+                {"version": str(req.specifier), "markers": str(req.marker)}
+            )
+    dct_variant = {k: v for k, v in dct_variant.items() if len(v) > 1}
+    if not dct_variant:
+        return False
+
+    with open(pyproject_filename, "r") as f:
+        dct_pyproject = toml.load(f)
+    dependencies = (
+        dct_pyproject.get("tool", {}).get("poetry", {}).get("dependencies")
+    )
+    if not dependencies:
+        return False
+
+    has_changed = False
+    for name, lst_branch in dct_variant.items():
+        key = next(
+            (k for k in dependencies if k.lower() == name.lower()), None
+        )
+        if not key:
+            continue
+        dependencies[key] = lst_branch
+        has_changed = True
+        str_branch = ", ".join(
+            f"{d['version']} si {d['markers']}" for d in lst_branch
+        )
+        print(f"Décline '{key}' par marqueur : {str_branch}.")
+
+    if has_changed:
+        with open(pyproject_filename, "w") as f:
+            toml.dump(dct_pyproject, f)
+    return has_changed
+
+
+def call_poetry_lock(config):
+    """
+    :return: True if success
+    """
+    venv_dir = f".venv.{config.set_version_erplibre}"
+    status = os.system(f"./{venv_dir}/bin/poetry lock")
+    return status == 0
+
+
 def call_poetry_add_build_dependency():
     """
 
@@ -570,6 +687,15 @@ def main():
         status = call_poetry_add_build_dependency()
         if status and pyproject_toml_filename:
             sorted_dependency_poetry(pyproject_toml_filename)
+            build_dependency_filename = (
+                f"./.venv.{config.set_version_erplibre}/build_dependency.txt"
+            )
+            if apply_marker_variants(
+                pyproject_toml_filename, build_dependency_filename
+            ):
+                # Le lock écrit par « poetry add » ignore les branches qu'on
+                # vient de rétablir : il ne décrit plus le pyproject.
+                status = call_poetry_lock(config)
         if (
             config.force
             and not os.path.islink(poetry_default_lock_path)

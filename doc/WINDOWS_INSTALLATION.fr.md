@@ -3,7 +3,7 @@
 
 Un guide pour configurer un espace de travail et exécuter ERPLibre sur Windows 10 version 2004 et plus ou Windows 11. Il existe deux méthodes d'installation, une automatique et l'autre manuelle.
 
-**"WSL2 Ubuntu 22.04" sera désigné par "WSL2"**
+**"WSL2 Ubuntu 24.04" sera désigné par "WSL2"**
 
 **"PyCharm Professional" sera désigné par "PyCharm"**
 
@@ -12,7 +12,7 @@ Un guide pour configurer un espace de travail et exécuter ERPLibre sur Windows 
 Exécutez Powershell avec les droits administrateur et lancez la commande suivante :
 
 ```bash
-wsl --install -d Ubuntu-22.04
+wsl --install -d Ubuntu-24.04
 ```
 
 Si vous avez des difficultés à ouvrir Powershell avec les droits administrateur, appuyez sur `Windows + R`, entrez la ligne suivante et appuyez sur `OK`. Les droits administrateur vous seront automatiquement demandés.
@@ -220,7 +220,7 @@ https://www.jetbrains.com/pycharm/download/#section=windows
 
 ### Configurer Pycharm
 
-Sélectionnez `Connect to WSL` sous `Remote Development`. Ensuite sélectionnez votre instance Ubuntu ("Ubuntu-22.04"). Pointez `Project directory` vers la racine du projet. Une fois que tout a été sélectionné et rempli correctement, cliquez sur `Start IDE and Connect`.
+Sélectionnez `Connect to WSL` sous `Remote Development`. Ensuite sélectionnez votre instance Ubuntu ("Ubuntu-24.04"). Pointez `Project directory` vers la racine du projet. Une fois que tout a été sélectionné et rempli correctement, cliquez sur `Start IDE and Connect`.
 
 ![Welcome to PyCharm Wizard](image/remote_development.png)
 

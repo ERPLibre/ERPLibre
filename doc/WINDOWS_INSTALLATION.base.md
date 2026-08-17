@@ -8,7 +8,7 @@
 
 A guide on how to set up a workspace and run ERPLibre on Windows 10 version 2004 and up or Windows 11. There are two methods of installation, one is automatic and the other manual.
 
-**"WSL2 Ubuntu 22.04" will be referred as "WSL2"**
+**"WSL2 Ubuntu 24.04" will be referred as "WSL2"**
 
 **"PyCharm Professional" will be referred as "PyCharm"**
 
@@ -21,7 +21,7 @@ Run Powershell with administrator rights and run the following command:
 
 Un guide pour configurer un espace de travail et exécuter ERPLibre sur Windows 10 version 2004 et plus ou Windows 11. Il existe deux méthodes d'installation, une automatique et l'autre manuelle.
 
-**"WSL2 Ubuntu 22.04" sera désigné par "WSL2"**
+**"WSL2 Ubuntu 24.04" sera désigné par "WSL2"**
 
 **"PyCharm Professional" sera désigné par "PyCharm"**
 
@@ -31,7 +31,7 @@ Exécutez Powershell avec les droits administrateur et lancez la commande suivan
 
 <!-- [common] -->
 ```bash
-wsl --install -d Ubuntu-22.04
+wsl --install -d Ubuntu-24.04
 ```
 
 <!-- [en] -->
@@ -406,12 +406,12 @@ https://www.jetbrains.com/pycharm/download/#section=windows
 <!-- [en] -->
 ### Set up Pycharm
 
-Select `Connect to WSL` under `Remote Development`. After that select your Ubuntu instace ("Ubuntu-22.04"). Point `Project directory` to the root of the project. Once everything has been selected and filled out correctly, click on `Start IDE and Connect`.
+Select `Connect to WSL` under `Remote Development`. After that select your Ubuntu instace ("Ubuntu-24.04"). Point `Project directory` to the root of the project. Once everything has been selected and filled out correctly, click on `Start IDE and Connect`.
 
 <!-- [fr] -->
 ### Configurer Pycharm
 
-Sélectionnez `Connect to WSL` sous `Remote Development`. Ensuite sélectionnez votre instance Ubuntu ("Ubuntu-22.04"). Pointez `Project directory` vers la racine du projet. Une fois que tout a été sélectionné et rempli correctement, cliquez sur `Start IDE and Connect`.
+Sélectionnez `Connect to WSL` sous `Remote Development`. Ensuite sélectionnez votre instance Ubuntu ("Ubuntu-24.04"). Pointez `Project directory` vers la racine du projet. Une fois que tout a été sélectionné et rempli correctement, cliquez sur `Start IDE and Connect`.
 
 <!-- [common] -->
 ![Welcome to PyCharm Wizard](image/remote_development.png)

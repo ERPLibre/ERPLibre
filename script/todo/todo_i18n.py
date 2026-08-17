@@ -1973,6 +1973,140 @@ TRANSLATIONS = {
         "fr": "RAM (Mo)",
         "en": "RAM (MB)",
     },
+    "cloud-init still running after 20 min - install starts anyway"
+    " (it waits for cloud-init first)": {
+        "fr": "cloud-init tourne encore apres 20 min - l'installation demarre"
+        " quand meme (elle attend d'abord cloud-init)",
+        "en": "cloud-init still running after 20 min - install starts anyway"
+        " (it waits for cloud-init first)",
+    },
+    "Waiting for cloud-init to finish (up to 15 min)": {
+        "fr": "Attente de la fin de cloud-init (jusqu'a 15 min)",
+        "en": "Waiting for cloud-init to finish (up to 15 min)",
+    },
+    "cloud-init:": {
+        "fr": "cloud-init :",
+        "en": "cloud-init:",
+    },
+    "WARNING libvirt unreachable: the IP will not be refreshed"
+    " (libvirt group? re-login required)": {
+        "fr": "ATTENTION libvirt injoignable : l'IP ne sera pas rafraichie"
+        " (groupe libvirt ? reconnexion necessaire)",
+        "en": "WARNING libvirt unreachable: the IP will not be refreshed"
+        " (libvirt group? re-login required)",
+    },
+    "DHCP lease moved:": {
+        "fr": "bail DHCP deplace :",
+        "en": "DHCP lease moved:",
+    },
+    "An install is still running:": {
+        "fr": "Une installation est encore en cours :",
+        "en": "An install is still running:",
+    },
+    "VM(s) in progress": {
+        "fr": "VM en cours",
+        "en": "VM(s) in progress",
+    },
+    "Last activity:": {
+        "fr": "Dernière activité il y a :",
+        "en": "Last activity:",
+    },
+    "Reopen that monitoring": {
+        "fr": "Rouvrir ce suivi",
+        "en": "Reopen that monitoring",
+    },
+    "Deploy anyway (new run)": {
+        "fr": "Déployer quand même (nouveau run)",
+        "en": "Deploy anyway (new run)",
+    },
+    "Choice (number, blank = reopen): ": {
+        "fr": "Choix (numéro, vide = rouvrir) : ",
+        "en": "Choice (number, blank = reopen): ",
+    },
+    "Python interpreter:": {
+        "fr": "Interpreteur Python :",
+        "en": "Python interpreter:",
+    },
+    "mise (precompiled, faster)": {
+        "fr": "mise (precompile, plus rapide)",
+        "en": "mise (precompiled, faster)",
+    },
+    "pyenv (compiles from source)": {
+        "fr": "pyenv (compile depuis les sources)",
+        "en": "pyenv (compiles from source)",
+    },
+    "Choice (number, blank = mise): ": {
+        "fr": "Choix (numero, vide = mise) : ",
+        "en": "Choice (number, blank = mise): ",
+    },
+    "mise has no binary for:": {
+        "fr": "mise ne publie pas de binaire pour :",
+        "en": "mise has no binary for:",
+    },
+    "those VMs use pyenv": {
+        "fr": "ces VM utiliseront pyenv",
+        "en": "those VMs use pyenv",
+    },
+    "Installing mise (precompiled Python)": {
+        "fr": "Installation de mise (Python precompile)",
+        "en": "Installing mise (precompiled Python)",
+    },
+    "VM type:": {
+        "fr": "Type de VM :",
+        "en": "VM type:",
+    },
+    "Server (no graphical interface)": {
+        "fr": "Serveur (sans interface graphique)",
+        "en": "Server (no graphical interface)",
+    },
+    "Graphical (server + GNOME desktop)": {
+        "fr": "Graphique (serveur + bureau GNOME)",
+        "en": "Graphical (server + GNOME desktop)",
+    },
+    "server": {
+        "fr": "serveur",
+        "en": "server",
+    },
+    "Graphical (server + desktop):": {
+        "fr": "Graphique (serveur + bureau) :",
+        "en": "Graphical (server + desktop):",
+    },
+    "Installing the desktop (long):": {
+        "fr": "Installation du bureau (long) :",
+        "en": "Installing the desktop (long):",
+    },
+    "Choice (number, blank = server): ": {
+        "fr": "Choix (numero, vide = serveur) : ",
+        "en": "Choice (number, blank = server): ",
+    },
+    "Installing the GNOME desktop (long)": {
+        "fr": "Installation du bureau GNOME (long)",
+        "en": "Installing the GNOME desktop (long)",
+    },
+    "openSUSE mirror:": {
+        "fr": "miroir openSUSE :",
+        "en": "openSUSE mirror:",
+    },
+    "Remote desktop:": {
+        "fr": "Bureau distant :",
+        "en": "Remote desktop:",
+    },
+    "One run per install": {
+        "fr": "une execution par installation",
+        "en": "One run per install",
+    },
+    "limit to host cores": {
+        "fr": "limiter au nombre de coeurs de l'hote",
+        "en": "limit to host cores",
+    },
+    "free value…": {
+        "fr": "valeur libre…",
+        "en": "free value…",
+    },
+    "Disk (e.g. 250G, 1.5T)": {
+        "fr": "Disque (ex. 250G, 1,5T)",
+        "en": "Disk (e.g. 250G, 1.5T)",
+    },
     "all archs": {
         "fr": "toutes",
         "en": "all",
@@ -2004,6 +2138,148 @@ TRANSLATIONS = {
     "Edit VM": {
         "fr": "Éditer la VM",
         "en": "Edit VM",
+    },
+    "Server": {
+        "fr": "Serveur",
+        "en": "Server",
+    },
+    "VM type (default):": {
+        "fr": "Type de VM (défaut) :",
+        "en": "VM type (default):",
+    },
+    "These values are the default for every VM;": {
+        "fr": "Ces valeurs sont le défaut de chaque VM ;",
+        "en": "These values are the default for every VM;",
+    },
+    "adjust any of them per VM on the right.": {
+        "fr": "ajustez-les VM par VM dans la vue de droite.",
+        "en": "adjust any of them per VM on the right.",
+    },
+    "Application store:": {
+        "fr": "Magasin d'applications :",
+        "en": "Application store:",
+    },
+    "Application store (graphical Ubuntu VMs):": {
+        "fr": "Magasin d'applications (VM Ubuntu graphiques) :",
+        "en": "Application store (graphical Ubuntu VMs):",
+    },
+    "deb only (epiphany-browser)": {
+        "fr": "deb uniquement (epiphany-browser)",
+        "en": "deb only (epiphany-browser)",
+    },
+    "Flatpak tooling, no Flathub": {
+        "fr": "outillage Flatpak, sans Flathub",
+        "en": "Flatpak tooling, no Flathub",
+    },
+    "snap (Ubuntu default, Firefox)": {
+        "fr": "snap (défaut Ubuntu, Firefox)",
+        "en": "snap (Ubuntu default, Firefox)",
+    },
+    "snap needs the store; slow under emulation.": {
+        "fr": "snap exige le store ; lent sous émulation.",
+        "en": "snap needs the store; slow under emulation.",
+    },
+    "No graphical VM on a snap-based distro.": {
+        "fr": "Aucune VM graphique sur une distribution à snap.",
+        "en": "No graphical VM on a snap-based distro.",
+    },
+    "Resources — applied to ALL VMs": {
+        "fr": "Ressources — appliquées à TOUTES les VM",
+        "en": "Resources — applied to ALL VMs",
+    },
+    "The profile and these fields change EVERY VM.": {
+        "fr": "Le profil et ces champs changent TOUTES les VM.",
+        "en": "The profile and these fields change EVERY VM.",
+    },
+    "A VM edited on the right (marked) keeps its own.": {
+        "fr": "Une VM modifiée à droite (marquée ✎) garde les siennes.",
+        "en": "A VM edited on the right (marked) keeps its own.",
+    },
+    "Rename the VM": {
+        "fr": "Renommer la VM",
+        "en": "Rename the VM",
+    },
+    "Rename": {
+        "fr": "Renommer",
+        "en": "Rename",
+    },
+    "Empty = back to the automatic name:": {
+        "fr": "Vide = revenir au nom automatique :",
+        "en": "Empty = back to the automatic name:",
+    },
+    "Invalid name: letters, digits, hyphens.": {
+        "fr": "Nom invalide : lettres, chiffres et traits d'union.",
+        "en": "Invalid name: letters, digits, hyphens.",
+    },
+    "default; a VM may differ, see its line": {
+        "fr": "défaut ; une VM peut s'en écarter, voir sa ligne",
+        "en": "default; a VM may differ, see its line",
+    },
+    "varies, see each line": {
+        "fr": "varie, voir chaque ligne",
+        "en": "varies, see each line",
+    },
+    "From your workstation:": {
+        "fr": "Depuis votre poste :",
+        "en": "From your workstation:",
+    },
+    "then point your client at": {
+        "fr": "puis pointez votre client sur",
+        "en": "then point your client at",
+    },
+    "Remote desktop tunnel (VNC/RDP through SSH)": {
+        "fr": "🖥  Tunnel bureau distant (VNC/RDP par SSH)",
+        "en": "🖥  Remote desktop tunnel (VNC/RDP through SSH)",
+    },
+    "Remote desktop tunnel": {
+        "fr": "Tunnel vers le bureau distant",
+        "en": "Remote desktop tunnel",
+    },
+    "Which VM?": {"fr": "Quelle VM ?", "en": "Which VM?"},
+    "No IP for this VM; is it running?": {
+        "fr": "Pas d'IP pour cette VM ; tourne-t-elle ?",
+        "en": "No IP for this VM; is it running?",
+    },
+    "Run this on YOUR workstation:": {
+        "fr": "À lancer sur VOTRE poste :",
+        "en": "Run this on YOUR workstation:",
+    },
+    "(through the ProxyJump already in ~/.ssh/config)": {
+        "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
+        "en": "(through the ProxyJump already in ~/.ssh/config)",
+    },
+    "No ~/.ssh/config entry; see SSH configuration.": {
+        "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
+        "en": "No ~/.ssh/config entry; see SSH configuration.",
+    },
+    "Not in an SSH session: check the host address.": {
+        "fr": "Hors session SSH : vérifiez l'adresse de l'hôte.",
+        "en": "Not in an SSH session: check the host address.",
+    },
+    "The tunnel stays open as long as that ssh runs.": {
+        "fr": "Le tunnel reste ouvert tant que ce ssh tourne.",
+        "en": "The tunnel stays open as long as that ssh runs.",
+    },
+    "No VM defined.": {"fr": "Aucune VM définie.", "en": "No VM defined."},
+    "No host in ~/.ssh/config and no local VM.": {
+        "fr": "Aucun hôte dans ~/.ssh/config et aucune VM locale.",
+        "en": "No host in ~/.ssh/config and no local VM.",
+    },
+    "local VM": {"fr": "VM locale", "en": "local VM"},
+    "Remote desktop kind:": {
+        "fr": "Type de bureau distant :",
+        "en": "Remote desktop kind:",
+    },
+    "already defined, not counted": {
+        "fr": "déjà définie(s), non comptée(s)",
+        "en": "already defined, not counted",
+    },
+    "RAM: 2048 or 8G": {"fr": "RAM : 2048 ou 8G", "en": "RAM: 2048 or 8G"},
+    "Diagnostic dump": {"fr": "Diagnostic", "en": "Diagnostic dump"},
+    "State written to": {"fr": "État écrit dans", "en": "State written to"},
+    "Reset VM": {
+        "fr": "Réinit. VM",
+        "en": "Reset VM",
     },
     "Preview": {
         "fr": "Aperçu",
@@ -2786,8 +3062,8 @@ TRANSLATIONS = {
         "en": "select all",
     },
     "Delete VM(s)": {
-        "fr": "🗑 Effacer une ou plusieurs VM",
-        "en": "🗑 Delete VM(s)",
+        "fr": "🗑  Effacer une ou plusieurs VM",
+        "en": "🗑  Delete VM(s)",
     },
     "No VM found.": {
         "fr": "Aucune VM trouvée.",
@@ -3414,8 +3690,8 @@ TRANSLATIONS = {
         "en": "Verify SHA256 after download? (y/N, default: no): ",
     },
     "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)": {
-        "fr": "QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
-        "en": "QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
+        "fr": "🧰 QEMU - Exemple dry-run (demo-vm, Ubuntu 24.04)",
+        "en": "🧰 QEMU - Sample dry-run (demo-vm, Ubuntu 24.04)",
     },
     # QEMU - statistics screen
     "Statistics (installs, durations, VMs)": {

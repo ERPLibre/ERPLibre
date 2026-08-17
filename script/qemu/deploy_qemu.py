@@ -79,9 +79,13 @@ from pathlib import Path
 # transitoire. Un VM à 10G tombait « Poetry installation error » (disque
 # plein). Le qcow2 est CREUX (sparse) : une taille virtuelle plus grande ne
 # consomme rien tant qu'elle n'est pas remplie -> 20G sans surcoût réel.
+#
+# 20.04 et 22.04 ne sont plus proposées : leur chaîne d'outils ne suffit plus à
+# ERPLibre. Le mur le plus net est pikepdf, qui réclame qpdf >= 12.2, lui-même
+# en C++20 — focal livre GCC 9. S'y ajoutaient Python 3.8 à l'amorçage, node 10,
+# cargo 0.67 et OpenSSL 1.1.1. Chacun avait son contournement ; l'accumulation,
+# non.
 UBUNTU_VERSIONS: dict[str, tuple[str, str, int, str]] = {
-    "20.04": ("focal", "ubuntu20.04", 2048, "20G"),
-    "22.04": ("jammy", "ubuntu22.04", 2048, "20G"),
     "24.04": ("noble", "ubuntu24.04", 3072, "20G"),
     "25.10": ("questing", "ubuntu25.10", 3072, "20G"),
     "26.04": ("resolute", "ubuntu26.04", 3072, "20G"),
@@ -97,6 +101,37 @@ FEDORA_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "43": ("43", "fedora43", 2048, "20G"),
     "44": ("44", "fedora44", 2048, "20G"),
 }
+# Dérivés RHEL. Le second champ est l'identifiant libosinfo : « almalinux9 » et
+# « almalinux10 » figurent dans osinfo-db, « rocky10 » n'y est pas encore sur
+# les hôtes 24.04 — osinfo_arg() replie alors sur une valeur connue.
+# RAM : libosinfo demande 1,5 Gio en x86_64 ; on retient 2048 comme Fedora.
+ALMALINUX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "9": ("9", "almalinux9", 2048, "20G"),
+    "10": ("10", "almalinux10", 2048, "20G"),
+}
+ROCKY_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "9": ("9", "rocky9", 2048, "20G"),
+    "10": ("10", "rocky10", 2048, "20G"),
+}
+# openSUSE, deux produits distincts et pas deux versions du même.
+#   Leap       NUMÉROTÉ, base SLE, ~2 ans de support. C'est le défaut, et le
+#              seul des deux à proposer pour une installation qui doit durer.
+#   Tumbleweed ROLLING, sans numéro. Gardé comme banc d'essai des ruptures à
+#              venir, pas comme cible. Sa dérive d'instantanés est réelle : deux
+#              VM déployées le même jour ont vu git-daemon 2.54 sur s390x et
+#              2.55 sur amd64, et l'image livrée est toujours en retard sur les
+#              dépôts, d'où le « zypper dup » obligatoire avant toute install.
+#
+# Les deux dépassent le seuil qpdf de pikepdf : aucune compilation de qpdf, ce
+# qui change tout sous émulation s390x.
+#
+# osinfo : « opensuse16.0 » n'est pas encore dans osinfo-db, qui s'arrête à
+# 15.6. osinfo_arg() replie sur le DERNIER id connu de la table — d'où l'ordre,
+# Tumbleweed en second servant de repli à Leap.
+OPENSUSE_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "16.0": ("16.0", "opensuse16.0", 2048, "20G"),
+    "tumbleweed": ("tumbleweed", "opensusetumbleweed", 2048, "20G"),
+}
 # Arch est en rolling release : une seule « version » (latest).
 ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "latest": ("latest", "archlinux", 1024, "20G"),
@@ -107,6 +142,9 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
     "fedora": (FEDORA_VERSIONS, "42"),
+    "almalinux": (ALMALINUX_VERSIONS, "9"),
+    "rocky": (ROCKY_VERSIONS, "10"),
+    "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
 }
 
@@ -114,6 +152,9 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
 # s390x s'écrit « s390x » partout (identité), donc aucune entrée n'est requise.
 ARCH_ALIASES: dict[str, dict[str, str]] = {
     "fedora": {"amd64": "x86_64", "arm64": "aarch64"},
+    "almalinux": {"amd64": "x86_64", "arm64": "aarch64"},
+    "rocky": {"amd64": "x86_64", "arm64": "aarch64"},
+    "opensuse": {"amd64": "x86_64", "arm64": "aarch64"},
     "arch": {"amd64": "x86_64", "arm64": "aarch64"},
 }
 
@@ -126,8 +167,43 @@ NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 # - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
 # - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
 #   aarch64 sur geo.mirror.pkgbuild.com).
-S390X_DISTROS: tuple[str, ...] = ("ubuntu",)
-ARM64_DISTROS: tuple[str, ...] = ("ubuntu", "debian", "fedora")
+S390X_DISTROS: tuple[str, ...] = (
+    "ubuntu",
+    "almalinux",
+    "rocky",
+    "fedora",
+    "opensuse",
+)
+
+# Une distro peut ne publier qu'une PARTIE de ses versions sur une
+# architecture. Déclaration POSITIVE : hors de cette table, toutes les versions
+# du catalogue sont réputées disponibles.
+#
+# Fedora ne construit s390x que pour la version courante, et sur une
+# arborescence à part (« fedora-secondary ») : la 41 et la 42 y sont retirées
+# (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
+# miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
+ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    "s390x": {"fedora": ("43",)},
+}
+
+
+def arch_versions(distro: str, arch: str, versions) -> list[str]:
+    """Versions de `distro` réellement publiées pour `arch`."""
+    only = ARCH_ONLY_VERSIONS.get(arch, {}).get(distro)
+    return [v for v in versions if only is None or v in only]
+
+
+ARM64_DISTROS: tuple[str, ...] = (
+    "ubuntu",
+    "debian",
+    "fedora",
+    "almalinux",
+    "rocky",
+    "opensuse",
+)
+
+
 # arch générique -> distros la publiant (pour valider --arch tôt).
 ARCH_DISTRO_SUPPORT: dict[str, tuple[str, ...]] = {
     "s390x": S390X_DISTROS,
@@ -162,11 +238,23 @@ DEBIAN_CLOUD_BASES: tuple[str, ...] = (
     "https://gemmei.ftp.acc.umu.se/cdimage/cloud",
     "https://laotzu.ftp.acc.umu.se/cdimage/cloud",
 )
+ALMALINUX_CLOUD_BASE = "https://repo.almalinux.org/almalinux"
+OPENSUSE_BASE = "https://download.opensuse.org"
+ROCKY_CLOUD_BASE = "https://dl.rockylinux.org/pub/rocky"
 FEDORA_BASE = "https://download.fedoraproject.org/pub/fedora/linux/releases"
 # Serveur MAÎTRE (pas de redirection MirrorManager) : repli fiable quand le
 # redirecteur envoie sur un miroir incomplet (fréquent en déploiement
 # PARALLÈLE : chaque requête peut tomber sur un miroir différent/désynchronisé).
 FEDORA_BASE_MASTER = "https://dl.fedoraproject.org/pub/fedora/linux/releases"
+# s390x est une architecture SECONDAIRE chez Fedora : ses images ne sont PAS
+# sous /pub/fedora/linux/ mais sous /pub/fedora-secondary/, et seule la
+# version courante y est construite.
+FEDORA_SECONDARY = (
+    "https://download.fedoraproject.org/pub/fedora-secondary/releases"
+)
+FEDORA_SECONDARY_MASTER = (
+    "https://dl.fedoraproject.org/pub/fedora-secondary/releases"
+)
 
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
@@ -212,6 +300,43 @@ def image_candidates(
         ]
     if distro == "fedora":
         return [resolve_fedora_url(version, arch, dry_run)]
+    if distro == "almalinux":
+        # Contrairement à Fedora, AlmaLinux publie un lien « latest » STABLE
+        # par majeure et par architecture : aucun index HTML à analyser. On
+        # vise l'arbre de la MAJEURE (9/, 10/), qui suit la mineure courante —
+        # les répertoires mineurs périmés sont retirés du miroir.
+        return [
+            f"{ALMALINUX_CLOUD_BASE}/{version}/cloud/{a}/images/"
+            f"AlmaLinux-{version}-GenericCloud-latest.{a}.qcow2"
+        ]
+    if distro == "rocky":
+        # Même principe : l'alias « .latest » suit le point release courant, et
+        # les précédents partent au vault — une URL figée casserait.
+        return [
+            f"{ROCKY_CLOUD_BASE}/{version}/images/{a}/"
+            f"Rocky-{version}-GenericCloud.latest.{a}.qcow2"
+        ]
+    if distro == "opensuse":
+        # zsystems DOUBLE l'architecture dans le nom du fichier — irrégularité
+        # vérifiée dans l'index, pas déduite : « .s390x-s390x-Cloud » contre
+        # « .x86_64-Cloud ». Elle vaut pour les DEUX produits.
+        tag = f"{a}-{a}" if arch == "s390x" else a
+        if version == "tumbleweed":
+            # Tumbleweed sépare les architectures secondaires sous /ports/.
+            port = {"s390x": "ports/zsystems/", "arm64": "ports/aarch64/"}.get(
+                arch, ""
+            )
+            return [
+                f"{OPENSUSE_BASE}/{port}tumbleweed/appliances/"
+                f"openSUSE-Tumbleweed-Minimal-VM.{tag}-Cloud.qcow2"
+            ]
+        # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
+        # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
+        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
+        return [
+            f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
+            f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
+        ]
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
@@ -229,12 +354,18 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     pattern = re.compile(
         rf"Fedora-Cloud-Base-Generic-{version}-[0-9.]+\.{a}\.qcow2"
     )
+    # Architecture secondaire (s390x, ppc64le) : autre arborescence.
+    primary, master = (
+        (FEDORA_SECONDARY, FEDORA_SECONDARY_MASTER)
+        if arch == "s390x"
+        else (FEDORA_BASE, FEDORA_BASE_MASTER)
+    )
     if dry_run:
-        index = f"{FEDORA_BASE}/{version}/Cloud/{a}/images/"
+        index = f"{primary}/{version}/Cloud/{a}/images/"
         return index + f"Fedora-Cloud-Base-Generic-{version}-<build>.{a}.qcow2"
     # On essaie le redirecteur (2 fois : chaque requête peut viser un miroir
     # différent) puis le serveur maître (toujours complet).
-    bases = [FEDORA_BASE, FEDORA_BASE, FEDORA_BASE_MASTER]
+    bases = [primary, primary, master]
     last_err = ""
     for base in bases:
         index = f"{base}/{version}/Cloud/{a}/images/"
@@ -265,6 +396,16 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{version}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro == "opensuse":
+        if version == "tumbleweed":
+            return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
+        return f"opensuse-leap-{version}-minimal-vm-{a}.qcow2"
+    if distro in ("almalinux", "rocky"):
+        # « latest » est MUTABLE : le nom de cache porte donc la majeure, et
+        # une image déjà téléchargée sera réutilisée telle quelle. C'est voulu
+        # (reproductibilité d'un déploiement à l'autre) ; supprimer le fichier
+        # du cache suffit à repartir sur le build courant.
+        return f"{distro}-{version}-genericcloud-{a}.qcow2"
     return f"fedora-cloud-{version}-{a}.qcow2"
 
 
@@ -1287,6 +1428,27 @@ def host_timezone() -> str:
     return "UTC"
 
 
+def user_groups(distro: str) -> str:
+    """Groupes secondaires du compte créé par cloud-init.
+
+    Le nom du groupe d'administration change d'une famille à l'autre, et un
+    nom INCONNU fait échouer « useradd -G » : l'utilisateur n'est alors pas
+    créé du tout, donc ni mot de passe ni clé SSH, et la VM démarre
+    inaccessible. Le privilège vient de toute façon de la directive « sudo: »
+    du cloud-config, pas du groupe — celui-ci n'est qu'une commodité.
+
+    - Debian, Ubuntu : « sudo ».
+    - Famille RHEL (AlmaLinux, Rocky, CentOS, Fedora), Arch : « wheel ».
+    - openSUSE : aucun. Son cloud-init par défaut n'en met pas, et rien ne
+      garantit « wheel » sur une image Minimal-VM — dans le doute on s'abstient
+      plutôt que de risquer un compte non créé."""
+    if distro in ("ubuntu", "debian"):
+        return "users, sudo"
+    if distro == "opensuse":
+        return "users"
+    return "users, wheel"
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -1297,10 +1459,15 @@ def build_cloud_config(
         "users:",
         f"  - name: {args.user}",
         "    sudo: ALL=(ALL) NOPASSWD:ALL",
-        # « sudo » existe sur Debian ET Ubuntu ; « admin » n'existe PAS sur
-        # Debian -> useradd -G ...,admin échoue et l'utilisateur n'est jamais
-        # créé (login/clé SSH KO). C'était la cause du « Debian ne marche pas ».
-        "    groups: users, sudo",
+        # Le groupe d'administration N'A PAS le même nom partout, et un nom
+        # inconnu fait échouer « useradd -G » : l'utilisateur n'est alors jamais
+        # créé, donc ni mot de passe ni clé SSH — la VM démarre et reste
+        # inaccessible. C'était déjà la cause du « Debian ne marche pas »
+        # (« admin » n'existe pas sur Debian) ; la famille RHEL et Arch ont le
+        # même écart, elles n'ont pas de groupe « sudo » mais « wheel ».
+        # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
+        # groupe : celui-ci n'est qu'une commodité.
+        f"    groups: {user_groups(args.distro)}",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
@@ -1606,6 +1773,37 @@ def virt_install(
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
     # ttyS0. Ailleurs (x86/arm64), console série classique.
     console_target = "sclp" if args.arch == "s390x" else "serial"
+    # Écran virtuel pour une VM graphique. s390x en est écarté : QEMU y expose
+    # bien « virtio-gpu-ccw », mais rien ne garantit que le noyau s390x de la
+    # distribution embarque le pilote DRM virtio-gpu — la VM démarrerait alors
+    # sur un écran noir. Le bureau distant, lui, marche partout : c'est la voie
+    # retenue pour cette architecture, et le message le dit.
+    graphics = args.graphics
+    video = []
+    if args.desktop and graphics == "none":
+        if args.arch == "s390x":
+            print(
+                "\n  s390x : pas d'écran virtuel (pilote DRM non garanti)."
+                "\n  Le bureau sera accessible à distance, par le réseau."
+            )
+        else:
+            # VNC sur la boucle locale, PAS « spice,listen=none ».
+            #
+            # « listen=none » est le défaut de virt-install et il n'expose
+            # rien : QEMU crée l'affichage mais n'ouvre AUCUN socket TCP, seul
+            # le canal libvirt y mène. Un virt-manager tournant sur la machine
+            # même y accède ; rien d'autre. Or l'hôte QEMU est lui-même une VM
+            # ici — la console était donc inatteignable par construction, et
+            # aucun « ssh -L » ne pouvait y remédier : il n'y avait pas de port
+            # où aboutir.
+            #
+            # 127.0.0.1 n'expose rien au réseau non plus : le port n'est
+            # joignable que depuis l'hôte, donc à travers un tunnel SSH. VNC
+            # plutôt que SPICE parce qu'il tient en UN port — un seul « -L »
+            # suffit, avec n'importe quel client. Pour revenir au comportement
+            # d'avant : --graphics spice,listen=none
+            graphics = "vnc,listen=127.0.0.1"
+            video = ["--video", "virtio"]
     cmd = [
         "virt-install",
         # Sans --connect, un utilisateur non root vise qemu:///session : le
@@ -1635,7 +1833,7 @@ def virt_install(
         "--network",
         args.network,
         "--graphics",
-        args.graphics,
+        graphics,
         "--console",
         f"pty,target_type={console_target}",
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
@@ -1644,6 +1842,7 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
+    cmd += video
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -1857,6 +2056,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--graphics",
         default="none",
         help="Argument --graphics (défaut : none).",
+    )
+    g_vm.add_argument(
+        "--desktop",
+        action="store_true",
+        help="VM graphique : écran virtuel SPICE là où l'architecture le "
+        "permet. Les paquets GNOME sont posés par la commande d'installation, "
+        "pas ici.",
     )
     g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
@@ -2083,6 +2289,14 @@ def main() -> None:
         sys.exit(
             f"Architecture {args.arch} indisponible pour {args.distro!r} : "
             f"images cloud publiées seulement pour {', '.join(supported)}."
+        )
+    # Toutes les versions d'une distro ne sont pas publiées sur toutes les
+    # architectures : le dire ici plutôt que d'échouer au téléchargement.
+    ok_versions = arch_versions(args.distro, args.arch, versions)
+    if args.version not in ok_versions:
+        sys.exit(
+            f"{args.distro} {args.version} n'est pas publié en {args.arch}.\n"
+            f"  Versions disponibles : {', '.join(ok_versions) or 'aucune'}."
         )
     code, default_osinfo, min_ram, min_disk = versions[args.version]
     if args.codename:

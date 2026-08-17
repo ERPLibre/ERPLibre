@@ -2,25 +2,159 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 #
-# Dépendances système ERPLibre pour Fedora (dnf). Équivalent Fedora de
-# install_debian_dependency.sh. « --skip-unavailable » tolère un nom de paquet
-# absent (dnf5) au lieu d'échouer sur tout le lot.
+# Dépendances système ERPLibre pour la famille dnf : Fedora, mais aussi
+# AlmaLinux, Rocky et RHEL, qu'install_dev.sh aiguille ici sur ID_LIKE=rhel.
+# Équivalent de install_debian_dependency.sh.
+#
+# Attention : Fedora 41+ livre dnf5, EL9 et EL10 encore dnf4. Les deux ne
+# comprennent pas les mêmes options — voir DNF_SKIP plus bas.
 
 . ./env_var.sh
+. ./script/install/lib_qpdf.sh
+. ./script/install/lib_lowmem.sh
 
 EL_USER=${USER}
 
+# « Sauter un paquet introuvable au lieu d'échouer sur tout le lot » ne
+# s'écrit PAS pareil selon la version de dnf : « --skip-unavailable » est une
+# option de dnf5 (Fedora 41+), et dnf4 — encore livré par EL9 et EL10, donc
+# par AlmaLinux et Rocky — la refuse net : « dnf install: error: unrecognized
+# arguments ». Son équivalent y est « --setopt=strict=0 ». On demande donc à
+# dnf lui-même ce qu'il comprend, plutôt que de deviner d'après la distro.
+if dnf install --help 2>&1 | grep -q -- "--skip-unavailable"; then
+  DNF_SKIP="--skip-unavailable"
+else
+  DNF_SKIP="--setopt=strict=0"
+fi
+echo "dnf : option de tolerance retenue = ${DNF_SKIP}"
 # dnf résilient : rafraîchit le cache (évite « checksum doesn't match » /
 # signature après un cache périmé) et saute les paquets introuvables.
-DNF="sudo dnf install -y --refresh --skip-unavailable"
+DNF="sudo dnf install -y --refresh ${DNF_SKIP}"
+
+#--------------------------------------------------
+# Dérivés RHEL : dépôts supplémentaires
+#--------------------------------------------------
+# AlmaLinux, Rocky, CentOS Stream et RHEL passent par ce script (install_dev.sh
+# les aiguille sur ID_LIKE=rhel). Contrairement à Fedora, leur jeu de dépôts
+# par défaut est ÉTROIT : la plupart des paquets « -devel » vivent dans CRB
+# (CodeReady Builder), et tout ce qui est communautaire dans EPEL. Sans ces
+# deux dépôts, la tolérance aux paquets absents les saute EN SILENCE et
+# l'échec n'apparaît qu'à la compilation, très loin d'ici.
+if [ -r /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+fi
+case "${ID}" in
+  almalinux | rocky | rhel | centos)
+    echo -e "\n---- Depots EPEL et CRB (famille RHEL) ----"
+    sudo dnf install -y epel-release \
+      || echo "epel-release indisponible : certains paquets manqueront."
+    # /usr/bin/crb est l'outil fourni par epel-release, et ce que son propre
+    # scriptlet recommande d'exécuter — plus fiable que de deviner le nom du
+    # dépôt, qui vaut « crb » sur EL9/EL10 et « powertools » sur EL8.
+    sudo /usr/bin/crb enable 2> /dev/null \
+      || sudo dnf config-manager --set-enabled crb 2> /dev/null \
+      || sudo dnf config-manager --set-enabled powertools 2> /dev/null \
+      || sudo dnf config-manager --enable crb 2> /dev/null \
+      || echo "CRB/PowerTools non active : certains -devel manqueront."
+    # Un dépôt fraîchement activé dont les métadonnées ne descendent pas fait
+    # échouer TOUS les dnf suivants. On le voit ici, avec son nom, plutôt que
+    # trois sections plus loin sur un paquet sans rapport.
+    sudo dnf makecache 2> /dev/null \
+      || { sudo dnf clean all; sudo dnf makecache; } \
+      || echo "Attention : metadonnees de depot incompletes."
+    ;;
+esac
 
 #--------------------------------------------------
 # Outils de compilation (build Python via pyenv, extensions Python)
 #--------------------------------------------------
-echo -e "\n---- Groupe outils de développement ----"
-# Groupes par ID (le nom affiché « C Development Tools... » n'est pas matché).
-sudo dnf group install -y --skip-unavailable development-tools c-development \
-  || sudo dnf install -y gcc gcc-c++ make automake patch
+echo -e "\n---- Outils de developpement ----"
+# Les GROUPES ne sont pas les mêmes d'une famille à l'autre : Fedora a
+# « c-development », EL ne connaît que « development » — vérifié dans le
+# comps.xml d'AlmaLinux 10, qui n'a même pas « development-tools ».
+#
+# Pire, la tolérance aux paquets absents les rend INOFFENSIFS : un
+# « dnf group install » de deux groupes inconnus REND ZÉRO sans rien poser,
+# donc le « || » de repli ne se déclenchait jamais. gcc arrivait par la
+# section pyenv plus bas, gcc-c++ par personne, et numpy s'arrêtait sur
+# « Unknown compiler(s): [['c++'], ['g++'], …] ».
+#
+# On installe donc les compilateurs EXPLICITEMENT, sans dépendre d'un groupe.
+# Le groupe reste ensuite, en complément et en best-effort.
+${DNF} gcc gcc-c++ make automake patch
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "dnf install compilers error."
+  exit 1
+fi
+sudo dnf group install -y ${DNF_SKIP} development c-development \
+  > /dev/null 2>&1 || true
+
+#--------------------------------------------------
+# Mainframe s390x
+#--------------------------------------------------
+# Sur s390x, AUCUNE roue PyPI n'existe : numpy, pillow, lxml, pikepdf,
+# psycopg2, cryptography… tout se compile contre les bibliothèques de la
+# distribution. Ces en-têtes ne servent à rien sur amd64, où pip pose des
+# roues, mais leur absence ici arrête l'installation très loin de sa cause —
+# « The headers or library files could not be found for jpeg » pour pillow.
+if [ "$(uname -m)" = "s390x" ]; then
+  echo -e "\n---- Dependances de compilation s390x ----"
+  # La mémoire est la ressource qui manque en premier ici : cc1plus
+  # demande jusqu'à 2,5 Gio pour un seul fichier de matplotlib, et le
+  # tueur du noyau abrège sans jamais nommer la mémoire (« Killed signal
+  # terminated program cc1plus »). On complète par du swap avant d'en
+  # arriver là.
+  el_swap_ensure
+  # Best-effort : un nom qui change d'une version à l'autre ne doit pas
+  # emporter le lot. Ce qui est vraiment indispensable est déjà installé
+  # au-dessus (compilateurs) ou plus bas (pyenv, PostgreSQL).
+  # « rust » et « cargo » : plusieurs paquets Python portent une extension
+  # RUST, pas seulement C — bcrypt et cryptography en tête. Sur amd64 leurs
+  # roues masquent le besoin ; ici tout compile, et bcrypt s'arrête net sur
+  # « error: can't find Rust compiler ». Les versions livrées suffisent
+  # (AlmaLinux 1.92, Fedora plus récent) au Cargo.lock v4 qui exige 1.78.
+  ${DNF} \
+    rust cargo \
+    libjpeg-turbo-devel zlib-devel geos-devel proj-devel \
+    krb5-devel tbb-devel ninja-build clang-devel llvm-devel \
+    GeographicLib-devel pkgconf-pkg-config cmake
+
+  # qpdf : pikepdf en exige 12.2.0, et le paquet de la distribution ne le donne
+  # que sur Fedora. EL9 livre 10.3 — même pas « qpdf/QPDFJob.hh », d'où trois
+  # cents lignes de g++ sans un mot sur qpdf ; EL10 livre 11.9.
+  #
+  # On ne pose donc « qpdf-devel » QUE s'il atteint le seuil, au lieu de le
+  # poser puis de le contourner : contrairement à Debian, l'éditeur de liens de
+  # RHEL cherche /usr/lib64 AVANT /usr/local/lib64. Le -devel trop ancien ferait
+  # lier pikepdf contre l'ancienne bibliothèque malgré les en-têtes neufs de
+  # /usr/local/include — une incohérence bien plus difficile à lire qu'un
+  # en-tête absent. Sans lui, el_qpdf_ensure fournit tout depuis les sources.
+  qpdf_repo="$(dnf repoquery --qf '%{version}' --latest-limit 1 qpdf-devel \
+    2> /dev/null | tail -1)"
+  if el_qpdf_ge_min "${qpdf_repo}"; then
+    ${DNF} qpdf-devel
+  else
+    echo "qpdf-devel ${qpdf_repo:-absent} sous le seuil de pikepdf : compilation depuis les sources."
+  fi
+  el_qpdf_ensure
+  # Le dire ICI plutôt que de laisser bcrypt le découvrir une heure plus tard.
+  if ! command -v cargo > /dev/null 2>&1; then
+    echo "Attention : cargo absent, bcrypt et cryptography ne compileront pas."
+  fi
+  # pymupdf charge « libclang.so » par son nom nu, via ctypes. Le paquet le
+  # livre sous un nom versionné : il ne manque que le lien.
+  for d in /usr/lib64 /usr/lib; do
+    if [ -d "${d}" ] && [ ! -e "${d}/libclang.so" ]; then
+      so="$(ls -1 "${d}"/libclang.so.* 2> /dev/null | sort -V | tail -1)"
+      if [ -n "${so}" ]; then
+        sudo ln -s "${so}" "${d}/libclang.so" && sudo ldconfig
+        echo "libclang.so -> ${so}"
+      fi
+    fi
+  done
+fi
 
 #--------------------------------------------------
 # PostgreSQL

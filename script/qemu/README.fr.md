@@ -92,9 +92,39 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
-Versions Ubuntu supportées : `20.04`, `22.04`, `24.04` (défaut), `24.10`,
-`25.04`, `25.10`. Fournissez un chemin d'image en argument positionnel pour
-surcharger l'emplacement de téléchargement automatique.
+Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
+
+| Distro | Versions | amd64 | arm64 | s390x |
+|---|---|:-:|:-:|:-:|
+| ubuntu | `24.04` (défaut), `25.10`, `26.04` | ✔ | ✔ | ✔ |
+| debian | `11`, `12` (défaut), `13` | ✔ | ✔ | — |
+| fedora | `41`, `42` (défaut), `43`, `44` | ✔ | ✔ | `43` seule |
+| almalinux | `9` (défaut), `10` | ✔ | ✔ | ✔ |
+| rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
+| opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
+| arch | `latest` | ✔ | — | — |
+
+Fedora ne construit s390x que pour la version courante, et sur une
+arborescence à part (`fedora-secondary`) — d'où la version unique.
+
+`opensuse` recouvre deux produits distincts, pas deux versions du même. Leap
+`16.0` est numérotée et stable (base SLE) : c'est le défaut. `tumbleweed` est
+la rolling, gardée comme banc d'essai des ruptures à venir — sa dérive
+d'instantanés est réelle, et elle impose un `zypper dup` complet avant toute
+installation.
+
+Les deux livrent un qpdf au-dessus du seuil de pikepdf : la compilation de
+qpdf, une demi-heure, ne s'y déclenche jamais — ce qui compte sous émulation
+s390x.
+
+Fournissez un chemin d'image en argument positionnel pour surcharger
+l'emplacement de téléchargement automatique.
+
+Les Ubuntu `20.04` et `22.04` sont **abandonnées sur toutes les
+architectures** : pikepdf réclame qpdf 12.2, dont la compilation exige C++20,
+et focal livre GCC 9 — elle ne publie même pas de `g++-10` pour s390x. Python
+3.8, node 10, cargo 0.67 et OpenSSL 1.1.1 avaient chacun leur contournement ;
+leur accumulation, non.
 
 ## Après le déploiement
 
