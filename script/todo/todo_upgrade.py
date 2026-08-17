@@ -1699,6 +1699,10 @@ class TodoUpgrade:
         # la migration se lit comme un dégât de la migration, et l'on cherche
         # des heures du côté du palier. Mesuré : deux URL cassaient avant même
         # de commencer.
+        # Le nettoyage AVANT la mesure : interroger les pages sur une base
+        # encombrée fait chercher des pannes dans des restes, et le nettoyage
+        # en répare une partie de lui-même.
+        self.prompt_database_cleanup(database_name)
         self.prompt_smoke_public_url(database_name, baseline=True)
 
         msg = "3 - Clean up database before data migration"
@@ -2601,6 +2605,7 @@ class TodoUpgrade:
                 # quand même un 500 sur une page que personne n'ouvre. Mesuré
                 # ici : /blog/<blog>/post/<billet> et /contactus, alors que
                 # le journal de migration n'avait rien signalé.
+                self.prompt_database_cleanup(database_name_upgrade)
                 self.prompt_smoke_public_url(database_name_upgrade)
 
                 print(f"[y] {t('Open the server with Selenium')}")
@@ -2911,6 +2916,33 @@ class TodoUpgrade:
         self.run_on_terminal(
             f"{PYTHON_BIN} ./{os.path.join(PATH_MIGRATION_GLOBAL, 'reset_stale_cow_views.py')}"
             f" -d {database_name} {args} --apply"
+        )
+
+    def prompt_database_cleanup(self, database_name):
+        """Proposer le nettoyage OCA avant d'interroger les pages.
+
+        Une migration laisse derrière elle des modèles, colonnes, tables,
+        données et menus obsolètes. Les interroger ensuite fait chercher des
+        pannes dans des restes qui n'auraient pas dû survivre — et le
+        nettoyage lui-même en répare une partie.
+
+        « non » par défaut : cela écrit en base, et c'est à vous d'en
+        décider.
+        """
+        answer = (
+            self.ask_gate(
+                f"💬 {t('Clean the database before testing the pages?')}"
+                f" (y/N, {t('(b = go back to a previous step)')}) : "
+            )
+            .strip()
+            .lower()
+        )
+        if answer != "y":
+            return
+        self.run_on_terminal(
+            f"{PYTHON_BIN}"
+            " ./script/odoo/migration/database_cleanup.py"
+            f" -d {database_name}"
         )
 
     def prompt_smoke_public_url(self, database_name, baseline=False):

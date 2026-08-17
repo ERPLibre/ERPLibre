@@ -5138,6 +5138,114 @@ TRANSLATIONS = {
         "fr": "Parcourir les différences en plein écran",
         "en": "Browse the differences full screen",
     },
+    "The checkout is on Odoo": {
+        "fr": "Le checkout est sur Odoo",
+        "en": "The checkout is on Odoo",
+    },
+    "and the database on": {
+        "fr": "et la base sur",
+        "en": "and the database on",
+    },
+    "Opening it with the wrong version writes to it before": {
+        "fr": "L'ouvrir avec la mauvaise version y écrit avant",
+        "en": "Opening it with the wrong version writes to it before",
+    },
+    "failing. Switch the checkout first.": {
+        "fr": "d'échouer. Basculer le checkout d'abord.",
+        "en": "failing. Switch the checkout first.",
+    },
+    "Database cleanup on": {
+        "fr": "Nettoyage de la base",
+        "en": "Database cleanup on",
+    },
+    "Cleaning": {
+        "fr": "Nettoyage de",
+        "en": "Cleaning",
+    },
+    "pass": {
+        "fr": "passe",
+        "en": "pass",
+    },
+    "purged": {
+        "fr": "purgés",
+        "en": "purged",
+    },
+    "purged;": {
+        "fr": "purgés ;",
+        "en": "purged;",
+    },
+    "could not be, and are left as they are": {
+        "fr": "n'ont pas pu l'être, et restent en l'état",
+        "en": "could not be, and are left as they are",
+    },
+    "entries purged, nothing left.": {
+        "fr": "entrées purgées, rien ne reste.",
+        "en": "entries purged, nothing left.",
+    },
+    "no such wizard in this version, skipped.": {
+        "fr": "pas d'assistant pour cela dans cette version, ignoré.",
+        "en": "no such wizard in this version, skipped.",
+    },
+    "A database can carry leftovers nothing can remove.": {
+        "fr": "Une base peut porter des restes que rien ne peut retirer.",
+        "en": "A database can carry leftovers nothing can remove.",
+    },
+    "This is a warning, not a failure.": {
+        "fr": "C'est un avertissement, pas un échec.",
+        "en": "This is a warning, not a failure.",
+    },
+    "The cleanup produced no report.": {
+        "fr": "Le nettoyage n'a produit aucun rapport.",
+        "en": "The cleanup produced no report.",
+    },
+    "Unreadable report": {
+        "fr": "Rapport illisible",
+        "en": "Unreadable report",
+    },
+    "obsolete models": {
+        "fr": "modèles obsolètes",
+        "en": "obsolete models",
+    },
+    "obsolete modules": {
+        "fr": "modules obsolètes",
+        "en": "obsolete modules",
+    },
+    "obsolete columns": {
+        "fr": "colonnes obsolètes",
+        "en": "obsolete columns",
+    },
+    "obsolete tables": {
+        "fr": "tables obsolètes",
+        "en": "obsolete tables",
+    },
+    "obsolete data entries": {
+        "fr": "entrées de données obsolètes",
+        "en": "obsolete data entries",
+    },
+    "obsolete menu entries": {
+        "fr": "entrées de menu obsolètes",
+        "en": "obsolete menu entries",
+    },
+    "missing indexes": {
+        "fr": "index manquants",
+        "en": "missing indexes",
+    },
+    "obsolete properties": {
+        "fr": "propriétés obsolètes",
+        "en": "obsolete properties",
+    },
+    "entries would be purged": {
+        "fr": "entrées seraient purgées",
+        "en": "entries would be purged",
+    },
+    "nothing was changed": {
+        "fr": "rien n'a été modifié",
+        "en": "nothing was changed",
+    },
+    "Clean the database before testing the pages?": {
+        "fr": "Nettoyer la base avant de tester les pages ?",
+        "en": "Clean the database before testing the pages?",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",
