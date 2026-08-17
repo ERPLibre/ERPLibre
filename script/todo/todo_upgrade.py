@@ -3412,6 +3412,7 @@ class TodoUpgrade:
                         f" ({database_name})"
                     )
                     print(f"[3] {t('Reset one of them onto its module view')}")
+                    print(f"[4] {t('Browse the differences full screen')}")
                 wait_status = (
                     input(
                         f"💬 {t('Error detected, press enter to continue or')}"
@@ -3433,6 +3434,18 @@ class TodoUpgrade:
                     continue
                 if wait_status == "3" and database_name:
                     self.prompt_reset_stale_cow_views(database_name)
+                    continue
+                if wait_status == "4" and database_name:
+                    # Sur le VRAI terminal : un plein écran refuse de
+                    # s'ouvrir sur un stdout capturé, et retomberait sur le
+                    # rapport texte sans que rien ne distingue les deux.
+                    self.run_on_terminal(
+                        f"{PYTHON_BIN} ./"
+                        + os.path.join(
+                            PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
+                        )
+                        + f" -d {database_name} --tui"
+                    )
                     continue
                 break
 

@@ -5094,6 +5094,50 @@ TRANSLATIONS = {
         "fr": "après — et ce ne sera pas la migration.",
         "en": "after — and that is not the migration.",
     },
+    "No child fails on this copy: it drifted without": {
+        "fr": "Aucun enfant n'échoue sur cette copie : elle a dérivé sans",
+        "en": "No child fails on this copy: it drifted without",
+    },
+    "breaking anything yet.": {
+        "fr": "encore rien casser.",
+        "en": "breaking anything yet.",
+    },
+    "These children no longer find their anchor in the copy": {
+        "fr": "Ces enfants ne trouvent plus leur point d'ancrage dans la copie",
+        "en": "These children no longer find their anchor in the copy",
+    },
+    "The anchor exists in the module view": {
+        "fr": "L'ancrage existe dans la vue module",
+        "en": "The anchor exists in the module view",
+    },
+    "but not in this copy, frozen on an older version.": {
+        "fr": "mais pas dans cette copie, figée sur une version antérieure.",
+        "en": "but not in this copy, frozen on an older version.",
+    },
+    "Resetting restores the module arch; the customization the": {
+        "fr": "Réinitialiser rend l'arch du module ; la personnalisation que",
+        "en": "Resetting restores the module arch; the customization the",
+    },
+    "copy carried is saved first, and is yours to re-apply as an": {
+        "fr": "la copie portait est sauvegardée d'abord, à vous de la réappliquer en",
+        "en": "copy carried is saved first, and is yours to re-apply as an",
+    },
+    "INHERITING view with its own key.": {
+        "fr": "vue HÉRITANTE avec sa propre clé.",
+        "en": "INHERITING view with its own key.",
+    },
+    "No module view carries this key: nothing to reset": {
+        "fr": "Aucune vue module ne porte cette clé : rien sur quoi",
+        "en": "No module view carries this key: nothing to reset",
+    },
+    "onto.": {
+        "fr": "réinitialiser.",
+        "en": "onto.",
+    },
+    "Browse the differences full screen": {
+        "fr": "Parcourir les différences en plein écran",
+        "en": "Browse the differences full screen",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

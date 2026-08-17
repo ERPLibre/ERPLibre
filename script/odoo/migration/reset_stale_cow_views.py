@@ -248,8 +248,13 @@ def find_copy_by_key(views, key):
     return copy, twin
 
 
-def show_diff(module_view, cow_view):
-    """Module arch vs copy: what the copy would gain and lose on a reset."""
+def render_diff(module_view, cow_view, indent="    "):
+    """Module arch vs copy : ce qu'une réinitialisation rend et abandonne.
+
+    Rendu en texte plutôt qu'imprimé : la TUI montre exactement le même
+    diff que la ligne de commande. Deux rendus séparés dériveraient sans
+    que rien ne le signale.
+    """
     diff = difflib.unified_diff(
         module_view["arch"].splitlines(),
         cow_view["arch"].splitlines(),
@@ -257,8 +262,44 @@ def show_diff(module_view, cow_view):
         tofile=f"cow id={cow_view['id']}",
         lineterm="",
     )
-    for line in diff:
-        print(f"    {line}")
+    return "\n".join(f"{indent}{line}" for line in diff)
+
+
+def render_broken(cow_view, module_view, broken):
+    """Pourquoi ça casse : les enfants dont l'xpath ne trouve plus son point."""
+    lines = [
+        f"── id={cow_view['id']} {cow_view['key']}"
+        f" (website={cow_view.get('website_id')}) ──",
+        "",
+    ]
+    if not broken:
+        lines.append(
+            f"  {t('No child fails on this copy: it drifted without')}"
+            f" {t('breaking anything yet.')}"
+        )
+    else:
+        lines.append(
+            f"  {t('These children no longer find their anchor in the copy')}"
+            " :"
+        )
+        for child_id, expr in broken:
+            lines.append(f"      {t('child')} {child_id} : {expr}")
+    lines += [
+        "",
+        f"  {t('The anchor exists in the module view')}"
+        f" (id={module_view['id'] if module_view else '?'})"
+        f" {t('but not in this copy, frozen on an older version.')}",
+        "",
+        f"  {t('Resetting restores the module arch; the customization the')}",
+        f"  {t('copy carried is saved first, and is yours to re-apply as an')}",
+        f"  {t('INHERITING view with its own key.')}",
+    ]
+    return "\n".join(lines)
+
+
+def show_diff(module_view, cow_view):
+    """Imprimer le diff, pour la ligne de commande."""
+    print(render_diff(module_view, cow_view))
 
 
 def backup(database, cow_view, directory):
@@ -304,6 +345,11 @@ def main():
         )
     )
     parser.add_argument("-d", "--database", required=True)
+    parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="browse the differences full screen",
+    )
     parser.add_argument(
         "--list-keys",
         action="store_true",
@@ -380,6 +426,13 @@ def main():
             f" {t('reset a copy onto its module view.')}"
         )
         return 1
+
+    if config.tui and findings:
+        from reset_stale_cow_tui import run_tui
+
+        # False n'est pas un échec : l'écran a dit pourquoi, et le rapport
+        # texte ci-dessus porte déjà la même information.
+        run_tui(findings, config.database)
 
     wanted = set(config.reset)
     directory = config.backup_dir or os.path.join(
