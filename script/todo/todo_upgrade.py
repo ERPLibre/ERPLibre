@@ -13,7 +13,6 @@ import sys
 import zipfile
 from uuid import uuid4
 
-import click
 
 from script.todo import todo_file_browser
 from script.todo.version_manager import get_odoo_version
@@ -761,6 +760,61 @@ class TodoUpgrade:
             ]
         return dct_kept
 
+    AUTO_DELAY = 5
+
+    def prompt_auto_execute(self):
+        """Proposer que les invites prennent leur défaut après un délai.
+
+        Une migration pose des dizaines de questions dont la réponse est
+        presque toujours celle proposée. Les enchaîner à la main immobilise
+        quelqu'un pendant des heures pour taper Entrée.
+
+        Posée AVANT le choix de version, donc avant la première décision :
+        activée, elle vaut pour toutes les suivantes, celle-là comprise.
+        """
+        answer = (
+            input(
+                f"💬 {t('Auto-run: take the default answer after')}"
+                f" {self.AUTO_DELAY} {t('seconds?')} (y/N) : "
+            )
+            .strip()
+            .lower()
+        )
+        self.auto_execute = answer == "y"
+        if self.auto_execute:
+            print(
+                f"⏱ {t('Auto-run on: each prompt waits')}"
+                f" {self.AUTO_DELAY} {t('seconds, then takes its default.')}"
+            )
+
+    def ask(self, prompt, default=""):
+        """Lire une réponse ; en mode auto, rendre le défaut après le délai.
+
+        `select` plutôt qu'un fil ou une alarme : on veut savoir si quelque
+        chose est LISIBLE, et rendre la main sinon. Un fil laisserait un
+        `input()` bloqué derrière lui, qui volerait la frappe suivante.
+        """
+        if not getattr(self, "auto_execute", False):
+            return input(prompt)
+        import select
+
+        sys.stdout.write(prompt)
+        sys.stdout.flush()
+        try:
+            ready, _, _ = select.select([sys.stdin], [], [], self.AUTO_DELAY)
+        except (OSError, ValueError):
+            # stdin n'est pas sélectionnable : on ne devine pas, on demande.
+            return input("")
+        if ready:
+            answer = sys.stdin.readline().rstrip("\n")
+            # Une réponse VIDE vaut « prends le défaut » : c'est tout le
+            # propos du mode auto. Un stdin fermé — exécution non
+            # interactive — est lisible tout de suite et rend justement
+            # une ligne vide ; sans ceci, le défaut ne servirait jamais là.
+            return answer or default
+        print(f" ⏱ → {default or t('(default)')}")
+        return default
+
     def ask_gate(self, prompt):
         """Une invite d'attente, avec une porte de sortie vers l'arrière.
 
@@ -771,7 +825,7 @@ class TodoUpgrade:
         il rembobine l'état, l'écrit, et s'arrête en disant quoi relancer.
         """
         while True:
-            answer = input(prompt)
+            answer = self.ask(prompt)
             if (answer or "").strip().lower() != "b":
                 return answer
             if self.rewind_to_chosen_step():
@@ -1161,6 +1215,7 @@ class TodoUpgrade:
         # TODO Redeploy new production after upgrade
         # 2 upgrades version = 5 environnement. 0-prod init, 1-dev init, 2-dev01, 3-dev02, 4-prod final
         print(t("Welcome to the Odoo database upgrade with ERPLibre") + " 🤖")
+        self.prompt_auto_execute()
         self.lst_command_executed = []
         self.dct_module_per_version = {}
         self.dct_module_per_dct_version_path = {}
@@ -1197,7 +1252,7 @@ class TodoUpgrade:
             print("")
             print(t("Select the zip file of your database backup."))
 
-            self.file_path = input(
+            self.file_path = self.ask(
                 f"💬 {t('Give the path of the file, or empty to use a file')}"
                 f" {t('browser, or type')} 'remote'"
                 f" {t('to download from production')} : "
@@ -1283,14 +1338,17 @@ class TodoUpgrade:
             odoo_target_version = None
             cmd_no_found = True
             while cmd_no_found:
-                # click affiche « [6] » et rend « 6 » sur Entrée : le chemin
-                # normal traite la réponse, sans cas particulier à tenir
-                # d'accord avec lui.
-                status = click.prompt(
-                    help_info,
+                # `self.ask` et non click.prompt : c'est lui qui porte le
+                # mode auto, et click ne sait pas rendre la main après un
+                # délai — l'auto se serait arrêté à la première question.
+                # La marque « [6] » est donc posée à la main.
+                marque = f" [{default_index}]" if default_index else ""
+                status = self.ask(
+                    f"{help_info}{marque}: ",
                     default=str(default_index) if default_index else "",
-                    show_default=bool(default_index),
                 )
+                if not str(status).strip() and default_index:
+                    status = str(default_index)
                 try:
                     int_cmd = int(status)
                     if 0 < int_cmd <= len(lst_odoo_version):
@@ -1353,7 +1411,7 @@ class TodoUpgrade:
                 iter_range_version = odoo_version_to_install.replace(
                     "odoo", ""
                 ).replace(".0", "")
-                want_continue = input(
+                want_continue = self.ask(
                     f"💬 {t('Would you like to install')}"
                     f" '{odoo_version_to_install}' (y/Y) : "
                 )
@@ -1426,7 +1484,7 @@ class TodoUpgrade:
                 if lst_module_duplicate:
                     print(f"{t('Duplicate module')} :")
                     print(lst_module_duplicate)
-                want_continue = input(
+                want_continue = self.ask(
                     f"💬 {t('Missing or duplicate module detected at init,')}"
                     f" {t('do you want to continue?')} (Y/N) : "
                 )
@@ -1453,7 +1511,7 @@ class TodoUpgrade:
         database_name = self.dct_progression.get("config_database_name")
         if not database_name:
             database_name = (
-                input(
+                self.ask(
                     f"💬 {t('Which database name do you want to work with?')}"
                     f" {t('Default')} ({default_database_name}) : "
                 ).strip()
@@ -1492,7 +1550,7 @@ class TodoUpgrade:
             if not shutil._samefile(self.file_path, image_db_file_path):
                 do_copy = False
                 if os.path.exists(image_db_file_path):
-                    status_overwrite_image_db = input(
+                    status_overwrite_image_db = self.ask(
                         f"{str_will_copy}, "
                         f"{t('a file already exists, do you want to')}"
                         f" {t('continue?')} (y/Y) : "
@@ -1528,7 +1586,7 @@ class TodoUpgrade:
                 f" {t('neutralized by Odoo if supported)')}"
             )
             wait_continue = (
-                input(
+                self.ask(
                     f"💬 {t('Do you need to upgrade before neutralizing the')}"
                     f" {t('database? Press enter to ignore')} : "
                 )
@@ -1731,7 +1789,7 @@ class TodoUpgrade:
 
             if status.lower().strip() == "y":
                 self.todo.prompt_execute_selenium_and_run_db(database_name)
-                status = input(
+                status = self.ask(
                     f"💬 {t('Press enter to continue step 3')} : "
                 ).strip()
 
@@ -2060,7 +2118,7 @@ class TodoUpgrade:
                 if lst_module_duplicate:
                     print(f"{t('Duplicate module in Odoo')}{next_version} : ")
                     print(lst_module_duplicate)
-                    input(
+                    self.ask(
                         f"💬 {t('Duplicate module error detected, handle it')}"
                         f" {t('manually then press enter to continue.')}"
                     )
@@ -2085,7 +2143,7 @@ class TodoUpgrade:
                     print(f"[e] {t('Add an extra custom one')}")
 
                     want_continue = (
-                        input(
+                        self.ask(
                             f"💬 {t('List the missing modules to delete,')}"
                             f" {t('separated by commas. The others will be')}"
                             f" {t('migrated')} : "
@@ -2149,7 +2207,7 @@ class TodoUpgrade:
 
                         if "e" in lst_want_continue:
                             want_continue = (
-                                input(
+                                self.ask(
                                     f"💬 {t('List the module names to delete,')}"
                                     f" {t('separated by commas')} : "
                                 )
@@ -2577,7 +2635,7 @@ class TodoUpgrade:
                 )
 
                 status = (
-                    input(
+                    self.ask(
                         f"💬 {t('Do you want to upgrade all')}"
                         f"{str_wait_next_version} ?"
                         f" {t('Press y/Y to upgrade all addons of the')}"
@@ -2610,7 +2668,7 @@ class TodoUpgrade:
 
                 print(f"[y] {t('Open the server with Selenium')}")
                 status = (
-                    input(
+                    self.ask(
                         f"💬 {t('Do you want to test this upgrade? Choose')}"
                         f" {t('or press enter to ignore it')} : "
                     )
@@ -2622,7 +2680,7 @@ class TodoUpgrade:
                     self.todo.prompt_execute_selenium_and_run_db(
                         database_name_upgrade
                     )
-                    status = input(
+                    status = self.ask(
                         f"💬 {t('Press enter to continue')} 4.{index} : "
                     ).strip()
             else:
@@ -2632,7 +2690,7 @@ class TodoUpgrade:
                 )
 
         #
-        # waiting_input = input("💬 Press any keyboard key to continue...")
+        # waiting_input = self.ask("💬 Press any keyboard key to continue...")
         print("")
 
         msg = "5 - Cleaning up database after upgrade"
@@ -2643,7 +2701,7 @@ class TodoUpgrade:
             f"✨ {t('Re-update i18n, purge the data and the tables')}"
             f" ({t('except mail_test and mail_test_full')})"
         )
-        # waiting_input = input("💬print Press any keyboard key to continue...")
+        # waiting_input = self.ask("💬print Press any keyboard key to continue...")
         msg = "6 - Migration finished"
         self.print_step(msg)
         self.add_comment_progression(msg)
@@ -2651,7 +2709,7 @@ class TodoUpgrade:
         cmd_backup_template = f"./odoo_bin.sh db --backup --database {database_name_upgrade} --restore_image"
         cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
         print(f"✨ {t('A backup can be created')} :\n{cmd_backup}")
-        status = input(
+        status = self.ask(
             f"💬 {t('Press y/Y or type filename.zip to export, or')}"
             f" {t('enter to continue')} : "
         ).strip()
@@ -2660,7 +2718,7 @@ class TodoUpgrade:
                 cmd_backup = f"{cmd_backup_template} {status}"
             self.todo_upgrade_execute(cmd_backup)
 
-        status = input(f"💬 {t('Test the migration, press y/Y')} : ")
+        status = self.ask(f"💬 {t('Test the migration, press y/Y')} : ")
         if status.lower().strip() == "y":
             self.todo.prompt_execute_selenium_and_run_db(database_name_upgrade)
 

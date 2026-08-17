@@ -5246,6 +5246,26 @@ TRANSLATIONS = {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
     },
+    "Auto-run: take the default answer after": {
+        "fr": "Auto-exécution : prendre la réponse par défaut après",
+        "en": "Auto-run: take the default answer after",
+    },
+    "seconds?": {
+        "fr": "secondes ?",
+        "en": "seconds?",
+    },
+    "Auto-run on: each prompt waits": {
+        "fr": "Auto-exécution activée : chaque invite attend",
+        "en": "Auto-run on: each prompt waits",
+    },
+    "seconds, then takes its default.": {
+        "fr": "secondes, puis prend son défaut.",
+        "en": "seconds, then takes its default.",
+    },
+    "(default)": {
+        "fr": "(défaut)",
+        "en": "(default)",
+    },
     "Nothing to decide yet": {
         "fr": "Rien à décider pour l'instant",
         "en": "Nothing to decide yet",

@@ -29,9 +29,13 @@ from script.todo.todo_upgrade import TodoUpgrade  # noqa: E402
 
 
 def prompt_call(source):
-    """Le voisinage de l'appel à click.prompt, où se joue le défaut."""
-    start = source.index("click.prompt(")
-    return source[start : start + 240]
+    """Le voisinage de l'invite de version, où se joue le défaut.
+
+    Ce n'est plus click.prompt : lui ne sait pas rendre la main après un
+    délai, et le mode auto se serait arrêté à la première question.
+    """
+    start = source.index("Which version do you want to upgrade to?")
+    return source[start : start + 1400]
 
 
 class TestTheSource(unittest.TestCase):
@@ -44,11 +48,17 @@ class TestTheSource(unittest.TestCase):
     def source(self):
         return inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
 
-    def test_click_receives_a_default(self):
-        # Sans lui, Entrée n'atteint aucun code : click redemande, muet.
+    def test_the_prompt_receives_a_default(self):
         window = prompt_call(self.source())
         self.assertIn("default=", window)
         self.assertIn("default_index", window)
+
+    def test_it_goes_through_the_auto_aware_reader(self):
+        # `self.ask` porte le mode auto ; click.prompt bloquerait pour
+        # toujours sur une invite que personne ne vient servir.
+        window = prompt_call(self.source())
+        self.assertIn("self.ask(", window)
+        self.assertNotIn("click.prompt(", window)
 
     def test_the_default_is_not_written_by_hand(self):
         window = prompt_call(self.source())
@@ -63,10 +73,11 @@ class TestTheSource(unittest.TestCase):
         self.assertIn("range(len(lst_odoo_version))", source)
 
     def test_an_empty_catalogue_shows_no_default(self):
-        # show_default sur une chaîne vide afficherait « [] », qui se lit
-        # comme un choix possible.
+        # Afficher « [] » se lirait comme un choix possible : la marque
+        # n'est posée que s'il y a vraiment un défaut.
         self.assertIn(
-            "show_default=bool(default_index)", prompt_call(self.source())
+            'marque = f" [{default_index}]" if default_index else ""',
+            prompt_call(self.source()),
         )
 
     def test_the_question_announces_the_version_not_the_rank(self):
@@ -75,10 +86,12 @@ class TestTheSource(unittest.TestCase):
         self.assertIn("Enter =", source)
         self.assertIn("default_version", source)
 
-    def test_no_special_case_survives(self):
-        # click rendant « 6 », le chemin normal suffit. Un cas particulier
-        # de plus serait un second comportement à maintenir.
-        self.assertNotIn("if not str(status).strip()", self.source())
+    def test_an_empty_answer_still_takes_the_default(self):
+        # click rendait « 6 » lui-même ; `self.ask` ne le fait qu'en mode
+        # AUTO. Hors mode auto, Entrée rend une chaîne vide, et sans ce cas
+        # le défaut ne servirait que la moitié du temps.
+        window = prompt_call(self.source())
+        self.assertIn("if not str(status).strip()", window)
 
 
 class TestTheRankItself(unittest.TestCase):
