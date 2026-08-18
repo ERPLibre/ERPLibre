@@ -1062,8 +1062,9 @@ class TodoUpgrade:
                 cmd = f"./script/code/git_commit_migration_addons_path.py --path {commit_path} --odoo_version {next_version}.0"
                 self.todo_upgrade_execute(cmd)
             print(set_path_migrate_addons)
-            status = input(
-                f"💬 Please validate git commit on repos, press to continue : "
+            status = self.ask(
+                f"💬 {t('Please validate git commit on repos, press to')}"
+                f" {t('continue')} : "
             ).strip()
 
     def internal_module_upgrade(
@@ -1111,7 +1112,9 @@ class TodoUpgrade:
                 print("List of path with migrate code :")
                 print(lst_path_git_clone_migrate)
                 print("ℹ To show repo status :\nmake repo_show_status")
-                input("💬 Check migration code, press to continue : ")
+                self.ask(
+                    f"💬 {t('Check the migrated code, press to continue')} : "
+                )
 
             # source_module_path = dct_module_result.get(
             #     "source_module_path"
@@ -1147,8 +1150,9 @@ class TodoUpgrade:
 
         if next_version in [18]:
             # TODO need odoo 18, validate python version without switch
-            status = input(
-                f"💬 Please validate repo is ready to run upgrade views_migration_18, press to continue : "
+            status = self.ask(
+                f"💬 {t('Please validate the repo is ready to run')}"
+                f" views_migration_18, {t('press to continue')} : "
             ).strip()
             # Apply modification with views_migration_18
             has_cmd = False
@@ -1171,11 +1175,15 @@ class TodoUpgrade:
                 print("List of module with migration 18 :")
                 print(lst_module_to_migrate_all)
                 print("ℹ To show repo status :\nmake repo_show_status")
-                input("💬 Check migration 18 code, press to continue : ")
+                self.ask(
+                    f"💬 {t('Check the migrated code, press to continue')}"
+                    " (18) : "
+                )
 
         if next_version == 17:
-            status = input(
-                f"💬 Please validate repo is ready to run upgrade views_migration_17, press to continue : "
+            status = self.ask(
+                f"💬 {t('Please validate the repo is ready to run')}"
+                f" views_migration_17, {t('press to continue')} : "
             ).strip()
             # Apply modification with views_migration_17
             has_cmd = False
@@ -1202,7 +1210,10 @@ class TodoUpgrade:
                 print("List of module with migration 17 :")
                 print(lst_module_to_migrate_all)
                 print("ℹ To show repo status :\nmake repo_show_status")
-                input("💬 Check migration 17 code, press to continue : ")
+                self.ask(
+                    f"💬 {t('Check the migrated code, press to continue')}"
+                    " (17) : "
+                )
 
     def execute_odoo_upgrade(self):
         # TODO update dev environment for git project

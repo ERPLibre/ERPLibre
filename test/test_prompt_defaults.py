@@ -174,6 +174,9 @@ class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
 
     METHODES = (
         "execute_odoo_upgrade",
+        # Appelée DEPUIS execute_odoo_upgrade : c'est par elle que le
+        # « validez que le dépôt est prêt » arrivait, et il bloquait.
+        "internal_module_upgrade",
         "prompt_cow_prediction",
         "prompt_uninstall_theme",
         "prompt_reset_stale_cow_views",
@@ -208,6 +211,40 @@ class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
             if self.bare_inputs(nom)
         }
         self.assertEqual(coupables, {}, "invites hors du mode auto")
+
+
+class TestWhereBlockingIsStillRight(unittest.TestCase):
+    """Tout ne doit pas prendre un défaut : certaines questions n'en ont pas.
+
+    `execute_module_upgrade` demande un nom de module, un chemin, une
+    version de départ. Rendre « » au bout de cinq secondes n'y serait pas
+    une commodité mais une réponse fausse. Ces invites restent bloquantes,
+    et c'est correct — à une condition, vérifiée ici : qu'aucune migration
+    automatique ne passe par elles.
+    """
+
+    def test_the_module_menu_is_not_on_the_automatic_path(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        self.assertNotIn("execute_module_upgrade", source)
+
+    def test_but_the_step_it_shares_IS(self):
+        # `internal_module_upgrade` est appelée des DEUX côtés : par le
+        # menu et par la migration. C'est ce qui la rend obligatoire.
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        self.assertIn("internal_module_upgrade", source)
+
+    def test_its_prompts_ask_for_values_with_no_default(self):
+        # Si l'un d'eux devenait un oui/non, il faudrait le faire passer
+        # par le lecteur temporisé comme les autres.
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.execute_module_upgrade)
+        for question in ("Module name", "Path", "From odoo version"):
+            self.assertIn(question, source)
 
 
 class TestWhatEnterDoesIsWritten(unittest.TestCase):

@@ -5482,6 +5482,22 @@ TRANSLATIONS = {
         "fr": "Trop de tours sur cette invite : on passe.",
         "en": "Too many turns on this prompt: moving on.",
     },
+    "Please validate git commit on repos, press to": {
+        "fr": "Veuillez valider les commits sur les dépôts, appuyez pour",
+        "en": "Please validate git commit on repos, press to",
+    },
+    "Check the migrated code, press to continue": {
+        "fr": "Vérifiez le code migré, appuyez pour continuer",
+        "en": "Check the migrated code, press to continue",
+    },
+    "Please validate the repo is ready to run": {
+        "fr": "Veuillez valider que le dépôt est prêt pour",
+        "en": "Please validate the repo is ready to run",
+    },
+    "press to continue": {
+        "fr": "appuyez pour continuer",
+        "en": "press to continue",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
