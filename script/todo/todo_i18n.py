@@ -7627,6 +7627,10 @@ TRANSLATIONS = {
         "fr": "Android Studio : Google ne publie que du x86_64",
         "en": "Android Studio: Google publishes x86_64 only",
     },
+    "SDK shared through ANDROID_HOME:": {
+        "fr": "SDK partagé via ANDROID_HOME :",
+        "en": "SDK shared through ANDROID_HOME:",
+    },
     "Android Studio installed:": {
         "fr": "Android Studio installé :",
         "en": "Android Studio installed:",

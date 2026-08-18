@@ -5452,8 +5452,22 @@ class TODO:
                 "/opt/android-studio/bin/studio.svg",
                 "Development;IDE;",
             )
+            +
+            # Le SDK partagé, vu depuis la SESSION graphique. install-android.sh
+            # écrit ses exports dans ~/.bashrc, que GNOME ne lit pas : Android
+            # Studio lancé depuis le menu ne verrait donc pas le SDK et
+            # proposerait d'en télécharger un second. environment.d est le
+            # canal que la session utilisateur lit vraiment.
+            "mkdir -p ~/.config/environment.d && "
+            "printf 'ANDROID_HOME=%s/android\\nANDROID_SDK_ROOT=%s/android\\n'"
+            ' "$HOME" "$HOME" '
+            "> ~/.config/environment.d/10-erplibre-android.conf; "
+            # repositories.cfg absent, et l'assistant de première ouverture
+            # s'arrête sur une erreur au lieu de proposer quoi que ce soit.
+            "mkdir -p ~/.android && touch ~/.android/repositories.cfg; "
             + f'echo "   {t("Android Studio installed:")} /opt/android-studio '
             f'({t("command")} studio / android-studio)"; '
+            f'echo "   {t("SDK shared through ANDROID_HOME:")} $HOME/android"; '
             "grep -q vmx /proc/cpuinfo 2>/dev/null "
             "|| grep -q svm /proc/cpuinfo 2>/dev/null "
             f'|| echo "   {t("no nested KVM: the emulator will not run")}"; '
@@ -6267,7 +6281,24 @@ class TODO:
     # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
     # est un calcul automatique et se borne aux cœurs de l'hôte.
     _QEMU_CPU_PRESETS = (
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        24,
+        32,
     )
 
     @staticmethod

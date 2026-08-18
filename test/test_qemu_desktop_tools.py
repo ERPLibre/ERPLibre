@@ -229,6 +229,17 @@ class TestToolDiscoverability(unittest.TestCase):
         self.assertIn("/usr/local/bin/studio;", cmd)
         self.assertIn("/usr/local/bin/android-studio;", cmd)
 
+    def test_the_sdk_is_shared_with_the_desktop_session(self):
+        """install-android.sh écrit ses exports dans ~/.bashrc, que GNOME ne
+        lit pas : sans environment.d, Android Studio lancé depuis le menu
+        proposerait de télécharger un SECOND SDK."""
+        cmd = self.todo._qemu_android_studio_remote_cmd()
+        self.assertIn(".config/environment.d", cmd)
+        self.assertIn("ANDROID_HOME=", cmd)
+        # Le même emplacement que celui où la compilation mobile l'installe.
+        self.assertIn("/android", cmd)
+        self.assertIn("ANDROID_HOME", self.todo._qemu_mobile_remote_cmd())
+
     def test_the_log_says_where_it_landed(self):
         pycharm = self.todo._qemu_pycharm_remote_cmd()
         android = self.todo._qemu_android_studio_remote_cmd()
