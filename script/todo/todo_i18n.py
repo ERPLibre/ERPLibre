@@ -5242,6 +5242,50 @@ TRANSLATIONS = {
         "fr": "rien n'a été modifié",
         "en": "nothing was changed",
     },
+    "Enter = 1": {
+        "fr": "Entrée = 1",
+        "en": "Enter = 1",
+    },
+    "Enter = all, n = none": {
+        "fr": "Entrée = tous, n = aucun",
+        "en": "Enter = all, n = none",
+    },
+    "Enter = delete, after saving them": {
+        "fr": "Entrée = effacer, après les avoir sauvegardés",
+        "en": "Enter = delete, after saving them",
+    },
+    "Enter = neutralize now, reversible": {
+        "fr": "Entrée = neutraliser maintenant, réversible",
+        "en": "Enter = neutralize now, reversible",
+    },
+    "Enter = reset them onto the module file": {
+        "fr": "Entrée = les réinitialiser sur le fichier du module",
+        "en": "Enter = reset them onto the module file",
+    },
+    "Enter upgrades all addons of the": {
+        "fr": "Entrée met à jour tous les modules de la",
+        "en": "Enter upgrades all addons of the",
+    },
+    "Open it at EVERY version bump, stop asking": {
+        "fr": "L'ouvrir à CHAQUE palier de version, ne plus demander",
+        "en": "Open it at EVERY version bump, stop asking",
+    },
+    "Testing every bump, as chosen earlier.": {
+        "fr": "Test à chaque palier, comme choisi plus tôt.",
+        "en": "Testing every bump, as chosen earlier.",
+    },
+    "numbers separated by commas, Enter = all, n =": {
+        "fr": "numéros séparés par des virgules, Entrée = toutes, n =",
+        "en": "numbers separated by commas, Enter = all, n =",
+    },
+    "decide at the version bump": {
+        "fr": "décider au palier de version",
+        "en": "decide at the version bump",
+    },
+    "keep": {
+        "fr": "garder",
+        "en": "keep",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

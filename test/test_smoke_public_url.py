@@ -414,14 +414,21 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.write_config = lambda: None
         lst_cmd = []
         upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt: answer
+        # Le doublon HONORE le défaut, comme le vrai `ask_gate`.
+        upgrade.ask_gate = lambda prompt, default="": answer or default
         upgrade.prompt_smoke_public_url("db_upgrade_13")
         return lst_cmd
 
-    def test_the_default_runs_nothing(self):
-        # Cela démarre un serveur et peut durer : pas à chaque palier sans
-        # qu'on l'ait demandé.
-        self.assertEqual(self.run_prompt(""), [])
+    def test_the_default_runs_it(self):
+        # Une page cassée qu'on ne demande pas reste cassée. Le coût est
+        # quelques minutes de serveur ; le prix de l'ignorer est de
+        # découvrir le 500 six paliers plus loin.
+        lst_cmd = self.run_prompt("")
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn("smoke_public_url.py", lst_cmd[0])
+
+    def test_saying_no_still_skips_it(self):
+        self.assertEqual(self.run_prompt("n"), [])
 
     def test_yes_runs_it_on_the_upgraded_database(self):
         lst_cmd = self.run_prompt("y")
@@ -476,7 +483,7 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         upgrade.run_on_terminal = lambda cmd: 0
-        upgrade.ask_gate = lambda prompt: ""
+        upgrade.ask_gate = lambda prompt, default="": "n"
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             upgrade.prompt_smoke_public_url("db", baseline=True)

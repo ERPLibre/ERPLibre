@@ -577,8 +577,8 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         self.assertIn("run_on_terminal", source)
         self.assertNotIn("todo_upgrade_execute", source)
 
-    def test_the_default_cleans_nothing(self):
-        # Cela ÉCRIT en base : ce n'est pas à la migration de le décider.
+    def test_saying_no_cleans_nothing(self):
+        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
         import contextlib
         import io
 
@@ -595,10 +595,31 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.write_config = lambda: None
         lst_cmd = []
         upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt: ""
+        upgrade.ask_gate = lambda prompt, default="": "n" or default
         with contextlib.redirect_stdout(io.StringIO()):
             upgrade.prompt_database_cleanup("db")
         self.assertEqual(lst_cmd, [])
+
+    def test_the_default_cleans(self):
+        # Entrée nettoie : le nettoyage précède les tests de fumée, et une
+        # base encombrée de tables mortes fait échouer des pages pour une
+        # raison qui n'a rien à voir avec la migration.
+        import contextlib
+        import io
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        upgrade = TodoUpgrade.__new__(TodoUpgrade)
+        upgrade.dct_progression = {}
+        upgrade.lst_command_executed = []
+        upgrade.write_config = lambda: None
+        lst_cmd = []
+        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.ask_gate = lambda prompt, default="": "" or default
+        with contextlib.redirect_stdout(io.StringIO()):
+            upgrade.prompt_database_cleanup("db")
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn("database_cleanup.py", lst_cmd[0])
 
     def test_yes_runs_it_on_that_database(self):
         from script.todo.todo_upgrade import TodoUpgrade
@@ -609,7 +630,7 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.write_config = lambda: None
         lst_cmd = []
         upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt: "y"
+        upgrade.ask_gate = lambda prompt, default="": "y" or default
         upgrade.prompt_database_cleanup("db_upgrade_18")
         self.assertEqual(len(lst_cmd), 1)
         self.assertIn("database_cleanup.py", lst_cmd[0])

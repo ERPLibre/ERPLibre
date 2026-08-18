@@ -37,6 +37,12 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+try:
+    from script.todo import auto_ask
+except Exception:  # pragma: no cover - repli si le pilote est absent
+    auto_ask = None
+
+
 def can_ask():
     """Peut-on poser une question ICI ?
 
@@ -199,14 +205,32 @@ def delete_attachments(database, lst_row, config_path="./config.conf"):
     return done.returncode, done.stdout + done.stderr
 
 
-def prompt(database, theme, attachments, views, config_path, ask=input):
-    """Garder ou effacer. « Garder » par défaut, et la sauvegarde d'abord."""
+DEFAULT_ANSWER = "d"
+
+
+def prompt(database, theme, attachments, views, config_path, ask=None):
+    """Effacer ou garder. Effacer par défaut, et la sauvegarde D'ABORD.
+
+    Ce qui rend ce défaut tenable, c'est l'ordre : le contenu part dans un
+    fichier avant que la base ne soit touchée. Sans cette sauvegarde, le
+    défaut aurait dû rester « garder » — on ne fait pas d'une décision
+    irréversible la réponse que l'on obtient en ne répondant pas.
+    """
     if not attachments:
         return False
+    if ask is None:
+        # Lancé à part par la migration : sans lecteur temporisé, cette
+        # question arrêtait net une exécution automatique.
+        ask = (
+            auto_ask.make_ask(DEFAULT_ANSWER)
+            if auto_ask
+            else (lambda prompt="": input(prompt) or DEFAULT_ANSWER)
+        )
     answer = (
         ask(
             f"💬 {t('Delete these leftovers, or keep them?')}"
-            f" ({t('Enter = keep')}, d = {t('delete, after saving them')}) : "
+            f" ({t('Enter = delete, after saving them')},"
+            f" k = {t('keep')}) : "
         )
         .strip()
         .lower()

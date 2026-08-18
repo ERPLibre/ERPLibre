@@ -54,6 +54,12 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+try:
+    from script.todo import auto_ask
+except Exception:  # pragma: no cover - repli si le pilote est absent
+    auto_ask = None
+
+
 def can_ask():
     """Peut-on poser une question ICI ?
 
@@ -367,7 +373,10 @@ def apply_reset(database, lst_key):
     return done.returncode, done.stdout + done.stderr
 
 
-def prompt(database, lst_failure, lst_key, ask=input):
+DEFAULT_ANSWER = "a"
+
+
+def prompt(database, lst_failure, lst_key, ask=None):
     """Proposer de corriger, puis dire ce qu'il reste. Rend les clés traitées.
 
     Détecter sans offrir le geste, c'est laisser relever des identifiants
@@ -377,6 +386,14 @@ def prompt(database, lst_failure, lst_key, ask=input):
     if not lst_key:
         print(f"ℹ -> {t('No parent view named: nothing to offer.')}")
         return []
+    if ask is None:
+        # Lancé à part par la migration : sans lecteur temporisé, cette
+        # question arrêtait net une exécution automatique.
+        ask = (
+            auto_ask.make_ask(DEFAULT_ANSWER)
+            if auto_ask
+            else (lambda prompt="": input(prompt) or DEFAULT_ANSWER)
+        )
     print(f"\n✨ {t('Copies to reset onto their module view')} :")
     for index, key in enumerate(lst_key, start=1):
         print(f"   [{index}] {key}")
@@ -384,13 +401,15 @@ def prompt(database, lst_failure, lst_key, ask=input):
     answer = (
         ask(
             f"💬 {t('Which one(s) to reset?')}"
-            f" ({t('numbers separated by commas, a = all, empty =')}"
+            f" ({t('numbers separated by commas, Enter = all, n =')}"
             f" {t('nothing')}) : "
         )
         .strip()
         .lower()
     )
-    if not answer:
+    # « n », et non plus le vide : Entrée vaut « toutes » maintenant, et une
+    # sortie sans mot pour dire non serait une sortie sans issue.
+    if not answer or answer == "n":
         print(f"ℹ -> {t('Kept. Nothing was reset.')}")
         return []
     if answer == "a":

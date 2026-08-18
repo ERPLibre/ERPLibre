@@ -45,7 +45,9 @@ class PromptCase(unittest.TestCase):
         upgrade.stale_cow_keys = lambda db: lst_key
         lst_cmd = []
         upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
-        upgrade.ask_gate = lambda prompt: answer
+        # Le doublon HONORE le défaut, comme le vrai `ask_gate` : sinon
+        # les tests de défaut ne testeraient que le doublon.
+        upgrade.ask_gate = lambda prompt, default="": answer or default
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             upgrade.prompt_reset_stale_cow_views("db")
@@ -88,10 +90,17 @@ class TestWhatEachAnswerRuns(PromptCase):
         lst_cmd, _ = self.run_prompt("a")
         self.assertIn("--reset all", lst_cmd[0])
 
-    def test_empty_resets_nothing(self):
-        # Par défaut on ne touche à rien : une copie porte parfois une vraie
-        # personnalisation, et la réinitialiser la jette.
-        lst_cmd, text = self.run_prompt("")
+    def test_enter_resets_them_all(self):
+        # Entrée les prend TOUTES : elles ne sont dans cette liste que
+        # parce qu'un enfant n'y trouve plus son ancrage, et l'outil sauve
+        # ce que chaque copie portait avant de la réinitialiser.
+        lst_cmd, _text = self.run_prompt("")
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn("--reset all", lst_cmd[0])
+
+    def test_n_resets_nothing(self):
+        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
+        lst_cmd, text = self.run_prompt("n")
         self.assertEqual(lst_cmd, [])
         self.assertIn("Kept", text)
 

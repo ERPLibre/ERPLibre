@@ -64,6 +64,12 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+try:
+    from script.todo import auto_ask
+except Exception:  # pragma: no cover - repli si le pilote est absent
+    auto_ask = None
+
+
 def can_ask():
     """Peut-on poser une question ICI ?
 
@@ -471,27 +477,41 @@ def render(lst_finding, database, version_dir):
     return "\n".join(lines) + "\n"
 
 
-def prompt(lst_finding, database, config_path="./config.conf", ask=input):
+def prompt(lst_finding, database, config_path="./config.conf", ask=None):
     """Montrer, puis proposer de corriger. Rend True si l'on a écrit.
 
     Répondre « oui, réinitialise » sans avoir vu l'écart, c'est accepter de
     perdre on ne sait quoi. L'invite revient donc après chaque lecture :
     regarder ne répond pas à la question.
+
+    Le défaut suit ce que le checkout SAIT faire : réinitialiser quand
+    `reset_asset` existe, rien du tout avant la 13.0. Un défaut « a » là où
+    la remise à zéro n'existe pas ferait boucler l'invite sur elle-même.
     """
     odoo_dir = running_odoo_dir()
     can_reset = reset_supported(odoo_dir)
     if not can_reset:
         print(too_early_message(odoo_dir, database))
+    defaut = "a" if can_reset else "n"
+    if ask is None:
+        ask = (
+            auto_ask.make_ask(defaut)
+            if auto_ask
+            else (lambda prompt="": input(prompt) or defaut)
+        )
     while True:
         choix = (
-            f" a = {t('reset them onto the module file')}" if can_reset else ""
+            f" {t('Enter = reset them onto the module file')},"
+            if can_reset
+            else ""
         )
         answer = (
             ask(
                 f"💬 {t('What do you want to do with these customizations?')}"
-                f" ({t('Enter = nothing')},"
+                f" ({choix}"
                 f" v = {t('what the copy changed')},"
-                f" w = {t('full screen')}{choix}) : "
+                f" w = {t('full screen')},"
+                f" n = {t('nothing')}) : "
             )
             .strip()
             .lower()

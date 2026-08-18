@@ -37,8 +37,36 @@ def upgrade(auto, delay=0.2):
     return obj
 
 
-class TestTheTimedRead(unittest.TestCase):
+class EnvCase(unittest.TestCase):
+    """Rendre l'environnement comme on l'a trouvé.
+
+    `ask` pose le mode auto dans l'environnement — c'est ainsi qu'il atteint
+    les outils lancés à part. Le laisser posé le ferait fuir dans TOUTE la
+    suite : une invite sans rapport prendrait son défaut au lieu d'attendre,
+    et le test qui échouerait ne serait pas celui qui a fauté.
+    """
+
     def setUp(self):
+        from script.todo import auto_ask
+
+        avant = {
+            key: os.environ.get(key)
+            for key in (auto_ask.ENV_ENABLED, auto_ask.ENV_DELAY)
+        }
+
+        def remettre():
+            for key, value in avant.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+        self.addCleanup(remettre)
+
+
+class TestTheTimedRead(EnvCase):
+    def setUp(self):
+        super().setUp()
         self.original = sys.stdin
         self.addCleanup(setattr, sys, "stdin", self.original)
 
@@ -129,8 +157,9 @@ class TestTheTimedRead(unittest.TestCase):
         self.assertEqual(got, "demandé")
 
 
-class TestTheQuestionThatEnablesIt(unittest.TestCase):
+class TestTheQuestionThatEnablesIt(EnvCase):
     def setUp(self):
+        super().setUp()
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
         )
@@ -165,6 +194,23 @@ class TestTheQuestionThatEnablesIt(unittest.TestCase):
 
     def test_the_delay_is_five_seconds(self):
         self.assertEqual(TodoUpgrade.AUTO_DELAY, 5)
+
+    def test_yes_also_arms_the_tools_launched_apart(self):
+        # La moitié des invites d'une migration sont posées par d'autres
+        # processus. Sans cette variable, ils attendraient une frappe qui
+        # ne vient jamais — et l'automatisation s'arrêterait là, en
+        # silence, puisque la question a bien été posée.
+        from script.todo import auto_ask
+
+        self.answer("y")
+        self.assertEqual(os.environ.get(auto_ask.ENV_ENABLED), "1")
+
+    def test_no_leaves_nothing_behind(self):
+        from script.todo import auto_ask
+
+        os.environ[auto_ask.ENV_ENABLED] = "1"
+        self.answer("")
+        self.assertNotIn(auto_ask.ENV_ENABLED, os.environ)
 
 
 class TestWhereItIsAsked(unittest.TestCase):

@@ -60,24 +60,33 @@ class PromptCase(unittest.TestCase):
 
 
 class TestWhatEachAnswerRuns(PromptCase):
-    def test_enter_runs_nothing_and_says_so(self):
-        lst_cmd, text = self.run_prompt([""])
+    def test_enter_neutralizes_now(self):
+        # Entrée neutralise : c'est réversible — l'arch est conservée — et
+        # ce qu'on neutralise ici vaut pour TOUS les paliers, au lieu
+        # d'attendre des dizaines de minutes pour redécider à chaque fois.
+        lst_cmd, _text = self.run_prompt([""])
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn("--apply", lst_cmd[0])
+
+    def test_n_runs_nothing_and_says_so(self):
+        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
+        lst_cmd, text = self.run_prompt(["n"])
         self.assertEqual(lst_cmd, [])
         self.assertIn("version bump", text)
 
     def test_v_shows_what_the_copies_hold(self):
-        lst_cmd, _ = self.run_prompt(["v", ""])
+        lst_cmd, _ = self.run_prompt(["v", "n"])
         self.assertEqual(len(lst_cmd), 1)
         self.assertIn("cow_drift.py", lst_cmd[0])
         self.assertIn("-d db -t odoo13.0", lst_cmd[0])
         self.assertNotIn("--shape", lst_cmd[0])
 
     def test_s_shows_why_it_breaks(self):
-        lst_cmd, _ = self.run_prompt(["s", ""])
+        lst_cmd, _ = self.run_prompt(["s", "n"])
         self.assertTrue(lst_cmd[0].endswith("--shape"))
 
     def test_w_opens_the_full_screen_view(self):
-        lst_cmd, _ = self.run_prompt(["w", ""])
+        lst_cmd, _ = self.run_prompt(["w", "n"])
         self.assertTrue(lst_cmd[0].endswith("--tui"))
 
     def test_looking_does_not_answer_the_question(self):

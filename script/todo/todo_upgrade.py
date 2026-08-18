@@ -14,7 +14,7 @@ import zipfile
 from uuid import uuid4
 
 
-from script.todo import todo_file_browser
+from script.todo import auto_ask, todo_file_browser
 from script.todo.version_manager import get_odoo_version
 
 try:
@@ -781,6 +781,12 @@ class TodoUpgrade:
             .lower()
         )
         self.auto_execute = answer == "y"
+        # Dans l'ENVIRONNEMENT, car c'est le seul canal qu'un sous-processus
+        # partage avec nous : la moitié des invites d'une migration sont
+        # posées par des outils lancés à part — désinstalleur de thème,
+        # détecteur de SCSS figé — et sans cela elles attendraient une
+        # frappe qui ne vient jamais.
+        auto_ask.export(self.auto_execute, self.AUTO_DELAY)
         if self.auto_execute:
             print(
                 f"⏱ {t('Auto-run on: each prompt waits')}"
@@ -788,34 +794,20 @@ class TodoUpgrade:
             )
 
     def ask(self, prompt, default=""):
-        """Lire une réponse ; en mode auto, rendre le défaut après le délai.
+        """Lire une réponse ; rendre le défaut si rien n'arrive.
 
-        `select` plutôt qu'un fil ou une alarme : on veut savoir si quelque
-        chose est LISIBLE, et rendre la main sinon. Un fil laisserait un
-        `input()` bloqué derrière lui, qui volerait la frappe suivante.
+        Le compte à rebours vit dans `auto_ask`, pas ici : les outils lancés
+        en sous-processus posent EUX AUSSI des questions, et une deuxième
+        implémentation aurait dérivé de celle-ci sans que rien ne le dise.
+
+        L'export à chaque appel n'est pas de la précaution : l'environnement
+        est le SEUL canal qui traverse un `fork`. Sans lui, un outil lancé
+        plus bas attendrait indéfiniment une frappe qui ne vient pas.
         """
-        if not getattr(self, "auto_execute", False):
-            return input(prompt)
-        import select
+        auto_ask.export(getattr(self, "auto_execute", False), self.AUTO_DELAY)
+        return auto_ask.ask(prompt, default=default, seconds=self.AUTO_DELAY)
 
-        sys.stdout.write(prompt)
-        sys.stdout.flush()
-        try:
-            ready, _, _ = select.select([sys.stdin], [], [], self.AUTO_DELAY)
-        except (OSError, ValueError):
-            # stdin n'est pas sélectionnable : on ne devine pas, on demande.
-            return input("")
-        if ready:
-            answer = sys.stdin.readline().rstrip("\n")
-            # Une réponse VIDE vaut « prends le défaut » : c'est tout le
-            # propos du mode auto. Un stdin fermé — exécution non
-            # interactive — est lisible tout de suite et rend justement
-            # une ligne vide ; sans ceci, le défaut ne servirait jamais là.
-            return answer or default
-        print(f" ⏱ → {default or t('(default)')}")
-        return default
-
-    def ask_gate(self, prompt):
+    def ask_gate(self, prompt, default=""):
         """Une invite d'attente, avec une porte de sortie vers l'arrière.
 
         Ces invites ne demandent qu'à continuer. Quand on s'aperçoit à ce
@@ -825,7 +817,7 @@ class TodoUpgrade:
         il rembobine l'état, l'écrit, et s'arrête en disant quoi relancer.
         """
         while True:
-            answer = self.ask(prompt)
+            answer = self.ask(prompt, default=default)
             if (answer or "").strip().lower() != "b":
                 return answer
             if self.rewind_to_chosen_step():
@@ -2126,7 +2118,9 @@ class TodoUpgrade:
                         self.ask(
                             f"💬 {t('List the missing modules to delete,')}"
                             f" {t('separated by commas. The others will be')}"
-                            f" {t('migrated')} : "
+                            f" {t('migrated')}"
+                            f" ({t('Enter = all, n = none')}) : ",
+                            default="a",
                         )
                         .strip()
                         .lower()
@@ -2134,6 +2128,11 @@ class TodoUpgrade:
 
                     is_delete_all = False
 
+                    # « n » saute le bloc ENTIER, ajouts par version compris :
+                    # Entrée valant « toutes », il faut un mot pour dire non,
+                    # et il doit vraiment ne rien supprimer.
+                    if want_continue == "n":
+                        want_continue = ""
                     if want_continue:
                         lst_want_continue = [
                             a.strip() for a in want_continue.split(",")
@@ -2618,8 +2617,9 @@ class TodoUpgrade:
                     self.ask(
                         f"💬 {t('Do you want to upgrade all')}"
                         f"{str_wait_next_version} ?"
-                        f" {t('Press y/Y to upgrade all addons of the')}"
-                        f" {t('database')} : "
+                        f" (Y/n, {t('Enter upgrades all addons of the')}"
+                        f" {t('database')}) : ",
+                        default="y",
                     )
                     .strip()
                     .lower()
@@ -2647,14 +2647,31 @@ class TodoUpgrade:
                 self.prompt_smoke_public_url(database_name_upgrade)
 
                 print(f"[y] {t('Open the server with Selenium')}")
-                status = (
-                    self.ask(
-                        f"💬 {t('Do you want to test this upgrade? Choose')}"
-                        f" {t('or press enter to ignore it')} : "
+                print(f"[a] {t('Open it at EVERY version bump, stop asking')}")
+                # Une migration traverse jusqu'à six paliers. Répondre « y »
+                # à chacun oblige à rester devant ; « a » est la réponse
+                # qu'on donnait de toute façon six fois de suite, dite une
+                # seule fois — et retenue, donc valable après une reprise.
+                if self.dct_progression.get("state_4_selenium_every_bump"):
+                    status = "y"
+                    print(
+                        f"ℹ -> {t('Testing every bump, as chosen earlier.')}"
                     )
-                    .strip()
-                    .lower()
-                )
+                else:
+                    status = (
+                        self.ask(
+                            f"💬 {t('Do you want to test this upgrade? Choose')}"
+                            f" {t('or press enter to ignore it')} : "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if status == "a":
+                        self.dct_progression["state_4_selenium_every_bump"] = (
+                            True
+                        )
+                        self.write_config()
+                        status = "y"
                 "make repo_show_status"
                 if status == "y":
                     self.todo.prompt_execute_selenium_and_run_db(
@@ -2873,7 +2890,8 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Uninstall them properly before migrating?')}"
-                f" (y/N, {t('(b = go back to a previous step)')}) : "
+                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                default="y",
             )
             .strip()
             .lower()
@@ -2931,13 +2949,16 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Which one(s) to reset onto the module view?')}"
-                f" ({t('numbers separated by commas, a = all, empty =')}"
-                f" {t('nothing')}) : "
+                f" ({t('numbers separated by commas, Enter = all, n =')}"
+                f" {t('nothing')}) : ",
+                default="a",
             )
             .strip()
             .lower()
         )
-        if not answer:
+        # « n », et non plus le vide : Entrée vaut « toutes » maintenant, et
+        # une sortie sans mot pour dire non serait une sortie sans issue.
+        if not answer or answer == "n":
             print(f"ℹ -> {t('Kept. Nothing was reset.')}")
             return
         if answer == "a":
@@ -2970,7 +2991,8 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Clean the database before testing the pages?')}"
-                f" (y/N, {t('(b = go back to a previous step)')}) : "
+                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                default="y",
             )
             .strip()
             .lower()
@@ -3007,7 +3029,8 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Request every public URL of this database now?')}"
-                f" (y/N, {t('(b = go back to a previous step)')}) : "
+                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                default="y",
             )
             .strip()
             .lower()
@@ -3071,14 +3094,18 @@ class TodoUpgrade:
             f" -d {database_name} -t odoo{next_version}.0"
         )
         while True:
+            # `self.ask`, pas `input` : cette invite boucle, et un `input`
+            # nu ici arrêtait net une migration automatique — sans rien
+            # afficher, puisque la question attendait déjà.
             answer = (
-                input(
+                self.ask(
                     f"💬 {t('What do you want to do with these COW copies?')}"
-                    f" ({t('Enter = decide at the version bump')},"
+                    f" ({t('Enter = neutralize now, reversible')},"
                     f" v = {t('what each copy holds')},"
                     f" s = {t('why it breaks')},"
                     f" w = {t('full screen')},"
-                    f" a = {t('neutralize now, reversible')}) : "
+                    f" n = {t('decide at the version bump')}) : ",
+                    default="a",
                 )
                 .strip()
                 .lower()
@@ -3131,10 +3158,11 @@ class TodoUpgrade:
         # rien dans l'avertissement ne permet de les distinguer.
         while True:
             answer = (
-                input(
+                self.ask(
                     "💬 Neutralize these copies so the upgrade can proceed?"
                     " Their arch is kept and the change is reversible."
-                    " (Y/n, v = view the differences, w = full screen) : "
+                    " (Y/n, v = view the differences, w = full screen) : ",
+                    default="y",
                 )
                 .strip()
                 .lower()
@@ -3290,7 +3318,9 @@ class TodoUpgrade:
             )
         print(f"    [2] {t('Try the whole list anyway (it will fail)')}")
         print(f"    [3] {t('Uninstall nothing, continue')}")
-        answer = input(f"💬 {t('Your choice')} : ").strip()
+        answer = self.ask(
+            f"💬 {t('Your choice')} ({t('Enter = 1')}) : ", default="1"
+        ).strip()
         if answer == "2":
             return lst_present + lst_missing
         if answer == "3" or not lst_present:
@@ -3483,8 +3513,11 @@ class TodoUpgrade:
                     )
                     print(f"[3] {t('Reset one of them onto its module view')}")
                     print(f"[4] {t('Browse the differences full screen')}")
+                # `self.ask` : une migration automatique s'arrêtait ICI,
+                # sur une invite qui ne demande qu'à continuer, et restait
+                # bloquée sans que rien ne le signale.
                 wait_status = (
-                    input(
+                    self.ask(
                         f"💬 {t('Error detected, press enter to continue or')}"
                         f" ctrl+c {t('to stop')} : "
                     )

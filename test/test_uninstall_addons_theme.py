@@ -157,7 +157,9 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         # Le désinstalleur ne passe PLUS par l'exécuteur qui capture : il
         # pose une question, et un tube la rendrait invisible.
         obj.run_on_terminal = lambda cmd: self.lst_cmd.append(cmd) or 0
-        obj.ask_gate = lambda prompt: answer
+        # Le doublon HONORE le défaut, comme le vrai `ask_gate` : sinon
+        # les tests de défaut ne testeraient que le doublon.
+        obj.ask_gate = lambda prompt, default="": answer or default
         return obj
 
     def run_prompt(self, lst_theme, answer):
@@ -170,12 +172,31 @@ class TestTheMigrationOffersIt(unittest.TestCase):
             obj.prompt_uninstall_theme("db")
         return self.lst_cmd, out.getvalue()
 
-    def test_the_default_answer_uninstalls_nothing(self):
-        # « Entrée » ne doit RIEN faire : la migration ne décide pas de
-        # l'apparence d'un site à la place de son propriétaire.
-        lst_cmd, text = self.run_prompt(["theme_technolibre"], "")
+    def test_the_default_answer_uninstalls_them(self):
+        # « Entrée » désinstalle : c'est la réponse qu'on donnait à chaque
+        # migration, et un thème traversé sans être retiré est justement ce
+        # qui casse au palier suivant.
+        lst_cmd, _text = self.run_prompt(["theme_technolibre"], "")
+        self.assertEqual(len(lst_cmd), 1)
+        self.assertIn("uninstall_addons_theme.sh", lst_cmd[0])
+
+    def test_saying_no_still_keeps_them(self):
+        # Le défaut ne doit pas retirer le choix : il ne fait qu'en proposer
+        # un. Sans cette issue, la question ne serait plus une question.
+        lst_cmd, text = self.run_prompt(["theme_technolibre"], "n")
         self.assertEqual(lst_cmd, [])
         self.assertIn("Kept", text)
+
+    def test_the_question_says_that_enter_uninstalls(self):
+        # Une invite qui annonce « y/N » et fait l'inverse est pire que pas
+        # d'invite du tout.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.prompt_uninstall_theme)
+        self.assertIn("(Y/n,", source)
+        self.assertNotIn("(y/N,", source)
 
     def test_no_theme_means_no_question(self):
         lst_cmd, text = self.run_prompt([], "y")
