@@ -5939,7 +5939,14 @@ class TODO:
             '-d "$dev" --force && '
             # Rendu logiciel, écrit dans la config : par ssh -X il n'y a pas de
             # GLX direct, et « auto » donnerait un écran noir.
-            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swiftshader_indirect\\n" '
+            # L'écran, RÉDUIT, et c'est ce réglage qui décide du confort. Le
+            # profil Pixel donne 1080x2400, soit 2,6 Mpixels à pousser
+            # image par image à travers SSH, en rendu logiciel : « ça se
+            # lance mais c'est trop lent ». En 540x1140 il en reste
+            # 0,62 Mpixel — 4,2 fois moins. Android gère la densité et
+            # l'application ne s'en aperçoit pas ; qui veut la taille
+            # réelle l'écrase au lancement par « -skin 1080x2400 ».
+            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swiftshader_indirect\\nhw.lcd.width=540\\nhw.lcd.height=1140\\nhw.lcd.density=240\\n" '
             ">> $HOME/.android/avd/erplibre.avd/config.ini' && "
             f'echo "   ✅ {t("AVD ready:")} '
             "$(cat $HOME/.erplibre-avd-device) / "
@@ -5954,7 +5961,11 @@ class TODO:
             # à ces commandes, et « emulator » y répond « command not
             # found ». Vécu, sur la ligne que ce message affichait lui-même.
             f'echo "   {t("open it from your workstation:")} '
-            'ssh -X erplibre@$ip \\"$HOME/android/emulator/emulator -avd erplibre -no-audio\\""; '
+            # « -XC » et non « -X » : la compression X11 change tout sur un
+            # écran distant. « -no-boot-anim » retire une animation qui
+            # ne sert qu'à faire attendre.
+            'ssh -XC erplibre@$ip \\"$HOME/android/emulator/emulator '
+            '-avd erplibre -no-audio -no-boot-anim\\""; '
             f'echo "   {t("then install the APK:")} '
             # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
             # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».

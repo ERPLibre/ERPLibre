@@ -386,6 +386,23 @@ class TestAndroidEmulator(unittest.TestCase):
             "avd", self.todo._qemu_tools_for(("avd",), "amd64", "", "ubuntu")
         )
 
+    def test_the_screen_is_small_enough_to_travel(self):
+        """Le profil Pixel donne 1080x2400 : 2,6 Mpixels par image à pousser
+        dans SSH, et « ça se lance mais c'est trop lent ». Mesuré après
+        réduction : 540x1140 confirmé par « wm size », et la capture pleine
+        page tombe de 220 Ko à 49 Ko."""
+        for key in (
+            "hw.lcd.width=540",
+            "hw.lcd.height=1140",
+            "hw.lcd.density=240",
+        ):
+            self.assertIn(key, self.cmd, key)
+
+    def test_the_printed_command_compresses_the_display(self):
+        """« -XC » plutôt que « -X » sur un écran distant."""
+        self.assertIn("ssh -XC erplibre@$ip", self.cmd)
+        self.assertNotIn("ssh -X erplibre@$ip", self.cmd.replace("-XC", ""))
+
     def test_software_rendering_is_written_into_the_avd(self):
         """Par « ssh -X » il n'y a pas de GLX direct : en « auto »,
         l'émulateur s'ouvre sur un écran noir. Le réglage va dans config.ini
@@ -417,7 +434,7 @@ class TestAndroidEmulator(unittest.TestCase):
 
     def test_it_prints_the_command_to_open_it(self):
         """Un émulateur dont on ignore comment l'ouvrir ne sert à personne."""
-        self.assertIn("ssh -X erplibre@$ip", self.cmd)
+        self.assertIn("ssh -XC erplibre@$ip", self.cmd)
         self.assertIn("adb install -r", self.cmd)
 
     def test_the_printed_commands_use_absolute_paths(self):
