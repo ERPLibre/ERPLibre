@@ -5859,8 +5859,16 @@ class TODO:
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm test' && "
             # L'APK est la preuve, pas le code de sortie de Gradle : une tâche
             # peut rendre 0 sans avoir rien produit.
+            # DEUX emplacements, et il faut les deux. Avec une ABI injectée,
+            # AGP écrit dans « intermediates/apk/debug » et non dans
+            # « outputs/apk/debug » : mesuré, une compilation RÉUSSIE était
+            # rapportée « aucun APK produit » parce que je ne regardais que le
+            # second. Un contrôle qui cherche au mauvais endroit ne vaut pas
+            # mieux que pas de contrôle.
             f"apk=$(ls {el_dir}/mobile/erplibre_home_mobile/android/app/build"
-            "/outputs/apk/debug/*.apk 2>/dev/null | head -1); "
+            "/outputs/apk/debug/*.apk "
+            f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            "/intermediates/apk/debug/*.apk 2>/dev/null | head -1); "
             'if [ -n "$apk" ]; then '
             f'echo "   ✅ {t("APK built:")} $apk"; '
             # Capacitor sert la même application dans un navigateur : sur une
@@ -5948,7 +5956,10 @@ class TODO:
             f'echo "   {t("open it from your workstation:")} '
             'ssh -X erplibre@$ip \\"$HOME/android/emulator/emulator -avd erplibre -no-audio\\""; '
             f'echo "   {t("then install the APK:")} '
-            'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r '
+            # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
+            # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».
+            # Mesuré sur l'émulateur.
+            'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r -t '
             f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
             '/outputs/apk/debug/app-debug.apk\\""'
         )

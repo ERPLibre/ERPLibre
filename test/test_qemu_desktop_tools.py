@@ -339,6 +339,13 @@ class TestMobileBuild(unittest.TestCase):
         cmd = self.todo._qemu_mobile_remote_cmd()
         self.assertIn("outputs/apk/debug/*.apk", cmd)
 
+    def test_both_apk_locations_are_searched(self):
+        """Avec une ABI injectée, AGP écrit dans intermediates et non dans
+        outputs : mesuré, une compilation RÉUSSIE était rapportée « aucun APK
+        produit » parce qu'un seul des deux chemins était regardé."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        self.assertIn("intermediates/apk/debug/*.apk", cmd)
+
     def test_no_apk_means_non_zero(self):
         """Éprouvé plutôt que relu : sans APK, le bloc DOIT rendre non nul.
         Une ligne d'information placée après le « fi » suffisait à rendre 0 et
