@@ -7672,6 +7672,30 @@ TRANSLATIONS = {
         "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
     },
     "command": {"fr": "commande", "en": "command"},
+    "release feed unreachable: unified build, it will ask for a JetBrains account": {
+        "fr": "flux des versions injoignable : build unifié, il demandera un compte JetBrains",
+        "en": "release feed unreachable: unified build, it will ask for a JetBrains account",
+    },
+    "Creating the PyCharm project (first open)": {
+        "fr": "Création du projet PyCharm (première ouverture)",
+        "en": "Creating the PyCharm project (first open)",
+    },
+    "PyCharm missing, step skipped": {
+        "fr": "PyCharm absent, étape sautée",
+        "en": "PyCharm missing, step skipped",
+    },
+    "no Xvfb here, open PyCharm by hand": {
+        "fr": "pas de Xvfb ici : ouvrir PyCharm à la main",
+        "en": "no Xvfb here, open PyCharm by hand",
+    },
+    "project created, the install will configure it": {
+        "fr": "projet créé, l'installation va le configurer",
+        "en": "project created, the install will configure it",
+    },
+    "no .idea: open PyCharm once, then": {
+        "fr": "pas de .idea : ouvrir PyCharm une fois, puis",
+        "en": "no .idea: open PyCharm once, then",
+    },
     "project": {"fr": "projet", "en": "project"},
 }
 

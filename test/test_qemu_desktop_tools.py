@@ -224,6 +224,94 @@ class TestToolDiscoverability(unittest.TestCase):
         self.assertIn(".idea", cmd)
 
 
+class TestPycharmCommunity(unittest.TestCase):
+    """PyCharm doit s'ouvrir sans compte : c'est toute la différence entre une
+    VM utilisable au premier démarrage et une VM qui demande une licence."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_pycharm_remote_cmd()
+
+    def test_the_community_line_is_what_is_looked_up(self):
+        """Mesuré dans une VM : le build unifié s'arrête sur
+        « NoValidIdeLicense » et n'ouvre jamais le projet."""
+        self.assertIn("pycharm-community-", self.cmd)
+        self.assertIn("data.services.jetbrains.com", self.cmd)
+
+    def test_no_version_is_frozen_in_the_repository(self):
+        """Le flux donne la plus récente : rien à mettre à jour ici quand
+        JetBrains publie un correctif."""
+        self.assertNotIn("2025.2.6", self.cmd)
+        self.assertNotIn("pycharm-community-2", self.cmd)
+
+    def test_both_architectures_are_asked_for(self):
+        self.assertIn("linuxARM64", self.cmd)
+        self.assertIn("jb=linux", self.cmd)
+
+    def test_the_fallback_names_its_cost(self):
+        """Le repli sert le build unifié : le dire, plutôt que de le laisser
+        découvrir au premier lancement."""
+        self.assertIn("code=PCC&latest", self.cmd)
+        self.assertIn("JetBrains", self.cmd)
+
+
+class TestPycharmFirstOpen(unittest.TestCase):
+    """Ouverture sans écran, pour que le .idea existe avant l'installation."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_pycharm_project_cmd()
+
+    def test_it_runs_between_the_clone_and_the_make(self):
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "gnome", "", "deb", ("pycharm",)
+        )
+        self.assertLess(script.index("git clone"), script.index("xvfb-run"))
+        self.assertLess(
+            script.index("xvfb-run"), script.index("make install_os")
+        )
+
+    def test_only_when_pycharm_was_asked_for(self):
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "gnome", "", "deb", ("android",)
+        )
+        self.assertNotIn("xvfb-run", script)
+
+    def test_the_first_run_dialogs_are_answered_in_advance(self):
+        """Sans réponse, la session attend un clic que personne ne donnera.
+
+        Celle de la CONFIANCE est la plus coûteuse à rater : mesuré, le journal
+        s'arrête 1,3 s après le démarrage et le projet ne s'ouvre jamais."""
+        self.assertIn("idea.trust.all.projects=true", self.cmd)
+        self.assertIn("jb.consents.confirmation.enabled=false", self.cmd)
+        self.assertIn("consentOptions", self.cmd)
+        # Le consentement est écrit REFUSÉ : aucune statistique ne part.
+        self.assertIn("rsch.send.usage.stat:1.1:0:", self.cmd)
+
+    def test_xvfb_package_names_are_per_family(self):
+        """« xvfb » n'existe que chez Debian : ailleurs le paquet s'appelle
+        autrement, et un nom inventé ne s'installerait pas."""
+        self.assertEqual("xvfb", TODO._QEMU_XVFB_PKG["apt"])
+        self.assertEqual("xorg-x11-server-Xvfb", TODO._QEMU_XVFB_PKG["dnf"])
+        self.assertEqual("xorg-server-xvfb", TODO._QEMU_XVFB_PKG["pacman"])
+
+    def test_it_gives_up_rather_than_hangs(self):
+        """Un IDE qui ne s'ouvre pas ne doit pas retenir l'installation : le
+        budget est borné et le processus tué."""
+        self.assertIn("kill -TERM", self.cmd)
+        self.assertIn("kill -KILL", self.cmd)
+        self.assertIn(f"seq 1 {TODO._QEMU_PYCHARM_OPEN_TRIES}", self.cmd)
+
+    def test_valid_shell(self):
+        res = subprocess.run(
+            ["bash", "-n"],
+            input="set -e\n" + self.cmd,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(0, res.returncode, res.stderr)
+
+
 class TestGnomeSiteExtensions(unittest.TestCase):
     """Extensions posées depuis extensions.gnome.org, par leur UUID."""
 

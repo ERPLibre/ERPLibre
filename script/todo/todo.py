@@ -5098,10 +5098,25 @@ class TODO:
     # couvre les quatre gestionnaires (Arch l'a dans extra, Debian et Ubuntu ne
     # l'ont qu'en snap — coupé ici —, Fedora et openSUSE pas du tout).
     #
-    # L'URL ne porte AUCUN numéro de version : « code=PCC&latest » redirige vers
-    # la dernière stable. Vérifié, les deux : « distribution=linux » sort
-    # pycharm-2025.3.tar.gz et « distribution=linuxARM64 » son équivalent
-    # aarch64. Rien à mettre à jour dans ce dépôt quand JetBrains publie.
+    # La ligne COMMUNITY, et non le produit unifié. Mesuré dans une VM :
+    # « code=PCC&latest » sert maintenant pycharm-2025.3, le build unifié, qui
+    # s'arrête sur sa licence — son journal dit « NoValidIdeLicense » puis
+    # « Get licenses: request requires authentication », et le projet ne
+    # s'ouvre jamais. Aucune ouverture, donc aucun .idea, donc rien à
+    # configurer ensuite. Community ne demande aucun compte, et elle est
+    # toujours publiée et corrigée : 2025.2.6.2 date du 2026-07-29.
+    #
+    # Aucun numéro figé ici : on prend la plus récente archive
+    # « pycharm-community- » du flux officiel des versions, pour
+    # l'architecture de la VM.
+    _QEMU_PYCHARM_FEED = (
+        "https://data.services.jetbrains.com/products/releases"
+        "?code=PCC&type=release"
+    )
+    # Repli quand le flux est injoignable : la redirection « dernière version ».
+    # Elle sert le build unifié, donc on le DIT — l'utilisateur devra ouvrir un
+    # compte JetBrains, et mieux vaut l'apprendre dans le journal qu'au premier
+    # lancement.
     _QEMU_PYCHARM_URL = (
         "https://download.jetbrains.com/product?code=PCC&latest&distribution="
     )
@@ -5186,8 +5201,31 @@ class TODO:
             "else "
             # /var/tmp et non /tmp : sur Fedora et dérivés /tmp est un tmpfs, en
             # RAM — 1,2 Go d'archive y tueraient une VM de 3 Go.
+            # Le flux dit quelle archive Community prendre pour cette
+            # architecture. En python plutôt qu'en shell : il fait la requête,
+            # lit le JSON et rend une ligne — sans jq, absent des images cloud.
+            "url=$(python3 - \"$jb\" <<'ELPYJB'\n"
+            "import json, sys, urllib.request\n"
+            "key = sys.argv[1]\n"
+            "try:\n"
+            f'    with urllib.request.urlopen("{self._QEMU_PYCHARM_FEED}",\n'
+            "                                 timeout=30) as fh:\n"
+            "        data = json.load(fh)\n"
+            "except Exception:\n"
+            "    sys.exit(0)\n"
+            'for rel in data.get("PCC", []):\n'
+            '    link = (rel.get("downloads") or {}).get(key, {}).get("link", "")\n'
+            '    if "pycharm-community-" in link:\n'
+            "        print(link)\n"
+            "        break\n"
+            "ELPYJB\n"
+            "); "
+            'if [ -z "$url" ]; then '
+            f'url="{self._QEMU_PYCHARM_URL}$jb"; '
+            f'echo "   {t("release feed unreachable: unified build, it will ask for a JetBrains account")}"; '
+            "fi; "
             "tmp=$(mktemp -p /var/tmp pycharm-XXXX.tar.gz) && "
-            f'curl -fsSL "{self._QEMU_PYCHARM_URL}$jb" -o "$tmp" && '
+            'curl -fsSL "$url" -o "$tmp" && '
             "sudo mkdir -p /opt/pycharm && "
             'sudo tar -xzf "$tmp" -C /opt/pycharm --strip-components=1; '
             'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; } && { '
@@ -5211,6 +5249,117 @@ class TODO:
             f'echo "   {t("open the project once and close PyCharm; the .idea "
                           "it writes is what the install configures")}"; '
             f'}} || echo "   ⚠ {t("PyCharm not installed (see above)")}"; '
+        )
+
+    # Serveur X virtuel, par gestionnaire de paquets. Les noms ne se
+    # ressemblent pas d'une famille à l'autre — relevés dans chaque dépôt, pas
+    # devinés.
+    _QEMU_XVFB_PKG = {
+        "apt": "xvfb",
+        "dnf": "xorg-x11-server-Xvfb",
+        "zypper": "xorg-x11-server-Xvfb",
+        "pacman": "xorg-server-xvfb",
+    }
+
+    # Attente maximale du .idea, en tours de 5 s — cinq minutes. Mesuré sur une
+    # VM Ubuntu 26.04 à 16 Go : le projet est écrit en 195 s, indexation du
+    # dépôt en cours. On n'attend donc PAS la fin de cette indexation, qui dure
+    # bien plus et dont personne n'a besoin ici : pycharm_configuration.py ne
+    # réclame que le .iml et misc.xml.
+    _QEMU_PYCHARM_OPEN_TRIES = 60
+
+    def _qemu_xvfb_install_cmd(self):
+        """Pose Xvfb avec le gestionnaire de paquets présent, sans bruit."""
+        x = self._QEMU_XVFB_PKG
+        return (
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            f"-o DPkg::Lock::Timeout=600 install -y {x['apt']} "
+            ">/dev/null 2>&1 || true; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            f"sudo dnf install -y {x['dnf']} >/dev/null 2>&1 || true; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive install --auto-agree-with-licenses "
+            f"{x['zypper']} >/dev/null 2>&1 || true; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            f"sudo pacman -S --needed --noconfirm {x['pacman']} "
+            ">/dev/null 2>&1 || true; fi; "
+        )
+
+    def _qemu_pycharm_project_cmd(self, prod=False):
+        """Crée le .idea/ du dépôt en ouvrant PyCharm une fois, sans écran.
+
+        C'est PyCharm, et lui seul, qui écrit ce répertoire : ni le dépôt ni
+        pycharm_configuration.py ne savent le fabriquer — ce dernier exige un
+        .iml puis un misc.xml, et s'arrête sinon. Sans cette ouverture, l'étape
+        pycharm_update() de l'installation ne trouve rien à configurer.
+
+        Xvfb parce que l'IDE réclame un affichage, même pour ouvrir un projet
+        et s'arrêter. Il tourne DANS la VM : l'hôte qui orchestre n'a besoin
+        d'aucune bibliothèque graphique, et rien ne transite par « ssh -X ».
+
+        TROIS fenêtres bloqueraient une session où personne ne peut cliquer, et
+        chacune a été rencontrée avant d'être écartée : politique de
+        confidentialité, partage de données, et surtout « faites-vous confiance
+        à ce projet ? ». C'est celle-là qui figeait tout — le journal s'arrêtait
+        1,3 s après le démarrage, sans jamais ouvrir le projet, et il a fallu
+        « idea.trust.all.projects » pour le débloquer. Le consentement, lui, est
+        écrit REFUSÉ : aucune statistique ne part.
+
+        Mesuré sur une VM Ubuntu 26.04 à 16 Go : .idea complet en 195 s, et
+        pycharm_configuration.py écrit ensuite ses exclusions dans le .iml.
+
+        Tout est gardé. Sans Xvfb, sans PyCharm, ou sans .idea au bout du
+        délai, on le dit et l'installation continue : elle n'en dépend pas,
+        elle en profite seulement.
+        """
+        el_dir = self._qemu_install_dir(prod)
+        return (
+            f'echo "== {t("Creating the PyCharm project (first open)")} =="; '
+            "{ if ! command -v pycharm >/dev/null 2>&1; then "
+            f'echo "   {t("PyCharm missing, step skipped")}"; false; '
+            "else "
+            "command -v xvfb-run >/dev/null 2>&1 || { "
+            + self._qemu_xvfb_install_cmd()
+            + "}; "
+            "if ! command -v xvfb-run >/dev/null 2>&1; then "
+            f'echo "   {t("no Xvfb here, open PyCharm by hand")}"; false; '
+            "else "
+            # Réponses aux fenêtres de première ouverture. En python plutôt
+            # qu'en shell : l'horodatage en millisecondes et le « <!--…--> » de
+            # la propriété se passeraient mal de guillemets imbriqués.
+            "python3 - <<'ELPYC' || true\n"
+            "import pathlib, time\n"
+            "h = pathlib.Path.home()\n"
+            'c = h / ".local/share/JetBrains/consentOptions"\n'
+            "c.mkdir(parents=True, exist_ok=True)\n"
+            '(c / "accepted").write_text(\n'
+            '    "rsch.send.usage.stat:1.1:0:%d\\n" % (time.time() * 1000)\n'
+            ")\n"
+            '(h / ".pycharm-headless.vmoptions").write_text(\n'
+            '    "-Djb.privacy.policy.text=<!--999.999-->\\n"\n'
+            '    "-Djb.consents.confirmation.enabled=false\\n"\n'
+            '    "-Didea.trust.all.projects=true\\n"\n'
+            '    "-Didea.suppress.statistics.report=true\\n"\n'
+            ")\n"
+            "ELPYC\n"
+            'PYCHARM_VM_OPTIONS="$HOME/.pycharm-headless.vmoptions" '
+            f"xvfb-run -a pycharm {el_dir} "
+            "> /tmp/pycharm-first-run.log 2>&1 & "
+            "pid=$!; ok=0; "
+            f"for i in $(seq 1 {self._QEMU_PYCHARM_OPEN_TRIES}); do "
+            f"if ls {el_dir}/.idea/*.iml >/dev/null 2>&1 && "
+            f"[ -f {el_dir}/.idea/misc.xml ]; then ok=1; break; fi; "
+            "sleep 5; done; "
+            # Cinq secondes de plus : les fichiers apparaissent PENDANT leur
+            # écriture, et un TERM à l'instant où misc.xml naît le tronquerait.
+            "sleep 5; kill -TERM $pid 2>/dev/null; "
+            "for i in $(seq 1 12); do kill -0 $pid 2>/dev/null || break; "
+            "sleep 5; done; kill -KILL $pid 2>/dev/null; "
+            '[ "$ok" = 1 ]; fi; fi; } && '
+            f'echo "   {t("project created, the install will configure it")}" '
+            f'|| echo "   ⚠ {t("no .idea: open PyCharm once, then")} '
+            'make pycharm_configure"; '
         )
 
     def _qemu_android_studio_remote_cmd(self):
@@ -5543,6 +5692,14 @@ class TODO:
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
         tools_cmd = self._qemu_tools_remote_cmd(tools, prod)
+        # Entre le clone et le make : PyCharm ouvre le dépôt une fois pour en
+        # écrire le .idea, que l'installation configurera juste après. Le
+        # groupe rend toujours 0 — l'étape est un bonus, pas une condition.
+        open_step = (
+            f"{{ {self._qemu_pycharm_project_cmd(prod)} }} && "
+            if "pycharm" in (tools or ())
+            else ""
+        )
         return (
             "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
@@ -5652,7 +5809,7 @@ class TODO:
                     f"sudo git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
                     "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
-                    f"cd /opt/erplibre && {final_cmd}"
+                    f"cd /opt/erplibre && {open_step}{final_cmd}"
                 )
                 if prod
                 else (
@@ -5660,7 +5817,7 @@ class TODO:
                     "if [ ! -d ~/git/erplibre/.git ]; then "
                     f"git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-                    f"cd ~/git/erplibre && {final_cmd}"
+                    f"cd ~/git/erplibre && {open_step}{final_cmd}"
                 )
             )
         )

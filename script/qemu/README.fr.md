@@ -147,8 +147,10 @@ l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
 Quand une VM est graphique, le menu propose en plus une **liste à cocher
-d'outils de développement** : PyCharm (posé depuis l'archive officielle
-JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt ERPLibre),
+d'outils de développement** : PyCharm Community (posé depuis l'archive
+officielle JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt
+ERPLibre — la ligne Community, car le build unifié 2025.3 s'arrête sur un
+écran de licence et n'ouvre jamais de projet),
 Android Studio (`/opt/android-studio`, commande `studio` ou
 `android-studio` ; x86_64 seulement — Google ne publie aucune archive Linux
 aarch64) et un jeu
@@ -169,8 +171,14 @@ Les outils sont posés **avant** le clone et l'installation d'ERPLibre, et
 l'ordre compte : PyCharm écrit le `.idea/` du dépôt à la première ouverture du
 projet, et l'installation qui suit y lance `pycharm_configuration.py`
 (`update_env_version.pycharm_update()`, qui se tait tant qu'il n'y a pas de
-`.idea`). Sur une VM neuve : ouvrir PyCharm une fois sur `~/git/erplibre`, le
-fermer, puis relancer `make install_odoo_18`.
+`.idea`). Cette première ouverture est automatisée : PyCharm est lancé une fois sous
+Xvfb — un serveur d'affichage virtuel DANS la VM invitée, si bien que l'hôte
+qui orchestre n'a besoin d'aucune bibliothèque graphique — avec les fenêtres
+de confiance, de confidentialité et de partage de données répondues d'avance.
+Mesuré sur une VM Ubuntu 26.04 à 16 Go : le `.idea/` est écrit en 195 s, et
+l'installation y ajoute ensuite ses exclusions dans le `.iml`. Sans Xvfb, ou
+si l'IDE n'y arrive pas en cinq minutes, le journal le dit et l'installation
+continue.
 
 Chaque outil est filtré VM par VM — architecture et saveur de bureau — et sa
 place disque s'ajoute au plan avant que rien ne soit créé.
