@@ -413,6 +413,21 @@ class TestAndroidEmulator(unittest.TestCase):
         self.assertIn("ssh -X erplibre@$ip", self.cmd)
         self.assertIn("adb install -r", self.cmd)
 
+    def test_the_printed_commands_use_absolute_paths(self):
+        """« ssh hôte 'commande' » ne lit ni ~/.profile ni ~/.bashrc — Ubuntu y
+        met même un « return » pour les shells non interactifs. Une commande
+        affichée qui compte sur le PATH répond « command not found ». Vécu."""
+        self.assertIn("$HOME/android/emulator/emulator", self.cmd)
+        self.assertIn("$HOME/android/platform-tools/adb", self.cmd)
+        self.assertNotIn('"emulator -avd', self.cmd)
+        self.assertNotIn('"adb install', self.cmd)
+
+    def test_the_windowed_emulator_gets_its_audio_library(self):
+        """Deux binaires qemu : seul le « headless » se passe de PulseAudio.
+        Celui qui ouvre une fenêtre lie libpulse.so.0, absente des images
+        cloud, et échoue même avec « -no-audio »."""
+        self.assertIn("libpulse0", self.cmd)
+
     def test_one_prologue_and_one_sdk_for_both_options(self):
         """Deux prologues, et le second tronquerait le journal du premier."""
         both = self.todo._qemu_after_remote_cmd(("mobile", "avd"))

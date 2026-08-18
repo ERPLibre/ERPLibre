@@ -5781,6 +5781,13 @@ class TODO:
             f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh; "
             "test -f mobile/erplibre_home_mobile/install-android.sh' && "
             f'mstep "{t("prerequisites of the upstream installer")}" '
+            # libpulse0 : l'émulateur a DEUX binaires qemu, et seul le
+            # « headless » se passe de PulseAudio. Celui qui ouvre une FENÊTRE —
+            # le cas d'un « ssh -X » — lie libpulse.so.0, absente des images
+            # cloud, et s'arrête sur « cannot open shared object file » même
+            # avec « -no-audio ». Mesuré : c'est la SEULE bibliothèque qui
+            # manque, tout le reste des dépendances Qt voyage dans le bundle.
+            #
             # openjdk-21 EN PLUS du 17 que pose l'installateur amont : mesuré,
             # Gradle s'arrête sur « Cannot find a Java installation matching
             # {languageVersion=21} » — les modules de Capacitor 8 réclament 21.
@@ -5788,7 +5795,7 @@ class TODO:
             # unzip et xauth, eux, manquent des images cloud.
             "'sudo DEBIAN_FRONTEND=noninteractive apt-get "
             "-o DPkg::Lock::Timeout=600 install -y unzip wget xauth "
-            "openjdk-21-jdk' && "
+            "libpulse0 openjdk-21-jdk' && "
             # L'installateur amont n'est PAS idempotent : au second passage il
             # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ». Mesuré.
             # On ne le rejoue donc que s'il reste quelque chose à poser — un
@@ -5932,10 +5939,16 @@ class TODO:
             # La commande à copier, avec l'adresse déjà remplie : un émulateur
             # dont on ignore comment l'ouvrir ne sert à personne.
             "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            # Chemins ABSOLUS, et c'est le point : « ssh hôte 'commande' »
+            # ne lit NI ~/.profile NI ~/.bashrc — Ubuntu place même un
+            # « return » en tête du second pour les shells non interactifs.
+            # Le PATH que l'installateur y écrit ne s'applique donc jamais
+            # à ces commandes, et « emulator » y répond « command not
+            # found ». Vécu, sur la ligne que ce message affichait lui-même.
             f'echo "   {t("open it from your workstation:")} '
-            'ssh -X erplibre@$ip \\"emulator -avd erplibre -no-audio\\""; '
+            'ssh -X erplibre@$ip \\"$HOME/android/emulator/emulator -avd erplibre -no-audio\\""; '
             f'echo "   {t("then install the APK:")} '
-            'ssh erplibre@$ip \\"adb install -r '
+            'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r '
             f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
             '/outputs/apk/debug/app-debug.apk\\""'
         )
