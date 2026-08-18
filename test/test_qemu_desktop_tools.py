@@ -92,14 +92,16 @@ class TestToolDisk(unittest.TestCase):
         self.assertEqual(
             full - arm,
             TODO._QEMU_VM_TOOLS["android"]["disk_gb"]
-            + TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"],
+            + TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"]
+            + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"],
         )
 
     def test_a_server_only_pays_for_what_it_gets(self):
         """Un serveur ne porte aucun IDE, donc il n'en paie pas le disque —
-        mais il paie bien la compilation mobile, qu'il reçoit."""
+        mais il paie bien ce qu'il reçoit : compilation mobile et émulateur."""
         self.assertEqual(
-            TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"],
+            TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"]
+            + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"],
             self.todo._qemu_tools_disk_gb(self.all, "amd64", "", "ubuntu"),
         )
 
@@ -262,9 +264,10 @@ class TestMobileBuild(unittest.TestCase):
         self.all = tuple(TODO._QEMU_VM_TOOLS)
 
     def test_it_runs_on_a_server_vm(self):
-        """Elle compile, elle n'affiche rien : un bureau serait du gaspillage."""
+        """Elle compile, elle n'affiche rien : un bureau serait du gaspillage.
+        L'émulateur non plus n'en a pas besoin — il s'affiche par ssh -X."""
         got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
-        self.assertEqual(["mobile"], got)
+        self.assertEqual(["mobile", "avd"], got)
 
     def test_it_is_bounded_to_apt(self):
         """install-android.sh du dépôt mobile commence par « sudo apt install
@@ -360,6 +363,93 @@ class TestMobileBuild(unittest.TestCase):
         des pannes rendraient le compteur du tableau de bord inutilisable."""
         cmd = self.todo._qemu_mobile_remote_cmd()
         self.assertIn('>> "$M" 2>&1', cmd)
+
+
+class TestAndroidEmulator(unittest.TestCase):
+    """Émulateur Android : visible depuis le poste par « ssh -X »."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_avd_remote_cmd()
+
+    def test_no_desktop_needed_in_the_vm(self):
+        """Il s'affiche sur l'écran de qui s'y connecte, pas dans la VM."""
+        self.assertFalse(TODO._QEMU_VM_TOOLS["avd"]["needs_desktop"])
+        self.assertIn(
+            "avd", self.todo._qemu_tools_for(("avd",), "amd64", "", "ubuntu")
+        )
+
+    def test_software_rendering_is_written_into_the_avd(self):
+        """Par « ssh -X » il n'y a pas de GLX direct : en « auto »,
+        l'émulateur s'ouvre sur un écran noir. Le réglage va dans config.ini
+        pour qu'« emulator -avd erplibre » suffise."""
+        self.assertIn("hw.gpu.mode=swiftshader_indirect", self.cmd)
+        self.assertIn("config.ini", self.cmd)
+
+    def test_xauth_is_installed(self):
+        """Sans xauth dans la VM, « ssh -X » n'ouvre aucun affichage — et le
+        paquet manque des images cloud."""
+        self.assertIn("xauth", self.cmd)
+
+    def test_it_says_when_kvm_is_missing(self):
+        """Un émulateur x86 sans KVM refuse de démarrer : le dire là où c'est
+        réparable, sur l'hôte, plutôt qu'au premier lancement."""
+        self.assertIn("/dev/kvm", self.cmd)
+
+    def test_the_pixel_is_chosen_at_runtime(self):
+        """« le plus récent, le plus petit écran » se demande au SDK : figer un
+        modèle le rendrait faux à la prochaine génération."""
+        self.assertIn("avdmanager list device", self.cmd)
+        self.assertIn("pixel_", self.cmd)
+        self.assertIn("pro|xl|fold|tablet", self.cmd)
+        self.assertIn("sort -t_ -k2 -n", self.cmd)
+
+    def test_the_system_image_falls_back(self):
+        """Google ne publie pas d'image pour toutes les API : on descend."""
+        self.assertIn("for a in $v 36 35 34", self.cmd)
+
+    def test_it_prints_the_command_to_open_it(self):
+        """Un émulateur dont on ignore comment l'ouvrir ne sert à personne."""
+        self.assertIn("ssh -X erplibre@$ip", self.cmd)
+        self.assertIn("adb install -r", self.cmd)
+
+    def test_one_prologue_and_one_sdk_for_both_options(self):
+        """Deux prologues, et le second tronquerait le journal du premier."""
+        both = self.todo._qemu_after_remote_cmd(("mobile", "avd"))
+        self.assertEqual(1, both.count("mstep() {"))
+        self.assertEqual(1, both.count('M="$HOME/erplibre-mobile-build.log"'))
+
+    def test_the_emulator_cannot_mask_a_build_failure(self):
+        """ÉPROUVÉ, pas relu. Sans accolades autour de chaque groupe, « && » ne
+        lie que la première commande du suivant : mesuré sur une VM, un APK
+        manquant laissait tourner l'émulateur puis rendait 0 — la VM repassait
+        au vert alors que rien n'avait compilé."""
+        both = self.todo._qemu_after_remote_cmd(("mobile", "avd"))
+        # On neutralise les étapes : seul le CHAÎNAGE est en cause ici.
+        stub = 'mstep() { echo "   -> $1"; return 0; }; mdiag() { :; }; '
+        tail = both[both.index('{ mstep "') :]
+        res = subprocess.run(
+            ["bash", "-c", "set -e; " + stub + tail],
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(0, res.returncode, res.stdout)
+        # Et l'émulateur ne doit PAS avoir été touché.
+        self.assertNotIn("Pixel", res.stdout)
+
+    def test_valid_shell_in_every_combination(self):
+        for tools in (("mobile",), ("avd",), ("mobile", "avd")):
+            cmd = self.todo._qemu_after_remote_cmd(tools)
+            res = subprocess.run(
+                ["bash", "-n"], input=cmd, text=True, capture_output=True
+            )
+            self.assertEqual(0, res.returncode, f"{tools}: {res.stderr}")
+
+    def test_no_diagnostic_pattern_carries_an_apostrophe(self):
+        """Ces motifs partent dans un « grep -q '<motif>' » : une apostrophe
+        fermait la chaîne et rendait tout le bloc invalide. Vécu."""
+        for pattern, _cause in TODO._QEMU_MOBILE_DIAG:
+            self.assertNotIn("'", pattern, pattern)
 
 
 class TestPycharmCommunity(unittest.TestCase):

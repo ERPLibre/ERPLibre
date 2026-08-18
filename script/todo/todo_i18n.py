@@ -7718,6 +7718,10 @@ TRANSLATIONS = {
         "fr": "une compilation mobile en échec marque la VM en échec",
         "en": "a failed mobile build marks the VM as failed",
     },
+    "ERPLibre venv (everything below needs it)": {
+        "fr": "venv ERPLibre (tout ce qui suit en dépend)",
+        "en": "ERPLibre venv (everything below needs it)",
+    },
     "mobile repository (additive manifest)": {
         "fr": "dépôt mobile (manifeste additif)",
         "en": "mobile repository (additive manifest)",
@@ -7774,6 +7778,22 @@ TRANSLATIONS = {
         "en": "SDK licences not accepted",
     },
     "NDK missing": {"fr": "NDK absent", "en": "NDK missing"},
+    "JDK required by the project missing": {
+        "fr": "JDK réclamé par le projet absent",
+        "en": "JDK required by the project missing",
+    },
+    "Gradle running on too old a JDK": {
+        "fr": "Gradle tourne sur un JDK trop ancien",
+        "en": "Gradle running on too old a JDK",
+    },
+    "SDK already there (upstream installer replays)": {
+        "fr": "SDK déjà là (l'installateur amont se rejoue)",
+        "en": "SDK already there (upstream installer replays)",
+    },
+    "cross-compiled protoc run on the host": {
+        "fr": "protoc compilé pour la cible, exécuté sur l'hôte",
+        "en": "cross-compiled protoc run on the host",
+    },
     "JDK/Gradle mismatch": {
         "fr": "JDK et Gradle incompatibles",
         "en": "JDK/Gradle mismatch",
@@ -7785,6 +7805,60 @@ TRANSLATIONS = {
     "Vitest tests failed": {
         "fr": "tests Vitest en échec",
         "en": "Vitest tests failed",
+    },
+    "ERPLibre venv incomplete (no pip: python3-venv)": {
+        "fr": "venv ERPLibre incomplet (pas de pip : python3-venv)",
+        "en": "ERPLibre venv incomplete (no pip: python3-venv)",
+    },
+    "mobile repository missing": {
+        "fr": "dépôt mobile absent",
+        "en": "mobile repository missing",
+    },
+    "ERPLibre venv missing (incomplete install)": {
+        "fr": "venv ERPLibre absent (installation incomplète)",
+        "en": "ERPLibre venv missing (incomplete install)",
+    },
+    "Android emulator (Pixel)": {
+        "fr": "Émulateur Android (Pixel)",
+        "en": "Android emulator (Pixel)",
+    },
+    "AVD viewable over ssh -X": {
+        "fr": "AVD visible par ssh -X",
+        "en": "AVD viewable over ssh -X",
+    },
+    "Android emulator (AVD)": {
+        "fr": "Émulateur Android (AVD)",
+        "en": "Android emulator (AVD)",
+    },
+    "no /dev/kvm: nested virtualisation is off on the host": {
+        "fr": "pas de /dev/kvm : virtualisation imbriquée coupée sur l'hôte",
+        "en": "no /dev/kvm: nested virtualisation is off on the host",
+    },
+    "user added to the kvm group (effective at next login)": {
+        "fr": "utilisateur ajouté au groupe kvm (effectif à la prochaine session)",
+        "en": "user added to the kvm group (effective at next login)",
+    },
+    "emulator and system image": {
+        "fr": "émulateur et image système",
+        "en": "emulator and system image",
+    },
+    "Pixel profile, smallest screen": {
+        "fr": "profil Pixel, plus petit écran",
+        "en": "Pixel profile, smallest screen",
+    },
+    "create the AVD": {"fr": "création de l'AVD", "en": "create the AVD"},
+    "AVD ready:": {"fr": "AVD prêt :", "en": "AVD ready:"},
+    "open it from your workstation:": {
+        "fr": "à ouvrir depuis votre poste :",
+        "en": "open it from your workstation:",
+    },
+    "then install the APK:": {
+        "fr": "puis installer l'APK :",
+        "en": "then install the APK:",
+    },
+    "ERPLibre mobile, Android SDK (long)": {
+        "fr": "ERPLibre mobile, SDK Android (long)",
+        "en": "ERPLibre mobile, Android SDK (long)",
     },
     "Gradle task failed": {
         "fr": "tâche Gradle en échec",

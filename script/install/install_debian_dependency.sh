@@ -289,6 +289,18 @@ if [[ $retVal -ne 0 ]]; then
   echo "apt-get pyenv dependencies installation error."
   exit 1
 fi
+# python3-venv : le venv d'OUTILS (.venv.erplibre) est bâti avec le python du
+# SYSTÈME, et sur Debian et Ubuntu « python3 -m venv » n'embarque pas ensurepip
+# sans ce paquet. Sans lui le venv naît infirme — bin/python existe, ni pip ni
+# activate — et tout ce qui en dépend tombe : « repo », la fusion du manifeste
+# (ModuleNotFoundError: No module named 'git'), la configuration PyCharm, la
+# compilation mobile. Mesuré sur une VM Ubuntu 24.04 fraîche.
+${APT_GET} install python3-venv -y
+retVal=$?
+if [[ $retVal -ne 0 ]]; then
+  echo "apt-get python3-venv installation error."
+  exit 1
+fi
 # Dependencies for selenium
 ${APT_GET} install libcairo2-dev python3-dev pkg-config libxt-dev libgirepository1.0-dev -y
 retVal=$?

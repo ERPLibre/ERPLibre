@@ -309,6 +309,16 @@ starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
 they share one SDK through `ANDROID_HOME`. Without Android, the same app runs
 in a browser: `npm start`.
 
+A fifth, **Android emulator (Pixel)**, creates an AVD you open from your own
+machine: `ssh -X erplibre@<ip> "emulator -avd erplibre -no-audio"`. It needs no
+desktop in the VM — the window lands on your screen, not the guest's — but it
+does need KVM inside the guest, so nested virtualisation on the host; the log
+says so when `/dev/kvm` is missing. The device is not frozen: the SDK is asked
+for its profiles and the newest plain Pixel with the smallest screen wins (no
+Pro, XL, Fold or tablet), because every pixel crosses the network. Rendering is
+set to `swiftshader_indirect` inside the AVD's own `config.ini`, since `ssh -X`
+offers no direct GLX and `auto` would open a black screen.
+
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
 
@@ -424,6 +434,17 @@ par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une
 simple VM serveur produit l'APK — et quand Android Studio est aussi coché, les
 deux partagent un seul SDK via `ANDROID_HOME`. Sans Android, la même
 application tourne dans un navigateur : `npm start`.
+
+Un cinquième, **Émulateur Android (Pixel)**, crée un AVD que vous ouvrez
+depuis votre poste : `ssh -X erplibre@<ip> "emulator -avd erplibre -no-audio"`.
+Il ne demande aucun bureau dans la VM — la fenêtre s'affiche sur VOTRE écran,
+pas sur celui de l'invitée — mais il exige KVM dans l'invitée, donc la
+virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
+manque. Le modèle n'est pas figé : on demande au SDK ses profils et le Pixel le
+plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette),
+parce que chaque pixel traverse le réseau. Le rendu est réglé sur
+`swiftshader_indirect` dans le `config.ini` de l'AVD, puisque `ssh -X` n'offre
+pas de GLX direct et qu'« auto » ouvrirait un écran noir.
 
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.

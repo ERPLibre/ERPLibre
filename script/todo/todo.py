@@ -5086,6 +5086,23 @@ class TODO:
             # manifeste ajoute, et du venv d'outils pour le synchroniser.
             "phase": "after",
         },
+        # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
+        # l'écran de qui s'y connecte, par « ssh -X ». Il a besoin, lui, de KVM
+        # dans la VM — donc de virtualisation imbriquée sur l'hôte, ce que le
+        # bloc vérifie et annonce plutôt que de laisser découvrir.
+        #
+        # Disque : ~1,5 Go d'image système, ~2 Go de données d'AVD, plus
+        # l'émulateur lui-même.
+        "avd": {
+            "label": "Android emulator (Pixel)",
+            "hint": "AVD viewable over ssh -X",
+            "disk_gb": 6,
+            "arches": ("amd64",),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": ("apt",),
+            "phase": "after",
+        },
     }
 
     # Famille de paquets de chaque distribution, pour borner un outil à ce qui
@@ -5637,6 +5654,18 @@ class TODO:
         ("SDK location not found", "SDK not found (ANDROID_HOME)"),
         ("have not been accepted", "SDK licences not accepted"),
         ("NDK not configured", "NDK missing"),
+        # Vécu : Capacitor 8 réclame un JDK 21 quand l'installateur amont pose
+        # un 17, et Gradle s'arrête là.
+        (
+            "Cannot find a Java installation",
+            "JDK required by the project missing",
+        ),
+        # Vécu aussi : le JDK est là, mais Gradle TOURNE sur un plus ancien.
+        ("invalid source release", "Gradle running on too old a JDK"),
+        ("cannot overwrite", "SDK already there (upstream installer replays)"),
+        # Vécu : sentencepiece bâtit protoc pour la CIBLE et l'exécute sur
+        # l'hôte. Le message est cryptique ; la cause, non.
+        ("Exec format error", "cross-compiled protoc run on the host"),
         ("Unsupported class file major version", "JDK/Gradle mismatch"),
         ("Could not determine java version", "JDK/Gradle mismatch"),
         (
@@ -5645,29 +5674,140 @@ class TODO:
         ),
         ("npm ERR!", "npm dependencies"),
         ("Test Files", "Vitest tests failed"),
+        # Vécu : le manifeste rend 0 sans avoir cloné, et l'étape suivante
+        # tombe sur un cd impossible. Le motif nomme la vraie cause.
+        #
+        # SANS APOSTROPHE, et ce n'est pas cosmétique : ces motifs partent dans
+        # un « grep -q '<motif>' », entre apostrophes. « can't cd to » fermait
+        # la chaîne et rendait tout le bloc invalide — attrapé par bash -n.
+        ("cd: can", "mobile repository missing"),
+        # Vécu aussi : sans python3.12-venv, .venv.erplibre n'existe pas, et
+        # rien de ce qui suit ne peut synchroniser le manifeste.
+        ("virtual environment", "ERPLibre venv missing (incomplete install)"),
+        ("No module named", "ERPLibre venv incomplete (no pip: python3-venv)"),
         ("FAILED", "Gradle task failed"),
     )
 
     def _qemu_mobile_diag_cmd(self):
         """Fonction shell qui NOMME la cause d'un échec, à partir du journal.
 
-        Un « la VM est rouge » n'apprend rien quand le journal fait des
-        dizaines de mégaoctets. On cherche donc les motifs connus, et à défaut
-        on montre les dernières lignes — c'est toujours mieux que rien."""
+        Un « la VM est rouge » n'apprend rien quand le journal fait des dizaines
+        de mégaoctets. On cherche donc les motifs connus, et à défaut on montre
+        les dernières lignes — c'est toujours mieux que rien.
+
+        La recherche porte sur la FIN du journal, pas sur tout. Vécu : le
+        diagnostic a annoncé « licences SDK non acceptées » quand la panne était
+        un JDK manquant — le motif venait de la revue de licences d'une étape
+        RÉUSSIE, trois étapes plus haut. Nommer la mauvaise cause coûte plus
+        cher que se taire."""
         lines = "".join(
-            f"grep -q '{pat}' \"$1\" && {{ "
-            f'echo "   {t("probable cause:")} {t(cause)}"; return 0; }}; '
+            f"grep -q '{pat}' \"$d\" && {{ "
+            f'echo "   {t("probable cause:")} {t(cause)}"; '
+            'rm -f "$d"; return 0; }; '
             for pat, cause in self._QEMU_MOBILE_DIAG
         )
         return (
-            "mdiag() { "
+            'mdiag() { d=$(mktemp); tail -400 "$1" > "$d"; '
             + lines
             + f'echo "   {t("no known pattern, last lines:")}"; '
-            'tail -12 "$1" | sed "s/^/     /"; }; '
+            'tail -12 "$1" | sed "s/^/     /"; rm -f "$d"; }; '
         )
 
-    def _qemu_mobile_remote_cmd(self, prod=False):
-        """Installe et COMPILE l'application mobile, puis la teste.
+    def _qemu_android_prologue_cmd(self):
+        """Ce que la compilation mobile et l'émulateur partagent : le journal
+        détaillé, le coureur d'étapes, le diagnostic, et l'environnement du SDK.
+
+        Écrit UNE fois même quand les deux options sont cochées — deux
+        prologues, ce serait deux journaux et deux SDK."""
+        return (
+            self._qemu_mobile_diag_cmd() +
+            # Le détail va dans un fichier À PART. Une compilation Gradle écrit
+            # des dizaines de milliers de lignes, dont des centaines portant le
+            # mot « error » sans qu'aucune ne soit une panne : les verser dans
+            # le journal d'installation rendrait son compteur d'erreurs
+            # inutilisable, et le diagnostic illisible.
+            'M="$HOME/erplibre-mobile-build.log"; : > "$M"; '
+            f'echo "   {t("detailed log in the VM:")} $M"; '
+            'mstep() { lbl="$1"; shift; echo "   -> $lbl"; '
+            'if sh -c "$*" >> "$M" 2>&1; then return 0; fi; '
+            f'echo "   ⚠ {t("FAILED:")} $lbl"; mdiag "$M"; return 1; }}; '
+            # Le SDK vit dans $HOME/android, l'emplacement qu'emploie
+            # l'installateur du dépôt. Android Studio, s'il est là, le trouvera
+            # par ANDROID_HOME : un seul SDK sur la machine, pas deux.
+            'export ANDROID_HOME="$HOME/android"; '
+            'export ANDROID_SDK_ROOT="$HOME/android"; '
+            'export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin'
+            ':$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"; '
+            # ~/.bashrc n'est pas lu par un « ssh hôte commande » : ce que
+            # l'installateur y écrit ne sert qu'aux sessions futures, pas à la
+            # compilation qui suit immédiatement.
+            #
+            # Le JDK le PLUS RÉCENT installé, et non celui des alternatives.
+            # Mesuré : avec JAVA_HOME sur le 17 que pose l'installateur amont,
+            # Gradle tourne en 17 et s'arrête sur « invalid source release: 21 »
+            # — les modules de Capacitor 8 compilent en 21. Le tri est
+            # « sort -V », donc java-21 passe après java-17, pas avant.
+            "export JAVA_HOME=$(ls -d /usr/lib/jvm/java-*-openjdk-* "
+            "2>/dev/null | sort -V | tail -1); "
+            '[ -n "$JAVA_HOME" ] || export JAVA_HOME=$(dirname $(dirname '
+            "$(readlink -f $(command -v javac 2>/dev/null "
+            "|| command -v java 2>/dev/null) 2>/dev/null) 2>/dev/null) "
+            "2>/dev/null); "
+            'export PATH="$JAVA_HOME/bin:$PATH"; '
+        )
+
+    def _qemu_android_sdk_steps(self, el_dir):
+        """Les étapes qui posent le SDK : dépôt mobile, prérequis, installateur
+        amont, plateforme réclamée par le projet. Communes aux deux options."""
+        return (
+            # Le « test -f » n'est pas une ceinture de plus : c'est la seule
+            # vérité disponible. update_manifest_local_mobile.sh finit par
+            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné —
+            # vécu, faute de .venv.erplibre. L'étape passait, et c'est le « cd »
+            # suivant qui échouait, deux étapes plus loin.
+            # Le venv d'ERPLibre d'abord, et nommément : tout ce qui suit en
+            # dépend — c'est lui qui porte « repo », qui synchronise le
+            # manifeste. Vécu avec le profil « ERPLibre seul », dont le code
+            # note lui-même « problem installing with q, the script depend on
+            # odoo » : sans venv, le manifeste rendait 0 sans rien cloner et
+            # l'échec ne se voyait que deux étapes plus loin.
+            f'mstep "{t("ERPLibre venv (everything below needs it)")}" '
+            # « activate », et non « bin/python » : sans python3-venv, le venv
+            # naît INFIRME — bin/python existe (un lien), mais ni pip ni
+            # activate ni site-packages. La sonde passait, et l'échec ne se
+            # voyait que deux étapes plus loin, en « No module named git ».
+            f"'test -f {el_dir}/.venv.erplibre/bin/activate' && "
+            f'mstep "{t("mobile repository (additive manifest)")}" '
+            f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh; "
+            "test -f mobile/erplibre_home_mobile/install-android.sh' && "
+            f'mstep "{t("prerequisites of the upstream installer")}" '
+            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : mesuré,
+            # Gradle s'arrête sur « Cannot find a Java installation matching
+            # {languageVersion=21} » — les modules de Capacitor 8 réclament 21.
+            # Les deux JDK cohabitent, et Gradle choisit par sa chaîne d'outils.
+            # unzip et xauth, eux, manquent des images cloud.
+            "'sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            "-o DPkg::Lock::Timeout=600 install -y unzip wget xauth "
+            "openjdk-21-jdk' && "
+            # L'installateur amont n'est PAS idempotent : au second passage il
+            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ». Mesuré.
+            # On ne le rejoue donc que s'il reste quelque chose à poser — un
+            # déploiement qui se répète ne doit pas échouer sur une réussite
+            # précédente.
+            f'mstep "{t("Android SDK, licences, NDK")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
+            "{ [ -x $HOME/android/cmdline-tools/latest/bin/sdkmanager ] "
+            "|| ./install-android.sh; }' && "
+            f'mstep "{t("SDK platform required by the project")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
+            'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
+            'android/variables.gradle) && [ -n "$v" ] && '
+            'yes | sdkmanager "platforms;android-$v" '
+            '"build-tools;$v.0.0"\' && '
+        )
+
+    def _qemu_mobile_build_steps(self, el_dir):
+        """Étapes de compilation de l'application mobile, puis ses tests.
 
         C'est la seule étape qui peut faire échouer la VM, et c'est voulu : une
         machine dont l'application ne compile pas n'est pas une machine prête.
@@ -5688,56 +5828,26 @@ class TODO:
         commence par « sudo apt install openjdk-17-jdk » et s'arrête là
         ailleurs. La lever se fait dans ce script-là, pas ici.
         """
-        el_dir = self._qemu_install_dir(prod)
         return (
-            f'echo "== {t("Building ERPLibre mobile (long)")} =="; '
-            + self._qemu_mobile_diag_cmd()
-            +
-            # Le détail va dans un fichier À PART. Une compilation Gradle écrit
-            # des dizaines de milliers de lignes, dont des centaines portant le
-            # mot « error » sans qu'aucune ne soit une panne : les verser dans
-            # le journal d'installation rendrait son compteur d'erreurs
-            # inutilisable, et le diagnostic illisible.
-            'M="$HOME/erplibre-mobile-build.log"; : > "$M"; '
-            f'echo "   {t("detailed log in the VM:")} $M"; '
-            'mstep() { lbl="$1"; shift; echo "   -> $lbl"; '
-            'if sh -c "$*" >> "$M" 2>&1; then return 0; fi; '
-            f'echo "   ⚠ {t("FAILED:")} $lbl"; mdiag "$M"; return 1; }}; '
-            # Le SDK vit dans $HOME/android, l'emplacement qu'emploie
-            # l'installateur du dépôt. Android Studio, s'il est là, le trouvera
-            # par ANDROID_HOME : un seul SDK sur la machine, pas deux.
-            'export ANDROID_HOME="$HOME/android"; '
-            'export ANDROID_SDK_ROOT="$HOME/android"; '
-            'export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin'
-            ':$ANDROID_HOME/platform-tools"; '
-            # ~/.bashrc n'est pas lu par un « ssh hôte commande » : ce que
-            # l'installateur y écrit ne sert qu'aux sessions futures, pas à la
-            # compilation qui suit immédiatement.
-            "export JAVA_HOME=$(dirname $(dirname $(readlink -f "
-            "$(command -v javac 2>/dev/null || command -v java 2>/dev/null) "
-            "2>/dev/null) 2>/dev/null) 2>/dev/null); "
-            f'mstep "{t("mobile repository (additive manifest)")}" '
-            f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh' && "
-            f'mstep "{t("prerequisites of the upstream installer")}" '
-            "'sudo DEBIAN_FRONTEND=noninteractive apt-get "
-            "-o DPkg::Lock::Timeout=600 install -y unzip wget' && "
-            f'mstep "{t("Android SDK, licences, NDK")}" '
-            f"'cd {el_dir}/mobile/erplibre_home_mobile && ./install-android.sh' && "
-            f'mstep "{t("SDK platform required by the project")}" '
-            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
-            'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
-            'android/variables.gradle) && [ -n "$v" ] && '
-            'yes | sdkmanager "platforms;android-$v" '
-            '"build-tools;$v.0.0"\' && '
             f'mstep "{t("npm dependencies")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm ci' && "
             f'mstep "{t("web bundle (vite build)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm run build' && "
             f'mstep "{t("native sync (capacitor)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npx cap sync android' && "
+            # UNE seule ABI, celle de la VM — qui est aussi celle de
+            # l'émulateur. Deux raisons, la seconde décisive :
+            #   - quatre ABI, c'est quatre fois la compilation de whisper.cpp
+            #     et de sentencepiece, pour trois qui ne serviront jamais ici ;
+            #   - sentencepiece bâtit son « protoc » POUR LA CIBLE puis tente de
+            #     l'exécuter sur l'hôte. En arm64 cela donne « Exec format
+            #     error » et la compilation s'arrête — mesuré. En x86_64 la
+            #     cible et l'hôte coïncident, et le défaut ne se manifeste pas.
+            #     Un APK arm64 demandera un correctif au projet mobile.
             f'mstep "{t("debug APK (gradle)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile/android && "
-            "./gradlew --no-daemon assembleDebug' && "
+            "./gradlew --no-daemon assembleDebug "
+            "-Pandroid.injected.build.abi=x86_64' && "
             f'mstep "{t("Vitest tests")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm test' && "
             # L'APK est la preuve, pas le code de sortie de Gradle : une tâche
@@ -5758,8 +5868,121 @@ class TODO:
             f'echo "   {t("browser debugging (no Android):")} '
             f"cd {el_dir}/mobile/erplibre_home_mobile "
             '&& npm start"; else '
-            f'echo "   ⚠ {t("no APK produced")}"; false; fi; '
+            f'echo "   ⚠ {t("no APK produced")}"; false; fi'
         )
+
+    def _qemu_avd_steps(self, el_dir):
+        """Étapes créant un émulateur prêt à s'ouvrir depuis le poste de travail.
+
+        Le modèle n'est pas figé : on demande au SDK la liste de ses profils et
+        on retient le Pixel le plus récent au plus petit écran — ni Pro, ni XL,
+        ni pliant, ni tablette. Sur un écran distant, chaque pixel traverse le
+        réseau : le petit modèle n'est pas une coquetterie.
+
+        L'image système suit la plateforme du projet, et redescend si elle n'est
+        pas publiée — Google ne fournit pas d'image pour toutes les API.
+
+        Le rendu est réglé sur swiftshader_indirect, DANS la configuration de
+        l'AVD plutôt qu'en option de lancement : par « ssh -X » il n'y a pas de
+        GLX direct, et l'émulateur s'ouvrirait sur un écran noir. Ainsi
+        « emulator -avd erplibre » suffit, sans rien à retenir.
+        """
+        return (
+            f'echo "   == {t("Android emulator (AVD)")} =="; '
+            # KVM dans la VM : sans lui l'émulateur x86 refuse de démarrer. On
+            # le dit ici, où c'est réparable (virtualisation imbriquée sur
+            # l'hôte), plutôt qu'au premier lancement.
+            "if [ ! -e /dev/kvm ]; then "
+            f'echo "   ⚠ {t("no /dev/kvm: nested virtualisation is off on the host")}"; '
+            "else "
+            # /dev/kvm est en root:kvm 0660 : sans appartenir au groupe,
+            # l'émulateur refuse de démarrer sur « ProbeKVM: This user doesn't
+            # have permissions to use KVM ». Mesuré. L'appartenance ne prend
+            # qu'à la prochaine session — ce qui tombe bien, la session utile
+            # est justement celle du « ssh -X » qui viendra ensuite.
+            "sudo usermod -aG kvm $(id -un) 2>/dev/null || true; "
+            f'echo "   {t("user added to the kvm group (effective at next login)")}"; '
+            "fi; "
+            f'mstep "{t("emulator and system image")}" '
+            '\'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
+            f"{el_dir}/mobile/erplibre_home_mobile/android/variables.gradle); "
+            "for a in $v 36 35 34; do "
+            'img="system-images;android-$a;google_apis;x86_64"; '
+            'if yes | sdkmanager "emulator" "$img"; then '
+            'echo "$img" > $HOME/.erplibre-avd-image; break; fi; done; '
+            "test -s $HOME/.erplibre-avd-image' && "
+            f'mstep "{t("Pixel profile, smallest screen")}" '
+            # Le plus récent des Pixel simples : on trie sur le NUMÉRO, pas sur
+            # l'ordre d'affichage, et on écarte les grands modèles.
+            '\'avdmanager list device | grep -oE "pixel_[0-9]+a?" '
+            '| grep -vE "pro|xl|fold|tablet" | sort -t_ -k2 -n | tail -1 '
+            "> $HOME/.erplibre-avd-device; test -s $HOME/.erplibre-avd-device' && "
+            f'mstep "{t("create the AVD")}" '
+            "'img=$(cat $HOME/.erplibre-avd-image); "
+            "dev=$(cat $HOME/.erplibre-avd-device); "
+            'echo no | avdmanager create avd -n erplibre -k "$img" '
+            '-d "$dev" --force && '
+            # Rendu logiciel, écrit dans la config : par ssh -X il n'y a pas de
+            # GLX direct, et « auto » donnerait un écran noir.
+            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swiftshader_indirect\\n" '
+            ">> $HOME/.android/avd/erplibre.avd/config.ini' && "
+            f'echo "   ✅ {t("AVD ready:")} '
+            "$(cat $HOME/.erplibre-avd-device) / "
+            '$(cat $HOME/.erplibre-avd-image)"; '
+            # La commande à copier, avec l'adresse déjà remplie : un émulateur
+            # dont on ignore comment l'ouvrir ne sert à personne.
+            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            f'echo "   {t("open it from your workstation:")} '
+            'ssh -X erplibre@$ip \\"emulator -avd erplibre -no-audio\\""; '
+            f'echo "   {t("then install the APK:")} '
+            'ssh erplibre@$ip \\"adb install -r '
+            f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            '/outputs/apk/debug/app-debug.apk\\""'
+        )
+
+    def _qemu_after_remote_cmd(self, tools, prod=False):
+        """Phase d'APRÈS l'installation : prologue commun, SDK commun, puis ce
+        qui a été coché.
+
+        Un seul prologue et un seul SDK même quand les deux options le sont :
+        deux prologues, et le second tronquerait le journal détaillé du premier.
+
+        Les groupes sont joints par « && » et non par « ; ». C'est ce qui fait
+        qu'un APK manquant reste l'échec de la VM : collé par « ; », un
+        émulateur créé avec succès effacerait le verdict de la compilation."""
+        picked = [
+            k
+            for k in ("mobile", "avd")
+            if k in (tools or ()) and k in self._QEMU_VM_TOOLS
+        ]
+        if not picked:
+            return ""
+        el_dir = self._qemu_install_dir(prod)
+        groups = []
+        if "mobile" in picked:
+            groups.append(self._qemu_mobile_build_steps(el_dir))
+        if "avd" in picked:
+            groups.append(self._qemu_avd_steps(el_dir))
+        return (
+            f'echo "== {t("ERPLibre mobile, Android SDK (long)")} =="; '
+            + self._qemu_android_prologue_cmd()
+            + self._qemu_android_sdk_steps(el_dir)
+            # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que la
+            # première commande du groupe suivant : mesuré, un APK manquant
+            # laissait tourner l'émulateur puis rendait 0 — la VM repassait au
+            # vert alors que rien n'avait compilé. C'est le même piège que le
+            # bloc de service systemd, quelques centaines de lignes plus haut.
+            + " && ".join(f"{{ {g}; }}" for g in groups)
+            + "; "
+        )
+
+    def _qemu_mobile_remote_cmd(self, prod=False):
+        """Compilation mobile seule — la forme que testent les tests."""
+        return self._qemu_after_remote_cmd(("mobile",), prod)
+
+    def _qemu_avd_remote_cmd(self, prod=False):
+        """Émulateur seul."""
+        return self._qemu_after_remote_cmd(("avd",), prod)
 
     def _qemu_tools_remote_cmd(self, tools, prod=False, phase="before"):
         """Bloc des outils cochés pour cette PHASE, du plus utile au plus lourd.
@@ -5770,17 +5993,15 @@ class TODO:
         « after » : la compilation mobile, qui vient après l'installation dont
         elle dépend, et qui elle NE se garde PAS. C'est le contrat demandé : une
         VM dont l'application ne compile pas doit être rouge."""
+        if phase == "after":
+            # Un seul bloc pour les deux options : voir _qemu_after_remote_cmd.
+            return self._qemu_after_remote_cmd(tools, prod)
         blocks = {
-            "gnome_ext": (self._qemu_gnome_ext_remote_cmd, "before"),
-            "pycharm": (lambda: self._qemu_pycharm_remote_cmd(prod), "before"),
-            "android": (self._qemu_android_studio_remote_cmd, "before"),
-            "mobile": (lambda: self._qemu_mobile_remote_cmd(prod), "after"),
+            "gnome_ext": self._qemu_gnome_ext_remote_cmd,
+            "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
+            "android": self._qemu_android_studio_remote_cmd,
         }
-        return "".join(
-            fn()
-            for k, (fn, ph) in blocks.items()
-            if k in (tools or ()) and ph == phase
-        )
+        return "".join(fn() for k, fn in blocks.items() if k in (tools or ()))
 
     def _qemu_editor_pkg(self):
         """Paquet de l'éditeur de l'hôte, à installer dans la VM.
