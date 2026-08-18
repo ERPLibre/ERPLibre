@@ -126,6 +126,7 @@ class Session:
             urllib.request.HTTPCookieProcessor(self.jar)
         )
         self.uid = None
+        self.last_url = None
         # Le nom des méthodes a changé en cours de route (get_views en 16,
         # load_views avant). On retient celui qui a répondu : chercher à
         # chaque appel doublerait le nombre de requêtes.
@@ -135,12 +136,18 @@ class Session:
     def open(self, path, data=None, headers=None):
         url = self.base_url + path
         request = urllib.request.Request(url, data=data, headers=headers or {})
+        # Où l'on a ATTERRI, pas où l'on voulait aller : urllib suit les
+        # redirections en silence, et une session perdue renvoie /my vers
+        # /web/login avec un 200 parfaitement rassurant.
+        self.last_url = url
         try:
             with self.opener.open(request, timeout=self.timeout) as answer:
+                self.last_url = answer.geturl()
                 return answer.getcode(), answer.read().decode(
                     "utf-8", errors="replace"
                 )
         except urllib.error.HTTPError as exc:
+            self.last_url = exc.geturl()
             return exc.code, exc.read().decode("utf-8", errors="replace")
         except Exception as exc:
             return 0, str(exc)
@@ -473,20 +480,33 @@ def view_pairs(view_mode):
     return lst or [[False, "form"]]
 
 
-def check_entry(session, app, menu, limit=DEFAULT_RECORD_LIMIT):
-    """Ouvrir une entrée de menu. Rend un dict décrivant ce qui s'est passé."""
-    resultat = {
-        "app": app["name"],
-        "menu": menu["name"],
-        "action": menu.get("action"),
+def blank_entry(app, menu, kind=None, action=None):
+    """La forme commune d'un résultat. Une seule, pour un seul rapport.
+
+    Le portail et les applications ne se testent pas de la même façon —
+    l'un par HTTP, l'autre par RPC — mais un lecteur n'a pas à connaître
+    cette différence pour lire ce qui a cassé.
+    """
+    return {
+        "app": app,
+        "menu": menu,
+        "action": action,
         "model": None,
-        "kind": None,
+        "kind": kind,
         "error": None,
         "stage": None,
         "domain_ignored": False,
         "unknown_fields": [],
         "fields_read": 0,
+        "status": None,
     }
+
+
+def check_entry(session, app, menu, limit=DEFAULT_RECORD_LIMIT):
+    """Ouvrir une entrée de menu. Rend un dict décrivant ce qui s'est passé."""
+    resultat = blank_entry(
+        app["name"], menu["name"], action=menu.get("action")
+    )
     model_action, ident = split_action(menu.get("action"))
     resultat["kind"] = model_action
     if model_action != "ir.actions.act_window" or not ident:
@@ -555,8 +575,158 @@ def check_entry(session, app, menu, limit=DEFAULT_RECORD_LIMIT):
     return resultat
 
 
-def crawl(session, limit=DEFAULT_RECORD_LIMIT, every_menu=False):
-    """Parcourir les applications. Rend (entrées visitées, échecs)."""
+PORTAL_KIND = "portal"
+DEFAULT_PORTAL_PATHS = ("/my",)
+
+# La page de connexion se reconnaît à SES DEUX champs. Chercher « login »
+# seul attraperait la moitié des pages du portail, où le mot est partout.
+RE_LOGIN_FORM = re.compile(
+    r"""name=["']login["'][\s\S]{0,2000}?name=["']password["']""", re.I
+)
+
+# La trace d'Odoo dans une page d'erreur : la ligne qui NOMME l'exception.
+RE_TRACE = re.compile(r"^\s*([\w.]+(?:Error|Exception)):\s*(.+)$", re.M)
+
+
+def error_from_page(body):
+    """Ce qu'une page d'erreur dit d'elle-même, ou son début à défaut.
+
+    Un « HTTP 500 » sans plus arrête l'enquête là où elle commence : Odoo
+    imprime pourtant l'exception dans la page quand il est en mode debug,
+    et c'est exactement ce qu'on veut lire.
+    """
+    match = RE_TRACE.search(body or "")
+    if match:
+        return f"{match.group(1)}: {match.group(2).strip()}"[:200]
+    # Retirer style et script AVANT les balises : sinon on rend « html {
+    # font-size: 14px; } Home Back 500 » — du CSS, mesuré tel quel.
+    texte = re.sub(
+        r"<(script|style)[^>]*>[\s\S]*?</\1>", " ", body or "", flags=re.I
+    )
+    texte = re.sub(r"<[^>]+>", " ", texte)
+    texte = " ".join(texte.split())
+    return texte[:200]
+
+
+# La dernière ligne d'une trace Python : celle qui NOMME la panne.
+RE_LOG_EXCEPTION = re.compile(
+    r"^(\w[\w.]*(?:Error|Exception|NotFound)):\s*(.*)$", re.M
+)
+
+
+def log_exceptions(lst_log):
+    """Les exceptions du journal du serveur, dans l'ordre.
+
+    La page d'erreur d'Odoo en production ne montre PAS la trace : on
+    obtient « 500: Internal Server Error » et rien d'autre. Le journal, lui,
+    la contient — et c'est la seule chose qui permette de réparer plutôt que
+    de constater.
+    """
+    texte = "\n".join(lst_log or [])
+    return [
+        f"{nom}: {reste.strip()}"[:200]
+        for nom, reste in RE_LOG_EXCEPTION.findall(texte)
+    ]
+
+
+# La ligne d'accès de werkzeug : c'est elle qui porte le CHEMIN, donc la
+# seule façon de savoir à qui appartient une trace.
+RE_ACCESS = re.compile(r'"(?:GET|POST|PUT|DELETE) (\S+) HTTP/[\d.]+" (\d{3})')
+
+
+def reason_for_path(lst_log, path):
+    """La dernière exception loggée AVANT la réponse en échec de ce chemin.
+
+    Prendre simplement la dernière trace du journal était faux, et l'essai
+    réel l'a montré tout de suite : le portail est interrogé en PREMIER,
+    donc sa trace est la première du fichier, et on lui attribuait celle
+    d'une application testée bien après. Une cause fausse coûte plus cher
+    qu'une cause absente — on cherche alors du mauvais côté, avec
+    confiance.
+
+    Une réponse SAINE pour ce chemin efface l'ardoise : ce qui précédait
+    appartenait à quelqu'un d'autre.
+    """
+    attente = None
+    prefixe = (path or "").rstrip("/")
+    for ligne in lst_log or []:
+        trouve = RE_LOG_EXCEPTION.search(ligne)
+        if trouve:
+            attente = f"{trouve.group(1)}: {trouve.group(2).strip()}"[:200]
+            continue
+        acces = RE_ACCESS.search(ligne)
+        if not acces:
+            continue
+        chemin = acces.group(1).split("?")[0]
+        vise = chemin == path or chemin.startswith(prefixe + "/")
+        if vise and int(acces.group(2)) >= 400:
+            return attente
+        attente = None
+    return None
+
+
+def attach_log_reason(lst_failure, lst_log):
+    """Donner à une page en échec la trace qui la concerne, ELLE.
+
+    On ne touche jamais à un message venu d'un appel RPC : celui-ci nomme
+    précisément sa propre erreur, alors que le journal est un flux partagé.
+    Seules les pages ouvertes en HTTP ont besoin de cette recherche — leur
+    page d'erreur, en production, ne montre rien d'utile.
+    """
+    for item in lst_failure:
+        if item.get("kind") != PORTAL_KIND:
+            continue
+        raison = reason_for_path(lst_log, item.get("menu") or "")
+        if raison:
+            (item.get("error") or {})["log"] = raison
+    return lst_failure
+
+
+def check_portal(session, path):
+    """Ouvrir une page du portail AVEC la session connectée.
+
+    Le portail n'est ni le site public ni le back-office : c'est un
+    troisième rendu, en QWeb frontend, avec ses compteurs qui interrogent
+    chacun leur modèle. Ni le sitemap — qui ne liste pas /my, la page
+    demandant une session — ni les appels RPC des applications ne passent
+    par là. Une migration peut donc le casser sans que rien ne le dise.
+    """
+    resultat = blank_entry(t("Portal"), path, kind=PORTAL_KIND)
+    status, body = session.open(path)
+    resultat["status"] = status
+    if not status:
+        resultat["error"] = {
+            "name": "transport",
+            "message": (body or "")[:200],
+        }
+        resultat["stage"] = PORTAL_KIND
+        return resultat
+    if status >= 400:
+        resultat["error"] = {
+            "name": f"HTTP {status}",
+            "message": error_from_page(body),
+        }
+        resultat["stage"] = PORTAL_KIND
+        return resultat
+    # 200 ET la page de connexion : on n'a pas vu /my, on a vu le portier.
+    # Le compter comme une réussite serait le mensonge le plus coûteux ici.
+    redirige = "/web/login" in (session.last_url or "")
+    if redirige or RE_LOGIN_FORM.search(body or ""):
+        resultat["error"] = {
+            "name": t("not signed in"),
+            "message": t("the page served was the login form"),
+        }
+        resultat["stage"] = PORTAL_KIND
+    return resultat
+
+
+def crawl(
+    session,
+    limit=DEFAULT_RECORD_LIMIT,
+    every_menu=False,
+    lst_portal=DEFAULT_PORTAL_PATHS,
+):
+    """Parcourir le portail et les applications. Rend (visitées, échecs)."""
     lst_menu, error = menu_rows(session)
     if error:
         raise RuntimeError(
@@ -572,7 +742,8 @@ def crawl(session, limit=DEFAULT_RECORD_LIMIT, every_menu=False):
         lst_entry = [
             (app, first) for app, first in apps(lst_menu) if first is not None
         ]
-    lst_result = [
+    lst_result = [check_portal(session, path) for path in lst_portal or ()]
+    lst_result += [
         check_entry(session, app, menu, limit=limit) for app, menu in lst_entry
     ]
     return lst_result, [item for item in lst_result if item["error"]]
@@ -594,6 +765,31 @@ def _root_of(menu, par_id):
 def render(lst_result, lst_failure):
     """Le rapport. Ce qui a ouvert, et ce qui a refusé de s'ouvrir."""
     lignes = []
+    # Le portail est compté À PART : noyé dans le total des applications,
+    # « 22/23 » ne dirait pas laquelle des deux choses a cassé, alors que
+    # ce sont deux rendus sans rapport — QWeb frontend d'un côté, vues
+    # back-office de l'autre.
+    portail = [item for item in lst_result if item["kind"] == PORTAL_KIND]
+    lst_result = [item for item in lst_result if item["kind"] != PORTAL_KIND]
+    lst_failure = [item for item in lst_failure if item["kind"] != PORTAL_KIND]
+    if portail:
+        casse = [item for item in portail if item["error"]]
+        lignes.append(
+            f"\n✨ {t('Portal pages opened as the test user')} :"
+            f" {len(portail) - len(casse)}/{len(portail)}"
+        )
+        for item in portail:
+            marque = "❌" if item["error"] else "✅"
+            detail = (
+                f" — {item['error']['name']} :"
+                f" {item['error']['message'][:120]}"
+                if item["error"]
+                else f" — HTTP {item['status']}"
+            )
+            lignes.append(f"   {marque} {item['menu']}{detail}")
+            raison = (item["error"] or {}).get("log")
+            if raison:
+                lignes.append(f"      {t('server log')} : {raison}")
     lignes.append(
         f"\n✨ {t('Apps opened as the test user')} :"
         f" {len(lst_result) - len(lst_failure)}/{len(lst_result)}"
@@ -625,7 +821,8 @@ def render(lst_result, lst_failure):
                 f" {', '.join(item['unknown_fields'][:8])}"
             )
     if not lst_failure:
-        lignes.append(f"✅ {t('Every app opened its first page.')}")
+        if not any(item["error"] for item in portail):
+            lignes.append(f"✅ {t('Every app opened its first page.')}")
         return "\n".join(lignes)
     lignes.append(f"\n❌ {t('Apps that failed to open')} :")
     ETAPE = {
@@ -663,13 +860,23 @@ def render(lst_result, lst_failure):
     return "\n".join(lignes)
 
 
-def run(base_url, database, login, password, limit, every_menu=False):
+def run(
+    base_url,
+    database,
+    login,
+    password,
+    limit,
+    every_menu=False,
+    lst_portal=DEFAULT_PORTAL_PATHS,
+):
     """Se connecter puis parcourir. Lève RuntimeError si l'on ne peut pas."""
     session = Session(base_url)
     ok, raison = session.log_in(database, login, password)
     if not ok:
         raise RuntimeError(f"{t('Could not log in as')} '{login}' : {raison}")
-    return crawl(session, limit=limit, every_menu=every_menu)
+    return crawl(
+        session, limit=limit, every_menu=every_menu, lst_portal=lst_portal
+    )
 
 
 def main(argv=None):
@@ -696,6 +903,12 @@ def main(argv=None):
         help="open every menu with an action, not just each app's first page",
     )
     parser.add_argument(
+        "--portal",
+        default=",".join(DEFAULT_PORTAL_PATHS),
+        help="portal paths to open while signed in (comma separated, empty"
+        " to skip)",
+    )
+    parser.add_argument(
         "--boot-timeout",
         type=int,
         default=180,
@@ -706,6 +919,7 @@ def main(argv=None):
     from smoke_public_url import (
         DEFAULT_PORT,
         port_is_taken,
+        read_log,
         start_server,
         stop_server,
         wait_ready,
@@ -739,7 +953,15 @@ def main(argv=None):
         f"⧖ {t('Starting Odoo on')} '{config.database}'"
         f" ({t('port')} {port})…"
     )
-    server = start_server(config.database, port, config.config)
+    import tempfile
+
+    log_path = os.path.join(
+        tempfile.gettempdir(),
+        f"erplibre_internal_{config.database}_{port}.log",
+    )
+    server = start_server(
+        config.database, port, config.config, log_path=log_path
+    )
     try:
         if not wait_ready(base_url, timeout=config.boot_timeout):
             print(f"❌ {t('The server never answered on')} {base_url}")
@@ -751,12 +973,21 @@ def main(argv=None):
             config.password,
             config.limit,
             every_menu=config.all_menus,
+            lst_portal=[
+                path.strip()
+                for path in (config.portal or "").split(",")
+                if path.strip()
+            ],
         )
     except RuntimeError as exc:
         print(f"❌ {exc}")
         return 2
     finally:
+        # Le journal se lit APRÈS l'arrêt : un serveur qui écrit dans un
+        # fichier bufferise et ne vide qu'en s'arrêtant. Lire avant donnait
+        # les lignes de démarrage et rien de la panne.
         stop_server(server)
+    attach_log_reason(lst_failure, read_log(log_path))
     print(render(lst_result, lst_failure))
     return 1 if lst_failure else 0
 

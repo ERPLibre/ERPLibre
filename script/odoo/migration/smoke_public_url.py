@@ -128,6 +128,12 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
             "--http-port",
             str(port),
             "--log-level=warn",
+            # Deux lignes par requête, et elles portent le CHEMIN. Sans
+            # elles une trace du journal ne peut être rattachée à rien :
+            # on l'attribuait à la dernière requête, qui n'était pas la
+            # sienne. Mesuré — /my accusé d'une panne appartenant à une
+            # application testée après lui.
+            "--log-handler=werkzeug:INFO",
         ],
         stdout=handle or subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
@@ -447,6 +453,25 @@ def render_internal(internal):
     return bool(internal["failures"])
 
 
+def attach_internal_log(internal_report, log_path):
+    """Donner à la passe back-office la trace que sa page ne montrait pas.
+
+    APRÈS l'arrêt du serveur, et pas avant : un serveur qui écrit dans un
+    fichier bufferise et ne vide qu'en s'arrêtant. La page d'erreur d'Odoo
+    en production, elle, se contente de « 500: Internal Server Error » —
+    de quoi constater, pas de quoi réparer.
+    """
+    if not internal_report or not internal_report.get("failures"):
+        return
+    try:
+        import smoke_internal_ui
+    except ImportError:
+        return
+    smoke_internal_ui.attach_log_reason(
+        internal_report["failures"], read_log(log_path)
+    )
+
+
 def internal_phase(
     base_url,
     database,
@@ -455,6 +480,7 @@ def internal_phase(
     password="test",
     limit=20,
     every_menu=False,
+    lst_portal=None,
 ):
     """Le back-office, si la base a été neutralisée. Rend None sinon.
 
@@ -482,7 +508,17 @@ def internal_phase(
         return {"skipped": t("could not tell whether the test user exists")}
     try:
         lst_result, lst_failure = smoke_internal_ui.run(
-            base_url, database, login, password, limit, every_menu=every_menu
+            base_url,
+            database,
+            login,
+            password,
+            limit,
+            every_menu=every_menu,
+            lst_portal=(
+                smoke_internal_ui.DEFAULT_PORTAL_PATHS
+                if lst_portal is None
+                else lst_portal
+            ),
         )
     except RuntimeError as exc:
         return {"skipped": str(exc)}
@@ -504,6 +540,7 @@ def run(
     internal_password="test",
     internal_limit=20,
     every_menu=False,
+    portal=None,
 ):
     """Démarrer, interroger, arrêter, LIRE, éventuellement corriger, revérifier.
 
@@ -547,10 +584,12 @@ def run(
             password=internal_password,
             limit=internal_limit,
             every_menu=every_menu,
+            lst_portal=portal,
         )
     finally:
         stop_server(server)
 
+    attach_internal_log(internal_report, log_path)
     lst_key = []
     if lst_failure:
         lst_log = read_log(log_path)
@@ -676,6 +715,12 @@ def main(argv=None):
         action="store_true",
         help="open every menu with an action, not just each app's first page",
     )
+    parser.add_argument(
+        "--portal",
+        default="/my",
+        help="portal paths opened while signed in (comma separated, empty"
+        " to skip)",
+    )
     config = parser.parse_args(argv)
 
     print(
@@ -698,6 +743,11 @@ def main(argv=None):
             internal_password=config.password,
             internal_limit=config.record_limit,
             every_menu=config.all_menus,
+            portal=[
+                path.strip()
+                for path in (config.portal or "").split(",")
+                if path.strip()
+            ],
         )
     except RuntimeError as exc:
         print(f"❌ {exc}")

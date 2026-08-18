@@ -5410,6 +5410,26 @@ TRANSLATIONS = {
         "fr": "si la base a été neutralisée.",
         "en": "if the database was neutralized.",
     },
+    "Portal": {
+        "fr": "Portail",
+        "en": "Portal",
+    },
+    "Portal pages opened as the test user": {
+        "fr": "Pages du portail ouvertes avec l'utilisateur test",
+        "en": "Portal pages opened as the test user",
+    },
+    "not signed in": {
+        "fr": "pas connecté",
+        "en": "not signed in",
+    },
+    "the page served was the login form": {
+        "fr": "la page servie était le formulaire de connexion",
+        "en": "the page served was the login form",
+    },
+    "server log": {
+        "fr": "journal du serveur",
+        "en": "server log",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

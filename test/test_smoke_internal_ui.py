@@ -404,6 +404,171 @@ class TestTheViewsAreRenderedServerSide(unittest.TestCase):
         self.assertEqual(appels, ["get_views", "load_views", "load_views"])
 
 
+class TestThePortalPage(unittest.TestCase):
+    """/my n'est ni le site public ni le back-office : c'est un troisième
+    rendu, en QWeb frontend, avec ses compteurs qui interrogent chacun leur
+    modèle. Le sitemap ne le liste pas — la page demande une session — et
+    aucun appel RPC ne passe par là. Une migration peut donc le casser sans
+    que rien ailleurs ne le dise.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def session(self, status, body, url=None):
+        session = ui.Session("http://x")
+        session.last_url = url or ("http://x/my")
+
+        def faux(path, data=None, headers=None):
+            return status, body
+
+        session.open = faux
+        return session
+
+    def test_a_page_that_answers_is_a_success(self):
+        item = ui.check_portal(
+            self.session(200, "<html>Mon compte</html>"), "/my"
+        )
+        self.assertIsNone(item["error"])
+        self.assertEqual(item["status"], 200)
+
+    def test_a_five_hundred_is_a_failure(self):
+        item = ui.check_portal(self.session(500, "<html>oups</html>"), "/my")
+        self.assertEqual(item["stage"], ui.PORTAL_KIND)
+        self.assertIn("500", item["error"]["name"])
+
+    def test_a_dead_connection_is_a_failure(self):
+        item = ui.check_portal(self.session(0, "connexion refusée"), "/my")
+        self.assertIsNotNone(item["error"])
+
+    def test_a_login_form_served_with_200_is_NOT_a_success(self):
+        # MESURÉ : /my demandé sans session redirige vers
+        # /web/login?redirect=/my et rend 200. Compter cela comme une
+        # réussite serait le mensonge le plus coûteux du lot — on
+        # annoncerait un portail sain sans l'avoir jamais vu.
+        page = '<form><input name="login"/><input name="password"/></form>'
+        item = ui.check_portal(self.session(200, page), "/my")
+        self.assertIsNotNone(item["error"])
+
+    def test_a_redirect_to_the_login_is_caught_even_without_the_form(self):
+        item = ui.check_portal(
+            self.session(
+                200, "<html>rien</html>", url="http://x/web/login?redirect=/my"
+            ),
+            "/my",
+        )
+        self.assertIsNotNone(item["error"])
+
+    def test_the_word_login_alone_does_not_condemn_a_page(self):
+        # Le mot est partout dans le portail. N'exiger que lui rejetterait
+        # des pages parfaitement saines.
+        page = "<html>Votre login est test. Bienvenue.</html>"
+        item = ui.check_portal(self.session(200, page), "/my")
+        self.assertIsNone(item["error"])
+
+    def test_the_error_page_is_read_without_its_stylesheet(self):
+        # MESURÉ : « Internal Server Error html { font-size: 14px; } Home
+        # Back 500 » — du CSS présenté comme un diagnostic.
+        page = (
+            "<html><style>html { font-size: 14px; }</style>"
+            "<body>500: Internal Server Error</body></html>"
+        )
+        self.assertNotIn("font-size", ui.error_from_page(page))
+
+    def test_it_is_checked_before_the_apps(self):
+        # L'ordre n'est pas indifférent : si la session est perdue, tout le
+        # reste échouera aussi, et l'on veut la cause en tête du rapport.
+        import inspect
+
+        source = inspect.getsource(ui.crawl)
+        self.assertLess(
+            source.index("check_portal"), source.index("check_entry")
+        )
+
+    def test_asking_for_no_portal_path_checks_none(self):
+        session = self.session(200, "ok")
+        session.call_kw = lambda *a, **kw: ([], None)
+        lst_result, _ = ui.crawl(session, lst_portal=[])
+        self.assertEqual(
+            [x for x in lst_result if x["kind"] == ui.PORTAL_KIND], []
+        )
+
+    def test_the_default_path_is_my(self):
+        self.assertEqual(ui.DEFAULT_PORTAL_PATHS, ("/my",))
+
+
+class TestBlamingTheRightRequest(unittest.TestCase):
+    """Une cause fausse coûte plus cher qu'une cause absente.
+
+    Vécu : le portail est interrogé en PREMIER, donc sa trace est la
+    première du journal. En prenant simplement la dernière, on accusait /my
+    d'une panne appartenant à une application testée bien après — et l'on
+    aurait cherché des heures du mauvais côté, avec confiance.
+    """
+
+    JOURNAL = [
+        "AttributeError: 'res.users' object has no attribute 'portal_360'",
+        '... werkzeug: "GET /my HTTP/1.1" 500 - 8 0.004 0.029',
+        "ValueError: Invalid field project.project.is_project_br",
+        '... werkzeug: "POST /web/dataset/call_kw HTTP/1.1" 200 - 3 0.01',
+    ]
+
+    def test_the_trace_of_that_very_request_is_taken(self):
+        self.assertIn("portal_360", ui.reason_for_path(self.JOURNAL, "/my"))
+
+    def test_the_trace_of_another_request_is_NOT(self):
+        self.assertNotIn(
+            "is_project_br", ui.reason_for_path(self.JOURNAL, "/my") or ""
+        )
+
+    def test_a_healthy_answer_wipes_the_slate(self):
+        journal = [
+            "ValueError: sans rapport",
+            '... werkzeug: "GET /my HTTP/1.1" 200 - 8 0.004',
+        ]
+        self.assertIsNone(ui.reason_for_path(journal, "/my"))
+
+    def test_a_redirected_path_still_matches(self):
+        # /my renvoie vers /my/home : la trace est loggée sous le second.
+        journal = [
+            "KeyError: compteur",
+            '... werkzeug: "GET /my/home HTTP/1.1" 500 - 8 0.004',
+        ]
+        self.assertIn("KeyError", ui.reason_for_path(journal, "/my"))
+
+    def test_a_similar_path_is_not_confused_with_it(self):
+        journal = [
+            "KeyError: ailleurs",
+            '... werkzeug: "GET /myaccount HTTP/1.1" 500 - 8 0.004',
+        ]
+        self.assertIsNone(ui.reason_for_path(journal, "/my"))
+
+    def test_an_rpc_message_is_never_overwritten(self):
+        # Un appel RPC nomme précisément SON erreur ; le journal est un flux
+        # partagé. Écraser le premier par le second serait perdre la seule
+        # information sûre.
+        item = ui.blank_entry("Ventes", "Devis", kind="ir.actions.act_window")
+        item["error"] = {"name": "KeyError", "message": "précis"}
+        ui.attach_log_reason(
+            [item], ["ValueError: du journal", '"GET /my" 500']
+        )
+        self.assertNotIn("log", item["error"])
+
+    def test_the_server_is_asked_to_log_its_requests(self):
+        # Sans les lignes d'accès, aucune trace ne peut être rattachée à un
+        # chemin : elles coûtent deux lignes par requête.
+        import inspect
+
+        import smoke_public_url as public
+
+        self.assertIn("werkzeug:INFO", inspect.getsource(public.start_server))
+
+
 class TestTheReport(unittest.TestCase):
     def setUp(self):
         from script.todo import todo_i18n
