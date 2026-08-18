@@ -292,8 +292,25 @@ written in 195 s, and the install then adds its exclusions to the `.iml`.
 When Xvfb is unavailable or the IDE does not get there in five minutes, the
 log says so and the install carries on.
 
-Each tool is filtered per VM — by architecture and by desktop flavour — and
-its disk cost is added to the plan before anything is created.
+A fourth one needs no desktop at all: **ERPLibre mobile (build)**. It adds
+the mobile repository to the manifest (which is additive, so it coexists with
+an Odoo 18 install), runs the repository's own `install-android.sh` — JDK 17,
+command-line tools, SDK licences accepted, NDK, whisper.cpp and sentencepiece
+— then builds: `npm ci`, `vite build`, `cap sync`, `gradlew assembleDebug`,
+and finally `npm test`. **A failed build fails the VM**: the exit code reaches
+the dashboard, and the log names the probable cause (disk full, missing SDK
+platform, JDK/Gradle mismatch, unaccepted licences…) instead of leaving a
+40 MB Gradle log to read. The heavy output goes to
+`~/erplibre-mobile-build.log` inside the VM so the install log stays readable.
+
+It is bounded to apt-based distributions, because that upstream installer
+starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
+— a plain server VM builds the APK — and when Android Studio is also ticked
+they share one SDK through `ANDROID_HOME`. Without Android, the same app runs
+in a browser: `npm start`.
+
+Each tool is filtered per VM — by architecture, desktop flavour and package
+family — and its disk cost is added to the plan before anything is created.
 
 ## Main options
 
@@ -390,8 +407,26 @@ l'installation y ajoute ensuite ses exclusions dans le `.iml`. Sans Xvfb, ou
 si l'IDE n'y arrive pas en cinq minutes, le journal le dit et l'installation
 continue.
 
-Chaque outil est filtré VM par VM — architecture et saveur de bureau — et sa
-place disque s'ajoute au plan avant que rien ne soit créé.
+Un quatrième ne demande aucun bureau : **ERPLibre mobile (compilation)**. Il
+ajoute le dépôt mobile au manifeste — additif, donc il cohabite avec une
+installation Odoo 18 —, lance l'`install-android.sh` du dépôt lui-même (JDK 17,
+outils en ligne de commande, licences SDK acceptées, NDK, whisper.cpp et
+sentencepiece), puis compile : `npm ci`, `vite build`, `cap sync`,
+`gradlew assembleDebug`, et enfin `npm test`. **Une compilation en échec fait
+échouer la VM** : le code de sortie remonte au tableau de bord, et le journal
+NOMME la cause probable (disque plein, plateforme SDK absente, JDK et Gradle
+incompatibles, licences non acceptées…) au lieu de laisser 40 Mo de journal
+Gradle à relire. Le détail va dans `~/erplibre-mobile-build.log`, dans la VM,
+pour que le journal d'installation reste lisible.
+
+Il est borné aux distributions apt, parce que cet installateur amont commence
+par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une
+simple VM serveur produit l'APK — et quand Android Studio est aussi coché, les
+deux partagent un seul SDK via `ANDROID_HOME`. Sans Android, la même
+application tourne dans un navigateur : `npm start`.
+
+Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
+de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.
 
 ## Principales options
 

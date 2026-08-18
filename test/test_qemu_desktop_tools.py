@@ -20,23 +20,27 @@ from script.todo.todo import TODO  # noqa: E402
 class TestToolFiltering(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
-        self.all = tuple(TODO._QEMU_DESKTOP_TOOLS)
+        self.all = tuple(TODO._QEMU_VM_TOOLS)
 
     def test_a_server_gets_no_graphical_tool(self):
-        """Un IDE sans bureau n'a rien pour s'afficher."""
-        self.assertEqual([], self.todo._qemu_tools_for(self.all, "amd64", ""))
+        """Un IDE sans bureau n'a rien pour s'afficher. La compilation mobile,
+        elle, reste : elle compile, elle n'affiche pas."""
+        got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
+        for graphical in ("pycharm", "android", "gnome_ext"):
+            self.assertNotIn(graphical, got)
 
     def test_android_studio_is_x86_64_only(self):
         """Google ne publie aucune archive Linux aarch64 : toutes les variantes
         de l'URL rendent 404, et product-info.json ne déclare que Linux/amd64.
         """
         self.assertIn(
-            "android", self.todo._qemu_tools_for(self.all, "amd64", "gnome")
+            "android",
+            self.todo._qemu_tools_for(self.all, "amd64", "gnome", "ubuntu"),
         )
         for arch in ("arm64", "s390x"):
             self.assertNotIn(
                 "android",
-                self.todo._qemu_tools_for(self.all, arch, "gnome"),
+                self.todo._qemu_tools_for(self.all, arch, "gnome", "ubuntu"),
                 arch,
             )
 
@@ -44,45 +48,59 @@ class TestToolFiltering(unittest.TestCase):
         for arch in ("amd64", "arm64"):
             self.assertIn(
                 "pycharm",
-                self.todo._qemu_tools_for(self.all, arch, "gnome"),
+                self.todo._qemu_tools_for(self.all, arch, "gnome", "ubuntu"),
                 arch,
             )
         self.assertNotIn(
-            "pycharm", self.todo._qemu_tools_for(self.all, "s390x", "gnome")
+            "pycharm",
+            self.todo._qemu_tools_for(self.all, "s390x", "gnome", "ubuntu"),
         )
 
     def test_gnome_extensions_only_under_gnome(self):
         self.assertIn(
-            "gnome_ext", self.todo._qemu_tools_for(self.all, "amd64", "gnome")
+            "gnome_ext",
+            self.todo._qemu_tools_for(self.all, "amd64", "gnome", "ubuntu"),
         )
         self.assertNotIn(
             "gnome_ext",
-            self.todo._qemu_tools_for(self.all, "amd64", "cinnamon"),
+            self.todo._qemu_tools_for(self.all, "amd64", "cinnamon", "ubuntu"),
         )
 
     def test_unknown_key_is_ignored(self):
         self.assertEqual(
-            [], self.todo._qemu_tools_for(("nope",), "amd64", "gnome")
+            [],
+            self.todo._qemu_tools_for(("nope",), "amd64", "gnome", "ubuntu"),
         )
 
 
 class TestToolDisk(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
-        self.all = tuple(TODO._QEMU_DESKTOP_TOOLS)
+        self.all = tuple(TODO._QEMU_VM_TOOLS)
 
     def test_disk_follows_the_filtering(self):
-        """Une VM qui ne recevra pas Android Studio ne doit pas se voir gonfler
-        son disque de ses 8 Go."""
-        full = self.todo._qemu_tools_disk_gb(self.all, "amd64", "gnome")
-        arm = self.todo._qemu_tools_disk_gb(self.all, "arm64", "gnome")
+        """Une VM qui ne recevra pas un outil ne doit pas se voir gonfler son
+        disque de sa taille. En arm64 il en manque DEUX : Android Studio, que
+        Google ne publie qu'en x86_64, et la compilation mobile, qui en
+        dépend."""
+        full = self.todo._qemu_tools_disk_gb(
+            self.all, "amd64", "gnome", "ubuntu"
+        )
+        arm = self.todo._qemu_tools_disk_gb(
+            self.all, "arm64", "gnome", "ubuntu"
+        )
         self.assertEqual(
-            full - arm, TODO._QEMU_DESKTOP_TOOLS["android"]["disk_gb"]
+            full - arm,
+            TODO._QEMU_VM_TOOLS["android"]["disk_gb"]
+            + TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"],
         )
 
-    def test_a_server_costs_nothing(self):
+    def test_a_server_only_pays_for_what_it_gets(self):
+        """Un serveur ne porte aucun IDE, donc il n'en paie pas le disque —
+        mais il paie bien la compilation mobile, qu'il reçoit."""
         self.assertEqual(
-            0, self.todo._qemu_tools_disk_gb(self.all, "amd64", "")
+            TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"],
+            self.todo._qemu_tools_disk_gb(self.all, "amd64", "", "ubuntu"),
         )
 
     def test_the_deploy_command_grows_the_disk(self):
@@ -91,7 +109,7 @@ class TestToolDisk(unittest.TestCase):
         spec = {
             "ssh_key": "",
             "desktop": "gnome",
-            "desktop_tools": self.all,
+            "vm_tools": self.all,
             "install": {
                 "branch": "develop",
                 "prod": False,
@@ -116,7 +134,7 @@ class TestToolDisk(unittest.TestCase):
             20
             + TODO.ERPLIBRE_EXTRA_DISK_GB
             + TODO.QEMU_DESKTOP_EXTRA_DISK_GB
-            + sum(s["disk_gb"] for s in TODO._QEMU_DESKTOP_TOOLS.values())
+            + sum(s["disk_gb"] for s in TODO._QEMU_VM_TOOLS.values())
         )
         self.assertEqual(f"{expected}G", size)
 
@@ -124,7 +142,7 @@ class TestToolDisk(unittest.TestCase):
 class TestToolRemoteCommand(unittest.TestCase):
     def setUp(self):
         self.todo = TODO.__new__(TODO)
-        self.all = tuple(TODO._QEMU_DESKTOP_TOOLS)
+        self.all = tuple(TODO._QEMU_VM_TOOLS)
 
     def _sh_ok(self, script):
         """Le shell accepte-t-il ce script ? « bash -n » ne l'exécute pas."""
@@ -222,6 +240,115 @@ class TestToolDiscoverability(unittest.TestCase):
         journal le dit, plutôt que de laisser croire à un échec."""
         cmd = self.todo._qemu_pycharm_remote_cmd()
         self.assertIn(".idea", cmd)
+
+
+class TestMobileBuild(unittest.TestCase):
+    """Compilation ERPLibre mobile : la seule étape qui peut faire échouer la
+    VM, et la seule qui n'exige pas de bureau."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.all = tuple(TODO._QEMU_VM_TOOLS)
+
+    def test_it_runs_on_a_server_vm(self):
+        """Elle compile, elle n'affiche rien : un bureau serait du gaspillage."""
+        got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
+        self.assertEqual(["mobile"], got)
+
+    def test_it_is_bounded_to_apt(self):
+        """install-android.sh du dépôt mobile commence par « sudo apt install
+        openjdk-17-jdk » : ailleurs il s'arrête là."""
+        for distro in ("fedora", "rocky", "opensuse", "arch"):
+            self.assertNotIn(
+                "mobile",
+                self.todo._qemu_tools_for(self.all, "amd64", "gnome", distro),
+                distro,
+            )
+        self.assertIn(
+            "mobile",
+            self.todo._qemu_tools_for(self.all, "amd64", "gnome", "debian"),
+        )
+
+    def test_it_coexists_with_android_studio(self):
+        """Combinaison croisée : la VM graphique reçoit les deux, et un seul
+        SDK — celui de $HOME/android, que ANDROID_HOME désigne."""
+        got = self.todo._qemu_tools_for(self.all, "amd64", "gnome", "ubuntu")
+        self.assertIn("android", got)
+        self.assertIn("mobile", got)
+        self.assertIn("ANDROID_HOME", self.todo._qemu_mobile_remote_cmd())
+
+    def test_it_runs_after_the_install_not_before(self):
+        """Elle a besoin du dépôt, du venv qui synchronise le manifeste, et de
+        node que « make install_os » installe."""
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "", "", "deb", ("mobile",)
+        )
+        self.assertLess(
+            script.index("make install_os"),
+            script.index("erplibre-mobile-build.log"),
+        )
+
+    def test_a_failed_build_fails_the_vm(self):
+        """Contrat explicite : « pour que ce soit bon », l'app doit compiler.
+        Le bloc est donc lié par « && » et n'est PAS gardé, à la différence des
+        outils graphiques."""
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "", "", "deb", ("mobile",)
+        )
+        tail = script[script.index("erplibre-mobile-build.log") :]
+        self.assertNotIn("|| true", tail)
+        self.assertNotIn("|| echo", tail)
+
+    def test_the_build_covers_apk_and_tests(self):
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        for step in (
+            "update_manifest_local_mobile.sh",
+            "./install-android.sh",
+            "npm ci",
+            "npm run build",
+            "npx cap sync android",
+            "./gradlew --no-daemon assembleDebug",
+            "npm test",
+        ):
+            self.assertIn(step, cmd, step)
+
+    def test_the_platform_comes_from_the_project(self):
+        """L'installateur amont pose android-34, variables.gradle demande
+        compileSdk 36 : on lit le chiffre plutôt que de le figer."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        self.assertIn("android/variables.gradle", cmd)
+        self.assertIn("platforms;android-$v", cmd)
+        self.assertNotIn("platforms;android-36", cmd)
+
+    def test_the_apk_is_the_proof(self):
+        """Une tâche Gradle peut rendre 0 sans rien produire."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        self.assertIn("outputs/apk/debug/*.apk", cmd)
+
+    def test_no_apk_means_non_zero(self):
+        """Éprouvé plutôt que relu : sans APK, le bloc DOIT rendre non nul.
+        Une ligne d'information placée après le « fi » suffisait à rendre 0 et
+        à faire repasser la VM au vert."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        tail = cmd[cmd.index("apk=$(ls") :]
+        res = subprocess.run(
+            ["bash", "-c", "set -e\n" + tail], capture_output=True, text=True
+        )
+        self.assertNotEqual(0, res.returncode, res.stdout)
+
+    def test_every_failure_names_a_cause(self):
+        """Un journal de dizaines de mégaoctets ne se relit pas : le diagnostic
+        doit dire pourquoi."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        for pattern, _cause in TODO._QEMU_MOBILE_DIAG:
+            self.assertIn(pattern, cmd, pattern)
+        self.assertIn('tail -12 "$1"', cmd)
+
+    def test_heavy_output_stays_out_of_the_install_log(self):
+        """Des centaines de lignes Gradle portant le mot « error » sans être
+        des pannes rendraient le compteur du tableau de bord inutilisable."""
+        cmd = self.todo._qemu_mobile_remote_cmd()
+        self.assertIn('>> "$M" 2>&1', cmd)
 
 
 class TestPycharmCommunity(unittest.TestCase):

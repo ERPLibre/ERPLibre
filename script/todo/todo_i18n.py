@@ -7688,6 +7688,104 @@ TRANSLATIONS = {
         "fr": "pas de Xvfb ici : ouvrir PyCharm à la main",
         "en": "no Xvfb here, open PyCharm by hand",
     },
+    "ERPLibre mobile (build)": {
+        "fr": "ERPLibre mobile (compilation)",
+        "en": "ERPLibre mobile (build)",
+    },
+    "APK debug + Vitest, validates the VM": {
+        "fr": "APK debug + Vitest, valide la VM",
+        "en": "APK debug + Vitest, validates the VM",
+    },
+    "Building ERPLibre mobile (long)": {
+        "fr": "Compilation d'ERPLibre mobile (long)",
+        "en": "Building ERPLibre mobile (long)",
+    },
+    "detailed log in the VM:": {
+        "fr": "journal détaillé dans la VM :",
+        "en": "detailed log in the VM:",
+    },
+    "FAILED:": {"fr": "ÉCHEC :", "en": "FAILED:"},
+    "probable cause:": {"fr": "cause probable :", "en": "probable cause:"},
+    "no known pattern, last lines:": {
+        "fr": "aucun motif connu, dernières lignes :",
+        "en": "no known pattern, last lines:",
+    },
+    "a failed mobile build marks the VM as failed": {
+        "fr": "une compilation mobile en échec marque la VM en échec",
+        "en": "a failed mobile build marks the VM as failed",
+    },
+    "mobile repository (additive manifest)": {
+        "fr": "dépôt mobile (manifeste additif)",
+        "en": "mobile repository (additive manifest)",
+    },
+    "prerequisites of the upstream installer": {
+        "fr": "prérequis de l'installateur amont",
+        "en": "prerequisites of the upstream installer",
+    },
+    "Android SDK, licences, NDK": {
+        "fr": "SDK Android, licences, NDK",
+        "en": "Android SDK, licences, NDK",
+    },
+    "SDK platform required by the project": {
+        "fr": "plateforme SDK réclamée par le projet",
+        "en": "SDK platform required by the project",
+    },
+    "npm dependencies": {
+        "fr": "dépendances npm",
+        "en": "npm dependencies",
+    },
+    "web bundle (vite build)": {
+        "fr": "bundle web (vite build)",
+        "en": "web bundle (vite build)",
+    },
+    "native sync (capacitor)": {
+        "fr": "synchronisation native (capacitor)",
+        "en": "native sync (capacitor)",
+    },
+    "debug APK (gradle)": {
+        "fr": "APK debug (gradle)",
+        "en": "debug APK (gradle)",
+    },
+    "Vitest tests": {"fr": "tests Vitest", "en": "Vitest tests"},
+    "APK built:": {"fr": "APK construit :", "en": "APK built:"},
+    "browser debugging (no Android):": {
+        "fr": "déverminage au navigateur (sans Android) :",
+        "en": "browser debugging (no Android):",
+    },
+    "no APK produced": {
+        "fr": "aucun APK produit",
+        "en": "no APK produced",
+    },
+    "disk full": {"fr": "disque plein", "en": "disk full"},
+    "SDK platform missing": {
+        "fr": "plateforme SDK absente",
+        "en": "SDK platform missing",
+    },
+    "SDK not found (ANDROID_HOME)": {
+        "fr": "SDK introuvable (ANDROID_HOME)",
+        "en": "SDK not found (ANDROID_HOME)",
+    },
+    "SDK licences not accepted": {
+        "fr": "licences SDK non acceptées",
+        "en": "SDK licences not accepted",
+    },
+    "NDK missing": {"fr": "NDK absent", "en": "NDK missing"},
+    "JDK/Gradle mismatch": {
+        "fr": "JDK et Gradle incompatibles",
+        "en": "JDK/Gradle mismatch",
+    },
+    "Gradle dependency unreachable (network?)": {
+        "fr": "dépendance Gradle injoignable (réseau ?)",
+        "en": "Gradle dependency unreachable (network?)",
+    },
+    "Vitest tests failed": {
+        "fr": "tests Vitest en échec",
+        "en": "Vitest tests failed",
+    },
+    "Gradle task failed": {
+        "fr": "tâche Gradle en échec",
+        "en": "Gradle task failed",
+    },
     "project created, the install will configure it": {
         "fr": "projet créé, l'installation va le configurer",
         "en": "project created, the install will configure it",

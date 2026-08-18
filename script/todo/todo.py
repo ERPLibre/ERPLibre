@@ -5032,13 +5032,16 @@ class TODO:
     # QU'EN x86_64 (vérifié — toutes les variantes aarch64 de l'URL rendent 404,
     # et le product-info.json de l'archive ne déclare qu'une cible
     # « Linux/amd64 »). JetBrains, lui, publie bien une archive aarch64.
-    _QEMU_DESKTOP_TOOLS = {
+    _QEMU_VM_TOOLS = {
         "pycharm": {
             "label": "PyCharm",
             "hint": "Python IDE, opens the ERPLibre checkout",
             "disk_gb": 5,
             "arches": ("amd64", "arm64"),
             "desktops": (),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
         },
         "android": {
             "label": "Android Studio",
@@ -5046,6 +5049,9 @@ class TODO:
             "disk_gb": 8,
             "arches": ("amd64",),
             "desktops": (),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
         },
         "gnome_ext": {
             "label": "GNOME extensions",
@@ -5053,45 +5059,93 @@ class TODO:
             "disk_gb": 1,
             "arches": (),
             "desktops": ("gnome",),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
+        },
+        # Le seul outil qui ne demande PAS de bureau : il compile, il n'affiche
+        # rien. Une VM serveur le prend, une VM graphique aussi — et sur
+        # celle-ci le SDK est partagé avec Android Studio plutôt que doublé.
+        #
+        # « families » le borne à apt, et ce n'est pas un choix : l'installateur
+        # du dépôt mobile, install-android.sh, commence par
+        # « sudo apt install openjdk-17-jdk ». Ailleurs il s'arrête là. Lever
+        # cette limite se fait dans CE script-là, pas ici.
+        #
+        # Disque : ~1,5 Go de SDK et plateformes, ~2,5 Go de NDK, whisper.cpp
+        # et sentencepiece clonés, node_modules, et les artefacts Gradle.
+        "mobile": {
+            "label": "ERPLibre mobile (build)",
+            "hint": "APK debug + Vitest, validates the VM",
+            "disk_gb": 12,
+            "arches": ("amd64",),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": ("apt",),
+            # APRÈS l'installation : le build a besoin du dépôt mobile, que le
+            # manifeste ajoute, et du venv d'outils pour le synchroniser.
+            "phase": "after",
         },
     }
 
+    # Famille de paquets de chaque distribution, pour borner un outil à ce qui
+    # sait l'installer.
+    _QEMU_DISTRO_FAMILY = {
+        "ubuntu": "apt",
+        "debian": "apt",
+        "fedora": "dnf",
+        "almalinux": "dnf",
+        "rocky": "dnf",
+        "opensuse": "zypper",
+        "arch": "pacman",
+    }
+
     @classmethod
-    def _qemu_desktop_tool_choices(cls):
+    def _qemu_vm_tool_choices(cls):
         """[(clé, libellé, indice)] pour le formulaire et l'invite en ligne."""
         return [
             (key, t(spec["label"]), t(spec["hint"]))
-            for key, spec in cls._QEMU_DESKTOP_TOOLS.items()
+            for key, spec in cls._QEMU_VM_TOOLS.items()
         ]
 
     @classmethod
-    def _qemu_tools_for(cls, tools, arch, desktop):
+    def _qemu_tools_for(cls, tools, arch, desktop, distro="", phase=""):
         """Outils RÉELLEMENT applicables à cette VM.
 
         Un outil demandé pour tout le parc ne convient pas forcément à chaque
-        machine : Android Studio n'existe qu'en x86_64, et les extensions GNOME
-        n'ont pas de sens sous Cinnamon. Filtrer ici plutôt que dans la commande
-        distante évite d'annoncer une installation qui ne se fera pas."""
-        if not desktop:
-            return []
+        machine : Android Studio n'existe qu'en x86_64, les extensions GNOME
+        n'ont pas de sens sous Cinnamon, et la compilation mobile ne sait
+        s'installer que sur les distributions apt. Filtrer ici plutôt que dans
+        la commande distante évite d'annoncer une installation qui ne se fera
+        pas.
+
+        `phase` restreint au moment d'exécution : « before » avant le clone,
+        « after » après l'installation. Vide, les deux sont rendus."""
         out = []
         for key in tools or ():
-            spec = cls._QEMU_DESKTOP_TOOLS.get(key)
+            spec = cls._QEMU_VM_TOOLS.get(key)
             if not spec:
+                continue
+            if spec["needs_desktop"] and not desktop:
                 continue
             if spec["arches"] and arch not in spec["arches"]:
                 continue
             if spec["desktops"] and desktop not in spec["desktops"]:
                 continue
+            family = cls._QEMU_DISTRO_FAMILY.get(distro, "")
+            if spec["families"] and distro and family not in spec["families"]:
+                continue
+            if phase and spec["phase"] != phase:
+                continue
             out.append(key)
         return out
 
     @classmethod
-    def _qemu_tools_disk_gb(cls, tools, arch, desktop):
+    def _qemu_tools_disk_gb(cls, tools, arch, desktop, distro=""):
         """Go à ajouter au disque pour les outils applicables à cette VM."""
         return sum(
-            cls._QEMU_DESKTOP_TOOLS[k]["disk_gb"]
-            for k in cls._qemu_tools_for(tools, arch, desktop)
+            cls._QEMU_VM_TOOLS[k]["disk_gb"]
+            for k in cls._qemu_tools_for(tools, arch, desktop, distro)
         )
 
     # Archive officielle JetBrains, et non un paquet de distribution : aucun ne
@@ -5555,16 +5609,164 @@ class TODO:
             + self._qemu_gnome_ext_site_cmd()
         )
 
-    def _qemu_tools_remote_cmd(self, tools, prod=False):
-        """Bloc d'installation des outils cochés, dans l'ordre du plus utile au
-        plus lourd. Chacun se garde lui-même : aucun ne fait échouer les
-        autres, ni l'installation d'ERPLibre."""
+    # Diagnostic de la compilation mobile : motif rencontré dans le journal
+    # détaillé -> cause nommée. Du plus précis au plus général, le premier qui
+    # correspond gagne.
+    #
+    # Cette liste est faite pour GRANDIR. Une compilation Android échoue de
+    # cent façons, et le journal fait des dizaines de mégaoctets : sans cette
+    # traduction, « la VM est rouge » n'apprend rien et il faut tout rouvrir.
+    # Chaque panne rencontrée sur une VM mérite d'y laisser sa ligne.
+    _QEMU_MOBILE_DIAG = (
+        ("No space left on device", "disk full"),
+        ("Failed to find target with hash string", "SDK platform missing"),
+        ("SDK location not found", "SDK not found (ANDROID_HOME)"),
+        ("have not been accepted", "SDK licences not accepted"),
+        ("NDK not configured", "NDK missing"),
+        ("Unsupported class file major version", "JDK/Gradle mismatch"),
+        ("Could not determine java version", "JDK/Gradle mismatch"),
+        (
+            "Could not resolve all files for configuration",
+            "Gradle dependency unreachable (network?)",
+        ),
+        ("npm ERR!", "npm dependencies"),
+        ("Test Files", "Vitest tests failed"),
+        ("FAILED", "Gradle task failed"),
+    )
+
+    def _qemu_mobile_diag_cmd(self):
+        """Fonction shell qui NOMME la cause d'un échec, à partir du journal.
+
+        Un « la VM est rouge » n'apprend rien quand le journal fait des
+        dizaines de mégaoctets. On cherche donc les motifs connus, et à défaut
+        on montre les dernières lignes — c'est toujours mieux que rien."""
+        lines = "".join(
+            f"grep -q '{pat}' \"$1\" && {{ "
+            f'echo "   {t("probable cause:")} {t(cause)}"; return 0; }}; '
+            for pat, cause in self._QEMU_MOBILE_DIAG
+        )
+        return (
+            "mdiag() { "
+            + lines
+            + f'echo "   {t("no known pattern, last lines:")}"; '
+            'tail -12 "$1" | sed "s/^/     /"; }; '
+        )
+
+    def _qemu_mobile_remote_cmd(self, prod=False):
+        """Installe et COMPILE l'application mobile, puis la teste.
+
+        C'est la seule étape qui peut faire échouer la VM, et c'est voulu : une
+        machine dont l'application ne compile pas n'est pas une machine prête.
+        Le code de sortie remonte donc jusqu'au tableau de bord.
+
+        Le dépôt mobile porte son propre installateur Android — JDK, outils en
+        ligne de commande, licences acceptées, plateformes, NDK, whisper.cpp et
+        sentencepiece. On l'appelle plutôt que de le réécrire : une seconde
+        implémentation dériverait de la première sans prévenir. Deux choses lui
+        manquent pourtant, et on les ajoute ici :
+          - unzip et wget, qu'il suppose présents et qu'aucune image cloud ne
+            livre ;
+          - la plateforme que le projet réclame VRAIMENT. Son installateur pose
+            android-34 quand android/variables.gradle demande compileSdk 36 ;
+            plutôt que de figer 36 ici, on lit le chiffre dans le fichier.
+
+        L'étape est bornée à apt (voir _QEMU_VM_TOOLS) : cet installateur
+        commence par « sudo apt install openjdk-17-jdk » et s'arrête là
+        ailleurs. La lever se fait dans ce script-là, pas ici.
+        """
+        el_dir = self._qemu_install_dir(prod)
+        return (
+            f'echo "== {t("Building ERPLibre mobile (long)")} =="; '
+            + self._qemu_mobile_diag_cmd()
+            +
+            # Le détail va dans un fichier À PART. Une compilation Gradle écrit
+            # des dizaines de milliers de lignes, dont des centaines portant le
+            # mot « error » sans qu'aucune ne soit une panne : les verser dans
+            # le journal d'installation rendrait son compteur d'erreurs
+            # inutilisable, et le diagnostic illisible.
+            'M="$HOME/erplibre-mobile-build.log"; : > "$M"; '
+            f'echo "   {t("detailed log in the VM:")} $M"; '
+            'mstep() { lbl="$1"; shift; echo "   -> $lbl"; '
+            'if sh -c "$*" >> "$M" 2>&1; then return 0; fi; '
+            f'echo "   ⚠ {t("FAILED:")} $lbl"; mdiag "$M"; return 1; }}; '
+            # Le SDK vit dans $HOME/android, l'emplacement qu'emploie
+            # l'installateur du dépôt. Android Studio, s'il est là, le trouvera
+            # par ANDROID_HOME : un seul SDK sur la machine, pas deux.
+            'export ANDROID_HOME="$HOME/android"; '
+            'export ANDROID_SDK_ROOT="$HOME/android"; '
+            'export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin'
+            ':$ANDROID_HOME/platform-tools"; '
+            # ~/.bashrc n'est pas lu par un « ssh hôte commande » : ce que
+            # l'installateur y écrit ne sert qu'aux sessions futures, pas à la
+            # compilation qui suit immédiatement.
+            "export JAVA_HOME=$(dirname $(dirname $(readlink -f "
+            "$(command -v javac 2>/dev/null || command -v java 2>/dev/null) "
+            "2>/dev/null) 2>/dev/null) 2>/dev/null); "
+            f'mstep "{t("mobile repository (additive manifest)")}" '
+            f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh' && "
+            f'mstep "{t("prerequisites of the upstream installer")}" '
+            "'sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            "-o DPkg::Lock::Timeout=600 install -y unzip wget' && "
+            f'mstep "{t("Android SDK, licences, NDK")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && ./install-android.sh' && "
+            f'mstep "{t("SDK platform required by the project")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
+            'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
+            'android/variables.gradle) && [ -n "$v" ] && '
+            'yes | sdkmanager "platforms;android-$v" '
+            '"build-tools;$v.0.0"\' && '
+            f'mstep "{t("npm dependencies")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm ci' && "
+            f'mstep "{t("web bundle (vite build)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm run build' && "
+            f'mstep "{t("native sync (capacitor)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npx cap sync android' && "
+            f'mstep "{t("debug APK (gradle)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile/android && "
+            "./gradlew --no-daemon assembleDebug' && "
+            f'mstep "{t("Vitest tests")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm test' && "
+            # L'APK est la preuve, pas le code de sortie de Gradle : une tâche
+            # peut rendre 0 sans avoir rien produit.
+            f"apk=$(ls {el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            "/outputs/apk/debug/*.apk 2>/dev/null | head -1); "
+            'if [ -n "$apk" ]; then '
+            f'echo "   ✅ {t("APK built:")} $apk"; '
+            # Capacitor sert la même application dans un navigateur : sur une
+            # VM graphique, c'est la voie de déverminage sans Android ni
+            # émulateur. On la NOMME plutôt que d'imposer Chromium — sur
+            # Ubuntu il n'existe qu'en snap, et snapd est justement coupé sur
+            # ces VM. Le navigateur du bureau fait l'affaire.
+            #
+            # DANS la branche de succès, et c'est tout l'enjeu : placé après le
+            # « fi », cet echo devenait la dernière commande du bloc et rendait
+            # 0 — une VM sans APK repassait au vert.
+            f'echo "   {t("browser debugging (no Android):")} '
+            f"cd {el_dir}/mobile/erplibre_home_mobile "
+            '&& npm start"; else '
+            f'echo "   ⚠ {t("no APK produced")}"; false; fi; '
+        )
+
+    def _qemu_tools_remote_cmd(self, tools, prod=False, phase="before"):
+        """Bloc des outils cochés pour cette PHASE, du plus utile au plus lourd.
+
+        « before » : posé avant le clone. Chaque outil s'y garde lui-même —
+        aucun ne fait échouer les autres, ni l'installation d'ERPLibre.
+
+        « after » : la compilation mobile, qui vient après l'installation dont
+        elle dépend, et qui elle NE se garde PAS. C'est le contrat demandé : une
+        VM dont l'application ne compile pas doit être rouge."""
         blocks = {
-            "gnome_ext": self._qemu_gnome_ext_remote_cmd,
-            "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
-            "android": self._qemu_android_studio_remote_cmd,
+            "gnome_ext": (self._qemu_gnome_ext_remote_cmd, "before"),
+            "pycharm": (lambda: self._qemu_pycharm_remote_cmd(prod), "before"),
+            "android": (self._qemu_android_studio_remote_cmd, "before"),
+            "mobile": (lambda: self._qemu_mobile_remote_cmd(prod), "after"),
         }
-        return "".join(blocks[k]() for k in blocks if k in (tools or ()))
+        return "".join(
+            fn()
+            for k, (fn, ph) in blocks.items()
+            if k in (tools or ()) and ph == phase
+        )
 
     def _qemu_editor_pkg(self):
         """Paquet de l'éditeur de l'hôte, à installer dans la VM.
@@ -5691,7 +5893,12 @@ class TODO:
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
-        tools_cmd = self._qemu_tools_remote_cmd(tools, prod)
+        tools_cmd = self._qemu_tools_remote_cmd(tools, prod, "before")
+        # La compilation mobile vient APRÈS l'installation : elle a besoin du
+        # dépôt, du venv d'outils qui synchronise le manifeste, et de node que
+        # « make install_os » installe. Liée par « && » et NON gardée, pour que
+        # son échec soit celui de la VM.
+        after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
         # Entre le clone et le make : PyCharm ouvre le dépôt une fois pour en
         # écrire le .idea, que l'installation configurera juste après. Le
         # groupe rend toujours 0 — l'étape est un bonus, pas une condition.
@@ -5810,6 +6017,7 @@ class TODO:
                     f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
                     "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
                     f"cd /opt/erplibre && {open_step}{final_cmd}"
+                    + (f" && {{ {after_cmd} }}" if after_cmd else "")
                 )
                 if prod
                 else (
@@ -5818,6 +6026,7 @@ class TODO:
                     f"git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
                     f"cd ~/git/erplibre && {open_step}{final_cmd}"
+                    + (f" && {{ {after_cmd} }}" if after_cmd else "")
                 )
             )
         )
@@ -5832,14 +6041,14 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
-        desktop_tools=(),
+        vm_tools=(),
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
         `final_cmd` : commande d'install selon le profil choisi.
         `prod` : install /opt/erplibre + service SELinux confiné.
-        `desktop_tools` : outils cochés pour tout le parc, filtrés machine par
+        `vm_tools` : outils cochés pour tout le parc, filtrés machine par
         machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
         n'ont pas de sens sous Cinnamon)."""
         from script.todo.qemu_install_monitor import (
@@ -5894,7 +6103,7 @@ class TODO:
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
                 # connaît.
-                if desk_map or branch_map or cmd_map or desktop_tools:
+                if desk_map or branch_map or cmd_map or vm_tools:
                     # Le bureau de CETTE VM : sa saveur propre si la carte en
                     # donne une, sinon celle du parc. Prendre « rien » quand la
                     # carte est vide privait de bureau toute VM dont seule la
@@ -5910,7 +6119,7 @@ class TODO:
                         vm_desktop,
                         python_provider,
                         app_store,
-                        self._qemu_tools_for(desktop_tools, a, vm_desktop),
+                        self._qemu_tools_for(vm_tools, a, vm_desktop, d),
                     )
                 vms.append(entry)
             else:
@@ -5956,12 +6165,12 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
-        desktop_tools=(),
+        vm_tools=(),
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
         `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné ;
-        `desktop_tools` : outils de développement cochés."""
+        `vm_tools` : outils de développement cochés."""
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -5978,6 +6187,15 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
+        # Distribution et architecture de CETTE VM : les outils s'y filtrent
+        # (Android Studio n'existe qu'en x86_64, la compilation mobile qu'en
+        # apt). Sans module lisible on ne filtre plus sur la distribution
+        # plutôt que d'écarter à tort.
+        try:
+            mod = self._qemu_import_module()
+            vm_distro, _v, vm_arch = self._qemu_vm_meta(name, mod)
+        except Exception:
+            vm_distro, vm_arch = "", self._qemu_vm_arch(name)
         remote = self._qemu_erplibre_remote_cmd(
             branch,
             final_cmd,
@@ -5985,10 +6203,8 @@ class TODO:
             desktop,
             python_provider,
             app_store,
-            # « or amd64 » comme _qemu_vm_meta : une architecture indéterminée
-            # ne doit pas faire disparaître silencieusement Android Studio.
             self._qemu_tools_for(
-                desktop_tools, self._qemu_vm_arch(name) or "amd64", desktop
+                vm_tools, vm_arch or "amd64", desktop, vm_distro or ""
             ),
         )
         ssh_opts = (
@@ -6424,16 +6640,16 @@ class TODO:
             print(
                 f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
             )
-        tools = spec.get("desktop_tools") or ()
+        tools = spec.get("vm_tools") or ()
         if tools:
             # Les Go sont dits ici parce que c'est le dernier écran avant de
             # créer les disques : un IDE de plus, c'est un disque plus grand,
             # et cette page est celle qu'on relit pour s'en apercevoir.
             named = ", ".join(
-                f"{t(self._QEMU_DESKTOP_TOOLS[k]['label'])} "
-                f"(+{self._QEMU_DESKTOP_TOOLS[k]['disk_gb']} Go)"
+                f"{t(self._QEMU_VM_TOOLS[k]['label'])} "
+                f"(+{self._QEMU_VM_TOOLS[k]['disk_gb']} Go)"
                 for k in tools
-                if k in self._QEMU_DESKTOP_TOOLS
+                if k in self._QEMU_VM_TOOLS
             )
             print(f"  {t('Development tools:')} {named}")
         prov = spec.get("python_provider")
@@ -6463,7 +6679,7 @@ class TODO:
         desktop=False,
         prod=False,
         install_cmd="",
-        desktop_tools=(),
+        vm_tools=(),
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -6520,7 +6736,7 @@ class TODO:
         # Studio, c'est l'archive téléchargée PUIS son contenu déplié. Compté
         # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
         # disque plein après une heure.
-        extra += self._qemu_tools_disk_gb(desktop_tools, arch, desktop)
+        extra += self._qemu_tools_disk_gb(vm_tools, arch, desktop, d)
         if extra:
             bigger = self._parse_disk_gb(disk) + extra
             parts += ["--disk-size", f"{bigger}G"]
@@ -6559,7 +6775,7 @@ class TODO:
             # quelle cible make le remettra à jour.
             prod=bool(install and install.get("prod")),
             install_cmd=(install or {}).get("cmd") or "",
-            desktop_tools=spec.get("desktop_tools") or (),
+            vm_tools=spec.get("vm_tools") or (),
         )
 
     # ---------------------------------------------------------------- #
@@ -6803,16 +7019,23 @@ class TODO:
                 self._qemu_host_timezone()
             ),
             "snap_distros": self.QEMU_SNAP_DISTROS,
-            "desktop_tools": self._qemu_desktop_tool_choices(),
-            "desktop_tool_disk": {
-                k: v["disk_gb"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            "vm_tools": self._qemu_vm_tool_choices(),
+            "vm_tool_disk": {
+                k: v["disk_gb"] for k, v in self._QEMU_VM_TOOLS.items()
             },
-            "desktop_tool_arches": {
-                k: v["arches"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            "vm_tool_arches": {
+                k: v["arches"] for k, v in self._QEMU_VM_TOOLS.items()
             },
-            "desktop_tool_desktops": {
-                k: v["desktops"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            "vm_tool_desktops": {
+                k: v["desktops"] for k, v in self._QEMU_VM_TOOLS.items()
             },
+            "vm_tool_needs_desktop": {
+                k: v["needs_desktop"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "vm_tool_families": {
+                k: v["families"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "distro_family": dict(self._QEMU_DISTRO_FAMILY),
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
@@ -7128,27 +7351,44 @@ class TODO:
             return self.QEMU_APP_STORES[int(answer) - 1][0]
         return "deb"
 
-    def _qemu_ask_desktop_tools(self, vms):
+    def _qemu_ask_vm_tools(self, vms):
         """Outils de développement des VM graphiques : liste à cocher.
 
-        Ne se pose QUE si au moins une VM porte un bureau — sur un serveur, un
-        IDE graphique n'a rien pour s'afficher. La réponse vaut pour tout le
-        parc et sera filtrée machine par machine.
+        Ne montre que ce qu'au moins une VM du parc peut recevoir : les IDE
+        graphiques disparaissent d'un parc de serveurs, où ils n'auraient rien
+        pour s'afficher, et la compilation mobile reste offerte — elle compile,
+        elle n'affiche pas. La réponse vaut pour tout le parc et sera filtrée
+        machine par machine.
 
         Saisie par numéros séparés par des espaces ou des virgules, « tous »
-        pour tout cocher, vide pour rien : trois questions oui/non de plus
+        pour tout cocher, vide pour rien : quatre questions oui/non de plus
         alourdiraient une séquence d'invites déjà longue."""
-        graphical = [vm for vm in vms if vm.get("desktop")]
-        if not graphical:
+        choices = [
+            c
+            for c in self._qemu_vm_tool_choices()
+            if any(
+                self._qemu_tools_for(
+                    (c[0],),
+                    vm.get("arch", "amd64"),
+                    vm.get("desktop", ""),
+                    vm.get("distro", ""),
+                )
+                for vm in vms
+            )
+        ]
+        if not choices:
             return ()
-        choices = self._qemu_desktop_tool_choices()
-        print(f"\n{t('Development tools for the graphical VMs:')}")
+        print(f"\n{t('Development tools:')}")
         for i, (_key, label, hint) in enumerate(choices, 1):
             print(f"  [{i}] {label} — {hint}")
         gb = ", ".join(
-            f"{label} +{self._QEMU_DESKTOP_TOOLS[key]['disk_gb']} Go"
+            f"{label} +{self._QEMU_VM_TOOLS[key]['disk_gb']} Go"
             for key, label, _hint in choices
         )
+        # Le mobile fait échouer la VM quand l'application ne compile pas :
+        # c'est le but, mais il vaut mieux le savoir avant de cocher.
+        if any(k == "mobile" for k, _l, _h in choices):
+            print(f"  ⚠ {t('a failed mobile build marks the VM as failed')}")
         print(f"  {t('Disk needed:')} {gb}")
         answer = input(
             f"{t('Numbers separated by spaces, [all], blank = none:')} "
@@ -7261,7 +7501,7 @@ class TODO:
             _vm.setdefault("desktop", desktop)
             _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
         app_store = self._qemu_ask_app_store(vms)
-        desktop_tools = self._qemu_ask_desktop_tools(vms)
+        vm_tools = self._qemu_ask_vm_tools(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )
@@ -7342,7 +7582,7 @@ class TODO:
             "timezone": timezone,
             "locale": locale,
             "desktop": desktop,
-            "desktop_tools": desktop_tools,
+            "vm_tools": vm_tools,
             "python_provider": python_provider,
             "app_store": app_store,
             "install": install,
@@ -7428,7 +7668,7 @@ class TODO:
         app_store = spec.get("app_store") or "deb"
         # Outils de développement : cochés une fois pour tout le parc, puis
         # filtrés machine par machine (architecture, saveur de bureau).
-        desktop_tools = tuple(spec.get("desktop_tools") or ())
+        vm_tools = tuple(spec.get("vm_tools") or ())
         # Branche par VM : « » sur une VM veut dire « celle du formulaire ».
         branch_map = {
             vm["name"]: (vm.get("branch") or install_branch or "")
@@ -7520,7 +7760,7 @@ class TODO:
                     desktop=desktop_map,
                     python_provider=python_provider,
                     app_store=app_store,
-                    desktop_tools=desktop_tools,
+                    vm_tools=vm_tools,
                 )
             else:
                 print(
@@ -7538,7 +7778,7 @@ class TODO:
                         desktop=desktop_map.get(name, ""),
                         python_provider=python_provider,
                         app_store=app_store,
-                        desktop_tools=desktop_tools,
+                        vm_tools=vm_tools,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
