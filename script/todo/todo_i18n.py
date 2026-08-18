@@ -5286,6 +5286,130 @@ TRANSLATIONS = {
         "fr": "garder",
         "en": "keep",
     },
+    "The server did not serve the login page.": {
+        "fr": "Le serveur n'a pas servi la page de connexion.",
+        "en": "The server did not serve the login page.",
+    },
+    "Wrong login or password for user": {
+        "fr": "Identifiant ou mot de passe refusé pour l'utilisateur",
+        "en": "Wrong login or password for user",
+    },
+    "Could not read the menus": {
+        "fr": "Impossible de lire les menus",
+        "en": "Could not read the menus",
+    },
+    "Apps opened as the test user": {
+        "fr": "Applications ouvertes avec l'utilisateur test",
+        "en": "Apps opened as the test user",
+    },
+    "not openable this way (client or server": {
+        "fr": "non ouvrables ainsi (action client ou",
+        "en": "not openable this way (client or server",
+    },
+    "action): nothing to render.": {
+        "fr": "serveur) : rien à rendre.",
+        "en": "action): nothing to render.",
+    },
+    "opened with an empty domain: theirs": {
+        "fr": "ouvertes avec un domaine vide : le leur",
+        "en": "opened with an empty domain: theirs",
+    },
+    "needs the browser to evaluate it.": {
+        "fr": "demande le navigateur pour être évalué.",
+        "en": "needs the browser to evaluate it.",
+    },
+    "Every app opened its first page.": {
+        "fr": "Chaque application a ouvert sa première page.",
+        "en": "Every app opened its first page.",
+    },
+    "Apps that failed to open": {
+        "fr": "Applications qui n'ont pas pu s'ouvrir",
+        "en": "Apps that failed to open",
+    },
+    "reading the action": {
+        "fr": "lecture de l'action",
+        "en": "reading the action",
+    },
+    "rendering the views": {
+        "fr": "rendu des vues",
+        "en": "rendering the views",
+    },
+    "loading the first records": {
+        "fr": "chargement des premiers enregistrements",
+        "en": "loading the first records",
+    },
+    "These are back-office failures: the public smoke test": {
+        "fr": "Ce sont des échecs du back-office : le test de fumée public",
+        "en": "These are back-office failures: the public smoke test",
+    },
+    "cannot see them.": {
+        "fr": "ne peut pas les voir.",
+        "en": "cannot see them.",
+    },
+    "Could not log in as": {
+        "fr": "Connexion impossible en tant que",
+        "en": "Could not log in as",
+    },
+    "No": {
+        "fr": "Aucun",
+        "en": "No",
+    },
+    "user in": {
+        "fr": "utilisateur dans",
+        "en": "user in",
+    },
+    "the database was not neutralized, nothing to browse.": {
+        "fr": "la base n'a pas été neutralisée, rien à parcourir.",
+        "en": "the database was not neutralized, nothing to browse.",
+    },
+    "Back office not browsed": {
+        "fr": "Back-office non parcouru",
+        "en": "Back office not browsed",
+    },
+    "no test user: the database was not neutralized": {
+        "fr": "pas d'utilisateur test : la base n'a pas été neutralisée",
+        "en": "no test user: the database was not neutralized",
+    },
+    "Could not tell whether the": {
+        "fr": "Impossible de savoir si l'utilisateur",
+        "en": "Could not tell whether the",
+    },
+    "user exists in": {
+        "fr": "existe dans",
+        "en": "user exists in",
+    },
+    "could not tell whether the test user exists": {
+        "fr": "impossible de savoir si l'utilisateur test existe",
+        "en": "could not tell whether the test user exists",
+    },
+    "listing the model fields": {
+        "fr": "inventaire des champs du modèle",
+        "en": "listing the model fields",
+    },
+    "model absent from the running registry": {
+        "fr": "modèle absent du registre en cours",
+        "en": "model absent from the running registry",
+    },
+    "installed in the database, but its module code": {
+        "fr": "installé dans la base, mais le code de son module",
+        "en": "installed in the database, but its module code",
+    },
+    "is not in this addons path.": {
+        "fr": "n'est pas dans cet addons path.",
+        "en": "is not in this addons path.",
+    },
+    "Views naming a field the model no longer has": {
+        "fr": "Vues nommant un champ que le modèle n'a plus",
+        "en": "Views naming a field the model no longer has",
+    },
+    "Public pages, then the back office as the test user": {
+        "fr": "Les pages publiques, puis le back-office avec l'utilisateur test",
+        "en": "Public pages, then the back office as the test user",
+    },
+    "if the database was neutralized.": {
+        "fr": "si la base a été neutralisée.",
+        "en": "if the database was neutralized.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

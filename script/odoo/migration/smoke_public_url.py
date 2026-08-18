@@ -430,6 +430,65 @@ def prompt(database, lst_failure, lst_key, ask=None):
     return lst_chosen
 
 
+def render_internal(internal):
+    """Afficher le rapport du back-office. Rend True s'il a échoué.
+
+    Ne rien afficher quand la base n'a pas été neutralisée serait laisser
+    croire que le back-office a été testé et qu'il va bien.
+    """
+    if internal is None:
+        return False
+    if "skipped" in internal:
+        print(f"\nℹ️  {t('Back office not browsed')} : {internal['skipped']}")
+        return False
+    import smoke_internal_ui
+
+    print(smoke_internal_ui.render(internal["results"], internal["failures"]))
+    return bool(internal["failures"])
+
+
+def internal_phase(
+    base_url,
+    database,
+    enabled=True,
+    login="test",
+    password="test",
+    limit=20,
+    every_menu=False,
+):
+    """Le back-office, si la base a été neutralisée. Rend None sinon.
+
+    La condition n'est pas un drapeau mais l'utilisateur lui-même : la
+    neutralisation pose un compte `test` avec les groupes du
+    superutilisateur, et c'est le seul moyen d'entrer sans connaître le mot
+    de passe de quelqu'un. Une migration reprise a pu sauter l'étape, et le
+    fichier de progression dirait quand même « fait ».
+
+    Un échec ICI ne doit pas emporter le test public : il est mesuré, il
+    est rapporté, mais le rapport des URL publiques a sa propre valeur.
+    """
+    if not enabled:
+        return None
+    try:
+        import smoke_internal_ui
+    except ImportError:
+        return None
+    etat = smoke_internal_ui.user_state(database, login, run_psql=run_psql)
+    if etat == "absent":
+        return {"skipped": t("no test user: the database was not neutralized")}
+    if etat != "present":
+        # « je ne sais pas » n'est pas « tout va bien » : le dire autrement
+        # ferait passer un back-office jamais ouvert pour un back-office sain.
+        return {"skipped": t("could not tell whether the test user exists")}
+    try:
+        lst_result, lst_failure = smoke_internal_ui.run(
+            base_url, database, login, password, limit, every_menu=every_menu
+        )
+    except RuntimeError as exc:
+        return {"skipped": str(exc)}
+    return {"results": lst_result, "failures": lst_failure}
+
+
 def run(
     database,
     port,
@@ -440,6 +499,11 @@ def run(
     interactive=False,
     auto_apply=False,
     ask=input,
+    internal=True,
+    internal_login="test",
+    internal_password="test",
+    internal_limit=20,
+    every_menu=False,
 ):
     """Démarrer, interroger, arrêter, LIRE, éventuellement corriger, revérifier.
 
@@ -472,6 +536,18 @@ def run(
         if limit:
             lst_url = lst_url[:limit]
         lst_failure = check_urls(lst_url, timeout=timeout)
+        # ICI, pendant que le serveur tourne : le démarrage d'Odoo est ce
+        # qui coûte des minutes, pas les requêtes. Un deuxième outil avec
+        # son propre serveur doublerait l'attente pour rien.
+        internal_report = internal_phase(
+            base_url,
+            database,
+            enabled=internal,
+            login=internal_login,
+            password=internal_password,
+            limit=internal_limit,
+            every_menu=every_menu,
+        )
     finally:
         stop_server(server)
 
@@ -486,7 +562,7 @@ def run(
             if key not in lst_key:
                 lst_key.append(key)
     if not lst_failure or not (interactive or auto_apply):
-        return lst_url, lst_failure, lst_key, None
+        return lst_url, lst_failure, lst_key, None, internal_report
 
     print(render(lst_url, lst_failure, lst_key))
     if auto_apply:
@@ -499,7 +575,7 @@ def run(
     else:
         lst_done = prompt(database, lst_failure, lst_key, ask=ask)
     if not lst_done:
-        return lst_url, lst_failure, lst_key, None
+        return lst_url, lst_failure, lst_key, None, internal_report
 
     server = start_server(database, port, config_path, log_path=log_path)
     try:
@@ -512,7 +588,7 @@ def run(
         )
     finally:
         stop_server(server)
-    return lst_url, lst_failure, lst_key, lst_again
+    return lst_url, lst_failure, lst_key, lst_again, internal_report
 
 
 def stop_server(server):
@@ -582,6 +658,24 @@ def main(argv=None):
         default=180,
         help="how long to wait for the server to answer",
     )
+    parser.add_argument(
+        "--no-internal",
+        action="store_true",
+        help="skip the back-office pass done as the neutralization test user",
+    )
+    parser.add_argument("--login", default="test")
+    parser.add_argument("--password", default="test")
+    parser.add_argument(
+        "--record-limit",
+        type=int,
+        default=20,
+        help="how many records each app loads on its first page",
+    )
+    parser.add_argument(
+        "--all-menus",
+        action="store_true",
+        help="open every menu with an action, not just each app's first page",
+    )
     config = parser.parse_args(argv)
 
     print(
@@ -590,7 +684,7 @@ def main(argv=None):
     )
     interactive = not config.report_only and can_ask()
     try:
-        lst_url, lst_failure, lst_key, lst_again = run(
+        lst_url, lst_failure, lst_key, lst_again, internal = run(
             config.database,
             config.port,
             config.config,
@@ -599,20 +693,26 @@ def main(argv=None):
             boot=config.boot_timeout,
             interactive=interactive,
             auto_apply=config.apply,
+            internal=not config.no_internal,
+            internal_login=config.login,
+            internal_password=config.password,
+            internal_limit=config.record_limit,
+            every_menu=config.all_menus,
         )
     except RuntimeError as exc:
         print(f"❌ {exc}")
         return 2
+    internal_failed = render_internal(internal)
     if lst_again is None:
         print(render(lst_url, lst_failure, lst_key))
-        return 1 if lst_failure else 0
+        return 1 if (lst_failure or internal_failed) else 0
     # Après correction on ne redit pas le diagnostic : on dit ce qu'il RESTE.
     print(
         f"\n↻ {t('Re-checked the')} {len(lst_failure)}"
         f" {t('failing URL(s) after the reset')} :"
     )
     print(render([url for url, _s, _p in lst_failure], lst_again, None))
-    return 1 if lst_again else 0
+    return 1 if (lst_again or internal_failed) else 0
 
 
 if __name__ == "__main__":

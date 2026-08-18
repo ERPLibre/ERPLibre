@@ -3017,8 +3017,11 @@ class TodoUpgrade:
         de départ, les mêmes 500 après le palier passent pour un dégât de la
         migration, et l'on cherche du mauvais côté.
 
-        « non » par défaut : cela démarre un serveur et peut prendre quelques
-        minutes sur un gros site.
+        Le serveur ainsi démarré sert AUSSI au back-office : si la base a
+        été neutralisée, l'outil se connecte avec l'utilisateur `test` que
+        la neutralisation y a posé et ouvre la première page de chaque
+        application. Un deuxième outil avec son propre serveur doublerait
+        l'attente — le démarrage d'Odoo est ce qui coûte, pas les requêtes.
         """
         if baseline:
             print(
@@ -3037,6 +3040,10 @@ class TodoUpgrade:
         )
         if answer != "y":
             return
+        print(
+            f"   {t('Public pages, then the back office as the test user')}"
+            f" {t('if the database was neutralized.')}"
+        )
         self.run_on_terminal(
             f"{PYTHON_BIN}"
             " ./script/odoo/migration/smoke_public_url.py"
