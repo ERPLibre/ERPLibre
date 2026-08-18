@@ -534,7 +534,7 @@ def run(
     boot=180,
     interactive=False,
     auto_apply=False,
-    ask=input,
+    ask=None,
     internal=True,
     internal_login="test",
     internal_password="test",
@@ -612,6 +612,11 @@ def run(
             if code == 2:
                 lst_done = []
     else:
+        # `ask=None` et non `input` : c'est `prompt` qui sait quel défaut
+        # lui appartient, et qui pose alors la question par le lecteur
+        # temporisé. Forcer `input` ici court-circuitait le mode auto —
+        # mesuré, l'invite attendait indéfiniment une frappe pendant une
+        # migration lancée en auto-exécution.
         lst_done = prompt(database, lst_failure, lst_key, ask=ask)
     if not lst_done:
         return lst_url, lst_failure, lst_key, None, internal_report

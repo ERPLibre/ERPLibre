@@ -761,6 +761,8 @@ class TodoUpgrade:
         return dct_kept
 
     AUTO_DELAY = 5
+    MAX_ERROR_RETRY = 3
+    MAX_ERROR_TURNS = 8
 
     def prompt_auto_execute(self):
         """Proposer que les invites prennent leur défaut après un délai.
@@ -2935,13 +2937,17 @@ class TodoUpgrade:
         dans un diff de mille lignes. On la recopie, on se trompe d'un
         caractère, et la commande ne fait rien sans le dire — une clé qui ne
         correspond à rien n'est pas une erreur pour l'outil.
+
+        Rend True si quelque chose a VRAIMENT été réinitialisé. C'est ce qui
+        permet de rejouer la commande derrière : rejouer alors qu'on n'a
+        rien changé donnerait le même échec, indéfiniment.
         """
         lst_key = self.stale_cow_keys(database_name)
         if not lst_key:
             print(
                 f"✅ -> {t('No COW copy has drifted from its module view.')}"
             )
-            return
+            return False
         print(f"\n✨ {t('Drifted COW copies')} :")
         for index, key in enumerate(lst_key, start=1):
             print(f"   [{index}] {key}")
@@ -2960,7 +2966,7 @@ class TodoUpgrade:
         # une sortie sans mot pour dire non serait une sortie sans issue.
         if not answer or answer == "n":
             print(f"ℹ -> {t('Kept. Nothing was reset.')}")
-            return
+            return False
         if answer == "a":
             lst_chosen = ["all"]
         else:
@@ -2970,12 +2976,13 @@ class TodoUpgrade:
                     lst_chosen.append(lst_key[int(part) - 1])
             if not lst_chosen:
                 print(f"⚠️ {t('Unknown choice, nothing was reset.')}")
-                return
+                return False
         args = " ".join(f"--reset {key}" for key in lst_chosen)
-        self.run_on_terminal(
+        status = self.run_on_terminal(
             f"{PYTHON_BIN} ./{os.path.join(PATH_MIGRATION_GLOBAL, 'reset_stale_cow_views.py')}"
             f" -d {database_name} {args} --apply"
         )
+        return status == 0
 
     def prompt_database_cleanup(self, database_name):
         """Proposer le nettoyage OCA avant d'interroger les pages.
@@ -3481,6 +3488,7 @@ class TodoUpgrade:
         get_output=False,
         output_is_json=False,
         wait_at_error=True,
+        attempt=1,
     ):
         if output_is_json and not get_output:
             get_output = True
@@ -3511,7 +3519,27 @@ class TodoUpgrade:
         # always sets one, but a silent None must not skip this prompt).
         if (status is None or status) and wait_at_error:
             database_name = self.database_from_command(cmd)
+            # « 3 » par défaut, car le motif d'échec le plus fréquent ici est
+            # une copie COW en retard : la réparer est presque toujours ce
+            # qu'on allait faire. Sans base nommée, les options 2 à 4
+            # n'existent pas et le défaut redevient « continuer ».
+            defaut = "3" if database_name else ""
+            repare = False
+            tours = 0
             while True:
+                # Une borne STRUCTURELLE, et non pas seulement la logique
+                # ci-dessous qui bascule le défaut. Les deux protections
+                # visent la même panne — une invite qui se repropose sans
+                # fin — mais celle-ci tient même si l'autre est cassée un
+                # jour par mégarde. Une boucle infinie dans une migration
+                # lancée sans surveillance coûte une nuit.
+                tours += 1
+                if tours > self.MAX_ERROR_TURNS:
+                    print(
+                        f"🛑 {t('Too many turns on this prompt: moving on.')}"
+                    )
+                    wait_status = ""
+                    break
                 print(f"[1] {t('to redo the command')}")
                 if database_name:
                     print(
@@ -3525,8 +3553,10 @@ class TodoUpgrade:
                 # bloquée sans que rien ne le signale.
                 wait_status = (
                     self.ask(
-                        f"💬 {t('Error detected, press enter to continue or')}"
-                        f" ctrl+c {t('to stop')} : "
+                        f"💬 {t('Error detected. Choose, or ctrl+c to')}"
+                        f" {t('stop')}"
+                        f" ({t('Enter')} = {defaut or t('continue')}) : ",
+                        default=defaut,
                     )
                     .strip()
                     .lower()
@@ -3543,7 +3573,17 @@ class TodoUpgrade:
                     self.check_stale_cow_views(database_name)
                     continue
                 if wait_status == "3" and database_name:
-                    self.prompt_reset_stale_cow_views(database_name)
+                    repare = self.prompt_reset_stale_cow_views(database_name)
+                    if repare:
+                        # Quelque chose a changé : la commande mérite un
+                        # nouvel essai, et c'est le seul cas où le rejeu
+                        # est AUTOMATIQUE.
+                        wait_status = "1"
+                        break
+                    # Rien à réinitialiser. Reproposer « 3 » ferait tourner
+                    # en rond — mesuré : « Aucune copie COW n'a dérivé »,
+                    # encore et encore, sans fin.
+                    defaut = ""
                     continue
                 if wait_status == "4" and database_name:
                     # Sur le VRAI terminal : un plein écran refuse de
@@ -3560,15 +3600,28 @@ class TodoUpgrade:
                 break
 
             if wait_status == "1":
-                return self.todo_upgrade_execute(
-                    cmd,
-                    single_source_odoo=single_source_odoo,
-                    new_env=new_env,
-                    quiet=quiet,
-                    get_output=get_output,
-                    output_is_json=output_is_json,
-                    wait_at_error=wait_at_error,
-                )
+                # Le rejeu AUTOMATIQUE est borné ; celui qu'on demande à la
+                # main ne l'est pas. Sans cette borne, une réparation qui
+                # n'y suffit pas relancerait la commande indéfiniment — et
+                # une migration lancée en auto-exécution tournerait toute
+                # la nuit sur le même échec.
+                if repare and attempt >= self.MAX_ERROR_RETRY:
+                    print(
+                        f"🛑 {t('Still failing after')}"
+                        f" {self.MAX_ERROR_RETRY}"
+                        f" {t('attempts: this one needs a developer.')}"
+                    )
+                else:
+                    return self.todo_upgrade_execute(
+                        cmd,
+                        single_source_odoo=single_source_odoo,
+                        new_env=new_env,
+                        quiet=quiet,
+                        get_output=get_output,
+                        output_is_json=output_is_json,
+                        wait_at_error=wait_at_error,
+                        attempt=attempt + 1,
+                    )
 
         if get_output:
             if output_is_json:

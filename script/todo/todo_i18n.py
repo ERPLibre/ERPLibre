@@ -5462,6 +5462,26 @@ TRANSLATIONS = {
         "fr": "le lot entier",
         "en": "the whole batch",
     },
+    "Still failing after": {
+        "fr": "Échoue toujours après",
+        "en": "Still failing after",
+    },
+    "attempts: this one needs a developer.": {
+        "fr": "tentatives : celle-ci demande un développeur.",
+        "en": "attempts: this one needs a developer.",
+    },
+    "Error detected. Choose, or ctrl+c to": {
+        "fr": "Erreur détectée. Choisissez, ou ctrl+c pour",
+        "en": "Error detected. Choose, or ctrl+c to",
+    },
+    "stop": {
+        "fr": "arrêter",
+        "en": "stop",
+    },
+    "Too many turns on this prompt: moving on.": {
+        "fr": "Trop de tours sur cette invite : on passe.",
+        "en": "Too many turns on this prompt: moving on.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
