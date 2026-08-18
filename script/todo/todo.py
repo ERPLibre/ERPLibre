@@ -4508,6 +4508,30 @@ class TODO:
         ~/git/erplibre (dev)."""
         return "/opt/erplibre" if prod else "$HOME/git/erplibre"
 
+    @staticmethod
+    def _qemu_guide_dir(prod):
+        """Répertoire d'ERPLibre tel que le GUIDE de connexion l'annonce.
+
+        « ~/git/erplibre » plutôt que « $HOME/git/erplibre » : ce chemin n'est
+        pas exécuté par un script, il est lu par quelqu'un qui recopie la ligne
+        dans son shell — où les deux marchent — et le tilde est la forme qu'il
+        reconnaît. En production le chemin est absolu et la question ne se pose
+        pas."""
+        return "/opt/erplibre" if prod else "~/git/erplibre"
+
+    @staticmethod
+    def _qemu_make_target(install_cmd):
+        """Cible make qui installe Odoo dans `install_cmd`, pour le guide.
+
+        Les profils s'écrivent « make install_os && make install_odoo_18 » : la
+        cible utile est la SECONDE, celle qui installe Odoo, et c'est aussi
+        celle qu'on relance après un « git pull ». Les profils qui n'en ont pas
+        (« ERPLibre seul », « mobile », « Déploiement ») rendent une chaîne
+        vide : le guide s'arrête alors à « git pull » plutôt que d'annoncer une
+        cible qui n'est pas celle de cette VM."""
+        found = re.findall(r"make\s+(install_odoo\S*)", install_cmd or "")
+        return found[-1] if found else ""
+
     def _qemu_odoo_service_cmd(self, prod=False):
         """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
         service systemd puis l'active. N'est ajouté QUE pour les profils Odoo.
@@ -4992,6 +5016,435 @@ class TODO:
             + "fi; "
         )
 
+    # ------------------------------------------------------------------ #
+    # Outils de développement d'une VM graphique
+    # ------------------------------------------------------------------ #
+    # Chacun est une case à cocher, indépendante des autres, et chacun pèse sur
+    # le disque — le plan l'annonce AVANT de déployer, sinon l'installation se
+    # termine sur un disque plein après une heure d'attente.
+    #
+    # « disk_gb » compte le PIC, pas l'installé : l'archive téléchargée vit sur
+    # le disque le temps de l'extraction. PyCharm, c'est 1,2 Go d'archive et
+    # ~3 Go déplié ; Android Studio 1,5 Go et 3,5 Go, plus la place du premier
+    # SDK que l'utilisateur téléchargera.
+    #
+    # « arches » n'est pas une précaution : Google ne publie Android Studio
+    # QU'EN x86_64 (vérifié — toutes les variantes aarch64 de l'URL rendent 404,
+    # et le product-info.json de l'archive ne déclare qu'une cible
+    # « Linux/amd64 »). JetBrains, lui, publie bien une archive aarch64.
+    _QEMU_DESKTOP_TOOLS = {
+        "pycharm": {
+            "label": "PyCharm",
+            "hint": "Python IDE, opens the ERPLibre checkout",
+            "disk_gb": 5,
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+        },
+        "android": {
+            "label": "Android Studio",
+            "hint": "ERPLibre mobile development (x86_64 only)",
+            "disk_gb": 8,
+            "arches": ("amd64",),
+            "desktops": (),
+        },
+        "gnome_ext": {
+            "label": "GNOME extensions",
+            "hint": "suggested extensions + extension manager",
+            "disk_gb": 1,
+            "arches": (),
+            "desktops": ("gnome",),
+        },
+    }
+
+    @classmethod
+    def _qemu_desktop_tool_choices(cls):
+        """[(clé, libellé, indice)] pour le formulaire et l'invite en ligne."""
+        return [
+            (key, t(spec["label"]), t(spec["hint"]))
+            for key, spec in cls._QEMU_DESKTOP_TOOLS.items()
+        ]
+
+    @classmethod
+    def _qemu_tools_for(cls, tools, arch, desktop):
+        """Outils RÉELLEMENT applicables à cette VM.
+
+        Un outil demandé pour tout le parc ne convient pas forcément à chaque
+        machine : Android Studio n'existe qu'en x86_64, et les extensions GNOME
+        n'ont pas de sens sous Cinnamon. Filtrer ici plutôt que dans la commande
+        distante évite d'annoncer une installation qui ne se fera pas."""
+        if not desktop:
+            return []
+        out = []
+        for key in tools or ():
+            spec = cls._QEMU_DESKTOP_TOOLS.get(key)
+            if not spec:
+                continue
+            if spec["arches"] and arch not in spec["arches"]:
+                continue
+            if spec["desktops"] and desktop not in spec["desktops"]:
+                continue
+            out.append(key)
+        return out
+
+    @classmethod
+    def _qemu_tools_disk_gb(cls, tools, arch, desktop):
+        """Go à ajouter au disque pour les outils applicables à cette VM."""
+        return sum(
+            cls._QEMU_DESKTOP_TOOLS[k]["disk_gb"]
+            for k in cls._qemu_tools_for(tools, arch, desktop)
+        )
+
+    # Archive officielle JetBrains, et non un paquet de distribution : aucun ne
+    # couvre les quatre gestionnaires (Arch l'a dans extra, Debian et Ubuntu ne
+    # l'ont qu'en snap — coupé ici —, Fedora et openSUSE pas du tout).
+    #
+    # L'URL ne porte AUCUN numéro de version : « code=PCC&latest » redirige vers
+    # la dernière stable. Vérifié, les deux : « distribution=linux » sort
+    # pycharm-2025.3.tar.gz et « distribution=linuxARM64 » son équivalent
+    # aarch64. Rien à mettre à jour dans ce dépôt quand JetBrains publie.
+    _QEMU_PYCHARM_URL = (
+        "https://download.jetbrains.com/product?code=PCC&latest&distribution="
+    )
+
+    # Android Studio n'a PAS d'URL « latest » : le répertoire de version
+    # (2026.1.3.8) et le nom de fichier (quail3-patch1) sont deux jetons
+    # INDÉPENDANTS, l'un ne se déduit pas de l'autre, et le flux updates.xml de
+    # Google ne publie ni l'un ni l'autre. On lit donc l'URL sur la page
+    # officielle, qui la porte en clair, et on retombe sur celle-ci si la page
+    # change de forme. Relevée et vérifiée (HTTP 200) le 2026-08-17.
+    _QEMU_ANDROID_URL = (
+        "https://dl.google.com/dl/android/studio/ide-zips/2026.1.3.8/"
+        "android-studio-quail3-patch1-linux.tar.gz"
+    )
+    _QEMU_ANDROID_PAGE = "https://developer.android.com/studio"
+
+    @staticmethod
+    def _qemu_desktop_entry_cmd(name, label, exec_cmd, icon, categories):
+        """Écrit un lanceur .desktop. Sans lui, un outil déplié dans /opt
+        n'existe pas pour le bureau : il ne se lance qu'en tapant son chemin.
+        """
+        return (
+            f"sudo tee /usr/share/applications/{name}.desktop >/dev/null <<DESK\n"
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Version=1.0\n"
+            f"Name={label}\n"
+            f"Exec={exec_cmd}\n"
+            f"Icon={icon}\n"
+            "Terminal=false\n"
+            f"Categories={categories}\n"
+            "StartupNotify=true\n"
+            "DESK\n"
+        )
+
+    def _qemu_jetbrains_launcher_cmd(self, root, link, alias=""):
+        """Lien vers le lanceur de l'archive, quel que soit son nom.
+
+        JetBrains a renommé « bin/pycharm.sh » en « bin/pycharm » (et
+        « studio.sh » en « studio ») : les deux existent selon la version, on
+        prend celui qui est là.
+
+        `alias` : un second nom pour la même commande. L'archive d'Android
+        Studio n'installe que « studio », mais personne ne tape « studio » —
+        on cherche « android-studio », on ne trouve rien, et on conclut que
+        l'installation a échoué alors qu'elle est bien là. Vécu."""
+        return (
+            f"b=$(ls {root}/bin/{link}.sh {root}/bin/{link} 2>/dev/null "
+            "| head -1); "
+            f'[ -n "$b" ] && sudo ln -sf "$b" /usr/local/bin/{link}; '
+            + (
+                f'[ -n "$b" ] && sudo ln -sf "$b" /usr/local/bin/{alias}; '
+                if alias
+                else ""
+            )
+        )
+
+    def _qemu_pycharm_remote_cmd(self, prod=False):
+        """Installe PyCharm et lui donne le dépôt ERPLibre comme projet.
+
+        « Configuré sur git/erplibre » veut dire deux choses, et les deux sont
+        faites ici : le lanceur du bureau OUVRE ce dépôt, et
+        pycharm_configuration.py y écrit le .idea/ du projet (interpréteur,
+        configurations d'exécution, dossiers exclus) — la même chose que
+        « make pycharm_configure », mais avec le python du venv d'outils, seul à
+        disposer de xmltodict.
+
+        Tout le bloc est gardé : un IDE qui ne s'installe pas ne doit pas faire
+        échouer l'installation d'ERPLibre, qui elle a duré une heure."""
+        el_dir = self._qemu_install_dir(prod)
+        return (
+            f'echo "== {t("Installing PyCharm (long)")} =="; '
+            "{ "
+            'case "$(uname -m)" in x86_64) jb=linux;; '
+            'aarch64|arm64) jb=linuxARM64;; *) jb="";; esac; '
+            # if/else et non « || { …; false; } » : dans un groupe, un échec
+            # n'interrompt PAS la suite (set -e est suspendu à gauche d'un
+            # « && »), et l'architecture non servie partait quand même
+            # télécharger une URL sans valeur de distribution.
+            'if [ -z "$jb" ]; then '
+            f'echo "   {t("no JetBrains build for")} $(uname -m)"; false; '
+            "else "
+            # /var/tmp et non /tmp : sur Fedora et dérivés /tmp est un tmpfs, en
+            # RAM — 1,2 Go d'archive y tueraient une VM de 3 Go.
+            "tmp=$(mktemp -p /var/tmp pycharm-XXXX.tar.gz) && "
+            f'curl -fsSL "{self._QEMU_PYCHARM_URL}$jb" -o "$tmp" && '
+            "sudo mkdir -p /opt/pycharm && "
+            'sudo tar -xzf "$tmp" -C /opt/pycharm --strip-components=1; '
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; } && { '
+            + self._qemu_jetbrains_launcher_cmd("/opt/pycharm", "pycharm")
+            + self._qemu_desktop_entry_cmd(
+                "pycharm",
+                "PyCharm (ERPLibre)",
+                f"/usr/local/bin/pycharm {el_dir}",
+                "/opt/pycharm/bin/pycharm.svg",
+                "Development;IDE;",
+            )
+            # AUCUN appel à pycharm_configuration.py ici : l'installation
+            # ERPLibre le fait déjà. update_env_version.pycharm_update() teste
+            # « os.path.exists('.idea') » puis lance le script — une seule
+            # autorité, et elle sait se taire quand le projet n'existe pas
+            # encore. Doubler l'appel ne configurait rien de plus : ça écrivait
+            # « Missing ./.idea path » dans le journal d'une VM neuve, où
+            # PyCharm n'a évidemment jamais ouvert le dépôt.
+            + f'echo "   {t("PyCharm installed:")} /opt/pycharm '
+            f'({t("command")} pycharm, {t("project")} {el_dir})"; '
+            f'echo "   {t("open the project once and close PyCharm; the .idea "
+                          "it writes is what the install configures")}"; '
+            f'}} || echo "   ⚠ {t("PyCharm not installed (see above)")}"; '
+        )
+
+    def _qemu_android_studio_remote_cmd(self):
+        """Installe Android Studio, pour le développement mobile ERPLibre.
+
+        L'émulateur, lui, exige KVM DANS la VM, donc la virtualisation
+        imbriquée : on le dit plutôt que de laisser découvrir l'échec au premier
+        lancement. Compiler et déployer sur un appareil réel par adb n'en
+        dépendent pas."""
+        return (
+            f'echo "== {t("Installing Android Studio (long)")} =="; '
+            "{ "
+            'if [ "$(uname -m)" != x86_64 ]; then '
+            f'echo "   {t("Android Studio: Google publishes x86_64 only")}"; '
+            "false; "
+            "else "
+            # La page officielle porte l'URL en clair ; le repli garde une
+            # version connue qui répond, pour le jour où sa forme change.
+            f"url=$(curl -fsSL --max-time 30 {self._QEMU_ANDROID_PAGE} "
+            "| grep -oE 'https://[a-z0-9.-]*gvt1\\.com/[^\"]*linux\\.tar\\.gz' "
+            "| head -1); "
+            f'[ -n "$url" ] || url="{self._QEMU_ANDROID_URL}"; '
+            "tmp=$(mktemp -p /var/tmp android-XXXX.tar.gz) && "
+            'curl -fsSL "$url" -o "$tmp" && '
+            "sudo mkdir -p /opt/android-studio && "
+            'sudo tar -xzf "$tmp" -C /opt/android-studio '
+            "--strip-components=1; "
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; } && { '
+            + self._qemu_jetbrains_launcher_cmd(
+                "/opt/android-studio", "studio", alias="android-studio"
+            )
+            + self._qemu_desktop_entry_cmd(
+                "android-studio",
+                "Android Studio",
+                "/usr/local/bin/studio",
+                "/opt/android-studio/bin/studio.svg",
+                "Development;IDE;",
+            )
+            + f'echo "   {t("Android Studio installed:")} /opt/android-studio '
+            f'({t("command")} studio / android-studio)"; '
+            "grep -q vmx /proc/cpuinfo 2>/dev/null "
+            "|| grep -q svm /proc/cpuinfo 2>/dev/null "
+            f'|| echo "   {t("no nested KVM: the emulator will not run")}"; '
+            f'}} || echo "   ⚠ {t("Android Studio not installed (see above)")}"; '
+        )
+
+    # Extensions GNOME suggérées, par gestionnaire de paquets. Les noms ne sont
+    # pas les mêmes d'une famille à l'autre (« dashtodock » sur Debian,
+    # « dash-to-dock » sur Fedora), et aucune liste n'existe en entier partout.
+    #
+    # D'où l'installation UNE PAR UNE : apt, dnf, zypper et pacman échouent tous
+    # sur la commande ENTIÈRE dès qu'un seul nom est inconnu. Un paquet absent
+    # est donc annoncé et sauté, au lieu de faire tomber les autres avec lui.
+    _QEMU_GNOME_EXT_PKGS = {
+        "apt": (
+            "gnome-shell-extension-manager",
+            "gnome-tweaks",
+            "gnome-shell-extensions",
+            "gnome-shell-extension-dashtodock",
+            "gnome-shell-extension-appindicator",
+            "gnome-shell-extension-caffeine",
+        ),
+        "dnf": (
+            "gnome-extensions-app",
+            "gnome-tweaks",
+            "gnome-shell-extension-dash-to-dock",
+            "gnome-shell-extension-appindicator",
+            "gnome-shell-extension-caffeine",
+            "gnome-shell-extension-user-theme",
+        ),
+        "zypper": (
+            "gnome-shell-extensions",
+            "gnome-tweaks",
+            "gnome-shell-extension-dash-to-dock",
+            "gnome-shell-extension-appindicator",
+        ),
+        "pacman": (
+            "extension-manager",
+            "gnome-tweaks",
+            "gnome-shell-extensions",
+        ),
+    }
+
+    # Extensions demandées nommément, par leur UUID sur extensions.gnome.org.
+    # Aucune n'est empaquetée par une distribution : on passe donc par le site.
+    #
+    # L'archive dépend de la version de GNOME Shell, et ce n'est pas une
+    # précaution de principe : mesuré le 2026-08-17, le même point d'entrée
+    # sert gTile v59 pour GNOME 46, v62 pour GNOME 48 et v52 pour GNOME 3.38.
+    # Une URL figée poserait donc, tôt ou tard, une archive faite pour une
+    # autre version.
+    #
+    # Ce que le site fait d'une version qu'il ne connaît PAS : il sert la plus
+    # récente (vérifié — « shell_version=99 » rend l'archive des GNOME 49/50),
+    # il ne répond pas 404. Sans conséquence fâcheuse pour autant : GNOME Shell
+    # refuse de CHARGER une extension dont metadata.json ne déclare pas la
+    # version courante. Une archive mal appariée reste donc inerte et affichée
+    # « obsolète » dans le gestionnaire — elle ne casse pas la session.
+    _QEMU_GNOME_EXT_UUIDS = (
+        "gTile@vibou",
+        "freon@UshakovVasilii_Github.yahoo.com",
+        "tracker@aliakseiz.github.com",
+    )
+    _QEMU_GNOME_EXT_SITE = "https://extensions.gnome.org/download-extension"
+
+    def _qemu_gnome_ext_site_cmd(self):
+        """Installe les extensions nommées depuis extensions.gnome.org.
+
+        Celles-là, on les ACTIVE — à la différence des paquets de la
+        distribution, dont on ne connaît pas l'UUID. Deux raisons, l'une et
+        l'autre vérifiées : le site rend l'archive faite pour le GNOME Shell de
+        cette VM, et une archive mal appariée n'est de toute façon jamais
+        chargée par GNOME, qui compare metadata.json à sa propre version. Ce
+        n'est donc pas l'activation qui peut casser une session.
+
+        Le tout dans un groupe gardé : ni une panne de réseau ni une extension
+        retirée du site ne doivent faire échouer une installation d'une heure.
+        """
+        uuids = " ".join(self._QEMU_GNOME_EXT_UUIDS)
+        site = self._QEMU_GNOME_EXT_SITE
+        return (
+            "{ "
+            # « gnome-shell --version » rend « GNOME Shell 48.2 » : le dernier
+            # champ suffit, et évite une expression régulière à rallonge.
+            "v=$(gnome-shell --version 2>/dev/null | awk '{print $NF}'); "
+            'if [ -z "$v" ]; then '
+            + f'echo "   {t("GNOME Shell not found, site extensions skipped")}"; '
+            + "else "
+            # Le site attend le numéro MAJEUR depuis GNOME 40 (« 48 ») et
+            # « majeur.mineur » avant (« 3.38 ») : sans la bonne forme, il ne
+            # renvoie aucune archive.
+            "maj=${v%%.*}; "
+            'if [ "$maj" -ge 40 ] 2>/dev/null; then sv="$maj"; '
+            'else sv=$(echo "$v" | cut -d. -f1,2); fi; '
+            # gnome-extensions écrit dans ~/.local/share, mais l'activation
+            # passe par GSettings : sans bus de session — le cas d'un
+            # « ssh hôte commande » — dconf ne peut rien écrire.
+            # dbus-run-session en fournit un le temps de l'appel, et
+            # l'écriture atterrit bien dans le dconf de l'utilisateur.
+            'gx() { if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && '
+            "command -v dbus-run-session >/dev/null 2>&1; then "
+            'dbus-run-session -- gnome-extensions "$@"; '
+            'else gnome-extensions "$@"; fi; }; ' + f"for u in {uuids}; do "
+            # « || echo » DANS la substitution : un mktemp qui échoue rendrait
+            # l'affectation non nulle, et « set -e » couperait toute la suite.
+            + "z=$(mktemp -p /var/tmp gext-XXXX.zip || echo /var/tmp/gext.zip); "
+            + 'if curl -fsSL --max-time 120 "'
+            + site
+            + '/$u.shell-extension.zip?shell_version=$sv" -o "$z" '
+            + '&& gx install --force "$z" >/dev/null 2>&1; then '
+            + 'gx enable "$u" >/dev/null 2>&1 || true; '
+            + f'echo "   {t("installed and enabled:")} $u"; else '
+            + f'echo "   {t("not available for this GNOME, skipped:")} '
+            + '$u (GNOME $sv)"; fi; rm -f "$z"; done; '
+            + f'echo "   {t("log out and back in to load them")}"; '
+            + "fi; } || true; "
+        )
+
+    def _qemu_gnome_ext_remote_cmd(self):
+        """Pose les extensions GNOME suggérées.
+
+        Deux sources, et deux politiques, pour une raison :
+          - les paquets de la DISTRIBUTION sont installés sans être activés. On
+            ne connaît pas leur UUID de façon fiable, et activer à l'aveugle une
+            extension incompatible avec la version de GNOME Shell laisse la
+            session sur un écran noir — panne qu'on ne diagnostique pas depuis
+            une console série. Le gestionnaire graphique est posé pour choisir ;
+          - les extensions nommées par leur UUID sont, elles, ACTIVÉES : le site
+            rend l'archive faite pour ce GNOME-là, et une archive mal appariée
+            n'est jamais chargée par GNOME plutôt que de casser la session.
+        """
+        pkgs = self._QEMU_GNOME_EXT_PKGS
+        return (
+            f'echo "== {t("Suggested GNOME extensions")} =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['apt'])}'; "
+            "I='sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            "-o DPkg::Lock::Timeout=600 install -y'; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['dnf'])}'; I='sudo dnf install -y'; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['zypper'])}'; "
+            "I='sudo zypper --non-interactive install "
+            "--auto-agree-with-licenses'; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['pacman'])}'; "
+            "I='sudo pacman -S --needed --noconfirm'; "
+            'else EXT=""; fi; '
+            'for p in $EXT; do $I "$p" >/dev/null 2>&1 '
+            f'|| echo "   {t("not in the repos, skipped:")} $p"; done; '
+            f'echo "   {t("Enable them from Extension Manager, or:")} '
+            'gnome-extensions enable <uuid>"; '
+            + self._qemu_gnome_ext_site_cmd()
+        )
+
+    def _qemu_tools_remote_cmd(self, tools, prod=False):
+        """Bloc d'installation des outils cochés, dans l'ordre du plus utile au
+        plus lourd. Chacun se garde lui-même : aucun ne fait échouer les
+        autres, ni l'installation d'ERPLibre."""
+        blocks = {
+            "gnome_ext": self._qemu_gnome_ext_remote_cmd,
+            "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
+            "android": self._qemu_android_studio_remote_cmd,
+        }
+        return "".join(blocks[k]() for k in blocks if k in (tools or ()))
+
+    def _qemu_editor_pkg(self):
+        """Paquet de l'éditeur de l'hôte, à installer dans la VM.
+
+        L'éditeur atteint déjà la VM par deux chemins, tous deux posés par
+        deploy_qemu.py : « core.editor » dans son ~/.gitconfig, et la ligne
+        « éditer le serveur » du guide de connexion. Encore faut-il que le
+        binaire y soit — les images cloud n'ont ni nano ni vim garantis, et
+        certaines n'ont même pas vi. On l'ajoute donc aux outils d'amorçage, avec
+        curl, git et make, là où les dépôts viennent d'être rafraîchis.
+
+        La table des éditeurs vit dans deploy_qemu.py : une seule autorité décide
+        du paquet installé, de la commande affichée et de core.editor. Sans
+        module importable, on n'installe rien plutôt que de deviner un nom."""
+        try:
+            mod = self._qemu_import_module()
+            return mod.vm_editor(mod.invoking_home())[0]
+        except Exception:
+            return ""
+
+    def _qemu_editor_suffix(self):
+        """« vim » -> « vim » précédé d'une espace, rien du tout sinon.
+
+        La liste des outils d'amorçage est une chaîne shell entre apostrophes :
+        y concaténer une chaîne vide sans précaution laisserait une espace en
+        trop, inoffensive mais visible dans chaque log d'installation."""
+        pkg = self._qemu_editor_pkg()
+        return f" {pkg}" if pkg else ""
+
     # mise ne publie de binaire que pour ces architectures : 46 assets à la
     # v2026.8.4, aucun s390x — son propre script d'installation refuse cette
     # plateforme. Ailleurs, le choix « mise » est sans objet et on reste sur
@@ -5038,6 +5491,7 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        tools=(),
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -5047,7 +5501,10 @@ class TODO:
         installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
         SELinux confiné. `desktop` : ajoute GNOME et son accès distant.
         `python_provider` : « mise » pour un CPython précompilé, sinon le
-        comportement par défaut du dépôt (pyenv, qui compile)."""
+        comportement par défaut du dépôt (pyenv, qui compile). `tools` : outils
+        de développement cochés (PyCharm, Android Studio, extensions GNOME),
+        posés APRÈS ERPLibre — PyCharm a besoin du venv du dépôt pour écrire la
+        configuration du projet."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
@@ -5059,6 +5516,7 @@ class TODO:
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(desktop, app_store)
+                + self._qemu_tools_remote_cmd(tools, prod)
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
@@ -5084,6 +5542,7 @@ class TODO:
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
+        tools_cmd = self._qemu_tools_remote_cmd(tools, prod)
         return (
             "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
@@ -5103,7 +5562,14 @@ class TODO:
             # la VM soit la plus rapide possible (miroirs à jour / les plus
             # rapides), puis installe. Supporte apt (Debian/Ubuntu), dnf/yum
             # (Fedora) et pacman (Arch).
-            "PKGS='curl git make'; "
+            #
+            # L'éditeur de l'hôte voyage avec eux : deploy_qemu.py a déjà écrit
+            # « core.editor » dans le ~/.gitconfig de la VM et l'a nommé dans le
+            # guide de connexion, mais aucune image cloud ne garantit vim ni
+            # nano. Le poser ici plutôt que par cloud-init : les dépôts y sont
+            # déjà rafraîchis, et une installation de paquet au premier boot
+            # retarderait le démarrage sans laisser de trace dans le suivi.
+            f"PKGS='curl git make{self._qemu_editor_suffix()}'; "
             "if command -v apt-get >/dev/null 2>&1; then "
             # Au 1er boot, cloud-init (install qemu-guest-agent) et/ou
             # apt-daily.service tiennent le verrou apt. IMPORTANT :
@@ -5167,6 +5633,16 @@ class TODO:
             '{ echo "Outil manquant apres installation: $t '
             '(reseau de la VM ?)"; exit 1; }; done; '
             + self._qemu_mise_remote_cmd(python_provider)
+            # Les outils AVANT le clone et le make, et l'ordre compte : c'est
+            # PyCharm qui écrit le .idea du dépôt, en l'ouvrant une fois, et
+            # c'est l'installation qui, ensuite, y lance
+            # pycharm_configuration.py. Posés après, ils arrivaient trop tard
+            # pour cette étape-là.
+            #
+            # Le code de sortie de la commande distante reste celui de
+            # l'installation : chaque bloc d'outil se garde lui-même et rend 0,
+            # donc aucun ne peut faire passer un make échoué pour un succès.
+            + tools_cmd
             # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
             # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
             + (
@@ -5199,12 +5675,16 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        desktop_tools=(),
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
         `final_cmd` : commande d'install selon le profil choisi.
-        `prod` : install /opt/erplibre + service SELinux confiné."""
+        `prod` : install /opt/erplibre + service SELinux confiné.
+        `desktop_tools` : outils cochés pour tout le parc, filtrés machine par
+        machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
+        n'ont pas de sens sous Cinnamon)."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -5253,14 +5733,27 @@ class TODO:
                     "version": v,
                     "arch": a,
                 }
-                if desk_map or branch_map or cmd_map:
+                # Les outils imposent une commande PAR VM même quand tout le
+                # reste est commun : ils dépendent de l'architecture de la
+                # machine et de sa saveur de bureau, que seule cette boucle
+                # connaît.
+                if desk_map or branch_map or cmd_map or desktop_tools:
+                    # Le bureau de CETTE VM : sa saveur propre si la carte en
+                    # donne une, sinon celle du parc. Prendre « rien » quand la
+                    # carte est vide privait de bureau toute VM dont seule la
+                    # branche ou le profil différait — la commande par défaut,
+                    # elle, l'a toujours porté.
+                    vm_desktop = desk_map.get(
+                        name, "" if desk_map else desktop
+                    )
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
                         branch_map.get(name, branch_def),
                         cmd_map.get(name, cmd_def),
                         prod,
-                        desk_map.get(name, ""),
+                        vm_desktop,
                         python_provider,
                         app_store,
+                        self._qemu_tools_for(desktop_tools, a, vm_desktop),
                     )
                 vms.append(entry)
             else:
@@ -5306,10 +5799,12 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        desktop_tools=(),
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
-        `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné."""
+        `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné ;
+        `desktop_tools` : outils de développement cochés."""
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -5327,7 +5822,17 @@ class TODO:
             )
             return
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop, python_provider, app_store
+            branch,
+            final_cmd,
+            prod,
+            desktop,
+            python_provider,
+            app_store,
+            # « or amd64 » comme _qemu_vm_meta : une architecture indéterminée
+            # ne doit pas faire disparaître silencieusement Android Studio.
+            self._qemu_tools_for(
+                desktop_tools, self._qemu_vm_arch(name) or "amd64", desktop
+            ),
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -5762,6 +6267,18 @@ class TODO:
             print(
                 f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
             )
+        tools = spec.get("desktop_tools") or ()
+        if tools:
+            # Les Go sont dits ici parce que c'est le dernier écran avant de
+            # créer les disques : un IDE de plus, c'est un disque plus grand,
+            # et cette page est celle qu'on relit pour s'en apercevoir.
+            named = ", ".join(
+                f"{t(self._QEMU_DESKTOP_TOOLS[k]['label'])} "
+                f"(+{self._QEMU_DESKTOP_TOOLS[k]['disk_gb']} Go)"
+                for k in tools
+                if k in self._QEMU_DESKTOP_TOOLS
+            )
+            print(f"  {t('Development tools:')} {named}")
         prov = spec.get("python_provider")
         if prov:
             print(f"  {t('Python interpreter:')} {prov}")
@@ -5787,6 +6304,9 @@ class TODO:
         timezone=None,
         locale=None,
         desktop=False,
+        prod=False,
+        install_cmd="",
+        desktop_tools=(),
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -5822,6 +6342,15 @@ class TODO:
             parts += ["--locale", locale]
         if desktop:
             parts.append("--desktop")
+        # Guide affiché à la connexion SSH de la VM : dans la langue du menu, et
+        # avec la section ERPLibre seulement là où ERPLibre sera installé — une
+        # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
+        parts += ["--lang", get_lang()]
+        if branch:
+            parts += ["--erplibre-dir", self._qemu_guide_dir(prod)]
+            target = self._qemu_make_target(install_cmd)
+            if target:
+                parts += ["--erplibre-make", target]
         extra = 0
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
@@ -5830,6 +6359,11 @@ class TODO:
             # GNOME et ses dépendances pèsent autant qu'ERPLibre : sans cette
             # marge, le disque se remplit en pleine installation du bureau.
             extra += self.QEMU_DESKTOP_EXTRA_DISK_GB
+        # Les IDE pèsent plus lourd que tout le reste : PyCharm et Android
+        # Studio, c'est l'archive téléchargée PUIS son contenu déplié. Compté
+        # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
+        # disque plein après une heure.
+        extra += self._qemu_tools_disk_gb(desktop_tools, arch, desktop)
         if extra:
             bigger = self._parse_disk_gb(disk) + extra
             parts += ["--disk-size", f"{bigger}G"]
@@ -5858,7 +6392,17 @@ class TODO:
             locale=spec.get("locale"),
             # Le type suit la VM. Repli sur la valeur de spec pour la CLI,
             # qui ne pose la question qu'une fois pour tout le parc.
-            desktop=bool(vm.get("desktop", spec.get("desktop"))),
+            #
+            # La SAVEUR, et non un booléen : les extensions GNOME n'ont pas de
+            # sens sous Cinnamon, et c'est ici que se calcule la place disque
+            # des outils. « --desktop » ne regarde que la vérité de la valeur,
+            # une chaîne non vide lui va aussi bien.
+            desktop=vm.get("desktop", spec.get("desktop")) or "",
+            # Les deux servent au guide de connexion : où ERPLibre sera posé, et
+            # quelle cible make le remettra à jour.
+            prod=bool(install and install.get("prod")),
+            install_cmd=(install or {}).get("cmd") or "",
+            desktop_tools=spec.get("desktop_tools") or (),
         )
 
     # ---------------------------------------------------------------- #
@@ -6102,6 +6646,16 @@ class TODO:
                 self._qemu_host_timezone()
             ),
             "snap_distros": self.QEMU_SNAP_DISTROS,
+            "desktop_tools": self._qemu_desktop_tool_choices(),
+            "desktop_tool_disk": {
+                k: v["disk_gb"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            },
+            "desktop_tool_arches": {
+                k: v["arches"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            },
+            "desktop_tool_desktops": {
+                k: v["desktops"] for k, v in self._QEMU_DESKTOP_TOOLS.items()
+            },
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
@@ -6417,6 +6971,43 @@ class TODO:
             return self.QEMU_APP_STORES[int(answer) - 1][0]
         return "deb"
 
+    def _qemu_ask_desktop_tools(self, vms):
+        """Outils de développement des VM graphiques : liste à cocher.
+
+        Ne se pose QUE si au moins une VM porte un bureau — sur un serveur, un
+        IDE graphique n'a rien pour s'afficher. La réponse vaut pour tout le
+        parc et sera filtrée machine par machine.
+
+        Saisie par numéros séparés par des espaces ou des virgules, « tous »
+        pour tout cocher, vide pour rien : trois questions oui/non de plus
+        alourdiraient une séquence d'invites déjà longue."""
+        graphical = [vm for vm in vms if vm.get("desktop")]
+        if not graphical:
+            return ()
+        choices = self._qemu_desktop_tool_choices()
+        print(f"\n{t('Development tools for the graphical VMs:')}")
+        for i, (_key, label, hint) in enumerate(choices, 1):
+            print(f"  [{i}] {label} — {hint}")
+        gb = ", ".join(
+            f"{label} +{self._QEMU_DESKTOP_TOOLS[key]['disk_gb']} Go"
+            for key, label, _hint in choices
+        )
+        print(f"  {t('Disk needed:')} {gb}")
+        answer = input(
+            f"{t('Numbers separated by spaces, [all], blank = none:')} "
+        ).strip()
+        if not answer:
+            return ()
+        if answer.lower() in ("all", "tous", "toutes", "*"):
+            return tuple(key for key, _l, _h in choices)
+        picked = []
+        for token in answer.replace(",", " ").split():
+            if token.isdigit() and 1 <= int(token) <= len(choices):
+                key = choices[int(token) - 1][0]
+                if key not in picked:
+                    picked.append(key)
+        return tuple(picked)
+
     def _qemu_ask_python_provider(self, arches):
         """mise (CPython précompilé) ou pyenv (compilation).
 
@@ -6513,6 +7104,7 @@ class TODO:
             _vm.setdefault("desktop", desktop)
             _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
         app_store = self._qemu_ask_app_store(vms)
+        desktop_tools = self._qemu_ask_desktop_tools(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )
@@ -6593,6 +7185,7 @@ class TODO:
             "timezone": timezone,
             "locale": locale,
             "desktop": desktop,
+            "desktop_tools": desktop_tools,
             "python_provider": python_provider,
             "app_store": app_store,
             "install": install,
@@ -6676,6 +7269,9 @@ class TODO:
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"
+        # Outils de développement : cochés une fois pour tout le parc, puis
+        # filtrés machine par machine (architecture, saveur de bureau).
+        desktop_tools = tuple(spec.get("desktop_tools") or ())
         # Branche par VM : « » sur une VM veut dire « celle du formulaire ».
         branch_map = {
             vm["name"]: (vm.get("branch") or install_branch or "")
@@ -6767,6 +7363,7 @@ class TODO:
                     desktop=desktop_map,
                     python_provider=python_provider,
                     app_store=app_store,
+                    desktop_tools=desktop_tools,
                 )
             else:
                 print(
@@ -6784,6 +7381,7 @@ class TODO:
                         desktop=desktop_map.get(name, ""),
                         python_provider=python_provider,
                         app_store=app_store,
+                        desktop_tools=desktop_tools,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install

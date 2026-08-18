@@ -146,6 +146,35 @@ prévisualiser un dry-run, télécharger une image, lister les VM et afficher
 l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
+Quand une VM est graphique, le menu propose en plus une **liste à cocher
+d'outils de développement** : PyCharm (posé depuis l'archive officielle
+JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt ERPLibre),
+Android Studio (`/opt/android-studio`, commande `studio` ou
+`android-studio` ; x86_64 seulement — Google ne publie aucune archive Linux
+aarch64) et un jeu
+d'extensions GNOME suggérées.
+
+Les extensions empaquetées par la distribution sont installées sans être
+activées — leur UUID n'est pas connu de façon fiable, et le gestionnaire
+d'extensions est là pour choisir. Trois extensions nommées par leur UUID sont,
+elles, installées **et activées**, directement depuis extensions.gnome.org :
+**gTile**, **Freon** et **Tracker**. L'archive est prise pour la version de
+GNOME Shell qui tourne vraiment dans la VM — le même point d'entrée sert gTile
+v59 en GNOME 46 et v62 en GNOME 48, si bien qu'une URL figée poserait une
+version faite pour une autre release. Une archive mal appariée n'est de toute
+façon jamais chargée par GNOME : il compare `metadata.json` à sa propre
+version et affiche l'extension comme obsolète plutôt que de casser la session.
+
+Les outils sont posés **avant** le clone et l'installation d'ERPLibre, et
+l'ordre compte : PyCharm écrit le `.idea/` du dépôt à la première ouverture du
+projet, et l'installation qui suit y lance `pycharm_configuration.py`
+(`update_env_version.pycharm_update()`, qui se tait tant qu'il n'y a pas de
+`.idea`). Sur une VM neuve : ouvrir PyCharm une fois sur `~/git/erplibre`, le
+fermer, puis relancer `make install_odoo_18`.
+
+Chaque outil est filtré VM par VM — architecture et saveur de bureau — et sa
+place disque s'ajoute au plan avant que rien ne soit créé.
+
 ## Principales options
 
 - `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
@@ -166,8 +195,36 @@ vous.
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
 - `--force` — écrase le disque de travail qcow2 existant.
+- `--lang` — langue du guide affiché à la connexion SSH, `fr` (défaut) ou
+  `en`. Le menu TODO passe la sienne.
+- `--erplibre-dir` — où ERPLibre sera installé dans la VM
+  (`~/git/erplibre`, ou `/opt/erplibre` en production). Ajoute la section
+  ERPLibre au guide de connexion ; omis, cette section est laissée de côté.
+- `--erplibre-make` — la cible make qui a installé la VM
+  (ex. `install_odoo_18`), reprise dans le guide pour la mettre à jour.
+- `--no-git-identity` — ne recopie pas les `user.name`, `user.email` et
+  `core.editor` de l'hôte dans le `~/.gitconfig` de la VM.
 
 Lancez `./script/qemu/deploy_qemu.py --help` pour la liste complète.
+
+## Guide de connexion (`/etc/motd`)
+
+Chaque VM accueille celui qui s'y connecte en SSH avec les commandes de **sa**
+distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
+éditer le serveur, le redémarrer, mettre à jour des modules, mettre à jour
+Odoo, inspecter l'instance, ouvrir le menu TODO. Il est écrit par cloud-init,
+donc présent dès le premier démarrage : avant l'installation d'ERPLibre, et
+encore là si elle échoue — le moment où l'on se connecte justement à la main.
+
+`--dry-run` affiche le guide généré avec le reste du user-data. Il ne
+s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
+restent nets.
+
+L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
+un commit fait dans la VM porte alors votre nom plutôt que
+`erplibre@<nom-de-vm>`. L'éditeur suit le même chemin — `core.editor`, la
+ligne `config.conf` du guide et le paquet installé dans la VM viennent d'une
+seule table, de sorte que le guide ne nomme jamais une commande absente.
 
 ## Gestion des VM
 

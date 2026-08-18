@@ -7557,6 +7557,122 @@ TRANSLATIONS = {
         "en": "no recipient: nothing was sent",
     },
     "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
+    # QEMU — outils de développement des VM graphiques
+    "Python IDE, ERPLibre project pre-configured": {
+        "fr": "IDE Python, projet ERPLibre pré-configuré",
+        "en": "Python IDE, ERPLibre project pre-configured",
+    },
+    "ERPLibre mobile development (x86_64 only)": {
+        "fr": "développement mobile ERPLibre (x86_64 seulement)",
+        "en": "ERPLibre mobile development (x86_64 only)",
+    },
+    "GNOME extensions": {
+        "fr": "Extensions GNOME",
+        "en": "GNOME extensions",
+    },
+    "suggested extensions + extension manager": {
+        "fr": "extensions suggérées + gestionnaire d'extensions",
+        "en": "suggested extensions + extension manager",
+    },
+    "Development tools for the graphical VMs:": {
+        "fr": "Outils de développement des VM graphiques :",
+        "en": "Development tools for the graphical VMs:",
+    },
+    "Development tools (graphical VMs):": {
+        "fr": "Outils de développement (VM graphiques) :",
+        "en": "Development tools (graphical VMs):",
+    },
+    "Development tools:": {
+        "fr": "Outils de développement :",
+        "en": "Development tools:",
+    },
+    "Disk needed:": {"fr": "Disque nécessaire :", "en": "Disk needed:"},
+    "Numbers separated by spaces, [all], blank = none:": {
+        "fr": "Numéros séparés par des espaces, [tous], vide = aucun :",
+        "en": "Numbers separated by spaces, [all], blank = none:",
+    },
+    "No graphical VM: these tools are not installed.": {
+        "fr": "Aucune VM graphique : ces outils ne seront pas installés.",
+        "en": "No graphical VM: these tools are not installed.",
+    },
+    "Partly skipped (arch or desktop):": {
+        "fr": "En partie écartés (architecture ou bureau) :",
+        "en": "Partly skipped (arch or desktop):",
+    },
+    "Installing PyCharm (long)": {
+        "fr": "Installation de PyCharm (long)",
+        "en": "Installing PyCharm (long)",
+    },
+    "no JetBrains build for": {
+        "fr": "aucune archive JetBrains pour",
+        "en": "no JetBrains build for",
+    },
+    "PyCharm: project config skipped": {
+        "fr": "PyCharm : configuration du projet non écrite",
+        "en": "PyCharm: project config skipped",
+    },
+    "PyCharm installed:": {
+        "fr": "PyCharm installé :",
+        "en": "PyCharm installed:",
+    },
+    "PyCharm not installed (see above)": {
+        "fr": "PyCharm non installé (voir ci-dessus)",
+        "en": "PyCharm not installed (see above)",
+    },
+    "Installing Android Studio (long)": {
+        "fr": "Installation d'Android Studio (long)",
+        "en": "Installing Android Studio (long)",
+    },
+    "Android Studio: Google publishes x86_64 only": {
+        "fr": "Android Studio : Google ne publie que du x86_64",
+        "en": "Android Studio: Google publishes x86_64 only",
+    },
+    "Android Studio installed:": {
+        "fr": "Android Studio installé :",
+        "en": "Android Studio installed:",
+    },
+    "Android Studio not installed (see above)": {
+        "fr": "Android Studio non installé (voir ci-dessus)",
+        "en": "Android Studio not installed (see above)",
+    },
+    "no nested KVM: the emulator will not run": {
+        "fr": "pas de KVM imbriqué : l'émulateur ne démarrera pas",
+        "en": "no nested KVM: the emulator will not run",
+    },
+    "Suggested GNOME extensions": {
+        "fr": "Extensions GNOME suggérées",
+        "en": "Suggested GNOME extensions",
+    },
+    "not in the repos, skipped:": {
+        "fr": "absent des dépôts, ignoré :",
+        "en": "not in the repos, skipped:",
+    },
+    "Enable them from Extension Manager, or:": {
+        "fr": "À activer depuis le gestionnaire d'extensions, ou :",
+        "en": "Enable them from Extension Manager, or:",
+    },
+    "GNOME Shell not found, site extensions skipped": {
+        "fr": "GNOME Shell introuvable, extensions du site ignorées",
+        "en": "GNOME Shell not found, site extensions skipped",
+    },
+    "installed and enabled:": {
+        "fr": "installée et activée :",
+        "en": "installed and enabled:",
+    },
+    "not available for this GNOME, skipped:": {
+        "fr": "indisponible pour ce GNOME, ignorée :",
+        "en": "not available for this GNOME, skipped:",
+    },
+    "log out and back in to load them": {
+        "fr": "se déconnecter puis se reconnecter pour les charger",
+        "en": "log out and back in to load them",
+    },
+    "open the project once and close PyCharm; the .idea it writes is what the install configures": {
+        "fr": "ouvrir le projet une fois puis fermer PyCharm : le .idea qu'il écrit est ce que l'installation configure",
+        "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
+    },
+    "command": {"fr": "commande", "en": "command"},
+    "project": {"fr": "projet", "en": "project"},
 }
 
 
