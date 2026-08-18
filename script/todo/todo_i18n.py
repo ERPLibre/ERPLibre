@@ -5430,6 +5430,38 @@ TRANSLATIONS = {
         "fr": "journal du serveur",
         "en": "server log",
     },
+    "Purging modules reloads the whole registry: on a big": {
+        "fr": "Purger les modules recharge tout le registre : sur un grand",
+        "en": "Purging modules reloads the whole registry: on a big",
+    },
+    "addons path this takes minutes, not seconds.": {
+        "fr": "addons path cela prend des minutes, pas des secondes.",
+        "en": "addons path this takes minutes, not seconds.",
+    },
+    "Took": {
+        "fr": "Durée :",
+        "en": "Took",
+    },
+    "seconds.": {
+        "fr": "secondes.",
+        "en": "seconds.",
+    },
+    "pass": {
+        "fr": "passe",
+        "en": "pass",
+    },
+    "The cleanup was still running after": {
+        "fr": "Le nettoyage tournait encore après",
+        "en": "The cleanup was still running after",
+    },
+    "seconds and was stopped.": {
+        "fr": "secondes et a été arrêté.",
+        "en": "seconds and was stopped.",
+    },
+    "the whole batch": {
+        "fr": "le lot entier",
+        "en": "the whole batch",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

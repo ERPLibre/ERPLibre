@@ -34,17 +34,45 @@ class FakeLine:
         self.id = abs(hash(name)) % 10000
         self.fails = fails  # nombre de refus avant de céder
         self.journal = journal if journal is not None else []
+        self.purged = False
 
     def purge(self):
+        # Comme le vrai : une ligne déjà purgée ne l'est pas deux fois.
+        # `purge()` d'OCA filtre sur `not x.purged`, et sans cela le repli
+        # ligne à ligne recompterait ce que le lot avait déjà fait.
+        if self.purged:
+            return True
         self.journal.append(("purge", self.name))
         if self.fails > 0:
             self.fails -= 1
             raise RuntimeError(f"refus sur {self.name}")
+        self.purged = True
+        return True
+
+
+class FakeRecordset(list):
+    """Un `purge_line_ids` qui se purge EN LOT, comme le vrai.
+
+    C'est TOUT l'enjeu du correctif : `purge()` d'un module appelle
+    button_immediate_uninstall(), qui recharge le registre entier. Un appel
+    par ligne en faisait un rechargement par module — mesuré, dix secondes
+    chacun. Un seul appel sur le lot, c'est un seul rechargement.
+    """
+
+    def __init__(self, lines, journal=None):
+        super().__init__(lines)
+        self.journal = journal if journal is not None else []
+
+    def purge(self):
+        self.journal.append(("purge_batch", len(self)))
+        for line in self:
+            line.purge()
+        return True
 
 
 class FakeWizard:
-    def __init__(self, lines):
-        self.purge_line_ids = lines
+    def __init__(self, lines, journal=None):
+        self.purge_line_ids = FakeRecordset(lines, journal)
 
 
 class FakeModel:
@@ -56,7 +84,9 @@ class FakeModel:
         if self._raise:
             raise RuntimeError(self._raise)
         # Les lignes déjà purgées ne reviennent pas : find() les recalcule.
-        return FakeWizard([ln for ln in self._lines if ln.fails >= 0])
+        reste = [ln for ln in self._lines if ln.fails >= 0 and not ln.purged]
+        journal = reste[0].journal if reste else None
+        return FakeWizard(reste, journal)
 
 
 class FakeCursor:
@@ -208,9 +238,25 @@ class TestTheOrder(unittest.TestCase):
 
 
 class TestOneEntryCannotSinkThePass(unittest.TestCase):
-    def test_each_entry_is_committed_on_its_own(self):
-        # Sans cela, le premier refus emporterait tout ce que la passe avait
-        # déjà réparé — et un rollback, ici, remonte jusqu'au début.
+    def test_a_healthy_category_is_purged_in_ONE_call(self):
+        # LE point du correctif. `purge()` d'un module appelle
+        # button_immediate_uninstall(), qui recharge le registre ENTIER —
+        # 5984 modules à relire. En purgeant ligne par ligne j'en faisais
+        # un rechargement PAR MODULE : mesuré, dix secondes chacun,
+        # dix-sept minutes pour neuf modules, sans rien afficher.
+        journal = []
+        lines = [
+            FakeLine("a", journal=journal),
+            FakeLine("b", journal=journal),
+            FakeLine("c", journal=journal),
+        ]
+        models = {cleanup.ORDER[0][1]: FakeModel(lines)}
+        report, _got = run_script(models, max_round=1)
+        # `journal` est celui des LIGNES : c'est là qu'atterrit la purge.
+        self.assertEqual(journal.count(("purge_batch", 3)), 1)
+        self.assertEqual(report["rounds"][0][0]["purged"], 3)
+
+    def test_the_healthy_case_commits_once_for_the_batch(self):
         journal = []
         lines = [
             FakeLine("a", journal=journal),
@@ -218,9 +264,9 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         ]
         models = {cleanup.ORDER[0][1]: FakeModel(lines)}
         _report, got = run_script(models, max_round=1)
-        # Une validation par entrée, PLUS une après la création : `find()`
-        # peut avoir purgé de lui-même, et ce travail-là doit tenir.
-        self.assertEqual(got.count(("commit", None)), 3)
+        # Une validation après la création — `find()` peut avoir purgé de
+        # lui-même — et une pour le lot. Pas une par ligne.
+        self.assertEqual(got.count(("commit", None)), 2)
 
     def test_a_refusal_gives_up_only_its_own(self):
         journal = []
@@ -234,9 +280,25 @@ class TestOneEntryCannotSinkThePass(unittest.TestCase):
         entry = report["rounds"][0][0]
         self.assertEqual(entry["purged"], 2)
         self.assertEqual([name for name, _msg in entry["errors"]], ["bad"])
-        self.assertEqual(got.count(("rollback", None)), 1)
-        # Deux entrées purgées + la création : trois validations.
-        self.assertEqual(got.count(("commit", None)), 3)
+        # Le lot a été tenté, a échoué, et SEULEMENT alors on isole. Le
+        # coût du ligne-à-ligne n'est payé que là où il sert.
+        self.assertEqual(journal.count(("purge_batch", 3)), 1)
+        self.assertGreaterEqual(got.count(("rollback", None)), 1)
+
+    def test_the_isolation_only_happens_after_a_refusal(self):
+        # Une catégorie saine ne doit JAMAIS passer par le repli : c'est
+        # lui qui coûtait dix secondes par module.
+        journal = []
+        models = {
+            cleanup.ORDER[0][1]: FakeModel(
+                [
+                    FakeLine("a", journal=journal),
+                    FakeLine("b", journal=journal),
+                ]
+            )
+        }
+        _report, got = run_script(models, max_round=1)
+        self.assertEqual(got.count(("rollback", None)), 0)
 
     def test_the_script_never_takes_a_savepoint(self):
         # L'invariant du correctif, dit une fois pour toutes : le module OCA
@@ -301,6 +363,141 @@ class TestTheReportSurvivesAnything(unittest.TestCase):
         report = _json.loads(_json.dumps(namespace["report"]))
         self.assertEqual(report["failed"][0][:2], ["*", "fatal"])
         self.assertIn("miettes", report["failed"][0][2])
+
+
+class TestTheSilenceThatLookedLikeAHang(unittest.TestCase):
+    """Dix-sept minutes sans une ligne, et l'on croit à une boucle infinie.
+
+    Vécu, sur test_neutralize_upgrade_16 : l'outil affichait « ⧖ Nettoyage
+    de … » puis PLUS RIEN. Le processus travaillait — zéro verrou en
+    attente, des requêtes qui changeaient à chaque instantané — mais un
+    travail qui avance et un blocage se ressemblent trait pour trait quand
+    aucun des deux ne parle. On interrompt alors une réparation à moitié
+    faite, ce qui est le pire des deux mondes.
+    """
+
+    def test_the_pushed_script_announces_what_it_does(self):
+        source = cleanup.build_script(1, False)
+        self.assertIn(cleanup.STEP, source)
+        self.assertIn("flush=True", source)
+
+    def test_it_announces_each_pass(self):
+        source = cleanup.build_script(1, False)
+        self.assertIn('step("pass"', source)
+
+    def test_the_parent_relays_each_line_AS_IT_ARRIVES(self):
+        """Le test comportemental, et non plus un mot cherché dans le code.
+
+        `capture_output=True` ne rend la main qu'à la fin : c'était la cause
+        du silence, pas la lenteur elle-même. On vérifie donc qu'une ligne
+        de progression ressort AVANT que le processus n'ait fini de parler.
+        """
+        import io
+
+        lignes = [
+            f"{cleanup.STEP} modules 1/3 vieux_module\n",
+            "un journal Odoo sans rapport\n",
+            f"{cleanup.STEP} columns 2/3 res_partner.x\n",
+            f"{cleanup.START}\n",
+            '{"rounds": [], "missing": [], "failed": []}\n',
+            f"{cleanup.END}\n",
+        ]
+        vu = []
+
+        class FauxProcessus:
+            def __init__(self, lst):
+                self.stdin = io.StringIO()
+                self.pid = -1
+                self._lst = lst
+
+            @property
+            def stdout(self):
+                # Un générateur : chaque ligne n'existe qu'au moment où on
+                # la lit, comme un vrai tube. Rendre la liste entière
+                # laisserait passer une lecture en bloc.
+                for rang, ligne in enumerate(self._lst):
+                    vu.append(("lu", rang))
+                    yield ligne
+
+            def wait(self, timeout=None):
+                return 0
+
+            def poll(self):
+                return 0
+
+        original = cleanup.subprocess.Popen
+        cleanup.subprocess.Popen = lambda *a, **kw: FauxProcessus(lignes)
+        self.addCleanup(setattr, cleanup.subprocess, "Popen", original)
+        report = cleanup.run_shell(
+            "db",
+            "./config.conf",
+            "script",
+            echo=lambda ligne: vu.append(("relayé", ligne)),
+        )
+        self.assertEqual(report["rounds"], [])
+        relayes = [x for x in vu if x[0] == "relayé"]
+        self.assertEqual(
+            [x[1] for x in relayes],
+            ["modules 1/3 vieux_module", "columns 2/3 res_partner.x"],
+        )
+        # ET au fil de l'eau : le relais suit IMMÉDIATEMENT la lecture de
+        # sa ligne. « quelque part avant la fin » ne suffirait pas — une
+        # lecture en bloc suivie d'une boucle de relais passerait aussi.
+        self.assertEqual(vu[vu.index(("lu", 0)) + 1], relayes[0])
+        self.assertEqual(vu[vu.index(("lu", 2)) + 1], relayes[1])
+
+    def test_the_relay_shows_the_elapsed_time(self):
+        # Ce qui distingue « ça avance lentement » de « ça ne bouge plus ».
+        import io
+        from contextlib import redirect_stdout
+
+        import time as _time
+
+        echo = cleanup.make_echo(_time.monotonic() - 42)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            echo("modules 2/9 stock_deposit")
+        self.assertIn("42", out.getvalue())
+        self.assertIn("stock_deposit", out.getvalue())
+
+    def test_the_slowness_is_announced_up_front(self):
+        import inspect
+
+        source = inspect.getsource(cleanup.main)
+        self.assertIn("reloads the whole registry", source)
+
+    def test_the_timeout_cannot_be_starved_by_silence(self):
+        # Un délai vérifié DANS la boucle de lecture ne se déclencherait
+        # jamais : cette boucle bloque tant qu'aucune ligne n'arrive, et
+        # c'est exactement le cas qu'il faut couvrir.
+        import inspect
+
+        source = inspect.getsource(cleanup.run_shell)
+        self.assertIn("threading.Timer", source)
+
+    def test_stopping_kills_the_whole_group(self):
+        # « ./odoo_bin.sh » est un script bash : un terminate() sur lui tue
+        # le script et laisse odoo-bin vivant, sur la base, avec ses
+        # verrous. La leçon a déjà été payée en serveurs orphelins.
+        import inspect
+
+        source = inspect.getsource(cleanup.kill_group)
+        self.assertIn("killpg", source)
+        self.assertIn(
+            "start_new_session", inspect.getsource(cleanup.run_shell)
+        )
+
+    def test_a_timeout_is_reported_as_such(self):
+        # Sans cela, un arrêt à l'expiration se lisait « le nettoyage n'a
+        # produit aucun rapport » — un diagnostic faux.
+        import inspect
+
+        source = inspect.getsource(cleanup.run_shell)
+        self.assertIn("was still running after", source)
+        self.assertLess(
+            source.index("was still running after"),
+            source.index("produced no report"),
+        )
 
 
 class TestTheCascadeThatKilledEverything(unittest.TestCase):

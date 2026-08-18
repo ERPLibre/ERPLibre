@@ -30,8 +30,11 @@ Exit codes: 0 nothing left, 1 leftovers remain, 2 the tool failed.
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
+import threading
+import time
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -74,6 +77,7 @@ LABEL = {
     "properties": "obsolete properties",
 }
 
+STEP = "ERPLIBRE_CLEANUP_STEP"
 START = "ERPLIBRE_CLEANUP_START"
 END = "ERPLIBRE_CLEANUP_END"
 
@@ -90,11 +94,20 @@ ORDER = %(order)r
 MAX_ROUND = %(max_round)d
 DRY_RUN = %(dry_run)s
 
+t_all = "%(all_label)s"
 report = {"rounds": [], "missing": [], "failed": []}
 
 
 def note(label, name, exc):
     report["failed"].append([label, name, str(exc)[:200]])
+
+
+def step(label, name, index=0, total=0):
+    # Dire ce qu'on fait PENDANT qu'on le fait. Sans cela l'outil se taisait
+    # jusqu'au rapport final : mesuré, dix-sept minutes de silence complet
+    # sur une base de 5984 modules, impossible à distinguer d'un blocage.
+    detail = f" {index}/{total}" if total else ""
+    print(f"%(step)s {label}{detail} {name}", flush=True)
 
 
 def recover():
@@ -118,6 +131,7 @@ try:
     for index in range(MAX_ROUND):
         this_round = []
         purged_this_round = 0
+        step("pass", str(index + 1), index + 1, MAX_ROUND)
         for label, model in ORDER:
             if model not in env:
                 if label not in report["missing"]:
@@ -153,19 +167,40 @@ try:
                     env.cr.commit()
                 except Exception:
                     recover()
-            for line, name in todo:
-                if DRY_RUN:
-                    would.append(name)
-                    continue
+            if DRY_RUN:
+                would = [name for _line, name in todo]
+            elif todo:
+                # LE LOT D'ABORD, et ce n'est pas une optimisation de
+                # confort. `purge()` d'un module appelle
+                # button_immediate_uninstall(), qui RECHARGE LE REGISTRE
+                # ENTIER — 5984 modules à relire. En purgeant ligne par
+                # ligne j'en faisais un rechargement PAR MODULE : mesuré,
+                # dix secondes chacun, dix-sept minutes pour neuf modules.
+                # Le module OCA purge le lot en un seul appel, donc un seul
+                # rechargement.
+                #
+                # L'isolement ligne à ligne garde tout son sens — un refus
+                # ne doit pas emporter la catégorie — mais il ne coûte que
+                # lorsqu'il sert vraiment, c'est-à-dire après un échec.
+                step(label, t_all, 0, len(todo))
                 try:
-                    line.purge()
-                    # Valider ENTRÉE PAR ENTRÉE : un refus plus loin ne doit
-                    # pas emporter ce qui vient d'être réparé.
+                    wizard.purge_line_ids.purge()
                     env.cr.commit()
-                    ok += 1
-                except Exception as exc:
+                    ok = len(todo)
+                except Exception:
                     recover()
-                    errors.append([name, str(exc)[:160]])
+                    for index, (line, name) in enumerate(todo, start=1):
+                        step(label, name, index, len(todo))
+                        try:
+                            line.purge()
+                            # Valider ENTRÉE PAR ENTRÉE : un refus plus loin
+                            # ne doit pas emporter ce qui vient d'être
+                            # réparé.
+                            env.cr.commit()
+                            ok += 1
+                        except Exception as exc:
+                            recover()
+                            errors.append([name, str(exc)[:160]])
             purged_this_round += ok
             this_round.append({"kind": label, "purged": ok,
                                "errors": errors, "would": would})
@@ -201,6 +236,8 @@ def build_script(max_round, dry_run):
         "dry_run": "True" if dry_run else "False",
         "start": START,
         "end": END,
+        "step": STEP,
+        "all_label": "the whole batch",
     }
 
 
@@ -302,14 +339,46 @@ def install_module(database, module="database_cleanup", timeout=1800):
     return done.returncode, done.stdout + done.stderr
 
 
-def run_shell(database, config_path, script, timeout=3600):
+def kill_group(process):
+    """Tuer le GROUPE : « ./odoo_bin.sh » est un script bash.
+
+    Un terminate() sur lui tue le script et laisse odoo-bin vivant, sur la
+    base, avec ses verrous. La leçon a déjà été payée une fois par six
+    serveurs orphelins.
+    """
+    try:
+        group = os.getpgid(process.pid)
+    except OSError:
+        group = None
+    for signal_number in (signal.SIGTERM, signal.SIGKILL):
+        if group is None:
+            break
+        try:
+            os.killpg(group, signal_number)
+        except OSError:
+            break
+        try:
+            process.wait(timeout=20)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def run_shell(database, config_path, script, timeout=3600, echo=None):
     """Pousser le script dans « odoo-bin shell » et rendre son rapport.
 
+    On LIT au fil de l'eau plutôt que de tout capturer : ce nettoyage dure
+    des minutes — dix-sept, mesurées, sur une base de 5984 modules — et la
+    version précédente n'affichait rien avant la fin. Un travail qui avance
+    et un blocage se ressemblent alors trait pour trait, et c'est ainsi
+    qu'on interrompt une réparation à moitié faite.
+
     Les journaux d'Odoo se mêlent à la sortie, d'où les sentinelles : on ne
-    lit que ce qui est entre elles. Leur absence est une erreur franche, pas
-    un rapport vide qu'on prendrait pour « rien à faire ».
+    lit comme rapport que ce qui est entre elles. Leur absence est une
+    erreur franche, pas un rapport vide qu'on prendrait pour « rien à
+    faire ».
     """
-    done = subprocess.run(
+    process = subprocess.Popen(
         [
             "./odoo_bin.sh",
             "shell",
@@ -319,12 +388,43 @@ def run_shell(database, config_path, script, timeout=3600):
             database,
             "--log-level=warn",
         ],
-        input=script,
-        capture_output=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        timeout=timeout,
+        start_new_session=True,
     )
-    output = done.stdout + done.stderr
+    # Le délai ne peut pas vivre dans la boucle de lecture : celle-ci BLOQUE
+    # tant qu'aucune ligne n'arrive, et c'est exactement le cas qu'il faut
+    # couvrir. Un minuteur à part, donc.
+    expire = {"fired": False}
+
+    def couper():
+        expire["fired"] = True
+        kill_group(process)
+
+    minuteur = threading.Timer(timeout, couper)
+    minuteur.daemon = True
+    minuteur.start()
+    lst_line = []
+    try:
+        process.stdin.write(script)
+        process.stdin.close()
+        for line in process.stdout:
+            lst_line.append(line)
+            if echo and line.startswith(STEP):
+                echo(line[len(STEP) :].strip())
+        process.wait()
+    finally:
+        minuteur.cancel()
+        if process.poll() is None:
+            kill_group(process)
+    output = "".join(lst_line)
+    if expire["fired"]:
+        raise RuntimeError(
+            f"{t('The cleanup was still running after')} {timeout}"
+            f" {t('seconds and was stopped.')}"
+        )
     if START not in output or END not in output:
         raise RuntimeError(
             f"{t('The cleanup produced no report.')}\n{output.strip()[-1500:]}"
@@ -334,6 +434,30 @@ def run_shell(database, config_path, script, timeout=3600):
         return json.loads(body)
     except ValueError as exc:
         raise RuntimeError(f"{t('Unreadable report')} : {exc}")
+
+
+def make_echo(depart):
+    """Relayer la progression du script poussé, horodatée.
+
+    Le temps écoulé n'est pas décoratif : c'est lui qui distingue « ça
+    avance lentement » de « ça ne bouge plus », et c'est précisément la
+    question qu'on se pose devant un écran muet.
+    """
+
+    def echo(ligne):
+        morceaux = ligne.split(" ", 1)
+        etiquette = morceaux[0]
+        reste = morceaux[1] if len(morceaux) > 1 else ""
+        secondes = int(time.monotonic() - depart)
+        if etiquette == "pass":
+            print(f"   [{secondes:>4}s] {t('pass')} {reste}")
+        else:
+            print(
+                f"   [{secondes:>4}s] {t(LABEL.get(etiquette, etiquette))}"
+                f" — {t(reste) if reste == 'the whole batch' else reste}"
+            )
+
+    return echo
 
 
 def leftovers(report):
@@ -457,17 +581,24 @@ def main(argv=None):
             return 2
 
     print(f"⧖ {t('Cleaning')} '{config.database}'…")
+    print(
+        f"   {t('Purging modules reloads the whole registry: on a big')}"
+        f" {t('addons path this takes minutes, not seconds.')}"
+    )
+    depart = time.monotonic()
     try:
         report = run_shell(
             config.database,
             config.config,
             build_script(config.max_round, config.dry_run),
             timeout=config.timeout,
+            echo=make_echo(depart),
         )
     except (RuntimeError, subprocess.SubprocessError, OSError) as exc:
         print(f"❌ {exc}")
         return 2
     print(render(report, config.database))
+    print(f"⌛ {t('Took')} {int(time.monotonic() - depart)} {t('seconds.')}")
     return 1 if leftovers(report) else 0
 
 
