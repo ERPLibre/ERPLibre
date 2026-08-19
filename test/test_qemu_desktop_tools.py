@@ -735,7 +735,21 @@ class TestPycharmFirstOpen(unittest.TestCase):
             )
             (bin_dir / "sudo").write_text("#!/bin/bash\nexit 0\n")
             (bin_dir / "python3").write_text("#!/bin/bash\ncat > /dev/null\n")
-            for name in ("xvfb-run", "pycharm", "sudo", "python3"):
+            # pgrep et pkill sont BOUCHONNÉS, et c'est le point important : le
+            # filet de l'étape balaie les processus du compte courant. Exécuté
+            # sans bouchon sur la machine de développement, il fermerait le
+            # PyCharm de l'utilisateur. C'est le groupe qu'on teste ici, pas le
+            # filet — celui-ci est vérifié à part, sans rien tuer.
+            (bin_dir / "pgrep").write_text("#!/bin/bash\nexit 1\n")
+            (bin_dir / "pkill").write_text("#!/bin/bash\nexit 0\n")
+            for name in (
+                "xvfb-run",
+                "pycharm",
+                "sudo",
+                "python3",
+                "pgrep",
+                "pkill",
+            ):
                 (bin_dir / name).chmod(0o755)
             cmd = self.todo._qemu_pycharm_project_cmd(False).replace(
                 self.todo._qemu_install_dir(False), str(repo)
@@ -757,6 +771,82 @@ class TestPycharmFirstOpen(unittest.TestCase):
                 marker.exists(),
                 "un enfant a survécu à la fermeture du groupe",
             )
+
+
+class TestPycharmNetIsNarrow(unittest.TestCase):
+    """Le filet de fermeture ne doit JAMAIS viser le ssh qui porte l'install.
+
+    Vécu, et cher : le filet cherchait « /opt/pycharm » dans les LIGNES DE
+    COMMANDE. Or la commande d'installation est passée en argument à ssh, et
+    elle contient ce chemin — le pkill a donc tué la session ssh qui portait
+    l'installation en cours sur l'hyperviseur. Elle est morte en silence, sans
+    marqueur de sortie : 48 minutes perdues, et rien dans le journal.
+
+    Mesuré ensuite dans une VM : par NOM de processus, 3 processus réels
+    (pycharm, Xvfb, fsnotifier) et aucun faux ; par ligne de commande, 4 — le
+    ssh compris.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_pycharm_project_cmd()
+
+    def test_it_matches_by_process_name(self):
+        self.assertIn('pgrep -u "$(id -u)" -x', self.cmd)
+        self.assertIn('pkill -u "$(id -u)" -x', self.cmd)
+
+    def test_it_never_matches_by_command_line(self):
+        """« -f » est exactement ce qui a tué l'installation."""
+        self.assertNotIn("pkill -f", self.cmd)
+        self.assertNotIn("pgrep -f", self.cmd)
+
+    def test_the_names_are_the_ones_measured_in_the_vm(self):
+        for name in ("pycharm", "cef_server", "fsnotifier", "Xvfb"):
+            self.assertIn(name, self.cmd)
+
+    def test_a_command_line_that_merely_mentions_the_ide_is_spared(self):
+        """Le test qui compte, et il ne tue rien : un témoin dont la LIGNE
+        contient le chemin de l'IDE — comme le ssh lanceur — et dont le NOM est
+        « sleep ». L'ancien motif l'attrape, le nouveau l'épargne."""
+        import os
+        import re
+        import time
+
+        pattern = re.search(r'-x "([^"]+)"', self.cmd).group(1)
+        witness = subprocess.Popen(
+            [
+                "bash",
+                "-c",
+                'exec -a "ssh erplibre@vm bash -c /opt/pycharm/bin/pycharm.sh"'
+                " sleep 30",
+            ]
+        )
+        try:
+            time.sleep(1.5)
+            uid = str(os.getuid())
+            by_name = subprocess.run(
+                ["pgrep", "-u", uid, "-x", pattern],
+                capture_output=True,
+                text=True,
+            ).stdout.split()
+            by_cmdline = subprocess.run(
+                ["pgrep", "-u", uid, "-f", "[/]opt/pycharm"],
+                capture_output=True,
+                text=True,
+            ).stdout.split()
+            pid = str(witness.pid)
+            # Le témoin est un enfant de bash : on cherche le groupe entier.
+            spared = pid not in by_name
+            self.assertTrue(spared, "le motif par nom a attrapé le témoin")
+            self.assertIn(
+                pid,
+                by_cmdline,
+                "le témoin devrait être attrapé par l'ancien motif ;"
+                " sinon ce test ne prouve rien",
+            )
+        finally:
+            witness.kill()
+            witness.wait(timeout=10)
 
 
 class TestMobileSwap(unittest.TestCase):

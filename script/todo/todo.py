@@ -5785,18 +5785,26 @@ class TODO:
             "for i in $(seq 1 12); do kill -0 -$pid 2>/dev/null || break; "
             "sleep 5; done; kill -KILL -$pid 2>/dev/null; "
             # Filet, et il a sa raison d'être : ce qui survit ici mange la
-            # mémoire de TOUTES les étapes suivantes. On le nomme au lieu de le
-            # laisser courir, et on ne vise que l'IDE de /opt et l'écran :99.
-            # « pgrep -fc » IMPRIME 0 et rend 1 quand il ne trouve rien : le
-            # « || echo 0 » ajoutait un second zéro, et « 0\n0 » n'est pas
-            # « 0 » — le filet se déclenchait donc toujours. « wc -l » rend un
-            # seul nombre et un code 0.
-            'left=$(pgrep -f "[/]opt/pycharm|[X]vfb :99" 2>/dev/null '
-            "| wc -l); "
+            # mémoire de TOUTES les étapes suivantes.
+            #
+            # Par NOM de processus (« -x »), jamais par ligne de commande. Un
+            # « pkill -f /opt/pycharm » attrape aussi le ssh QUI PORTE cette
+            # installation — sa ligne de commande contient le script entier,
+            # donc ce chemin. Vécu : une installation est morte en silence, sa
+            # session ssh emportée, 48 minutes perdues. Mesuré ensuite : par
+            # nom, 3 processus réels attrapés et 0 faux ; par ligne de commande,
+            # 4 dont le ssh. Les noms sont ceux relevés dans la VM — pycharm,
+            # Xvfb, fsnotifier, cef_server — et « -u » borne au compte courant.
+            #
+            # « pgrep -c » IMPRIME 0 et rend 1 quand il ne trouve rien : un
+            # « || echo 0 » donnerait « 0\n0 », qui n'est pas « 0 ». « wc -l »
+            # rend un seul nombre et un code 0.
+            'left=$(pgrep -u "$(id -u)" -x '
+            '"pycharm|cef_server|fsnotifier|Xvfb" 2>/dev/null | wc -l); '
             '[ "$left" = 0 ] || { '
             f'echo "   {t("closing what survived the first open:")} $left"; '
-            'pkill -f "[/]opt/pycharm" 2>/dev/null; '
-            'pkill -f "[X]vfb :99" 2>/dev/null; sleep 2; }; '
+            'pkill -u "$(id -u)" -x '
+            '"pycharm|cef_server|fsnotifier|Xvfb" 2>/dev/null; sleep 2; }; '
             '[ "$ok" = 1 ]; fi; fi; } && '
             f'echo "   {t("project created, the install will configure it")}" '
             f'|| echo "   ⚠ {t("no .idea: open PyCharm once, then")} '
