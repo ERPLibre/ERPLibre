@@ -298,10 +298,14 @@ an Odoo 18 install), runs the repository's own `install-android.sh` — JDK 17,
 command-line tools, SDK licences accepted, NDK, whisper.cpp and sentencepiece
 — then builds: `npm ci`, `vite build`, `cap sync`, `gradlew assembleDebug`,
 and finally `npm test`. **A failed build fails the VM**: the exit code reaches
-the dashboard, and the log names the probable cause (disk full, missing SDK
-platform, JDK/Gradle mismatch, unaccepted licences…) instead of leaving a
-40 MB Gradle log to read. The heavy output goes to
-`~/erplibre-mobile-build.log` inside the VM so the install log stays readable.
+the dashboard, and the log names the probable cause instead of leaving a
+40 MB Gradle log to read: disk full, missing SDK platform, JDK/Gradle
+mismatch, unaccepted licences, a Gradle daemon killed by the kernel (with the
+machine's RAM, swap and oom-kill count, because a memory cause is proven and
+not assumed), or too many asset files for one APK — a ZIP holds 65535 entries
+and the mobile repo ships 122 684, which only that repo can fix. The heavy
+output goes to `~/erplibre-mobile-build.log` inside the VM so the install log
+stays readable.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
@@ -431,10 +435,14 @@ outils en ligne de commande, licences SDK acceptées, NDK, whisper.cpp et
 sentencepiece), puis compile : `npm ci`, `vite build`, `cap sync`,
 `gradlew assembleDebug`, et enfin `npm test`. **Une compilation en échec fait
 échouer la VM** : le code de sortie remonte au tableau de bord, et le journal
-NOMME la cause probable (disque plein, plateforme SDK absente, JDK et Gradle
-incompatibles, licences non acceptées…) au lieu de laisser 40 Mo de journal
-Gradle à relire. Le détail va dans `~/erplibre-mobile-build.log`, dans la VM,
-pour que le journal d'installation reste lisible.
+NOMME la cause probable au lieu de laisser 40 Mo de journal Gradle à relire :
+disque plein, plateforme SDK absente, JDK et Gradle incompatibles, licences non
+acceptées, démon Gradle tué par le noyau (avec la RAM, le swap et le compte de
+l'oom-killer, parce qu'une cause « mémoire » se prouve au lieu de s'affirmer),
+ou trop de fichiers d'assets pour un APK — un ZIP tient 65535 entrées et le
+dépôt mobile en embarque 122 684, ce que lui seul peut corriger. Le détail va
+dans `~/erplibre-mobile-build.log`, dans la VM, pour que le journal
+d'installation reste lisible.
 
 Il est borné aux distributions apt, parce que cet installateur amont commence
 par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une

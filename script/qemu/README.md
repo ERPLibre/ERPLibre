@@ -172,10 +172,14 @@ an Odoo 18 install), runs the repository's own `install-android.sh` — JDK 17,
 command-line tools, SDK licences accepted, NDK, whisper.cpp and sentencepiece
 — then builds: `npm ci`, `vite build`, `cap sync`, `gradlew assembleDebug`,
 and finally `npm test`. **A failed build fails the VM**: the exit code reaches
-the dashboard, and the log names the probable cause (disk full, missing SDK
-platform, JDK/Gradle mismatch, unaccepted licences…) instead of leaving a
-40 MB Gradle log to read. The heavy output goes to
-`~/erplibre-mobile-build.log` inside the VM so the install log stays readable.
+the dashboard, and the log names the probable cause instead of leaving a
+40 MB Gradle log to read: disk full, missing SDK platform, JDK/Gradle
+mismatch, unaccepted licences, a Gradle daemon killed by the kernel (with the
+machine's RAM, swap and oom-kill count, because a memory cause is proven and
+not assumed), or too many asset files for one APK — a ZIP holds 65535 entries
+and the mobile repo ships 122 684, which only that repo can fix. The heavy
+output goes to `~/erplibre-mobile-build.log` inside the VM so the install log
+stays readable.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
