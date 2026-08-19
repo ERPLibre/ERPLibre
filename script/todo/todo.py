@@ -1876,7 +1876,7 @@ class TODO:
             sock.settimeout(1)
             return sock.connect_ex(("127.0.0.1", port)) == 0
 
-    def _qemu_console_tunnel(self):
+    def _qemu_console_tunnel(self, name, src):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
 
         Les deux autres choix du menu supposent un service DANS l'invité —
