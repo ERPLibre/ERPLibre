@@ -36,6 +36,9 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 
 DEFAULT_PATH = ".venv.erplibre/odoo_database_migration_log.json"
+PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
+STEP_LOG_DIR = "step_log"
+EVENT_FILE = "events.jsonl"
 
 # Les codes de sortie que TOUS les outils de migration partagent. Les
 # traduire ici plutôt qu'à l'affichage évite qu'un « 1 » passe pour une
@@ -48,12 +51,112 @@ VERDICT = {
 
 
 def read(path=DEFAULT_PATH):
-    """La progression, telle qu'écrite. {} si elle n'existe pas encore."""
+    """La progression, complétée par ce qui a été écrit SUR DISQUE.
+
+    Le fichier de progression est archivé puis remis à zéro quand on
+    recommence une migration : tout ce qu'il contenait disparaissait alors
+    de cet écran. Le journal permanent, lui, ne fait que s'allonger — et
+    c'est justement en revenant après une interruption qu'on a besoin de
+    ce qui s'est passé avant.
+    """
     try:
         with open(path, "r", encoding="utf-8") as handle:
-            return json.load(handle)
+            dct = json.load(handle)
     except (OSError, ValueError):
         return {}
+    dct["lst_event"] = merge_events(dct)
+    return dct
+
+
+def log_dir(dct):
+    """Le répertoire des journaux de cette migration, ou None."""
+    database = (dct or {}).get("config_database_name")
+    if not database:
+        return None
+    chemin = os.path.join(PATH_MIGRATION_PRIVATE, database, STEP_LOG_DIR)
+    return chemin if os.path.isdir(chemin) else None
+
+
+def read_event_file(dct):
+    """Les événements du journal permanent, en ignorant les lignes cassées.
+
+    Une écriture interrompue laisse une ligne tronquée ; la refuser en bloc
+    perdrait tout le reste du fichier pour une seule ligne.
+    """
+    chemin = log_dir(dct)
+    if not chemin:
+        return []
+    lst = []
+    try:
+        with open(
+            os.path.join(chemin, EVENT_FILE), "r", encoding="utf-8"
+        ) as handle:
+            for ligne in handle:
+                ligne = ligne.strip()
+                if not ligne:
+                    continue
+                try:
+                    lst.append(json.loads(ligne))
+                except ValueError:
+                    continue
+    except OSError:
+        return []
+    return lst
+
+
+def merge_events(dct):
+    """Le disque d'abord, la mémoire ensuite, sans doublon.
+
+    Les deux sources se recouvrent : ce qui vient d'être enregistré est aux
+    deux endroits. On dédoublonne sur (horodatage, nom, type) — trois
+    champs qu'un même événement porte à l'identique dans les deux.
+    """
+    vus = set()
+    fusion = []
+    for item in read_event_file(dct) + list(dct.get("lst_event") or []):
+        cle = (item.get("at"), item.get("name"), item.get("kind"))
+        if cle in vus:
+            continue
+        vus.add(cle)
+        fusion.append(item)
+    return fusion
+
+
+def step_log_path(dct, step):
+    """Le fichier de journal d'une étape, s'il existe."""
+    chemin = log_dir(dct)
+    if not chemin or not step:
+        return None
+    fichier = os.path.join(chemin, f"{step_slug(step)}.log")
+    return fichier if os.path.isfile(fichier) else None
+
+
+def step_slug(msg):
+    """Le même nom que celui écrit par la migration. Un seul calcul.
+
+    Deux formules séparées dériveraient, et l'écran chercherait alors un
+    fichier que personne n'écrit — sans rien signaler, puisqu'un fichier
+    absent se lit comme une étape sans journal.
+    """
+    import re
+
+    prefix, sep, label = (msg or "").partition(" - ")
+    propre = re.sub(r"[^A-Za-z0-9._-]+", "-", (label or prefix)).strip("-")
+    tete = re.sub(r"[^A-Za-z0-9._-]+", "-", prefix).strip("-") if sep else ""
+    nom = f"{tete}_{propre}" if tete else propre
+    return (nom or "step")[:80].lower()
+
+
+def step_log_tail(dct, step, lines=200):
+    """Les dernières lignes du journal de cette étape."""
+    chemin = step_log_path(dct, step)
+    if not chemin:
+        return []
+    try:
+        with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read().splitlines()[-lines:]
+    except OSError:
+        return []
 
 
 def journal_by_step(dct):
@@ -189,7 +292,8 @@ def render_text(dct, limit_cmd=12):
     lignes.append(f"\n🔷 {t('What was done, step by step')}")
     for section in journal_by_step(dct):
         lst_cmd = section["lst_cmd"]
-        lignes.append(f"   {section['step']}  ({len(lst_cmd)})")
+        journal = " 📄" if step_log_path(dct, section["step"]) else ""
+        lignes.append(f"   {section['step']}  ({len(lst_cmd)}){journal}")
         for cmd in lst_cmd[:limit_cmd]:
             lignes.append(f"      {cmd[:120]}")
         if len(lst_cmd) > limit_cmd:

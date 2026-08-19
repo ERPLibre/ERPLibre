@@ -178,12 +178,22 @@ class Execute:
                 env=my_env,
             )
 
+            sink = getattr(self, "log_sink", None)
             while True:
                 line = process.stdout.readline()
                 if not line:
                     break
                 if not quiet:
                     print(line, end="")
+                if sink:
+                    # Chaque ligne passe DÉJÀ ici : c'est le seul endroit où
+                    # journaliser sans rien changer à ce que le terminal
+                    # montre. Une erreur d'écriture ne doit jamais faire
+                    # échouer la commande qu'on est en train de suivre.
+                    try:
+                        sink.write(line)
+                    except Exception:
+                        sink = None
                 if (
                     return_status_and_output
                     or return_status_and_output_and_command

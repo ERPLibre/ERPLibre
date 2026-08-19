@@ -14,7 +14,11 @@ import zipfile
 from uuid import uuid4
 
 
-from script.todo import auto_ask, todo_file_browser
+from script.todo import (
+    auto_ask,
+    migration_status,
+    todo_file_browser,
+)
 from script.todo.version_manager import get_odoo_version
 
 try:
@@ -59,6 +63,10 @@ LOCAL_MANIFEST = os.path.join(
 # be dropped depends on the database, so that choice is never versioned.
 PATH_MIGRATION_GLOBAL = os.path.join("script", "odoo", "migration")
 PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
+# Le journal permanent des échecs et des verdicts, hors du fichier de
+# progression : celui-ci est remis à zéro quand on recommence.
+STEP_LOG_DIR = "step_log"
+EVENT_FILE = "events.jsonl"
 # Steps of the migration, in order. What each one owns is declared just below,
 # by GLOBAL_PROGRESSION_KEY and STEP_OWNED_KEY — not by the prefix alone, which
 # lies on some keys and is missing on others. Rewinding to a step drops
@@ -2932,6 +2940,7 @@ class TodoUpgrade:
         # Retenu pour l'écran d'état : un événement sans étape oblige à
         # relire tout le journal pour savoir OÙ il s'est produit.
         self.current_step = msg
+        self.open_step_log(msg)
         print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
 
     def installed_theme(self, database_name):
@@ -3191,7 +3200,10 @@ class TodoUpgrade:
         self.write_config()
         print(f"\n🏠 ⬇ {t('Execute command')} :\n")
         print(cmd)
-        return subprocess.call(cmd, shell=True, executable="/bin/bash")
+        self.note_step_log(f"$ {cmd}")
+        status = subprocess.call(cmd, shell=True, executable="/bin/bash")
+        self.note_step_log(f"  -> {status}")
+        return status
 
     def prompt_cow_prediction(self, database_name, next_version):
         """Que faire des copies COW annoncées, dès l'étape 2.
@@ -3896,6 +3908,76 @@ class TodoUpgrade:
 
     MAX_EVENT = 200
 
+    # Le nom de fichier d'une étape est calculé PAR L'ÉCRAN D'ÉTAT, et
+    # importé ici. Deux formules dériveraient, et l'écran chercherait alors
+    # un fichier que personne n'écrit — sans rien signaler, puisqu'un
+    # fichier absent se lit comme une étape sans journal.
+    step_slug = staticmethod(migration_status.step_slug)
+
+    def log_dir(self):
+        """Où vivent les journaux de CETTE migration. Créé à la demande.
+
+        Sous le nom de la base, comme les archives et les instantanés COW :
+        deux migrations menées de front ne doivent pas écrire dans le même
+        fichier, et l'on veut pouvoir tout emporter d'un seul répertoire.
+        """
+        database = (getattr(self, "dct_progression", None) or {}).get(
+            "config_database_name"
+        ) or "sans-nom"
+        chemin = os.path.join(PATH_MIGRATION_PRIVATE, database, STEP_LOG_DIR)
+        try:
+            os.makedirs(chemin, exist_ok=True)
+        except OSError:
+            return None
+        return chemin
+
+    def open_step_log(self, msg):
+        """Rediriger la sortie des commandes vers le journal de cette étape.
+
+        En AJOUT, jamais en écrasement : une étape rejouée après un retour
+        en arrière doit s'ajouter à ce qu'on savait d'elle, pas l'effacer.
+        C'est précisément l'historique qu'on vient relire.
+        """
+        self.close_step_log()
+        chemin = self.log_dir()
+        if not chemin:
+            return
+        fichier = os.path.join(chemin, f"{self.step_slug(msg)}.log")
+        try:
+            handle = open(fichier, "a", encoding="utf-8", buffering=1)
+        except OSError:
+            return
+        handle.write(f"\n===== {datetime.datetime.now()} — {msg} =====\n")
+        self.step_log = handle
+        if getattr(self, "execute", None) is not None:
+            self.execute.log_sink = handle
+
+    def close_step_log(self):
+        handle = getattr(self, "step_log", None)
+        if handle:
+            try:
+                handle.close()
+            except Exception:
+                pass
+        self.step_log = None
+        if getattr(self, "execute", None) is not None:
+            self.execute.log_sink = None
+
+    def note_step_log(self, texte):
+        """Écrire une ligne dans le journal de l'étape en cours.
+
+        Ce qui passe par `run_on_terminal` n'a PAS de sortie capturable —
+        un tube y ferait renoncer les pleins écrans, la leçon a été payée.
+        On garde donc au moins la commande et son verdict.
+        """
+        handle = getattr(self, "step_log", None)
+        if not handle:
+            return
+        try:
+            handle.write(f"[{datetime.datetime.now()}] {texte}\n")
+        except Exception:
+            pass
+
     def record_event(self, kind, name, status, detail=""):
         """Garder ce qui s'est MAL passé, et ce que les outils ont conclu.
 
@@ -3922,6 +4004,32 @@ class TodoUpgrade:
         )
         self.dct_progression["lst_event"] = lst[-self.MAX_EVENT :]
         self.write_config()
+        # ET sur disque, en AJOUT, hors du fichier de progression. Celui-ci
+        # est archivé puis remis à zéro quand on recommence une migration :
+        # tout ce qu'on y avait mis disparaissait alors de l'écran d'état,
+        # au moment précis où l'on cherchait à comprendre pourquoi il avait
+        # fallu recommencer.
+        self.append_event_file(lst[-1])
+        self.note_step_log(f"[{kind}] {name} -> {status}")
+
+    def append_event_file(self, event):
+        """Ajouter l'événement au journal permanent, une ligne de JSON.
+
+        JSONL et non JSON : un fichier qu'on complète ligne à ligne
+        survit à une interruption au milieu d'une écriture, là où un
+        tableau JSON réécrit en entier ne laisserait qu'un fichier
+        tronqué — donc illisible, donc perdu en totalité.
+        """
+        chemin = self.log_dir()
+        if not chemin:
+            return
+        try:
+            with open(
+                os.path.join(chemin, EVENT_FILE), "a", encoding="utf-8"
+            ) as handle:
+                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
 
     def run_tool(self, name, cmd):
         """Lancer un outil de migration et RETENIR sa conclusion.

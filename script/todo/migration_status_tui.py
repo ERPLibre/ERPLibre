@@ -111,10 +111,18 @@ def pane_text(dct, row):
         for item in lst_failure:
             lignes.append(f"   {item.get('name')}")
         lignes.append("")
-    if not section["lst_cmd"]:
-        lignes.append(t("No tool has run yet."))
     for cmd in section["lst_cmd"]:
         lignes.append(f"· {cmd}")
+    # La SORTIE des commandes, relue sur disque. C'est ce qui manquait :
+    # la liste des commandes dit ce qui a été lancé, jamais ce que cela a
+    # répondu — et c'est la réponse qu'on vient chercher.
+    tail = status.step_log_tail(dct, section["step"])
+    if tail:
+        lignes.append("")
+        lignes.append(f"── {t('server log')} ──")
+        lignes.extend(tail)
+    elif not section["lst_cmd"]:
+        lignes.append(t("No tool has run yet."))
     return "\n".join(lignes)
 
 

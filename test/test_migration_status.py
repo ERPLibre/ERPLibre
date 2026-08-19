@@ -22,6 +22,7 @@ Deux choses se vérifient ici, et la seconde est la moins évidente :
 
 import io
 import os
+import shutil
 import unittest
 from contextlib import redirect_stdout
 
@@ -351,6 +352,216 @@ class TestLookingIsNotAnswering(Base):
         # ce qu'il faut éviter, et le chercher à l'aveugle se déclenchait
         # sur la prose plutôt que sur le code.
         self.assertNotIn("self.run_on_terminal(", source)
+
+
+class DiskCase(Base):
+    """Un répertoire jetable : les chemins de journal sont RELATIFS."""
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp(prefix="erplibre_essai_")
+        avant = os.getcwd()
+        os.chdir(self.dossier)
+        self.addCleanup(shutil.rmtree, self.dossier, True)
+        self.addCleanup(os.chdir, avant)
+
+    def upgrade(self, database="essai_db"):
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.dct_progression = {"config_database_name": database}
+        obj.lst_command_executed = []
+        obj.write_config = lambda: None
+        return obj
+
+
+class TestWhatSurvivesClosingTheTool(DiskCase):
+    """Le fichier de progression est ARCHIVÉ puis remis à zéro.
+
+    Recommencer une migration effaçait donc tout ce que l'écran d'état
+    savait — au moment précis où l'on cherche à comprendre pourquoi il a
+    fallu recommencer. Le journal permanent, lui, ne fait que s'allonger.
+    """
+
+    def test_events_are_found_again_with_nothing_in_memory(self):
+        obj = self.upgrade()
+        obj.print_step("4.2.I - Migrate database")
+        obj.record_event("command", "update_addons_all.sh", 1)
+        obj.record_event("test", "smoke_public_url", 0)
+        obj.close_step_log()
+        # Une progression NEUVE : c'est l'état après réouverture.
+        neuf = {"config_database_name": "essai_db"}
+        lst = status.merge_events(neuf)
+        self.assertEqual(len(lst), 2)
+        self.assertEqual(lst[0]["name"], "update_addons_all.sh")
+
+    def test_the_step_survives_with_them(self):
+        # Un événement sans étape oblige à relire tout le journal pour
+        # savoir OÙ il s'est produit.
+        obj = self.upgrade()
+        obj.print_step("4.2.I - Migrate database")
+        obj.record_event("test", "database_cleanup", 1)
+        obj.close_step_log()
+        lst = status.merge_events({"config_database_name": "essai_db"})
+        self.assertEqual(lst[0]["step"], "4.2.I - Migrate database")
+
+    def test_memory_and_disk_are_not_counted_twice(self):
+        obj = self.upgrade()
+        obj.print_step("2 - Succeed update all addons")
+        obj.record_event("test", "smoke_public_url", 0)
+        obj.close_step_log()
+        # `obj.dct_progression` porte DÉJÀ l'événement : les deux sources se
+        # recouvrent, et les additionner le montrerait en double.
+        self.assertEqual(len(status.merge_events(obj.dct_progression)), 1)
+
+    def test_a_truncated_line_does_not_lose_the_others(self):
+        # Une écriture interrompue laisse une ligne tronquée ; refuser le
+        # fichier en bloc perdrait tout pour une seule ligne.
+        obj = self.upgrade()
+        obj.print_step("1 - Import database from zip")
+        obj.record_event("test", "premier", 0)
+        obj.close_step_log()
+        chemin = os.path.join(
+            "private",
+            "odoo",
+            "migration",
+            "essai_db",
+            "step_log",
+            "events.jsonl",
+        )
+        with open(chemin, "a") as handle:
+            handle.write('{"at": "x", "name": "coup\n')
+        obj.record_event("test", "dernier", 0)
+        noms = [
+            x["name"]
+            for x in status.merge_events({"config_database_name": "essai_db"})
+        ]
+        self.assertIn("premier", noms)
+        self.assertIn("dernier", noms)
+
+    def test_a_migration_without_a_database_writes_nowhere(self):
+        obj = self.upgrade(database=None)
+        obj.dct_progression = {}
+        obj.print_step("0 - Inspect zip")
+        obj.record_event("test", "x", 0)
+        obj.close_step_log()
+        # Rien ne doit planter, et rien ne doit se perdre ailleurs.
+        self.assertEqual(len(obj.dct_progression["lst_event"]), 1)
+
+
+class TestTheStepLogs(DiskCase):
+    def test_each_step_gets_its_own_file(self):
+        obj = self.upgrade()
+        for etape in ("0 - Inspect zip", "4.2.C - Install module"):
+            obj.print_step(etape)
+            obj.note_step_log("quelque chose")
+        obj.close_step_log()
+        dossier = os.path.join(
+            "private", "odoo", "migration", "essai_db", "step_log"
+        )
+        self.assertEqual(
+            sorted(x for x in os.listdir(dossier) if x.endswith(".log")),
+            ["0_inspect-zip.log", "4.2.c_install-module.log"],
+        )
+
+    def test_the_numbered_prefix_keeps_them_in_order(self):
+        # Un `ls` trié est la première chose qu'on fait dans ce répertoire.
+        self.assertTrue(
+            status.step_slug("4.2.C - Install module").startswith("4.2.c")
+        )
+
+    def test_replaying_a_step_ADDS_to_what_was_known(self):
+        # Une étape rejouée après un retour en arrière ne doit pas effacer
+        # l'historique : c'est justement ce qu'on vient relire.
+        obj = self.upgrade()
+        obj.print_step("2 - Succeed update all addons")
+        obj.note_step_log("premier passage")
+        obj.close_step_log()
+        obj.print_step("2 - Succeed update all addons")
+        obj.note_step_log("second passage")
+        obj.close_step_log()
+        tail = status.step_log_tail(
+            {"config_database_name": "essai_db"},
+            "2 - Succeed update all addons",
+        )
+        texte = "\n".join(tail)
+        self.assertIn("premier passage", texte)
+        self.assertIn("second passage", texte)
+
+    def test_the_command_and_its_verdict_are_kept(self):
+        # `run_on_terminal` n'a PAS de sortie capturable — un tube y ferait
+        # renoncer les pleins écrans. On garde au moins ces deux-là.
+        obj = self.upgrade()
+        obj.print_step("3 - Clean up database")
+        obj.run_on_terminal("true")
+        obj.close_step_log()
+        texte = "\n".join(
+            status.step_log_tail(
+                {"config_database_name": "essai_db"}, "3 - Clean up database"
+            )
+        )
+        self.assertIn("$ true", texte)
+        self.assertIn("-> 0", texte)
+
+    def test_a_step_never_run_has_no_file(self):
+        self.assertIsNone(
+            status.step_log_path(
+                {"config_database_name": "essai_db"}, "9 - jamais"
+            )
+        )
+
+    def test_the_name_is_computed_in_ONE_place(self):
+        # Deux formules dériveraient, et l'écran chercherait un fichier que
+        # personne n'écrit — sans rien signaler, puisqu'un fichier absent
+        # se lit comme une étape sans journal.
+        self.assertIs(TodoUpgrade.step_slug, status.step_slug)
+
+
+class TestTheCommandOutputItself(DiskCase):
+    """Ce qui manquait vraiment : ce que les commandes ont RÉPONDU."""
+
+    def test_the_lines_land_in_the_step_log(self):
+        from script.execute import execute as ex
+
+        obj = self.upgrade()
+        obj.execute = ex.Execute()
+        obj.print_step("2 - Succeed update all addons")
+        with redirect_stdout(io.StringIO()):
+            obj.todo_upgrade_execute(
+                "echo première && echo seconde >&2", wait_at_error=False
+            )
+        obj.close_step_log()
+        texte = "\n".join(
+            status.step_log_tail(
+                {"config_database_name": "essai_db"},
+                "2 - Succeed update all addons",
+            )
+        )
+        self.assertIn("première", texte)
+        # stderr aussi : c'est là que les erreurs d'Odoo se trouvent.
+        self.assertIn("seconde", texte)
+
+    def test_a_broken_sink_never_breaks_the_command(self):
+        # Journaliser est un service rendu, pas une condition de marche.
+        from script.execute import execute as ex
+
+        class PuitsCasse:
+            def write(self, texte):
+                raise OSError("disque plein")
+
+        moteur = ex.Execute()
+        moteur.log_sink = PuitsCasse()
+        with redirect_stdout(io.StringIO()):
+            status_code = moteur.exec_command_live(
+                "echo bonjour", source_erplibre=False, quiet=True
+            )
+        self.assertEqual(status_code, 0)
+
+    def test_nothing_is_logged_without_a_step(self):
+        from script.execute import execute as ex
+
+        moteur = ex.Execute()
+        self.assertIsNone(getattr(moteur, "log_sink", None))
 
 
 class TestTheStatisticsScreenOffersIt(Base):
