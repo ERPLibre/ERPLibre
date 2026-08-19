@@ -79,6 +79,10 @@ MIGRATION_STEP = [
 GLOBAL_PROGRESSION_KEY = frozenset(
     {
         "command_executed",
+        # Le registre des échecs et des verdicts d'outils, comme le journal
+        # des commandes : un retour en arrière ne doit PAS l'effacer. C'est
+        # justement ce qu'on vient consulter après être revenu.
+        "lst_event",
         "config_database_name",
         "config_migrate_repo",
         "date_create",
@@ -820,12 +824,36 @@ class TodoUpgrade:
         """
         while True:
             answer = self.ask(prompt, default=default)
-            if (answer or "").strip().lower() != "b":
+            reponse = (answer or "").strip().lower()
+            if reponse == "t":
+                # Regarder n'est pas répondre : on repose la MÊME question
+                # après. Sans cela, ouvrir l'état vaudrait « continuer », ce
+                # qui est exactement ce qu'on ne voulait pas faire.
+                self.show_migration_status()
+                continue
+            if reponse != "b":
                 return answer
             if self.rewind_to_chosen_step():
                 raise MigrationRewind()
             # Renoncer au retour en arrière ne doit pas arrêter la migration :
             # on revient à la même invite, exactement là où l'on était.
+
+    def show_migration_status(self):
+        """Ouvrir l'état de la migration, en plein écran.
+
+        On ÉCRIT avant de lire : l'écran lit le fichier de progression, et
+        ce qui vient de se passer n'y serait pas encore.
+
+        Pas par `run_on_terminal` : celui-ci consigne ce qu'il lance dans
+        le journal, et le journal est justement ce que cet écran montre.
+        Regarder l'état polluerait alors l'état.
+        """
+        self.write_config()
+        subprocess.call(
+            f"{PYTHON_BIN} ./script/todo/migration_status.py",
+            shell=True,
+            executable="/bin/bash",
+        )
 
     def rewind_to_chosen_step(self):
         """Demander l'étape et rembobiner jusqu'à elle. Écrit la progression."""
@@ -1532,7 +1560,7 @@ class TodoUpgrade:
                 self.ask_gate(
                     "💬 "
                     + t("Neutralize database, press to continue")
-                    + f" {t('(b = go back to a previous step)')} : "
+                    + f" {t('(b = go back a step, t = show the migration state)')} : "
                 )
                 .strip()
                 .lower()
@@ -2527,7 +2555,7 @@ class TodoUpgrade:
                 )
                 status = self.ask_gate(
                     f"💬 {t('Press to continue')} {msg}"
-                    f" {t('(b = go back to a previous step)')} : "
+                    f" {t('(b = go back a step, t = show the migration state)')} : "
                 ).strip()
                 # The technique change at version 14
                 if next_version <= 13:
@@ -2860,6 +2888,9 @@ class TodoUpgrade:
         une phrase.
         """
         prefix, sep, label = msg.partition(" - ")
+        # Retenu pour l'écran d'état : un événement sans étape oblige à
+        # relire tout le journal pour savoir OÙ il s'est produit.
+        self.current_step = msg
         print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
 
     def installed_theme(self, database_name):
@@ -2903,7 +2934,7 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Uninstall them properly before migrating?')}"
-                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
                 default="y",
             )
             .strip()
@@ -2989,9 +3020,10 @@ class TodoUpgrade:
                 print(f"⚠️ {t('Unknown choice, nothing was reset.')}")
                 return False
         args = " ".join(f"--reset {key}" for key in lst_chosen)
-        status = self.run_on_terminal(
+        status = self.run_tool(
+            "reset_stale_cow_views",
             f"{PYTHON_BIN} ./{os.path.join(PATH_MIGRATION_GLOBAL, 'reset_stale_cow_views.py')}"
-            f" -d {database_name} {args} --apply"
+            f" -d {database_name} {args} --apply",
         )
         return status == 0
 
@@ -3009,7 +3041,7 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Clean the database before testing the pages?')}"
-                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
                 default="y",
             )
             .strip()
@@ -3017,10 +3049,11 @@ class TodoUpgrade:
         )
         if answer != "y":
             return
-        self.run_on_terminal(
+        self.run_tool(
+            "database_cleanup",
             f"{PYTHON_BIN}"
             " ./script/odoo/migration/database_cleanup.py"
-            f" -d {database_name}"
+            f" -d {database_name}",
         )
 
     def prompt_smoke_public_url(self, database_name, baseline=False):
@@ -3050,7 +3083,7 @@ class TodoUpgrade:
         answer = (
             self.ask_gate(
                 f"💬 {t('Request every public URL of this database now?')}"
-                f" (Y/n, {t('(b = go back to a previous step)')}) : ",
+                f" (Y/n, {t('(b = go back a step, t = show the migration state)')}) : ",
                 default="y",
             )
             .strip()
@@ -3074,11 +3107,12 @@ class TodoUpgrade:
                 f" {t('was not neutralized, so there is no test user to')}"
                 f" {t('sign in with.')}"
             )
-        self.run_on_terminal(
+        self.run_tool(
+            "smoke_public_url",
             f"{PYTHON_BIN}"
             " ./script/odoo/migration/smoke_public_url.py"
             f" -d {database_name}"
-            + (" --internal-required" if neutralise else "")
+            + (" --internal-required" if neutralise else ""),
         )
 
     def show_cow_drift(self, database_name, next_version, mode="diff"):
@@ -3542,6 +3576,10 @@ class TodoUpgrade:
         # failure, never as a success (defence in depth: exec_command_live now
         # always sets one, but a silent None must not skip this prompt).
         if (status is None or status) and wait_at_error:
+            # AVANT l'invite : si l'on répond ctrl+c, l'échec doit tout de
+            # même figurer dans l'état — c'est précisément celui qu'on
+            # cherchera en revenant.
+            self.record_event("command", cmd, status if status else 1)
             database_name = self.database_from_command(cmd)
             # « 3 » par défaut, car le motif d'échec le plus fréquent ici est
             # une copie COW en retard : la réparer est presque toujours ce
@@ -3814,6 +3852,47 @@ class TodoUpgrade:
                     remote, remote_branch = value.split("/", 1)
                 return parts[1], remote, remote_branch
         return None, None, None
+
+    MAX_EVENT = 200
+
+    def record_event(self, kind, name, status, detail=""):
+        """Garder ce qui s'est MAL passé, et ce que les outils ont conclu.
+
+        Le journal existant (`command_executed`) dit ce qui a été LANCÉ,
+        jamais ce que cela a donné. Après six paliers on lit deux cents
+        lignes de commandes sans savoir laquelle a échoué, ni ce que le
+        test de fumée a trouvé. C'est cette question-là que l'écran d'état
+        doit pouvoir répondre.
+
+        Borné : une migration lance des centaines de commandes, et un
+        fichier de progression qui enfle sans limite finit par coûter plus
+        cher à écrire qu'à lire.
+        """
+        lst = list(self.dct_progression.get("lst_event") or [])
+        lst.append(
+            {
+                "at": str(datetime.datetime.now()),
+                "step": getattr(self, "current_step", "") or "",
+                "kind": kind,
+                "name": name,
+                "status": status,
+                "detail": str(detail)[:500],
+            }
+        )
+        self.dct_progression["lst_event"] = lst[-self.MAX_EVENT :]
+        self.write_config()
+
+    def run_tool(self, name, cmd):
+        """Lancer un outil de migration et RETENIR sa conclusion.
+
+        Les outils partagent une convention de code de sortie — 0 rien à
+        signaler, 1 des trouvailles, 2 l'outil a échoué — et c'est
+        exactement ce qu'on veut relire plus tard. Sans cela, « le test de
+        fumée est-il passé ? » n'a pas de réponse une heure après.
+        """
+        status = self.run_on_terminal(cmd)
+        self.record_event("test", name, status, cmd)
+        return status
 
     def add_comment_progression(self, comment):
         comment_to_add = f"# {comment}"

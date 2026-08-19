@@ -208,6 +208,8 @@ class TestTheResetReportsWhatItDid(unittest.TestCase):
 
     def test_a_reset_that_ran_is_True(self):
         obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.dct_progression = {}
+        obj.write_config = lambda: None
         obj.stale_cow_keys = lambda db: ["web.layout"]
         obj.ask_gate = lambda prompt, default="": default
         obj.run_on_terminal = lambda cmd: 0
@@ -218,6 +220,8 @@ class TestTheResetReportsWhatItDid(unittest.TestCase):
         # Rejouer derrière une réinitialisation qui a échoué, c'est brûler
         # une tentative sur un état inchangé.
         obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.dct_progression = {}
+        obj.write_config = lambda: None
         obj.stale_cow_keys = lambda db: ["web.layout"]
         obj.ask_gate = lambda prompt, default="": default
         obj.run_on_terminal = lambda cmd: 2

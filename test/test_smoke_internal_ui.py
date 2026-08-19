@@ -500,7 +500,7 @@ class TestASkipThatHidesAFailure(unittest.TestCase):
         source = inspect.getsource(TodoUpgrade.prompt_smoke_public_url)
         self.assertLess(
             source.index("Public pages only:"),
-            source.index("run_on_terminal"),
+            source.index("run_tool("),
         )
 
 

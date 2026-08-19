@@ -771,8 +771,15 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         from script.todo.todo_upgrade import TodoUpgrade
 
         source = inspect.getsource(TodoUpgrade.prompt_database_cleanup)
-        self.assertIn("run_on_terminal", source)
+        # `run_tool` retient le verdict PUIS délègue à `run_on_terminal` :
+        # les deux propriétés comptent, et vérifier la seconde à la source
+        # évite qu'un raccourci futur reprenne l'exécuteur qui capture.
+        self.assertIn("run_tool(", source)
         self.assertNotIn("todo_upgrade_execute", source)
+        self.assertIn(
+            "self.run_on_terminal(",
+            inspect.getsource(TodoUpgrade.run_tool),
+        )
 
     def test_saying_no_cleans_nothing(self):
         # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.

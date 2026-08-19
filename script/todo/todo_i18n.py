@@ -5530,6 +5530,79 @@ TRANSLATIONS = {
         "fr": "s'y connecter.",
         "en": "sign in with.",
     },
+    "Migration state": {
+        "fr": "État de la migration",
+        "en": "Migration state",
+    },
+    "started": {
+        "fr": "démarrée",
+        "en": "started",
+    },
+    "last written": {
+        "fr": "dernière écriture",
+        "en": "last written",
+    },
+    "current step": {
+        "fr": "étape courante",
+        "en": "current step",
+    },
+    "Test results": {
+        "fr": "Résultat des tests",
+        "en": "Test results",
+    },
+    "No tool has run yet.": {
+        "fr": "Aucun outil n'a encore tourné.",
+        "en": "No tool has run yet.",
+    },
+    "Commands that failed": {
+        "fr": "Commandes en échec",
+        "en": "Commands that failed",
+    },
+    "What was done, step by step": {
+        "fr": "Ce qui a été fait, étape par étape",
+        "en": "What was done, step by step",
+    },
+    "runs": {
+        "fr": "passages",
+        "en": "runs",
+    },
+    "nothing to report": {
+        "fr": "rien à signaler",
+        "en": "nothing to report",
+    },
+    "findings to look at": {
+        "fr": "des trouvailles à regarder",
+        "en": "findings to look at",
+    },
+    "the tool itself failed": {
+        "fr": "l'outil lui-même a échoué",
+        "en": "the tool itself failed",
+    },
+    "unknown result": {
+        "fr": "résultat inconnu",
+        "en": "unknown result",
+    },
+    "before the first step": {
+        "fr": "avant la première étape",
+        "en": "before the first step",
+    },
+    "No migration in progress.": {
+        "fr": "Aucune migration en cours.",
+        "en": "No migration in progress.",
+    },
+    "show the migration state": {
+        "fr": "afficher l'état de la migration",
+        "en": "show the migration state",
+    },
+    "Nothing to show yet.": {
+        "fr": "Rien à montrer pour l'instant.",
+        "en": "Nothing to show yet.",
+    },
+    "(b = go back a step, t = show the migration state)": {
+        "fr": "(b = revenir à une étape précédente,"
+        " t = afficher l'état de la migration)",
+        "en": "(b = go back a step, t = show the migration state)",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
