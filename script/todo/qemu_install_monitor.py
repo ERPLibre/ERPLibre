@@ -395,6 +395,133 @@ _LST_IGNORE_ERROR = (
 )
 
 
+# Signaux d'échec qui ne contiennent NI « error » NI « warning ». Sans eux, le
+# scan par sous-chaîne rate des installations franchement ratées : le journal de
+# la VM erplibre-ubuntu-2604-gnome, dont la compilation de l'APK a été tuée par
+# le noyau, ne portait AUCUNE ligne « error » — mesuré, 0 sur 8765 lignes —
+# pendant que « ⚠ ÉCHEC : APK debug (gradle) », « FAILURE: Build failed » et
+# « daemon disappeared unexpectedly » y étaient. Le détail des erreurs annonçait
+# donc « aucune erreur détectée » sur une installation en échec.
+#
+# Chaque motif est là parce qu'il est apparu dans un vrai journal, pas par
+# précaution : Gradle dit « FAILURE », Python « Traceback », git « fatal: », apt
+# « Unable to locate package », le noyau « Killed » ou « Cannot allocate
+# memory », et nos propres étapes « ⚠ ÉCHEC ».
+_LST_HARD_MARKERS = (
+    "⚠ échec",
+    "failed:",
+    "failure",
+    "traceback (most recent call last)",
+    "fatal:",
+    "command not found",
+    # PAS « no such file or directory » : sur le journal de référence, 5 de ses
+    # 7 occurrences étaient des sondes bénignes (« cat: .odoo-version »), et le
+    # bruit dilue un résumé dont l'intérêt est justement d'être court. Un
+    # fichier vraiment manquant fait échouer une ÉTAPE, elle-même captée.
+    "permission denied",
+    "unable to locate package",
+    "disappeared unexpectedly",
+    "outofmemory",
+    "cannot allocate memory",
+    "segmentation fault",
+    "core dumped",
+    "killed process",
+)
+# Étape en échec, telle que la pose « mstep » : « ⚠ ÉCHEC : <libellé> ». C'est
+# le signal AUTORITAIRE — il nomme l'étape, là où « FAILURE » ne nomme que
+# l'outil.
+_RE_FAILED_STEP = re.compile(r"⚠\s*(?:ÉCHEC|FAILED)\s*:?\s*(.+)")
+# Début d'une autre étape ou d'une section : borne du diagnostic qui suit.
+_RE_STEP_BOUND = re.compile(r"^\s*(?:->|==)\s")
+
+
+def _is_hard_signal(line: str) -> bool:
+    low = line.lower()
+    return any(m in low for m in _LST_HARD_MARKERS)
+
+
+def _error_signature(line: str) -> str:
+    """Ligne réduite à sa FORME, pour regrouper les répétitions.
+
+    Un journal d'installation répète la même erreur des centaines de fois avec
+    un chemin ou un numéro qui change. Regrouper sur cette forme donne « ×342 »
+    au lieu de 342 lignes à faire défiler."""
+    sig = re.sub(r"\d+", "#", line)
+    sig = re.sub(r"0x[0-9a-fA-F]+", "#", sig)
+    sig = re.sub(r"/\S+", "/…", sig)
+    return re.sub(r"\s+", " ", sig).strip()[:160]
+
+
+def scan_log_summary(log_path: str, diag_cap: int = 14) -> dict:
+    """Résumé d'un journal d'installation : ce qui a échoué, puis le reste.
+
+    Rend {steps, hard, groups, nerr, nwarn} où « steps » liste les étapes en
+    échec AVEC leur diagnostic, « hard » les autres signaux durs dédupliqués, et
+    « groups » les lignes « error »/« warning » regroupées par forme et comptées.
+
+    L'ordre n'est pas cosmétique : une étape en échec nommée vaut mille lignes,
+    et c'est elle qu'on veut lire d'abord."""
+    try:
+        lines = Path(log_path).read_text(errors="replace").splitlines()
+    except OSError:
+        return {"steps": [], "hard": [], "groups": [], "nerr": 0, "nwarn": 0}
+
+    steps, hard, groups = [], {}, {}
+    nerr = nwarn = 0
+    for i, line in enumerate(lines, 1):
+        if EXIT_MARKER in line:
+            continue
+        low = line.lower()
+        match = _RE_FAILED_STEP.search(line)
+        if match:
+            # Le diagnostic suit l'échec, jusqu'à l'étape suivante : c'est lui
+            # qui porte la cause, l'échec ne portant que le nom.
+            diag = []
+            for nxt in lines[i : i + 60]:
+                if _RE_STEP_BOUND.match(nxt) or _RE_FAILED_STEP.search(nxt):
+                    break
+                if EXIT_MARKER in nxt:
+                    continue
+                if nxt.strip() and len(diag) < diag_cap:
+                    diag.append(nxt.rstrip())
+            steps.append(
+                {"line": i, "label": match.group(1).strip(), "diag": diag}
+            )
+            continue
+        if _is_hard_signal(line):
+            sig = _error_signature(line)
+            entry = hard.setdefault(
+                sig, {"line": i, "text": line.strip(), "count": 0}
+            )
+            entry["count"] += 1
+            continue
+        if "error" in low and not any(ig in line for ig in _LST_IGNORE_ERROR):
+            nerr += 1
+            key = ("error", _error_signature(line))
+            groups.setdefault(
+                key, {"line": i, "text": line.strip(), "count": 0}
+            )["count"] += 1
+        if "warning" in low and not any(
+            ig in line for ig in _LST_IGNORE_WARNING
+        ):
+            nwarn += 1
+            key = ("warning", _error_signature(line))
+            groups.setdefault(
+                key, {"line": i, "text": line.strip(), "count": 0}
+            )["count"] += 1
+    ordered = sorted(
+        ({"kind": k[0], **v} for k, v in groups.items()),
+        key=lambda g: (-g["count"], g["line"]),
+    )
+    return {
+        "steps": steps,
+        "hard": sorted(hard.values(), key=lambda h: h["line"]),
+        "groups": ordered,
+        "nerr": nerr,
+        "nwarn": nwarn,
+    }
+
+
 def scan_log_error_lines(log_path: str, cap: int = 500) -> tuple[list, list]:
     """(lignes_erreur, lignes_avertissement) d'un log, même détection que
     scan_log_errors mais on RETIENT les lignes (bornées à `cap`) pour les
@@ -408,6 +535,9 @@ def scan_log_error_lines(log_path: str, cap: int = 500) -> tuple[list, list]:
         if EXIT_MARKER in line:
             continue
         low = line.lower()
+        if _is_hard_signal(line) and len(errs) < cap:
+            errs.append(f"{i}: {line}")
+            continue
         if (
             "error" in low
             and not any(ig in line for ig in _LST_IGNORE_ERROR)
@@ -437,6 +567,13 @@ def scan_log_errors(log_path: str) -> tuple[int, int]:
     for line in text.splitlines():
         low = line.lower()
         if EXIT_MARKER in line:
+            continue
+        # Un échec d'étape EST une erreur, même sans le mot « error » : sinon le
+        # tableau de bord affiche « 0 erreur » sur une installation ratée —
+        # mesuré sur erplibre-ubuntu-2604-gnome, 0 ligne « error » pour un APK
+        # tué par le noyau.
+        if _is_hard_signal(line):
+            nerr += 1
             continue
         if "error" in low and not any(ig in line for ig in _LST_IGNORE_ERROR):
             nerr += 1
@@ -984,26 +1121,64 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             ("q", "dismiss", "Fermer"),
         ]
 
-        def __init__(self, vm_name, errs, warns):
+        def __init__(self, vm_name, errs, warns, summary=None):
             super().__init__()
             self._vm = vm_name
             self._errs = errs
             self._warns = warns
+            self._sum = summary or {}
 
         def compose(self) -> ComposeResult:
-            with Vertical(id="errbox"):
-                yield Static(
-                    f"  {self._vm} — ⚠ {len(self._errs)} "
+            nsteps = len(self._sum.get("steps", []))
+            head = (
+                f"  {self._vm} — ⚠ {len(self._errs)} "
+                f"{t('errors')} · ⚡ {len(self._warns)} {t('warnings')}"
+            )
+            # Le nombre d'étapes en échec passe DEVANT : c'est la seule ligne du
+            # bandeau qui dise si l'installation a abouti.
+            if nsteps:
+                head = (
+                    f"  {self._vm} — 🛑 {nsteps} "
+                    f"{t('failed steps')} · ⚠ {len(self._errs)} "
                     f"{t('errors')} · ⚡ {len(self._warns)} {t('warnings')}"
-                    f"   ({t('Esc to close')})",
-                    id="errtitle",
                 )
+            with Vertical(id="errbox"):
+                yield Static(f"{head}   ({t('Esc to close')})", id="errtitle")
                 yield RichLog(
                     id="errlog", highlight=False, markup=False, wrap=True
                 )
 
         def on_mount(self) -> None:
             log = self.query_one("#errlog", RichLog)
+            steps = self._sum.get("steps", [])
+            hard = self._sum.get("hard", [])
+            groups = self._sum.get("groups", [])
+
+            # -- Le résumé, d'abord. Une étape nommée vaut mille lignes.
+            if steps:
+                log.write(f"── {t('Failed steps')} ──")
+                for st in steps:
+                    log.write(f"🛑 {st['label']}   ({t('line')} {st['line']})")
+                    for line in st["diag"]:
+                        log.write(f"     {line.strip()}")
+                    log.write("")
+            if hard:
+                log.write(f"── {t('Hard signals')} ──")
+                for h in hard:
+                    mult = f" ×{h['count']}" if h["count"] > 1 else ""
+                    log.write(f"{h['line']}:{mult} {h['text']}")
+                log.write("")
+            if groups:
+                # Regroupé par FORME : un journal répète la même erreur des
+                # centaines de fois avec un chemin qui change.
+                log.write(f"── {t('Grouped by shape')} ──")
+                for g in groups[:60]:
+                    mark = "⚠" if g["kind"] == "error" else "⚡"
+                    mult = f" ×{g['count']}" if g["count"] > 1 else ""
+                    log.write(f"{mark} {g['line']}:{mult} {g['text']}")
+                log.write("")
+
+            # -- Puis le détail brut, pour qui veut tout lire.
             if self._errs:
                 log.write(f"── {t('errors').capitalize()} ──")
                 for line in self._errs:
@@ -1012,7 +1187,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 log.write(f"── {t('warnings').capitalize()} ──")
                 for line in self._warns:
                     log.write(line)
-            if not self._errs and not self._warns:
+            if not (steps or hard or self._errs or self._warns):
                 log.write(t("No error detected."))
 
         def action_dismiss(self) -> None:
@@ -1782,7 +1957,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not vm:
                 return
             errs, warns = scan_log_error_lines(vm["log"])
-            self.push_screen(ErrorLinesScreen(vm["name"], errs, warns))
+            summary = scan_log_summary(vm["log"])
+            self.push_screen(
+                ErrorLinesScreen(vm["name"], errs, warns, summary)
+            )
 
         def on_click(self, event) -> None:
             # Clic sur le sommaire de stats -> déplie / replie le détail.

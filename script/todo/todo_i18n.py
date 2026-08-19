@@ -2253,6 +2253,11 @@ TRANSLATIONS = {
         "en": "(the hypervisor only relays; -J puts the VM last)",
     },
     "Choice": {"fr": "Choix", "en": "Choice"},
+    "failed steps": {"fr": "étapes en échec", "en": "failed steps"},
+    "Failed steps": {"fr": "Étapes en échec", "en": "Failed steps"},
+    "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
+    "Grouped by shape": {"fr": "Regroupé par forme", "en": "Grouped by shape"},
+    "line": {"fr": "ligne", "en": "line"},
     "Tick the Android emulator tool when deploying.": {
         "fr": "Cochez l'outil Émulateur Android au déploiement.",
         "en": "Tick the Android emulator tool when deploying.",
