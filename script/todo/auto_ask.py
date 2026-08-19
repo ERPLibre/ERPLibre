@@ -23,6 +23,18 @@ derrière lui un `input()` toujours bloqué, qui volerait la frappe suivante.
 import os
 import sys
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
+
 ENV_ENABLED = "ERPLIBRE_AUTO_EXECUTE"
 ENV_DELAY = "ERPLIBRE_AUTO_DELAY"
 DEFAULT_DELAY = 5
@@ -90,7 +102,13 @@ def ask(prompt, default="", seconds=None):
         # lisible tout de suite et rend justement une ligne vide ; sans
         # ceci, le défaut ne servirait jamais là.
         return answer or default
-    print(f" ⏱ → {default or '(default)'}")
+    # « Entrée », parce que c'est ce que l'invite a proposé. Elle annonce
+    # « Entrée = effacer, k = garder » et ne mentionne nulle part « d » :
+    # afficher la valeur brute nommait donc une réponse qui n'était pas au
+    # menu, et l'on se demandait ce que l'outil venait de décider. La
+    # valeur reste, entre parenthèses, pour qui veut la précision.
+    detail = f" ({default})" if default else ""
+    print(f" ⏱ → {t('Enter')}{detail}")
     return default
 
 

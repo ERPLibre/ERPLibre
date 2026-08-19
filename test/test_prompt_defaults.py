@@ -163,6 +163,67 @@ class TestEnterMeansTheDefault(EnvCase):
         self.assertEqual(os.environ.get(auto_ask.ENV_ENABLED), "1")
 
 
+class TestTheCountdownSpeaksThePromptsLanguage(EnvCase):
+    """« ⏱ → d » nommait une réponse qui n'était PAS au menu.
+
+    L'invite annonce « Entrée = effacer, k = garder » : elle ne mentionne
+    « d » nulle part. Afficher la valeur brute obligeait donc à deviner ce
+    que l'outil venait de décider — alors que la décision était exactement
+    celle qu'Entrée promettait.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def tick(self, default):
+        """Forcer le chemin du DÉLAI, celui qui affiche la ligne."""
+        import select
+
+        original = select.select
+        select.select = lambda r, w, x, t: ([], [], [])
+        self.addCleanup(setattr, select, "select", original)
+        auto_ask.export(True, 0.01)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            valeur = auto_ask.ask("q : ", default=default)
+        return valeur, out.getvalue()
+
+    def test_it_names_what_the_prompt_offered(self):
+        _valeur, texte = self.tick("d")
+        self.assertIn("Enter", texte)
+
+    def test_the_raw_value_stays_for_precision(self):
+        # La nommer reste utile : deux invites voisines peuvent avoir des
+        # défauts différents, et l'on relit ces lignes après coup.
+        _valeur, texte = self.tick("d")
+        self.assertIn("(d)", texte)
+
+    def test_an_empty_default_shows_no_parentheses(self):
+        # « Entrée () » n'aurait aucun sens : il n'y a rien à préciser.
+        _valeur, texte = self.tick("")
+        self.assertIn("Enter", texte)
+        self.assertNotIn("(", texte)
+
+    def test_the_answer_itself_is_unchanged(self):
+        # L'affichage seul change : ce que la migration reçoit reste la
+        # valeur, sinon toutes les invites changeraient de comportement.
+        valeur, _texte = self.tick("d")
+        self.assertEqual(valeur, "d")
+
+    def test_it_follows_the_language_of_the_migration(self):
+        from script.todo import todo_i18n
+
+        todo_i18n._current_lang = "fr"
+        _valeur, texte = self.tick("d")
+        self.assertIn("Entrée", texte)
+
+
 class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
     """Un `input()` nu ne sait rien du mode auto : il attend, pour toujours.
 
