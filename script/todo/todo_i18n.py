@@ -2260,6 +2260,10 @@ TRANSLATIONS = {
     "line": {"fr": "ligne", "en": "line"},
     "free space": {"fr": "libre", "en": "free"},
     "silent": {"fr": "silence", "en": "silent"},
+    "needs the ERPLibre install, skipped:": {
+        "fr": "exige l'installation ERPLibre, écarté :",
+        "en": "needs the ERPLibre install, skipped:",
+    },
     "Forgejo (git forge)": {
         "fr": "Forgejo (forge git)",
         "en": "Forgejo (git forge)",

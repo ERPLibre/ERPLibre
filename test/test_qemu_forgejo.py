@@ -135,6 +135,38 @@ class TestTheInstallBlock(unittest.TestCase):
             self.assertEqual(0, res.returncode, f"{tools}: {res.stderr}")
 
 
+class TestDesktopOnlyVm(unittest.TestCase):
+    """Une VM sans ERPLibre : le script Forgejo vit dans le dépôt, donc nulle
+    part. L'écarter en silence laisserait croire qu'une case cochée a été
+    honorée."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+
+    def test_it_says_what_it_skips(self):
+        cmd = self.todo._qemu_erplibre_remote_cmd(
+            None, None, False, "gnome", "", "deb", ("forgejo",)
+        )
+        self.assertIn("forgejo", cmd)
+        self.assertIn("⚠", cmd)
+        self.assertNotIn("install_forgejo.sh", cmd)
+
+    def test_it_stays_quiet_when_nothing_was_deferred(self):
+        cmd = self.todo._qemu_erplibre_remote_cmd(
+            None, None, False, "gnome", "", "deb", ("gnome_ext",)
+        )
+        self.assertNotIn("⚠", cmd)
+
+    def test_the_note_is_valid_shell(self):
+        cmd = self.todo._qemu_erplibre_remote_cmd(
+            None, None, False, "gnome", "", "deb", ("forgejo", "mobile")
+        )
+        res = subprocess.run(
+            ["bash", "-n"], input=cmd, capture_output=True, text=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr)
+
+
 class TestTheScript(unittest.TestCase):
     """Le script lui-même, exécuté sur ses chemins de refus."""
 

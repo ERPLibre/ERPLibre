@@ -6686,12 +6686,28 @@ class TODO:
             # sans quoi le verrou apt ferait échouer l'installation du bureau.
             if not desktop:
                 return "true"
+            # Les outils de la phase « after » vivent DANS le dépôt — la
+            # compilation mobile, l'AVD, le script Forgejo. Sans clone, ils
+            # n'existent pas ici. Les écarter en silence laissait croire qu'une
+            # case cochée avait été honorée : on la NOMME.
+            deferred = [
+                k
+                for k in (tools or ())
+                if self._QEMU_VM_TOOLS.get(k, {}).get("phase") == "after"
+            ]
+            note = (
+                f'echo "   ⚠ {t("needs the ERPLibre install, skipped:")}'
+                f' {" ".join(deferred)}"; '
+                if deferred
+                else ""
+            )
             return (
                 "set -e; "
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(desktop, app_store)
                 + self._qemu_tools_remote_cmd(tools, prod)
+                + note
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
