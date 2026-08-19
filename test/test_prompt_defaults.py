@@ -295,6 +295,56 @@ class TestWhatEnterDoesIsWritten(unittest.TestCase):
             self.assertIn(refus, self.source(nom), nom)
 
 
+class TestTheBackupAtTheEnd(unittest.TestCase):
+    """Au bout de plusieurs heures, l'archive est ce qu'on voulait.
+
+    Trois réponses, trois sens, et le troisième est celui qui piège : « n »
+    refuse, « y » ou Entrée prend le nom horodaté, et TOUT LE RESTE est un
+    nom de fichier. « non.zip » est donc un fichier, pas un refus.
+    """
+
+    TPL = "./odoo_bin.sh db --backup --database x --restore_image"
+    DEFAUT = "./odoo_bin.sh db --backup --database x --restore_image x_f_2026"
+
+    def cmd(self, answer):
+        return TodoUpgrade.backup_command(answer, self.TPL, self.DEFAUT)
+
+    def test_yes_takes_the_timestamped_name(self):
+        self.assertEqual(self.cmd("y"), self.DEFAUT)
+
+    def test_case_does_not_matter(self):
+        self.assertEqual(self.cmd("Y"), self.DEFAUT)
+
+    def test_n_refuses(self):
+        # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
+        self.assertEqual(self.cmd("n"), "")
+        self.assertEqual(self.cmd("N"), "")
+
+    def test_anything_else_is_a_filename(self):
+        self.assertTrue(self.cmd("archive.zip").endswith(" archive.zip"))
+
+    def test_a_filename_that_STARTS_with_n_is_still_a_filename(self):
+        # Le piège : comparer un début de mot au lieu de la réponse
+        # entière ferait passer « non.zip » pour un refus, et l'on
+        # perdrait l'archive d'une migration de plusieurs heures.
+        self.assertTrue(self.cmd("non.zip").endswith(" non.zip"))
+
+    def test_blanks_are_not_a_filename(self):
+        self.assertEqual(self.cmd("   "), "")
+
+    def test_none_does_not_crash(self):
+        self.assertEqual(self.cmd(None), "")
+
+    def test_enter_backs_up_because_the_default_says_so(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        debut = source.index("Export a backup?")
+        fenetre = source[debut : debut + 200]
+        self.assertIn('default="y"', fenetre)
+        self.assertIn("(Y/n,", fenetre)
+
+
 class TestTheToolsLaunchedApart(unittest.TestCase):
     def test_the_leftovers_default_to_deleting(self):
         import theme_leftover

@@ -851,6 +851,27 @@ class TodoUpgrade:
             # Renoncer au retour en arrière ne doit pas arrêter la migration :
             # on revient à la même invite, exactement là où l'on était.
 
+    @staticmethod
+    def backup_command(answer, template, default_cmd):
+        """La commande de sauvegarde à lancer, ou « » pour ne rien faire.
+
+        Trois réponses, trois sens, et le troisième est celui qui piège :
+        « n » refuse, « y » ou Entrée prend le nom horodaté, et TOUT LE
+        RESTE est un nom de fichier. Une réponse comme « non.zip » est donc
+        un fichier, pas un refus — d'où la comparaison exacte plutôt qu'un
+        début de mot.
+
+        Entrée sauvegarde : au bout d'une migration de plusieurs heures,
+        l'archive est ce qu'on voulait de toute façon. Mais refuser doit
+        rester possible, et avoir un mot pour le dire.
+        """
+        reponse = (answer or "").strip()
+        if reponse.lower() in ("", "n"):
+            return ""
+        if reponse.lower() == "y":
+            return default_cmd
+        return f"{template} {reponse}"
+
     def show_migration_status(self):
         """Ouvrir l'état de la migration, en plein écran.
 
@@ -2766,12 +2787,14 @@ class TodoUpgrade:
         cmd_backup = f"{cmd_backup_template} {database_name_upgrade}_finish_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
         print(f"✨ {t('A backup can be created')} :\n{cmd_backup}")
         status = self.ask(
-            f"💬 {t('Press y/Y or type filename.zip to export, or')}"
-            f" {t('enter to continue')} : "
+            f"💬 {t('Export a backup?')}"
+            f" (Y/n, {t('or type filename.zip')}) : ",
+            default="y",
         ).strip()
-        if status.lower():
-            if status.lower() != "y":
-                cmd_backup = f"{cmd_backup_template} {status}"
+        cmd_backup = self.backup_command(
+            status, cmd_backup_template, cmd_backup
+        )
+        if cmd_backup:
             self.todo_upgrade_execute(cmd_backup)
 
         status = self.ask(f"💬 {t('Test the migration, press y/Y')} : ")

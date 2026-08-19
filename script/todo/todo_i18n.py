@@ -5607,6 +5607,14 @@ TRANSLATIONS = {
         "fr": "État de la migration (plein écran)",
         "en": "Migration state (full screen)",
     },
+    "Export a backup?": {
+        "fr": "Exporter une sauvegarde ?",
+        "en": "Export a backup?",
+    },
+    "or type filename.zip": {
+        "fr": "ou tapez nomfichier.zip",
+        "en": "or type filename.zip",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
