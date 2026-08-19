@@ -814,6 +814,54 @@ def _fmt_size(nbytes) -> str:
     return f"{nbytes // 1024}K"
 
 
+def _host_mem() -> tuple:
+    """(total, disponible, swap_total, swap_libre) en octets, lus dans /proc.
+
+    /proc/meminfo plutôt qu'une dépendance : psutil n'est pas garanti dans le
+    venv d'outils, et ce suivi tourne sur l'hyperviseur — donc sous Linux, d'où
+    viennent déjà getloadavg() et libvirt.
+
+    « MemAvailable » et non « MemFree » : le noyau y répond ce qu'il peut
+    rendre sans échanger, cache réclamable compris. MemFree seul affiche
+    presque rien sur une machine qui travaille, et alarmerait pour rien.
+    """
+    wanted = ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree")
+    vals = {}
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                key, _, rest = line.partition(":")
+                if key in wanted:
+                    vals[key] = int(rest.split()[0]) * 1024
+    except (OSError, ValueError, IndexError):
+        return (0, 0, 0, 0)
+    return tuple(vals.get(k, 0) for k in wanted)
+
+
+def _mem_tele(total, avail, sw_total, sw_free) -> str:
+    """Segment « RAM » de la barre de télémétrie. Vide si /proc n'a rien dit.
+
+    Le swap n'apparaît que s'il existe : l'afficher à « 0/0 » sur une machine
+    qui n'en a pas occupe une place pour ne rien dire. Quand il existe, il est
+    montré même à zéro — une VM qui a commencé à échanger explique une lenteur,
+    et c'est précisément ce qu'on cherche dans un suivi d'installation.
+    """
+    if not total:
+        return ""
+    used = max(0, total - avail)
+    out = (
+        f"🧠 RAM {_fmt_size(used)}/{_fmt_size(total)}"
+        f" ({int(used / total * 100)}%)"
+        f" · {t('free space')} {_fmt_size(avail)}"
+    )
+    if sw_total:
+        out += (
+            f" · swap {_fmt_size(max(0, sw_total - sw_free))}"
+            f"/{_fmt_size(sw_total)}"
+        )
+    return out
+
+
 def _fmt_secs(secs) -> str:
     """Secondes -> « 45s » / « 12m » / « 1h05 »."""
     secs = int(secs)
@@ -1509,12 +1557,18 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 load1 = os.getloadavg()[0]
                 du = shutil.disk_usage(self._disk_dir)
                 used_pct = int(du.used / du.total * 100) if du.total else 0
+                # La RAM va entre le CPU et le disque : c'est la ressource dont
+                # l'épuisement ne se voit nulle part ailleurs. Une compilation
+                # mobile a été tuée par le noyau sur une VM de 12 Go sans swap,
+                # et ce suivi n'en montrait rien.
+                mem = _mem_tele(*_host_mem())
                 return (
                     f"  ⚙ CPU {min(999, int(load1 / ncpu * 100))}% "
-                    f"(charge {load1:.1f}/{ncpu})   "
-                    f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
+                    f"({t('load')} {load1:.1f}/{ncpu})   "
+                    + (f"{mem}   " if mem else "")
+                    + f"💽 {self._disk_dir}: {_fmt_size(du.used)}/"
                     f"{_fmt_size(du.total)} ({used_pct}%) · "
-                    f"libre {_fmt_size(du.free)}"
+                    f"{t('free space')} {_fmt_size(du.free)}"
                 )
             except Exception:
                 return ""

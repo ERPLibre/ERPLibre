@@ -2258,6 +2258,7 @@ TRANSLATIONS = {
     "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
     "Grouped by shape": {"fr": "Regroupé par forme", "en": "Grouped by shape"},
     "line": {"fr": "ligne", "en": "line"},
+    "free space": {"fr": "libre", "en": "free"},
     "inotify watches raised for the IDE": {
         "fr": "watches inotify relevées pour l'IDE",
         "en": "inotify watches raised for the IDE",
