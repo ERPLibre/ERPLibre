@@ -564,6 +564,163 @@ class TestTheCommandOutputItself(DiskCase):
         self.assertIsNone(getattr(moteur, "log_sink", None))
 
 
+class TestColour(Base):
+    """Distinguer d'un coup d'œil ce qui a été LANCÉ du reste.
+
+    Une liste de commandes en texte plat se confond avec ses titres dès
+    qu'elle dépasse l'écran, et c'est justement quand elle le dépasse qu'on
+    la lit.
+    """
+
+    def rapport(self, colour):
+        dct = progression()
+        return status.render_text(dct, colour=colour)
+
+    def test_the_commands_are_coloured(self):
+        texte = self.rapport(True)
+        self.assertIn(status.ANSI["cmd"], texte)
+
+    def test_a_verdict_wears_the_colour_of_its_meaning(self):
+        # 1 n'est pas une panne : c'est « il y a quelque chose à regarder ».
+        # Le peindre en rouge inquiéterait pour rien.
+        self.assertEqual(status.VERDICT_COLOUR[0], "ok")
+        self.assertEqual(status.VERDICT_COLOUR[1], "warn")
+        self.assertEqual(status.VERDICT_COLOUR[2], "fail")
+
+    def test_a_failed_command_is_red(self):
+        self.assertIn(status.ANSI["fail"], self.rapport(True))
+
+    def test_every_colour_is_closed(self):
+        # Une séquence ouverte teinte tout ce qui suit, y compris l'invite
+        # du terminal une fois l'outil terminé.
+        texte = self.rapport(True)
+        ouvertures = sum(texte.count(code) for code in status.ANSI.values())
+        self.assertEqual(texte.count(status.RESET), ouvertures)
+
+    def test_plain_output_carries_no_escape_at_all(self):
+        self.assertNotIn("\033", self.rapport(False))
+
+    def test_paint_returns_the_text_untouched_when_off(self):
+        self.assertEqual(status.paint("make", "cmd", False), "make")
+
+    def test_an_unknown_colour_never_invents_one(self):
+        self.assertEqual(status.paint("make", "mauve", True), "make")
+
+
+class TestWhenColourWouldBeAMistake(Base):
+    """Un tube n'est pas un écran, et chacun de ces refus a coûté.
+
+    Un fichier de journal truffé de codes d'échappement, un `grep` qui ne
+    trouve plus rien, un terminal qui les affiche en clair.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.avant = {cle: os.environ.get(cle) for cle in ("NO_COLOR", "TERM")}
+
+        def remettre():
+            for cle, valeur in self.avant.items():
+                if valeur is None:
+                    os.environ.pop(cle, None)
+                else:
+                    os.environ[cle] = valeur
+
+        self.addCleanup(remettre)
+
+    class FauxEcran:
+        def __init__(self, tty):
+            self.tty = tty
+
+        def isatty(self):
+            return self.tty
+
+    def test_a_pipe_gets_no_colour(self):
+        os.environ["TERM"] = "xterm"
+        os.environ.pop("NO_COLOR", None)
+        self.assertFalse(status.supports_colour(self.FauxEcran(False)))
+
+    def test_a_terminal_does(self):
+        os.environ["TERM"] = "xterm"
+        os.environ.pop("NO_COLOR", None)
+        self.assertTrue(status.supports_colour(self.FauxEcran(True)))
+
+    def test_NO_COLOR_is_honoured(self):
+        # Convention respectée par la plupart des outils : la contredire
+        # oblige à nettoyer une sortie à la main.
+        os.environ["TERM"] = "xterm"
+        os.environ["NO_COLOR"] = "1"
+        self.assertFalse(status.supports_colour(self.FauxEcran(True)))
+
+    def test_a_dumb_terminal_gets_none(self):
+        os.environ.pop("NO_COLOR", None)
+        os.environ["TERM"] = "dumb"
+        self.assertFalse(status.supports_colour(self.FauxEcran(True)))
+
+    def test_a_stream_that_cannot_answer_gets_none(self):
+        os.environ["TERM"] = "xterm"
+        os.environ.pop("NO_COLOR", None)
+
+        class Muet:
+            def isatty(self):
+                raise OSError("fermé")
+
+        self.assertFalse(status.supports_colour(Muet()))
+
+    def test_the_report_decides_by_itself_when_not_told(self):
+        import inspect
+
+        source = inspect.getsource(status.render_text)
+        self.assertIn("colour = supports_colour()", source)
+
+
+class TestTheFullScreenColoursToo(Base):
+    def test_the_pane_can_be_coloured(self):
+        lst = tui.rows(progression())
+        etape = [x for x in lst if x["kind"] == "step"][0]
+        self.assertIn(
+            status.ANSI["cmd"],
+            tui.pane_text(progression(), etape, colour=True),
+        )
+
+    def test_it_stays_plain_by_default(self):
+        # `pane_text` sert aussi aux tests et au repli texte.
+        lst = tui.rows(progression())
+        etape = [x for x in lst if x["kind"] == "step"][0]
+        self.assertNotIn("\033", tui.pane_text(progression(), etape))
+
+    def test_rich_decodes_the_colours_instead_of_showing_them(self):
+        from rich.text import Text
+
+        lst = tui.rows(progression())
+        etape = [x for x in lst if x["kind"] == "step"][0]
+        texte = Text.from_ansi(
+            tui.pane_text(progression(), etape, colour=True)
+        )
+        self.assertNotIn("\033", texte.plain)
+        self.assertTrue(texte.spans)
+
+    def test_a_bracket_in_a_command_is_NOT_eaten_as_markup(self):
+        # Piège latent d'avant la couleur : Textual interprète le balisage
+        # Rich, et « [1] » disparaissait sans que rien ne le signale.
+        from rich.text import Text
+
+        dct = progression(
+            command_executed=["# 2 - Update", "make config [1] et [/bold]"]
+        )
+        lst = tui.rows(dct)
+        etape = [x for x in lst if x["kind"] == "step"][0]
+        texte = Text.from_ansi(tui.pane_text(dct, etape, colour=True))
+        self.assertIn("[1]", texte.plain)
+        self.assertIn("[/bold]", texte.plain)
+
+    def test_the_screen_goes_through_from_ansi(self):
+        import inspect
+
+        source = inspect.getsource(tui.build_app)
+        self.assertIn("Text.from_ansi", source)
+        self.assertIn("colour=True", source)
+
+
 class TestTheStatisticsScreenOffersIt(Base):
     """L'écran de statistiques répond « qu'a-t-on supprimé, et pourquoi ».
 

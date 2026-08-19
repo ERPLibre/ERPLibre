@@ -50,6 +50,49 @@ VERDICT = {
 }
 
 
+# Les couleurs ANSI, et le droit de s'en passer. `NO_COLOR` est une
+# convention respectée par la plupart des outils : la contredire oblige à
+# nettoyer une sortie à la main, ce qui est exactement ce qu'on cherchait à
+# éviter en la coloriant.
+ANSI = {
+    "cmd": "\033[36m",  # cyan : ce qui a été LANCÉ
+    "step": "\033[1;34m",  # bleu gras : les étapes
+    "ok": "\033[32m",
+    "warn": "\033[33m",
+    "fail": "\033[31m",
+    "dim": "\033[2m",
+}
+RESET = "\033[0m"
+
+
+def supports_colour(stream=None):
+    """Peut-on colorier CETTE sortie ?
+
+    Trois refus, et chacun a coûté à quelqu'un : un fichier de journal
+    truffé de codes d'échappement, un `grep` qui ne trouve plus rien, un
+    terminal qui les affiche en clair. Un tube n'est pas un écran.
+    """
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("TERM", "") in ("", "dumb"):
+        return False
+    stream = stream or sys.stdout
+    try:
+        return bool(stream.isatty())
+    except Exception:
+        return False
+
+
+def paint(texte, couleur, actif=True):
+    """Colorier, ou rendre le texte tel quel. Jamais d'à-peu-près."""
+    if not actif or couleur not in ANSI:
+        return texte
+    return f"{ANSI[couleur]}{texte}{RESET}"
+
+
+VERDICT_COLOUR = {0: "ok", 1: "warn", 2: "fail"}
+
+
 def read(path=DEFAULT_PATH):
     """La progression, complétée par ce qui a été écrit SUR DISQUE.
 
@@ -257,8 +300,15 @@ def bumps(dct):
     ]
 
 
-def render_text(dct, limit_cmd=12):
-    """Le rapport complet, en texte. C'est aussi le repli du plein écran."""
+def render_text(dct, limit_cmd=12, colour=None):
+    """Le rapport complet, en texte. C'est aussi le repli du plein écran.
+
+    `colour` à None laisse la sortie décider : un écran est colorié, un
+    tube ne l'est pas. Le forcer sert aux tests, qui doivent pouvoir
+    vérifier les deux sans dépendre de l'endroit où ils tournent.
+    """
+    if colour is None:
+        colour = supports_colour()
     if not dct:
         return f"ℹ️  {t('No migration in progress.')}"
     info = overview(dct)
@@ -282,20 +332,33 @@ def render_text(dct, limit_cmd=12):
             if item.get("runs", 1) > 1
             else ""
         )
-        lignes.append(f"   {icone} {item['name']:<24} {phrase}{rejeu}")
+        teinte = VERDICT_COLOUR.get(item.get("status"), "dim")
+        nom = f"{item['name']:<24}"
+        lignes.append(
+            f"   {icone} {paint(nom, teinte, colour)} {phrase}{rejeu}"
+        )
 
     lst_failure = failures(dct)
     lignes.append(f"\n❌ {t('Commands that failed')} : {len(lst_failure)}")
     for item in lst_failure[:10]:
-        lignes.append(f"   · [{item.get('step') or '?'}] {item.get('name')}")
+        lignes.append(
+            f"   · [{item.get('step') or '?'}]"
+            f" {paint(item.get('name') or '', 'fail', colour)}"
+        )
 
     lignes.append(f"\n🔷 {t('What was done, step by step')}")
     for section in journal_by_step(dct):
         lst_cmd = section["lst_cmd"]
         journal = " 📄" if step_log_path(dct, section["step"]) else ""
-        lignes.append(f"   {section['step']}  ({len(lst_cmd)}){journal}")
+        lignes.append(
+            f"   {paint(section['step'], 'step', colour)}"
+            f"  ({len(lst_cmd)}){journal}"
+        )
         for cmd in lst_cmd[:limit_cmd]:
-            lignes.append(f"      {cmd[:120]}")
+            # LA demande : distinguer d'un coup d'œil ce qui a été lancé
+            # du reste du rapport. Une liste de commandes en texte plat se
+            # confond avec ses titres dès qu'elle dépasse l'écran.
+            lignes.append(f"      {paint(cmd[:120], 'cmd', colour)}")
         if len(lst_cmd) > limit_cmd:
             reste = len(lst_cmd) - limit_cmd
             lignes.append(f"      … {reste} {t('more')}")

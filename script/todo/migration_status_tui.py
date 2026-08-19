@@ -84,15 +84,21 @@ def rows(dct):
     return lst
 
 
-def pane_text(dct, row):
-    """Le détail de la ligne choisie."""
+def pane_text(dct, row, colour=False):
+    """Le détail de la ligne choisie.
+
+    Le coloriage passe par de l'ANSI, que Rich sait décoder — et qui rend
+    au passage le texte LITTÉRAL : une commande contenant « [1] » était
+    jusqu'ici prise pour du balisage Rich et avalée sans un mot.
+    """
     if row is None:
         return t("Nothing to show yet.")
     if row["kind"] == "test":
         item = row["data"]
         icone, phrase = status.verdict(item.get("status"))
+        teinte = status.VERDICT_COLOUR.get(item.get("status"), "dim")
         lignes = [
-            f"{icone} {item['name']}",
+            f"{icone} {status.paint(item['name'], teinte, colour)}",
             f"   {phrase}  ({t('exit code')} {item.get('status')})",
             f"   {t('runs')} : {item.get('runs')}",
             f"   {t('current step')} : {item.get('step') or '?'}",
@@ -100,7 +106,7 @@ def pane_text(dct, row):
         ]
         return "\n".join(lignes)
     section = row["data"]
-    lignes = [f"{section['step']}", ""]
+    lignes = [status.paint(section["step"], "step", colour), ""]
     lst_failure = [
         item
         for item in status.failures(dct)
@@ -109,10 +115,12 @@ def pane_text(dct, row):
     if lst_failure:
         lignes.append(f"❌ {t('Commands that failed')} :")
         for item in lst_failure:
-            lignes.append(f"   {item.get('name')}")
+            lignes.append(
+                f"   {status.paint(item.get('name') or '', 'fail', colour)}"
+            )
         lignes.append("")
     for cmd in section["lst_cmd"]:
-        lignes.append(f"· {cmd}")
+        lignes.append(f"· {status.paint(cmd, 'cmd', colour)}")
     # La SORTIE des commandes, relue sur disque. C'est ce qui manquait :
     # la liste des commandes dit ce qui a été lancé, jamais ce que cela a
     # répondu — et c'est la réponse qu'on vient chercher.
@@ -166,8 +174,16 @@ def build_app(dct):
             self._show()
 
         def _show(self):
+            from rich.text import Text
+
             row = self.lst_row[self.index] if self.lst_row else None
-            self.query_one("#content", Static).update(pane_text(self.dct, row))
+            # `from_ansi` fait DEUX choses : il rend les couleurs, et il
+            # traite le reste comme du texte LITTÉRAL. Sans lui, une
+            # commande contenant « [1] » passait pour du balisage Rich et
+            # disparaissait de l'écran sans que rien ne le signale.
+            self.query_one("#content", Static).update(
+                Text.from_ansi(pane_text(self.dct, row, colour=True))
+            )
 
         def on_data_table_row_highlighted(self, event):
             if event.data_table.id == "left" and self.lst_row:
