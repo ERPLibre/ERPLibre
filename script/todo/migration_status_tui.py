@@ -79,11 +79,15 @@ def rows(dct):
             }
         )
     for section in status.journal_by_step(dct):
+        graves = status.severe_count(
+            status.step_log_scan(dct, section["step"])
+        )
         lst.append(
             {
                 "kind": "step",
                 "label": section["step"],
                 "detail": str(len(section["lst_cmd"])),
+                "severe": str(graves) if graves else "",
                 "data": section,
             }
         )
@@ -131,6 +135,24 @@ def pane_text(dct, row, colour=False, show_log=True):
     # la liste des commandes dit ce qui a été lancé, jamais ce que cela a
     # répondu. Mais les deux mélangés dans un même panneau se confondent —
     # d'où « l », qui les sépare.
+    # Les erreurs DISTINCTES d'abord, le journal brut ensuite : quarante-
+    # huit fois le même message est un problème vu quarante-huit fois, et
+    # la liste brute le noie au milieu de cent mille lignes.
+    scan = status.step_log_scan(dct, section["step"])
+    if scan["errors"]:
+        lignes.append("")
+        lignes.append(
+            f"── {t('errors in the log')} :" f" {status.severe_count(scan)} ──"
+        )
+        for item in scan["errors"][:15]:
+            lignes.append(
+                f"  ×{item['times']:<4}"
+                f" {status.paint(item['message'], 'fail', colour)}"
+            )
+            lignes.append(
+                f"        {status.paint(item['logger'], 'dim', colour)}"
+                f"  ·  {item['database']}"
+            )
     tail, total = status.step_log_tail(dct, section["step"])
     if not show_log:
         if total:
@@ -267,9 +289,11 @@ def build_app(dct, path=None):
         def _fill_table(self):
             table = self.query_one("#left", DataTable)
             table.clear(columns=True)
-            table.add_columns(t("Test results"), "#")
+            table.add_columns(t("Test results"), "#", "❌")
             for row in self.lst_row:
-                table.add_row(row["label"][:38], row["detail"])
+                table.add_row(
+                    row["label"][:38], row["detail"], row.get("severe", "")
+                )
             table.styles.width = self.left_width
             self.query_one("#head", Static).update(head_text(self.dct))
 

@@ -1014,6 +1014,208 @@ class TestHowLongItTook(Base):
         )
 
 
+class TestReadingTheLogForTheUser(DiskCase):
+    """Compter les erreurs à la place de quelqu'un.
+
+    Un journal d'étape atteint treize mégaoctets — mesuré. Personne ne le
+    lit, et la question qu'on se pose devant lui tient en deux mots : où
+    est-ce que ça a mal tourné ? C'est cette question-là que l'écran doit
+    savoir répondre sans qu'on ouvre le fichier.
+    """
+
+    JOURNAL = (
+        "2026-08-19 09:21:07,074 132948 ERROR base13"
+        " odoo.tools.translate: couldn't read translation file\n"
+        "Traceback (most recent call last):\n"
+        "2026-08-19 09:34:27,088 133771 ERROR base14"
+        " odoo.modules.registry: Model account.bank.statement.import"
+        " has no table.\n"
+        "2026-08-19 09:34:28,088 133771 ERROR base14"
+        " odoo.modules.registry: Model account.bank.statement.import"
+        " has no table.\n"
+        "2026-08-19 09:44:51,959 134592 CRITICAL base15"
+        " odoo.service.server: Failed to initialize database.\n"
+        "2026-08-19 09:44:52,000 134592 WARNING base15"
+        " odoo.schema: unable to add constraint\n"
+        "2026-08-19 09:44:53,000 134592 INFO base15"
+        " odoo.modules.loading: Modules loaded.\n"
+    )
+
+    def poser(self, contenu=None, etape="4 - Upgrade"):
+        obj = self.upgrade()
+        obj.add_comment_progression(etape)
+        obj.close_step_log()
+        chemin = os.path.join(
+            "private",
+            "odoo",
+            "migration",
+            "essai_db",
+            "step_log",
+            status.step_slug(etape) + ".log",
+        )
+        with open(chemin, "w") as handle:
+            handle.write(contenu if contenu is not None else self.JOURNAL)
+        # La progression de l'objet, pas un dict nu : c'est elle qui porte
+        # `command_executed`, donc le découpage par étape.
+        return obj.dct_progression
+
+    def test_it_counts_the_severities(self):
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        self.assertEqual(scan["count"]["ERROR"], 3)
+        self.assertEqual(scan["count"]["CRITICAL"], 1)
+        self.assertEqual(scan["count"]["WARNING"], 1)
+        self.assertEqual(scan["count"]["TRACEBACK"], 1)
+
+    def test_the_severe_ones_are_summed(self):
+        # ERROR et CRITICAL, pas WARNING : une migration en produit des
+        # milliers, et un compte qui les inclut ne veut plus rien dire.
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        self.assertEqual(status.severe_count(scan), 4)
+
+    def test_the_same_message_is_counted_ONCE(self):
+        # Quarante-huit fois « Model X has no table » est UN problème vu
+        # quarante-huit fois, pas quarante-huit problèmes.
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        modele = [e for e in scan["errors"] if "has no table" in e["message"]]
+        self.assertEqual(len(modele), 1)
+        self.assertEqual(modele[0]["times"], 2)
+
+    def test_the_loudest_comes_first(self):
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        self.assertEqual(scan["errors"][0]["times"], 2)
+
+    def test_each_error_carries_its_database(self):
+        # Six paliers ont pu écrire dans le même fichier : sans la base,
+        # on ne sait pas lequel a souffert.
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        bases = {e["database"] for e in scan["errors"]}
+        self.assertEqual(bases, {"base13", "base14", "base15"})
+
+    def test_it_carries_the_logger_too(self):
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        loggers = {e["logger"] for e in scan["errors"]}
+        self.assertIn("odoo.tools.translate", loggers)
+
+    def test_warnings_are_never_listed_as_errors(self):
+        scan = status.step_log_scan(self.poser(), "4 - Upgrade")
+        self.assertNotIn(
+            "unable to add constraint",
+            " ".join(e["message"] for e in scan["errors"]),
+        )
+
+    def test_a_step_without_a_log_counts_zero(self):
+        self.assertEqual(
+            status.severe_count(
+                status.step_log_scan(
+                    {"config_database_name": "essai_db"}, "9 - rien"
+                )
+            ),
+            0,
+        )
+
+    def test_a_healthy_log_shows_no_alarm(self):
+        dct = self.poser(
+            "2026-08-19 09:00:00,000 1 INFO db odoo.modules: Modules loaded.\n"
+        )
+        self.assertEqual(
+            status.severe_count(status.step_log_scan(dct, "4 - Upgrade")), 0
+        )
+        # La LIGNE d'étape, pas tout le rapport : celui-ci porte toujours
+        # l'en-tête « Commandes en échec », qui a le même symbole.
+        etapes = status.render_text(dct, colour=False).split("step by step")[1]
+        self.assertNotIn("❌", etapes)
+
+    def test_the_report_names_the_count_and_the_top_errors(self):
+        texte = status.render_text(self.poser(), colour=False)
+        self.assertIn("❌ 4", texte)
+        self.assertIn("has no table", texte)
+
+    def test_the_full_screen_lists_them_with_their_source(self):
+        dct = self.poser()
+        etape = [x for x in tui.rows(dct) if x["kind"] == "step"][0]
+        texte = tui.pane_text(dct, etape, show_log=False)
+        self.assertIn("×2", texte)
+        self.assertIn("odoo.modules.registry", texte)
+        self.assertIn("base14", texte)
+
+    def test_the_left_column_shows_the_count(self):
+        dct = self.poser()
+        etape = [x for x in tui.rows(dct) if x["kind"] == "step"][0]
+        self.assertEqual(etape["severe"], "4")
+
+    def test_a_clean_step_leaves_the_column_empty(self):
+        # Un « 0 » dans chaque ligne n'apprend rien et occupe la place.
+        dct = self.poser(
+            "2026-08-19 09:00:00,000 1 INFO db odoo.modules: ok\n"
+        )
+        etape = [x for x in tui.rows(dct) if x["kind"] == "step"][0]
+        self.assertEqual(etape["severe"], "")
+
+
+class TestReadingItTwiceIsFree(DiskCase):
+    """L'écran se redessine à chaque touche.
+
+    Relire treize mégaoctets à chaque frappe rendrait l'écran inutilisable.
+    """
+
+    def test_the_second_read_does_not_touch_the_disk(self):
+        obj = self.upgrade()
+        obj.add_comment_progression("4 - Upgrade")
+        obj.close_step_log()
+        chemin = os.path.join(
+            "private",
+            "odoo",
+            "migration",
+            "essai_db",
+            "step_log",
+            status.step_slug("4 - Upgrade") + ".log",
+        )
+        with open(chemin, "w") as handle:
+            handle.write("2026-08-19 09:00:00,000 1 ERROR db odoo.x: boum\n")
+        dct = {"config_database_name": "essai_db"}
+        premier = status.step_log_scan(dct, "4 - Upgrade")
+        lectures = []
+        vrai_open = open
+
+        def compter(*args, **kwargs):
+            lectures.append(args[0])
+            return vrai_open(*args, **kwargs)
+
+        import builtins
+
+        builtins.open = compter
+        self.addCleanup(setattr, builtins, "open", vrai_open)
+        second = status.step_log_scan(dct, "4 - Upgrade")
+        self.assertEqual(premier, second)
+        self.assertEqual([x for x in lectures if str(x).endswith(".log")], [])
+
+    def test_a_changed_file_IS_read_again(self):
+        # Sinon « r » ne rafraîchirait rien : la migration écrit pendant
+        # qu'on regarde.
+        obj = self.upgrade()
+        obj.add_comment_progression("4 - Upgrade")
+        obj.close_step_log()
+        chemin = os.path.join(
+            "private",
+            "odoo",
+            "migration",
+            "essai_db",
+            "step_log",
+            status.step_slug("4 - Upgrade") + ".log",
+        )
+        dct = {"config_database_name": "essai_db"}
+        with open(chemin, "w") as handle:
+            handle.write("2026-08-19 09:00:00,000 1 ERROR db odoo.x: un\n")
+        self.assertEqual(
+            status.severe_count(status.step_log_scan(dct, "4 - Upgrade")), 1
+        )
+        with open(chemin, "a") as handle:
+            handle.write("2026-08-19 09:00:01,000 1 ERROR db odoo.y: deux\n")
+        self.assertEqual(
+            status.severe_count(status.step_log_scan(dct, "4 - Upgrade")), 2
+        )
+
+
 class TestSeparatingCommandsFromLogs(Base):
     """Les deux mélangés dans un même panneau se confondent.
 

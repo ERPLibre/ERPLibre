@@ -21,6 +21,7 @@ toucher une base ni lancer un serveur. On l'ouvre en pleine migration.
 
 import json
 import os
+import re
 import sys
 
 sys.path.append(
@@ -188,6 +189,86 @@ def step_slug(msg):
     tete = re.sub(r"[^A-Za-z0-9._-]+", "-", prefix).strip("-") if sep else ""
     nom = f"{tete}_{propre}" if tete else propre
     return (nom or "step")[:80].lower()
+
+
+# Le format d'une ligne de journal Odoo :
+#   2026-08-19 09:21:07,074 132948 ERROR <base> odoo.tools.translate: message
+# Le nom de la base en fait partie, et c'est ce qui permet de séparer six
+# paliers écrits dans un même fichier — ce qui était le cas avant qu'une
+# étape n'ouvre son propre journal.
+RE_LOG_LINE = re.compile(
+    r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d+ \d+ (\w+) (\S+) ([\w.]+): (.*)$"
+)
+GRAVE = ("ERROR", "CRITICAL")
+
+_CACHE = {}
+
+
+def scan_log(chemin):
+    """Compter les sévérités et relever les erreurs DISTINCTES d'un journal.
+
+    Mis en cache sur (taille, date) : l'écran se redessine à chaque touche,
+    et un journal d'étape atteint treize mégaoctets — mesuré. Le relire à
+    chaque frappe rendrait l'écran inutilisable.
+
+    Les erreurs sont dédoublonnées avec leur nombre : quarante-huit fois
+    « Model X has no table » est UN problème vu quarante-huit fois, pas
+    quarante-huit problèmes, et la liste brute noie tout le reste.
+    """
+    try:
+        stat = os.stat(chemin)
+    except OSError:
+        return {"count": {}, "errors": []}
+    cle = (chemin, stat.st_size, int(stat.st_mtime))
+    if cle in _CACHE:
+        return _CACHE[cle]
+    compte = {}
+    distinct = {}
+    try:
+        with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
+            for ligne in handle:
+                trouve = RE_LOG_LINE.match(ligne)
+                if not trouve:
+                    if ligne.startswith("Traceback"):
+                        compte["TRACEBACK"] = compte.get("TRACEBACK", 0) + 1
+                    continue
+                niveau, base, logger, message = trouve.groups()
+                compte[niveau] = compte.get(niveau, 0) + 1
+                if niveau in GRAVE:
+                    signature = (base, logger, message.strip()[:120])
+                    distinct[signature] = distinct.get(signature, 0) + 1
+    except OSError:
+        return {"count": {}, "errors": []}
+    resultat = {
+        "count": compte,
+        "errors": [
+            {
+                "database": base,
+                "logger": logger,
+                "message": message,
+                "times": nombre,
+            }
+            for (base, logger, message), nombre in sorted(
+                distinct.items(), key=lambda item: -item[1]
+            )
+        ],
+    }
+    # Un seul journal en cache : ils pèsent des mégaoctets, et l'écran ne
+    # regarde qu'une étape à la fois.
+    _CACHE.clear()
+    _CACHE[cle] = resultat
+    return resultat
+
+
+def step_log_scan(dct, step):
+    """Ce que le journal de cette étape contient de grave."""
+    chemin = step_log_path(dct, step)
+    return scan_log(chemin) if chemin else {"count": {}, "errors": []}
+
+
+def severe_count(scan):
+    """Combien d'ERROR et de CRITICAL, en un seul nombre."""
+    return sum(scan["count"].get(niveau, 0) for niveau in GRAVE)
 
 
 def step_log_tail(dct, step, lines=400):
@@ -397,10 +478,21 @@ def render_text(dct, limit_cmd=12, colour=None):
     for section in journal_by_step(dct):
         lst_cmd = section["lst_cmd"]
         journal = " 📄" if step_log_path(dct, section["step"]) else ""
+        scan = step_log_scan(dct, section["step"])
+        graves = severe_count(scan)
+        # Le nombre d'ERROR à côté de l'étape : c'est la seule façon de
+        # voir d'un coup d'œil OÙ la migration a souffert, sans ouvrir
+        # treize mégaoctets de journal.
+        alerte = f"  {paint(f'❌ {graves}', 'fail', colour)}" if graves else ""
         lignes.append(
             f"   {paint(section['step'], 'step', colour)}"
-            f"  ({len(lst_cmd)}){journal}"
+            f"  ({len(lst_cmd)}){journal}{alerte}"
         )
+        for item in scan["errors"][:3]:
+            lignes.append(
+                f"      ×{item['times']:<3}"
+                f" {paint(item['message'][:100], 'warn', colour)}"
+            )
         for cmd in lst_cmd[:limit_cmd]:
             # LA demande : distinguer d'un coup d'œil ce qui a été lancé
             # du reste du rapport. Une liste de commandes en texte plat se
