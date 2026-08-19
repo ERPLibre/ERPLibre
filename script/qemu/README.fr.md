@@ -198,16 +198,22 @@ simple VM serveur produit l'APK — et quand Android Studio est aussi coché, le
 deux partagent un seul SDK via `ANDROID_HOME`. Sans Android, la même
 application tourne dans un navigateur : `npm start`.
 
-Un cinquième, **Émulateur Android (Pixel)**, crée un AVD que vous ouvrez
-depuis votre poste : `ssh -X erplibre@<ip> "emulator -avd erplibre -no-audio"`.
-Il ne demande aucun bureau dans la VM — la fenêtre s'affiche sur VOTRE écran,
-pas sur celui de l'invitée — mais il exige KVM dans l'invitée, donc la
-virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
+Un cinquième, **Émulateur Android (Pixel)**, crée un AVD. Conduisez-le depuis
+le menu QEMU, *Émulateur Android (démarrage, tunnel, scrcpy)* : il démarre
+l'émulateur sans fenêtre, puis donne le tunnel adb et la commande scrcpy.
+Préférez cette voie à une fenêtre par X11 — scrcpy reçoit du H.264 encodé PAR
+l'appareil, là où `ssh -X` fait traverser chaque image en pixels bruts, en
+rendu logiciel. Si vous voulez la fenêtre, le chemin doit être ABSOLU, car
+`ssh hôte 'commande'` ne lit ni `~/.profile` ni `~/.bashrc` :
+`ssh -XC erplibre@<ip> '$HOME/android/emulator/emulator -avd erplibre -no-audio'`.
+
+Il ne demande aucun bureau dans la VM, mais il exige KVM dans l'invitée, donc
+la virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
 manque. Le modèle n'est pas figé : on demande au SDK ses profils et le Pixel le
-plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette),
-parce que chaque pixel traverse le réseau. Le rendu est réglé sur
-`swiftshader_indirect` dans le `config.ini` de l'AVD, puisque `ssh -X` n'offre
-pas de GLX direct et qu'« auto » ouvrirait un écran noir.
+plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette).
+Le rendu est « swangle » dans le `config.ini` de l'AVD — « auto » ouvrirait un
+écran noir, et « swiftshader_indirect » n'existe plus, l'émulateur répondant
+`Selected GPU option ... is not valid`.
 
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.

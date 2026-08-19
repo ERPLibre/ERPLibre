@@ -309,15 +309,22 @@ starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
 they share one SDK through `ANDROID_HOME`. Without Android, the same app runs
 in a browser: `npm start`.
 
-A fifth, **Android emulator (Pixel)**, creates an AVD you open from your own
-machine: `ssh -X erplibre@<ip> "emulator -avd erplibre -no-audio"`. It needs no
-desktop in the VM — the window lands on your screen, not the guest's — but it
-does need KVM inside the guest, so nested virtualisation on the host; the log
-says so when `/dev/kvm` is missing. The device is not frozen: the SDK is asked
-for its profiles and the newest plain Pixel with the smallest screen wins (no
-Pro, XL, Fold or tablet), because every pixel crosses the network. Rendering is
-set to `swiftshader_indirect` inside the AVD's own `config.ini`, since `ssh -X`
-offers no direct GLX and `auto` would open a black screen.
+A fifth, **Android emulator (Pixel)**, creates an AVD. Drive it from the
+QEMU menu, *Android emulator (start, tunnel, scrcpy)*: it starts the emulator
+without a window and hands you the adb tunnel and the scrcpy command. Prefer
+that to a window over X11 — scrcpy receives H.264 encoded by the device, where
+`ssh -X` ships every frame as raw pixels in software rendering. If you do want
+the window, the path must be absolute, because `ssh host 'command'` reads
+neither `~/.profile` nor `~/.bashrc`:
+`ssh -XC erplibre@<ip> '$HOME/android/emulator/emulator -avd erplibre -no-audio'`.
+
+It needs no desktop in the VM, but it does need KVM inside the guest, so
+nested virtualisation on the host; the log says so when `/dev/kvm` is missing.
+The device is not frozen: the SDK is asked for its profiles and the newest
+plain Pixel with the smallest screen wins (no Pro, XL, Fold or tablet).
+Rendering is `swangle` in the AVD's own `config.ini` — `auto` would open a
+black screen, and `swiftshader_indirect` no longer exists, the emulator
+answering `Selected GPU option ... is not valid`.
 
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
@@ -435,16 +442,22 @@ simple VM serveur produit l'APK — et quand Android Studio est aussi coché, le
 deux partagent un seul SDK via `ANDROID_HOME`. Sans Android, la même
 application tourne dans un navigateur : `npm start`.
 
-Un cinquième, **Émulateur Android (Pixel)**, crée un AVD que vous ouvrez
-depuis votre poste : `ssh -X erplibre@<ip> "emulator -avd erplibre -no-audio"`.
-Il ne demande aucun bureau dans la VM — la fenêtre s'affiche sur VOTRE écran,
-pas sur celui de l'invitée — mais il exige KVM dans l'invitée, donc la
-virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
+Un cinquième, **Émulateur Android (Pixel)**, crée un AVD. Conduisez-le depuis
+le menu QEMU, *Émulateur Android (démarrage, tunnel, scrcpy)* : il démarre
+l'émulateur sans fenêtre, puis donne le tunnel adb et la commande scrcpy.
+Préférez cette voie à une fenêtre par X11 — scrcpy reçoit du H.264 encodé PAR
+l'appareil, là où `ssh -X` fait traverser chaque image en pixels bruts, en
+rendu logiciel. Si vous voulez la fenêtre, le chemin doit être ABSOLU, car
+`ssh hôte 'commande'` ne lit ni `~/.profile` ni `~/.bashrc` :
+`ssh -XC erplibre@<ip> '$HOME/android/emulator/emulator -avd erplibre -no-audio'`.
+
+Il ne demande aucun bureau dans la VM, mais il exige KVM dans l'invitée, donc
+la virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
 manque. Le modèle n'est pas figé : on demande au SDK ses profils et le Pixel le
-plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette),
-parce que chaque pixel traverse le réseau. Le rendu est réglé sur
-`swiftshader_indirect` dans le `config.ini` de l'AVD, puisque `ssh -X` n'offre
-pas de GLX direct et qu'« auto » ouvrirait un écran noir.
+plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette).
+Le rendu est « swangle » dans le `config.ini` de l'AVD — « auto » ouvrirait un
+écran noir, et « swiftshader_indirect » n'existe plus, l'émulateur répondant
+`Selected GPU option ... is not valid`.
 
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.
