@@ -339,30 +339,27 @@ def build_app(dct, path=None):
             """Ouvrir le rapport de qualité, sans quitter celui-ci.
 
             Les deux écrans répondent à deux questions voisines : « où en
-            est-on » et « qu'a-t-on gagné ou perdu en chemin ». Les
-            séparer par une touche plutôt que par deux commandes à retenir
-            est ce qui les rend utilisables ensemble.
+            est-on » et « qu'a-t-on gagné ou perdu en chemin ».
 
-            `suspend` rend le terminal à l'autre plein écran : deux
-            applications Textual ne peuvent pas peindre le même écran en
-            même temps.
+            En SOUS-PROCESSUS, et ce n'est pas un choix de confort :
+            `app.run()` appelle `asyncio.run()`, qui refuse de tourner
+            dans une boucle déjà en cours — et nous sommes justement
+            dedans. Mesuré, la trace est
+            « asyncio.run() cannot be called from a running event loop ».
+            `suspend()` rend le terminal ; le sous-processus a sa propre
+            boucle et le repeint.
             """
-            from script.analyse import check_migration_quality as quality
-            from script.analyse.check_migration_quality_tui import (
-                run_tui as run_quality,
-            )
+            import subprocess
 
-            dct = quality.read_progression()
-            if not quality.chain(dct):
-                self.notify(t("No migration in progress."))
-                return
             with self.suspend():
-                lst = quality.survey(
-                    dct, echo=lambda texte: print(f"⧖ {texte}", flush=True)
+                subprocess.call(
+                    [
+                        sys.executable,
+                        os.path.join(
+                            "script", "analyse", "check_migration_quality.py"
+                        ),
+                    ]
                 )
-                if not run_quality(lst):
-                    print(quality.render_text(lst))
-                    input(f"💬 {t('press to continue')} : ")
 
         def action_toggle_log(self):
             self.show_log = not self.show_log

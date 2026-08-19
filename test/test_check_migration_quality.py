@@ -392,7 +392,58 @@ class TestWhereItIsOffered(Base):
 
         source = inspect.getsource(stui.build_app)
         debut = source.index("def action_quality")
-        self.assertIn("self.suspend()", source[debut : debut + 1200])
+        self.assertIn("self.suspend()", source[debut : debut + 1400])
+
+    def test_it_opens_it_in_its_OWN_process(self):
+        """Le défaut que « suspend est appelé » ne suffisait pas à attraper.
+
+        `suspend()` rend le terminal mais n'arrête PAS la boucle asyncio.
+        `app.run()` appelle `asyncio.run()`, qui refuse de tourner dans une
+        boucle déjà en cours : « asyncio.run() cannot be called from a
+        running event loop ». Un sous-processus a sa propre boucle.
+        """
+        import inspect
+
+        from script.todo import migration_status_tui as stui
+
+        source = inspect.getsource(stui.build_app)
+        debut = source.index("def action_quality")
+        fenetre = source[debut : debut + 1400]
+        self.assertIn("subprocess.call", fenetre)
+        self.assertNotIn("run_quality(", fenetre)
+
+
+class TestItRefusesToNestItself(Base):
+    """Le filet de sécurité, pour qui rappellerait `run_tui` de l'intérieur.
+
+    Une trace de quarante lignes n'apprend rien ; une phrase qui dit
+    d'ouvrir un processus à part, si.
+    """
+
+    def test_no_loop_running_is_the_normal_case(self):
+        self.assertFalse(qtui.in_event_loop())
+
+    def test_a_running_loop_is_detected(self):
+        import asyncio
+
+        async def dedans():
+            return qtui.in_event_loop()
+
+        self.assertTrue(asyncio.run(dedans()))
+
+    def test_run_tui_consults_it_before_starting(self):
+        import inspect
+
+        source = inspect.getsource(qtui.run_tui)
+        self.assertLess(
+            source.index("in_event_loop()"), source.index("app.run()")
+        )
+
+    def test_the_refusal_says_what_to_do_instead(self):
+        import inspect
+
+        source = inspect.getsource(qtui.run_tui)
+        self.assertIn("its own", source)
 
 
 if __name__ == "__main__":

@@ -5747,6 +5747,14 @@ TRANSLATIONS = {
         "fr": "Qualité",
         "en": "Quality",
     },
+    "Already inside a running screen: open it in its own": {
+        "fr": "Déjà dans un écran en cours : l'ouvrir dans son propre",
+        "en": "Already inside a running screen: open it in its own",
+    },
+    "process instead.": {
+        "fr": "processus.",
+        "en": "process instead.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

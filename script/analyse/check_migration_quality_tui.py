@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
@@ -221,5 +220,26 @@ def run_tui(lst_snapshot, run_app=True):
         return False
     if not run_app:
         return app
+    if in_event_loop():
+        # Filet de sécurité : `app.run()` appelle `asyncio.run()`, qui
+        # lève dans une boucle déjà en cours. Le dire vaut mieux que la
+        # trace de quarante lignes que cela produit — et l'appelant doit
+        # passer par un sous-processus.
+        print(
+            f"ℹ️  {t('Already inside a running screen: open it in its own')}"
+            f" {t('process instead.')}"
+        )
+        return False
     app.run()
+    return True
+
+
+def in_event_loop():
+    """Une boucle asyncio tourne-t-elle déjà dans CE processus ?"""
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
     return True
