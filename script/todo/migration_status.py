@@ -190,16 +190,22 @@ def step_slug(msg):
     return (nom or "step")[:80].lower()
 
 
-def step_log_tail(dct, step, lines=200):
-    """Les dernières lignes du journal de cette étape."""
+def step_log_tail(dct, step, lines=400):
+    """Les dernières lignes du journal de cette étape, et le compte total.
+
+    Rend (lignes, total). Le total n'est pas décoratif : une mise à jour de
+    modules écrit des dizaines de milliers de lignes, et montrer les
+    dernières SANS dire qu'on en cache se lit comme « il manque des logs ».
+    """
     chemin = step_log_path(dct, step)
     if not chemin:
-        return []
+        return [], 0
     try:
         with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
-            return handle.read().splitlines()[-lines:]
+            lst = handle.read().splitlines()
     except OSError:
-        return []
+        return [], 0
+    return lst[-lines:], len(lst)
 
 
 def journal_by_step(dct):
@@ -405,7 +411,7 @@ def main(argv=None):
             from script.todo.migration_status_tui import run_tui
         except Exception:
             run_tui = None
-        if run_tui and run_tui(dct):
+        if run_tui and run_tui(dct, path=config.file):
             return 0
     print(render_text(dct))
     return 0

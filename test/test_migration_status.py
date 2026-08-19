@@ -593,6 +593,89 @@ class TestWhatSurvivesClosingTheTool(DiskCase):
             [x["step"] for x in lst], ["4.1 - version 14", "4.2 - version 15"]
         )
 
+    def test_logs_written_before_the_name_are_brought_back(self):
+        """Les deux premières étapes tournent avant qu'on nomme la base.
+
+        Leurs journaux atterrissaient sous « sans-nom », c'est-à-dire hors
+        de la migration à laquelle ils appartiennent : mesuré sur la VM,
+        deux fichiers invisibles depuis l'écran d'état, et l'on cherchait
+        des logs manquants qui étaient simplement à côté.
+        """
+        from script.todo import todo_upgrade as tu
+
+        anonyme = TodoUpgrade.__new__(TodoUpgrade)
+        anonyme.dct_progression = {}
+        anonyme.lst_command_executed = []
+        anonyme.write_config = lambda: None
+        anonyme.add_comment_progression("0 - Inspect zip")
+        anonyme.note_step_log("avant le nom")
+        anonyme.close_step_log()
+        self.assertTrue(
+            os.path.isdir(
+                os.path.join(
+                    "private",
+                    "odoo",
+                    "migration",
+                    tu.UNNAMED_MIGRATION,
+                    "step_log",
+                )
+            )
+        )
+        # La base prend son nom : les journaux doivent la rejoindre.
+        nomme = self.upgrade()
+        nomme.log_dir()
+        tail, _total = status.step_log_tail(
+            {"config_database_name": "essai_db"}, "0 - Inspect zip"
+        )
+        self.assertIn("avant le nom", "\n".join(tail))
+
+    def test_the_unnamed_folder_is_left_empty_behind(self):
+        from script.todo import todo_upgrade as tu
+
+        anonyme = TodoUpgrade.__new__(TodoUpgrade)
+        anonyme.dct_progression = {}
+        anonyme.lst_command_executed = []
+        anonyme.write_config = lambda: None
+        anonyme.add_comment_progression("0 - Inspect zip")
+        anonyme.note_step_log("x")
+        anonyme.close_step_log()
+        self.upgrade().log_dir()
+        self.assertFalse(
+            os.path.isdir(
+                os.path.join(
+                    "private",
+                    "odoo",
+                    "migration",
+                    tu.UNNAMED_MIGRATION,
+                    "step_log",
+                )
+            )
+        )
+
+    def test_an_existing_file_is_APPENDED_to_not_replaced(self):
+        # Une reprise peut avoir écrit des deux côtés ; écraser perdrait
+        # le premier passage.
+        nomme = self.upgrade()
+        nomme.add_comment_progression("0 - Inspect zip")
+        nomme.note_step_log("déjà là")
+        nomme.close_step_log()
+        anonyme = TodoUpgrade.__new__(TodoUpgrade)
+        anonyme.dct_progression = {}
+        anonyme.lst_command_executed = []
+        anonyme.write_config = lambda: None
+        anonyme.add_comment_progression("0 - Inspect zip")
+        anonyme.note_step_log("venu de sans-nom")
+        anonyme.close_step_log()
+        neuf = self.upgrade()
+        neuf.log_dir()
+        texte = "\n".join(
+            status.step_log_tail(
+                {"config_database_name": "essai_db"}, "0 - Inspect zip"
+            )[0]
+        )
+        self.assertIn("déjà là", texte)
+        self.assertIn("venu de sans-nom", texte)
+
     def test_a_migration_without_a_database_writes_nowhere(self):
         obj = self.upgrade(database=None)
         obj.dct_progression = {}
@@ -634,7 +717,7 @@ class TestTheStepLogs(DiskCase):
         obj.print_step("2 - Succeed update all addons")
         obj.note_step_log("second passage")
         obj.close_step_log()
-        tail = status.step_log_tail(
+        tail, _total = status.step_log_tail(
             {"config_database_name": "essai_db"},
             "2 - Succeed update all addons",
         )
@@ -652,7 +735,7 @@ class TestTheStepLogs(DiskCase):
         texte = "\n".join(
             status.step_log_tail(
                 {"config_database_name": "essai_db"}, "3 - Clean up database"
-            )
+            )[0]
         )
         self.assertIn("$ true", texte)
         self.assertIn("-> 0", texte)
@@ -689,7 +772,7 @@ class TestTheCommandOutputItself(DiskCase):
             status.step_log_tail(
                 {"config_database_name": "essai_db"},
                 "2 - Succeed update all addons",
-            )
+            )[0]
         )
         self.assertIn("première", texte)
         # stderr aussi : c'est là que les erreurs d'Odoo se trouvent.
@@ -873,6 +956,142 @@ class TestTheFullScreenColoursToo(Base):
         source = inspect.getsource(tui.build_app)
         self.assertIn("Text.from_ansi", source)
         self.assertIn("colour=True", source)
+
+
+class TestSeparatingCommandsFromLogs(Base):
+    """Les deux mélangés dans un même panneau se confondent.
+
+    La liste des commandes dit ce qui a été LANCÉ ; le journal dit ce que
+    cela a RÉPONDU. Ce sont deux lectures différentes, et l'une noie
+    l'autre : un `update_addons_all` écrit des dizaines de milliers de
+    lignes au-dessus desquelles trois commandes disparaissent.
+    """
+
+    def dct(self):
+        return progression(command_executed=["# 2 - Update", "./run.sh -d db"])
+
+    def etape(self, dct):
+        return [x for x in tui.rows(dct) if x["kind"] == "step"][0]
+
+    def test_hiding_the_log_keeps_the_commands(self):
+        dct = self.dct()
+        texte = tui.pane_text(dct, self.etape(dct), show_log=False)
+        self.assertIn("./run.sh -d db", texte)
+
+    def test_hiding_it_never_hides_it_SILENTLY(self):
+        # Un panneau qui se vide sans un mot se lit comme « il n'y a rien »,
+        # ce qui est exactement le contraire de ce qui vient de se passer.
+        import tempfile
+
+        dossier = tempfile.mkdtemp(prefix="erplibre_essai_")
+        avant = os.getcwd()
+        os.chdir(dossier)
+        self.addCleanup(shutil.rmtree, dossier, True)
+        self.addCleanup(os.chdir, avant)
+        chemin = os.path.join("private", "odoo", "migration", "db", "step_log")
+        os.makedirs(chemin)
+        with open(
+            os.path.join(chemin, status.step_slug("2 - Update") + ".log"), "w"
+        ) as handle:
+            handle.write("\n".join(f"ligne {i}" for i in range(50)))
+        dct = self.dct()
+        dct["config_database_name"] = "db"
+        texte = tui.pane_text(dct, self.etape(dct), show_log=False)
+        self.assertIn("50", texte)
+        self.assertNotIn("ligne 49", texte)
+
+    def test_showing_it_says_how_much_is_cut(self):
+        # « il manque des logs » venait de là : on montrait la fin sans
+        # dire qu'on cachait le début.
+        lst, total = ([f"l{i}" for i in range(400)], 12843)
+        self.assertLess(len(lst), total)
+
+    def test_the_tail_reports_the_total(self):
+        import tempfile
+
+        dossier = tempfile.mkdtemp(prefix="erplibre_essai_")
+        avant = os.getcwd()
+        os.chdir(dossier)
+        self.addCleanup(shutil.rmtree, dossier, True)
+        self.addCleanup(os.chdir, avant)
+        chemin = os.path.join("private", "odoo", "migration", "db", "step_log")
+        os.makedirs(chemin)
+        with open(
+            os.path.join(chemin, status.step_slug("2 - Update") + ".log"), "w"
+        ) as handle:
+            handle.write("\n".join(f"ligne {i}" for i in range(1000)))
+        lst, total = status.step_log_tail(
+            {"config_database_name": "db"}, "2 - Update", lines=400
+        )
+        self.assertEqual(total, 1000)
+        self.assertEqual(len(lst), 400)
+        self.assertEqual(lst[-1], "ligne 999")
+
+    def test_a_step_without_a_log_reports_zero(self):
+        self.assertEqual(
+            status.step_log_tail({"config_database_name": "db"}, "9 - rien"),
+            ([], 0),
+        )
+
+
+class TestTheKeyboard(Base):
+    """Ce que l'écran promet dans son pied de page doit exister."""
+
+    def app(self):
+        return tui.build_app(progression(), path="/un/chemin.json")
+
+    def touches(self):
+        return {
+            touche
+            for entree in self.app().BINDINGS
+            for touche in entree[0].split(",")
+        }
+
+    def test_every_promised_key_is_bound(self):
+        attendues = {"q", "escape", "r", "l", "p", "plus", "minus"}
+        self.assertTrue(attendues <= self.touches(), self.touches())
+
+    def test_each_binding_has_an_action_that_exists(self):
+        # Un raccourci annoncé dont l'action manque échoue à la frappe,
+        # c'est-à-dire au pire moment.
+        app = self.app()
+        for _touches, action, _libelle in app.BINDINGS:
+            self.assertTrue(hasattr(app, f"action_{action}"), action)
+
+    def test_the_width_is_bounded_on_both_sides(self):
+        # Une colonne de zéro ne se retrouve plus ; une qui mange tout
+        # l'écran ne laisse rien à lire.
+        app = self.app()
+        for _ in range(50):
+            app.left_width = max(
+                app.LEFT_MIN, min(app.LEFT_MAX, app.left_width - app.LEFT_STEP)
+            )
+        self.assertEqual(app.left_width, app.LEFT_MIN)
+        for _ in range(50):
+            app.left_width = max(
+                app.LEFT_MIN, min(app.LEFT_MAX, app.left_width + app.LEFT_STEP)
+            )
+        self.assertEqual(app.left_width, app.LEFT_MAX)
+
+    def test_refreshing_rereads_the_disk(self):
+        """La migration ÉCRIT pendant qu'on regarde.
+
+        Sans cela il fallait fermer et rouvrir l'écran pour voir le palier
+        suivant — sur une migration de plusieurs heures, on le fait.
+        """
+        import inspect
+
+        source = inspect.getsource(tui.build_app)
+        self.assertIn("status.read(self.path)", source)
+        self.assertIn("self.lst_row = rows(self.dct)", source)
+
+    def test_refreshing_without_a_path_does_nothing(self):
+        app = tui.build_app(progression(), path=None)
+        app.action_refresh()  # ne doit pas lever
+
+    def test_the_log_toggle_flips(self):
+        app = self.app()
+        self.assertTrue(app.show_log)
 
 
 class TestTheStatisticsScreenOffersIt(Base):

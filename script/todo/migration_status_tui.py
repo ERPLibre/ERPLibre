@@ -89,7 +89,7 @@ def rows(dct):
     return lst
 
 
-def pane_text(dct, row, colour=False):
+def pane_text(dct, row, colour=False, show_log=True):
     """Le détail de la ligne choisie.
 
     Le coloriage passe par de l'ANSI, que Rich sait décoder — et qui rend
@@ -128,37 +128,66 @@ def pane_text(dct, row, colour=False):
         lignes.append(f"· {status.paint(cmd, 'cmd', colour)}")
     # La SORTIE des commandes, relue sur disque. C'est ce qui manquait :
     # la liste des commandes dit ce qui a été lancé, jamais ce que cela a
-    # répondu — et c'est la réponse qu'on vient chercher.
-    tail = status.step_log_tail(dct, section["step"])
+    # répondu. Mais les deux mélangés dans un même panneau se confondent —
+    # d'où « l », qui les sépare.
+    tail, total = status.step_log_tail(dct, section["step"])
+    if not show_log:
+        if total:
+            lignes.append("")
+            lignes.append(
+                f"── {t('server log')} : {total} {t('lines')}"
+                f" ({t('press l to show')}) ──"
+            )
+        return "\n".join(lignes)
     if tail:
         lignes.append("")
-        lignes.append(f"── {t('server log')} ──")
+        cache = (
+            f" — {t('last')} {len(tail)} {t('of')} {total}"
+            if total > len(tail)
+            else ""
+        )
+        lignes.append(f"── {t('server log')}{cache} ──")
         lignes.extend(tail)
     elif not section["lst_cmd"]:
         lignes.append(t("No tool has run yet."))
     return "\n".join(lignes)
 
 
-def build_app(dct):
+def build_app(dct, path=None):
     """Textual est importé ICI, pas au chargement du module.
 
     Le module reste importable — donc testable — sur une machine sans
     Textual, et c'est aussi ce qui permet à l'appelant de retomber sur le
     rapport texte plutôt que d'échouer.
     """
+    from rich.text import Text
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, VerticalScroll
     from textual.widgets import DataTable, Footer, Header, Static
 
     class StatusApp(App):
         CSS = globals()["CSS"]
-        BINDINGS = [("q,escape", "quit", "Quit")]
+        BINDINGS = [
+            ("q,escape", "quit", t("Quit")),
+            ("r", "refresh", t("Refresh")),
+            ("l", "toggle_log", t("Logs")),
+            ("p", "toggle_head", t("Panel")),
+            ("plus,equal", "wider", t("Wider")),
+            ("minus,underscore", "narrower", t("Narrower")),
+        ]
 
-        def __init__(self, dct):
+        LEFT_MIN = 16
+        LEFT_MAX = 110
+        LEFT_STEP = 6
+
+        def __init__(self, dct, path=None):
             super().__init__()
             self.dct = dct
+            self.path = path
             self.lst_row = rows(dct)
             self.index = 0
+            self.show_log = True
+            self.left_width = 46
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -171,23 +200,30 @@ def build_app(dct):
 
         def on_mount(self):
             self.title = t("Migration state")
+            self._fill_table()
+            self._show()
+
+        def _fill_table(self):
             table = self.query_one("#left", DataTable)
+            table.clear(columns=True)
             table.add_columns(t("Test results"), "#")
             for row in self.lst_row:
                 table.add_row(row["label"][:38], row["detail"])
+            table.styles.width = self.left_width
             self.query_one("#head", Static).update(head_text(self.dct))
-            self._show()
 
         def _show(self):
-            from rich.text import Text
-
             row = self.lst_row[self.index] if self.lst_row else None
             # `from_ansi` fait DEUX choses : il rend les couleurs, et il
             # traite le reste comme du texte LITTÉRAL. Sans lui, une
             # commande contenant « [1] » passait pour du balisage Rich et
             # disparaissait de l'écran sans que rien ne le signale.
             self.query_one("#content", Static).update(
-                Text.from_ansi(pane_text(self.dct, row, colour=True))
+                Text.from_ansi(
+                    pane_text(
+                        self.dct, row, colour=True, show_log=self.show_log
+                    )
+                )
             )
 
         def on_data_table_row_highlighted(self, event):
@@ -195,10 +231,47 @@ def build_app(dct):
                 self.index = event.cursor_row
                 self._show()
 
-    return StatusApp(dct)
+        def action_refresh(self):
+            """Relire le disque. La migration écrit PENDANT qu'on regarde.
+
+            L'écran s'ouvre au milieu d'une migration qui continue : sans
+            cela, il fallait le fermer et le rouvrir pour voir le palier
+            suivant.
+            """
+            if not self.path:
+                return
+            self.dct = status.read(self.path)
+            self.lst_row = rows(self.dct)
+            self.index = min(self.index, max(0, len(self.lst_row) - 1))
+            self._fill_table()
+            self._show()
+
+        def action_toggle_log(self):
+            self.show_log = not self.show_log
+            self._show()
+
+        def action_toggle_head(self):
+            head = self.query_one("#head", Static)
+            head.display = not head.display
+
+        def action_wider(self):
+            self._resize(self.LEFT_STEP)
+
+        def action_narrower(self):
+            self._resize(-self.LEFT_STEP)
+
+        def _resize(self, delta):
+            # Bornée des deux côtés : une colonne de zéro ne se retrouve
+            # plus, et une qui mange tout l'écran ne laisse rien à lire.
+            self.left_width = max(
+                self.LEFT_MIN, min(self.LEFT_MAX, self.left_width + delta)
+            )
+            self.query_one("#left", DataTable).styles.width = self.left_width
+
+    return StatusApp(dct, path)
 
 
-def run_tui(dct, run_app=True):
+def run_tui(dct, run_app=True, path=None):
     """Ouvrir l'écran. False si l'on n'a pas pu — et alors on DIT pourquoi.
 
     Se taire ferait réafficher le rapport texte à la place de l'écran
@@ -216,7 +289,7 @@ def run_tui(dct, run_app=True):
     if textual_setup and not textual_setup.ensure():
         return False
     try:
-        app = build_app(dct)
+        app = build_app(dct, path=path)
     except ImportError:
         print(
             f"ℹ️  {t('Textual is missing from this interpreter:')}"

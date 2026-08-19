@@ -5635,6 +5635,38 @@ TRANSLATIONS = {
         "fr": "de la ou des clés demandées malgré tout.",
         "en": "the requested key(s) anyway.",
     },
+    "lines": {
+        "fr": "lignes",
+        "en": "lines",
+    },
+    "press l to show": {
+        "fr": "l pour afficher",
+        "en": "press l to show",
+    },
+    "last": {
+        "fr": "dernières",
+        "en": "last",
+    },
+    "Refresh": {
+        "fr": "Rafraîchir",
+        "en": "Refresh",
+    },
+    "Logs": {
+        "fr": "Journaux",
+        "en": "Logs",
+    },
+    "Panel": {
+        "fr": "Panneau",
+        "en": "Panel",
+    },
+    "Wider": {
+        "fr": "Élargir",
+        "en": "Wider",
+    },
+    "Narrower": {
+        "fr": "Rétrécir",
+        "en": "Narrower",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

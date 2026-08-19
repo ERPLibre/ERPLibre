@@ -66,6 +66,9 @@ PATH_MIGRATION_PRIVATE = os.path.join("private", "odoo", "migration")
 # Le journal permanent des échecs et des verdicts, hors du fichier de
 # progression : celui-ci est remis à zéro quand on recommence.
 STEP_LOG_DIR = "step_log"
+# Les deux premières étapes tournent avant qu'on ait choisi le nom de
+# la base : leurs journaux attendent ici, puis rejoignent la migration.
+UNNAMED_MIGRATION = "sans-nom"
 EVENT_FILE = "events.jsonl"
 # Steps of the migration, in order. What each one owns is declared just below,
 # by GLOBAL_PROGRESSION_KEY and STEP_OWNED_KEY — not by the prefix alone, which
@@ -3929,7 +3932,52 @@ class TodoUpgrade:
             os.makedirs(chemin, exist_ok=True)
         except OSError:
             return None
+        if database != UNNAMED_MIGRATION:
+            self.adopt_unnamed_logs(chemin)
         return chemin
+
+    def adopt_unnamed_logs(self, chemin):
+        """Rapatrier les journaux écrits AVANT que la base ne soit nommée.
+
+        Les deux premières étapes — inspecter l'archive, la restaurer —
+        tournent avant qu'on ait choisi le nom de la base. Leurs journaux
+        atterrissaient donc sous « sans-nom », c'est-à-dire hors de la
+        migration à laquelle ils appartiennent : mesuré, deux fichiers
+        invisibles depuis l'écran d'état, et l'on cherchait des logs
+        manquants qui étaient simplement à côté.
+
+        En AJOUT si le fichier existe déjà : une reprise peut avoir écrit
+        des deux côtés, et écraser perdrait le premier passage.
+        """
+        if getattr(self, "_unnamed_adopted", False):
+            return
+        self._unnamed_adopted = True
+        source = os.path.join(
+            PATH_MIGRATION_PRIVATE, UNNAMED_MIGRATION, STEP_LOG_DIR
+        )
+        if not os.path.isdir(source) or os.path.abspath(
+            source
+        ) == os.path.abspath(chemin):
+            return
+        for nom in sorted(os.listdir(source)):
+            depart = os.path.join(source, nom)
+            arrivee = os.path.join(chemin, nom)
+            if not os.path.isfile(depart):
+                continue
+            try:
+                with open(
+                    depart, "r", encoding="utf-8", errors="replace"
+                ) as f:
+                    contenu = f.read()
+                with open(arrivee, "a", encoding="utf-8") as f:
+                    f.write(contenu)
+                os.remove(depart)
+            except OSError:
+                continue
+        try:
+            os.rmdir(source)
+        except OSError:
+            pass
 
     def open_step_log(self, msg):
         """Rediriger la sortie des commandes vers le journal de cette étape.
