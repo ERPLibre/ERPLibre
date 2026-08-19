@@ -1090,6 +1090,72 @@ class TestSeparatingCommandsFromLogs(Base):
         )
 
 
+class TestTheThreePanelStates(Base):
+    """Un simple bascule ne libérait que quatre lignes.
+
+    Ce qui prend la place, c'est la COLONNE de gauche — et sur un journal
+    de serveur, chaque caractère gagné en largeur compte. D'où trois états,
+    du plus complet au plus dépouillé.
+    """
+
+    def test_the_first_state_shows_everything(self):
+        self.assertEqual(tui.panel_visibility(0), (True, True))
+
+    def test_the_second_drops_the_summary(self):
+        self.assertEqual(tui.panel_visibility(1), (False, True))
+
+    def test_the_third_leaves_the_detail_alone(self):
+        self.assertEqual(tui.panel_visibility(2), (False, False))
+
+    def test_it_comes_back_round(self):
+        # Sans retour, le troisième état serait un cul-de-sac : la liste
+        # cachée, on ne peut plus changer d'entrée.
+        self.assertEqual(tui.panel_visibility(3), tui.panel_visibility(0))
+
+    def test_there_are_exactly_three(self):
+        self.assertEqual(len(tui.PANELS), 3)
+
+    def test_each_state_has_a_name(self):
+        # Un panneau qui disparaît sans un mot se lit comme un écran cassé.
+        noms = {tui.panel_label(i) for i in range(3)}
+        self.assertEqual(len(noms), 3)
+        for nom in noms:
+            self.assertTrue(nom.strip())
+
+    def test_p_is_bound_to_the_cycle(self):
+        app = tui.build_app(progression())
+        action = [
+            entree[1] for entree in app.BINDINGS if "p" in entree[0].split(",")
+        ]
+        self.assertEqual(action, ["cycle_panels"])
+
+    def test_the_name_is_shown_where_it_stays_visible(self):
+        # Le sous-titre est dans l'en-tête de Textual, qui reste affiché
+        # dans les trois états — contrairement au panneau de résumé.
+        import inspect
+
+        source = inspect.getsource(tui.apply_panels)
+        self.assertIn("app.sub_title", source)
+
+
+class TestTheGuardsThatCameOutOfTheClass(Base):
+    def test_no_row_selected_is_not_an_error(self):
+        self.assertIsNone(tui.current_row([], 0))
+
+    def test_an_index_past_the_end_is_not_an_error(self):
+        # Un rafraîchissement peut raccourcir la liste sous le curseur.
+        self.assertIsNone(tui.current_row([{"a": 1}], 5))
+
+    def test_rereading_without_a_path_yields_nothing(self):
+        self.assertIsNone(tui.reread(None))
+
+    def test_the_width_stays_between_its_bounds(self):
+        app = tui.build_app(progression())
+        self.assertLess(app.LEFT_MIN, app.LEFT_MAX)
+        self.assertGreaterEqual(app.left_width, app.LEFT_MIN)
+        self.assertLessEqual(app.left_width, app.LEFT_MAX)
+
+
 class TestTheKeyboard(Base):
     """Ce que l'écran promet dans son pied de page doit exister."""
 
@@ -1137,9 +1203,12 @@ class TestTheKeyboard(Base):
         """
         import inspect
 
-        source = inspect.getsource(tui.build_app)
-        self.assertIn("status.read(self.path)", source)
-        self.assertIn("self.lst_row = rows(self.dct)", source)
+        # La relecture est sortie de la classe pour la rendre testable :
+        # on vérifie donc les DEUX moitiés, la lecture et le remontage.
+        self.assertIn("status.read(path)", inspect.getsource(tui.reread))
+        self.assertIn(
+            "self.lst_row = rows(self.dct)", inspect.getsource(tui.build_app)
+        )
 
     def test_refreshing_without_a_path_does_nothing(self):
         app = tui.build_app(progression(), path=None)

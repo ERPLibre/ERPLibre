@@ -154,6 +154,64 @@ def pane_text(dct, row, colour=False, show_log=True):
     return "\n".join(lignes)
 
 
+PANELS = ("all", "no-summary", "detail")
+
+
+def panel_label(state):
+    """Le nom de l'état courant, tel qu'il s'affiche dans le sous-titre."""
+    return {
+        "all": t("summary + list + detail"),
+        "no-summary": t("list + detail"),
+        "detail": t("detail only"),
+    }[PANELS[state % len(PANELS)]]
+
+
+def panel_visibility(state):
+    """(résumé visible, liste visible) pour cet état.
+
+    Trois états, du plus complet au plus dépouillé. Un simple bascule ne
+    libérait que quatre lignes ; ce qui prend la place, c'est la COLONNE de
+    gauche — et sur un journal de serveur, chaque caractère gagné en
+    largeur compte.
+    """
+    etat = PANELS[state % len(PANELS)]
+    return etat == "all", etat != "detail"
+
+
+def current_row(lst_row, index):
+    """La ligne choisie, ou None quand il n'y en a aucune."""
+    return lst_row[index] if lst_row and 0 <= index < len(lst_row) else None
+
+
+def reread(path):
+    """Relire la progression, ou None si l'on ne sait pas d'où."""
+    return status.read(path) if path else None
+
+
+def apply_panels(app):
+    """Poser la visibilité des panneaux, et NOMMER l'état choisi.
+
+    Le sous-titre reste visible dans les trois : un panneau qui disparaît
+    sans un mot se lit comme un écran cassé.
+    """
+    resume, liste = panel_visibility(app.panel_state)
+    app.query_one("#head").display = resume
+    app.query_one("#left").display = liste
+    app.sub_title = panel_label(app.panel_state)
+
+
+def apply_width(app, delta):
+    """Déplacer la séparation, bornée des deux côtés.
+
+    Une colonne de zéro ne se retrouve plus ; une qui mange tout l'écran ne
+    laisse rien à lire.
+    """
+    app.left_width = max(
+        app.LEFT_MIN, min(app.LEFT_MAX, app.left_width + delta)
+    )
+    app.query_one("#left").styles.width = app.left_width
+
+
 def build_app(dct, path=None):
     """Textual est importé ICI, pas au chargement du module.
 
@@ -172,7 +230,7 @@ def build_app(dct, path=None):
             ("q,escape", "quit", t("Quit")),
             ("r", "refresh", t("Refresh")),
             ("l", "toggle_log", t("Logs")),
-            ("p", "toggle_head", t("Panel")),
+            ("p", "cycle_panels", t("Panels")),
             ("plus,equal", "wider", t("Wider")),
             ("minus,underscore", "narrower", t("Narrower")),
         ]
@@ -189,6 +247,7 @@ def build_app(dct, path=None):
             self.index = 0
             self.show_log = True
             self.left_width = 46
+            self.panel_state = 0
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -202,6 +261,7 @@ def build_app(dct, path=None):
         def on_mount(self):
             self.title = t("Migration state")
             self._fill_table()
+            apply_panels(self)
             self._show()
 
         def _fill_table(self):
@@ -214,7 +274,7 @@ def build_app(dct, path=None):
             self.query_one("#head", Static).update(head_text(self.dct))
 
         def _show(self):
-            row = self.lst_row[self.index] if self.lst_row else None
+            row = current_row(self.lst_row, self.index)
             # `from_ansi` fait DEUX choses : il rend les couleurs, et il
             # traite le reste comme du texte LITTÉRAL. Sans lui, une
             # commande contenant « [1] » passait pour du balisage Rich et
@@ -239,9 +299,10 @@ def build_app(dct, path=None):
             cela, il fallait le fermer et le rouvrir pour voir le palier
             suivant.
             """
-            if not self.path:
+            neuf = reread(self.path)
+            if neuf is None:
                 return
-            self.dct = status.read(self.path)
+            self.dct = neuf
             self.lst_row = rows(self.dct)
             self.index = min(self.index, max(0, len(self.lst_row) - 1))
             self._fill_table()
@@ -251,23 +312,26 @@ def build_app(dct, path=None):
             self.show_log = not self.show_log
             self._show()
 
-        def action_toggle_head(self):
-            head = self.query_one("#head", Static)
-            head.display = not head.display
+        def action_cycle_panels(self):
+            """Trois états, du plus complet au plus dépouillé.
+
+            Un simple bascule ne libérait que quatre lignes. Ce qui prend
+            la place, c'est la COLONNE de gauche : sur un journal de
+            serveur, chaque caractère gagné en largeur compte. On enchaîne
+            donc tout → sans résumé → détail seul, et l'on revient.
+
+            L'état est écrit dans le sous-titre, qui reste visible dans les
+            trois : un panneau qui disparaît sans un mot se lit comme un
+            écran cassé.
+            """
+            self.panel_state = (self.panel_state + 1) % len(PANELS)
+            apply_panels(self)
 
         def action_wider(self):
-            self._resize(self.LEFT_STEP)
+            apply_width(self, self.LEFT_STEP)
 
         def action_narrower(self):
-            self._resize(-self.LEFT_STEP)
-
-        def _resize(self, delta):
-            # Bornée des deux côtés : une colonne de zéro ne se retrouve
-            # plus, et une qui mange tout l'écran ne laisse rien à lire.
-            self.left_width = max(
-                self.LEFT_MIN, min(self.LEFT_MAX, self.left_width + delta)
-            )
-            self.query_one("#left", DataTable).styles.width = self.left_width
+            apply_width(self, -self.LEFT_STEP)
 
     return StatusApp(dct, path)
 

@@ -5675,6 +5675,22 @@ TRANSLATIONS = {
         "fr": "durée",
         "en": "duration",
     },
+    "Panels": {
+        "fr": "Panneaux",
+        "en": "Panels",
+    },
+    "summary + list + detail": {
+        "fr": "résumé + liste + détail",
+        "en": "summary + list + detail",
+    },
+    "list + detail": {
+        "fr": "liste + détail",
+        "en": "list + detail",
+    },
+    "detail only": {
+        "fr": "détail seul",
+        "en": "detail only",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

@@ -802,10 +802,16 @@ class TodoUpgrade:
         Posée AVANT le choix de version, donc avant la première décision :
         activée, elle vaut pour toutes les suivantes, celle-là comprise.
         """
+        # L'auto-exécution ne s'active JAMAIS d'elle-même : on efface le
+        # drapeau avant de poser la question, sinon une variable héritée du
+        # shell ferait répondre « oui » à la place de quelqu'un — et cette
+        # réponse-là engage toutes les suivantes.
+        auto_ask.export(False)
         answer = (
-            input(
+            auto_ask.ask(
                 f"💬 {t('Auto-run: take the default answer after')}"
-                f" {self.AUTO_DELAY} {t('seconds?')} (y/N) : "
+                f" {self.AUTO_DELAY} {t('seconds?')} (y/N) : ",
+                default="n",
             )
             .strip()
             .lower()

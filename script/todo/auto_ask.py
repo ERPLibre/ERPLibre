@@ -86,12 +86,15 @@ def ask(prompt, default="", seconds=None):
         return input(prompt) or default
     import select
 
-    sys.stdout.write(prompt)
+    attente = delay() if seconds is None else seconds
+    # DIRE qu'on répondra tout seul, et dans combien de temps. Une invite
+    # qui a l'air d'attendre indéfiniment n'invite pas à s'absenter, et
+    # c'est pourtant tout l'intérêt du mode auto. Devant l'invite plutôt
+    # qu'après : elle se lit avant qu'on décide de partir.
+    sys.stdout.write(f"⏱{attente:g}s {prompt}")
     sys.stdout.flush()
     try:
-        ready, _, _ = select.select(
-            [sys.stdin], [], [], delay() if seconds is None else seconds
-        )
+        ready, _, _ = select.select([sys.stdin], [], [], attente)
     except (OSError, ValueError):
         # stdin n'est pas sélectionnable : on ne devine pas, on demande.
         return input("") or default

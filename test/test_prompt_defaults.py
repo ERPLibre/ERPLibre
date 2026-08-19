@@ -224,6 +224,96 @@ class TestTheCountdownSpeaksThePromptsLanguage(EnvCase):
         self.assertIn("Entrée", texte)
 
 
+class TestTheQuestionThatCannotAnswerItself(EnvCase):
+    """Celle-là engage toutes les suivantes : elle ne se prend pas seule.
+
+    Une variable `ERPLIBRE_AUTO_EXECUTE` héritée du shell ferait répondre
+    « oui » à la place de quelqu'un, et cette réponse-là décide de toutes
+    les autres pendant des heures.
+    """
+
+    def answer(self, typed):
+        import builtins
+
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        original = builtins.input
+        builtins.input = lambda prompt="": typed
+        self.addCleanup(setattr, builtins, "input", original)
+        with contextlib.redirect_stdout(io.StringIO()):
+            obj.prompt_auto_execute()
+        return obj.auto_execute
+
+    def test_enter_says_no(self):
+        self.assertFalse(self.answer(""))
+
+    def test_the_default_is_written_down_not_deduced(self):
+        # `answer == "y"` donnait le bon résultat par accident ; un défaut
+        # explicite dit ce qu'on veut, et se relit.
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.prompt_auto_execute)
+        self.assertIn('default="n"', source)
+
+    def test_an_inherited_flag_cannot_switch_it_on(self):
+        os.environ[auto_ask.ENV_ENABLED] = "1"
+        os.environ[auto_ask.ENV_DELAY] = "5"
+        self.assertFalse(self.answer(""))
+
+    def test_the_inherited_flag_is_cleared_before_asking(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.prompt_auto_execute)
+        self.assertLess(
+            source.index("auto_ask.export(False)"),
+            source.index("auto_ask.ask("),
+        )
+
+    def test_yes_still_says_yes(self):
+        self.assertTrue(self.answer("y"))
+
+
+class TestEveryPromptAnnouncesTheCountdown(EnvCase):
+    """Une invite qui a l'air d'attendre indéfiniment n'invite pas à
+    s'absenter — et c'est pourtant tout l'intérêt du mode auto."""
+
+    def ask(self, default="d", seconds=5):
+        import select
+
+        original = select.select
+        select.select = lambda r, w, x, t: ([], [], [])
+        self.addCleanup(setattr, select, "select", original)
+        auto_ask.export(True, seconds)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            auto_ask.ask("💬 q : ", default=default)
+        return out.getvalue()
+
+    def test_the_delay_is_announced_before_the_question(self):
+        texte = self.ask()
+        self.assertIn("⏱5s", texte)
+        self.assertLess(texte.index("⏱5s"), texte.index("💬"))
+
+    def test_it_shows_the_real_delay(self):
+        self.assertIn("⏱2s", self.ask(seconds=2))
+
+    def test_nothing_is_announced_outside_auto_mode(self):
+        import builtins
+
+        auto_ask.export(False)
+        original = builtins.input
+        vu = []
+        builtins.input = lambda prompt="": vu.append(prompt) or "x"
+        self.addCleanup(setattr, builtins, "input", original)
+        auto_ask.ask("💬 q : ", default="d")
+        self.assertNotIn("⏱", vu[0])
+
+    def test_the_clock_announces_AND_reports(self):
+        # Le même symbole des deux côtés : il annonce l'attente, puis rend
+        # compte de la réponse. Deux symboles feraient deux mécanismes.
+        texte = self.ask()
+        self.assertEqual(texte.count("⏱"), 2)
+
+
 class TestNoPromptOfTheMigrationCanHang(unittest.TestCase):
     """Un `input()` nu ne sait rien du mode auto : il attend, pour toujours.
 
