@@ -5897,10 +5897,18 @@ class TODO:
         L'image système suit la plateforme du projet, et redescend si elle n'est
         pas publiée — Google ne fournit pas d'image pour toutes les API.
 
-        Le rendu est réglé sur swiftshader_indirect, DANS la configuration de
-        l'AVD plutôt qu'en option de lancement : par « ssh -X » il n'y a pas de
-        GLX direct, et l'émulateur s'ouvrirait sur un écran noir. Ainsi
-        « emulator -avd erplibre » suffit, sans rien à retenir.
+        Le rendu est réglé en logiciel DANS la configuration de l'AVD plutôt
+        qu'en option de lancement : par « ssh -X » il n'y a pas de GLX direct, et
+        l'émulateur s'ouvrirait sur un écran noir. Ainsi « emulator -avd
+        erplibre » suffit, sans rien à retenir.
+
+        Le mode est « swangle » — ANGLE sur SwiftShader — et non
+        « swiftshader_indirect », qui n'existe PLUS : l'émulateur 37.1 répond
+        « Selected GPU option 'swiftshader_indirect' is not valid, switching to
+        auto », puis « Your GPU drivers may have a bug », avant de retomber de
+        lui-même sur swangle. Il fonctionnait, en affichant deux erreurs qui
+        laissaient croire à une panne. Les modes valides sont exactement quatre,
+        que « emulator -help-gpu » énumère : auto, host, swiftshader, swangle.
         """
         return (
             f'echo "   == {t("Android emulator (AVD)")} =="; '
@@ -5946,7 +5954,7 @@ class TODO:
             # 0,62 Mpixel — 4,2 fois moins. Android gère la densité et
             # l'application ne s'en aperçoit pas ; qui veut la taille
             # réelle l'écrase au lancement par « -skin 1080x2400 ».
-            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swiftshader_indirect\\nhw.lcd.width=540\\nhw.lcd.height=1140\\nhw.lcd.density=240\\n" '
+            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swangle\\nhw.lcd.width=540\\nhw.lcd.height=1140\\nhw.lcd.density=240\\n" '
             ">> $HOME/.android/avd/erplibre.avd/config.ini' && "
             f'echo "   ✅ {t("AVD ready:")} '
             "$(cat $HOME/.erplibre-avd-device) / "

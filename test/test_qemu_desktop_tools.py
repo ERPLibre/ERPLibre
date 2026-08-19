@@ -407,8 +407,11 @@ class TestAndroidEmulator(unittest.TestCase):
         """Par « ssh -X » il n'y a pas de GLX direct : en « auto »,
         l'émulateur s'ouvre sur un écran noir. Le réglage va dans config.ini
         pour qu'« emulator -avd erplibre » suffise."""
-        self.assertIn("hw.gpu.mode=swiftshader_indirect", self.cmd)
+        self.assertIn("hw.gpu.mode=swangle", self.cmd)
         self.assertIn("config.ini", self.cmd)
+        # « swiftshader_indirect » n'existe plus : l'émulateur 37.1 le refuse,
+        # affiche deux erreurs et retombe sur swangle de lui-même. Mesuré.
+        self.assertNotIn("swiftshader_indirect", self.cmd)
 
     def test_xauth_is_installed(self):
         """Sans xauth dans la VM, « ssh -X » n'ouvre aucun affichage — et le
