@@ -288,9 +288,28 @@ def failures(dct):
     return list(reversed(events(dct, kind="command")))
 
 
+def elapsed(dct):
+    """Combien de temps la migration a duré, ou dure encore.
+
+    Du premier écrit à la DERNIÈRE écriture du journal : la progression est
+    réécrite après chaque geste, donc sa date de mise à jour EST la fin —
+    ou l'instant présent si la migration tourne toujours.
+
+    On délègue à `migration_stats.fmt_delay`, qui porte déjà ce calcul pour
+    l'écran de statistiques. Deux formules donneraient deux durées pour la
+    même migration selon l'écran qu'on ouvre.
+    """
+    try:
+        from script.todo.migration_stats import fmt_delay
+    except Exception:
+        return "?"
+    return fmt_delay(dct.get("date_create"), dct.get("date_update"))
+
+
 def overview(dct):
     """L'en-tête : de quelle migration parle-t-on."""
     return {
+        "elapsed": elapsed(dct),
         "file": os.path.basename(dct.get("migration_file") or "?"),
         "database": dct.get("config_database_name") or "?",
         "target": dct.get("target_odoo_version") or "?",
@@ -340,7 +359,8 @@ def render_text(dct, limit_cmd=12, colour=None):
         f"   {t('database')} : {info['database']}",
         f"   {t('image')} : {info['file']}",
         f"   {t('started')} : {info['started']}",
-        f"   {t('last written')} : {info['updated']}",
+        f"   {t('finished')} : {info['updated']}",
+        f"   {t('duration')} : {info['elapsed']}",
         f"   {t('current step')} : {info['step']}",
     ]
 

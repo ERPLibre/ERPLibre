@@ -958,6 +958,62 @@ class TestTheFullScreenColoursToo(Base):
         self.assertIn("colour=True", source)
 
 
+class TestHowLongItTook(Base):
+    """Du premier écrit à la dernière écriture du journal.
+
+    La progression est réécrite après chaque geste, donc sa date de mise à
+    jour EST la fin — ou l'instant présent si la migration tourne encore.
+    """
+
+    def dct(self, debut, fin):
+        return progression(date_create=debut, date_update=fin)
+
+    def test_it_counts_from_the_start_to_the_last_write(self):
+        info = status.overview(
+            self.dct("2026-08-19 09:06:27", "2026-08-19 10:19:18")
+        )
+        self.assertEqual(info["elapsed"], "1 h 12 min")
+
+    def test_a_short_run_is_given_in_minutes(self):
+        info = status.overview(
+            self.dct("2026-08-19 09:06:00", "2026-08-19 09:41:00")
+        )
+        self.assertEqual(info["elapsed"], "35 min")
+
+    def test_a_long_run_is_given_in_days(self):
+        info = status.overview(
+            self.dct("2026-08-17 09:00:00", "2026-08-19 11:30:00")
+        )
+        self.assertIn("j", info["elapsed"])
+
+    def test_a_missing_date_never_invents_a_duration(self):
+        self.assertEqual(status.overview(self.dct(None, None))["elapsed"], "?")
+
+    def test_the_report_shows_it(self):
+        texte = status.render_text(
+            self.dct("2026-08-19 09:06:27", "2026-08-19 10:19:18"),
+            colour=False,
+        )
+        self.assertIn("1 h 12 min", texte)
+
+    def test_the_full_screen_shows_it_too(self):
+        texte = tui.head_text(
+            self.dct("2026-08-19 09:06:27", "2026-08-19 10:19:18")
+        )
+        self.assertIn("1 h 12 min", texte)
+
+    def test_it_is_computed_in_ONE_place(self):
+        # L'écran de statistiques porte déjà ce calcul. Deux formules
+        # donneraient deux durées pour la même migration selon l'écran
+        # qu'on ouvre.
+        import inspect
+
+        source = inspect.getsource(status.elapsed)
+        self.assertIn(
+            "from script.todo.migration_stats import fmt_delay", source
+        )
+
+
 class TestSeparatingCommandsFromLogs(Base):
     """Les deux mélangés dans un même panneau se confondent.
 

@@ -48,7 +48,8 @@ def head_text(dct):
     return (
         f"{info['database']}  ·  {info['file']}\n"
         f"{t('current step')} : {info['step']}\n"
-        f"{t('last written')} : {info['updated']}"
+        f"{t('finished')} : {info['updated']}"
+        f"   ·   {t('duration')} {info['elapsed']}"
         f"   ·   {len(status.failures(dct))} {t('failed')}"
         f"   ·   {len(casse)}/{len(lst_test)} {t('Test results')}"
     )

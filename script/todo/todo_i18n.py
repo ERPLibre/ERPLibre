@@ -5667,6 +5667,14 @@ TRANSLATIONS = {
         "fr": "Rétrécir",
         "en": "Narrower",
     },
+    "finished": {
+        "fr": "terminée",
+        "en": "finished",
+    },
+    "duration": {
+        "fr": "durée",
+        "en": "duration",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
