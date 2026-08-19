@@ -582,6 +582,56 @@ class TestPycharmFirstOpen(unittest.TestCase):
         self.assertEqual(0, res.returncode, res.stderr)
 
 
+class TestScrcpyTunnel(unittest.TestCase):
+    """Tunnel adb pour scrcpy : la voie sans X11."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+
+    def _printed(self, name, src):
+        import io
+        import contextlib
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.todo._qemu_scrcpy_tunnel(name, src)
+        return buf.getvalue()
+
+    def test_it_tunnels_the_emulator_port_not_the_adb_server(self):
+        """5555 est l'adb de l'émulateur ; 5037 est le serveur adb, et le
+        tunneliser obligerait à tuer celui du poste, qui occupe le même port.
+        Vérifié dans la VM par « ss -ltn » : 5554, 5555 et 5037 écoutent tous
+        sur 127.0.0.1."""
+        out = self._printed("saut+vm", "ssh_config")
+        self.assertIn("-L 5555:localhost:5555", out)
+        self.assertNotIn("5037", out)
+
+    def test_it_starts_the_emulator_without_a_window(self):
+        """Tout l'intérêt : plus de X11 nulle part, le flux est du H.264."""
+        out = self._printed("saut+vm", "ssh_config")
+        self.assertIn("-no-window", out)
+        self.assertNotIn("ssh -X", out)
+
+    def test_it_gives_the_three_workstation_commands(self):
+        out = self._printed("saut+vm", "ssh_config")
+        self.assertIn("adb connect localhost:5555", out)
+        self.assertIn("scrcpy -s localhost:5555", out)
+        self.assertIn("apt install scrcpy", out)
+
+    def test_it_uses_the_ssh_config_target_as_is(self):
+        """« localhost » est résolu par le DERNIER saut : le ProxyJump déjà
+        écrit dans ~/.ssh/config traverse les niveaux, on ne le réinvente pas.
+        """
+        out = self._printed("test-vm_02+erplibre-mobile-proof", "ssh_config")
+        self.assertIn("test-vm_02+erplibre-mobile-proof", out)
+        self.assertIn("ProxyJump", out)
+
+    def test_the_avd_step_points_at_it(self):
+        """La question vient juste après « c'est trop lent » : la réponse doit
+        être à portée de journal."""
+        self.assertIn("tunnel > 4", self.todo._qemu_avd_remote_cmd())
+
+
 class TestGnomeSiteExtensions(unittest.TestCase):
     """Extensions posées depuis extensions.gnome.org, par leur UUID."""
 

@@ -1569,10 +1569,16 @@ class TODO:
         print(f"\n  {t('Remote desktop kind:')}")
         print(f"  [1] RDP 3389 (xrdp) *")
         print(f"  [2] VNC 5901 (TigerVNC, Arch)")
-        print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
+        print(
+            f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
+        )
+        print(f"  [4] {t('Android emulator (adb 5555, then scrcpy)')}")
         kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
         if kind_answer == "3":
             self._qemu_console_tunnel(name, src)
+            return
+        if kind_answer == "4":
+            self._qemu_scrcpy_tunnel(name, src)
             return
         port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
@@ -1600,6 +1606,65 @@ class TODO:
             f"  {t('then point your client at')} localhost:{local}  ({kind})"
         )
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    def _qemu_scrcpy_tunnel(self, name, src):
+        """Tunnel adb vers l'émulateur Android d'une VM, pour scrcpy.
+
+        Pourquoi cette voie plutôt que « ssh -X » : par X11, chaque image de
+        l'écran traverse le réseau en pixels bruts — 0,62 Mpixel par image même
+        après réduction, en rendu logiciel. scrcpy, lui, reçoit un flux H.264
+        encodé PAR l'appareil et le décode sur le poste. L'émulateur tourne
+        alors SANS fenêtre : plus de X11 du tout, ni sur l'hôte ni dans la VM.
+
+        Le port est celui de l'émulateur, pas celui du serveur adb. Un émulateur
+        écoute sur 5554 (console) et 5555 (adb), tous deux sur le localhost de
+        la VM — vérifié par « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
+        tunneler le serveur adb obligerait à tuer celui du poste, qui occupe le
+        même port.
+
+        Vérifié de bout en bout à travers le tunnel : une poignée de main adb
+        (paquet CNXN) reçoit « device::ro.product.name=sdk_gphone64_x86 » de
+        l'émulateur lui-même — c'est exactement ce que fait « adb connect ».
+        """
+        port = 5555
+        print(f"\n  📱 {t('Android emulator over adb + scrcpy')}")
+        print(f"\n  {t('1. In the VM, start the emulator WITHOUT a window:')}")
+        emu = "$HOME/android/emulator/emulator"
+        if src == "ssh_config":
+            print(
+                f"\n    ssh {name} '{emu} -avd erplibre"
+                " -no-window -no-audio -no-boot-anim'\n"
+            )
+        else:
+            ip = self._qemu_resolve_ips([name]).get(name)
+            if not ip:
+                print(f"  {t('No IP for this VM; is it running?')}")
+                return
+            print(
+                f"\n    ssh erplibre@{ip} '{emu} -avd erplibre"
+                " -no-window -no-audio -no-boot-anim'\n"
+            )
+        print(f"  {t('2. Open the tunnel from YOUR workstation:')}")
+        if src == "ssh_config":
+            # « localhost » est résolu par le DERNIER saut, donc par la VM
+            # elle-même : le ProxyJump de ssh_config traverse les niveaux.
+            print(f"\n    ssh -N -L {port}:localhost:{port} {name}\n")
+            print(f"  {t('(through the ProxyJump already in ~/.ssh/config)')}")
+        else:
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            if not from_ssh:
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
+            print(f"\n    ssh -N -L {port}:{ip}:{port} {user}@{host}\n")
+        print(f"  {t('3. Then, still on your workstation:')}")
+        print(f"\n    adb connect localhost:{port}")
+        print(f"    scrcpy -s localhost:{port}\n")
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+        print(
+            f"  {t('scrcpy on Debian/Ubuntu:')} sudo apt install scrcpy" " adb"
+        )
 
     def _qemu_console_tunnel(self):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
@@ -5980,7 +6045,13 @@ class TODO:
             # Mesuré sur l'émulateur.
             'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r -t '
             f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
-            '/outputs/apk/debug/app-debug.apk\\""'
+            '/outputs/apk/debug/app-debug.apk\\""; '
+            # La voie scrcpy, nommée ici parce que c'est la première
+            # question qui vient après « ça se lance mais c'est lent » :
+            # X11 transporte des pixels bruts, scrcpy un flux H.264 encodé
+            # par l'appareil. Le détail du tunnel vit dans le menu
+            # « Remote desktop tunnel », choix 4.
+            + f'echo "   {t("smoother, without X11:")} TODO > Execute > Deploy > QEMU/KVM > tunnel > 4"'
         )
 
     def _qemu_after_remote_cmd(self, tools, prod=False):

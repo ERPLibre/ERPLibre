@@ -7818,6 +7818,34 @@ TRANSLATIONS = {
         "fr": "venv ERPLibre absent (installation incomplète)",
         "en": "ERPLibre venv missing (incomplete install)",
     },
+    "smoother, without X11:": {
+        "fr": "plus fluide, sans X11 :",
+        "en": "smoother, without X11:",
+    },
+    "Android emulator (adb 5555, then scrcpy)": {
+        "fr": "Émulateur Android (adb 5555, puis scrcpy)",
+        "en": "Android emulator (adb 5555, then scrcpy)",
+    },
+    "Android emulator over adb + scrcpy": {
+        "fr": "Émulateur Android par adb + scrcpy",
+        "en": "Android emulator over adb + scrcpy",
+    },
+    "1. In the VM, start the emulator WITHOUT a window:": {
+        "fr": "1. Dans la VM, démarrer l'émulateur SANS fenêtre :",
+        "en": "1. In the VM, start the emulator WITHOUT a window:",
+    },
+    "2. Open the tunnel from YOUR workstation:": {
+        "fr": "2. Ouvrir le tunnel depuis VOTRE poste :",
+        "en": "2. Open the tunnel from YOUR workstation:",
+    },
+    "3. Then, still on your workstation:": {
+        "fr": "3. Puis, toujours sur votre poste :",
+        "en": "3. Then, still on your workstation:",
+    },
+    "scrcpy on Debian/Ubuntu:": {
+        "fr": "scrcpy sur Debian/Ubuntu :",
+        "en": "scrcpy on Debian/Ubuntu:",
+    },
     "Android emulator (Pixel)": {
         "fr": "Émulateur Android (Pixel)",
         "en": "Android emulator (Pixel)",
