@@ -2260,6 +2260,10 @@ TRANSLATIONS = {
     "line": {"fr": "ligne", "en": "line"},
     "free space": {"fr": "libre", "en": "free"},
     "silent": {"fr": "silence", "en": "silent"},
+    "already there, download skipped": {
+        "fr": "déjà présent, téléchargement évité",
+        "en": "already there, download skipped",
+    },
     "inotify watches raised for the IDE": {
         "fr": "watches inotify relevées pour l'IDE",
         "en": "inotify watches raised for the IDE",

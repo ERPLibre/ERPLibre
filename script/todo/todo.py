@@ -5606,6 +5606,15 @@ class TODO:
             'if [ -z "$jb" ]; then '
             f'echo "   {t("no JetBrains build for")} $(uname -m)"; false; '
             "else "
+            # Déjà posé ? On ne retélécharge pas. Rejouer une
+            # installation est le cas NORMAL — une qui est morte, un outil
+            # ajouté après coup — et le téléchargement en est la partie
+            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
+            # rejoue de toute façon, lui est idempotent et bon marché.
+            "if [ -x /opt/pycharm/bin/pycharm.sh ]; then "
+            f'echo "   {t("already there, download skipped")}"; '
+            "else "
             # /var/tmp et non /tmp : sur Fedora et dérivés /tmp est un tmpfs, en
             # RAM — 1,2 Go d'archive y tueraient une VM de 3 Go.
             # Le flux dit quelle archive Community prendre pour cette
@@ -5635,7 +5644,7 @@ class TODO:
             'curl -fsSL "$url" -o "$tmp" && '
             "sudo mkdir -p /opt/pycharm && "
             'sudo tar -xzf "$tmp" -C /opt/pycharm --strip-components=1; '
-            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; } && { '
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; fi; } && { '
             + self._qemu_jetbrains_launcher_cmd("/opt/pycharm", "pycharm")
             + self._qemu_desktop_entry_cmd(
                 "pycharm",
@@ -5825,6 +5834,15 @@ class TODO:
             f'echo "   {t("Android Studio: Google publishes x86_64 only")}"; '
             "false; "
             "else "
+            # Déjà posé ? On ne retélécharge pas. Rejouer une
+            # installation est le cas NORMAL — une qui est morte, un outil
+            # ajouté après coup — et le téléchargement en est la partie
+            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
+            # rejoue de toute façon, lui est idempotent et bon marché.
+            "if [ -x /opt/android-studio/bin/studio ]; then "
+            f'echo "   {t("already there, download skipped")}"; '
+            "else "
             # La page officielle porte l'URL en clair ; le repli garde une
             # version connue qui répond, pour le jour où sa forme change.
             f"url=$(curl -fsSL --max-time 30 {self._QEMU_ANDROID_PAGE} "
@@ -5836,7 +5854,7 @@ class TODO:
             "sudo mkdir -p /opt/android-studio && "
             'sudo tar -xzf "$tmp" -C /opt/android-studio '
             "--strip-components=1; "
-            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; } && { '
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; fi; } && { '
             + self._qemu_jetbrains_launcher_cmd(
                 "/opt/android-studio", "studio", alias="android-studio"
             )

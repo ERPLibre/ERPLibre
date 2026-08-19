@@ -773,6 +773,80 @@ class TestPycharmFirstOpen(unittest.TestCase):
             )
 
 
+class TestIdeInstallIsReplayable(unittest.TestCase):
+    """Rejouer une installation ne doit pas retélécharger 2 Go.
+
+    C'est le cas NORMAL : une installation morte qu'on relance, un outil ajouté
+    après coup. Mesuré sur la VM, les deux étapes passent de ~5 min chacune à
+    0,094 s au total quand /opt porte déjà l'IDE — le reste (lanceur, alias,
+    raccourci) rejoue quand même, il est idempotent et bon marché.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.py = self.todo._qemu_pycharm_remote_cmd()
+        self.st = self.todo._qemu_android_studio_remote_cmd()
+
+    def test_pycharm_checks_before_downloading(self):
+        self.assertIn("[ -x /opt/pycharm/bin/pycharm.sh ]", self.py)
+        self.assertLess(
+            self.py.index("/opt/pycharm/bin/pycharm.sh"),
+            self.py.index("curl"),
+        )
+
+    def test_android_studio_checks_before_downloading(self):
+        self.assertIn("[ -x /opt/android-studio/bin/studio ]", self.st)
+        self.assertLess(
+            self.st.index("/opt/android-studio/bin/studio"),
+            self.st.index("curl"),
+        )
+
+    def test_the_launcher_still_runs_when_the_download_is_skipped(self):
+        """Sauter le téléchargement ne doit pas sauter l'alias : c'est lui qui
+        rend « pycharm » et « android-studio » appelables."""
+        # rindex : le chemin du lanceur apparaît aussi dans la garde, tout au
+        # début. C'est la DERNIÈRE occurrence — l'installation du lanceur — qui
+        # doit suivre le bloc de téléchargement.
+        for cmd, marker in (
+            (self.py, "/usr/local/bin"),
+            (self.st, "/usr/local/bin"),
+        ):
+            self.assertGreater(cmd.rindex(marker), cmd.index("curl"), marker)
+
+    def test_a_real_download_failure_still_fails(self):
+        """La garde ne doit pas avaler l'échec du cas où il faut télécharger.
+        On force l'absence d'IDE et un curl qui échoue."""
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = pathlib.Path(tmp) / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "curl").write_text("#!/bin/bash\nexit 22\n")
+            (bin_dir / "sudo").write_text("#!/bin/bash\nexit 0\n")
+            (bin_dir / "python3").write_text("#!/bin/bash\ncat >/dev/null\n")
+            for n in ("curl", "sudo", "python3"):
+                (bin_dir / n).chmod(0o755)
+            res = subprocess.run(
+                ["bash", "-c", self.st],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=f"{bin_dir}:/usr/bin:/bin"),
+                timeout=60,
+            )
+            out = res.stdout + res.stderr
+            # Sur cette machine /opt/android-studio n'existe pas : la garde
+            # laisse donc passer, et l'échec du curl doit se voir.
+            self.assertIn("⚠", out, out[-300:])
+
+    def test_both_steps_are_valid_shell(self):
+        for cmd in (self.py, self.st):
+            res = subprocess.run(
+                ["bash", "-n"], input=cmd, capture_output=True, text=True
+            )
+            self.assertEqual(0, res.returncode, res.stderr)
+
+
 class TestPycharmNetIsNarrow(unittest.TestCase):
     """Le filet de fermeture ne doit JAMAIS viser le ssh qui porte l'install.
 
