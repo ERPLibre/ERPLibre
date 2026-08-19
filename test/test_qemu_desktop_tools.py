@@ -340,6 +340,33 @@ class TestMobileBuild(unittest.TestCase):
         res = self._run_steps(fail_on="gradle")
         self.assertNotEqual(0, res.returncode, res.stdout[-400:])
 
+    def test_a_failed_step_stops_the_ones_after_it(self):
+        """La chaîne est en « && » d'un bout à l'autre. Un « ; » glissé au
+        milieu — celui qui écrivait le manifeste vide — laissait la compilation
+        web démarrer alors que « npm ci » venait d'échouer."""
+        res = self._run_steps(fail_on="npm")
+        self.assertNotEqual(0, res.returncode)
+        self.assertNotIn("vite build", res.stdout)
+        self.assertNotIn("gradle", res.stdout)
+
+    def test_the_manifest_repos_are_not_bundled(self):
+        """122 684 fichiers d'assets pour 337 qui sont l'application, et un APK
+        est un ZIP borné à 65 535 entrées. Le levier est celui que le dépôt
+        mobile documente : ERPLIBRE_MANIFEST_PATH, pointé sur un manifeste
+        vide. Mesuré : dist passe de 123 019 à 336 fichiers."""
+        steps = self.todo._qemu_mobile_build_steps("/tmp/el")
+        self.assertIn("ERPLIBRE_MANIFEST_PATH=", steps)
+        self.assertIn("<manifest></manifest>", steps)
+        # La variable posée par l'appelant gagne : qui veut les dépôts les a.
+        self.assertIn("${ERPLIBRE_MANIFEST_PATH:-", steps)
+
+    def test_the_empty_manifest_is_written_before_the_bundle(self):
+        steps = self.todo._qemu_mobile_build_steps("/tmp/el")
+        self.assertLess(
+            steps.index("erplibre-empty-manifest.xml"),
+            steps.index("npm run build"),
+        )
+
     def test_a_missing_apk_fails_even_when_gradle_returns_zero(self):
         """L'APK est la preuve, pas le code de sortie de Gradle : une tâche peut
         rendre 0 sans rien produire."""

@@ -2289,6 +2289,10 @@ TRANSLATIONS = {
         "en": "no swap could be added; build may run short",
     },
     "memory:": {"fr": "mémoire :", "en": "memory:"},
+    "manifest repos not bundled (ZIP entry limit)": {
+        "fr": "dépôts du manifeste non empaquetés (limite d'entrées ZIP)",
+        "en": "manifest repos not bundled (ZIP entry limit)",
+    },
     "MB RAM,": {"fr": "Mo de RAM,", "en": "MB RAM,"},
     "MB swap, kernel OOM kills:": {
         "fr": "Mo de swap, tués par le noyau (OOM) :",

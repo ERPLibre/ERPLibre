@@ -191,10 +191,19 @@ NOMME la cause probable au lieu de laisser 40 Mo de journal Gradle à relire :
 disque plein, plateforme SDK absente, JDK et Gradle incompatibles, licences non
 acceptées, démon Gradle tué par le noyau (avec la RAM, le swap et le compte de
 l'oom-killer, parce qu'une cause « mémoire » se prouve au lieu de s'affirmer),
-ou trop de fichiers d'assets pour un APK — un ZIP tient 65535 entrées et le
-dépôt mobile en embarque 122 684, ce que lui seul peut corriger. Le détail va
-dans `~/erplibre-mobile-build.log`, dans la VM, pour que le journal
-d'installation reste lisible.
+ou trop de fichiers d'assets pour un APK. Le détail va dans
+`~/erplibre-mobile-build.log`, dans la VM, pour que le journal d'installation
+reste lisible.
+
+Cette dernière cause n'arrête plus la compilation. Le dépôt mobile empaquette
+les dépôts du manifeste dans ses assets — 122 684 fichiers, pour 337 qui sont
+l'application — et un APK est un ZIP, borné à 65535 entrées :
+`Too many zip entries 123678`. La compilation pointe donc
+`ERPLIBRE_MANIFEST_PATH`, le levier que ce dépôt documente, sur un manifeste
+vide, et le plugin l'annonce : `0 repos`. Mesuré : `dist` passe de 123 019
+fichiers à 336, et l'APK sort à 59 Mo et 2 472 entrées. Posez la variable
+vous-même et les dépôts reviennent — le défaut est une mesure d'attente, le
+temps qu'ils tiennent sous le plafond du ZIP.
 
 Il est borné aux distributions apt, parce que cet installateur amont commence
 par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une

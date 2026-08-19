@@ -176,10 +176,17 @@ the dashboard, and the log names the probable cause instead of leaving a
 40 MB Gradle log to read: disk full, missing SDK platform, JDK/Gradle
 mismatch, unaccepted licences, a Gradle daemon killed by the kernel (with the
 machine's RAM, swap and oom-kill count, because a memory cause is proven and
-not assumed), or too many asset files for one APK — a ZIP holds 65535 entries
-and the mobile repo ships 122 684, which only that repo can fix. The heavy
-output goes to `~/erplibre-mobile-build.log` inside the VM so the install log
-stays readable.
+not assumed), or too many asset files for one APK. The heavy output goes to
+`~/erplibre-mobile-build.log` inside the VM so the install log stays readable.
+
+That last cause no longer stops the build. The mobile repo bundles the manifest
+repositories into its assets — 122 684 files, for 337 that are the application
+— and an APK is a ZIP, capped at 65535 entries: `Too many zip entries 123678`.
+The build therefore points `ERPLIBRE_MANIFEST_PATH`, the lever that repo
+documents, at an empty manifest, and the plugin says so: `0 repos`. Measured:
+`dist` drops from 123 019 files to 336, and the APK comes out at 59 MB with
+2 472 entries. Set the variable yourself and the repositories come back — the
+default is a stopgap until they fit under the ZIP ceiling.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
