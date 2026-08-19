@@ -627,13 +627,41 @@ class TestPycharmFirstOpen(unittest.TestCase):
         self.todo = TODO.__new__(TODO)
         self.cmd = self.todo._qemu_pycharm_project_cmd()
 
-    def test_it_runs_between_the_clone_and_the_make(self):
+    def test_it_runs_after_the_install_not_before(self):
+        """Mesuré : sur un dépôt cloné mais pas installé, PyCharm n'écrit AUCUN
+        .idea — son configurateur d'interpréteur échoue faute de venv, et il
+        renonce (« ⚠ pas de .idea », deux fois sur une VM réelle). Le même appel
+        sur un dépôt installé l'écrit en cinq minutes."""
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
         )
         self.assertLess(script.index("git clone"), script.index("xvfb-run"))
         self.assertLess(
-            script.index("xvfb-run"), script.index("make install_os")
+            script.index("make install_os"), script.index("xvfb-run")
+        )
+
+    def test_the_configuration_is_asked_for_after_the_open(self):
+        """L'installation est déjà passée quand le .idea naît : pycharm_update()
+        n'avait rien à configurer, donc on le demande explicitement."""
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "gnome", "", "deb", ("pycharm",)
+        )
+        self.assertIn("make pycharm_configure", script)
+        self.assertLess(
+            script.index("xvfb-run"), script.index("make pycharm_configure")
+        )
+
+    def test_it_never_decides_the_verdict_of_the_vm(self):
+        """Un bonus : ni son échec ni celui de sa configuration ne doivent
+        rougir une VM dont tout le reste a réussi. La phase mobile, elle, porte
+        bien le verdict — et elle vient après."""
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "gnome", "", "deb", ("pycharm", "mobile")
+        )
+        self.assertIn("make pycharm_configure || true", script)
+        self.assertLess(
+            script.index("make pycharm_configure"),
+            script.index("ERPLibre mobile"),
         )
 
     def test_only_when_pycharm_was_asked_for(self):

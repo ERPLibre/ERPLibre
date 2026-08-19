@@ -6657,14 +6657,30 @@ class TODO:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # Entre le clone et le make : PyCharm ouvre le dépôt une fois pour en
-        # écrire le .idea, que l'installation configurera juste après. Le
-        # groupe rend toujours 0 — l'étape est un bonus, pas une condition.
+        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
+        # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
+        # échoue faute de venv, et il renonce. « ⚠ pas de .idea », deux fois de
+        # suite sur erplibre-ubuntu-2604-gnome. Le même appel sur un dépôt
+        # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
+        # modules.xml, vcs.xml.
+        #
+        # On ouvre donc quand l'interpréteur existe, puis on demande la
+        # configuration explicitement : l'installation est déjà passée, et
+        # pycharm_update() n'avait alors rien à configurer.
         open_step = (
-            f"{{ {self._qemu_pycharm_project_cmd(prod)} }} && "
+            self._qemu_pycharm_project_cmd(prod)
+            + "make pycharm_configure || true; "
             if "pycharm" in (tools or ())
             else ""
         )
+        # Le groupe de PyCharm rend toujours 0 — un bonus, pas une condition —
+        # là où la phase mobile porte le verdict de la VM.
+        chain = [final_cmd]
+        if open_step:
+            chain.append(f"{{ {open_step} }}")
+        if after_cmd:
+            chain.append(f"{{ {after_cmd} }}")
+        install_chain = " && ".join(chain)
         return (
             "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
@@ -6774,8 +6790,7 @@ class TODO:
                     f"sudo git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
                     "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
-                    f"cd /opt/erplibre && {open_step}{final_cmd}"
-                    + (f" && {{ {after_cmd} }}" if after_cmd else "")
+                    f"cd /opt/erplibre && {install_chain}"
                 )
                 if prod
                 else (
@@ -6783,8 +6798,7 @@ class TODO:
                     "if [ ! -d ~/git/erplibre/.git ]; then "
                     f"git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-                    f"cd ~/git/erplibre && {open_step}{final_cmd}"
-                    + (f" && {{ {after_cmd} }}" if after_cmd else "")
+                    f"cd ~/git/erplibre && {install_chain}"
                 )
             )
         )
