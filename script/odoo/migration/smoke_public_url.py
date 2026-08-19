@@ -108,6 +108,27 @@ def run_psql(database, sql):
     return [line.split("\x1f") for line in done.stdout.splitlines() if line]
 
 
+def require_matching_version(database):
+    """Refuser de démarrer sur une base d'une autre version qu'un Odoo.
+
+    Sans cela le rapport ment de la pire façon : mesuré ici même, un
+    checkout passé en 18.0 démarré sur une base 17.0 rend 500 sur les
+    trente-sept URL et sur /web/login, et l'on conclut à un site
+    entièrement cassé alors que rien ne l'est. Le checkout suit la
+    migration ; rien ne garantit qu'il soit resté sur la version de la
+    base qu'on veut interroger.
+
+    On délègue à `database_cleanup`, qui porte déjà cette garde : deux
+    implémentations divergeraient, et une garde qui diverge ne garde rien.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from database_cleanup import require_matching_version as verifier
+    except ImportError:
+        return None
+    return verifier(database)
+
+
 def start_server(database, port, config_path="./config.conf", log_path=None):
     """Démarrer Odoo, son journal dans un FICHIER.
 
@@ -444,16 +465,21 @@ def render_internal(internal):
     """
     if internal is None:
         return False
+    reprise = f" ({t('after the reset')})" if internal.get("retried") else ""
     if "skipped" in internal:
         if internal.get("loud"):
             # Un saut ATTENDU se dit à voix basse ; un saut qui trahit une
             # panne doit compter comme un échec, sinon le code de sortie
             # annonce que tout va bien.
             print(
-                f"\n⚠️  {t('Back office NOT browsed')} : {internal['skipped']}"
+                f"\n⚠️  {t('Back office NOT browsed')}{reprise} :"
+                f" {internal['skipped']}"
             )
             return True
-        print(f"\nℹ️  {t('Back office not browsed')} : {internal['skipped']}")
+        print(
+            f"\nℹ️  {t('Back office not browsed')}{reprise} :"
+            f" {internal['skipped']}"
+        )
         return False
     import smoke_internal_ui
 
@@ -477,6 +503,20 @@ def attach_internal_log(internal_report, log_path):
         return
     smoke_internal_ui.attach_log_reason(
         internal_report["failures"], read_log(log_path)
+    )
+
+
+def internal_needs_retry(internal_report):
+    """Le back-office mérite-t-il un second essai après la réparation ?
+
+    Oui s'il a échoué, et oui aussi s'il a été SAUTÉ : « connexion
+    impossible » est justement le symptôme d'un site cassé, et c'est ce
+    que la réinitialisation vient de réparer.
+    """
+    if not internal_report:
+        return False
+    return bool(
+        internal_report.get("failures") or internal_report.get("skipped")
     )
 
 
@@ -584,6 +624,9 @@ def run(
     log_path = os.path.join(
         tempfile.gettempdir(), f"erplibre_smoke_{database}_{port}.log"
     )
+    mismatch = require_matching_version(database)
+    if mismatch:
+        raise RuntimeError(mismatch)
     if port_is_taken(port):
         raise RuntimeError(
             f"{t('Something already listens on port')} {port} :"
@@ -650,6 +693,53 @@ def run(
     if not lst_done:
         return lst_url, lst_failure, lst_key, None, internal_report
 
+    lst_again, internal_report = recheck_after_reset(
+        database,
+        port,
+        config_path,
+        base_url,
+        log_path,
+        lst_failure,
+        internal_report,
+        timeout=timeout,
+        boot=boot,
+        internal=internal,
+        internal_login=internal_login,
+        internal_password=internal_password,
+        internal_limit=internal_limit,
+        every_menu=every_menu,
+        portal=portal,
+        internal_required=internal_required,
+    )
+    return lst_url, lst_failure, lst_key, lst_again, internal_report
+
+
+def recheck_after_reset(
+    database,
+    port,
+    config_path,
+    base_url,
+    log_path,
+    lst_failure,
+    internal_report,
+    timeout=30,
+    boot=180,
+    internal=True,
+    internal_login="test",
+    internal_password="test",
+    internal_limit=20,
+    every_menu=False,
+    portal=None,
+    internal_required=False,
+):
+    """Redémarrer, et revoir ce qui avait échoué. Rend (URL, back-office).
+
+    Le back-office est REJUGÉ lui aussi, et ce n'est pas une symétrie
+    gratuite : la copie COW qui casse le site casse AUSSI /web/login — les
+    deux passent par le même gabarit. La passe interne tournait donc avant
+    la réparation et rapportait « connexion impossible » sur une base que
+    la réinitialisation remettait d'aplomb quelques secondes plus tard.
+    """
     server = start_server(database, port, config_path, log_path=log_path)
     try:
         if not wait_ready(base_url, timeout=boot):
@@ -659,9 +749,24 @@ def run(
         lst_again = check_urls(
             [url for url, _s, _p in lst_failure], timeout=timeout
         )
+        if internal_needs_retry(internal_report):
+            reprise = internal_phase(
+                base_url,
+                database,
+                enabled=internal,
+                login=internal_login,
+                password=internal_password,
+                limit=internal_limit,
+                every_menu=every_menu,
+                lst_portal=portal,
+                required=internal_required,
+            )
+            if reprise is not None:
+                internal_report = reprise
+                internal_report["retried"] = True
     finally:
         stop_server(server)
-    return lst_url, lst_failure, lst_key, lst_again, internal_report
+    return lst_again, internal_report
 
 
 def stop_server(server):

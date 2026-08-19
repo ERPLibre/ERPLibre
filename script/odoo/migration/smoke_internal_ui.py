@@ -211,7 +211,21 @@ class Session:
         status, body = self.open("/web/login")
         if not status:
             return False, t("The server did not serve the login page.")
+        if status >= 400:
+            # DIRE le statut. Sans cela on rapportait « Session expired »,
+            # qui décrit la conséquence et cache la cause : la page de
+            # connexion elle-même rendait 500. Mesuré — une copie COW de
+            # `website.submenu` casse /web/login comme elle casse le site,
+            # et l'on cherchait du côté du mot de passe.
+            return False, (
+                f"{t('The login page itself failed')} : HTTP {status} —"
+                f" {error_from_page(body)}"
+            )
         match = RE_CSRF.search(body)
+        if not match:
+            # Sans jeton, Odoo refuse le POST et rend la page de connexion
+            # avec un statut 200 : on croirait à un mot de passe refusé.
+            return False, t("No CSRF token on the login page")
         fields = {
             "login": login,
             "password": password,
@@ -942,6 +956,12 @@ def main(argv=None):
             f" {t('the database was not neutralized, nothing to browse.')}"
         )
         return 0
+    from smoke_public_url import require_matching_version
+
+    mismatch = require_matching_version(config.database)
+    if mismatch:
+        print(f"⛔ {mismatch}")
+        return 2
     if port_is_taken(port):
         print(
             f"❌ {t('Something already listens on port')} {port} :"

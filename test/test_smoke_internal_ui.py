@@ -504,6 +504,161 @@ class TestASkipThatHidesAFailure(unittest.TestCase):
         )
 
 
+class TestSayingWHYTheLoginFailed(unittest.TestCase):
+    """« Session expired » décrit la conséquence et cache la cause.
+
+    Vécu : la passe back-office rapportait « Connexion impossible en tant
+    que test : SessionExpiredException », et l'on a cherché du côté du mot
+    de passe pendant que la vraie cause était sous les yeux — /web/login
+    rendait 500. Une copie COW de `website.submenu` casse la page de
+    connexion comme elle casse le site : les deux passent par le même
+    gabarit.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def session(self, status, body):
+        session = ui.Session("http://x")
+        session.open = lambda path, data=None, headers=None: (status, body)
+        return session
+
+    def test_a_broken_login_page_is_named_as_such(self):
+        ok, raison = self.session(500, "<html>oups</html>").log_in(
+            "db", "test", "test"
+        )
+        self.assertFalse(ok)
+        self.assertIn("login page itself failed", raison)
+        self.assertIn("500", raison)
+
+    def test_it_does_not_blame_the_password(self):
+        _ok, raison = self.session(500, "<html>oups</html>").log_in(
+            "db", "test", "test"
+        )
+        self.assertNotIn("password", raison.lower())
+
+    def test_a_page_without_a_token_is_named_too(self):
+        # Sans jeton, Odoo refuse le POST et rend la page de connexion avec
+        # un statut 200 : on croirait à un mot de passe refusé.
+        ok, raison = self.session(200, "<html>rien</html>").log_in(
+            "db", "test", "test"
+        )
+        self.assertFalse(ok)
+        self.assertIn("CSRF", raison)
+
+    def test_a_dead_server_is_still_distinguished(self):
+        ok, raison = self.session(0, "").log_in("db", "test", "test")
+        self.assertFalse(ok)
+        self.assertIn("did not serve", raison)
+
+
+class TestTheBackOfficeIsJudgedAfterTheRepair(unittest.TestCase):
+    """La passe interne tournait AVANT la réinitialisation.
+
+    Elle rapportait donc « connexion impossible » sur une base que la
+    réparation remettait d'aplomb quelques secondes plus tard — et rien ne
+    corrigeait le rapport. Les URL, elles, étaient déjà revérifiées.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+
+    def test_a_failed_pass_deserves_a_second_look(self):
+        import smoke_public_url as public
+
+        self.assertTrue(public.internal_needs_retry({"failures": [{"x": 1}]}))
+
+    def test_a_SKIPPED_pass_too(self):
+        # « connexion impossible » est justement le symptôme d'un site
+        # cassé, c'est-à-dire de ce qu'on vient de réparer.
+        import smoke_public_url as public
+
+        self.assertTrue(public.internal_needs_retry({"skipped": "raison"}))
+
+    def test_a_healthy_pass_is_not_redone(self):
+        import smoke_public_url as public
+
+        self.assertFalse(
+            public.internal_needs_retry({"results": [1], "failures": []})
+        )
+
+    def test_no_pass_at_all_is_not_redone(self):
+        import smoke_public_url as public
+
+        self.assertFalse(public.internal_needs_retry(None))
+
+    def test_the_retry_happens_while_the_second_server_is_up(self):
+        import inspect
+
+        import smoke_public_url as public
+
+        source = inspect.getsource(public.recheck_after_reset)
+        self.assertLess(
+            source.index("internal_needs_retry"),
+            source.index("stop_server(server)"),
+        )
+
+    def test_the_report_says_it_was_a_second_look(self):
+        import contextlib
+        import io
+
+        import smoke_public_url as public
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            public.render_internal(
+                {"skipped": "raison", "loud": True, "retried": True}
+            )
+        self.assertIn("after the reset", out.getvalue())
+
+
+class TestItRefusesTheWrongOdooVersion(unittest.TestCase):
+    """Mesuré en diagnostiquant ce même incident, et je m'y suis pris.
+
+    Un checkout passé en 18.0 démarré sur une base 17.0 rend 500 sur les
+    trente-sept URL ET sur /web/login. On conclut à un site entièrement
+    cassé alors que rien ne l'est — et Odoo écrit en chemin.
+    """
+
+    def test_the_smoke_tool_has_the_guard(self):
+        import inspect
+
+        import smoke_public_url as public
+
+        source = inspect.getsource(public.run)
+        self.assertIn("require_matching_version", source)
+        self.assertLess(
+            source.index("require_matching_version"),
+            source.index("start_server("),
+        )
+
+    def test_the_internal_tool_has_it_too(self):
+        import inspect
+
+        source = inspect.getsource(ui.main)
+        self.assertIn("require_matching_version", source)
+
+    def test_the_guard_is_not_reimplemented(self):
+        # Deux implémentations divergeraient, et une garde qui diverge ne
+        # garde rien.
+        import inspect
+
+        import smoke_public_url as public
+
+        source = inspect.getsource(public.require_matching_version)
+        self.assertIn("from database_cleanup import", source)
+
+
 class TestThePortalPage(unittest.TestCase):
     """/my n'est ni le site public ni le back-office : c'est un troisième
     rendu, en QWeb frontend, avec ses compteurs qui interrogent chacun leur

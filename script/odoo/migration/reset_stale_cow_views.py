@@ -392,7 +392,15 @@ def main():
         print(f"✅ {t('No COW copy has drifted from its module view.')}")
         return 0
     if not findings:
-        print(f"ℹ {t('No COW copy has drifted from its module view.')}")
+        # Le même texte que ci-dessus se lisait comme une contradiction :
+        # « aucune copie n'a dérivé », puis « ✅ réinitialisé id=2656 ».
+        # Les deux sont vrais — la détection différentielle ne voit qu'une
+        # copie dont un ENFANT casse — mais mis côte à côte sans un mot,
+        # on croit l'outil incohérent et l'on cesse de le lire.
+        print(
+            f"ℹ {t('The differential detection found nothing; resetting')}"
+            f" {t('the requested key(s) anyway.')}"
+        )
 
     if findings:
         print(

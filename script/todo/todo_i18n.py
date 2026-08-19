@@ -5615,6 +5615,26 @@ TRANSLATIONS = {
         "fr": "ou tapez nomfichier.zip",
         "en": "or type filename.zip",
     },
+    "The login page itself failed": {
+        "fr": "La page de connexion elle-même a échoué",
+        "en": "The login page itself failed",
+    },
+    "No CSRF token on the login page": {
+        "fr": "Aucun jeton CSRF sur la page de connexion",
+        "en": "No CSRF token on the login page",
+    },
+    "after the reset": {
+        "fr": "après la réinitialisation",
+        "en": "after the reset",
+    },
+    "The differential detection found nothing; resetting": {
+        "fr": "La détection différentielle n'a rien trouvé ; réinitialisation",
+        "en": "The differential detection found nothing; resetting",
+    },
+    "the requested key(s) anyway.": {
+        "fr": "de la ou des clés demandées malgré tout.",
+        "en": "the requested key(s) anyway.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
