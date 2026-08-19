@@ -109,6 +109,39 @@ class TestEmulatorRunning(unittest.TestCase):
             self.assertEqual(self.todo._qemu_emulator_running("h"), -1)
 
 
+class TestEmulatorReady(unittest.TestCase):
+    """Une seule lecture répond aux deux questions : binaire, puis AVD."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+
+    def test_a_complete_vm_is_ready(self):
+        with mock.patch("subprocess.run", return_value=_run_ok("")):
+            self.assertEqual(self.todo._qemu_emulator_ready("h"), (True, ""))
+
+    def test_the_missing_piece_is_named(self):
+        for probe, word in (("NO_SDK\n", "SDK"), ("NO_AVD\n", "AVD")):
+            with mock.patch("subprocess.run", return_value=_run_ok(probe)):
+                ready, why = self.todo._qemu_emulator_ready("h")
+            self.assertFalse(ready, probe)
+            self.assertIn(word, why, probe)
+
+    def test_the_sdk_is_reported_before_the_avd(self):
+        """Sans SDK, l'absence d'AVD n'est qu'une conséquence : nommer la cause
+        évite d'envoyer l'utilisateur créer un AVD qu'il ne peut pas créer."""
+        with mock.patch(
+            "subprocess.run", return_value=_run_ok("NO_SDK\nNO_AVD\n")
+        ):
+            _, why = self.todo._qemu_emulator_ready("h")
+        self.assertIn("SDK", why)
+
+    def test_an_unreachable_vm_is_not_declared_ready(self):
+        with mock.patch("subprocess.run", side_effect=OSError):
+            ready, why = self.todo._qemu_emulator_ready("h")
+        self.assertFalse(ready)
+        self.assertTrue(why)
+
+
 class _MenuCase(unittest.TestCase):
     """Socle commun : une VM locale, des réponses scriptées, aucun vrai ssh."""
 
@@ -122,16 +155,29 @@ class _MenuCase(unittest.TestCase):
         self.todo._qemu_self_address = staticmethod(lambda: ("10.0.0.2", True))
         self.calls = []
 
-    def _play(self, answers, running=0, start_rc=0, port_taken=False):
-        """Joue le menu avec des réponses données ; rend (sortie, commandes)."""
+    def _play(self, answers, running=0, start_rc=0, port_taken=False,
+              probe="", running_after=1, log="rien"):
+        """Joue le menu avec des réponses données ; rend (sortie, commandes).
+
+        « running » est le compte AVANT le démarrage, « running_after » celui
+        d'après : c'est cette distinction qui dit si l'émulateur a réellement
+        pris, le code de retour d'un « setsid » détaché ne valant rien.
+        """
+        state = {"started": False}
 
         def fake_run(cmd, *a, **k):
             self.calls.append(cmd)
             joined = " ".join(cmd)
             if "pgrep -c qemu-system" in joined:
-                return _run_ok(f"{running}\n")
+                n = running_after if state["started"] else running
+                return _run_ok(f"{n}\n")
+            if "NO_SDK" in joined:
+                return _run_ok(probe)
             if "setsid" in joined:
+                state["started"] = True
                 return _run_ok(returncode=start_rc, stderr="boum")
+            if "tail -5" in joined:
+                return _run_ok(log)
             return _run_ok()
 
         it = iter(answers)
@@ -139,6 +185,8 @@ class _MenuCase(unittest.TestCase):
             "builtins.input", lambda *a: next(it)
         ), mock.patch.object(
             TODO, "_port_in_use", staticmethod(lambda p: port_taken)
+        ), mock.patch(
+            "script.todo.todo.time.sleep", lambda *a: None
         ), mock.patch(
             "sys.stdout", new_callable=__import__("io").StringIO
         ) as out:
@@ -220,6 +268,37 @@ class TestEmulatorMenu(_MenuCase):
         out, calls = self._play(["1", "1"], start_rc=1)
         self.assertIn("boum", out)
         self.assertEqual(self._tunnels(calls), [])
+
+    def test_a_vm_without_the_sdk_is_diagnosed_before_anything_else(self):
+        """Une VM déployée sans cocher l'outil est le cas NORMAL. Le menu le
+        dit avant même de demander la fenêtre — mesuré sur une VM de migration,
+        où le démarrage détaché rendait 0 et le journal disait « not found »."""
+        out, calls = self._play(["1"], probe="NO_SDK\n")
+        self.assertIn("SDK", out)
+        self.assertNotIn("[1]", out.split("VM locale")[-1])
+        self.assertEqual(self._started(calls), [])
+
+    def test_a_vm_without_the_avd_is_named_as_such(self):
+        out, calls = self._play(["1"], probe="NO_AVD\n")
+        self.assertIn("AVD", out)
+        self.assertEqual(self._started(calls), [])
+
+    def test_a_stray_answer_cancels_instead_of_starting(self):
+        """« n » à une question à deux crans partait démarrer l'émulateur :
+        tout ce qui n'était pas « 2 » valait « sans fenêtre ». Observé."""
+        for stray in ("n", "3", "oui"):
+            self.calls = []
+            out, calls = self._play(["1", stray])
+            self.assertEqual(self._started(calls), [], stray)
+
+    def test_a_start_that_never_appears_reports_the_log_not_a_success(self):
+        """Le code de retour d'un « setsid » détaché vaut 0 quoi qu'il arrive :
+        seule la présence du processus prouve le démarrage."""
+        out, calls = self._play(
+            ["1", "1"], running_after=0, log="emulator: not found"
+        )
+        self.assertIn("not found", out)
+        self.assertNotIn("scrcpy -s", out)
 
     def test_a_successful_start_chains_into_the_tunnel_help(self):
         out, _ = self._play(["1", "1", "n"])

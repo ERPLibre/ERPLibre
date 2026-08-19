@@ -2252,6 +2252,27 @@ TRANSLATIONS = {
         "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
         "en": "(the hypervisor only relays; -J puts the VM last)",
     },
+    "Choice": {"fr": "Choix", "en": "Choice"},
+    "Tick the Android emulator tool when deploying.": {
+        "fr": "Cochez l'outil Émulateur Android au déploiement.",
+        "en": "Tick the Android emulator tool when deploying.",
+    },
+    "Cannot reach this VM.": {
+        "fr": "VM injoignable.",
+        "en": "Cannot reach this VM.",
+    },
+    "No Android SDK in this VM: no emulator binary.": {
+        "fr": "Pas de SDK Android dans cette VM : aucun binaire emulator.",
+        "en": "No Android SDK in this VM: no emulator binary.",
+    },
+    "No AVD named erplibre in this VM.": {
+        "fr": "Aucun AVD nommé erplibre dans cette VM.",
+        "en": "No AVD named erplibre in this VM.",
+    },
+    "It did not start; the VM log says:": {
+        "fr": "Il n'a pas démarré ; le journal de la VM dit :",
+        "en": "It did not start; the VM log says:",
+    },
     "No ~/.ssh/config entry; see SSH configuration.": {
         "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
         "en": "No ~/.ssh/config entry; see SSH configuration.",

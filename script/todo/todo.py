@@ -1677,6 +1677,34 @@ class TODO:
         except (OSError, subprocess.SubprocessError, ValueError, IndexError):
             return -1
 
+    def _qemu_emulator_ready(self, target, src="virsh"):
+        """La VM a-t-elle de quoi émuler ? Rend (prêt, raison).
+
+        Le binaire ET l'AVD, en une seule lecture : sans cette vérification le
+        démarrage détaché rendait 0 sur une VM sans SDK, et le menu annonçait
+        « Démarré » quand le journal disait « not found ». Une VM déployée sans
+        cocher l'outil Émulateur Android est le cas normal, pas une panne."""
+        probe = (
+            f"test -x {self._QEMU_EMULATOR_BIN} || echo NO_SDK; "
+            f"test -d $HOME/.android/avd/{self._QEMU_AVD_NAME}.avd"
+            " || echo NO_AVD"
+        )
+        try:
+            res = subprocess.run(
+                ["ssh"] + self._qemu_ssh_opts(src) + [target, probe],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False, t("Cannot reach this VM.")
+        out = res.stdout or ""
+        if "NO_SDK" in out:
+            return False, t("No Android SDK in this VM: no emulator binary.")
+        if "NO_AVD" in out:
+            return False, t("No AVD named erplibre in this VM.")
+        return True, ""
+
     def _qemu_emulator_menu(self):
         """Démarre l'émulateur Android d'une VM, et donne la suite qui va avec.
 
@@ -1722,10 +1750,22 @@ class TODO:
             )
             print(f"  {t('Closed.')}")
 
+        ready, why = self._qemu_emulator_ready(target, src)
+        if not ready:
+            print(f"\n  ⚠ {why}")
+            print(f"  {t('Tick the Android emulator tool when deploying.')}")
+            return
+
         print(f"\n  {t('Show a window?')}")
         print(f"  [1] {t('No window - stream with scrcpy (smoother)')} *")
         print(f"  [2] {t('Window over ssh -X (raw pixels, slower)')}")
         kind = input(f"{t('Choice')} [1]: ").strip() or "1"
+        # Sans cette validation, TOUT ce qui n'est pas « 2 » démarrait
+        # l'émulateur : une frappe de travers (« n ») lançait le démarrage,
+        # observé. Un menu à deux crans n'a pas de troisième réponse.
+        if kind not in ("1", "2"):
+            print(t("Cancelled."))
+            return
         emu = self._QEMU_EMULATOR_BIN
         avd = self._QEMU_AVD_NAME
 
@@ -1759,6 +1799,27 @@ class TODO:
         )
         if res.returncode:
             print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
+            return
+        # « setsid » détache : le code de retour ne dit RIEN de l'émulateur.
+        # Le menu annonçait « Démarré » pendant que le journal de la VM disait
+        # « not found » — mesuré sur une VM sans SDK. On attend donc de voir le
+        # processus, et à défaut on rapporte le journal.
+        for _ in range(5):
+            if self._qemu_emulator_running(target, src) > 0:
+                break
+            time.sleep(2)
+        else:
+            print(f"  ⚠ {t('It did not start; the VM log says:')}")
+            log = subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, "tail -5 /tmp/erplibre-emulator.log 2>/dev/null"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            for line in (log.stdout or "").strip().splitlines():
+                print(f"    {line}")
             return
         print(
             f"  {t('Started. Boot takes about a minute; log in the VM:')}"
