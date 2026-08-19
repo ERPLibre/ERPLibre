@@ -5691,6 +5691,62 @@ TRANSLATIONS = {
         "fr": "détail seul",
         "en": "detail only",
     },
+    "errors in the log": {
+        "fr": "erreurs dans le journal",
+        "en": "errors in the log",
+    },
+    "Migration quality, step by step": {
+        "fr": "Qualité de la migration, palier par palier",
+        "en": "Migration quality, step by step",
+    },
+    "database not found": {
+        "fr": "base introuvable",
+        "en": "database not found",
+    },
+    "attachment files missing from the filestore": {
+        "fr": "fichiers de pièces jointes absents du filestore",
+        "en": "attachment files missing from the filestore",
+    },
+    "From start to finish": {
+        "fr": "Du départ à l'arrivée",
+        "en": "From start to finish",
+    },
+    "not comparable: a database is missing": {
+        "fr": "non comparable : une base manque",
+        "en": "not comparable: a database is missing",
+    },
+    "probable table rename(s)": {
+        "fr": "renommage(s) de table probable(s)",
+        "en": "probable table rename(s)",
+    },
+    "table(s) lost rows": {
+        "fr": "table(s) ont perdu des lignes",
+        "en": "table(s) lost rows",
+    },
+    "attachments": {
+        "fr": "pièces jointes",
+        "en": "attachments",
+    },
+    "probably renamed to": {
+        "fr": "probablement renommée en",
+        "en": "probably renamed to",
+    },
+    "steps": {
+        "fr": "paliers",
+        "en": "steps",
+    },
+    "Migration": {
+        "fr": "Migration",
+        "en": "Migration",
+    },
+    "Quality of a migration, step by step": {
+        "fr": "Qualité d'une migration, palier par palier",
+        "en": "Quality of a migration, step by step",
+    },
+    "Quality": {
+        "fr": "Qualité",
+        "en": "Quality",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

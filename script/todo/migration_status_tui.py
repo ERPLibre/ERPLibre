@@ -234,6 +234,34 @@ def apply_width(app, delta):
     app.query_one("#left").styles.width = app.left_width
 
 
+def fill_table(app):
+    """(Re)construire la liste de gauche depuis les données courantes."""
+    table = app.query_one("#left")
+    table.clear(columns=True)
+    table.add_columns(t("Test results"), "#", "❌")
+    for row in app.lst_row:
+        table.add_row(row["label"][:38], row["detail"], row.get("severe", ""))
+    table.styles.width = app.left_width
+    app.query_one("#head").update(head_text(app.dct))
+
+
+def show_pane(app):
+    """Peindre le détail de la ligne choisie.
+
+    `from_ansi` fait DEUX choses : il rend les couleurs, et il traite le
+    reste comme du texte LITTÉRAL. Sans lui, une commande contenant
+    « [1] » passait pour du balisage Rich et disparaissait sans un mot.
+    """
+    from rich.text import Text
+
+    row = current_row(app.lst_row, app.index)
+    app.query_one("#content").update(
+        Text.from_ansi(
+            pane_text(app.dct, row, colour=True, show_log=app.show_log)
+        )
+    )
+
+
 def build_app(dct, path=None):
     """Textual est importé ICI, pas au chargement du module.
 
@@ -241,7 +269,6 @@ def build_app(dct, path=None):
     Textual, et c'est aussi ce qui permet à l'appelant de retomber sur le
     rapport texte plutôt que d'échouer.
     """
-    from rich.text import Text
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, VerticalScroll
     from textual.widgets import DataTable, Footer, Header, Static
@@ -253,6 +280,7 @@ def build_app(dct, path=None):
             ("r", "refresh", t("Refresh")),
             ("l", "toggle_log", t("Logs")),
             ("p", "cycle_panels", t("Panels")),
+            ("k", "quality", t("Quality")),
             ("plus,equal", "wider", t("Wider")),
             ("minus,underscore", "narrower", t("Narrower")),
         ]
@@ -282,39 +310,14 @@ def build_app(dct, path=None):
 
         def on_mount(self):
             self.title = t("Migration state")
-            self._fill_table()
+            fill_table(self)
             apply_panels(self)
-            self._show()
-
-        def _fill_table(self):
-            table = self.query_one("#left", DataTable)
-            table.clear(columns=True)
-            table.add_columns(t("Test results"), "#", "❌")
-            for row in self.lst_row:
-                table.add_row(
-                    row["label"][:38], row["detail"], row.get("severe", "")
-                )
-            table.styles.width = self.left_width
-            self.query_one("#head", Static).update(head_text(self.dct))
-
-        def _show(self):
-            row = current_row(self.lst_row, self.index)
-            # `from_ansi` fait DEUX choses : il rend les couleurs, et il
-            # traite le reste comme du texte LITTÉRAL. Sans lui, une
-            # commande contenant « [1] » passait pour du balisage Rich et
-            # disparaissait de l'écran sans que rien ne le signale.
-            self.query_one("#content", Static).update(
-                Text.from_ansi(
-                    pane_text(
-                        self.dct, row, colour=True, show_log=self.show_log
-                    )
-                )
-            )
+            show_pane(self)
 
         def on_data_table_row_highlighted(self, event):
             if event.data_table.id == "left" and self.lst_row:
                 self.index = event.cursor_row
-                self._show()
+                show_pane(self)
 
         def action_refresh(self):
             """Relire le disque. La migration écrit PENDANT qu'on regarde.
@@ -329,12 +332,41 @@ def build_app(dct, path=None):
             self.dct = neuf
             self.lst_row = rows(self.dct)
             self.index = min(self.index, max(0, len(self.lst_row) - 1))
-            self._fill_table()
-            self._show()
+            fill_table(self)
+            show_pane(self)
+
+        def action_quality(self):
+            """Ouvrir le rapport de qualité, sans quitter celui-ci.
+
+            Les deux écrans répondent à deux questions voisines : « où en
+            est-on » et « qu'a-t-on gagné ou perdu en chemin ». Les
+            séparer par une touche plutôt que par deux commandes à retenir
+            est ce qui les rend utilisables ensemble.
+
+            `suspend` rend le terminal à l'autre plein écran : deux
+            applications Textual ne peuvent pas peindre le même écran en
+            même temps.
+            """
+            from script.analyse import check_migration_quality as quality
+            from script.analyse.check_migration_quality_tui import (
+                run_tui as run_quality,
+            )
+
+            dct = quality.read_progression()
+            if not quality.chain(dct):
+                self.notify(t("No migration in progress."))
+                return
+            with self.suspend():
+                lst = quality.survey(
+                    dct, echo=lambda texte: print(f"⧖ {texte}", flush=True)
+                )
+                if not run_quality(lst):
+                    print(quality.render_text(lst))
+                    input(f"💬 {t('press to continue')} : ")
 
         def action_toggle_log(self):
             self.show_log = not self.show_log
-            self._show()
+            show_pane(self)
 
         def action_cycle_panels(self):
             """Trois états, du plus complet au plus dépouillé.

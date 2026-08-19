@@ -953,7 +953,9 @@ class TestTheFullScreenColoursToo(Base):
     def test_the_screen_goes_through_from_ansi(self):
         import inspect
 
-        source = inspect.getsource(tui.build_app)
+        # Le rendu est sorti de la classe pour la rendre testable : c'est
+        # `show_pane` qui porte maintenant les deux propriétés.
+        source = inspect.getsource(tui.show_pane)
         self.assertIn("Text.from_ansi", source)
         self.assertIn("colour=True", source)
 
