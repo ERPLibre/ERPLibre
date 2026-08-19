@@ -445,6 +445,14 @@ def render_internal(internal):
     if internal is None:
         return False
     if "skipped" in internal:
+        if internal.get("loud"):
+            # Un saut ATTENDU se dit à voix basse ; un saut qui trahit une
+            # panne doit compter comme un échec, sinon le code de sortie
+            # annonce que tout va bien.
+            print(
+                f"\n⚠️  {t('Back office NOT browsed')} : {internal['skipped']}"
+            )
+            return True
         print(f"\nℹ️  {t('Back office not browsed')} : {internal['skipped']}")
         return False
     import smoke_internal_ui
@@ -481,6 +489,7 @@ def internal_phase(
     limit=20,
     every_menu=False,
     lst_portal=None,
+    required=False,
 ):
     """Le back-office, si la base a été neutralisée. Rend None sinon.
 
@@ -498,14 +507,32 @@ def internal_phase(
     try:
         import smoke_internal_ui
     except ImportError:
-        return None
+        # Se taire ici ferait disparaître la passe ENTIÈRE sans un mot, et
+        # l'on croirait le back-office testé. Un outil absent est une
+        # panne d'installation, pas une base saine.
+        return {"skipped": t("smoke_internal_ui.py is missing"), "loud": True}
     etat = smoke_internal_ui.user_state(database, login, run_psql=run_psql)
     if etat == "absent":
+        # `required` dit que la migration a NEUTRALISÉ cette base : le
+        # compte devrait donc y être. Mesuré — il survit jusqu'au palier
+        # 15 puis disparaît, et la passe s'arrêtait sans bruit exactement
+        # là où une migration fait le plus de dégâts.
+        if required:
+            return {
+                "skipped": t(
+                    "the test user is gone from a neutralized"
+                    " database: the back office was NOT checked"
+                ),
+                "loud": True,
+            }
         return {"skipped": t("no test user: the database was not neutralized")}
     if etat != "present":
         # « je ne sais pas » n'est pas « tout va bien » : le dire autrement
         # ferait passer un back-office jamais ouvert pour un back-office sain.
-        return {"skipped": t("could not tell whether the test user exists")}
+        return {
+            "skipped": t("could not tell whether the test user exists"),
+            "loud": True,
+        }
     try:
         lst_result, lst_failure = smoke_internal_ui.run(
             base_url,
@@ -541,6 +568,7 @@ def run(
     internal_limit=20,
     every_menu=False,
     portal=None,
+    internal_required=False,
 ):
     """Démarrer, interroger, arrêter, LIRE, éventuellement corriger, revérifier.
 
@@ -585,6 +613,7 @@ def run(
             limit=internal_limit,
             every_menu=every_menu,
             lst_portal=portal,
+            required=internal_required,
         )
     finally:
         stop_server(server)
@@ -721,6 +750,11 @@ def main(argv=None):
         help="open every menu with an action, not just each app's first page",
     )
     parser.add_argument(
+        "--internal-required",
+        action="store_true",
+        help="the database WAS neutralized: a missing test user is a failure",
+    )
+    parser.add_argument(
         "--portal",
         default="/my",
         help="portal paths opened while signed in (comma separated, empty"
@@ -748,6 +782,7 @@ def main(argv=None):
             internal_password=config.password,
             internal_limit=config.record_limit,
             every_menu=config.all_menus,
+            internal_required=config.internal_required,
             portal=[
                 path.strip()
                 for path in (config.portal or "").split(",")

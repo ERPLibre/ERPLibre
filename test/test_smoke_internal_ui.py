@@ -404,6 +404,106 @@ class TestTheViewsAreRenderedServerSide(unittest.TestCase):
         self.assertEqual(appels, ["get_views", "load_views", "load_views"])
 
 
+class TestASkipThatHidesAFailure(unittest.TestCase):
+    """Tous les sauts ne se valent pas, et c'est mesuré.
+
+    L'utilisateur `test` survit aux paliers 12 à 15 puis DISPARAÎT : relevé
+    sur les six bases d'une vraie migration, présent jusqu'à 15, absent en
+    17 et 18. La passe back-office s'arrêtait donc sans bruit exactement là
+    où une migration fait le plus de dégâts, et le rapport disait
+    tranquillement « la base n'a pas été neutralisée » — ce qui était faux.
+
+    `required` porte ce que la migration SAIT : elle a neutralisé cette
+    base, le compte devrait y être. Son absence devient alors une
+    trouvaille, pas une formalité.
+    """
+
+    def setUp(self):
+        from script.todo import todo_i18n
+
+        self.addCleanup(
+            setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
+        )
+        todo_i18n._current_lang = "en"
+        import smoke_public_url
+
+        self.public = smoke_public_url
+        original = smoke_public_url.run_psql
+        self.addCleanup(setattr, smoke_public_url, "run_psql", original)
+
+    def phase(self, rows, **kw):
+        self.public.run_psql = lambda db, sql: rows
+        return self.public.internal_phase("http://x", "db", enabled=True, **kw)
+
+    def test_no_user_on_a_plain_database_is_a_quiet_skip(self):
+        rapport = self.phase([["0"]])
+        self.assertIn("not neutralized", rapport["skipped"])
+        self.assertFalse(rapport.get("loud"))
+
+    def test_no_user_on_a_NEUTRALIZED_database_is_a_finding(self):
+        rapport = self.phase([["0"]], required=True)
+        self.assertIn("NOT checked", rapport["skipped"])
+        self.assertTrue(rapport["loud"])
+
+    def test_a_finding_counts_as_a_failure(self):
+        # Sinon le code de sortie annonce que tout va bien alors que le
+        # back-office n'a jamais été ouvert.
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            echec = self.public.render_internal(
+                {"skipped": "disparu", "loud": True}
+            )
+        self.assertTrue(echec)
+        self.assertIn("NOT browsed", out.getvalue())
+
+    def test_a_quiet_skip_does_not(self):
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(
+                self.public.render_internal({"skipped": "pas neutralisée"})
+            )
+
+    def test_an_unreadable_database_is_never_silent(self):
+        rapport = self.phase([])
+        self.assertTrue(rapport["loud"])
+
+    def test_a_missing_tool_is_never_silent(self):
+        # `except ImportError: return None` faisait disparaître la passe
+        # ENTIÈRE sans un mot, et l'on croyait le back-office testé.
+        import inspect
+
+        source = inspect.getsource(self.public.internal_phase)
+        debut = source.index("except ImportError")
+        self.assertIn("loud", source[debut : debut + 400])
+
+    def test_the_migration_asks_for_it_when_it_neutralized(self):
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.prompt_smoke_public_url)
+        self.assertIn("--internal-required", source)
+        self.assertIn('"_neutralize" in database_name', source)
+
+    def test_the_migration_says_UP_FRONT_what_will_be_browsed(self):
+        # Un saut annoncé en une ligne à la fin d'un long rapport ne se
+        # voit pas : on croit alors le back-office testé.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.prompt_smoke_public_url)
+        self.assertLess(
+            source.index("Public pages only:"),
+            source.index("run_on_terminal"),
+        )
+
+
 class TestThePortalPage(unittest.TestCase):
     """/my n'est ni le site public ni le back-office : c'est un troisième
     rendu, en QWeb frontend, avec ses compteurs qui interrogent chacun leur

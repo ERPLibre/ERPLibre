@@ -3058,14 +3058,27 @@ class TodoUpgrade:
         )
         if answer != "y":
             return
-        print(
-            f"   {t('Public pages, then the back office as the test user')}"
-            f" {t('if the database was neutralized.')}"
-        )
+        # DIRE ce qui sera parcouru, et le dire AVANT. « si la base a été
+        # neutralisée » laissait la question ouverte pendant tout le
+        # parcours, et un saut annoncé en une ligne à la fin d'un long
+        # rapport ne se voit pas : on croit alors le back-office testé.
+        neutralise = "_neutralize" in database_name
+        if neutralise:
+            print(
+                f"   {t('Public pages, then the back office and /my as the')}"
+                f" {t('test user (neutralized database).')}"
+            )
+        else:
+            print(
+                f"   {t('Public pages only:')} '{database_name}'"
+                f" {t('was not neutralized, so there is no test user to')}"
+                f" {t('sign in with.')}"
+            )
         self.run_on_terminal(
             f"{PYTHON_BIN}"
             " ./script/odoo/migration/smoke_public_url.py"
             f" -d {database_name}"
+            + (" --internal-required" if neutralise else "")
         )
 
     def show_cow_drift(self, database_name, next_version, mode="diff"):

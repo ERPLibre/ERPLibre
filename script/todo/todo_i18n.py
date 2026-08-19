@@ -5498,6 +5498,38 @@ TRANSLATIONS = {
         "fr": "appuyez pour continuer",
         "en": "press to continue",
     },
+    "smoke_internal_ui.py is missing": {
+        "fr": "smoke_internal_ui.py est absent",
+        "en": "smoke_internal_ui.py is missing",
+    },
+    "the test user is gone from a neutralized database: the back office was NOT checked": {
+        "fr": "l'utilisateur test a disparu d'une base neutralisée : le back-office n'a PAS été vérifié",
+        "en": "the test user is gone from a neutralized database: the back office was NOT checked",
+    },
+    "Back office NOT browsed": {
+        "fr": "Back-office NON parcouru",
+        "en": "Back office NOT browsed",
+    },
+    "Public pages, then the back office and /my as the": {
+        "fr": "Les pages publiques, puis le back-office et /my avec",
+        "en": "Public pages, then the back office and /my as the",
+    },
+    "test user (neutralized database).": {
+        "fr": "l'utilisateur test (base neutralisée).",
+        "en": "test user (neutralized database).",
+    },
+    "Public pages only:": {
+        "fr": "Pages publiques seulement :",
+        "en": "Public pages only:",
+    },
+    "was not neutralized, so there is no test user to": {
+        "fr": "n'a pas été neutralisée, il n'y a donc pas d'utilisateur test pour",
+        "en": "was not neutralized, so there is no test user to",
+    },
+    "sign in with.": {
+        "fr": "s'y connecter.",
+        "en": "sign in with.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
