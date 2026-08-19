@@ -60,6 +60,30 @@ esac
 say() { echo -e "   $*"; }
 die() { echo -e "   ${Red}✗ $*${Color_Off}" >&2; exit 1; }
 
+# Adresse par laquelle la machine est joignable, pour ROOT_URL et SSH_DOMAIN.
+#
+# « hostname -I » d'abord, mais PAS seulement : ce drapeau vient de net-tools et
+# l'inetutils d'Arch ne le connaît pas. « ip route get » le remplace partout où
+# iproute2 est là, c'est-à-dire partout. « localhost » ferme la marche : une
+# forge joignable en local vaut mieux qu'un script qui s'arrête.
+host_address() {
+    local h=""
+    # Chaque candidat est VALIDÉ comme adresse IPv4 avant d'être retenu : un
+    # « hostname » qui ne connaît pas -I peut rendre le nom de la machine, et
+    # une ROOT_URL bâtie sur un nom non résolvable est pire qu'un repli.
+    for h in \
+        "$(hostname -I 2>/dev/null | awk '{print $1}')" \
+        "$(ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')" \
+        "$(ip -4 -o addr show scope global 2>/dev/null \
+            | awk '{split($4, a, "/"); print a[1]; exit}')"
+    do
+        case "$h" in
+            [0-9]*.[0-9]*.[0-9]*.[0-9]*) echo "$h"; return 0 ;;
+        esac
+    done
+    echo localhost
+}
+
 # --- 1. Architecture -------------------------------------------------------
 # Forgejo publie amd64, arm64 et arm-6. PAS de s390x : sur cette architecture
 # il faudrait le bâtir depuis les sources en Go, ce que ce script ne fait pas —
@@ -158,8 +182,7 @@ sudo chmod 770 "$CONF_DIR"
 if sudo test -f "$CONF"; then
     say "configuration conservée : $CONF"
 else
-    host=$(hostname -I 2>/dev/null | awk '{print $1}')
-    [ -n "$host" ] || host=localhost
+    host=$(host_address)
     # Les QUATRE secrets, et pas seulement les deux évidents. Vécu : sans
     # « oauth2.JWT_SECRET », Forgejo tente de l'écrire dans app.ini au
     # démarrage, n'y arrive pas — le fichier appartient à root — et s'arrête
@@ -291,8 +314,7 @@ else
 fi
 
 # --- 9. Résumé -------------------------------------------------------------
-host=$(hostname -I 2>/dev/null | awk '{print $1}')
-[ -n "$host" ] || host=localhost
+host=$(host_address)
 version=$("$BIN" --version 2>/dev/null | head -1)
 say "${Green}Forgejo prêt${Color_Off} : http://$host:$HTTP_PORT/"
 say "  $version"

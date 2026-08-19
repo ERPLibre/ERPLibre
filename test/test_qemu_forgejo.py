@@ -204,6 +204,63 @@ class TestTheScript(unittest.TestCase):
         self.assertNotIn("Version de Forgejo introuvable", out)
 
 
+class TestHostAddress(unittest.TestCase):
+    """L'adresse qui va dans ROOT_URL et SSH_DOMAIN, sur trois terrains.
+
+    « hostname -I » vient de net-tools : l'inetutils d'Arch ne connaît pas ce
+    drapeau et peut rendre le NOM de la machine. Une ROOT_URL bâtie sur un nom
+    non résolvable est pire qu'un repli, d'où la validation de la forme.
+    """
+
+    def _host_address(self, stubs):
+        """Extrait la fonction du script et l'exécute avec un PATH bouchonné."""
+        body = SCRIPT.read_text()
+        start = body.index("host_address() {")
+        end = body.index("\n}", start) + 2
+        fn = body[start:end]
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = pathlib.Path(tmp) / "bin"
+            bin_dir.mkdir()
+            for name, script in stubs.items():
+                (bin_dir / name).write_text(f"#!/bin/bash\n{script}\n")
+                (bin_dir / name).chmod(0o755)
+            res = subprocess.run(
+                ["bash", "-c", fn + "\nhost_address"],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=f"{bin_dir}:/usr/bin:/bin"),
+                timeout=30,
+            )
+        return res.stdout.strip()
+
+    def test_it_takes_the_address_hostname_gives(self):
+        got = self._host_address({"hostname": "echo 10.1.2.3"})
+        self.assertEqual("10.1.2.3", got)
+
+    def test_a_hostname_that_returns_a_name_is_rejected(self):
+        """Le cas Arch : on tombe alors sur « ip », et non sur un nom."""
+        got = self._host_address(
+            {
+                "hostname": "echo erplibre-arch",
+                "ip": "echo '1.0.0.1 via 10.0.0.1 dev eth0 src 10.9.9.9 uid 0'",
+            }
+        )
+        self.assertEqual("10.9.9.9", got)
+
+    def test_without_hostname_nor_ip_it_falls_back_to_localhost(self):
+        """Une forge joignable en local vaut mieux qu'un script qui s'arrête."""
+        got = self._host_address({"hostname": "exit 1", "ip": "exit 1"})
+        self.assertEqual("localhost", got)
+
+    def test_it_never_returns_an_empty_string(self):
+        """Une ROOT_URL « http://:3000/ » ne mène nulle part."""
+        for stubs in (
+            {"hostname": "echo", "ip": "echo"},
+            {"hostname": "exit 2", "ip": "exit 2"},
+        ):
+            self.assertTrue(self._host_address(stubs), stubs)
+
+
 class TestTheScriptGuards(unittest.TestCase):
     """Quatre pièges rencontrés en le mettant au point, tous mesurés."""
 
