@@ -337,6 +337,25 @@ Rendering is `swangle` in the AVD's own `config.ini` — `auto` would open a
 black screen, and `swiftshader_indirect` no longer exists, the emulator
 answering `Selected GPU option ... is not valid`.
 
+A sixth, **Forgejo**, installs a self-hosted git forge — the software behind
+Codeberg — from the project's official static binary, and leaves it serving on
+port 3000 with git-over-SSH on 2222. Like the mobile build it needs no desktop,
+and unlike it no package family is excluded: the binary is static, so the same
+file serves apt, dnf, pacman and zypper. That is what makes it portable across
+the ERPLibre platforms without a branch per distribution. Architectures follow
+upstream, which publishes amd64, arm64 and arm-6 — the checkbox greys out on
+s390x rather than dropping a binary that cannot run.
+
+The work lives in `script/forgejo/install_forgejo.sh`, callable on its own for
+an existing machine: `./script/forgejo/install_forgejo.sh`. It verifies the
+published checksum, writes all four secrets itself so the service never needs
+to rewrite its own configuration, and stores its data in SQLite so it does not
+dispute PostgreSQL with Odoo on the same VM. Replaying it is cheap and safe —
+1.5 s measured with everything in place: it skips a binary already at the right
+version, never overwrites an existing `app.ini`, and does not recreate the
+administrator. `FORGEJO_VERSION`, `FORGEJO_HTTP_PORT`, `FORGEJO_ADMIN_USER` and
+a few others tune it; `--help` lists them.
+
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
 
@@ -482,6 +501,26 @@ plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette).
 Le rendu est « swangle » dans le `config.ini` de l'AVD — « auto » ouvrirait un
 écran noir, et « swiftshader_indirect » n'existe plus, l'émulateur répondant
 `Selected GPU option ... is not valid`.
+
+Un sixième, **Forgejo**, installe une forge git auto-hébergée — le logiciel
+derrière Codeberg — depuis le binaire statique officiel du projet, et la laisse
+en service sur le port 3000, avec git par SSH sur 2222. Comme la compilation
+mobile, elle n'a besoin d'aucun bureau ; contrairement à elle, aucune famille de
+paquets n'est exclue : le binaire est statique, donc le même fichier sert apt,
+dnf, pacman et zypper. C'est ce qui la rend portable sur les plateformes
+ERPLibre sans une branche par distribution. Les architectures suivent l'amont,
+qui publie amd64, arm64 et arm-6 — la case se grise sur s390x plutôt que de
+poser un binaire qui ne s'exécutera pas.
+
+Le travail vit dans `script/forgejo/install_forgejo.sh`, appelable seul sur une
+machine existante : `./script/forgejo/install_forgejo.sh`. Il vérifie la somme
+de contrôle publiée, écrit lui-même les quatre secrets pour que le service n'ait
+jamais à réécrire sa propre configuration, et garde ses données en SQLite pour
+ne pas disputer PostgreSQL à Odoo sur la même VM. Le rejouer est sans risque et
+bon marché — 1,5 s mesuré, tout étant en place : il saute un binaire déjà à la
+bonne version, ne réécrit jamais un `app.ini` existant et ne recrée pas
+l'administrateur. `FORGEJO_VERSION`, `FORGEJO_HTTP_PORT`, `FORGEJO_ADMIN_USER`
+et quelques autres le règlent ; `--help` les énumère.
 
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.

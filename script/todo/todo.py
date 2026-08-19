@@ -5422,6 +5422,32 @@ class TODO:
             # manifeste ajoute, et du venv d'outils pour le synchroniser.
             "phase": "after",
         },
+        # Forgejo est un SERVICE, pas un outil de bureau : une VM serveur le
+        # prend aussi bien qu'une VM graphique. Son binaire est STATIQUE — le
+        # même fichier sur apt, dnf, pacman et zypper — donc aucune famille de
+        # paquets n'est exclue, et c'est ce qui le rend portable sur toutes les
+        # plateformes ERPLibre sans une branche par distribution.
+        #
+        # Les architectures, elles, sont bornées par l'amont : Forgejo publie
+        # amd64, arm64 et arm-6, et RIEN pour s390x. Sur celle-là il faudrait le
+        # bâtir en Go ; la case se grise plutôt que de poser un binaire qui ne
+        # s'exécute pas.
+        #
+        # Disque : ~115 Mo de binaire (34 Mo téléchargés en .xz), la base SQLite
+        # et les dépôts que l'utilisateur y poussera.
+        "forgejo": {
+            "label": "Forgejo (git forge)",
+            "hint": "self-hosted git forge on :3000, SQLite",
+            "disk_gb": 2,
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": (),
+            # APRÈS l'installation : le script vit dans le dépôt, donc après le
+            # clone. Rien d'autre ne l'y oblige — Forgejo ne dépend ni du venv
+            # ni d'Odoo.
+            "phase": "after",
+        },
         # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
         # l'écran de qui s'y connecte, par « ssh -X ». Il a besoin, lui, de KVM
         # dans la VM — donc de virtualisation imbriquée sur l'hôte, ce que le
@@ -6474,6 +6500,25 @@ class TODO:
             + f'echo "   {t("smoother, without X11:")} TODO > Execute > Deploy > QEMU/KVM > tunnel > 4"'
         )
 
+    def _qemu_forgejo_steps(self, el_dir):
+        """Pose Forgejo dans la VM, par le script dédié du dépôt.
+
+        Tout le travail est DANS le script — architecture, version, somme de
+        contrôle, compte système, configuration, service, compte
+        administrateur. Ce bloc ne fait que l'appeler : une seule autorité, et
+        la même commande sert un déploiement de VM et une installation à la
+        main sur une machine existante.
+
+        Pas de garde, comme la compilation mobile : une VM dont la forge
+        demandée n'existe pas n'est pas la VM demandée. Le script, lui, est
+        rejouable — il ne retélécharge pas un binaire déjà en place et ne
+        réécrit jamais une configuration existante.
+        """
+        return (
+            f'echo "== {t("Forgejo (git forge)")} =="; '
+            f"{el_dir}/script/forgejo/install_forgejo.sh"
+        )
+
     def _qemu_after_remote_cmd(self, tools, prod=False):
         """Phase d'APRÈS l'installation : prologue commun, SDK commun, puis ce
         qui a été coché.
@@ -6486,29 +6531,39 @@ class TODO:
         émulateur créé avec succès effacerait le verdict de la compilation."""
         picked = [
             k
-            for k in ("mobile", "avd")
+            for k in ("forgejo", "mobile", "avd")
             if k in (tools or ()) and k in self._QEMU_VM_TOOLS
         ]
         if not picked:
             return ""
         el_dir = self._qemu_install_dir(prod)
+        parts = []
+        # Forgejo d'abord : une minute, contre une heure pour le SDK et l'APK.
+        # Un échec rapide se voit tôt plutôt qu'après le long.
+        if "forgejo" in picked:
+            parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
         groups = []
         if "mobile" in picked:
             groups.append(self._qemu_mobile_build_steps(el_dir))
         if "avd" in picked:
             groups.append(self._qemu_avd_steps(el_dir))
-        return (
-            f'echo "== {t("ERPLibre mobile, Android SDK (long)")} =="; '
-            + self._qemu_android_prologue_cmd()
-            + self._qemu_android_sdk_steps(el_dir)
-            # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que la
-            # première commande du groupe suivant : mesuré, un APK manquant
-            # laissait tourner l'émulateur puis rendait 0 — la VM repassait au
-            # vert alors que rien n'avait compilé. C'est le même piège que le
-            # bloc de service systemd, quelques centaines de lignes plus haut.
-            + " && ".join(f"{{ {g}; }}" for g in groups)
-            + "; "
-        )
+        if groups:
+            # UN seul prologue et un seul SDK même quand les deux options le
+            # sont : deux prologues, et le second tronquerait le journal
+            # détaillé du premier.
+            parts.append(
+                "{ "
+                + f'echo "== {t("ERPLibre mobile, Android SDK (long)")} =="; '
+                + self._qemu_android_prologue_cmd()
+                + self._qemu_android_sdk_steps(el_dir)
+                # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que
+                # la première commande du groupe suivant : mesuré, un APK
+                # manquant laissait tourner l'émulateur puis rendait 0 — la VM
+                # repassait au vert alors que rien n'avait compilé.
+                + " && ".join(f"{{ {g}; }}" for g in groups)
+                + "; }"
+            )
+        return " && ".join(parts) + "; "
 
     def _qemu_mobile_remote_cmd(self, prod=False):
         """Compilation mobile seule — la forme que testent les tests."""

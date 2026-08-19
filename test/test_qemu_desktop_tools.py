@@ -99,10 +99,17 @@ class TestToolDisk(unittest.TestCase):
 
     def test_a_server_only_pays_for_what_it_gets(self):
         """Un serveur ne porte aucun IDE, donc il n'en paie pas le disque —
-        mais il paie bien ce qu'il reçoit : compilation mobile et émulateur."""
+        mais il paie bien ce qu'il reçoit : compilation mobile, émulateur et
+        forge. La somme est calculée depuis la table plutôt qu'écrite en
+        chiffre : ajouter un outil sans écran ne doit pas casser ce test, il
+        doit le suivre."""
+        expected = sum(
+            spec["disk_gb"]
+            for key, spec in TODO._QEMU_VM_TOOLS.items()
+            if not spec["needs_desktop"]
+        )
         self.assertEqual(
-            TODO._QEMU_VM_TOOLS["mobile"]["disk_gb"]
-            + TODO._QEMU_VM_TOOLS["avd"]["disk_gb"],
+            expected,
             self.todo._qemu_tools_disk_gb(self.all, "amd64", "", "ubuntu"),
         )
 
@@ -278,7 +285,9 @@ class TestMobileBuild(unittest.TestCase):
         """Elle compile, elle n'affiche rien : un bureau serait du gaspillage.
         L'émulateur non plus n'en a pas besoin — il s'affiche par ssh -X."""
         got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
-        self.assertEqual(["mobile", "avd"], got)
+        self.assertEqual(["mobile", "forgejo", "avd"], got)
+        # Forgejo est là pour la même raison que la compilation : un
+        # service ne demande pas d'écran.
 
     def test_it_is_bounded_to_apt(self):
         """install-android.sh du dépôt mobile commence par « sudo apt install

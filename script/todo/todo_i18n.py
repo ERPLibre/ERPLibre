@@ -2260,6 +2260,14 @@ TRANSLATIONS = {
     "line": {"fr": "ligne", "en": "line"},
     "free space": {"fr": "libre", "en": "free"},
     "silent": {"fr": "silence", "en": "silent"},
+    "Forgejo (git forge)": {
+        "fr": "Forgejo (forge git)",
+        "en": "Forgejo (git forge)",
+    },
+    "self-hosted git forge on :3000, SQLite": {
+        "fr": "forge git auto-hébergée sur :3000, SQLite",
+        "en": "self-hosted git forge on :3000, SQLite",
+    },
     "no project yet, second try on the warm caches": {
         "fr": "pas de projet encore ; seconde tentative sur les caches chauds",
         "en": "no project yet, second try on the warm caches",
