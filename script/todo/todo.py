@@ -5750,8 +5750,28 @@ class TODO:
             '    "-Didea.suppress.statistics.report=true\\n"\n'
             ")\n"
             "ELPYC\n"
+            # « setsid » donne au tout son PROPRE groupe de processus, et
+            # c'est le groupe qu'on tuera. Sans lui, « $!  » est le PID de
+            # xvfb-run — un script — et le tuer n'atteint ni PyCharm, ni Xvfb,
+            # ni les cef_server qu'il a lancés. Mesuré sur
+            # erplibre-ubuntu-2604-gnome : PyCharm tournait encore 45 minutes
+            # plus tard avec 1,9 Go, et la compilation de l'APK qui suivait
+            # s'est fait tuer par le noyau, faute de mémoire.
+            # Les watches inotify AVANT d'ouvrir : le dépôt mobile pose
+            # 123 000 fichiers d'assets, et la limite par défaut est dépassée
+            # dès l'analyse — « inotify_add_watch(...): No space left on
+            # device », puis « watch root cannot be watched: -2 », puis aucun
+            # .idea écrit. Mesuré sur erplibre-ubuntu-2604-gnome, deux fois.
+            # 524288 est la valeur que JetBrains documente lui-même.
+            "cur=$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null "
+            '|| echo 0); if [ "$cur" -lt 524288 ] 2>/dev/null; then '
+            'echo "fs.inotify.max_user_watches=524288" '
+            "| sudo tee /etc/sysctl.d/60-erplibre-inotify.conf >/dev/null && "
+            "sudo sysctl -q -p /etc/sysctl.d/60-erplibre-inotify.conf "
+            f'2>/dev/null; echo "   {t("inotify watches raised for the IDE")}"; '
+            "fi; "
             'PYCHARM_VM_OPTIONS="$HOME/.pycharm-headless.vmoptions" '
-            f"xvfb-run -a pycharm {el_dir} "
+            f"setsid xvfb-run -a pycharm {el_dir} "
             "> /tmp/pycharm-first-run.log 2>&1 & "
             "pid=$!; ok=0; "
             f"for i in $(seq 1 {self._QEMU_PYCHARM_OPEN_TRIES}); do "
@@ -5760,9 +5780,23 @@ class TODO:
             "sleep 5; done; "
             # Cinq secondes de plus : les fichiers apparaissent PENDANT leur
             # écriture, et un TERM à l'instant où misc.xml naît le tronquerait.
-            "sleep 5; kill -TERM $pid 2>/dev/null; "
-            "for i in $(seq 1 12); do kill -0 $pid 2>/dev/null || break; "
-            "sleep 5; done; kill -KILL $pid 2>/dev/null; "
+            "sleep 5; kill -TERM -$pid 2>/dev/null || "
+            "kill -TERM $pid 2>/dev/null; "
+            "for i in $(seq 1 12); do kill -0 -$pid 2>/dev/null || break; "
+            "sleep 5; done; kill -KILL -$pid 2>/dev/null; "
+            # Filet, et il a sa raison d'être : ce qui survit ici mange la
+            # mémoire de TOUTES les étapes suivantes. On le nomme au lieu de le
+            # laisser courir, et on ne vise que l'IDE de /opt et l'écran :99.
+            # « pgrep -fc » IMPRIME 0 et rend 1 quand il ne trouve rien : le
+            # « || echo 0 » ajoutait un second zéro, et « 0\n0 » n'est pas
+            # « 0 » — le filet se déclenchait donc toujours. « wc -l » rend un
+            # seul nombre et un code 0.
+            'left=$(pgrep -f "[/]opt/pycharm|[X]vfb :99" 2>/dev/null '
+            "| wc -l); "
+            '[ "$left" = 0 ] || { '
+            f'echo "   {t("closing what survived the first open:")} $left"; '
+            'pkill -f "[/]opt/pycharm" 2>/dev/null; '
+            'pkill -f "[X]vfb :99" 2>/dev/null; sleep 2; }; '
             '[ "$ok" = 1 ]; fi; fi; } && '
             f'echo "   {t("project created, the install will configure it")}" '
             f'|| echo "   ⚠ {t("no .idea: open PyCharm once, then")} '
@@ -6021,6 +6055,24 @@ class TODO:
         # rien de ce qui suit ne peut synchroniser le manifeste.
         ("virtual environment", "ERPLibre venv missing (incomplete install)"),
         ("No module named", "ERPLibre venv incomplete (no pip: python3-venv)"),
+        # Vécu sur erplibre-ubuntu-2604-gnome : le noyau a tué le démon Gradle
+        # (6,8 Go de RSS sur 12 Go, sans swap), et Gradle n'en sait rien — il
+        # dit seulement que son démon « a disparu ». Le motif nomme la mémoire,
+        # et le contexte l'établit au lieu de le supposer.
+        # Vécu, et c'est en amont : « Too many zip entries 123678 (MAX=65535) ».
+        # Un APK est un ZIP classique, borné à 65 535 entrées, et le dépôt
+        # mobile embarque 122 684 fichiers sous assets/public/repos — des
+        # dépôts Odoo entiers — pour 337 fichiers qui sont l'application. Rien
+        # ici ne peut le corriger : c'est au projet mobile de ne pas les
+        # empaqueter. On le NOMME, avec le chiffre, plutôt que de laisser lire
+        # 5 000 lignes de Gradle.
+        (
+            "Too many zip entries",
+            "too many asset files for one APK (ZIP limit: 65535 entries)",
+        ),
+        ("daemon disappeared", "Gradle daemon killed: out of memory", "mmem"),
+        ("Cannot allocate memory", "out of memory", "mmem"),
+        ("Java heap space", "Gradle heap too small", "mmem"),
         ("FAILED", "Gradle task failed"),
     )
 
@@ -6036,13 +6088,26 @@ class TODO:
         un JDK manquant — le motif venait de la revue de licences d'une étape
         RÉUSSIE, trois étapes plus haut. Nommer la mauvaise cause coûte plus
         cher que se taire."""
-        lines = "".join(
-            f"grep -q '{pat}' \"$d\" && {{ "
-            f'echo "   {t("probable cause:")} {t(cause)}"; '
-            'rm -f "$d"; return 0; }; '
-            for pat, cause in self._QEMU_MOBILE_DIAG
-        )
+        lines = ""
+        for entry in self._QEMU_MOBILE_DIAG:
+            pat, cause = entry[0], entry[1]
+            extra = f"{entry[2]}; " if len(entry) > 2 else ""
+            lines += (
+                f"grep -q '{pat}' \"$d\" && {{ "
+                f'echo "   {t("probable cause:")} {t(cause)}"; '
+                f'{extra}rm -f "$d"; return 0; }}; '
+            )
         return (
+            # Le contexte mémoire, lu dans /proc et dans le journal du noyau :
+            # une cause « mémoire » se PROUVE, l'affirmer sans le compte de
+            # l'oom-killer serait une supposition de plus. Pas d'awk ni de sed
+            # ici : leurs programmes demandent des guillemets, et tout ceci
+            # voyage déjà dans un ssh entre apostrophes.
+            "mmem() { m=$(grep MemTotal /proc/meminfo | tr -dc 0-9); "
+            "w=$(grep SwapTotal /proc/meminfo | tr -dc 0-9); "
+            "k=$(sudo dmesg 2>/dev/null | grep -c oom-kill); "
+            f'echo "   {t("memory:")} $((m/1024)) {t("MB RAM,")} '
+            f'$((w/1024)) {t("MB swap, kernel OOM kills:")} $k"; }}; '
             'mdiag() { d=$(mktemp); tail -400 "$1" > "$d"; '
             + lines
             + f'echo "   {t("no known pattern, last lines:")}"; '
@@ -6172,6 +6237,29 @@ class TODO:
         ailleurs. La lever se fait dans ce script-là, pas ici.
         """
         return (
+            # Du swap AVANT de compiler, et ce n'est pas de la prudence : le
+            # démon Gradle a atteint 6,8 Go de RSS hors tas — son -Xmx1536m ne
+            # le borne pas — sur une VM de 12 Go SANS swap, et le noyau l'a tué
+            # deux fois de suite. « --max-workers=2 » n'y a rien changé :
+            # mesuré, le pic est passé de 10,3 à 11,2 Go. C'est donc de la marge
+            # qu'il faut, pas moins de parallélisme.
+            #
+            # Jamais bloquant : une image sur btrfs refuse un fichier d'échange
+            # ordinaire, et une compilation qui tient en mémoire n'en a pas
+            # besoin. On le dit et on continue.
+            "w=$(grep SwapTotal /proc/meminfo | tr -dc 0-9); "
+            'if [ "$w" -lt 2000000 ]; then '
+            "if sudo fallocate -l 4G /swapfile-erplibre 2>/dev/null && "
+            "sudo chmod 600 /swapfile-erplibre && "
+            "sudo mkswap -q /swapfile-erplibre >/dev/null 2>&1 && "
+            "sudo swapon /swapfile-erplibre 2>/dev/null; then "
+            "grep -q swapfile-erplibre /etc/fstab 2>/dev/null || "
+            'echo "/swapfile-erplibre none swap sw 0 0" '
+            "| sudo tee -a /etc/fstab >/dev/null; "
+            f'echo "   {t("4 GB of swap added for the build")}"; '
+            "else sudo rm -f /swapfile-erplibre 2>/dev/null; "
+            f'echo "   {t("no swap could be added; build may run short")}"; '
+            "fi; fi; "
             f'mstep "{t("npm dependencies")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm ci' && "
             f'mstep "{t("web bundle (vite build)")}" '

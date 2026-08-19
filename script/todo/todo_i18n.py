@@ -2258,6 +2258,42 @@ TRANSLATIONS = {
     "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
     "Grouped by shape": {"fr": "Regroupé par forme", "en": "Grouped by shape"},
     "line": {"fr": "ligne", "en": "line"},
+    "inotify watches raised for the IDE": {
+        "fr": "watches inotify relevées pour l'IDE",
+        "en": "inotify watches raised for the IDE",
+    },
+    "closing what survived the first open:": {
+        "fr": "fermeture de ce qui a survécu à la première ouverture :",
+        "en": "closing what survived the first open:",
+    },
+    "Gradle daemon killed: out of memory": {
+        "fr": "démon Gradle tué : mémoire épuisée",
+        "en": "Gradle daemon killed: out of memory",
+    },
+    "out of memory": {"fr": "mémoire épuisée", "en": "out of memory"},
+    "Gradle heap too small": {
+        "fr": "tas Gradle trop petit",
+        "en": "Gradle heap too small",
+    },
+    "too many asset files for one APK (ZIP limit: 65535 entries)": {
+        "fr": "trop de fichiers d'assets pour un APK (limite ZIP : 65535"
+        " entrées)",
+        "en": "too many asset files for one APK (ZIP limit: 65535 entries)",
+    },
+    "4 GB of swap added for the build": {
+        "fr": "4 Go de swap ajoutés pour la compilation",
+        "en": "4 GB of swap added for the build",
+    },
+    "no swap could be added; build may run short": {
+        "fr": "swap impossible à ajouter ; la compilation peut manquer de mémoire",
+        "en": "no swap could be added; build may run short",
+    },
+    "memory:": {"fr": "mémoire :", "en": "memory:"},
+    "MB RAM,": {"fr": "Mo de RAM,", "en": "MB RAM,"},
+    "MB swap, kernel OOM kills:": {
+        "fr": "Mo de swap, tués par le noyau (OOM) :",
+        "en": "MB swap, kernel OOM kills:",
+    },
     "Tick the Android emulator tool when deploying.": {
         "fr": "Cochez l'outil Émulateur Android au déploiement.",
         "en": "Tick the Android emulator tool when deploying.",

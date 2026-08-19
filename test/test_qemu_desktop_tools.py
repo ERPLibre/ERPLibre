@@ -9,6 +9,7 @@ ce filtrage, et qu'un outil qui échoue ne fait pas tomber l'installation
 d'ERPLibre avec lui — celle-ci ayant duré une heure.
 """
 
+import pathlib
 import subprocess
 import sys
 import unittest
@@ -302,16 +303,62 @@ class TestMobileBuild(unittest.TestCase):
             script.index("erplibre-mobile-build.log"),
         )
 
+    # Banc d'essai des étapes mobiles : « mstep » est remplacé par une fonction
+    # qui réussit tout sauf l'étape nommée, et « sudo » par un no-op. Le contrat
+    # se MESURE alors au code de sortie, au lieu de se déduire de la présence
+    # ou de l'absence d'un « || » dans le texte — un « || echo » légitime, celui
+    # qui ajoute la ligne du fichier d'échange à /etc/fstab, faisait tomber
+    # l'ancienne version de ce test sans que rien ne soit cassé.
+    HARNESS = (
+        'mstep() { echo "-> $1"; case "$1" in *%s*) return 1;; esac; '
+        "return 0; }\n"
+        "sudo() { return 0; }\n"
+    )
+
+    def _run_steps(self, fail_on="RIEN", apk=False):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            el = pathlib.Path(tmp) / "el"
+            apk_dir = el / "mobile/erplibre_home_mobile/android/app/build"
+            (apk_dir / "outputs/apk/debug").mkdir(parents=True)
+            if apk:
+                (apk_dir / "outputs/apk/debug/app-debug.apk").write_text("x")
+            steps = self.todo._qemu_mobile_build_steps(str(el))
+            return subprocess.run(
+                ["bash", "-c", (self.HARNESS % fail_on) + steps],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, HOME=tmp),
+                timeout=60,
+            )
+
     def test_a_failed_build_fails_the_vm(self):
         """Contrat explicite : « pour que ce soit bon », l'app doit compiler.
-        Le bloc est donc lié par « && » et n'est PAS gardé, à la différence des
-        outils graphiques."""
-        script = self.todo._qemu_erplibre_remote_cmd(
-            "develop", None, False, "", "", "deb", ("mobile",)
-        )
-        tail = script[script.index("erplibre-mobile-build.log") :]
-        self.assertNotIn("|| true", tail)
-        self.assertNotIn("|| echo", tail)
+        Une étape en échec doit donc remonter un code non nul."""
+        res = self._run_steps(fail_on="gradle")
+        self.assertNotEqual(0, res.returncode, res.stdout[-400:])
+
+    def test_a_missing_apk_fails_even_when_gradle_returns_zero(self):
+        """L'APK est la preuve, pas le code de sortie de Gradle : une tâche peut
+        rendre 0 sans rien produire."""
+        res = self._run_steps(apk=False)
+        self.assertNotEqual(0, res.returncode)
+        self.assertIn("APK", res.stdout)
+
+    def test_a_complete_build_succeeds(self):
+        """L'autre sens du contrat : sans lui, un test qui échoue toujours
+        passerait pour un test qui vérifie quelque chose."""
+        res = self._run_steps(apk=True)
+        self.assertEqual(0, res.returncode, res.stdout[-400:])
+
+    def test_the_swap_step_alone_never_fails_the_chain(self):
+        """Une image btrfs refuse un fichier d'échange ordinaire, et une
+        compilation qui tient en mémoire n'en a pas besoin."""
+        res = self._run_steps(apk=True)
+        self.assertEqual(0, res.returncode)
+        self.assertNotIn("|| true", self.todo._qemu_mobile_build_steps("/x"))
 
     def test_the_build_covers_apk_and_tests(self):
         cmd = self.todo._qemu_mobile_remote_cmd()
@@ -361,7 +408,8 @@ class TestMobileBuild(unittest.TestCase):
         """Un journal de dizaines de mégaoctets ne se relit pas : le diagnostic
         doit dire pourquoi."""
         cmd = self.todo._qemu_mobile_remote_cmd()
-        for pattern, _cause in TODO._QEMU_MOBILE_DIAG:
+        # Une entrée peut porter un 3e élément : la commande de contexte.
+        for pattern in (e[0] for e in TODO._QEMU_MOBILE_DIAG):
             self.assertIn(pattern, cmd, pattern)
         self.assertIn('tail -12 "$1"', cmd)
 
@@ -468,8 +516,19 @@ class TestAndroidEmulator(unittest.TestCase):
         au vert alors que rien n'avait compilé."""
         both = self.todo._qemu_after_remote_cmd(("mobile", "avd"))
         # On neutralise les étapes : seul le CHAÎNAGE est en cause ici.
-        stub = 'mstep() { echo "   -> $1"; return 0; }; mdiag() { :; }; '
-        tail = both[both.index('{ mstep "') :]
+        #
+        # « sudo » est neutralisé AUSSI, et ce n'est pas décoratif : le bloc
+        # ajoute un fichier d'échange de 4 Go et une ligne à /etc/fstab. Sans
+        # ce bouchon, un test le ferait sur la machine qui l'exécute.
+        stub = (
+            'mstep() { echo "   -> $1"; return 0; }; mdiag() { :; }; '
+            "sudo() { return 0; }; "
+        )
+        # Ancre robuste : on part du journal mobile et on remonte à l'accolade
+        # qui ouvre son groupe. Chercher « { mstep » liait ce test à la forme
+        # de la PREMIÈRE étape, et l'ajout du swap devant l'a cassé.
+        marker = both.index("erplibre-mobile-build.log")
+        tail = both[both.rindex("{ ", 0, marker) :]
         res = subprocess.run(
             ["bash", "-c", "set -e; " + stub + tail],
             capture_output=True,
@@ -490,7 +549,8 @@ class TestAndroidEmulator(unittest.TestCase):
     def test_no_diagnostic_pattern_carries_an_apostrophe(self):
         """Ces motifs partent dans un « grep -q '<motif>' » : une apostrophe
         fermait la chaîne et rendait tout le bloc invalide. Vécu."""
-        for pattern, _cause in TODO._QEMU_MOBILE_DIAG:
+        # Une entrée peut porter un 3e élément : la commande de contexte.
+        for pattern in (e[0] for e in TODO._QEMU_MOBILE_DIAG):
             self.assertNotIn("'", pattern, pattern)
 
 
@@ -526,7 +586,15 @@ class TestPycharmCommunity(unittest.TestCase):
 
 
 class TestPycharmFirstOpen(unittest.TestCase):
-    """Ouverture sans écran, pour que le .idea existe avant l'installation."""
+    """Ouverture sans écran, pour que le .idea existe avant l'installation.
+
+    Deux défauts vécus sur erplibre-ubuntu-2604-gnome, tous deux silencieux :
+    l'IDE restait vivant 45 minutes après l'étape avec 1,9 Go — « $! » est le
+    PID de xvfb-run, un script, et le tuer n'atteint ni PyCharm ni Xvfb — puis
+    la compilation de l'APK qui suivait s'est fait tuer par le noyau. Et le
+    .idea n'était jamais écrit : 123 000 fichiers d'assets épuisent les watches
+    inotify, dont la limite valait 65 536.
+    """
 
     def setUp(self):
         self.todo = TODO.__new__(TODO)
@@ -580,6 +648,199 @@ class TestPycharmFirstOpen(unittest.TestCase):
             capture_output=True,
         )
         self.assertEqual(0, res.returncode, res.stderr)
+
+    def test_the_ide_gets_its_own_process_group(self):
+        """Sans « setsid », il n'y a pas de groupe à tuer."""
+        self.assertIn("setsid xvfb-run", self.cmd)
+
+    def test_the_whole_group_is_killed_not_just_the_wrapper(self):
+        """Le signe moins est tout le correctif : « -$pid » désigne le GROUPE,
+        donc xvfb-run, Xvfb, pycharm et les cef_server."""
+        self.assertIn("kill -TERM -$pid", self.cmd)
+        self.assertIn("kill -KILL -$pid", self.cmd)
+
+    def test_inotify_is_raised_before_opening(self):
+        """Après l'ouverture, il serait trop tard : l'analyse a déjà échoué."""
+        pos_watch = self.cmd.index("max_user_watches")
+        pos_open = self.cmd.index("setsid xvfb-run")
+        self.assertLess(pos_watch, pos_open)
+        self.assertIn("524288", self.cmd)
+
+    def test_the_leftover_count_is_a_single_number(self):
+        """« pgrep -fc » imprime 0 ET rend 1 quand il ne trouve rien : le
+        « || echo 0 » ajoutait un second zéro, et « 0\n0 » n'est pas « 0 ».
+        Le filet se déclenchait donc à chaque passage."""
+        self.assertIn("| wc -l", self.cmd)
+        self.assertNotIn("pgrep -fc", self.cmd)
+
+    def test_it_is_valid_shell(self):
+        res = subprocess.run(
+            ["bash", "-n"], input=self.cmd, capture_output=True, text=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr)
+
+    def test_the_group_kill_really_reaps_the_children(self):
+        """Le test qui compte : on rejoue l'étape avec de FAUX pycharm et
+        xvfb-run, celui-ci laissant un enfant derrière lui comme le vrai le
+        fait avec Xvfb. Rien ne doit survivre."""
+        import os
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = pathlib.Path(tmp) / "bin"
+            bin_dir.mkdir()
+            repo = pathlib.Path(tmp) / "repo"
+            (repo / ".idea").mkdir(parents=True)
+            # .idea déjà là : l'attente sort au premier tour, et le test
+            # mesure la FERMETURE, pas la création.
+            (repo / ".idea" / "erplibre.iml").write_text("<module/>")
+            (repo / ".idea" / "misc.xml").write_text("<project/>")
+            marker = pathlib.Path(tmp) / "alive"
+            (bin_dir / "xvfb-run").write_text(
+                "#!/bin/bash\n"
+                # L'enfant qui survivait : un Xvfb que personne ne tuait.
+                f"( while true; do touch {marker}; sleep 1; done ) &\n"
+                'shift; exec "$@"\n'
+            )
+            (bin_dir / "pycharm").write_text(
+                "#!/bin/bash\nwhile true; do sleep 1; done\n"
+            )
+            (bin_dir / "sudo").write_text("#!/bin/bash\nexit 0\n")
+            (bin_dir / "python3").write_text("#!/bin/bash\ncat > /dev/null\n")
+            for name in ("xvfb-run", "pycharm", "sudo", "python3"):
+                (bin_dir / name).chmod(0o755)
+            cmd = self.todo._qemu_pycharm_project_cmd(False).replace(
+                self.todo._qemu_install_dir(False), str(repo)
+            )
+            env = dict(os.environ, PATH=f"{bin_dir}:/usr/bin:/bin", HOME=tmp)
+            res = subprocess.run(
+                ["bash", "-c", cmd],
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=180,
+            )
+            self.assertEqual(0, res.returncode, res.stdout + res.stderr)
+            marker.unlink(missing_ok=True)
+            time.sleep(3)
+            # L'enfant réveillait le marqueur chaque seconde : s'il vit
+            # encore, le fichier est revenu.
+            self.assertFalse(
+                marker.exists(),
+                "un enfant a survécu à la fermeture du groupe",
+            )
+
+
+class TestMobileSwap(unittest.TestCase):
+    """Le swap posé avant de compiler, et son refus de bloquer.
+
+    Mesuré : le démon Gradle a atteint 6,8 Go de RSS hors tas — son -Xmx1536m
+    ne le borne pas — sur une VM de 12 Go SANS swap, et le noyau l'a tué deux
+    fois. « --max-workers=2 » n'a rien changé : le pic est passé de 10,3 à
+    11,2 Go. C'est de la marge qu'il faut."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.steps = self.todo._qemu_mobile_build_steps("/tmp/el")
+
+    def test_the_swap_comes_before_the_build(self):
+        self.assertLess(
+            self.steps.index("SwapTotal"), self.steps.index("npm ci")
+        )
+
+    def test_it_does_nothing_when_swap_is_already_there(self):
+        self.assertIn("SwapTotal", self.steps)
+        self.assertIn("-lt 2000000", self.steps)
+
+    def test_a_failed_swap_leaves_no_stray_file(self):
+        """Un fichier d'échange à moitié fait occuperait 4 Go pour rien."""
+        self.assertIn("rm -f /swapfile-erplibre", self.steps)
+
+    def test_it_is_valid_shell(self):
+        res = subprocess.run(
+            ["bash", "-n"],
+            input="mstep() { :; }\n" + self.steps,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, res.returncode, res.stderr)
+
+    def test_the_swap_block_is_not_linked_by_and(self):
+        """Lié par « && », un swap refusé arrêterait toute la compilation."""
+        head = self.steps[: self.steps.index("npm ci")]
+        self.assertNotIn("fi; fi && ", head)
+        self.assertIn("fi; fi; ", head)
+
+
+class TestMobileDiagMemory(unittest.TestCase):
+    """« Son démon a disparu » ne parle pas de mémoire ; le diagnostic, oui."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_mobile_diag_cmd()
+
+    def test_the_oom_pattern_names_memory(self):
+        pats = {p[0]: p[1] for p in TODO._QEMU_MOBILE_DIAG}
+        self.assertIn("daemon disappeared", pats)
+        self.assertIn("memory", pats["daemon disappeared"].lower())
+
+    def test_the_zip_entry_limit_is_named(self):
+        """La panne d'aujourd'hui, et elle est en amont : un APK est un ZIP
+        borné à 65 535 entrées, et le dépôt mobile en embarque 122 684 sous
+        assets/public/repos pour 337 qui sont l'application. Le diagnostic doit
+        le dire, pas laisser lire 5 000 lignes de Gradle."""
+        pats = {e[0]: e[1] for e in TODO._QEMU_MOBILE_DIAG}
+        self.assertIn("Too many zip entries", pats)
+        self.assertIn("65535", pats["Too many zip entries"])
+
+    def test_the_zip_limit_is_named_before_the_generic_gradle_failure(self):
+        """« FAILED » attrape tout : placé avant, il masquerait la vraie
+        cause — l'ordre du tableau est le diagnostic."""
+        keys = [e[0] for e in TODO._QEMU_MOBILE_DIAG]
+        self.assertLess(
+            keys.index("Too many zip entries"), keys.index("FAILED")
+        )
+
+    def test_the_cause_is_proven_not_assumed(self):
+        """Le compte de l'oom-killer et la RAM viennent avec : une cause
+        « mémoire » sans chiffre serait une supposition de plus."""
+        self.assertIn("mmem()", self.cmd)
+        self.assertIn("MemTotal", self.cmd)
+        self.assertIn("oom-kill", self.cmd)
+
+    def test_it_runs_and_names_the_cause(self):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = pathlib.Path(tmp) / "bin"
+            bin_dir.mkdir()
+            # Un dmesg qui rapporte un oom-kill, via un sudo neutre.
+            (bin_dir / "sudo").write_text('#!/bin/bash\nshift 0; exec "$@"\n')
+            (bin_dir / "dmesg").write_text(
+                "#!/bin/bash\necho 'oom-kill:constraint=CONSTRAINT_NONE'\n"
+            )
+            for name in ("sudo", "dmesg"):
+                (bin_dir / name).chmod(0o755)
+            log = pathlib.Path(tmp) / "build.log"
+            log.write_text(
+                "> Task :app:compressDebugAssets\n"
+                "Gradle build daemon disappeared unexpectedly\n"
+            )
+            res = subprocess.run(
+                ["bash", "-c", self.cmd + f'mdiag "{log}"'],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=f"{bin_dir}:/usr/bin:/bin"),
+                timeout=60,
+            )
+            out = res.stdout
+            # « RAM » et « OOM » traversent les deux langues ; le chiffre,
+            # lui, est ce qui distingue une cause prouvée d'une supposition.
+            self.assertIn("RAM", out)
+            self.assertRegex(out, r"\(OOM\)|OOM kills")
+            self.assertRegex(out, r"[0-9]+")
 
 
 class TestAvdStep(unittest.TestCase):
