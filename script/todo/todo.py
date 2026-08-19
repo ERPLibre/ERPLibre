@@ -5779,9 +5779,17 @@ class TODO:
             "sudo sysctl -q -p /etc/sysctl.d/60-erplibre-inotify.conf "
             f'2>/dev/null; echo "   {t("inotify watches raised for the IDE")}"; '
             "fi; "
+            # DEUX tentatives, et c'est mesuré : la première ouverture d'un
+            # dépôt neuf indexe 212 000 fichiers, plante son configurateur
+            # d'interpréteur (« PythonSdkConfigurator - homeDir is null ») et
+            # n'écrit AUCUN .idea, même au bout de cinq minutes. La seconde, sur
+            # les caches que la première a laissés, l'écrit en 25 secondes —
+            # constaté sur deux VM différentes.
+            ": > /tmp/pycharm-first-run.log; "
+            "for attempt in 1 2; do "
             'PYCHARM_VM_OPTIONS="$HOME/.pycharm-headless.vmoptions" '
             f"setsid xvfb-run -a pycharm {el_dir} "
-            "> /tmp/pycharm-first-run.log 2>&1 & "
+            ">> /tmp/pycharm-first-run.log 2>&1 & "
             "pid=$!; ok=0; "
             f"for i in $(seq 1 {self._QEMU_PYCHARM_OPEN_TRIES}); do "
             f"if ls {el_dir}/.idea/*.iml >/dev/null 2>&1 && "
@@ -5814,6 +5822,9 @@ class TODO:
             f'echo "   {t("closing what survived the first open:")} $left"; '
             'pkill -u "$(id -u)" -x '
             '"pycharm|cef_server|fsnotifier|Xvfb" 2>/dev/null; sleep 2; }; '
+            '[ "$ok" = 1 ] && break; '
+            f'echo "   {t("no project yet, second try on the warm caches")}"; '
+            "done; "
             '[ "$ok" = 1 ]; fi; fi; } && '
             f'echo "   {t("project created, the install will configure it")}" '
             f'|| echo "   ⚠ {t("no .idea: open PyCharm once, then")} '
@@ -6669,7 +6680,12 @@ class TODO:
         # pycharm_update() n'avait alors rien à configurer.
         open_step = (
             self._qemu_pycharm_project_cmd(prod)
-            + "make pycharm_configure || true; "
+            # Le venv du dépôt, comme le fait update_env_version.
+            # pycharm_update() : le script importe xmltodict, absent du python
+            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # « No module named 'xmltodict' ».
+            + "./.venv.erplibre/bin/python "
+            "./script/ide/pycharm_configuration.py --init || true; "
             if "pycharm" in (tools or ())
             else ""
         )

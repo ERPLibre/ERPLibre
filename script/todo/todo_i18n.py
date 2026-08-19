@@ -2260,6 +2260,10 @@ TRANSLATIONS = {
     "line": {"fr": "ligne", "en": "line"},
     "free space": {"fr": "libre", "en": "free"},
     "silent": {"fr": "silence", "en": "silent"},
+    "no project yet, second try on the warm caches": {
+        "fr": "pas de projet encore ; seconde tentative sur les caches chauds",
+        "en": "no project yet, second try on the warm caches",
+    },
     "already there, download skipped": {
         "fr": "déjà présent, téléchargement évité",
         "en": "already there, download skipped",

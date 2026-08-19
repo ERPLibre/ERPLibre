@@ -180,14 +180,24 @@ class TestToolRemoteCommand(unittest.TestCase):
             script.index("PyCharm"), script.index("make install_os")
         )
 
-    def test_the_install_owns_the_project_configuration(self):
-        """update_env_version.pycharm_update() lance déjà le script, et sait se
-        taire sans .idea. Doubler l'appel n'écrivait qu'une erreur dans le
-        journal d'une VM neuve."""
+    def test_the_configuration_is_asked_for_because_the_install_was_too_early(
+        self,
+    ):
+        """Le contraire de ce que ce test exigeait avant, et pour une raison
+        mesurée : pycharm_update() teste « os.path.exists('.idea') » et se tait
+        quand le projet n'existe pas encore. Or il s'exécute PENDANT
+        l'installation, alors que PyCharm ne s'ouvrira qu'après. Personne ne
+        configurait donc le projet — « Missing ./.idea path » dans le journal
+        d'une VM neuve. On le demande maintenant explicitement, après
+        l'ouverture."""
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
         )
-        self.assertNotIn("pycharm_configuration", script)
+        self.assertIn("pycharm_configuration.py --init", script)
+        self.assertLess(
+            script.index("xvfb-run"),
+            script.index("pycharm_configuration.py"),
+        )
 
     def test_a_failing_tool_never_masks_a_failing_install(self):
         """Le code de sortie doit rester celui de l'installation : c'est lui que
@@ -640,6 +650,37 @@ class TestPycharmFirstOpen(unittest.TestCase):
             script.index("make install_os"), script.index("xvfb-run")
         )
 
+    def test_the_configuration_uses_the_repo_venv(self):
+        """Le script importe xmltodict, qui vit dans .venv.erplibre. Appelé par
+        le python système — ce que faisait « make pycharm_configure » — il
+        s'arrête sur « No module named 'xmltodict' », mesuré sur la VM.
+        update_env_version.pycharm_update() l'appelle déjà avec le venv."""
+        script = self.todo._qemu_erplibre_remote_cmd(
+            "develop", None, False, "gnome", "", "deb", ("pycharm",)
+        )
+        self.assertIn(
+            "./.venv.erplibre/bin/python"
+            " ./script/ide/pycharm_configuration.py --init",
+            script,
+        )
+        # « make pycharm_configure » reste cité dans le message d'aide — la
+        # cible est réparée, elle aussi — mais n'est plus ce qu'on EXÉCUTE.
+        self.assertNotIn("&& make pycharm_configure", script)
+        self.assertNotIn("; make pycharm_configure", script)
+
+    def test_the_open_gets_a_second_chance(self):
+        """Mesuré sur deux VM : la première ouverture d'un dépôt neuf peut
+        n'écrire AUCUN .idea — son configurateur d'interpréteur plante
+        (« homeDir is null ») — là où la suivante l'écrit en 25 s."""
+        self.assertIn("for attempt in 1 2", self.cmd)
+        self.assertIn('[ "$ok" = 1 ] && break', self.cmd)
+
+    def test_both_attempts_keep_their_log(self):
+        """Tronquer à chaque tentative effacerait la trace de la première, la
+        seule qui porte la cause."""
+        self.assertIn(": > /tmp/pycharm-first-run.log", self.cmd)
+        self.assertIn(">> /tmp/pycharm-first-run.log", self.cmd)
+
     def test_the_configuration_is_asked_for_after_the_open(self):
         """L'installation est déjà passée quand le .idea naît : pycharm_update()
         n'avait rien à configurer, donc on le demande explicitement."""
@@ -658,9 +699,9 @@ class TestPycharmFirstOpen(unittest.TestCase):
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm", "mobile")
         )
-        self.assertIn("make pycharm_configure || true", script)
+        self.assertIn("pycharm_configuration.py --init || true", script)
         self.assertLess(
-            script.index("make pycharm_configure"),
+            script.index("pycharm_configuration.py"),
             script.index("ERPLibre mobile"),
         )
 
