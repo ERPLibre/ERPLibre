@@ -4044,7 +4044,20 @@ class TodoUpgrade:
         return status
 
     def add_comment_progression(self, comment):
+        """Marquer une étape dans le journal, et devenir CETTE étape.
+
+        Vingt en-têtes d'étape passent par ici contre sept par
+        `print_step` : toute la boucle des paliers n'utilise que celle-ci.
+        Ne poser l'étape courante que dans l'autre laissait donc chaque
+        verdict d'outil estampillé d'une étape périmée — et le résumé des
+        tests semblait global alors qu'il aurait dû suivre les paliers.
+
+        C'est le MÊME marqueur que `journal_by_step` découpe : une seule
+        notion d'étape, posée à un seul endroit.
+        """
         comment_to_add = f"# {comment}"
         self.lst_command_executed.append(comment_to_add)
         self.dct_progression["command_executed"] = self.lst_command_executed
+        self.current_step = comment
+        self.open_step_log(comment)
         self.write_config()

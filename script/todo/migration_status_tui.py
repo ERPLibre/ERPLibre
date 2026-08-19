@@ -64,10 +64,15 @@ def rows(dct):
     lst = []
     for item in status.tests_summary(dct):
         icone, _phrase = status.verdict(item.get("status"))
+        # Le NUMÉRO de l'étape en tête : une migration lance le même outil
+        # à chaque palier, et sans lui la liste montrait six lignes
+        # identiques sans dire laquelle appartenait à quel palier.
+        numero = (item.get("step") or "").split(" - ")[0]
+        tete = f"{numero} " if numero else ""
         lst.append(
             {
                 "kind": "test",
-                "label": f"{icone} {item['name']}",
+                "label": f"{icone} {tete}{item['name']}",
                 "detail": str(item.get("runs", 1)),
                 "data": item,
             }
@@ -99,9 +104,9 @@ def pane_text(dct, row, colour=False):
         teinte = status.VERDICT_COLOUR.get(item.get("status"), "dim")
         lignes = [
             f"{icone} {status.paint(item['name'], teinte, colour)}",
+            f"   {status.paint(item.get('step') or '?', 'step', colour)}",
             f"   {phrase}  ({t('exit code')} {item.get('status')})",
             f"   {t('runs')} : {item.get('runs')}",
-            f"   {t('current step')} : {item.get('step') or '?'}",
             f"   {item.get('at') or ''}",
         ]
         return "\n".join(lignes)

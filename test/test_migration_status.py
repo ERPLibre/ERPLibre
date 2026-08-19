@@ -123,6 +123,120 @@ class TestARepairMustNotReadAsAFailure(Base):
         smoke = [x for x in lst if x["name"] == "smoke_public_url"][0]
         self.assertEqual(smoke["status"], 0)
 
+    def test_the_verdicts_are_kept_PER_STEP(self):
+        """La demande, et le défaut qu'elle a révélé.
+
+        Une migration lance le test de fumée à CHAQUE palier. Regrouper sur
+        le seul nom d'outil n'en laissait qu'une ligne : on lisait
+        « smoke_public_url ✅ » sans voir que le palier 14 était passé et
+        le 17 tombé.
+        """
+        dct = progression(
+            lst_event=[
+                {
+                    "at": "1",
+                    "step": "4.1 - v14",
+                    "kind": "test",
+                    "name": "smoke_public_url",
+                    "status": 0,
+                },
+                {
+                    "at": "2",
+                    "step": "4.2 - v15",
+                    "kind": "test",
+                    "name": "smoke_public_url",
+                    "status": 2,
+                },
+            ]
+        )
+        lst = status.tests_summary(dct)
+        self.assertEqual(len(lst), 2)
+        self.assertEqual(
+            [(x["step"], x["status"]) for x in lst],
+            [("4.1 - v14", 0), ("4.2 - v15", 2)],
+        )
+
+    def test_a_repair_within_a_step_still_collapses(self):
+        # Deux verdicts pour le MÊME palier : c'est une réparation, pas
+        # deux paliers. Le second décrit la base telle qu'elle est.
+        dct = progression(
+            lst_event=[
+                {
+                    "at": "1",
+                    "step": "4.2 - v15",
+                    "kind": "test",
+                    "name": "smoke_public_url",
+                    "status": 2,
+                },
+                {
+                    "at": "2",
+                    "step": "4.2 - v15",
+                    "kind": "test",
+                    "name": "smoke_public_url",
+                    "status": 0,
+                },
+            ]
+        )
+        lst = status.tests_summary(dct)
+        self.assertEqual(len(lst), 1)
+        self.assertEqual(lst[0]["status"], 0)
+        self.assertEqual(lst[0]["runs"], 2)
+
+    def test_the_order_is_the_migration_s_own(self):
+        # Trier les étapes par leur nom mettrait « 4.10 » avant « 4.2 ».
+        dct = progression(
+            lst_event=[
+                {
+                    "at": "1",
+                    "step": "4.2 - v15",
+                    "kind": "test",
+                    "name": "outil",
+                    "status": 0,
+                },
+                {
+                    "at": "2",
+                    "step": "4.10 - v18",
+                    "kind": "test",
+                    "name": "outil",
+                    "status": 0,
+                },
+            ]
+        )
+        self.assertEqual(
+            [etape for etape, _lst in status.tests_by_step(dct)],
+            ["4.2 - v15", "4.10 - v18"],
+        )
+
+    def test_the_report_shows_the_step_number(self):
+        dct = progression(
+            lst_event=[
+                {
+                    "at": "1",
+                    "step": "4.1 - Ready to work with version 14",
+                    "kind": "test",
+                    "name": "database_cleanup",
+                    "status": 0,
+                },
+            ]
+        )
+        texte = status.render_text(dct, colour=False)
+        self.assertIn("4.1 - Ready to work with version 14", texte)
+
+    def test_the_full_screen_shows_it_too(self):
+        dct = progression(
+            lst_event=[
+                {
+                    "at": "1",
+                    "step": "4.1 - v14",
+                    "kind": "test",
+                    "name": "smoke_public_url",
+                    "status": 0,
+                },
+            ]
+        )
+        ligne = [x for x in tui.rows(dct) if x["kind"] == "test"][0]
+        self.assertIn("4.1", ligne["label"])
+
     def test_but_the_earlier_runs_are_still_counted(self):
         # Les taire ferait croire à un premier essai réussi, et l'on
         # perdrait la trace de ce qui a demandé une réparation.
@@ -438,6 +552,46 @@ class TestWhatSurvivesClosingTheTool(DiskCase):
         ]
         self.assertIn("premier", noms)
         self.assertIn("dernier", noms)
+
+    def test_a_step_header_becomes_the_current_step(self):
+        """La cause racine de « ça semble global ».
+
+        Vingt en-têtes d'étape passent par `add_comment_progression` contre
+        sept par `print_step`, et toute la boucle des paliers n'utilise que
+        la première. Ne poser l'étape courante que dans l'autre laissait
+        chaque verdict estampillé d'une étape périmée.
+        """
+        obj = self.upgrade()
+        obj.add_comment_progression("4.2 - Ready to work with version 15")
+        obj.record_event("test", "smoke_public_url", 0)
+        obj.close_step_log()
+        lst = status.merge_events({"config_database_name": "essai_db"})
+        self.assertEqual(lst[0]["step"], "4.2 - Ready to work with version 15")
+
+    def test_a_step_header_opens_its_log_too(self):
+        # Même raison : sans cela, la sortie des commandes d'un palier
+        # allait dans le fichier de l'étape d'AVANT.
+        obj = self.upgrade()
+        obj.add_comment_progression("4.2 - Migrate database")
+        obj.note_step_log("quelque chose")
+        obj.close_step_log()
+        self.assertIsNotNone(
+            status.step_log_path(
+                {"config_database_name": "essai_db"}, "4.2 - Migrate database"
+            )
+        )
+
+    def test_two_bumps_do_not_share_a_step(self):
+        # Le symptôme exact : six paliers, un seul nom d'étape.
+        obj = self.upgrade()
+        for palier in ("4.1 - version 14", "4.2 - version 15"):
+            obj.add_comment_progression(palier)
+            obj.record_event("test", "smoke_public_url", 0)
+        obj.close_step_log()
+        lst = status.merge_events({"config_database_name": "essai_db"})
+        self.assertEqual(
+            [x["step"] for x in lst], ["4.1 - version 14", "4.2 - version 15"]
+        )
 
     def test_a_migration_without_a_database_writes_nowhere(self):
         obj = self.upgrade(database=None)

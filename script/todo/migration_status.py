@@ -242,22 +242,39 @@ def verdict(status):
 
 
 def tests_summary(dct):
-    """Le DERNIER verdict de chaque outil, et le compte des passages.
+    """Le dernier verdict de chaque outil, PAR ÉTAPE, et son nombre de passages.
 
-    Un outil relancé après correction a deux verdicts contradictoires dans
-    le journal, et c'est le dernier qui décrit la base telle qu'elle est.
-    Afficher les deux sans les distinguer ferait lire une réparation comme
-    un échec persistant.
+    Par étape, car c'est la question qu'on pose. Une migration lance le
+    test de fumée à CHAQUE palier ; regrouper sur le seul nom d'outil n'en
+    laissait qu'une ligne, et l'on lisait « smoke_public_url ✅ » sans voir
+    que le palier 14 était passé et le 17 tombé.
+
+    Dans une étape, le DERNIER verdict l'emporte : un outil relancé après
+    correction a deux verdicts contradictoires, et c'est le second qui
+    décrit la base telle qu'elle est. Les afficher tous deux sans les
+    distinguer ferait lire une réparation comme un échec persistant.
+
+    L'ordre est celui du journal, donc celui de la migration. Trier les
+    étapes par leur nom mettrait « 4.10 » avant « 4.2 ».
     """
     dernier = {}
     for item in events(dct, kind="test"):
-        nom = item.get("name") or "?"
-        entree = dernier.setdefault(nom, {"name": nom, "runs": 0})
+        cle = (item.get("step") or "", item.get("name") or "?")
+        entree = dernier.setdefault(
+            cle, {"name": cle[1], "step": cle[0], "runs": 0}
+        )
         entree["runs"] += 1
         entree["status"] = item.get("status")
         entree["at"] = item.get("at")
-        entree["step"] = item.get("step")
-    return [dernier[nom] for nom in sorted(dernier)]
+    return list(dernier.values())
+
+
+def tests_by_step(dct):
+    """Les verdicts groupés sous leur étape, dans l'ordre de la migration."""
+    par_etape = {}
+    for item in tests_summary(dct):
+        par_etape.setdefault(item["step"], []).append(item)
+    return list(par_etape.items())
 
 
 def failures(dct):
@@ -325,18 +342,22 @@ def render_text(dct, limit_cmd=12, colour=None):
     lignes.append(f"\n🧪 {t('Test results')}")
     if not lst_test:
         lignes.append(f"   {t('No tool has run yet.')}")
-    for item in lst_test:
-        icone, phrase = verdict(item.get("status"))
-        rejeu = (
-            f"  ({item['runs']} {t('runs')})"
-            if item.get("runs", 1) > 1
-            else ""
-        )
-        teinte = VERDICT_COLOUR.get(item.get("status"), "dim")
-        nom = f"{item['name']:<24}"
+    for etape, lst_item in tests_by_step(dct):
         lignes.append(
-            f"   {icone} {paint(nom, teinte, colour)} {phrase}{rejeu}"
+            f"   {paint(etape or t('before the first step'), 'step', colour)}"
         )
+        for item in lst_item:
+            icone, phrase = verdict(item.get("status"))
+            rejeu = (
+                f"  ({item['runs']} {t('runs')})"
+                if item.get("runs", 1) > 1
+                else ""
+            )
+            teinte = VERDICT_COLOUR.get(item.get("status"), "dim")
+            nom = f"{item['name']:<24}"
+            lignes.append(
+                f"      {icone} {paint(nom, teinte, colour)} {phrase}{rejeu}"
+            )
 
     lst_failure = failures(dct)
     lignes.append(f"\n❌ {t('Commands that failed')} : {len(lst_failure)}")
