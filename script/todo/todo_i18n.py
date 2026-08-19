@@ -5603,6 +5603,10 @@ TRANSLATIONS = {
         " t = afficher l'état de la migration)",
         "en": "(b = go back a step, t = show the migration state)",
     },
+    "Migration state (full screen)": {
+        "fr": "État de la migration (plein écran)",
+        "en": "Migration state (full screen)",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

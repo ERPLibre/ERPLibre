@@ -307,6 +307,40 @@ class TestLookingIsNotAnswering(Base):
             source.index("write_config"), source.index("subprocess.call")
         )
 
+    def test_it_survives_a_screen_opened_before_anything_is_loaded(self):
+        """`show_stats` tourne AVANT que la progression ne soit en mémoire.
+
+        Elle est ouverte tout au début d'`execute_odoo_upgrade`, avant même
+        le choix du fichier. Y appeler `write_config` échouait alors sur un
+        attribut qui n'existe pas encore — et l'écran d'état, ouvert depuis
+        là, aurait planté au lieu de s'afficher.
+        """
+        import script.todo.todo_upgrade as tu
+
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        appels = []
+        obj.write_config = lambda: appels.append("écrit")
+        original = tu.subprocess.call
+        tu.subprocess.call = lambda *a, **kw: 0
+        self.addCleanup(setattr, tu.subprocess, "call", original)
+        obj.show_migration_status()
+        self.assertEqual(appels, [], "rien en mémoire, rien à écrire")
+
+    def test_but_it_does_write_what_it_has(self):
+        # Sans rien en mémoire le fichier est déjà la vérité ; avec quelque
+        # chose, il ne l'est plus tant qu'on ne l'a pas écrit.
+        import script.todo.todo_upgrade as tu
+
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        obj.dct_progression = {"config_database_name": "db"}
+        appels = []
+        obj.write_config = lambda: appels.append("écrit")
+        original = tu.subprocess.call
+        tu.subprocess.call = lambda *a, **kw: 0
+        self.addCleanup(setattr, tu.subprocess, "call", original)
+        obj.show_migration_status()
+        self.assertEqual(appels, ["écrit"])
+
     def test_looking_does_not_pollute_the_journal(self):
         # `run_on_terminal` consigne ce qu'il lance, et le journal est
         # justement ce que cet écran montre.
@@ -317,6 +351,131 @@ class TestLookingIsNotAnswering(Base):
         # ce qu'il faut éviter, et le chercher à l'aveugle se déclenchait
         # sur la prose plutôt que sur le code.
         self.assertNotIn("self.run_on_terminal(", source)
+
+
+class TestTheStatisticsScreenOffersIt(Base):
+    """L'écran de statistiques répond « qu'a-t-on supprimé, et pourquoi ».
+
+    L'état, lui, répond « où en est-on, et qu'est-ce qui a cassé ». Deux
+    questions voisines, posées au même moment : les séparer par un menu
+    plutôt que par deux commandes à retenir est ce qui les rend
+    utilisables.
+    """
+
+    def stats(self, lst_answer):
+        obj = TodoUpgrade.__new__(TodoUpgrade)
+        self.vu = []
+        obj.show_migration_status = lambda: self.vu.append("ouvert")
+        reponses = iter(lst_answer)
+        obj.ask = lambda prompt, default="": next(reponses)
+        obj.print_stats = staticmethod(lambda ctx, stats: None)
+        obj.read_progression = staticmethod(
+            lambda: {"config_database_name": "db"}
+        )
+        obj.resume_context = lambda dct: {"steps": [], "versions": []}
+        return obj
+
+    def test_t_opens_the_full_screen(self):
+        import script.todo.todo_upgrade as tu
+
+        obj = self.stats(["t", "0"])
+        original_exists = tu.os.path.exists
+        tu.os.path.exists = lambda path: True
+        self.addCleanup(setattr, tu.os.path, "exists", original_exists)
+        import script.todo.migration_stats as ms
+
+        original = ms.compute
+        ms.compute = lambda *a, **kw: {
+            "uninstall": {},
+            "journal": {"comments": [], "commands": []},
+            "origin_count": 0,
+            "evolution": [],
+            "removed_total": 0,
+            "missing": [],
+            "duplicate": [],
+            "fixes": [],
+            "cow": [],
+            "delay": "0s",
+        }
+        self.addCleanup(setattr, ms, "compute", original)
+        with redirect_stdout(io.StringIO()):
+            obj.show_stats()
+        self.assertEqual(self.vu, ["ouvert"])
+
+    def test_the_menu_announces_it(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.show_stats)
+        self.assertIn("Migration state (full screen)", source)
+        self.assertIn('answer == "t"', source)
+
+    def test_it_is_the_SAME_letter_as_the_prompts(self):
+        # Une lettre qui change de sens d'un écran à l'autre ne s'apprend
+        # pas. Les deux endroits doivent tester la même.
+        import inspect
+
+        self.assertIn(
+            'reponse == "t"', inspect.getsource(TodoUpgrade.ask_gate)
+        )
+        self.assertIn(
+            'answer == "t"', inspect.getsource(TodoUpgrade.show_stats)
+        )
+
+    def test_looking_returns_to_the_statistics(self):
+        # Comme dans les invites : regarder n'est pas répondre.
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.show_stats)
+        debut = source.index('answer == "t"')
+        self.assertIn("continue", source[debut : debut + 400])
+
+
+class TestNothingOnThatScreenCanHang(Base):
+    """L'écran est atteint APRÈS la question d'auto-exécution.
+
+    `ask_ui` est la toute première question posée ensuite, et elle était un
+    `input()` nu : une migration automatique s'arrêtait là, avant même
+    d'avoir commencé, sans que rien ne le signale.
+    """
+
+    def test_the_interface_question_goes_through_the_timer(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.ask_ui)
+        self.assertIn("auto_ask.ask(", source)
+        # L'APPEL, pas le mot : le commentaire du correctif nomme lui-même
+        # ce qu'il remplace, et le chercher à l'aveugle se déclenche sur la
+        # prose. Deuxième fois que ce piège se referme sur moi.
+        self.assertNotIn("= input(", source)
+
+    def test_the_statistics_menu_too(self):
+        import inspect
+
+        source = inspect.getsource(TodoUpgrade.show_stats)
+        self.assertIn("self.ask(", source)
+        self.assertNotIn("= input(", source)
+
+    def test_the_default_interface_is_still_the_form(self):
+        # Le défaut ne doit pas changer en passant par le lecteur temporisé.
+        import script.todo.todo_prefs as prefs
+
+        original = prefs.get
+        prefs.get = lambda key: "ask"
+        self.addCleanup(setattr, prefs, "get", original)
+        from script.todo import auto_ask
+
+        avant = os.environ.pop(auto_ask.ENV_ENABLED, None)
+        if avant is not None:
+            self.addCleanup(
+                os.environ.__setitem__, auto_ask.ENV_ENABLED, avant
+            )
+        import builtins
+
+        original_input = builtins.input
+        builtins.input = lambda prompt="": ""
+        self.addCleanup(setattr, builtins, "input", original_input)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(TodoUpgrade.ask_ui(), "tui")
 
 
 class TestWhatGetsRecorded(Base):

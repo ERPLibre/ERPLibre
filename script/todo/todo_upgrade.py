@@ -494,7 +494,11 @@ class TodoUpgrade:
         print(f"  [3] {t('Migration statistics (read-only)')}")
         print(f"  [0] {t('Cancel')}")
         print(f"  {t('(change the default in TODO > Configuration)')}")
-        answer = input(t("Choice (0-3, default 1): ")).strip()
+        # `auto_ask` et non `input` : c'est la PREMIÈRE question posée
+        # après l'activation de l'auto-exécution, et un input() nu y
+        # arrêtait la migration avant même qu'elle ne commence. Méthode
+        # statique, d'où l'appel direct plutôt que `self.ask`.
+        answer = auto_ask.ask(t("Choice (0-3, default 1): ")).strip()
         return {"0": None, "2": "cli", "3": "stats"}.get(answer, "tui")
 
     @staticmethod
@@ -573,10 +577,19 @@ class TodoUpgrade:
             print(f"   [3] {t('COW views: snapshots and differences')}")
             print(f"   [4] {t('Recorded decisions (journal)')}")
             print(f"   [5] {t('Executed commands (last 30)')}")
+            print(f"   [t] {t('Migration state (full screen)')}")
             print(f"   [0] {t('Back')}")
-            answer = input(f"💬 {t('Your choice')} : ").strip()
+            # `self.ask` : cet écran est atteint DEPUIS execute_odoo_upgrade,
+            # donc après la question d'auto-exécution. Un input() nu y
+            # arrêtait une migration automatique sans rien signaler.
+            answer = self.ask(f"💬 {t('Your choice')} : ").strip().lower()
             if answer in ("", "0"):
                 return
+            if answer == "t":
+                # La MÊME lettre que dans les invites : une lettre qui
+                # change de sens d'un écran à l'autre ne s'apprend pas.
+                self.show_migration_status()
+                continue
             if answer == "1":
                 for version, detail in sorted(stats["uninstall"].items()):
                     print(f"\n── {version - 1}.0 → {version}.0 ──")
@@ -848,7 +861,12 @@ class TodoUpgrade:
         le journal, et le journal est justement ce que cet écran montre.
         Regarder l'état polluerait alors l'état.
         """
-        self.write_config()
+        # Écrire seulement si l'on a quelque chose EN MÉMOIRE : l'écran
+        # de statistiques est ouvert avant que la progression ne soit
+        # chargée, et `write_config` y échouait sur un attribut absent.
+        # Sans rien en mémoire, le fichier sur disque est déjà la vérité.
+        if getattr(self, "dct_progression", None):
+            self.write_config()
         subprocess.call(
             f"{PYTHON_BIN} ./script/todo/migration_status.py",
             shell=True,
