@@ -332,6 +332,41 @@ def read_status(log_path: str) -> tuple[str, int | None]:
     return "running", None
 
 
+# Au-delà de ce silence, la colonne d'état le DIT. Ce n'est pas un verdict mais
+# un chiffre : plusieurs étapes sont légitimement muettes, leur sortie partant
+# ailleurs. Mesuré sur une installation réelle : le téléchargement d'Android
+# Studio tient ~5 min sans une ligne, et l'étape « APK debug » davantage — son
+# détail va dans le journal de la VM. Dix minutes passent donc au-dessus du
+# premier sans attendre le second, qui reste bruyant par nature.
+#
+# À 48 minutes, le chiffre est accablant : une installation est morte ainsi,
+# session ssh emportée, et le sablier tournait toujours.
+IDLE_HINT_SECS = 600
+
+
+def log_idle(log_path: str) -> float:
+    """Secondes depuis la dernière écriture dans le journal. -1 s'il manque.
+
+    La date de modification du fichier, et non un compte de lignes : c'est la
+    seule mesure qui distingue « rien n'avance » de « rien ne s'affiche »."""
+    try:
+        return max(0.0, time.time() - os.path.getmtime(log_path))
+    except OSError:
+        return -1.0
+
+
+def state_mark(icon: str, idle: float) -> str:
+    """Icône d'état, suivie du silence du journal quand il dépasse le seuil.
+
+    Le silence est une INFORMATION, pas un diagnostic : plusieurs étapes sont
+    muettes longtemps sans rien avoir de cassé. Mais le sablier seul ne
+    distingue pas une installation qui travaille d'une qui est morte, et c'est
+    arrivé — 48 minutes de sablier sur une session ssh déjà emportée."""
+    if idle > IDLE_HINT_SECS:
+        return f"{icon} {t('silent')} {_fmt_secs(idle)}"
+    return icon
+
+
 def run_progress(run: dict) -> dict:
     """Avancement d'un run : combien de VM tournent encore, et depuis quand
     plus rien n'a été écrit. `idle` sert à distinguer une install vivante d'un
@@ -1682,7 +1717,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                             table, name, "state", f"⏸ {t('paused')}"
                         )
                     else:
-                        self._set_cell(table, name, "state", ICON[state])
+                        self._set_cell(
+                            table,
+                            name,
+                            "state",
+                            state_mark(ICON[state], log_idle(vm["log"])),
+                        )
                         ref = eta_reference(self._stats, vm.get("arch"))
                         if ref is not None:
                             remaining.append(max(0, ref - (now - started)))

@@ -2259,6 +2259,7 @@ TRANSLATIONS = {
     "Grouped by shape": {"fr": "Regroupé par forme", "en": "Grouped by shape"},
     "line": {"fr": "ligne", "en": "line"},
     "free space": {"fr": "libre", "en": "free"},
+    "silent": {"fr": "silence", "en": "silent"},
     "inotify watches raised for the IDE": {
         "fr": "watches inotify relevées pour l'IDE",
         "en": "inotify watches raised for the IDE",

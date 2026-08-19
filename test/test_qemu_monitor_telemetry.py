@@ -93,6 +93,61 @@ class TestMemSegment(unittest.TestCase):
         self.assertIn("0K/12.0G", m._mem_tele(12 * GB, 13 * GB, 0, 0))
 
 
+class TestLogSilence(unittest.TestCase):
+    """Une installation morte et une qui travaille portent le même sablier.
+
+    Vécu : une session ssh emportée, l'installation morte sans marqueur de
+    sortie, et le tableau de bord a montré « ⏳ » pendant 54 minutes. Le
+    marqueur manque dans les deux cas — seule la date d'écriture du journal
+    les sépare.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.log = Path(self.tmp.name) / "vm.log"
+        self.log.write_text("== installation ==\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_fresh_log_is_not_silent(self):
+        self.assertLess(m.log_idle(str(self.log)), 5)
+
+    def test_an_old_log_reports_its_age(self):
+        import os
+        import time
+
+        old = time.time() - 3000
+        os.utime(self.log, (old, old))
+        self.assertAlmostEqual(m.log_idle(str(self.log)), 3000, delta=5)
+
+    def test_a_missing_log_is_not_reported_as_silent(self):
+        """-1 plutôt que 0 : « absent » n'est pas « à l'instant », et surtout
+        pas « silencieux depuis toujours »."""
+        self.assertEqual(m.log_idle("/nonexistent/erplibre.log"), -1.0)
+        self.assertEqual(m.state_mark("⏳", -1.0), "⏳")
+
+    def test_below_the_threshold_the_cell_stays_bare(self):
+        """Plusieurs étapes sont muettes quelques minutes — un téléchargement
+        d'Android Studio, une compilation dont la sortie va ailleurs."""
+        self.assertEqual(m.state_mark("⏳", 0), "⏳")
+        self.assertEqual(m.state_mark("⏳", m.IDLE_HINT_SECS), "⏳")
+
+    def test_above_the_threshold_the_cell_says_how_long(self):
+        mark = m.state_mark("⏳", 2900)
+        self.assertNotEqual(mark, "⏳")
+        self.assertIn("48", mark)
+
+    def test_the_threshold_clears_the_longest_measured_silence(self):
+        """Mesuré : le téléchargement d'Android Studio reste ~5 min sans une
+        ligne. Un seuil en dessous transformerait chaque installation en alerte,
+        et l'alerte cesserait d'être lue."""
+        studio_download = 5 * 60
+        self.assertGreater(m.IDLE_HINT_SECS, studio_download)
+        # Et pas si haut qu'une installation morte passe la demi-heure.
+        self.assertLessEqual(m.IDLE_HINT_SECS, 1200)
+
+
 class TestTheRealBar(unittest.TestCase):
     """La barre telle que le suivi la construit, sans lancer la TUI."""
 
