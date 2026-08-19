@@ -1315,6 +1315,11 @@ class TODO:
                     "Remote desktop tunnel (VNC/RDP through SSH)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Android emulator (start, tunnel, scrcpy)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1357,6 +1362,8 @@ class TODO:
             elif status == "14":
                 self._qemu_tunnel_menu()
             elif status == "15":
+                self._qemu_emulator_menu()
+            elif status == "16":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1607,7 +1614,159 @@ class TODO:
         )
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
-    def _qemu_scrcpy_tunnel(self, name, src):
+    @staticmethod
+    def _qemu_ssh_opts(src):
+        """Options ssh selon la provenance de la cible.
+
+        Une VM libvirt locale est jointe par son IP, et son IP est recyclée d'un
+        déploiement à l'autre : sa clé d'hôte change sous le même adresse, et
+        ssh refuse alors de se connecter — « Host key verification failed »,
+        vécu. C'est la raison pour laquelle le suivi d'installation et l'attente
+        de sshd emploient déjà ces deux options.
+
+        Un hôte de ~/.ssh/config, lui, est une machine que l'utilisateur a
+        configurée : on ne touche PAS à sa politique de clés. Sa clé est un
+        garde-fou qui lui appartient."""
+        if src == "ssh_config":
+            return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]
+        return [
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=8",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        ]
+
+    def _qemu_ssh_target(self, name, src):
+        """Destination ssh d'une cible du menu, selon sa provenance.
+
+        Un hôte de ~/.ssh/config se nomme tel quel — c'est lui qui porte le
+        ProxyJump, et le réécrire à la main reviendrait à le deviner. Un domaine
+        libvirt local, lui, n'a qu'une IP, et l'utilisateur des VM ERPLibre est
+        « erplibre ». Renvoie une chaîne vide quand l'IP manque."""
+        if src == "ssh_config":
+            return name
+        ip = self._qemu_resolve_ips([name]).get(name)
+        return f"erplibre@{ip}" if ip else ""
+
+    # Commande de l'émulateur dans la VM. Le chemin est ABSOLU : un
+    # « ssh hôte 'commande' » ne lit ni ~/.profile ni ~/.bashrc.
+    _QEMU_EMULATOR_BIN = "$HOME/android/emulator/emulator"
+    _QEMU_AVD_NAME = "erplibre"
+
+    def _qemu_emulator_running(self, target, src="virsh"):
+        """Nombre d'émulateurs en cours dans la VM.
+
+        Deux sur le même AVD, et le second s'arrête sur « Running multiple
+        emulators with the same AVD is an experimental feature ». Le savoir
+        AVANT de lancer évite de lire cette phrase sans la comprendre — vécu,
+        deux fois."""
+        try:
+            res = subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, "pgrep -c qemu-system 2>/dev/null || echo 0"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            return int((res.stdout or "0").strip().splitlines()[-1])
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return -1
+
+    def _qemu_emulator_menu(self):
+        """Démarre l'émulateur Android d'une VM, et donne la suite qui va avec.
+
+        La question qui décide de tout est celle de la FENÊTRE :
+          - avec fenêtre, l'écran voyage en pixels bruts par X11, et la commande
+            doit partir du poste qui possède l'affichage — donc pas d'ici ;
+          - sans fenêtre, on peut la lancer d'ici, détachée, et l'image arrive
+            ensuite par scrcpy en H.264. C'est la voie fluide.
+        """
+        print(f"\n📱 {t('Android emulator')}")
+        targets = [(h, "ssh_config") for h in self._ssh_config_hosts()]
+        if not targets:
+            targets = [(n, "virsh") for n in self._qemu_list_domains()]
+        if not targets:
+            print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
+            return
+        for i, (nm, sr) in enumerate(targets, 1):
+            mark = "" if sr == "ssh_config" else f"  ({t('local VM')})"
+            print(f"  [{i}] {nm}{mark}")
+        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
+            print(t("Cancelled."))
+            return
+        name, src = targets[int(answer) - 1]
+        target = self._qemu_ssh_target(name, src)
+        if not target:
+            print(f"  {t('No IP for this VM; is it running?')}")
+            return
+
+        running = self._qemu_emulator_running(target, src)
+        if running > 0:
+            print(f"\n  ⚠ {t('An emulator is already running on this VM.')}")
+            print(f"  {t('Only one per AVD; close it first:')}")
+            print(f"\n    ssh {target} 'pkill -f \"[q]emu-system-x86_64\"'\n")
+            if not self._is_yes(input(t("Close it now? (y/N): "))):
+                return
+            subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, 'pkill -f "[q]emu-system-x86_64"'],
+                capture_output=True,
+                timeout=30,
+            )
+            print(f"  {t('Closed.')}")
+
+        print(f"\n  {t('Show a window?')}")
+        print(f"  [1] {t('No window - stream with scrcpy (smoother)')} *")
+        print(f"  [2] {t('Window over ssh -X (raw pixels, slower)')}")
+        kind = input(f"{t('Choice')} [1]: ").strip() or "1"
+        emu = self._QEMU_EMULATOR_BIN
+        avd = self._QEMU_AVD_NAME
+
+        if kind == "2":
+            # L'affichage appartient au POSTE : cette commande ne peut pas
+            # partir d'ici, où il n'y a pas d'écran à lui donner.
+            print(f"\n  {t('Run this on YOUR workstation:')}")
+            print(
+                f"\n    ssh -XC {target} '{emu} -avd {avd}"
+                " -no-audio -no-boot-anim'\n"
+            )
+            print(
+                f"  {t('X11 compression is on (-XC); the screen is 540x1140.')}"
+            )
+            return
+
+        print(f"\n  {t('Starting the emulator without a window...')}")
+        # « sg kvm » : l'appartenance au groupe est posée à l'installation, mais
+        # une VM créée avant ce correctif ne l'a pas dans sa session — sans KVM
+        # l'émulateur refuse de démarrer. setsid le détache, pour qu'il survive
+        # à la fermeture de ce ssh.
+        start = (
+            f'setsid -f sg kvm -c "{emu} -avd {avd} -no-window -no-audio'
+            ' -no-boot-anim > /tmp/erplibre-emulator.log 2>&1"'
+        )
+        res = subprocess.run(
+            ["ssh"] + self._qemu_ssh_opts(src) + [target, start],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if res.returncode:
+            print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
+            return
+        print(
+            f"  {t('Started. Boot takes about a minute; log in the VM:')}"
+            " /tmp/erplibre-emulator.log"
+        )
+        self._qemu_scrcpy_tunnel(name, src, started=True)
+
+    def _qemu_scrcpy_tunnel(self, name, src, started=False):
         """Tunnel adb vers l'émulateur Android d'une VM, pour scrcpy.
 
         Pourquoi cette voie plutôt que « ssh -X » : par X11, chaque image de
@@ -1627,21 +1786,21 @@ class TODO:
         l'émulateur lui-même — c'est exactement ce que fait « adb connect ».
         """
         port = 5555
+        target = self._qemu_ssh_target(name, src)
+        if not target:
+            print(f"  {t('No IP for this VM; is it running?')}")
+            return
         print(f"\n  📱 {t('Android emulator over adb + scrcpy')}")
-        print(f"\n  {t('1. In the VM, start the emulator WITHOUT a window:')}")
-        emu = "$HOME/android/emulator/emulator"
-        if src == "ssh_config":
-            print(
-                f"\n    ssh {name} '{emu} -avd erplibre"
-                " -no-window -no-audio -no-boot-anim'\n"
-            )
+        if started:
+            # Inutile de redire comment le démarrer : on vient de le faire.
+            print(f"\n  {t('1. Emulator started, without a window.')}")
         else:
-            ip = self._qemu_resolve_ips([name]).get(name)
-            if not ip:
-                print(f"  {t('No IP for this VM; is it running?')}")
-                return
             print(
-                f"\n    ssh erplibre@{ip} '{emu} -avd erplibre"
+                f"\n  {t('1. In the VM, start the emulator WITHOUT a window:')}"
+            )
+            print(
+                f"\n    ssh {target} '{self._QEMU_EMULATOR_BIN} "
+                f"-avd {self._QEMU_AVD_NAME}"
                 " -no-window -no-audio -no-boot-anim'\n"
             )
         print(f"  {t('2. Open the tunnel from YOUR workstation:')}")
@@ -1653,18 +1812,69 @@ class TODO:
         else:
             host, from_ssh = self._qemu_self_address()
             user = os.environ.get("USER", "user")
+            vm_ip = target.split("@")[-1]
             if not from_ssh:
                 print(
                     f"  ⚠ {t('Not in an SSH session: check the host address.')}"
                 )
-            print(f"\n    ssh -N -L {port}:{ip}:{port} {user}@{host}\n")
+            # DEUX sauts, et non un seul vers l'hyperviseur : l'émulateur
+            # n'écoute que sur le 127.0.0.1 de la VM — « ss -ltn » le montre, et
+            # l'hyperviseur reçoit un refus sur IP_VM:5555. Or « localhost » se
+            # résout sur le DERNIER hôte de la chaîne : la VM doit donc être ce
+            # dernier saut, l'hyperviseur n'étant que le relais (-J).
+            print(
+                f"\n    ssh -N -L {port}:localhost:{port}"
+                f" -J {user}@{host} erplibre@{vm_ip}\n"
+            )
+            print(
+                f"  {t('(the hypervisor only relays; -J puts the VM last)')}"
+            )
         print(f"  {t('3. Then, still on your workstation:')}")
         print(f"\n    adb connect localhost:{port}")
         print(f"    scrcpy -s localhost:{port}\n")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
-        print(
-            f"  {t('scrcpy on Debian/Ubuntu:')} sudo apt install scrcpy" " adb"
+        print(f"  {t('scrcpy on Debian/Ubuntu:')} sudo apt install scrcpy adb")
+
+        # Ouvrir le tunnel D'ICI n'a de sens que si scrcpy tournera ici : le
+        # port ressort sur CETTE machine. On le propose donc en le disant,
+        # plutôt que de le faire d'office depuis un hyperviseur sans écran.
+        print(f"\n  {t('If scrcpy will run on THIS machine, I can open it.')}")
+        if not self._is_yes(input(t("Open the tunnel now? (y/N): "))):
+            return
+        if self._port_in_use(port):
+            print(f"  ⚠ {t('Port already in use here:')} {port}")
+            print(
+                f"  {t('Close the other tunnel first:')}"
+                f' pkill -f "{port}:localhost:{port}"'
+            )
+            return
+        # « ExitOnForwardFailure » : sans lui, un ssh détaché rend 0 alors que
+        # la redirection a échoué — un succès annoncé pour un tunnel absent.
+        cmd = (
+            ["ssh", "-f", "-N", "-o", "ExitOnForwardFailure=yes"]
+            + self._qemu_ssh_opts(src)
+            + ["-L", f"{port}:localhost:{port}", target]
         )
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+        if res.returncode:
+            print(f"  ⚠ {t('Tunnel failed:')} {res.stderr.strip()[:200]}")
+            return
+        print(f"  ✅ {t('Tunnel open on localhost:')}{port}")
+        print(
+            f"  {t('Then:')} adb connect localhost:{port}"
+            f" && scrcpy -s localhost:{port}"
+        )
+        print(f'  {t("To close it:")} pkill -f "{port}:localhost:{port}"')
+
+    @staticmethod
+    def _port_in_use(port):
+        """Le port est-il déjà pris sur CETTE machine ?
+
+        Un second tunnel sur le même port échouerait, et le message d'ssh
+        (« bind: Address already in use ») se perd en mode détaché."""
+        with socket.socket() as sock:
+            sock.settimeout(1)
+            return sock.connect_ex(("127.0.0.1", port)) == 0
 
     def _qemu_console_tunnel(self):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.

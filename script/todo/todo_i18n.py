@@ -2248,6 +2248,10 @@ TRANSLATIONS = {
         "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
         "en": "(through the ProxyJump already in ~/.ssh/config)",
     },
+    "(the hypervisor only relays; -J puts the VM last)": {
+        "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
+        "en": "(the hypervisor only relays; -J puts the VM last)",
+    },
     "No ~/.ssh/config entry; see SSH configuration.": {
         "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
         "en": "No ~/.ssh/config entry; see SSH configuration.",
@@ -7822,6 +7826,79 @@ TRANSLATIONS = {
         "fr": "plus fluide, sans X11 :",
         "en": "smoother, without X11:",
     },
+    "Android emulator": {"fr": "Émulateur Android", "en": "Android emulator"},
+    "Android emulator (start, tunnel, scrcpy)": {
+        "fr": "Émulateur Android (démarrer, tunnel, scrcpy)",
+        "en": "Android emulator (start, tunnel, scrcpy)",
+    },
+    "An emulator is already running on this VM.": {
+        "fr": "Un émulateur tourne déjà sur cette VM.",
+        "en": "An emulator is already running on this VM.",
+    },
+    "Only one per AVD; close it first:": {
+        "fr": "Un seul par AVD ; le fermer d'abord :",
+        "en": "Only one per AVD; close it first:",
+    },
+    "Close it now? (y/N): ": {
+        "fr": "Le fermer maintenant ? (o/N) : ",
+        "en": "Close it now? (y/N): ",
+    },
+    "Closed.": {"fr": "Fermé.", "en": "Closed."},
+    "Show a window?": {
+        "fr": "Afficher une fenêtre ?",
+        "en": "Show a window?",
+    },
+    "No window - stream with scrcpy (smoother)": {
+        "fr": "Sans fenêtre — flux par scrcpy (plus fluide)",
+        "en": "No window - stream with scrcpy (smoother)",
+    },
+    "Window over ssh -X (raw pixels, slower)": {
+        "fr": "Fenêtre par ssh -X (pixels bruts, plus lent)",
+        "en": "Window over ssh -X (raw pixels, slower)",
+    },
+    "X11 compression is on (-XC); the screen is 540x1140.": {
+        "fr": "La compression X11 est active (-XC) ; l'écran fait 540x1140.",
+        "en": "X11 compression is on (-XC); the screen is 540x1140.",
+    },
+    "Starting the emulator without a window...": {
+        "fr": "Démarrage de l'émulateur sans fenêtre…",
+        "en": "Starting the emulator without a window...",
+    },
+    "Could not start it:": {
+        "fr": "Démarrage impossible :",
+        "en": "Could not start it:",
+    },
+    "Started. Boot takes about a minute; log in the VM:": {
+        "fr": "Démarré. L'amorçage prend environ une minute ; journal dans la VM :",
+        "en": "Started. Boot takes about a minute; log in the VM:",
+    },
+    "1. Emulator started, without a window.": {
+        "fr": "1. Émulateur démarré, sans fenêtre.",
+        "en": "1. Emulator started, without a window.",
+    },
+    "If scrcpy will run on THIS machine, I can open it.": {
+        "fr": "Si scrcpy tournera sur CETTE machine, je peux l'ouvrir.",
+        "en": "If scrcpy will run on THIS machine, I can open it.",
+    },
+    "Open the tunnel now? (y/N): ": {
+        "fr": "Ouvrir le tunnel maintenant ? (o/N) : ",
+        "en": "Open the tunnel now? (y/N): ",
+    },
+    "Port already in use here:": {
+        "fr": "Port déjà occupé ici :",
+        "en": "Port already in use here:",
+    },
+    "Close the other tunnel first:": {
+        "fr": "Fermer l'autre tunnel d'abord :",
+        "en": "Close the other tunnel first:",
+    },
+    "Tunnel failed:": {"fr": "Tunnel en échec :", "en": "Tunnel failed:"},
+    "Tunnel open on localhost:": {
+        "fr": "Tunnel ouvert sur localhost:",
+        "en": "Tunnel open on localhost:",
+    },
+    "Then:": {"fr": "Puis :", "en": "Then:"},
+    "To close it:": {"fr": "Pour le fermer :", "en": "To close it:"},
     "Android emulator (adb 5555, then scrcpy)": {
         "fr": "Émulateur Android (adb 5555, puis scrcpy)",
         "en": "Android emulator (adb 5555, then scrcpy)",
