@@ -159,17 +159,24 @@ def statistics(etat, precedent):
     ]
 
 
-def pane_text(lst_snapshot, row, colour=False, show_missing=False):
-    """Le détail du palier choisi, ou le bilan d'ensemble."""
+def pane_text(lst_snapshot, row, colour=False, mode=None):
+    """Le détail du palier choisi, ou le bilan d'ensemble.
+
+    UN seul mode, et non deux drapeaux : « montre les fichiers absents »
+    et « montre la liste des modèles » ne peuvent pas être vrais en même
+    temps, et deux booléens laissaient écrire cet état impossible.
+    """
     if row is None:
         return t("Nothing to show yet.")
     if row["kind"] == "missing":
         return f"⚠️  {row['data']['database']} : {t('database not found')}"
     etat = row["data"]
-    if show_missing:
+    if mode == "missing":
         if not etat:
             return t("Pick a step to see its missing files.")
         return quality.render_missing(etat, colour)
+    if mode in quality.DETAILS:
+        return quality.render_detail(row.get("diff"), mode, colour)
     lignes = []
     if etat:
         lignes.append(
@@ -202,6 +209,19 @@ def pane_text(lst_snapshot, row, colour=False, show_missing=False):
     return "\n".join(lignes)
 
 
+def mode_label(mode):
+    """Le nom du mode courant, pour le sous-titre.
+
+    Un panneau qui change de contenu sans dire pourquoi se lit comme un
+    écran cassé — et avec sept modes, on ne devine pas.
+    """
+    if mode is None:
+        return t("summary")
+    if mode == "missing":
+        return t("Missing files")
+    return t(mode)
+
+
 def build_app(lst_snapshot):
     """Textual est importé ICI : le module reste testable sans lui."""
     from rich.text import Text
@@ -214,6 +234,7 @@ def build_app(lst_snapshot):
         BINDINGS = [
             ("q,escape", "quit", t("Quit")),
             ("m", "toggle_missing", t("Missing files")),
+            ("d", "cycle_detail", t("Details")),
         ]
 
         def __init__(self, lst_snapshot):
@@ -221,7 +242,7 @@ def build_app(lst_snapshot):
             self.lst_snapshot = lst_snapshot
             self.lst_row = rows(lst_snapshot)
             self.index = 0
-            self.show_missing = False
+            self.mode = None
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -244,6 +265,7 @@ def build_app(lst_snapshot):
             self._show()
 
         def _show(self):
+            self.sub_title = mode_label(self.mode)
             row = (
                 self.lst_row[self.index]
                 if self.lst_row and self.index < len(self.lst_row)
@@ -255,7 +277,7 @@ def build_app(lst_snapshot):
                         self.lst_snapshot,
                         row,
                         colour=True,
-                        show_missing=self.show_missing,
+                        mode=self.mode,
                     )
                 )
             )
@@ -267,7 +289,20 @@ def build_app(lst_snapshot):
             base allongerait un parcours qui tient en quatre secondes, pour
             une information qu'on ne regarde qu'en la demandant.
             """
-            self.show_missing = not self.show_missing
+            self.mode = None if self.mode == "missing" else "missing"
+            self._show()
+
+        def action_cycle_detail(self):
+            """Parcourir les listes ENTIÈRES, une catégorie à la fois.
+
+            Le résumé coupe à huit entrées et il a raison ; mais quand on
+            cherche si UN module précis a survécu, la liste tronquée ne
+            répond pas. On enchaîne donc résumé → modules → modèles →
+            champs → copies COW → tables, et l'on revient.
+            """
+            suite = (None,) + quality.DETAILS
+            courant = self.mode if self.mode in suite else None
+            self.mode = suite[(suite.index(courant) + 1) % len(suite)]
             self._show()
 
         def on_data_table_row_highlighted(self, event):

@@ -210,6 +210,22 @@ def inspect(database):
     modeles = run_psql(database, "SELECT model FROM ir_model ORDER BY model")
     etat["model"] = sorted(m[0] for m in modeles or [])
     etat["table"] = table_counts(database)
+    # Les CHAMPS : un champ perdu est une colonne de données perdue, et
+    # c'est plus fin qu'un modèle — un modèle qui survit peut avoir été
+    # vidé de la moitié de ses champs sans que rien ne le dise.
+    champs = run_psql(
+        database,
+        "SELECT model || '.' || name FROM ir_model_fields ORDER BY 1",
+    )
+    etat["field"] = sorted(ligne[0] for ligne in champs or [])
+    # Les copies COW par leur CLÉ : c'est elle qu'on réinitialise, et
+    # c'est par elle qu'on les retrouve d'une version à l'autre.
+    copies = run_psql(
+        database,
+        "SELECT coalesce(key, 'id:' || id::text) FROM ir_ui_view"
+        " WHERE website_id IS NOT NULL ORDER BY 1",
+    )
+    etat["cow"] = sorted(ligne[0] for ligne in copies or [])
 
     # Les modèles sans table : abstraits, mixins et vues SQL pour la
     # plupart — mais leur NOMBRE qui bouge d'un palier à l'autre dit
@@ -274,6 +290,58 @@ def missing_detail(database, lst_store_fname, limit=400):
         for ligne in lignes or []
         if len(ligne) >= 7
     ]
+
+
+DETAILS = ("modules", "models", "fields", "cow", "tables")
+
+
+def render_detail(diff, categorie, colour=False):
+    """La liste ENTIÈRE d'une catégorie, sans troncature.
+
+    Le résumé coupe à huit entrées, et il a raison : personne ne lit
+    trois cent soixante-quinze noms de modèles en passant. Mais quand on
+    cherche si UN module précis a survécu, la liste tronquée ne répond
+    pas — et c'est justement là qu'on a besoin d'elle.
+    """
+    from script.todo.migration_status import paint
+
+    if diff is None or diff.get("unavailable"):
+        return t("not comparable: a database is missing")
+    if categorie == "tables":
+        lignes = [f"── {t('table(s) lost rows')} ──"]
+        vers = {a: b for a, b, _n in diff["renamed"]}
+        for table, avant, apres, connu in diff["rows_lost"]:
+            note = ""
+            if connu and connu["into"]:
+                note = f"   → {connu['into']}"
+            elif connu:
+                note = f"   {t('retired from the database')}"
+            elif table in vers:
+                note = f"   ↻ {vers[table]}"
+            teinte = "dim" if connu else "fail"
+            lignes.append(
+                f"   {paint(f'{avant - apres:>8}', teinte, colour)}"
+                f"  {table:<46} {avant} → {apres}{note}"
+            )
+        return "\n".join(lignes)
+
+    perdus = diff.get(f"{categorie}_lost") or []
+    gagnes = diff.get(f"{categorie}_gained") or []
+    lignes = []
+    # « − 28 copies COW » plutôt que « 28 copies COW perdus » : le signe
+    # porte déjà le sens, et l'accord d'un participe avec une catégorie
+    # dont le genre change d'une langue à l'autre ne se traduit pas.
+    for lst, symbole, teinte in (
+        (perdus, "−", "fail"),
+        (gagnes, "+", "ok"),
+    ):
+        lignes.append(
+            f"── {paint(symbole, teinte, colour)} {len(lst)}"
+            f" {t(categorie)} ──"
+        )
+        lignes.extend(f"   {nom}" for nom in lst)
+        lignes.append("")
+    return "\n".join(lignes)
 
 
 def render_missing(etat, colour=False, limit=60):
@@ -521,7 +589,18 @@ def compare(avant, apres):
             else None
         )
         lignes_perdues[index] = (table, debut, fin, {**connu, "gained": recue})
+    champ_avant = set(avant.get("field") or [])
+    champ_apres = set(apres.get("field") or [])
+    cow_avant = set(avant.get("cow") or [])
+    cow_apres = set(apres.get("cow") or [])
+    # Les plus grosses pertes EN TÊTE : on attaque une liste de
+    # cinquante-sept par le haut, pas par ordre alphabétique.
+    lignes_perdues.sort(key=lambda item: -(item[1] - item[2]))
     return {
+        "fields_lost": sorted(champ_avant - champ_apres),
+        "fields_gained": sorted(champ_apres - champ_avant),
+        "cow_lost": sorted(cow_avant - cow_apres),
+        "cow_gained": sorted(cow_apres - cow_avant),
         "modules_lost": sorted(inst_avant - inst_apres),
         "modules_gained": sorted(inst_apres - inst_avant),
         "models_lost": sorted(mod_avant - mod_apres),

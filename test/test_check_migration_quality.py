@@ -633,8 +633,8 @@ class TestTheMissingFilesButton(Base):
             "previous": None,
             "diff": None,
         }
-        chiffres = qtui.pane_text([], row, show_missing=False)
-        liste = qtui.pane_text([], row, show_missing=True)
+        chiffres = qtui.pane_text([], row, mode=None)
+        liste = qtui.pane_text([], row, mode="missing")
         self.assertIn("modules", chiffres)
         self.assertNotIn("modules", liste)
 
@@ -717,6 +717,210 @@ class TestTheMenuEntryLooksLikeItsNeighbours(Base):
         import inspect
 
         self.assertIn("📐", inspect.getsource(quality.render_text))
+
+
+class TestAttackingTheListFromTheTop(Base):
+    """Cinquante-sept pertes se parcourent par le haut, pas par ordre
+    alphabétique : la plus grosse est celle qu'on veut voir en premier."""
+
+    def test_the_biggest_loss_comes_first(self):
+        # Des noms dont l'ordre alphabétique CONTREDIT celui des volumes :
+        # sinon un tri par nom passerait pour un tri par volume, et le
+        # test ne prouverait rien.
+        diff = quality.compare(
+            snapshot(
+                odoo="12.0",
+                table={
+                    "aaa_petite": 10,
+                    "zzz_enorme": 5000,
+                    "mmm_moyenne": 100,
+                },
+            ),
+            snapshot(odoo="18.0", table={}),
+        )
+        self.assertEqual(
+            [x[0] for x in diff["rows_lost"]],
+            ["zzz_enorme", "mmm_moyenne", "aaa_petite"],
+        )
+
+    def test_it_sorts_on_what_was_LOST_not_on_what_was_there(self):
+        # Une table de dix mille lignes qui en perd deux compte moins
+        # qu'une table de mille qui se vide.
+        diff = quality.compare(
+            snapshot(odoo="12.0", table={"grosse": 10000, "vidée": 1000}),
+            snapshot(odoo="18.0", table={"grosse": 9998}),
+        )
+        self.assertEqual(
+            [x[0] for x in diff["rows_lost"]], ["vidée", "grosse"]
+        )
+
+
+class TestTheFullLists(Base):
+    """Le résumé coupe à huit entrées, et il a raison.
+
+    Mais quand on cherche si UN module précis a survécu, la liste
+    tronquée ne répond pas — et c'est justement là qu'on en a besoin.
+    """
+
+    def diff(self):
+        return quality.compare(
+            snapshot(
+                odoo="12.0",
+                installed=["a", "b"],
+                model=["m.un", "m.deux"],
+                field=["m.un.x", "m.un.y"],
+                cow=["site.vue"],
+                table={"t": 10},
+            ),
+            snapshot(
+                odoo="18.0",
+                installed=["a", "c"],
+                model=["m.un", "m.trois"],
+                field=["m.un.x", "m.trois.z"],
+                cow=["site.autre"],
+                table={},
+            ),
+        )
+
+    def test_fields_are_inventoried(self):
+        # Un champ perdu est une colonne de données perdue — plus fin
+        # qu'un modèle, qui peut survivre vidé de la moitié des siens.
+        diff = self.diff()
+        self.assertEqual(diff["fields_lost"], ["m.un.y"])
+        self.assertEqual(diff["fields_gained"], ["m.trois.z"])
+
+    def test_cow_copies_are_inventoried_by_key(self):
+        # C'est la clé qu'on réinitialise, et par elle qu'on les retrouve.
+        diff = self.diff()
+        self.assertEqual(diff["cow_lost"], ["site.vue"])
+        self.assertEqual(diff["cow_gained"], ["site.autre"])
+
+    def test_every_category_renders_in_full(self):
+        for categorie in quality.DETAILS:
+            texte = quality.render_detail(self.diff(), categorie)
+            self.assertTrue(texte.strip(), categorie)
+
+    def test_nothing_is_truncated(self):
+        # C'est tout le propos : le résumé coupe, la liste entière non.
+        diff = quality.compare(
+            snapshot(odoo="12.0", model=[f"m.{i}" for i in range(200)]),
+            snapshot(odoo="18.0", model=[]),
+        )
+        texte = quality.render_detail(diff, "models")
+        self.assertIn("m.199", texte)
+        self.assertNotIn("…", texte)
+
+    def test_the_table_list_keeps_the_volume_order(self):
+        diff = quality.compare(
+            snapshot(odoo="12.0", table={"petite": 1, "enorme": 900}),
+            snapshot(odoo="18.0", table={}),
+        )
+        texte = quality.render_detail(diff, "tables")
+        self.assertLess(texte.index("enorme"), texte.index("petite"))
+
+    def test_an_unavailable_comparison_says_so(self):
+        self.assertIn("not comparable", quality.render_detail(None, "models"))
+
+    def test_the_headings_carry_no_participle(self):
+        """« 28 copies COW perdus » ne s'accorde pas, et ne se traduit pas.
+
+        Le signe porte déjà le sens ; un participe devrait s'accorder avec
+        une catégorie dont le genre change d'une langue à l'autre.
+        """
+        texte = quality.render_detail(self.diff(), "cow")
+        self.assertIn("−", texte)
+        self.assertNotIn("perdus", texte)
+
+
+class TestTheInventoryItself(Base):
+    """La comparaison était testée, la COLLECTE ne l'était pas.
+
+    Vider l'inventaire des champs dans `inspect` passait inaperçu, parce
+    que tous les tests fabriquaient leurs instantanés à la main. Un test
+    qui ne touche jamais le code réel ne garde rien.
+    """
+
+    def repondre(self, sql):
+        if "ir_model_fields" in sql:
+            return [["res.partner.name"], ["res.partner.email"]]
+        if "website_id IS NOT NULL" in sql:
+            return [["site.vue"]]
+        if "FROM ir_model " in sql or sql.strip().endswith("ORDER BY model"):
+            return [["res.partner"]]
+        if "ir_module_module" in sql:
+            return [["base", "installed"]]
+        if "latest_version" in sql:
+            return [["odoo", "18.0.1.3"]]
+        return []
+
+    def inspecter(self):
+        for nom, remplacant in (
+            ("run_psql", lambda db, sql: self.repondre(sql)),
+            ("missing_files", lambda db, lst: []),
+            ("table_counts", lambda db: {}),
+        ):
+            original = getattr(quality, nom)
+            setattr(quality, nom, remplacant)
+            self.addCleanup(setattr, quality, nom, original)
+        return quality.inspect("db")
+
+    def test_the_fields_are_collected(self):
+        self.assertEqual(
+            self.inspecter()["field"],
+            ["res.partner.email", "res.partner.name"],
+        )
+
+    def test_the_cow_copies_are_collected(self):
+        self.assertEqual(self.inspecter()["cow"], ["site.vue"])
+
+    def test_a_cow_copy_without_a_key_is_still_named(self):
+        # Une copie sans clé existe quand même ; la taire ferait un
+        # inventaire qui ment sur son propre compte.
+        import inspect
+
+        self.assertIn("'id:' || id::text", inspect.getsource(quality.inspect))
+
+
+class TestTheDetailButton(Base):
+    def test_d_is_bound(self):
+        app = qtui.build_app([snapshot()])
+        touches = {
+            touche
+            for entree in app.BINDINGS
+            for touche in entree[0].split(",")
+        }
+        self.assertIn("d", touches)
+
+    def test_the_cycle_visits_every_category_and_comes_back(self):
+        suite = (None,) + quality.DETAILS
+        self.assertEqual(len(suite), 6)
+        self.assertEqual(suite[len(suite) % len(suite)], None)
+
+    def test_ONE_mode_not_two_flags(self):
+        """« fichiers absents » et « liste des modèles » ne peuvent pas
+        être vrais en même temps ; deux booléens laissaient écrire cet
+        état impossible."""
+        import inspect
+
+        source = inspect.getsource(qtui.build_app)
+        self.assertIn("self.mode", source)
+        self.assertNotIn("self.show_missing", source)
+
+    def test_every_mode_has_a_name(self):
+        # Un panneau qui change sans dire pourquoi se lit comme un écran
+        # cassé, et avec sept modes on ne devine pas.
+        noms = {
+            qtui.mode_label(m) for m in (None, "missing") + quality.DETAILS
+        }
+        self.assertEqual(len(noms), 7)
+        for nom in noms:
+            self.assertTrue(nom.strip())
+
+    def test_the_name_is_shown_where_it_stays_visible(self):
+        import inspect
+
+        source = inspect.getsource(qtui.build_app)
+        self.assertIn("self.sub_title = mode_label", source)
 
 
 class TestItNeverWrites(Base):

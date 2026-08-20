@@ -5803,6 +5803,34 @@ TRANSLATIONS = {
         "fr": "là-bas",
         "en": "there",
     },
+    "lost": {
+        "fr": "perdus",
+        "en": "lost",
+    },
+    "gained": {
+        "fr": "gagnés",
+        "en": "gained",
+    },
+    "fields": {
+        "fr": "champs",
+        "en": "fields",
+    },
+    "cow": {
+        "fr": "copies COW",
+        "en": "cow",
+    },
+    "tables": {
+        "fr": "tables",
+        "en": "tables",
+    },
+    "Details": {
+        "fr": "Détails",
+        "en": "Details",
+    },
+    "summary": {
+        "fr": "résumé",
+        "en": "summary",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",
