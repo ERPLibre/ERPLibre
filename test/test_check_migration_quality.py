@@ -122,17 +122,19 @@ class TestWhatIsGainedAndLost(Base):
     def test_a_table_that_empties_is_reported(self):
         # LE signal : un module en moins se voit, une table qui passe de
         # cent lignes à zéro ne se voit nulle part.
+        # Une table NEUTRE : le mécanisme se teste sans la carte
+        # sémantique, qui a ses propres tests.
         diff = quality.compare(
-            snapshot(table={"account_invoice": 651}),
-            snapshot(table={"account_invoice": 0}),
+            snapshot(table={"ma_table": 651}),
+            snapshot(table={"ma_table": 0}),
         )
-        self.assertEqual(diff["rows_lost"], [("account_invoice", 651, 0)])
+        self.assertEqual(diff["rows_lost"], [("ma_table", 651, 0, None)])
 
     def test_a_table_that_disappears_counts_as_emptied(self):
         diff = quality.compare(
-            snapshot(table={"account_invoice": 651}), snapshot(table={})
+            snapshot(table={"ma_table": 651}), snapshot(table={})
         )
-        self.assertEqual(diff["rows_lost"], [("account_invoice", 651, 0)])
+        self.assertEqual(diff["rows_lost"], [("ma_table", 651, 0, None)])
 
     def test_an_empty_table_that_disappears_is_not_a_loss(self):
         # Rien à perdre : le signaler noierait les vraies pertes.
@@ -207,7 +209,7 @@ class TestNotCryingWolfOnRenames(Base):
         self.assertEqual(
             diff["renamed"], [("muk_dms_directory", "dms_directory", 7)]
         )
-        self.assertIn(("muk_dms_directory", 7, 0), diff["rows_lost"])
+        self.assertIn(("muk_dms_directory", 7, 0, None), diff["rows_lost"])
 
     def test_the_report_says_it_is_only_probable(self):
         diff = quality.compare(
@@ -217,6 +219,142 @@ class TestNotCryingWolfOnRenames(Base):
         texte = "\n".join(quality.render_compare(diff, colour=False))
         self.assertIn("muk_dms_directory", texte)
         self.assertIn("probably renamed", texte)
+
+
+class TestTheSemanticMap(Base):
+    """« 81 tables ont perdu des lignes » noyait les vraies questions.
+
+    La plus grosse d'entre elles — `ir_translation`, 32 984 lignes — est
+    une refonte voulue par Odoo en 16. Mettre les refontes et les pertes
+    réelles sur le même plan est la façon la plus sûre de ne pas voir les
+    secondes.
+    """
+
+    def perte(
+        self,
+        table,
+        avant_n,
+        apres_n,
+        version="18.0",
+        cible=None,
+        cible_avant=0,
+        cible_apres=0,
+    ):
+        tbl_avant = {table: avant_n}
+        tbl_apres = {} if apres_n == 0 else {table: apres_n}
+        if cible:
+            tbl_avant[cible] = cible_avant
+            tbl_apres[cible] = cible_apres
+        return quality.compare(
+            snapshot(odoo="12.0", table=tbl_avant),
+            snapshot(odoo=version, table=tbl_apres),
+        )
+
+    def test_a_known_merge_is_explained(self):
+        diff = self.perte(
+            "account_invoice",
+            651,
+            0,
+            cible="account_move",
+            cible_avant=1371,
+            cible_apres=1812,
+        )
+        connu = [x for x in diff["rows_lost"] if x[0] == "account_invoice"][0]
+        self.assertIsNotNone(connu[3])
+        self.assertEqual(connu[3]["into"], "account_move")
+        self.assertEqual(connu[3]["gained"], 441)
+
+    def test_a_retired_table_is_explained_without_a_target(self):
+        diff = self.perte("ir_translation", 32984, 0)
+        connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
+        self.assertIsNotNone(connu[3])
+        self.assertIsNone(connu[3]["into"])
+
+    def test_the_map_does_not_apply_BEFORE_its_version(self):
+        """Une refonte de la 16 n'explique rien d'un palier 12 → 13.
+
+        L'accepter ferait taire une vraie perte sous prétexte que la table
+        porte le nom d'une autre, refondue trois versions plus tard.
+        """
+        diff = self.perte("ir_translation", 32984, 0, version="13.0")
+        connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
+        self.assertIsNone(connu[3])
+
+    def test_it_applies_AT_its_version(self):
+        diff = self.perte("ir_translation", 32984, 0, version="16.0")
+        connu = [x for x in diff["rows_lost"] if x[0] == "ir_translation"][0]
+        self.assertIsNotNone(connu[3])
+
+    def test_an_explained_loss_is_STILL_in_the_list(self):
+        # La règle qui vaut plus que tout : expliquer n'est pas cacher.
+        diff = self.perte("ir_translation", 32984, 0)
+        self.assertIn("ir_translation", [x[0] for x in diff["rows_lost"]])
+
+    def test_the_partition_loses_nothing(self):
+        diff = quality.compare(
+            snapshot(
+                odoo="12.0", table={"ir_translation": 100, "ma_table": 50}
+            ),
+            snapshot(odoo="18.0", table={}),
+        )
+        perdues = diff["rows_lost"]
+        ouvertes = [x for x in perdues if not x[3]]
+        connues = [x for x in perdues if x[3]]
+        self.assertEqual(len(perdues), len(ouvertes) + len(connues))
+        self.assertEqual(len(perdues), 2)
+
+    def test_a_merge_whose_target_gained_NOTHING_is_flagged(self):
+        """Le cas qui compte : la carte dit où les données sont allées.
+
+        Si elles n'y sont pas, l'explication ne tient pas — et la classer
+        « attendue » puis passer à autre chose serait exactement l'erreur
+        que la carte devait empêcher.
+        """
+        diff = self.perte(
+            "account_invoice",
+            651,
+            0,
+            cible="account_move",
+            cible_avant=1371,
+            cible_apres=1371,
+        )
+        connu = [x for x in diff["rows_lost"] if x[0] == "account_invoice"][0]
+        self.assertEqual(connu[3]["gained"], 0)
+        texte = "\n".join(quality.render_compare(diff, colour=False))
+        self.assertIn("gained nothing", texte)
+
+    def test_the_report_puts_the_unexplained_FIRST(self):
+        diff = quality.compare(
+            snapshot(
+                odoo="12.0", table={"ir_translation": 100, "ma_table": 50}
+            ),
+            snapshot(odoo="18.0", table={}),
+        )
+        texte = "\n".join(quality.render_compare(diff, colour=False))
+        self.assertLess(texte.index("unexplained"), texte.index("moved or"))
+
+    def test_an_unknown_table_stays_unexplained(self):
+        diff = self.perte("ma_table_a_moi", 50, 0)
+        self.assertIsNone(diff["rows_lost"][0][3])
+
+    def test_every_entry_of_the_map_is_complete(self):
+        # Une entrée sans « why » expliquerait sans dire pourquoi.
+        for entree in quality.SEMANTIC_MAP:
+            for cle in ("since", "table", "into", "kind", "why"):
+                self.assertIn(cle, entree, entree)
+            self.assertTrue(entree["why"], entree)
+            self.assertIn(entree["kind"], ("merged", "renamed", "retired"))
+
+    def test_the_column_counts_only_what_needs_an_answer(self):
+        # Afficher 81 quand 14 sont des refontes voulues ferait fuir le
+        # lecteur du seul chiffre qui demande une réponse.
+        lst = [
+            snapshot(
+                odoo="12.0", table={"ir_translation": 100, "ma_table": 50}
+            ),
+            snapshot(odoo="18.0", table={}),
+        ]
+        self.assertEqual(qtui.rows(lst)[1]["detail"], "1")
 
 
 class TestTheOverallReport(Base):

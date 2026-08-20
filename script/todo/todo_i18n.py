@@ -5783,6 +5783,26 @@ TRANSLATIONS = {
         "fr": "Choisissez un palier pour voir ses fichiers absents.",
         "en": "Pick a step to see its missing files.",
     },
+    "table(s) lost rows, unexplained": {
+        "fr": "table(s) ont perdu des lignes, sans explication",
+        "en": "table(s) lost rows, unexplained",
+    },
+    "table(s) Odoo moved or retired": {
+        "fr": "table(s) qu'Odoo a déplacées ou retirées",
+        "en": "table(s) Odoo moved or retired",
+    },
+    "retired from the database": {
+        "fr": "retirée de la base",
+        "en": "retired from the database",
+    },
+    "but it gained nothing": {
+        "fr": "mais elle n'a rien reçu",
+        "en": "but it gained nothing",
+    },
+    "there": {
+        "fr": "là-bas",
+        "en": "there",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

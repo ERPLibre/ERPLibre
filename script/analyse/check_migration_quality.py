@@ -333,6 +333,158 @@ def render_missing(etat, colour=False, limit=60):
     return "\n".join(lignes)
 
 
+# Ce qu'Odoo déplace ou retire de lui-même, d'une version à l'autre.
+#
+# Sans cette carte, l'outil annonçait « 81 tables ont perdu des lignes »
+# et la plus grosse d'entre elles — ir_translation, 32 984 lignes — était
+# une refonte voulue par l'éditeur. Les vraies questions se noyaient dans
+# les fausses, ce qui est la façon la plus sûre de ne pas les voir.
+#
+# Chaque entrée a été VÉRIFIÉE sur une migration réelle 12 → 18, en
+# comptant les deux côtés. Une carte écrite de mémoire vaudrait moins que
+# pas de carte : elle expliquerait des pertes qui n'en sont pas.
+SEMANTIC_MAP = (
+    # Fusions : les enregistrements continuent, ailleurs et autrement.
+    {
+        "since": 13,
+        "table": "account_invoice",
+        "into": "account_move",
+        "kind": "merged",
+        "why": "invoices became journal entries",
+    },
+    {
+        "since": 13,
+        "table": "account_invoice_line",
+        "into": "account_move_line",
+        "kind": "merged",
+        "why": "invoices became journal entries",
+    },
+    {
+        "since": 13,
+        "table": "account_invoice_tax",
+        "into": "account_move_line",
+        "kind": "merged",
+        "why": "invoices became journal entries",
+    },
+    # Renommages : les mêmes enregistrements, sous un autre nom.
+    {
+        "since": 17,
+        "table": "mail_channel",
+        "into": "discuss_channel",
+        "kind": "renamed",
+        "why": "Discuss was renamed",
+    },
+    {
+        "since": 17,
+        "table": "mail_channel_partner",
+        "into": "discuss_channel_member",
+        "kind": "renamed",
+        "why": "Discuss was renamed",
+    },
+    {
+        "since": 13,
+        "table": "website_redirect",
+        "into": "website_rewrite",
+        "kind": "renamed",
+        "why": "redirections were reworked",
+    },
+    {
+        "since": 13,
+        "table": "crm_lead_tag",
+        "into": "crm_tag",
+        "kind": "renamed",
+        "why": "tags became shared",
+    },
+    # Retraits : la fonction a quitté la base pour du code.
+    {
+        "since": 16,
+        "table": "ir_translation",
+        "into": None,
+        "kind": "retired",
+        "why": "translations moved into jsonb columns",
+    },
+    {
+        "since": 17,
+        "table": "account_tax_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 17,
+        "table": "account_account_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 17,
+        "table": "account_chart_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 17,
+        "table": "account_fiscal_position_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 17,
+        "table": "account_fiscal_position_tax_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 17,
+        "table": "account_fiscal_position_account_template",
+        "into": None,
+        "kind": "retired",
+        "why": "chart templates left the database",
+    },
+    {
+        "since": 15,
+        "table": "stock_inventory",
+        "into": "stock_quant",
+        "kind": "merged",
+        "why": "inventory adjustments became quants",
+    },
+    {
+        "since": 15,
+        "table": "stock_inventory_line",
+        "into": "stock_quant",
+        "kind": "merged",
+        "why": "inventory adjustments became quants",
+    },
+)
+
+
+def as_version(etat):
+    """« 18.0 » -> 18. None si l'on ne sait pas."""
+    try:
+        return int(float((etat or {}).get("odoo") or 0)) or None
+    except (TypeError, ValueError):
+        return None
+
+
+def explain_loss(table, version):
+    """Ce qu'Odoo a fait de cette table à cette version, ou None.
+
+    `version` est celle d'ARRIVÉE : une refonte de la 17 n'explique rien
+    d'un palier 13 → 14, et l'accepter ferait taire une vraie perte sous
+    prétexte qu'elle porte le nom d'une table refondue plus tard.
+    """
+    if not version:
+        return None
+    for entree in SEMANTIC_MAP:
+        if entree["table"] == table and entree["since"] <= version:
+            return entree
+    return None
+
+
 def compare(avant, apres):
     """Ce qui a été gagné et ce qui a été perdu entre deux paliers."""
     if not avant.get("exists") or not apres.get("exists"):
@@ -341,18 +493,34 @@ def compare(avant, apres):
     mod_avant, mod_apres = set(avant["model"]), set(apres["model"])
     tbl_avant, tbl_apres = avant["table"], apres["table"]
 
+    # TOUJOURS quatre éléments, le dernier étant l'explication ou None.
+    # Un tuple de taille variable obligerait chaque lecteur à s'en méfier.
     lignes_perdues = []
     for table, nombre in sorted(tbl_avant.items()):
         reste = tbl_apres.get(table)
         if reste is None and nombre:
-            lignes_perdues.append((table, nombre, 0))
+            lignes_perdues.append((table, nombre, 0, None))
         elif reste is not None and reste < nombre:
-            lignes_perdues.append((table, nombre, reste))
+            lignes_perdues.append((table, nombre, reste, None))
     lignes_gagnees = [
         (table, tbl_avant.get(table, 0), nombre)
         for table, nombre in sorted(tbl_apres.items())
         if nombre > tbl_avant.get(table, 0)
     ]
+    version = as_version(apres)
+    for index, (table, debut, fin, _rien) in enumerate(lignes_perdues):
+        connu = explain_loss(table, version)
+        if not connu:
+            continue
+        # Une fusion qui n'a PAS grossi la table d'accueil n'explique
+        # rien : on garde l'explication et on dit qu'elle ne tient pas.
+        arrivee = connu["into"]
+        recue = (
+            apres["table"].get(arrivee, 0) - avant["table"].get(arrivee, 0)
+            if arrivee
+            else None
+        )
+        lignes_perdues[index] = (table, debut, fin, {**connu, "gained": recue})
     return {
         "modules_lost": sorted(inst_avant - inst_apres),
         "modules_gained": sorted(inst_apres - inst_avant),
@@ -384,7 +552,9 @@ def probable_renames(perdues, gagnees):
     cherche un dégât là où il n'y en a pas.
     """
     disparues = {
-        table: avant for table, avant, apres in perdues if apres == 0 and avant
+        table: avant
+        for table, avant, apres, _connu in perdues
+        if apres == 0 and avant
     }
     apparues = {
         table: apres for table, avant, apres in gagnees if avant == 0 and apres
@@ -528,21 +698,51 @@ def render_compare(diff, colour, limit=8):
         # LE signal qui compte : un module en moins se voit, une table qui
         # passe de quatre mille lignes à zéro ne se voit nulle part.
         #
-        # Une table probablement renommée reste dans la LISTE, annotée. L'en
-        # retirer était le vrai danger : un rapprochement faux — et il y en
-        # a eu — aurait fait disparaître une perte réelle du rapport.
+        # Les pertes EXPLIQUÉES sont séparées des autres, jamais retirées.
+        # Sans cette séparation on lisait « 81 tables ont perdu des lignes »
+        # dont la plus grosse — ir_translation, 32 984 lignes — était une
+        # refonte voulue par Odoo : les vraies questions se noyaient dans
+        # les fausses, ce qui est la façon la plus sûre de ne pas les voir.
         vers = {a: b for a, b, _n in diff["renamed"]}
-        lignes.append(
-            f"   {paint('▼', 'fail', colour)} {len(perdues)}"
-            f" {t('table(s) lost rows')} :"
-        )
-        for table, avant, apres in perdues[:limit]:
-            note = (
-                f"   ↻ {t('probably renamed to')} {vers[table]}"
-                if table in vers
-                else ""
+        ouvertes = [item for item in perdues if not item[3]]
+        connues = [item for item in perdues if item[3]]
+        if ouvertes:
+            lignes.append(
+                f"   {paint('▼', 'fail', colour)} {len(ouvertes)}"
+                f" {t('table(s) lost rows, unexplained')} :"
             )
-            lignes.append(f"       {table:<40} {avant:>8} → {apres}{note}")
+            for table, avant, apres, _rien in ouvertes[:limit]:
+                note = (
+                    f"   ↻ {t('probably renamed to')} {vers[table]}"
+                    if table in vers
+                    else ""
+                )
+                lignes.append(f"       {table:<40} {avant:>8} → {apres}{note}")
+            if len(ouvertes) > limit:
+                lignes.append(f"       … {len(ouvertes) - limit} {t('more')}")
+        if connues:
+            lignes.append(
+                f"   {paint('▽', 'dim', colour)} {len(connues)}"
+                f" {t('table(s) Odoo moved or retired')} :"
+            )
+            for table, avant, apres, connu in connues[:limit]:
+                if connu["into"]:
+                    recue = connu.get("gained")
+                    # Une fusion dont la table d'accueil n'a PAS grossi
+                    # n'explique rien : le dire, plutôt que de classer la
+                    # perte comme attendue et passer à autre chose.
+                    accueil = (
+                        f"+{recue} {t('there')}"
+                        if recue and recue > 0
+                        else paint(t("but it gained nothing"), "fail", colour)
+                    )
+                    ou = f"→ {connu['into']}  ({accueil})"
+                else:
+                    ou = t("retired from the database")
+                lignes.append(f"       {table:<40} {avant:>8} → {apres}  {ou}")
+                lignes.append(f"           {connu['why']}")
+            if len(connues) > limit:
+                lignes.append(f"       … {len(connues) - limit} {t('more')}")
     delta = diff["delta"]
     lignes.append(
         "   "

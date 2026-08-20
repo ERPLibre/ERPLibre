@@ -67,10 +67,13 @@ def rows(lst_snapshot):
         # Le précédent voyage avec la ligne : le panneau en a besoin pour
         # écrire « 171 (−43) », et le recalculer là-bas ferait deux
         # sources pour la même comparaison.
+        # La colonne compte les pertes INEXPLIQUÉES : afficher 81 quand
+        # 79 sont des refontes voulues par Odoo ferait fuir le lecteur du
+        # seul chiffre qui demande une réponse.
         perdu = (
             0
             if diff is None or diff.get("unavailable")
-            else len(diff["rows_lost"])
+            else len([item for item in diff["rows_lost"] if not item[3]])
         )
         lst.append(
             {
