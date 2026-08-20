@@ -512,6 +512,75 @@ class TestTheMissingFilesButton(Base):
         self.assertIn("press m", qtui.pane_text([], row))
 
 
+class TestTheMenuEntryLooksLikeItsNeighbours(Base):
+    """Une entrée sans icône au milieu d'un menu qui en a partout se lit
+    comme une entrée inachevée."""
+
+    ENTREES = (
+        "Structure",
+        "Tables and database size",
+        "Customisation",
+        "Customised views, website copies included",
+        "Studio and hand-made x_ fields",
+        "Migration",
+        "Quality of a migration, step by step",
+    )
+
+    def libelle(self, cle, langue):
+        from script.todo import todo_i18n
+
+        return todo_i18n.TRANSLATIONS[cle][langue]
+
+    def test_every_entry_carries_an_icon(self):
+        import unicodedata
+
+        for cle in self.ENTREES:
+            for langue in ("fr", "en"):
+                premier = self.libelle(cle, langue)[0]
+                self.assertNotEqual(
+                    unicodedata.category(premier)[0],
+                    "L",
+                    f"{cle} ({langue}) : pas d'icône",
+                )
+
+    def test_the_spacing_follows_the_width_of_the_icon(self):
+        """Convention du menu, découverte en la lisant plutôt qu'écrite.
+
+        Une icône de largeur « neutre » — 🗄, 🖼 — s'affiche sur une
+        colonne dans un terminal et prend DEUX espaces pour s'aligner ;
+        une icône large — 📏, 📐 — en prend un seul. Se tromper décale la
+        ligne, et rien ne le dit avant de l'avoir sous les yeux.
+        """
+        import unicodedata
+
+        for cle in self.ENTREES:
+            for langue in ("fr", "en"):
+                texte = self.libelle(cle, langue)
+                attendu = (
+                    2 if unicodedata.east_asian_width(texte[0]) == "N" else 1
+                )
+                espaces = len(texte[1:]) - len(texte[1:].lstrip(" "))
+                self.assertEqual(
+                    espaces, attendu, f"{cle} ({langue}) : {texte!r}"
+                )
+
+    def test_the_quality_entry_wears_the_report_s_own_symbol(self):
+        # Le même symbole pour la même chose. Un libellé de MENU porte
+        # son icône dans la traduction — elle se traduit avec lui.
+        self.assertTrue(
+            self.libelle(
+                "Quality of a migration, step by step", "fr"
+            ).startswith("📐")
+        )
+        # Le titre du rapport, lui, porte son symbole dans le CODE de
+        # rendu, à côté de ses voisins 📍, 🧪 et 🔷 : deux conventions
+        # distinctes, chacune tenable dans son contexte, et l'on vérifie
+        # chacune là où elle vit.
+        import inspect
+
+        self.assertIn("📐", inspect.getsource(quality.render_text))
+
+
 class TestItNeverWrites(Base):
     """Les bases de palier sont parfois la seule copie d'un état."""
 

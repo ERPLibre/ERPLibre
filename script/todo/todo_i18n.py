@@ -5736,12 +5736,12 @@ TRANSLATIONS = {
         "en": "steps",
     },
     "Migration": {
-        "fr": "Migration",
-        "en": "Migration",
+        "fr": "🚚 Migration",
+        "en": "🚚 Migration",
     },
     "Quality of a migration, step by step": {
-        "fr": "Qualité d'une migration, palier par palier",
-        "en": "Quality of a migration, step by step",
+        "fr": "📐 Qualité d'une migration, palier par palier",
+        "en": "📐 Quality of a migration, step by step",
     },
     "Quality": {
         "fr": "Qualité",
