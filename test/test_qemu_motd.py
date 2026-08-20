@@ -352,5 +352,56 @@ class TestInstallerGuideNames(unittest.TestCase):
         )
 
 
+class TestDesktopBlock(unittest.TestCase):
+    """Le bloc « Bureau » : présent seulement là où un bureau existe.
+
+    Vécu : une VM graphique restait sur une console texte, GNOME installé et
+    gdm3 installé — graphical.target était déjà atteinte quand le paquet est
+    arrivé. La commande qui répare tient sur une ligne, encore faut-il la lire
+    quelque part. Sur un serveur, elle ne mènerait à aucune unité : le bloc
+    n'y apparaît pas.
+    """
+
+    def _motd(self, desktop):
+        return dq.build_motd(
+            "ubuntu",
+            "26.04",
+            "amd64",
+            "fr",
+            "~/git/erplibre",
+            "install_odoo_18",
+            "vim",
+            desktop,
+        )
+
+    def test_a_server_gets_no_desktop_block(self):
+        self.assertNotIn("Bureau", self._motd(False))
+
+    def test_a_graphical_vm_gets_it(self):
+        self.assertIn("Bureau", self._motd(True))
+
+    def test_it_carries_the_command_that_repairs(self):
+        """« --now » et non « enable » seul : sur Debian et Ubuntu, l'unité n'a
+        pas de WantedBy, et « enable » rend 0 sans rien faire."""
+        motd = self._motd(True)
+        self.assertIn("systemctl enable --now gdm", motd)
+        self.assertIn("systemctl status display-manager", motd)
+
+    def test_it_says_why_now_matters(self):
+        self.assertIn("--now", self._motd(True))
+
+    def test_it_stays_inside_the_frame(self):
+        """Le guide est encadré : une ligne trop longue casse la boîte."""
+        lines = self._motd(True).splitlines()
+        width = max(len(line) for line in lines)
+        border = [line for line in lines if line.startswith("╭")][0]
+        self.assertEqual(len(border), width)
+
+    def test_the_default_is_no_block(self):
+        """Un appelant qui n'en sait rien n'annonce pas un bureau."""
+        motd = dq.build_motd("ubuntu", "26.04", "amd64", "fr")
+        self.assertNotIn("Bureau", motd)
+
+
 if __name__ == "__main__":
     unittest.main()

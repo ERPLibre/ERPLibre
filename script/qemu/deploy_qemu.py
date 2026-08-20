@@ -1660,6 +1660,26 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
+# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
+# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
+# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
+# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
+# d'où le « --now », qui démarre.
+DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
+    (
+        "systemctl status display-manager",
+        "état du bureau graphique",
+        "graphical desktop state",
+    ),
+    (
+        "sudo systemctl enable --now gdm",
+        "le démarrer (« --now » : enable seul ne suffit pas)",
+        'start it ("--now": enable alone does nothing)',
+    ),
+)
+
+
 def erplibre_guide(
     el_dir: str, el_make: str = "", editor: str = ""
 ) -> tuple[tuple[str, str, str], ...]:
@@ -1770,11 +1790,14 @@ def build_motd(
     el_dir: str = "",
     el_make: str = "",
     editor: str = "",
+    desktop: bool = False,
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
     La section ERPLibre n'apparaît qu'avec `el_dir` : une VM déployée sans
     installation ne doit pas annoncer un dépôt et un service qui n'existent pas.
+    Le bloc « Bureau » suit la même règle avec `desktop` : sur un serveur, ces
+    deux commandes ne mèneraient à aucune unité.
     """
     body: list[str] = []
     mgr = DISTRO_PKG.get(distro, "")
@@ -1795,6 +1818,14 @@ def build_motd(
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
+    if desktop:
+        body.append("")
+        body += motd_block(
+            _pick(("Bureau", "Desktop"), lang),
+            DESKTOP_GUIDE,
+            lang,
+            gloss_col(DESKTOP_GUIDE),
+        )
     body.append("")
     body += motd_block(
         _pick(("Système", "System"), lang), sys_rows, lang, narrow
@@ -2016,6 +2047,7 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                 args.erplibre_dir,
                 args.erplibre_make,
                 editor,
+                bool(args.desktop),
             ),
             "",
         )
