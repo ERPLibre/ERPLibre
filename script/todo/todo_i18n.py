@@ -2244,6 +2244,47 @@ TRANSLATIONS = {
         "fr": "À lancer sur VOTRE poste :",
         "en": "Run this on YOUR workstation:",
     },
+    "Hypervisor console (QEMU screen, no guest server)": {
+        "fr": "Console de l'hyperviseur (écran QEMU, rien dans l'invitée)",
+        "en": "Hypervisor console (QEMU screen, no guest server)",
+    },
+    "then point your VNC client at": {
+        "fr": "puis pointez votre client VNC sur",
+        "en": "then point your VNC client at",
+    },
+    "Target is the hypervisor": {
+        "fr": "La cible est l'hyperviseur",
+        "en": "Target is the hypervisor",
+    },
+    "not the VM: the socket is QEMU-side.": {
+        "fr": "et non la VM : le socket est du côté de QEMU.",
+        "en": "not the VM: the socket is QEMU-side.",
+    },
+    "This VM exposes no VNC port.": {
+        "fr": "Cette VM n'expose aucun port VNC.",
+        "en": "This VM exposes no VNC port.",
+    },
+    "Its display is likely spice with listen=none:": {
+        "fr": "Son affichage est probablement spice avec listen=none :",
+        "en": "Its display is likely spice with listen=none:",
+    },
+    "To open it on the loopback (VM restart required):": {
+        "fr": "Pour l'ouvrir sur la boucle locale (redémarrage de la VM"
+        " requis) :",
+        "en": "To open it on the loopback (VM restart required):",
+    },
+    "New VMs get this by default; see deploy_qemu.": {
+        "fr": "Les VM neuves l'ont par défaut ; voir deploy_qemu.",
+        "en": "New VMs get this by default; see deploy_qemu.",
+    },
+    "No ProxyJump for this host in ~/.ssh/config.": {
+        "fr": "Aucun ProxyJump pour cet hôte dans ~/.ssh/config.",
+        "en": "No ProxyJump for this host in ~/.ssh/config.",
+    },
+    "Cannot tell which machine runs its QEMU.": {
+        "fr": "Impossible de savoir quelle machine fait tourner son QEMU.",
+        "en": "Cannot tell which machine runs its QEMU.",
+    },
     "(through the ProxyJump already in ~/.ssh/config)": {
         "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
         "en": "(through the ProxyJump already in ~/.ssh/config)",
