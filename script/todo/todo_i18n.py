@@ -2282,6 +2282,10 @@ TRANSLATIONS = {
         "fr": "Absent ? Installez virt-viewer :",
         "en": "Missing? Install virt-viewer:",
     },
+    "repo transfer into the app": {
+        "fr": "transfert des dépôts dans l'application",
+        "en": "repo transfer into the app",
+    },
     "graphical session started": {
         "fr": "session graphique démarrée",
         "en": "graphical session started",

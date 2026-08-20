@@ -334,7 +334,11 @@ class TestMobileBuild(unittest.TestCase):
         "sudo() { return 0; }\n"
     )
 
-    def _run_steps(self, fail_on="RIEN", apk=False):
+    def _run_steps(self, fail_on="RIEN", apk=False, transfer_ok=True):
+        """Joue les étapes mobiles avec un « mstep » et un vérificateur de
+        transfert bouchonnés. Le vérificateur est un VRAI fichier dans l'arbre
+        d'essai : c'est ainsi qu'on éprouve le chaînage, code de sortie
+        compris."""
         import os
         import tempfile
 
@@ -344,6 +348,13 @@ class TestMobileBuild(unittest.TestCase):
             (apk_dir / "outputs/apk/debug").mkdir(parents=True)
             if apk:
                 (apk_dir / "outputs/apk/debug/app-debug.apk").write_text("x")
+            checker = el / "script/mobile/check_bundle_transfer.py"
+            checker.parent.mkdir(parents=True, exist_ok=True)
+            checker.write_text(
+                "#!/bin/bash\necho '   139 depots'\n"
+                + ("exit 0\n" if transfer_ok else "exit 1\n")
+            )
+            checker.chmod(0o755)
             steps = self.todo._qemu_mobile_build_steps(str(el))
             return subprocess.run(
                 ["bash", "-c", (self.HARNESS % fail_on) + steps],
@@ -368,23 +379,58 @@ class TestMobileBuild(unittest.TestCase):
         self.assertNotIn("vite build", res.stdout)
         self.assertNotIn("gradle", res.stdout)
 
-    def test_the_manifest_repos_are_not_bundled(self):
-        """122 684 fichiers d'assets pour 337 qui sont l'application, et un APK
-        est un ZIP borné à 65 535 entrées. Le levier est celui que le dépôt
-        mobile documente : ERPLIBRE_MANIFEST_PATH, pointé sur un manifeste
-        vide. Mesuré : dist passe de 123 019 à 336 fichiers."""
+    def test_the_manifest_repos_are_bundled_again(self):
+        """Le contournement a vécu : les dépôts entrent maintenant en PACKS, et
+        rien ne neutralise plus le manifeste. Mesuré sur la VM : 139 dépôts,
+        116 156 fichiers en 391 tranches, 3 002 entrées dans l'APK — là où un
+        fichier par source en demandait 123 678 pour une limite de 65 535."""
         steps = self.todo._qemu_mobile_build_steps("/tmp/el")
-        self.assertIn("ERPLIBRE_MANIFEST_PATH=", steps)
-        self.assertIn("<manifest></manifest>", steps)
-        # La variable posée par l'appelant gagne : qui veut les dépôts les a.
-        self.assertIn("${ERPLIBRE_MANIFEST_PATH:-", steps)
+        self.assertNotIn("ERPLIBRE_MANIFEST_PATH", steps)
+        self.assertNotIn("empty-manifest", steps)
 
-    def test_the_empty_manifest_is_written_before_the_bundle(self):
+    def test_the_transfer_is_verified_after_the_bundle(self):
+        """Une application qui ne porte pas le code qu'elle est censée montrer
+        n'est pas l'application demandée : le transfert se vérifie."""
         steps = self.todo._qemu_mobile_build_steps("/tmp/el")
+        self.assertIn("check_bundle_transfer.py", steps)
         self.assertLess(
-            steps.index("erplibre-empty-manifest.xml"),
             steps.index("npm run build"),
+            steps.index("check_bundle_transfer.py"),
         )
+        self.assertLess(
+            steps.index("check_bundle_transfer.py"),
+            steps.index("cap sync"),
+        )
+
+    def test_the_transfer_is_compared_to_the_source(self):
+        """« --workspace » : c'est la comparaison octet pour octet qui prouve un
+        transfert FIDÈLE, et pas seulement cohérent."""
+        steps = self.todo._qemu_mobile_build_steps("/tmp/el")
+        self.assertIn("--workspace /tmp/el", steps)
+
+    def test_a_failed_transfer_fails_the_vm(self):
+        """Une application qui ne porte pas le code qu'elle doit montrer n'est
+        pas l'application demandée. Mesuré au code de sortie, et non à la
+        présence d'un « && » dans le texte."""
+        res = self._run_steps(apk=True, transfer_ok=False)
+        self.assertNotEqual(0, res.returncode, res.stdout[-300:])
+        self.assertNotIn("gradle", res.stdout)
+
+    def test_a_good_transfer_lets_the_build_go_on(self):
+        res = self._run_steps(apk=True, transfer_ok=True)
+        self.assertEqual(0, res.returncode, res.stdout[-300:])
+        self.assertIn("139 depots", res.stdout)
+
+    def test_the_transfer_line_is_read_in_the_install_log(self):
+        """Hors mstep, à dessein : mstep renvoie la sortie dans le journal
+        détaillé de la VM, et c'est le compte des dépôts qu'on veut voir dans
+        celui de l'installation. Le bouchon imprime une ligne : elle doit
+        remonter jusqu'à la sortie."""
+        res = self._run_steps(apk=True)
+        self.assertIn("139 depots", res.stdout)
+        head = self.todo._qemu_mobile_build_steps("/tmp/el")
+        head = head[: head.index("check_bundle_transfer.py")]
+        self.assertNotIn("mstep", head[-160:])
 
     def test_a_missing_apk_fails_even_when_gradle_returns_zero(self):
         """L'APK est la preuve, pas le code de sortie de Gradle : une tâche peut

@@ -195,15 +195,23 @@ ou trop de fichiers d'assets pour un APK. Le détail va dans
 `~/erplibre-mobile-build.log`, dans la VM, pour que le journal d'installation
 reste lisible.
 
-Cette dernière cause n'arrête plus la compilation. Le dépôt mobile empaquette
-les dépôts du manifeste dans ses assets — 122 684 fichiers, pour 337 qui sont
-l'application — et un APK est un ZIP, borné à 65535 entrées :
-`Too many zip entries 123678`. La compilation pointe donc
-`ERPLIBRE_MANIFEST_PATH`, le levier que ce dépôt documente, sur un manifeste
-vide, et le plugin l'annonce : `0 repos`. Mesuré : `dist` passe de 123 019
-fichiers à 336, et l'APK sort à 59 Mo et 2 472 entrées. Posez la variable
-vous-même et les dépôts reviennent — le défaut est une mesure d'attente, le
-temps qu'ils tiennent sous le plafond du ZIP.
+Cette dernière cause est corrigée, et non contournée. L'application embarque les
+dépôts du manifeste pour en parcourir le code hors ligne, et un APK est un ZIP
+borné à 65535 entrées — un fichier par source en réclamait 123 678, et la
+compilation s'arrêtait là. Ces fichiers y entrent désormais en **packs** :
+des tranches de 4 Mo, plus un `index.json` par dépôt qui dit dans quelle tranche
+se trouve un fichier, à quel offset et sur quelle longueur. La lecture demande
+un intervalle d'octets, et retombe sur la tranche entière quand le serveur du
+WebView ignore `Range` — 4 Mo au pire, et c'est pour cela que les tranches sont
+bornées. Les images matricielles restent dehors : des captures d'écran
+d'addons, dans un navigateur qui montre du texte.
+
+Mesuré sur une VM : 139 dépôts, 116 156 fichiers en 391 tranches, un APK de
+282 Mo à **3 002 entrées**, et 20 fichiers relus depuis les packs identiques
+octet pour octet à leur source. L'installation vérifie ce transfert avec
+`script/mobile/check_bundle_transfer.py`, qui s'exécute aussi seul, et un
+transfert manqué fait échouer la VM — une application qui ne porte pas le code
+qu'elle est censée montrer n'est pas l'application demandée.
 
 Il est borné aux distributions apt, parce que cet installateur amont commence
 par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une

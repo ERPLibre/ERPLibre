@@ -6443,34 +6443,28 @@ class TODO:
             "else sudo rm -f /swapfile-erplibre 2>/dev/null; "
             f'echo "   {t("no swap could be added; build may run short")}"; '
             "fi; fi; "
-            f'echo "   {t("manifest repos not bundled (ZIP entry limit)")}"; '
             f'mstep "{t("npm dependencies")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npm ci' && "
-            # L'empaquetage des dépôts du manifeste est DÉSACTIVÉ, et c'est
-            # une mesure d'attente. Il verse 122 684 fichiers dans les assets —
-            # des dépôts Odoo entiers, pour 337 qui sont l'application — et un
-            # APK est un ZIP : « Too many zip entries 123678 (MAX=65535) », la
-            # compilation s'arrête là. Les mêmes fichiers épuisaient aussi les
-            # watches inotify de l'IDE.
-            #
-            # Le levier est celui que le dépôt mobile documente lui-même
-            # (doc/SERVICES.md) : ERPLIBRE_MANIFEST_PATH. On le pointe sur un
-            # manifeste VIDE — « ces dépôts-là : aucun » — et le plugin
-            # l'annonce, « 0 repos ». Mesuré : dist passe de 123 019 à 336
-            # fichiers, l'APK sort à 59 Mo et 2 472 entrées.
-            #
-            # Qui veut les dépôts pose la variable lui-même : elle est
-            # respectée. À retirer quand le projet mobile saura les empaqueter
-            # sous la limite du ZIP.
-            # Chaîné par « && » comme le reste : un « ; » ici laisserait la
-            # compilation web démarrer alors que « npm ci » vient d'échouer.
-            "printf '<manifest></manifest>' "
-            '> "$HOME/.erplibre-empty-manifest.xml" && '
             f'mstep "{t("web bundle (vite build)")}" '
-            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
-            "ERPLIBRE_MANIFEST_PATH="
-            '"${ERPLIBRE_MANIFEST_PATH:-$HOME/.erplibre-empty-manifest.xml}" '
-            "npm run build' && "
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm run build' && "
+            # Le transfert des dépôts du manifeste DANS l'application est
+            # vérifié, et son compte-rendu se lit dans le journal
+            # d'installation — d'où l'appel HORS mstep, qui enverrait la sortie
+            # dans le journal détaillé de la VM.
+            #
+            # Ces dépôts entrent en PACKS, et c'est ce qui rend la chose
+            # possible : un APK est un ZIP borné à 65535 entrées, quand les
+            # 139 dépôts pèsent plus de 116 000 fichiers. Un fichier par source
+            # donnait « Too many zip entries 123678 (MAX=65535) » et rien du
+            # tout ; regroupés, ils tiennent en 391 tranches — mesuré, avec
+            # 3 002 entrées dans l'APK.
+            #
+            # Lié par « && » : un transfert vide fait échouer la VM, au même
+            # titre qu'un APK manquant. Une application qui ne porte pas le code
+            # qu'elle est censée montrer n'est pas l'application demandée.
+            f'echo "   -> {t("repo transfer into the app")}" && '
+            f"(cd {el_dir} && ./script/mobile/check_bundle_transfer.py"
+            f" --workspace {el_dir}) && "
             f'mstep "{t("native sync (capacitor)")}" '
             f"'cd {el_dir}/mobile/erplibre_home_mobile && npx cap sync android' && "
             # UNE seule ABI, celle de la VM — qui est aussi celle de

@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Transfert des dépôts ERPLibre dans l'application mobile.
+
+L'application embarque le code des dépôts du manifeste pour le parcourir hors
+ligne. Ils y entrent en PACKS, et c'est ce qui rend la chose possible : un APK
+est un ZIP borné à 65535 entrées, quand les 139 dépôts pèsent plus de 116 000
+fichiers. Un fichier par source donnait « Too many zip entries 123678
+(MAX=65535) » — la compilation s'arrêtait là, et l'application ne portait rien.
+
+Regroupés en tranches de 4 Mo, ces fichiers tiennent en 391 entrées. Mesuré sur
+la VM : 3 002 entrées dans l'APK, 282 Mo, et 20 fichiers relus depuis les packs
+identiques octet pour octet à leur source.
+
+Ce que ces tests vérifient : qu'un transfert vide, tronqué ou incohérent est
+DIT, et non pris pour bon. Les trois pannes correspondantes ont chacune leur
+fixture.
+"""
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from script.mobile import check_bundle_transfer as cbt  # noqa: E402
+
+# Contenu des sources factices : le nom du fichier -> ses octets.
+SOURCES = {
+    "odoo/release.py": b"version_info = (18, 0)\n",
+    "odoo/api.py": b"def method():\n    return 1\n",
+    "addons/sale/i18n/fr.po": b'msgid "x"\nmsgstr "y"\n',
+    "README.md": b"# ERPLibre\n",
+}
+
+
+def build_bundle(
+    tmp: Path,
+    sources=None,
+    *,
+    with_workspace=True,
+    break_pack=False,
+    drop_pack=False,
+    drop_index=False,
+    no_manifest=False,
+):
+    """Fabrique un faux bundle, et la source qui va avec.
+
+    Les avaries sont paramétrées plutôt que codées en dur : chaque test nomme
+    celle qu'il éprouve, et la fixture reste unique."""
+    sources = SOURCES if sources is None else sources
+    mobile = tmp / "mobile" / "erplibre_home_mobile"
+    repos = mobile / "dist" / "repos"
+    slug = "github-com-ERPLibre-odoo"
+    repo_dir = repos / slug
+    repo_dir.mkdir(parents=True)
+    if not no_manifest:
+        (repos / "manifest.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "url": "https://github.com/ERPLibre/odoo",
+                        "name": "odoo",
+                        "path": "odoo18.0/odoo",
+                        "slug": slug,
+                        "revision": "18.0",
+                    }
+                ]
+            )
+        )
+    index = [{"path": "odoo", "type": "dir"}]
+    blob = b""
+    items = list(sources.items())
+    for pos, (rel, data) in enumerate(items):
+        # L'avarie ne touche que la DERNIÈRE entrée : gonfler toutes les
+        # tailles décalerait chaque lecture et ferait échouer la comparaison
+        # avant le contrôle de bornes — ce n'est pas la panne qu'on éprouve.
+        last = pos == len(items) - 1
+        index.append(
+            {
+                "path": rel,
+                "type": "file",
+                "chunk": 0,
+                "offset": len(blob),
+                "size": len(data) + (7 if (break_pack and last) else 0),
+            }
+        )
+        blob += data
+    if not drop_index:
+        (repo_dir / "index.json").write_text(json.dumps(index))
+    if not drop_pack:
+        (repo_dir / "pack-000.bin").write_bytes(blob)
+    if with_workspace:
+        for rel, data in sources.items():
+            src = tmp / "odoo18.0/odoo" / rel
+            src.parent.mkdir(parents=True, exist_ok=True)
+            src.write_bytes(data)
+    return mobile
+
+
+class TestAGoodTransfer(unittest.TestCase):
+    def test_it_counts_repos_files_and_packs(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(1, rep["repos"])
+        self.assertEqual(len(SOURCES), rep["files"])
+        self.assertEqual(1, rep["packs"])
+
+    def test_it_reads_the_files_back_from_the_pack(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(len(SOURCES), rep["checked"])
+
+    def test_it_compares_them_to_the_source(self):
+        """La seule vérification qui prouve un transfert FIDÈLE, et pas
+        seulement cohérent."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            rep = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(len(SOURCES), rep["compared"])
+
+    def test_without_a_workspace_it_still_reads_the_packs(self):
+        """Hors du checkout, la comparaison n'est pas possible ; la lecture,
+        elle, l'est toujours."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, with_workspace=False)
+            rep = cbt.check(mobile, None, min_files=1)
+        self.assertEqual(len(SOURCES), rep["checked"])
+        self.assertEqual(0, rep["compared"])
+
+    def test_read_from_pack_returns_the_exact_bytes(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            repo_dir = mobile / "dist/repos/github-com-ERPLibre-odoo"
+            index = json.loads((repo_dir / "index.json").read_text())
+            entry = next(
+                e for e in index if e["path"] == "addons/sale/i18n/fr.po"
+            )
+            got = cbt.read_from_pack(repo_dir, entry)
+        self.assertEqual(SOURCES["addons/sale/i18n/fr.po"], got)
+
+
+class TestTheThreeFailures(unittest.TestCase):
+    """Vide, tronqué, incohérent : trois pannes qu'un « build OK » ne dit pas."""
+
+    def test_no_manifest_names_the_build(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, no_manifest=True)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("build", str(ctx.exception))
+
+    def test_a_repo_without_index_is_named(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, drop_index=True)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("odoo", str(ctx.exception))
+
+    def test_a_missing_pack_is_named(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, drop_pack=True)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("pack-000.bin", str(ctx.exception))
+
+    def test_an_index_that_promises_too_much_is_refused(self):
+        """Index et pack d'une compilation différente : le message doit nommer
+        la tranche et les tailles, pas rendre un octet manquant en silence."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, break_pack=True)
+            with self.assertRaises(ValueError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("pack-000.bin", str(ctx.exception))
+
+    def test_an_empty_transfer_is_refused(self):
+        """C'est le cas qui a existé pendant un temps : le bundle compilait,
+        sans un seul dépôt dedans. « Réussi » ne voulait rien dire."""
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, sources={"a.py": b"x\n"})
+            with self.assertRaises(ValueError) as ctx:
+                cbt.check(mobile, tmp)  # seuil par défaut
+        self.assertIn("maigre", str(ctx.exception))
+
+    def test_a_file_that_differs_from_the_source_is_named(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            (tmp / "odoo18.0/odoo/README.md").write_bytes(b"autre chose\n")
+            with self.assertRaises(ValueError) as ctx:
+                cbt.check(mobile, tmp, min_files=1)
+        self.assertIn("README.md", str(ctx.exception))
+
+
+class TestTheThreshold(unittest.TestCase):
+    def test_the_default_threshold_rules_out_an_empty_bundle(self):
+        """Le seul dépôt odoo en porte près de 40 000 : mille est un plancher
+        qu'un vrai transfert dépasse de deux ordres de grandeur."""
+        self.assertGreaterEqual(cbt.MIN_FILES, 1000)
+
+    def test_the_sample_is_deterministic(self):
+        """Une graine fixe : deux exécutions lisent les MÊMES fichiers, donc un
+        échec est reproductible."""
+        self.assertIsInstance(cbt.SEED, int)
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp)
+            first = cbt.check(mobile, tmp, min_files=1)
+            second = cbt.check(mobile, tmp, min_files=1)
+        self.assertEqual(first, second)
+
+
+class TestTheCommandLine(unittest.TestCase):
+    def test_it_says_the_counts_and_returns_zero(self):
+        import io
+        import contextlib
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            mobile = build_bundle(tmp, sources=SOURCES)
+            argv = [
+                "check_bundle_transfer.py",
+                str(mobile),
+                "--workspace",
+                str(tmp),
+            ]
+            buf = io.StringIO()
+            with unittest.mock.patch.object(sys, "argv", argv), mock_min(1):
+                with contextlib.redirect_stdout(buf):
+                    code = cbt.main()
+        self.assertEqual(0, code)
+        self.assertIn("dépôts", buf.getvalue())
+
+    def test_a_failure_is_one_line_not_a_traceback(self):
+        """Le message part dans un journal d'installation : une trace Python y
+        serait illisible, et la cause noyée."""
+        import io
+        import contextlib
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            argv = ["check_bundle_transfer.py", str(tmp / "nulle-part")]
+            buf = io.StringIO()
+            with unittest.mock.patch.object(sys, "argv", argv):
+                with contextlib.redirect_stdout(buf):
+                    code = cbt.main()
+        self.assertEqual(1, code)
+        self.assertIn("⚠", buf.getvalue())
+        self.assertNotIn("Traceback", buf.getvalue())
+
+
+import contextlib as _contextlib  # noqa: E402
+import unittest.mock  # noqa: E402
+
+
+@_contextlib.contextmanager
+def mock_min(value):
+    """Abaisse le plancher le temps d'un test de ligne de commande."""
+    old = cbt.MIN_FILES
+    cbt.MIN_FILES = value
+    try:
+        yield
+    finally:
+        cbt.MIN_FILES = old
+
+
+if __name__ == "__main__":
+    unittest.main()

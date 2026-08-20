@@ -179,14 +179,21 @@ machine's RAM, swap and oom-kill count, because a memory cause is proven and
 not assumed), or too many asset files for one APK. The heavy output goes to
 `~/erplibre-mobile-build.log` inside the VM so the install log stays readable.
 
-That last cause no longer stops the build. The mobile repo bundles the manifest
-repositories into its assets — 122 684 files, for 337 that are the application
-— and an APK is a ZIP, capped at 65535 entries: `Too many zip entries 123678`.
-The build therefore points `ERPLIBRE_MANIFEST_PATH`, the lever that repo
-documents, at an empty manifest, and the plugin says so: `0 repos`. Measured:
-`dist` drops from 123 019 files to 336, and the APK comes out at 59 MB with
-2 472 entries. Set the variable yourself and the repositories come back — the
-default is a stopgap until they fit under the ZIP ceiling.
+That last cause is fixed rather than avoided. The app carries the manifest
+repositories so their code can be browsed offline, and an APK is a ZIP capped at
+65535 entries — one file per source asked for 123 678 and the build stopped
+there. Those files now enter as **packs**: 4 MB slices, plus an `index.json` per
+repository saying which slice holds a file, at which offset and length. The
+reader asks for a byte range, and falls back to the whole slice when the WebView
+server ignores `Range` — 4 MB at worst, which is why the slices are bounded.
+Raster images are left out: addon screenshots, in a browser that shows text.
+
+Measured on a VM: 139 repositories, 116 156 files in 391 slices, an APK of
+282 MB with **3 002 entries**, and 20 files read back from the packs identical
+byte for byte to their source. The install verifies that transfer with
+`script/mobile/check_bundle_transfer.py`, which also runs on its own, and a
+failed transfer fails the VM — an app that does not carry the code it is meant
+to show is not the app that was asked for.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
