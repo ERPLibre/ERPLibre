@@ -1580,12 +1580,16 @@ class TODO:
             f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
         )
         print(f"  [4] {t('Android emulator (adb 5555, then scrcpy)')}")
+        print(f"  [5] {t('Graphical console (virt-viewer, built-in tunnel)')}")
         kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
         if kind_answer == "3":
             self._qemu_console_tunnel(name, src)
             return
         if kind_answer == "4":
             self._qemu_scrcpy_tunnel(name, src)
+            return
+        if kind_answer == "5":
+            self._qemu_virt_viewer(name, src)
             return
         port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
@@ -1936,6 +1940,103 @@ class TODO:
         with socket.socket() as sock:
             sock.settimeout(1)
             return sock.connect_ex(("127.0.0.1", port)) == 0
+
+    # Un paquet, quatre familles. virt-viewer porte le même nom partout, ce qui
+    # est rare et bienvenu : seule la commande d'installation change.
+    _QEMU_VIRT_VIEWER_INSTALL = (
+        ("apt-get", "sudo apt-get install -y virt-viewer"),
+        ("dnf", "sudo dnf install -y virt-viewer"),
+        ("pacman", "sudo pacman -S --needed --noconfirm virt-viewer"),
+        ("zypper", "sudo zypper --non-interactive install virt-viewer"),
+    )
+
+    def _qemu_ensure_virt_viewer(self):
+        """virt-viewer sur CETTE machine, installé s'il manque.
+
+        Installé seulement là où il va SERVIR : sur un hyperviseur sans écran,
+        poser un client graphique ne rendrait service à personne. C'est
+        l'appelant qui a vérifié l'affichage."""
+        if shutil.which("virt-viewer"):
+            return True
+        print(f"\n  {t('virt-viewer is missing here; installing it.')}")
+        for tool, cmd in self._QEMU_VIRT_VIEWER_INSTALL:
+            if shutil.which(tool):
+                print(f"  {t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                break
+        else:
+            print(f"  ⚠ {t('no known package manager here.')}")
+            return False
+        if shutil.which("virt-viewer"):
+            print(f"  ✅ virt-viewer")
+            return True
+        print(f"  ⚠ {t('virt-viewer still missing after the install.')}")
+        return False
+
+    def _qemu_virt_viewer(self, name, src):
+        """Ouvre l'écran d'une VM avec virt-viewer, qui monte SON tunnel.
+
+        C'est la voie la plus courte : virt-viewer parle à libvirt par
+        « qemu+ssh:// » et n'a besoin d'aucun « ssh -L » à tenir ouvert. Il lit
+        aussi le port de l'écran par libvirt, donc rien à deviner.
+
+        La seule question qui compte est celle de l'AFFICHAGE. virt-viewer
+        ouvre une fenêtre : il doit tourner là où il y a un écran. Deux cas, et
+        c'est l'environnement qui tranche, pas une question de plus :
+          - un affichage est là (poste de travail, ou « ssh -X ») : on installe
+            virt-viewer au besoin et on le lance, détaché ;
+          - aucun affichage : on donne la commande à lancer sur le poste, sous
+            la forme qemu+ssh, avec l'adresse par laquelle cette machine a été
+            jointe.
+        """
+        domain = name.rsplit("+", 1)[-1] if src == "ssh_config" else name
+        display = os.environ.get("DISPLAY") or os.environ.get(
+            "WAYLAND_DISPLAY"
+        )
+        if src == "ssh_config":
+            # L'hyperviseur est le ProxyJump déclaré : c'est lui qui fait
+            # tourner le QEMU de cette VM, pas la VM elle-même.
+            jump = self._ssh_proxyjump(name)
+            if not jump:
+                print(
+                    f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}"
+                )
+                print(f"  {t('Cannot tell which machine runs its QEMU.')}")
+                return
+            uri = f"qemu+ssh://{jump}/system"
+        else:
+            uri = "qemu:///system"
+
+        if display:
+            if not self._qemu_ensure_virt_viewer():
+                return
+            cmd = ["virt-viewer", "-c", uri, domain]
+            print(f"\n  {t('Opening')} : {' '.join(cmd)}")
+            try:
+                with open("/tmp/erplibre-virt-viewer.log", "ab") as log:
+                    subprocess.Popen(
+                        cmd,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True,
+                    )
+            except OSError as exc:
+                print(f"  ⚠ {t('Could not start it:')} {exc}")
+                return
+            print(f"  {t('Window opening on your display')} ({display}).")
+            print(f"  {t('Log:')} /tmp/erplibre-virt-viewer.log")
+            return
+
+        host, from_ssh = self._qemu_self_address()
+        user = os.environ.get("USER", "user")
+        print(f"\n  {t('No display here; run this on YOUR workstation:')}")
+        print(f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n")
+        if not from_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        print(f"  {t('A ~/.ssh/config alias works there too.')}")
+        print(f"  {t('It builds its own tunnel; no ssh -L to keep open.')}")
+        print(f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
+              " / zypper")
 
     def _qemu_console_tunnel(self, name, src):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.

@@ -23,6 +23,7 @@ import unittest
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 SCRIPT = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -148,14 +149,16 @@ class TestDesktopOnlyVm(unittest.TestCase):
             None, None, False, "gnome", "", "deb", ("forgejo",)
         )
         self.assertIn("forgejo", cmd)
-        self.assertIn("⚠", cmd)
+        self.assertIn(t("needs the ERPLibre install, skipped:"), cmd)
         self.assertNotIn("install_forgejo.sh", cmd)
 
     def test_it_stays_quiet_when_nothing_was_deferred(self):
+        """Assertion visée sur LA note, et non sur tout « ⚠ » : la commande en
+        porte d'autres, légitimes — dont celui du bureau qui ne démarre pas."""
         cmd = self.todo._qemu_erplibre_remote_cmd(
             None, None, False, "gnome", "", "deb", ("gnome_ext",)
         )
-        self.assertNotIn("⚠", cmd)
+        self.assertNotIn(t("needs the ERPLibre install, skipped:"), cmd)
 
     def test_the_note_is_valid_shell(self):
         cmd = self.todo._qemu_erplibre_remote_cmd(

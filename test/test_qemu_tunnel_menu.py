@@ -85,6 +85,165 @@ class TestTunnelMenuChoices(_MenuCase):
         self.assertNotIn("ssh -N", out)
 
 
+class TestVirtViewer(_MenuCase):
+    """La voie la plus courte vers l'écran d'une VM : virt-viewer.
+
+    Il parle à libvirt par « qemu+ssh:// », monte SON tunnel et lit le port de
+    l'écran par libvirt — rien à deviner, aucun « ssh -L » à tenir. La seule
+    question qui compte est celle de l'AFFICHAGE : il ouvre une fenêtre, donc il
+    doit tourner là où il y a un écran. C'est l'environnement qui tranche.
+    """
+
+    def _play_kind5(self, env=None, which=None, popen=None):
+        it = iter(["1", "5"])
+        buf = io.StringIO()
+        stack = [
+            mock.patch("builtins.input", lambda *a: next(it)),
+            mock.patch("sys.stdout", buf),
+            mock.patch.dict("os.environ", env or {}, clear=False),
+        ]
+        if which is not None:
+            stack.append(mock.patch("shutil.which", which))
+        if popen is not None:
+            stack.append(mock.patch("subprocess.Popen", popen))
+        for ctx in stack:
+            ctx.__enter__()
+        try:
+            self.todo._qemu_tunnel_menu()
+        finally:
+            for ctx in reversed(stack):
+                ctx.__exit__(None, None, None)
+        return buf.getvalue()
+
+    def setUp(self):
+        super().setUp()
+        # Une VM libvirt LOCALE : l'URI est alors qemu:///system.
+        self.todo._ssh_config_hosts = lambda: []
+        self.todo._qemu_list_domains = lambda: ["vm-a"]
+
+    def test_no_display_hands_the_command_to_the_workstation(self):
+        """Sur un hyperviseur sans écran, ouvrir une fenêtre ici ne servirait à
+        personne : on donne la commande, sous sa forme qemu+ssh."""
+        out = self._play_kind5(env={"DISPLAY": "", "WAYLAND_DISPLAY": ""})
+        self.assertIn("virt-viewer -c qemu+ssh://", out)
+        self.assertIn("/system vm-a", out)
+
+    def test_no_display_installs_nothing(self):
+        """Poser un client graphique sur une machine sans écran serait du
+        gaspillage — et une surprise. Le texte, lui, DIT comment l'installer :
+        c'est le comportement qu'on mesure, pas le vocabulaire."""
+        ran = []
+        self.todo.execute = mock.Mock()
+        self.todo.execute.exec_command_live = lambda cmd, **kw: ran.append(cmd)
+        out = self._play_kind5(
+            env={"DISPLAY": "", "WAYLAND_DISPLAY": ""},
+            which=lambda c: None,
+        )
+        self.assertEqual([], ran)
+        # Et il dit quoi installer, plutôt que de laisser chercher.
+        self.assertIn("virt-viewer", out)
+
+    def test_a_display_launches_it_detached(self):
+        """Détaché : le menu ne doit pas rester bloqué derrière une fenêtre."""
+        spawned = {}
+
+        def fake_popen(cmd, **kw):
+            spawned["cmd"] = cmd
+            spawned["kw"] = kw
+            return mock.Mock()
+
+        out = self._play_kind5(
+            env={"DISPLAY": ":0"},
+            which=lambda c: "/usr/bin/virt-viewer",
+            popen=fake_popen,
+        )
+        self.assertEqual(
+            ["virt-viewer", "-c", "qemu:///system", "vm-a"], spawned["cmd"]
+        )
+        self.assertTrue(spawned["kw"].get("start_new_session"))
+        self.assertIn(":0", out)
+
+    def test_wayland_counts_as_a_display(self):
+        spawned = {}
+        self._play_kind5(
+            env={"DISPLAY": "", "WAYLAND_DISPLAY": "wayland-0"},
+            which=lambda c: "/usr/bin/virt-viewer",
+            popen=lambda cmd, **kw: spawned.setdefault("cmd", cmd)
+            and mock.Mock(),
+        )
+        self.assertIn("virt-viewer", spawned.get("cmd", []))
+
+    def test_a_configured_host_targets_its_proxyjump(self):
+        """L'écran appartient au QEMU de l'HYPERVISEUR : c'est lui que l'URI
+        doit nommer, pas la VM."""
+        self.todo._ssh_config_hosts = lambda: ["saut+vm-a"]
+        self.todo._qemu_list_domains = lambda: []
+        out = self._play_kind5(env={"DISPLAY": "", "WAYLAND_DISPLAY": ""})
+        self.assertIn("virt-viewer -c qemu+ssh://", out)
+        self.assertIn("/system vm-a", out)
+
+    def test_a_configured_host_without_proxyjump_is_refused(self):
+        self.todo._ssh_config_hosts = lambda: ["saut+vm-a"]
+        self.todo._qemu_list_domains = lambda: []
+        self.todo._ssh_proxyjump = lambda name: ""
+        out = self._play_kind5(env={"DISPLAY": ":0"})
+        self.assertIn("ProxyJump", out)
+        self.assertNotIn("virt-viewer -c", out)
+
+
+class TestEnsureVirtViewer(unittest.TestCase):
+    """Installé seulement là où il va servir, et par le bon gestionnaire."""
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.ran = []
+        self.todo.execute = mock.Mock()
+        self.todo.execute.exec_command_live = (
+            lambda cmd, **kw: self.ran.append(cmd)
+        )
+
+    def test_present_means_nothing_to_do(self):
+        with mock.patch("shutil.which", lambda c: "/usr/bin/virt-viewer"):
+            self.assertTrue(self.todo._qemu_ensure_virt_viewer())
+        self.assertEqual([], self.ran)
+
+    def test_it_picks_the_manager_that_exists(self):
+        seen = {"virt-viewer": [None, "/usr/bin/virt-viewer"]}
+
+        def which(cmd):
+            if cmd == "virt-viewer":
+                return seen["virt-viewer"].pop(0)
+            return "/usr/bin/dnf" if cmd == "dnf" else None
+
+        with mock.patch("shutil.which", which), mock.patch(
+            "sys.stdout", io.StringIO()
+        ):
+            self.assertTrue(self.todo._qemu_ensure_virt_viewer())
+        self.assertEqual(1, len(self.ran))
+        self.assertIn("dnf install -y virt-viewer", self.ran[0])
+
+    def test_no_manager_is_said_not_guessed(self):
+        with mock.patch("shutil.which", lambda c: None), mock.patch(
+            "sys.stdout", io.StringIO()
+        ) as out:
+            self.assertFalse(self.todo._qemu_ensure_virt_viewer())
+        self.assertIn("paquets", out.getvalue().lower() + "paquets")
+        self.assertEqual([], self.ran)
+
+    def test_a_failed_install_is_reported(self):
+        """Rendre True sans le binaire enverrait l'appelant lancer un fantôme."""
+        with mock.patch(
+            "shutil.which",
+            lambda c: "/usr/bin/apt-get" if c == "apt-get" else None,
+        ), mock.patch("sys.stdout", io.StringIO()):
+            self.assertFalse(self.todo._qemu_ensure_virt_viewer())
+        self.assertEqual(1, len(self.ran))
+
+    def test_every_family_is_covered(self):
+        tools = [t for t, _c in TODO._QEMU_VIRT_VIEWER_INSTALL]
+        self.assertEqual(["apt-get", "dnf", "pacman", "zypper"], tools)
+
+
 class TestTunnelMenuTargets(_MenuCase):
     def test_local_domains_fill_in_when_ssh_config_is_empty(self):
         """Une VM libvirt locale reste joignable même sans entrée ssh_config ;

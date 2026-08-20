@@ -2244,6 +2244,44 @@ TRANSLATIONS = {
         "fr": "À lancer sur VOTRE poste :",
         "en": "Run this on YOUR workstation:",
     },
+    "Graphical console (virt-viewer, built-in tunnel)": {
+        "fr": "Console graphique (virt-viewer, tunnel intégré)",
+        "en": "Graphical console (virt-viewer, built-in tunnel)",
+    },
+    "virt-viewer is missing here; installing it.": {
+        "fr": "virt-viewer manque ici ; installation.",
+        "en": "virt-viewer is missing here; installing it.",
+    },
+    "no known package manager here.": {
+        "fr": "aucun gestionnaire de paquets connu ici.",
+        "en": "no known package manager here.",
+    },
+    "virt-viewer still missing after the install.": {
+        "fr": "virt-viewer manque toujours après l'installation.",
+        "en": "virt-viewer still missing after the install.",
+    },
+    "Opening": {"fr": "Ouverture", "en": "Opening"},
+    "Window opening on your display": {
+        "fr": "Fenêtre en ouverture sur votre affichage",
+        "en": "Window opening on your display",
+    },
+    "Log:": {"fr": "Journal :", "en": "Log:"},
+    "No display here; run this on YOUR workstation:": {
+        "fr": "Aucun affichage ici ; à lancer sur VOTRE poste :",
+        "en": "No display here; run this on YOUR workstation:",
+    },
+    "A ~/.ssh/config alias works there too.": {
+        "fr": "Un alias de ~/.ssh/config y fonctionne aussi.",
+        "en": "A ~/.ssh/config alias works there too.",
+    },
+    "It builds its own tunnel; no ssh -L to keep open.": {
+        "fr": "Il monte son propre tunnel ; aucun ssh -L à tenir ouvert.",
+        "en": "It builds its own tunnel; no ssh -L to keep open.",
+    },
+    "Missing? Install virt-viewer:": {
+        "fr": "Absent ? Installez virt-viewer :",
+        "en": "Missing? Install virt-viewer:",
+    },
     "graphical session started": {
         "fr": "session graphique démarrée",
         "en": "graphical session started",
