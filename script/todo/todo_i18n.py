@@ -5755,6 +5755,34 @@ TRANSLATIONS = {
         "fr": "processus.",
         "en": "process instead.",
     },
+    "Missing files": {
+        "fr": "Fichiers absents",
+        "en": "Missing files",
+    },
+    "every attachment file is present": {
+        "fr": "tous les fichiers de pièces jointes sont présents",
+        "en": "every attachment file is present",
+    },
+    "Could not read their metadata.": {
+        "fr": "Impossible de lire leurs métadonnées.",
+        "en": "Could not read their metadata.",
+    },
+    "by model and field": {
+        "fr": "par modèle et par champ",
+        "en": "by model and field",
+    },
+    "one by one": {
+        "fr": "un par un",
+        "en": "one by one",
+    },
+    "press m to list them": {
+        "fr": "m pour en voir la liste",
+        "en": "press m to list them",
+    },
+    "Pick a step to see its missing files.": {
+        "fr": "Choisissez un palier pour voir ses fichiers absents.",
+        "en": "Pick a step to see its missing files.",
+    },
     "Clean the database before testing the pages?": {
         "fr": "Nettoyer la base avant de tester les pages ?",
         "en": "Clean the database before testing the pages?",

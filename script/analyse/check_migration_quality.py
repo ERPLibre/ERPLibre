@@ -226,7 +226,111 @@ def inspect(database):
     )
     absents = missing_files(database, [ligne[0] for ligne in stockees or []])
     etat["attachment_missing"] = None if absents is None else len(absents)
+    # Les NOMS, pas seulement le compte : sans eux, « 254 fichiers
+    # absents » ne dit pas lesquels, et l'on ne peut ni juger de la
+    # gravité ni retrouver ce qui a disparu. Bornés, car une base peut en
+    # aligner des dizaines de milliers et l'écran n'en montrera jamais tant.
+    etat["attachment_missing_list"] = (absents or [])[:MAX_MISSING]
     return etat
+
+
+MAX_MISSING = 5000
+
+
+def missing_detail(database, lst_store_fname, limit=400):
+    """Les métadonnées des pièces jointes dont le fichier a disparu.
+
+    À la DEMANDE, jamais pendant l'inspection : une requête de plus par
+    base allongerait un parcours qui tient aujourd'hui en quatre secondes,
+    pour une information qu'on ne regarde qu'en la demandant.
+
+    `res_field` est le renseignement le plus utile du lot : il dit QUEL
+    champ a perdu son image — l'`image_1920` d'un pays n'a pas le même
+    poids qu'une pièce jointe de facture.
+    """
+    if not lst_store_fname:
+        return []
+    lst = list(lst_store_fname)[:limit]
+    valeurs = ", ".join("'" + nom.replace("'", "''") + "'" for nom in lst)
+    lignes = run_psql(
+        database,
+        "SELECT store_fname, coalesce(res_model, '-'),"
+        " coalesce(res_field, '-'), coalesce(res_id::text, '-'),"
+        " coalesce(mimetype, '-'), coalesce(file_size::text, '0'),"
+        " coalesce(name, '-')"
+        f" FROM ir_attachment WHERE store_fname IN ({valeurs})"
+        " ORDER BY res_model, res_field, name",
+    )
+    return [
+        {
+            "store_fname": ligne[0],
+            "model": ligne[1],
+            "field": ligne[2],
+            "res_id": ligne[3],
+            "mimetype": ligne[4],
+            "size": int(ligne[5]) if ligne[5].isdigit() else 0,
+            "name": ligne[6],
+        }
+        for ligne in lignes or []
+        if len(ligne) >= 7
+    ]
+
+
+def render_missing(etat, colour=False, limit=60):
+    """Ce qui manque, groupé d'abord, détaillé ensuite.
+
+    Le groupement d'abord parce qu'il tranche : deux cent trente-trois
+    drapeaux de pays et treize logos de fournisseurs de paiement sont des
+    images livrées par les modules, qu'une mise à jour restaure. Huit
+    pièces jointes éparses, non. La liste brute mettait les deux sur le
+    même plan.
+    """
+    from script.todo.migration_status import paint
+
+    absents = etat.get("attachment_missing") or 0
+    if not absents:
+        return f"✅ {t('every attachment file is present')}"
+    lignes = [
+        paint(
+            f"❌ {absents}"
+            f" {t('attachment files missing from the filestore')}",
+            "fail",
+            colour,
+        ),
+        f"   {etat['database']}",
+        "",
+    ]
+    detail = missing_detail(
+        etat["database"], etat.get("attachment_missing_list") or []
+    )
+    if not detail:
+        lignes.append(t("Could not read their metadata."))
+        return "\n".join(lignes)
+
+    groupe = {}
+    for item in detail:
+        cle = (item["model"], item["field"], item["mimetype"])
+        groupe[cle] = groupe.get(cle, 0) + 1
+    lignes.append(f"── {t('by model and field')} ──")
+    for (modele, champ, mime), nombre in sorted(
+        groupe.items(), key=lambda x: -x[1]
+    ):
+        lignes.append(
+            f"   {nombre:>5}  {paint(modele, 'step', colour):<34}"
+            f" {champ:<22} {mime}"
+        )
+    lignes.append("")
+    lignes.append(f"── {t('one by one')} ──")
+    for item in detail[:limit]:
+        lignes.append(
+            f"   {item['model']}#{item['res_id']}"
+            f"  {paint(item['field'], 'dim', colour)}"
+            f"  {item['size']:>8} o  {item['name'][:44]}"
+        )
+        lignes.append(f"        {paint(item['store_fname'], 'cmd', colour)}")
+    if len(detail) > limit:
+        lignes.append(f"   … {len(detail) - limit} {t('more')}")
+    return "\n".join(lignes)
 
 
 def compare(avant, apres):

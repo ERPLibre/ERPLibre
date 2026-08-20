@@ -64,6 +64,9 @@ def rows(lst_snapshot):
         if rang:
             precedent = presents[rang - 1]
         diff = quality.compare(precedent, etat) if precedent else None
+        # Le précédent voyage avec la ligne : le panneau en a besoin pour
+        # écrire « 171 (−43) », et le recalculer là-bas ferait deux
+        # sources pour la même comparaison.
         perdu = (
             0
             if diff is None or diff.get("unavailable")
@@ -76,6 +79,7 @@ def rows(lst_snapshot):
                 "detail": str(perdu) if perdu else "",
                 "data": etat,
                 "diff": diff,
+                "previous": precedent,
             }
         )
     if len(presents) >= 2:
@@ -107,34 +111,87 @@ def head_text(lst_snapshot):
     )
 
 
-def pane_text(lst_snapshot, row, colour=False):
+def statistics(etat, precedent):
+    """[(libellé, valeur, écart)] pour un palier. L'écart est None au départ.
+
+    Un chiffre seul ne dit rien : 2283 vues est un nombre, « +61 » est une
+    information. Le premier palier n'a pas de précédent, et inventer un
+    écart de zéro y laisserait croire à une comparaison qui n'existe pas.
+    """
+    lst = [
+        (
+            t("modules"),
+            len(etat["installed"]),
+            None if not precedent else len(precedent["installed"]),
+        ),
+        (
+            t("models"),
+            len(etat["model"]),
+            None if not precedent else len(precedent["model"]),
+        ),
+        (
+            t("views"),
+            etat["view"],
+            None if not precedent else precedent["view"],
+        ),
+        (
+            "  · COW",
+            etat["view_cow"],
+            None if not precedent else precedent["view_cow"],
+        ),
+        (
+            t("menus"),
+            etat["menu"],
+            None if not precedent else precedent["menu"],
+        ),
+        (
+            t("attachments"),
+            etat["attachment"],
+            None if not precedent else precedent["attachment"],
+        ),
+    ]
+    return [
+        (libelle, valeur, None if avant is None else valeur - avant)
+        for libelle, valeur, avant in lst
+    ]
+
+
+def pane_text(lst_snapshot, row, colour=False, show_missing=False):
     """Le détail du palier choisi, ou le bilan d'ensemble."""
     if row is None:
         return t("Nothing to show yet.")
     if row["kind"] == "missing":
         return f"⚠️  {row['data']['database']} : {t('database not found')}"
-    lignes = []
     etat = row["data"]
+    if show_missing:
+        if not etat:
+            return t("Pick a step to see its missing files.")
+        return quality.render_missing(etat, colour)
+    lignes = []
     if etat:
         lignes.append(
             status.paint(f"{etat['odoo']}  {etat['database']}", "step", colour)
         )
         lignes.append("")
-        for libelle, valeur in (
-            (t("modules"), len(etat["installed"])),
-            (t("models"), len(etat["model"])),
-            (t("views"), etat["view"]),
-            ("  · COW", etat["view_cow"]),
-            (t("menus"), etat["menu"]),
-            (t("attachments"), etat["attachment"]),
-        ):
-            lignes.append(f"   {libelle:<28} {valeur:>7}")
+        for libelle, valeur, ecart in statistics(etat, row.get("previous")):
+            if ecart is None:
+                marque = ""
+            else:
+                marque = status.paint(
+                    f"{ecart:+d}", "ok" if ecart >= 0 else "warn", colour
+                )
+            lignes.append(f"   {libelle:<28} {valeur:>7}   {marque}")
         if etat.get("attachment_missing"):
             lignes.append(
-                f"   {status.paint('❌ ' + t('attachment files missing from'
-                                            ' the filestore'), 'fail', colour)}"
-                f" {etat['attachment_missing']}"
+                "   "
+                + status.paint(
+                    f"❌ {etat['attachment_missing']}"
+                    f" {t('attachment files missing from the filestore')}",
+                    "fail",
+                    colour,
+                )
             )
+            lignes.append(f"      {t('press m to list them')}")
         lignes.append("")
     diff = row.get("diff")
     if diff:
@@ -151,13 +208,17 @@ def build_app(lst_snapshot):
 
     class QualityApp(App):
         CSS = globals()["CSS"]
-        BINDINGS = [("q,escape", "quit", t("Quit"))]
+        BINDINGS = [
+            ("q,escape", "quit", t("Quit")),
+            ("m", "toggle_missing", t("Missing files")),
+        ]
 
         def __init__(self, lst_snapshot):
             super().__init__()
             self.lst_snapshot = lst_snapshot
             self.lst_row = rows(lst_snapshot)
             self.index = 0
+            self.show_missing = False
 
         def compose(self) -> ComposeResult:
             yield Header()
@@ -186,8 +247,25 @@ def build_app(lst_snapshot):
                 else None
             )
             self.query_one("#content", Static).update(
-                Text.from_ansi(pane_text(self.lst_snapshot, row, colour=True))
+                Text.from_ansi(
+                    pane_text(
+                        self.lst_snapshot,
+                        row,
+                        colour=True,
+                        show_missing=self.show_missing,
+                    )
+                )
             )
+
+        def action_toggle_missing(self):
+            """Basculer entre les chiffres du palier et ses fichiers absents.
+
+            Les métadonnées ne sont lues qu'ICI : une requête de plus par
+            base allongerait un parcours qui tient en quatre secondes, pour
+            une information qu'on ne regarde qu'en la demandant.
+            """
+            self.show_missing = not self.show_missing
+            self._show()
 
         def on_data_table_row_highlighted(self, event):
             if event.data_table.id == "left" and self.lst_row:

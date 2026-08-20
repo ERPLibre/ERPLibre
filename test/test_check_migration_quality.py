@@ -284,6 +284,234 @@ class TestTheReportItself(Base):
         self.assertLess(texte.index("12.0"), texte.index("From start"))
 
 
+class TestTheStatisticsCarryTheirDelta(Base):
+    """Un chiffre seul ne dit rien.
+
+    « 2283 vues » est un nombre ; « +61 » est une information. C'est
+    l'écart qu'on lit, pas la valeur.
+    """
+
+    def test_each_figure_gets_its_change(self):
+        lignes = qtui.statistics(
+            snapshot(view=2283, installed=["a"]),
+            snapshot(view=2222, installed=["a", "b"]),
+        )
+        par_nom = {libelle: ecart for libelle, _v, ecart in lignes}
+        self.assertEqual(par_nom["views"], 61)
+        self.assertEqual(par_nom["modules"], -1)
+
+    def test_the_first_step_has_NO_delta(self):
+        # Inventer un écart de zéro laisserait croire à une comparaison
+        # qui n'existe pas : il n'y a rien avant le premier palier.
+        lignes = qtui.statistics(snapshot(), None)
+        self.assertTrue(all(ecart is None for _l, _v, ecart in lignes))
+
+    def test_an_unchanged_figure_shows_zero_not_nothing(self):
+        # Zéro est une réponse : « rien n'a bougé » se distingue de « on
+        # ne sait pas ».
+        lignes = qtui.statistics(snapshot(view=100), snapshot(view=100))
+        par_nom = {libelle: ecart for libelle, _v, ecart in lignes}
+        self.assertEqual(par_nom["views"], 0)
+
+    def test_every_figure_of_the_pane_is_covered(self):
+        libelles = [
+            libelle
+            for libelle, _v, _e in qtui.statistics(snapshot(), snapshot())
+        ]
+        for attendu in ("modules", "models", "views", "menus", "attachments"):
+            self.assertIn(attendu, libelles)
+
+    def test_the_pane_prints_the_sign(self):
+        row = {
+            "kind": "step",
+            "data": snapshot(view=2283),
+            "previous": snapshot(view=2222),
+            "diff": None,
+        }
+        texte = qtui.pane_text([], row)
+        self.assertIn("+61", texte)
+
+
+class TestListingTheMissingFiles(Base):
+    """« 254 fichiers absents » ne dit pas lesquels.
+
+    Le groupement tranche : deux cent trente-quatre drapeaux de pays sont
+    des images livrées par un module, qu'une mise à jour restaure. Une
+    pièce jointe d'événement de 255 ko, non. La liste brute mettait les
+    deux sur le même plan.
+    """
+
+    DETAIL = [
+        {
+            "store_fname": "aa/1",
+            "model": "res.country",
+            "field": "image",
+            "res_id": "1",
+            "mimetype": "image/png",
+            "size": 100,
+            "name": "fr",
+        },
+        {
+            "store_fname": "aa/2",
+            "model": "res.country",
+            "field": "image",
+            "res_id": "2",
+            "mimetype": "image/png",
+            "size": 100,
+            "name": "ca",
+        },
+        {
+            "store_fname": "aa/4",
+            "model": "res.country",
+            "field": "image_128",
+            "res_id": "1",
+            "mimetype": "image/png",
+            "size": 50,
+            "name": "fr128",
+        },
+        {
+            "store_fname": "bb/3",
+            "model": "calendar.event",
+            "field": "-",
+            "res_id": "1",
+            "mimetype": "image/png",
+            "size": 255603,
+            "name": "photo.png",
+        },
+    ]
+
+    def render(self, etat=None, **kw):
+        original = quality.missing_detail
+        quality.missing_detail = lambda db, lst, limit=400: self.DETAIL
+        self.addCleanup(setattr, quality, "missing_detail", original)
+        return quality.render_missing(
+            etat
+            or snapshot(
+                attachment_missing=3,
+                attachment_missing_list=["aa/1", "aa/2", "bb/3"],
+            ),
+            **kw,
+        )
+
+    def test_nothing_missing_says_so_plainly(self):
+        texte = quality.render_missing(snapshot(attachment_missing=0))
+        self.assertIn("every attachment file is present", texte)
+
+    def test_the_grouping_comes_first(self):
+        texte = self.render()
+        self.assertLess(
+            texte.index("by model and field"), texte.index("one by one")
+        )
+
+    def test_the_grouping_counts_by_model_AND_field(self):
+        """Le champ est le renseignement le plus utile du lot.
+
+        Il dit QUEL champ a perdu son image : l'`image_1920` d'un pays n'a
+        pas le même poids qu'une pièce jointe de facture. Grouper sur le
+        seul modèle fondrait `image` et `image_128` en une ligne, et l'on
+        perdrait exactement ce qu'on venait chercher.
+        """
+        entete = self.render().split("one by one")[0]
+        lignes = [
+            ligne for ligne in entete.splitlines() if "res.country" in ligne
+        ]
+        self.assertEqual(len(lignes), 2, entete)
+        self.assertTrue(any("image_128" in ligne for ligne in lignes))
+
+    def test_the_loudest_group_comes_first(self):
+        texte = self.render().split("one by one")[0]
+        self.assertLess(texte.index("res.country"), texte.index("calendar"))
+
+    def test_each_file_names_its_record_and_its_path(self):
+        texte = self.render()
+        self.assertIn("calendar.event#1", texte)
+        self.assertIn("bb/3", texte)
+        self.assertIn("photo.png", texte)
+
+    def test_a_long_list_is_cut_and_SAYS_so(self):
+        texte = self.render(limit=1)
+        self.assertIn("more", texte)
+
+    def test_unreadable_metadata_is_admitted(self):
+        original = quality.missing_detail
+        quality.missing_detail = lambda db, lst, limit=400: []
+        self.addCleanup(setattr, quality, "missing_detail", original)
+        texte = quality.render_missing(
+            snapshot(attachment_missing=3, attachment_missing_list=["a"])
+        )
+        self.assertIn("Could not read", texte)
+
+    def test_the_metadata_is_read_ONLY_on_demand(self):
+        # Une requête de plus par base allongerait un parcours qui tient
+        # en quatre secondes, pour ce qu'on ne regarde qu'en le demandant.
+        import inspect
+
+        self.assertNotIn("missing_detail", inspect.getsource(quality.inspect))
+        self.assertIn(
+            "missing_detail", inspect.getsource(quality.render_missing)
+        )
+
+    def test_the_names_are_kept_but_bounded(self):
+        # Une base peut en aligner des dizaines de milliers ; l'écran n'en
+        # montrera jamais tant, et les garder toutes coûterait pour rien.
+        import inspect
+
+        source = inspect.getsource(quality.inspect)
+        self.assertIn("attachment_missing_list", source)
+        self.assertIn("MAX_MISSING", source)
+
+    def test_a_quote_in_a_filename_cannot_break_the_query(self):
+        vu = {}
+        original = quality.run_psql
+        quality.run_psql = lambda db, sql: vu.setdefault("sql", sql) and []
+        self.addCleanup(setattr, quality, "run_psql", original)
+        quality.missing_detail("db", ["aa/o'brien"])
+        self.assertIn("o''brien", vu["sql"])
+
+
+class TestTheMissingFilesButton(Base):
+    def test_m_is_bound(self):
+        app = qtui.build_app([snapshot()])
+        touches = {
+            touche
+            for entree in app.BINDINGS
+            for touche in entree[0].split(",")
+        }
+        self.assertIn("m", touches)
+
+    def test_the_action_exists(self):
+        app = qtui.build_app([snapshot()])
+        self.assertTrue(hasattr(app, "action_toggle_missing"))
+
+    def test_the_pane_switches_to_the_list(self):
+        original = quality.missing_detail
+        quality.missing_detail = lambda db, lst, limit=400: []
+        self.addCleanup(setattr, quality, "missing_detail", original)
+        row = {
+            "kind": "step",
+            "data": snapshot(
+                attachment_missing=3, attachment_missing_list=["a"]
+            ),
+            "previous": None,
+            "diff": None,
+        }
+        chiffres = qtui.pane_text([], row, show_missing=False)
+        liste = qtui.pane_text([], row, show_missing=True)
+        self.assertIn("modules", chiffres)
+        self.assertNotIn("modules", liste)
+
+    def test_the_pane_tells_you_the_key_exists(self):
+        # Une touche que rien n'annonce est une touche que personne ne
+        # presse.
+        row = {
+            "kind": "step",
+            "data": snapshot(attachment_missing=254),
+            "previous": None,
+            "diff": None,
+        }
+        self.assertIn("press m", qtui.pane_text([], row))
+
+
 class TestItNeverWrites(Base):
     """Les bases de palier sont parfois la seule copie d'un état."""
 
