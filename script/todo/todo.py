@@ -5333,6 +5333,25 @@ class TODO:
             # images cloud démarrent en multi-user.target.
             "sudo systemctl set-default graphical.target || true; "
             f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
+            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons,
+            # toutes deux mesurées sur erplibre-ubuntu-2604-gnome :
+            #
+            #   - graphical.target était DÉJÀ atteinte quand le paquet est
+            #     arrivé, et une cible active ne rattrape pas un service ajouté
+            #     après coup : display-manager.service est resté inactif ;
+            #   - sur Debian et Ubuntu, « systemctl enable gdm » rend 0 sans
+            #     rien faire — l'unité n'a pas de « WantedBy », seulement
+            #     « Alias=display-manager.service » que le paquet a déjà posé.
+            #
+            # Résultat : GNOME installé, gdm3 installé, cible graphique par
+            # défaut… et la console de la VM restait en mode texte jusqu'au
+            # premier redémarrage. L'écran, c'est justement ce qu'on est venu
+            # chercher sur une VM graphique.
+            "if sudo systemctl start display-manager.service 2>/dev/null || "
+            f"sudo systemctl start {de['service']} 2>/dev/null; then "
+            f'echo "   {t("graphical session started")}"; '
+            f'else echo "   ⚠ {t("graphical session not started; reboot the VM")}"; '
+            "fi; "
             # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
             # par utilisateur et n'a pas de service à activer d'office.
             "if command -v xrdp >/dev/null 2>&1; then "

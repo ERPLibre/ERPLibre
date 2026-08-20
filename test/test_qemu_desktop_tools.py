@@ -631,6 +631,99 @@ class TestPycharmCommunity(unittest.TestCase):
         self.assertIn("JetBrains", self.cmd)
 
 
+class TestTheDesktopActuallyStarts(unittest.TestCase):
+    """Installer un bureau ne suffit pas : il faut le DÉMARRER.
+
+    Vécu sur erplibre-ubuntu-2604-gnome, et le diagnostic ne sautait pas aux
+    yeux : GNOME installé, gdm3 installé, graphical.target par défaut, lien
+    display-manager.service en place — et la console de la VM restait en mode
+    texte. Deux causes superposées :
+
+      - graphical.target était DÉJÀ atteinte quand le paquet est arrivé, et une
+        cible active ne rattrape pas un service ajouté après coup ;
+      - « systemctl enable gdm » rend 0 sans rien faire sur Debian et Ubuntu :
+        l'unité n'a pas de « WantedBy », seulement un alias que le paquet pose.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.cmd = self.todo._qemu_desktop_remote_cmd("gnome", "deb")
+
+    def _start_block(self, cmd=None):
+        """Le seul « if » qui démarre le bureau, extrait tel quel."""
+        cmd = cmd or self.cmd
+        start = cmd.index("if sudo systemctl start display-manager")
+        return cmd[start : cmd.index("fi; ", start) + 4]
+
+    def test_it_starts_and_does_not_only_enable(self):
+        self.assertIn("systemctl start display-manager.service", self.cmd)
+
+    def test_it_falls_back_to_the_desktop_service(self):
+        """« display-manager.service » est un alias que les paquets Debian
+        posent ; ailleurs c'est « gdm » qui porte le WantedBy."""
+        block = self._start_block()
+        self.assertIn("systemctl start gdm", block)
+
+    def test_it_comes_after_the_default_target_and_before_xrdp(self):
+        self.assertLess(
+            self.cmd.index("set-default graphical.target"),
+            self.cmd.index("start display-manager.service"),
+        )
+        self.assertLess(
+            self.cmd.index("start display-manager.service"),
+            self.cmd.index("command -v xrdp"),
+        )
+
+    def _run(self, systemctl_body):
+        import os
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            bin_dir = pathlib.Path(tmp) / "bin"
+            bin_dir.mkdir()
+            (bin_dir / "sudo").write_text('#!/bin/bash\nexec "$@"\n')
+            (bin_dir / "systemctl").write_text(
+                f"#!/bin/bash\n{systemctl_body}\n"
+            )
+            for n in ("sudo", "systemctl"):
+                (bin_dir / n).chmod(0o755)
+            res = subprocess.run(
+                ["bash", "-c", self._start_block()],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, PATH=f"{bin_dir}:/usr/bin:/bin"),
+                timeout=30,
+            )
+        return res.stdout
+
+    def test_the_alias_path_reports_a_started_session(self):
+        out = self._run("exit 0")
+        self.assertIn("session", out.lower())
+        self.assertNotIn("⚠", out)
+
+    def test_the_fallback_path_also_reports_started(self):
+        """display-manager absent, gdm présent : c'est le cas d'Arch."""
+        out = self._run(
+            'case "$*" in *display-manager*) exit 1;; *) exit 0;; esac'
+        )
+        self.assertNotIn("⚠", out)
+
+    def test_when_nothing_starts_it_says_to_reboot(self):
+        """Le pire serait de se taire : l'utilisateur cherche un écran."""
+        out = self._run("exit 1")
+        self.assertIn("⚠", out)
+        self.assertIn("boot", out.lower() + "reboot")
+
+    def test_the_block_is_valid_shell(self):
+        res = subprocess.run(
+            ["bash", "-n"],
+            input=self._start_block(),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, res.returncode, res.stderr)
+
+
 class TestPycharmFirstOpen(unittest.TestCase):
     """Ouverture sans écran, pour que le .idea existe avant l'installation.
 

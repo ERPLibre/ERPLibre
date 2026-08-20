@@ -2244,6 +2244,14 @@ TRANSLATIONS = {
         "fr": "À lancer sur VOTRE poste :",
         "en": "Run this on YOUR workstation:",
     },
+    "graphical session started": {
+        "fr": "session graphique démarrée",
+        "en": "graphical session started",
+    },
+    "graphical session not started; reboot the VM": {
+        "fr": "session graphique non démarrée ; redémarrer la VM",
+        "en": "graphical session not started; reboot the VM",
+    },
     "Hypervisor console (QEMU screen, no guest server)": {
         "fr": "Console de l'hyperviseur (écran QEMU, rien dans l'invitée)",
         "en": "Hypervisor console (QEMU screen, no guest server)",
