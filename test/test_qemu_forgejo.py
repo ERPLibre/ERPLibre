@@ -339,6 +339,39 @@ class TestTheScriptGuards(unittest.TestCase):
         self.assertIn("FORGEJO_ADMIN_USER:-erplibre", self.body)
         self.assertNotIn("FORGEJO_ADMIN_USER:-admin}", self.body)
 
+    def test_it_restarts_when_something_changed(self):
+        """« enable --now » ne touche PAS un service déjà actif : il garde alors
+        sa configuration en mémoire. Vécu, et le symptôme ne désignait pas la
+        cause — le serveur comparait son ancien INTERNAL_TOKEN à celui que le
+        hook venait de lire, répondait 403 à son propre hook, et tout push
+        finissait sur « Internal Server Error Decoding Failed »."""
+        self.assertIn("systemctl restart forgejo.service", self.body)
+        self.assertNotIn("enable --now forgejo", self.body)
+
+    def test_the_restart_is_conditional(self):
+        """Rejouer le script sur une forge saine ne doit pas l'interrompre,
+        même deux secondes."""
+        self.assertIn("CHANGED=0", self.body)
+        self.assertIn('[ "$CHANGED" = 1 ]', self.body)
+        # Trois évènements le lèvent : binaire posé, config écrite, unité
+        # modifiée.
+        self.assertEqual(3, self.body.count("CHANGED=1"))
+
+    def test_the_unit_is_compared_before_being_written(self):
+        """Sans comparaison, l'unité serait réécrite à l'identique et le
+        service redémarrerait pour rien à chaque passage."""
+        self.assertIn("cmp -s", self.body)
+
+    def test_the_readiness_loop_stays_quiet_while_retrying(self):
+        """« Failed to connect » au premier tour est normal — le service vient
+        de redémarrer. C'est le die final qui parle."""
+        # La commande est coupée sur deux lignes : on regarde le BLOC de la
+        # boucle, pas la ligne qui porte l'URL.
+        start = self.body.index("ready=0")
+        block = self.body[start : self.body.index('[ "$ready" = 1 ]', start)]
+        self.assertIn("curl -fs -o /dev/null", block)
+        self.assertNotIn("-fsS", block)
+
     def test_it_touches_no_package_manager(self):
         """C'est ce qui le rend portable : le binaire est statique."""
         for pm in ("apt-get install", "dnf install", "pacman -S", "zypper"):

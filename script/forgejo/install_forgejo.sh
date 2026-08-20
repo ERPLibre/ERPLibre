@@ -41,6 +41,11 @@ ADMIN_EMAIL="${FORGEJO_ADMIN_EMAIL:-admin@erplibre.local}"
 RUN_USER="${FORGEJO_USER:-git}"
 SKIP_ADMIN="${FORGEJO_SKIP_ADMIN:-0}"
 
+# Ce qui a changé sur le disque pendant ce passage. Le service ne redémarre que
+# si quelque chose a bougé : rejouer le script sur une forge saine ne doit pas
+# l'interrompre, même deux secondes.
+CHANGED=0
+
 BIN=/usr/local/bin/forgejo
 CONF_DIR=/etc/forgejo
 CONF="$CONF_DIR/app.ini"
@@ -152,6 +157,7 @@ else
     esac
     chmod +x "$src"
     sudo install -m 0755 "$src" "$BIN"
+    CHANGED=1
     say "${Green}binaire posé : $BIN${Color_Off}"
     rm -rf "$tmp"
     trap - EXIT
@@ -249,11 +255,13 @@ LEVEL = info
 CONFEOF
     sudo chown root:"$RUN_USER" "$CONF"
     sudo chmod 640 "$CONF"
+    CHANGED=1
     say "${Green}configuration écrite : $CONF${Color_Off}"
 fi
 
 # --- 6. Service ------------------------------------------------------------
-sudo tee "$UNIT" >/dev/null <<UNITEOF
+unit_tmp=$(mktemp)
+cat > "$unit_tmp" <<UNITEOF
 [Unit]
 Description=Forgejo (Beyond coding. We forge.)
 After=network.target network-online.target
@@ -271,9 +279,29 @@ Environment=USER=$RUN_USER HOME=/home/$RUN_USER GITEA_WORK_DIR=$DATA
 [Install]
 WantedBy=multi-user.target
 UNITEOF
-sudo systemctl daemon-reload
-sudo systemctl enable --now forgejo.service >/dev/null 2>&1 \
-    || die "le service refuse de démarrer : sudo journalctl -u forgejo -n 40"
+if ! sudo cmp -s "$unit_tmp" "$UNIT" 2>/dev/null; then
+    sudo install -m 0644 "$unit_tmp" "$UNIT"
+    sudo systemctl daemon-reload
+    CHANGED=1
+    say "service défini : $UNIT"
+fi
+rm -f "$unit_tmp"
+
+sudo systemctl enable forgejo.service >/dev/null 2>&1 || true
+# « restart » et NON « enable --now » quand quelque chose a changé : « --now »
+# ne touche pas à un service déjà actif, qui garde alors sa configuration en
+# MÉMOIRE. Vécu, et le symptôme ne désigne pas la cause : le serveur comparait
+# son ancien INTERNAL_TOKEN à celui que le hook venait de lire sur le disque, et
+# répondait 403 à son propre hook. Tout push finissait sur « Forgejo: Internal
+# Server Error Decoding Failed », le hook ne sachant pas décoder un 403.
+if [ "$CHANGED" = 1 ]; then
+    sudo systemctl restart forgejo.service \
+        || die "le service refuse de démarrer : sudo journalctl -u forgejo -n 40"
+    say "service redémarré (configuration ou binaire modifié)"
+elif ! systemctl is-active --quiet forgejo.service; then
+    sudo systemctl start forgejo.service \
+        || die "le service refuse de démarrer : sudo journalctl -u forgejo -n 40"
+fi
 
 # --- 7. Attendre qu'il RÉPONDE --------------------------------------------
 # Une requête HTTP, pas un « systemctl is-active » : le service est « active »
@@ -286,7 +314,10 @@ sudo systemctl enable --now forgejo.service >/dev/null 2>&1 \
 # silence, au premier tour de la boucle, code 1 sans un mot — vécu.
 ready=0
 for i in $(seq 1 60); do
-    if curl -fsS -o /dev/null --max-time 3 \
+    # « -fs » sans « -S » : dans une boucle de réessai, le message de curl est
+    # du bruit — « Failed to connect » au premier tour est normal, le service
+    # vient de redémarrer. C'est le die final qui parle si rien ne répond.
+    if curl -fs -o /dev/null --max-time 3 \
             "http://127.0.0.1:$HTTP_PORT/api/v1/version"; then
         ready=1
         break
