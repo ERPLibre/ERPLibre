@@ -5787,9 +5787,13 @@ TRANSLATIONS = {
         "fr": "table(s) ont perdu des lignes, sans explication",
         "en": "table(s) lost rows, unexplained",
     },
-    "table(s) Odoo moved or retired": {
-        "fr": "table(s) qu'Odoo a déplacées ou retirées",
-        "en": "table(s) Odoo moved or retired",
+    "table(s) explained by an Odoo change": {
+        "fr": "table(s) expliquées par un changement d'Odoo",
+        "en": "table(s) explained by an Odoo change",
+    },
+    "rows dropped, the table remains": {
+        "fr": "lignes supprimées, la table demeure",
+        "en": "rows dropped, the table remains",
     },
     "retired from the database": {
         "fr": "retirée de la base",

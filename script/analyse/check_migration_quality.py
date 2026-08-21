@@ -471,6 +471,18 @@ SEMANTIC_MAP = (
         "kind": "retired",
         "why": "translations moved into jsonb columns",
     },
+    # Vérifiée palier par palier : la table ne se vide jamais, elle GROSSIT
+    # (211 en 12 → 457 en 17) puis disparaît d'un coup en 18. Les champs
+    # qu'elle portait sont des colonnes jsonb en 18 — vérifié sur
+    # res_partner.property_payment_term_id et
+    # product_template.property_account_income_id.
+    {
+        "since": 18,
+        "table": "ir_property",
+        "into": None,
+        "kind": "retired",
+        "why": "company-dependent values moved into jsonb columns",
+    },
     {
         "since": 17,
         "table": "account_tax_template",
@@ -536,6 +548,23 @@ SEMANTIC_MAP = (
         "into": "stock_quant",
         "kind": "merged",
         "why": "inventory adjustments became quants",
+    },
+    # Élagages : la table demeure, ces lignes non. À distinguer d'une
+    # fusion — ici les enregistrements ne continuent NULLE PART.
+    #
+    # Vérifié : en 13 `field` est un varchar (le nom du champ), en 14 c'est
+    # une clé étrangère vers ir_model_fields. En 14 aucune ligne n'a de
+    # champ nul ni de clé cassée : ce qui ne se résolvait pas a été
+    # supprimé. Sur les 2336 disparues, 1528 portaient des champs du module
+    # agile retiré (priority_id 761, agile_enabled 711, story_points 54,
+    # resolution_id 2) ; 706 autres ont SURVÉCU sous un nouveau nom
+    # (account.move.type → move_type, 651).
+    {
+        "since": 14,
+        "table": "mail_tracking_value",
+        "into": None,
+        "kind": "pruned",
+        "why": "tracking of fields that ceased to exist",
     },
 )
 
@@ -812,7 +841,7 @@ def render_compare(diff, colour, limit=8):
         if connues:
             lignes.append(
                 f"   {paint('▽', 'dim', colour)} {len(connues)}"
-                f" {t('table(s) Odoo moved or retired')} :"
+                f" {t('table(s) explained by an Odoo change')} :"
             )
             for table, avant, apres, connu in connues[:limit]:
                 if connu["into"]:
@@ -826,6 +855,13 @@ def render_compare(diff, colour, limit=8):
                         else paint(t("but it gained nothing"), "fail", colour)
                     )
                     ou = f"→ {connu['into']}  ({accueil})"
+                elif connu["kind"] == "pruned":
+                    # La table est TOUJOURS là : dire « retirée » serait
+                    # faux, et cette perte-ci est réelle — les lignes ne
+                    # continuent nulle part. Le mot doit le laisser voir.
+                    ou = paint(
+                        t("rows dropped, the table remains"), "warn", colour
+                    )
                 else:
                     ou = t("retired from the database")
                 lignes.append(f"       {table:<40} {avant:>8} → {apres}  {ou}")

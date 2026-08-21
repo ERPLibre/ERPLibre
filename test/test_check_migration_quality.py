@@ -331,7 +331,10 @@ class TestTheSemanticMap(Base):
             snapshot(odoo="18.0", table={}),
         )
         texte = "\n".join(quality.render_compare(diff, colour=False))
-        self.assertLess(texte.index("unexplained"), texte.index("moved or"))
+        self.assertLess(
+            texte.index(todo_i18n.t("table(s) lost rows, unexplained")),
+            texte.index(todo_i18n.t("table(s) explained by an Odoo change")),
+        )
 
     def test_needaction_became_notifications_in_15(self):
         """Vérifiée palier par palier, pas déduite d'un nom qui se ressemble.
@@ -376,7 +379,61 @@ class TestTheSemanticMap(Base):
             for cle in ("since", "table", "into", "kind", "why"):
                 self.assertIn(cle, entree, entree)
             self.assertTrue(entree["why"], entree)
-            self.assertIn(entree["kind"], ("merged", "renamed", "retired"))
+            self.assertIn(
+                entree["kind"], ("merged", "renamed", "retired", "pruned")
+            )
+
+    def test_a_pruned_entry_never_claims_a_destination(self):
+        # « pruned » dit que les lignes ne continuent NULLE PART. Lui donner
+        # un « into » ferait passer une perte réelle pour une fusion.
+        for entree in quality.SEMANTIC_MAP:
+            if entree["kind"] == "pruned":
+                self.assertIsNone(entree["into"], entree)
+
+    def test_properties_became_jsonb_columns_in_18(self):
+        """La table ne se vide pas : elle GROSSIT, puis disparaît d'un coup.
+
+        211 lignes en 12, 457 en 17, table absente en 18. Les champs
+        qu'elle portait sont des colonnes jsonb en 18 — vérifié sur
+        res_partner.property_payment_term_id.
+        """
+        diff = self.perte("ir_property", 457, 0, version="18.0")
+        connu = diff["rows_lost"][0][3]
+        self.assertIsNotNone(connu)
+        self.assertEqual(connu["kind"], "retired")
+        self.assertIsNone(connu["into"])
+
+    def test_properties_are_not_explained_at_the_17_bump(self):
+        # En 17 la table est à son maximum (457). Dater l'entrée plus tôt
+        # ferait passer pour attendue une perte qui ne l'est pas.
+        diff = self.perte("ir_property", 273, 100, version="17.0")
+        self.assertIsNone(diff["rows_lost"][0][3])
+
+    def test_tracking_values_were_pruned_in_14(self):
+        """Le champ suivi passe de varchar à clé étrangère au palier 14.
+
+        En 14 aucune ligne n'a de clé nulle ni cassée : ce qui ne se
+        résolvait pas a été supprimé. La table SURVIT — 13833 lignes — donc
+        l'explication ne doit pas prétendre qu'elle a disparu.
+        """
+        diff = self.perte("mail_tracking_value", 16169, 13833, version="14.0")
+        table, avant, apres, connu = diff["rows_lost"][0]
+        self.assertEqual((avant, apres), (16169, 13833))
+        self.assertIsNotNone(connu)
+        self.assertEqual(connu["kind"], "pruned")
+
+    def test_tracking_values_are_not_explained_at_the_13_bump(self):
+        # 16167 en 12, 16169 en 13 : rien n'a encore été élagué.
+        diff = self.perte("mail_tracking_value", 16167, 10000, version="13.0")
+        self.assertIsNone(diff["rows_lost"][0][3])
+
+    def test_a_pruned_loss_is_not_rendered_as_retired(self):
+        # « retirée de la base » serait faux : la table est toujours là.
+        diff = self.perte("mail_tracking_value", 16169, 13833, version="14.0")
+        texte = "\n".join(quality.render_compare(diff, False, 8))
+        self.assertIn("mail_tracking_value", texte)
+        self.assertNotIn(todo_i18n.t("retired from the database"), texte)
+        self.assertIn(todo_i18n.t("rows dropped, the table remains"), texte)
 
     def test_the_column_counts_only_what_needs_an_answer(self):
         # Afficher 81 quand 14 sont des refontes voulues ferait fuir le
