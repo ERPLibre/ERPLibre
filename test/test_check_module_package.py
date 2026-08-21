@@ -566,6 +566,83 @@ class TestTheWiring(unittest.TestCase):
         self.assertEqual(entrees, branches)
 
 
+class TestWhatCanBeInstalled(unittest.TestCase):
+    def rapport(self, *couples):
+        return {
+            "lines": [
+                {
+                    "module": nom,
+                    "verdict": v,
+                    "from": "p",
+                    "state": "",
+                    "shortdesc": "",
+                    "needs": [],
+                }
+                for nom, v in couples
+            ]
+        }
+
+    def test_only_available_modules_are_offered(self):
+        # Proposer un « unknown » ferait une liste plus longue et un
+        # échec : il n'est pas dans le chemin des addons.
+        r = self.rapport(
+            ("a", "available"),
+            ("b", "unknown"),
+            ("c", "uninstallable"),
+            ("d", "pending"),
+            ("e", "installed"),
+        )
+        self.assertEqual(modules.installable(r), ["a"])
+
+    def test_nothing_available_offers_nothing(self):
+        self.assertEqual(
+            modules.installable(self.rapport(("b", "unknown"))), []
+        )
+
+
+class TestTheSelection(unittest.TestCase):
+    CANDIDATS = ["alpha", "beta", "gamma"]
+
+    def choisit(self, reponse):
+        return modules.parse_selection(reponse, self.CANDIDATS)
+
+    def test_nothing_typed_selects_nothing(self):
+        self.assertEqual(self.choisit(""), ([], []))
+        self.assertEqual(self.choisit("   "), ([], []))
+
+    def test_a_takes_every_one(self):
+        for mot in ("a", "A", "all", " a "):
+            self.assertEqual(self.choisit(mot), (self.CANDIDATS, []), mot)
+
+    def test_numbers_are_one_based_and_space_separated(self):
+        self.assertEqual(self.choisit("1 3"), (["alpha", "gamma"], []))
+
+    def test_the_typed_order_is_kept(self):
+        self.assertEqual(self.choisit("3 1"), (["gamma", "alpha"], []))
+
+    def test_a_repeat_is_installed_once(self):
+        self.assertEqual(self.choisit("2 2"), (["beta"], []))
+
+    def test_commas_work_too(self):
+        # Les listes que l'outil affiche ailleurs sont en virgules ;
+        # refuser « 1,3 » n'aurait protégé de rien.
+        self.assertEqual(self.choisit("1,3"), (["alpha", "gamma"], []))
+
+    def test_an_out_of_range_number_is_REPORTED_not_dropped(self):
+        # En demander deux et en recevoir un sans un mot ferait croire
+        # l'installation complète. C'est la pire issue possible.
+        self.assertEqual(self.choisit("1 9"), (["alpha"], ["9"]))
+
+    def test_zero_is_out_of_range(self):
+        self.assertEqual(self.choisit("0"), ([], ["0"]))
+
+    def test_a_word_is_reported_not_ignored(self):
+        self.assertEqual(self.choisit("1 pouet"), (["alpha"], ["pouet"]))
+
+    def test_only_rubbish_selects_nothing_and_says_so(self):
+        self.assertEqual(self.choisit("x y"), ([], ["x", "y"]))
+
+
 class TestThePermissions(unittest.TestCase):
     """Shebang et exécutable vont ensemble, dans les deux sens.
 
@@ -590,6 +667,208 @@ class TestThePermissions(unittest.TestCase):
                 stat.S_IMODE(os.stat(chemin).st_mode) & stat.S_IXUSR
             )
             self.assertEqual(shebang, executable, os.path.basename(chemin))
+
+
+class TestTheInstallOffer(unittest.TestCase):
+    """L'invite qui ÉCRIT. On vérifie la commande, pas les appels.
+
+    Un test qui se contente de constater qu'une fonction a été appelée
+    laisse passer une commande mal formée ou lancée quand il ne fallait
+    pas. Ici on retient la ligne de commande exacte, et surtout on exige
+    qu'il n'en parte AUCUNE sur les chemins de refus.
+    """
+
+    RAPPORT = {
+        "lines": [
+            {
+                "module": "queue_job",
+                "verdict": "available",
+                "from": "p",
+                "state": "",
+                "shortdesc": "",
+                "needs": [],
+            },
+            {
+                "module": "web_dark_mode",
+                "verdict": "available",
+                "from": "p",
+                "state": "",
+                "shortdesc": "",
+                "needs": [],
+            },
+            {
+                "module": "absent",
+                "verdict": "unknown",
+                "from": "p",
+                "state": "",
+                "shortdesc": "",
+                "needs": [],
+            },
+        ]
+    }
+
+    def setUp(self):
+        from script.odoo.migration import database_cleanup
+        from script.todo import auto_ask
+        from script.todo import todo as todo_module
+
+        self.cleanup = database_cleanup
+        self.auto_ask = auto_ask
+        self.vraie_garde = database_cleanup.require_matching_version
+        self.vrai_ask = auto_ask.ask
+        database_cleanup.require_matching_version = lambda base: None
+
+        self.lancees = []
+        self.obj = todo_module.TODO.__new__(todo_module.TODO)
+        self.obj.execute = type(
+            "E",
+            (),
+            {
+                "exec_command_live": lambda _s, cmd, **k: self.lancees.append(
+                    cmd
+                )
+            },
+        )()
+
+    def tearDown(self):
+        self.cleanup.require_matching_version = self.vraie_garde
+        self.auto_ask.ask = self.vrai_ask
+
+    def joue(self, *reponses):
+        """Rendre TOUT ce que l'utilisateur voit : sortie ET invites.
+
+        Le texte d'une question ne passe pas par stdout — il est l'argument
+        de `ask`, qu'un vrai `input()` affiche. Ne regarder que stdout
+        laisserait une invite muette passer pour correcte.
+        """
+        file = list(reponses)
+        self.demandes = []
+
+        def faux_ask(prompt, default="", seconds=None):
+            # Le VRAI `ask` rend le défaut quand la réponse est vide. Un
+            # faux qui rend la chaîne vide telle quelle ne teste pas le
+            # défaut du tout : basculer celui de « n » à « y » passait
+            # alors inaperçu, et Entrée aurait installé.
+            self.demandes.append(prompt)
+            reponse = file.pop(0) if file else ""
+            return reponse or default
+
+        self.auto_ask.ask = faux_ask
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            self.obj._analyse_offer_install("ma_base", self.RAPPORT)
+        return tampon.getvalue() + "\n".join(self.demandes)
+
+    def test_saying_no_runs_nothing(self):
+        self.joue("n")
+        self.assertEqual(self.lancees, [])
+
+    def test_pressing_enter_runs_nothing(self):
+        # Le défaut d'une action qui écrit doit être de ne rien faire.
+        # On fournit de quoi aller AU BOUT si le garde-fou cédait : sans
+        # cela, la suite s'arrêtait faute de réponses et le test passait
+        # même avec un défaut à « y ». Basculer le défaut installerait.
+        self.joue("", "a", "y")
+        self.assertEqual(self.lancees, [])
+
+    def test_pressing_enter_at_the_final_confirmation_runs_nothing(self):
+        # Même piège sur le second garde-fou : il faut que « tout est
+        # prêt » soit vrai au moment où l'on appuie sur Entrée.
+        self.joue("y", "a", "")
+        self.assertEqual(self.lancees, [])
+
+    def test_choosing_one_installs_exactly_that_one(self):
+        self.joue("y", "1", "y")
+        self.assertEqual(
+            self.lancees,
+            ["./script/addons/install_addons.sh ma_base queue_job"],
+        )
+
+    def test_choosing_a_installs_every_available_one(self):
+        self.joue("y", "a", "y")
+        self.assertEqual(
+            self.lancees,
+            [
+                "./script/addons/install_addons.sh ma_base"
+                " queue_job,web_dark_mode"
+            ],
+        )
+
+    def test_the_unknown_module_is_never_offered(self):
+        sortie = self.joue("y", "a", "y")
+        self.assertNotIn("absent", self.lancees[0])
+        self.assertIn("[1]", sortie)
+        self.assertIn("[2]", sortie)
+        self.assertNotIn("[3]", sortie)
+
+    def test_refusing_the_final_confirmation_runs_nothing(self):
+        # Deuxième filet : on a choisi, on relit, on renonce.
+        self.joue("y", "a", "n")
+        self.assertEqual(self.lancees, [])
+
+    def test_selecting_nothing_runs_nothing(self):
+        # On confirme APRÈS n'avoir rien choisi : sans le garde, la
+        # commande partirait avec une liste de modules vide.
+        self.joue("y", "", "y")
+        self.assertEqual(self.lancees, [])
+
+    def test_selecting_only_rubbish_runs_nothing(self):
+        # Même chemin, mais l'utilisateur a bien tapé quelque chose : ce
+        # qu'il a tapé ne désigne aucun module.
+        sortie = self.joue("y", "pouet 99", "y")
+        self.assertEqual(self.lancees, [])
+        self.assertIn("pouet", sortie)
+
+    def test_a_bad_token_is_shown_and_the_rest_still_installs(self):
+        sortie = self.joue("y", "1 99", "y")
+        self.assertIn("99", sortie)
+        self.assertEqual(
+            self.lancees,
+            ["./script/addons/install_addons.sh ma_base queue_job"],
+        )
+
+    def test_a_version_mismatch_refuses_before_asking_anything(self):
+        # Un Odoo 18 lancé sur une base 12 la RÉÉCRIT avant d'échouer :
+        # ce refus doit précéder la moindre question.
+        self.cleanup.require_matching_version = lambda base: "18.0 vs 12.0"
+        demandes = []
+        self.auto_ask.ask = lambda p, default="", seconds=None: (
+            demandes.append(p) or "y"
+        )
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            self.obj._analyse_offer_install("ma_base", self.RAPPORT)
+        self.assertEqual(self.lancees, [])
+        self.assertEqual(demandes, [])
+        self.assertIn("18.0 vs 12.0", tampon.getvalue())
+
+    def test_nothing_installable_asks_nothing_at_all(self):
+        demandes = []
+        self.auto_ask.ask = lambda p, default="", seconds=None: (
+            demandes.append(p) or "y"
+        )
+        rien = {
+            "lines": [
+                {
+                    "module": "x",
+                    "verdict": "unknown",
+                    "from": "p",
+                    "state": "",
+                    "shortdesc": "",
+                    "needs": [],
+                }
+            ]
+        }
+        with redirect_stdout(io.StringIO()):
+            self.obj._analyse_offer_install("ma_base", rien)
+        self.assertEqual(demandes, [])
+        self.assertEqual(self.lancees, [])
+
+    def test_it_says_how_many_it_could_not_offer(self):
+        # Le rapport vient d'en annoncer trois, la liste en montre deux :
+        # sans un mot, on croirait à un bogue.
+        sortie = self.joue("n")
+        self.assertIn(todo_i18n.t("need repair first"), sortie)
 
 
 if __name__ == "__main__":

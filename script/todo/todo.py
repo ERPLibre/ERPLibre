@@ -10166,13 +10166,18 @@ class TODO:
                 print(t("Command not found !"))
 
     def prompt_execute_analyse(self):
-        """Analyses en lecture seule d'une base Odoo.
+        """Analyses d'une base Odoo, en lecture seule.
 
-        Aucune entrée de ce menu n'écrit : la connexion psql est ouverte avec
-        `default_transaction_read_only=on`, donc c'est le serveur qui refuse
-        toute écriture, pas une promesse du code.
+        Toute LECTURE passe par une connexion psql ouverte avec
+        `default_transaction_read_only=on` : c'est le serveur qui refuse
+        l'écriture, pas une promesse du code.
+
+        Une seule action écrit — installer les modules suggérés, à la fin
+        de l'analyse [5]. Elle ne part jamais seule : question explicite,
+        défaut à « non », liste à confirmer, et refus net si le checkout
+        n'est pas sur la version de la base.
         """
-        print(f"🤖 {t('Analyse a database, without ever writing to it!')}")
+        print(f"🤖 {t('Analyse a database. Reading never writes.')}")
         choices = [
             {"section": t("Structure")},
             {"prompt_description": t("Tables and database size")},
@@ -10234,6 +10239,7 @@ class TODO:
             print(f"❌ {t('Cannot read the database: ')}{database}")
             return
         print("\n".join(modules.render(rapport, limit=8)))
+        self._analyse_offer_install(database, rapport)
 
         def handler(rank):
             if rank == 1:
@@ -10253,6 +10259,80 @@ class TODO:
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,
+        )
+
+    def _analyse_offer_install(self, database, rapport):
+        """Proposer d'installer ce qui manque, quand c'est installable.
+
+        Seuls les modules « available » sont offerts. Le dire est
+        nécessaire : le rapport vient d'en annoncer onze, la liste n'en
+        montre qu'un, et sans un mot on croirait à un bogue.
+
+        C'est la seule écriture de tout le menu Analyse, d'où trois
+        garde-fous : la version du checkout doit être celle de la base —
+        un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
+        question par défaut est « non », et la liste choisie est
+        confirmée avant que rien ne parte.
+        """
+        from script.analyse import check_module_package as modules
+        from script.odoo.migration import database_cleanup
+        from script.todo import auto_ask
+
+        candidats = modules.installable(rapport)
+        if not candidats:
+            return
+        autres = len(modules.missing(rapport)) - len(candidats)
+
+        souci = database_cleanup.require_matching_version(database)
+        if souci:
+            print(f"\n⚠ {souci}")
+            print(f"   {t('Cannot install from here.')}")
+            return
+
+        print()
+        detail = f" ({autres} {t('need repair first')})" if autres else ""
+        question = (
+            f"💬 {t('Install some of the')} {len(candidats)}"
+            f" {t('suggested module(s) waiting in this database?')}{detail}"
+            f" (y/N) : "
+        )
+        if auto_ask.ask(question, default="n").strip().lower() not in (
+            "y",
+            "yes",
+            "o",
+        ):
+            return
+
+        print()
+        for rang, nom in enumerate(candidats, start=1):
+            print(f"   [{rang}] {nom}")
+        print(f"   [a] {t('every one of them')}")
+        print(f"   {t('Enter = cancel')}")
+        choisis, refuses = modules.parse_selection(
+            auto_ask.ask(f"💬 {t('Numbers, space separated:')} ", default=""),
+            candidats,
+        )
+        # Un jeton refusé n'est JAMAIS avalé : en demander cinq et en
+        # recevoir quatre sans un mot ferait croire l'installation faite.
+        if refuses:
+            print(f"⚠ {t('Ignored, not in the list:')} {' '.join(refuses)}")
+        if not choisis:
+            print(f"ℹ️  {t('Nothing selected.')}")
+            return
+
+        print()
+        print(f"   {t('About to install into')} {database} :")
+        print(f"       {', '.join(choisis)}")
+        if auto_ask.ask(
+            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
+        ).strip().lower() not in ("y", "yes", "o"):
+            print(f"ℹ️  {t('Nothing selected.')}")
+            return
+        self.execute.exec_command_live(
+            f"./script/addons/install_addons.sh {database}"
+            f" {','.join(choisis)}",
+            source_erplibre=False,
+            single_source_erplibre=True,
         )
 
     def execute_analyse_migration_quality(self):

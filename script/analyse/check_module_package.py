@@ -356,6 +356,54 @@ def missing(rapport):
     )
 
 
+def installable(rapport):
+    """Les modules qu'on peut RÉELLEMENT installer, dans l'ordre affiché.
+
+    Seuls les « available » : la base les connaît et ils attendent. Un
+    « unknown » n'est pas dans le chemin des addons — l'installer échoue
+    avant de commencer ; un « uninstallable » a une dépendance cassée
+    qu'aucune installation ne contournera ; un « pending » est déjà en
+    route. Les proposer ferait une liste plus longue et trois échecs.
+    """
+    return [
+        ligne["module"]
+        for ligne in missing(rapport)
+        if ligne["verdict"] == "available"
+    ]
+
+
+def parse_selection(answer, candidates):
+    """(choisis, jetons refusés) d'après « 1 3 5 », « a », ou rien.
+
+    Les jetons refusés sont RENDUS, jamais avalés : demander cinq modules
+    et en recevoir quatre sans que rien ne le dise est la pire issue —
+    on croit l'installation complète. L'appelant doit pouvoir le montrer.
+
+    La virgule vaut l'espace : les listes affichées ailleurs par l'outil
+    sont séparées par des virgules, et refuser « 1,3 » ne protégerait de
+    rien tout en obligeant à retaper.
+    """
+    reponse = (answer or "").strip()
+    if not reponse:
+        return [], []
+    if reponse.lower() in ("a", "all"):
+        return list(candidates), []
+    choisis, refuses, vus = [], [], set()
+    for jeton in reponse.replace(",", " ").split():
+        if not jeton.isdigit():
+            refuses.append(jeton)
+            continue
+        rang = int(jeton)
+        if not 1 <= rang <= len(candidates):
+            refuses.append(jeton)
+            continue
+        nom = candidates[rang - 1]
+        if nom not in vus:
+            vus.add(nom)
+            choisis.append(nom)
+    return choisis, refuses
+
+
 def render(rapport, limit=0):
     """Le rapport, en clair. `limit` borne les listes longues (0 = tout)."""
     if rapport.get("unavailable"):
