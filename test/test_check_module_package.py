@@ -566,5 +566,31 @@ class TestTheWiring(unittest.TestCase):
         self.assertEqual(entrees, branches)
 
 
+class TestThePermissions(unittest.TestCase):
+    """Shebang et exécutable vont ensemble, dans les deux sens.
+
+    Un outil livré sans le bit d'exécution ne se lance qu'en le préfixant
+    de `python3`, et rien ne le signale avant l'essai. Un module de
+    bibliothèque marqué exécutable invite à le lancer alors qu'il n'a pas
+    de `main` — l'inverse est tout aussi trompeur.
+    """
+
+    DOSSIER = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "script", "analyse")
+    )
+
+    def test_shebang_and_executable_bit_agree(self):
+        import glob
+        import stat
+
+        for chemin in sorted(glob.glob(os.path.join(self.DOSSIER, "*.py"))):
+            with io.open(chemin, encoding="utf-8") as handle:
+                shebang = handle.readline().startswith("#!")
+            executable = bool(
+                stat.S_IMODE(os.stat(chemin).st_mode) & stat.S_IXUSR
+            )
+            self.assertEqual(shebang, executable, os.path.basename(chemin))
+
+
 if __name__ == "__main__":
     unittest.main()
