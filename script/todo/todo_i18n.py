@@ -5855,6 +5855,42 @@ TRANSLATIONS = {
         "fr": "dossier(s) racine",
         "en": "root folder(s)",
     },
+    "No DMS in this database, nothing to repair.": {
+        "fr": "Pas de DMS dans cette base, rien à réparer.",
+        "en": "No DMS in this database, nothing to repair.",
+    },
+    "Every one of them is visible to someone.": {
+        "fr": "Chacun est visible par quelqu'un.",
+        "en": "Every one of them is visible to someone.",
+    },
+    "No internal user to test visibility with.": {
+        "fr": "Aucun utilisateur interne pour éprouver la visibilité.",
+        "en": "No internal user to test visibility with.",
+    },
+    "The data is there; a global rule hides all of it.": {
+        "fr": "Les données sont là ; une règle globale les masque entièrement.",
+        "en": "The data is there; a global rule hides all of it.",
+    },
+    "checked against": {
+        "fr": "éprouvés avec",
+        "en": "checked against",
+    },
+    "internal user(s)": {
+        "fr": "utilisateur(s) interne(s)",
+        "en": "internal user(s)",
+    },
+    "model(s) nobody can see a single row of": {
+        "fr": "modèle(s) dont personne ne voit une seule ligne",
+        "en": "model(s) nobody can see a single row of",
+    },
+    "model(s) with a global rule and some data,": {
+        "fr": "modèle(s) avec une règle globale et des données,",
+        "en": "model(s) with a global rule and some data,",
+    },
+    "row(s)": {
+        "fr": "ligne(s)",
+        "en": "row(s)",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",

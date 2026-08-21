@@ -83,6 +83,15 @@ DRY = {dry}
 NOM = {nom!r}
 rapport = {{"dry_run": DRY}}
 try:
+    # Sans DMS, il n'y a rien à réparer et ce n'est pas une erreur : cet
+    # outil tourne à chaque migration vers la 13, et la plupart des bases
+    # n'ont jamais eu de DMS. Lever ici les ferait toutes échouer.
+    if "dms.file" not in env:
+        rapport["absent"] = True
+        print({debut!r})
+        print(json.dumps(rapport))
+        print({fin!r})
+        raise SystemExit(0)
     Dossier = env["dms.directory"].sudo()
     Fichier = env["dms.file"].sudo()
     Groupe = env["dms.access.group"].sudo()
@@ -144,6 +153,8 @@ def build_script(dry_run):
 
 
 def render(rapport, dry_run):
+    if rapport.get("absent"):
+        return [f"ℹ️  {t('No DMS in this database, nothing to repair.')}"]
     lignes = [
         f"📁 {t('DMS documents in the database')} :"
         f" {rapport.get('files', '?')} {t('file(s)')},"
@@ -220,7 +231,17 @@ def main(argv=None):
         print(f"❌ {rapport['error']}")
         return 2
     print("\n".join(render(rapport, not config.apply)))
+    if rapport.get("absent"):
+        return 0
     avant = rapport.get("before") or {}
+    if config.apply:
+        # Une réparation RÉUSSIE doit rendre 0. Rendre « il y a des
+        # trouvailles » après avoir tout remis en place ferait échouer
+        # n'importe quelle chaîne make qui appelle l'outil.
+        apres = rapport.get("after") or {}
+        if rapport.get("already_repaired"):
+            return 0
+        return 0 if apres.get("files") else 2
     return 1 if not avant.get("files") else 0
 
 

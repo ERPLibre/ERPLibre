@@ -143,7 +143,11 @@ class TestTheReport(unittest.TestCase):
                 and node.args
                 and isinstance(node.args[0], ast.Constant)
             ):
-                self.assertIn(node.args[0].value, todo_i18n.TRANSLATIONS)
+                cle = node.args[0].value
+                self.assertTrue(
+                    cle in todo_i18n.TRANSLATIONS,
+                    f"clé sans traduction : {cle!r}",
+                )
 
 
 class TestTheVersionGuard(unittest.TestCase):

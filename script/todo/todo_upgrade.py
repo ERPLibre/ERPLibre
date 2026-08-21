@@ -2727,6 +2727,23 @@ class TodoUpgrade:
                         f"./script/addons/update_addons_all.sh {database_name_upgrade}",
                     )
 
+                # Au palier 13 SEULEMENT, et après la mise à jour des
+                # modules : c'est là que MuK DMS devient OCA DMS, et donc
+                # là que le modèle de sécurité change. OCA pose des règles
+                # GLOBALES sur `permission_read`, accordé par une
+                # `dms.access.group` — que la conversion ne crée pas,
+                # puisque MuK n'en avait aucune. Les documents restent en
+                # base, intacts, et plus personne ne les voit.
+                #
+                # L'outil ne fait rien s'il n'y a pas de DMS, et rien non
+                # plus s'il a déjà réparé : le rejouer est sans effet.
+                if next_version == 13:
+                    self.run_on_terminal(
+                        f"{PYTHON_BIN}"
+                        " ./script/odoo/migration/dms_access_repair.py"
+                        f" -d {database_name_upgrade} --apply"
+                    )
+
                 print(
                     f"✅ -> {t('Database upgrade done for Odoo')}"
                     f"{next_version}"
@@ -2742,6 +2759,19 @@ class TodoUpgrade:
                 # le journal de migration n'avait rien signalé.
                 self.prompt_database_cleanup(database_name_upgrade)
                 self.prompt_smoke_public_url(database_name_upgrade)
+
+                # Le trou que ni les comptages ni le test de fumée ne
+                # voient : des données PRÉSENTES qu'une règle globale
+                # masque intégralement. Les comptages disent « tout est
+                # là » — et c'est vrai. Les pages publiques répondent — et
+                # c'est vrai aussi. Pourtant plus personne n'atteint les
+                # données. Mesuré sur DMS au palier 13 : 69 fichiers et
+                # 23 Mo intacts, zéro visible, pour tous les utilisateurs.
+                self.run_on_terminal(
+                    f"{PYTHON_BIN}"
+                    " ./script/odoo/migration/check_hidden_models.py"
+                    f" -d {database_name_upgrade}"
+                )
 
                 print(f"[y] {t('Open the server with Selenium')}")
                 print(f"[a] {t('Open it at EVERY version bump, stop asking')}")
