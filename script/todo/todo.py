@@ -10185,6 +10185,12 @@ class TODO:
             {"prompt_description": t("Studio and hand-made x_ fields")},
             {"section": t("Migration")},
             {"prompt_description": t("Quality of a migration, step by step")},
+            {"section": t("Modules")},
+            {
+                "prompt_description": t(
+                    "Modules missing from the default package"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -10201,8 +10207,53 @@ class TODO:
                 self.execute_analyse_custom_field()
             elif status == "4":
                 self.execute_analyse_migration_quality()
+            elif status == "5":
+                self.execute_analyse_module_package()
             else:
                 print(t("Command not found !"))
+
+    def execute_analyse_module_package(self):
+        """Ce que la base n'a pas, alors que l'installation par défaut l'a.
+
+        Pas de choix « sauvegarde .zip » ici, contrairement aux autres
+        analyses : l'outil interroge `ir_module_module`, qu'un zip
+        n'expose pas sans restauration. Proposer l'option pour la refuser
+        ensuite ferait perdre le temps de la choisir.
+        """
+        from script.analyse import check_module_package as modules
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        try:
+            rapport = modules.audit(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        print("\n".join(modules.render(rapport, limit=8)))
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(modules.render(rapport, limit=0)))
+            elif rank == 2:
+                for nom in sorted(modules.read_packages()):
+                    print(f"   {nom}")
+            else:
+                self._analyse_export_json(
+                    rapport, os.path.basename(database), "module_package"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
+                {"prompt_description": t("List the known packages")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
 
     def execute_analyse_migration_quality(self):
         """Ce qu'une migration a gagné et perdu, palier par palier.
