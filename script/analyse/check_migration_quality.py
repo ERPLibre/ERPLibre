@@ -513,6 +513,16 @@ SEMANTIC_MAP = (
         "kind": "retired",
         "why": "chart templates left the database",
     },
+    # Vérifié palier par palier : 1269 lignes en 12, 13 et 14, la table
+    # disparaît en 15 et `mail_notification` en compte exactement 1269.
+    # Pas une perdue.
+    {
+        "since": 15,
+        "table": "mail_message_res_partner_needaction_rel",
+        "into": "mail_notification",
+        "kind": "merged",
+        "why": "needaction became notifications",
+    },
     {
         "since": 15,
         "table": "stock_inventory",

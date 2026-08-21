@@ -333,6 +333,39 @@ class TestTheSemanticMap(Base):
         texte = "\n".join(quality.render_compare(diff, colour=False))
         self.assertLess(texte.index("unexplained"), texte.index("moved or"))
 
+    def test_needaction_became_notifications_in_15(self):
+        """Vérifiée palier par palier, pas déduite d'un nom qui se ressemble.
+
+        1269 lignes en 12, 13 et 14 ; la table disparaît en 15 et
+        `mail_notification` en compte exactement 1269. Pas une perdue.
+        C'est ce report à l'unité près qui autorise l'entrée — un nom
+        voisin n'aurait rien prouvé.
+        """
+        diff = self.perte(
+            "mail_message_res_partner_needaction_rel",
+            1269,
+            0,
+            version="15.0",
+            cible="mail_notification",
+            cible_avant=0,
+            cible_apres=1269,
+        )
+        connu = diff["rows_lost"][0][3]
+        self.assertIsNotNone(connu)
+        self.assertEqual(connu["into"], "mail_notification")
+        self.assertEqual(connu["gained"], 1269)
+
+    def test_it_is_not_explained_at_the_14_bump(self):
+        # La table est encore pleine en 14 : une entrée qui s'appliquerait
+        # plus tôt masquerait une perte survenue avant la refonte.
+        diff = self.perte(
+            "mail_message_res_partner_needaction_rel",
+            1269,
+            0,
+            version="14.0",
+        )
+        self.assertIsNone(diff["rows_lost"][0][3])
+
     def test_an_unknown_table_stays_unexplained(self):
         diff = self.perte("ma_table_a_moi", 50, 0)
         self.assertIsNone(diff["rows_lost"][0][3])
