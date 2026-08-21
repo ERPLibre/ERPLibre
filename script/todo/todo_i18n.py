@@ -5791,6 +5791,142 @@ TRANSLATIONS = {
         "fr": "table(s) expliquées par un changement d'Odoo",
         "en": "table(s) explained by an Odoo change",
     },
+    "Cannot read the database: ": {
+        "fr": "Lecture impossible de la base : ",
+        "en": "Cannot read the database: ",
+    },
+    "Cannot read the package file: ": {
+        "fr": "Lecture impossible du fichier de packages : ",
+        "en": "Cannot read the package file: ",
+    },
+    "Modules missing from the default package": {
+        "fr": "📦 Modules absents du package par défaut",
+        "en": "📦 Modules missing from the default package",
+    },
+    "Show every entry": {
+        "fr": "Tout afficher",
+        "en": "Show every entry",
+    },
+    "List the known packages": {
+        "fr": "Lister les packages connus",
+        "en": "List the known packages",
+    },
+    "Already repaired: the group exists.": {
+        "fr": "Déjà réparé : le groupe existe.",
+        "en": "Already repaired: the group exists.",
+    },
+    "DMS access groups:": {
+        "fr": "Groupes d'accès DMS :",
+        "en": "DMS access groups:",
+    },
+    "DMS documents in the database": {
+        "fr": "Documents DMS dans la base",
+        "en": "DMS documents in the database",
+    },
+    "No DMS user to test visibility with.": {
+        "fr": "Aucun utilisateur DMS pour éprouver la visibilité.",
+        "en": "No DMS user to test visibility with.",
+    },
+    "Nothing written. Re-run with --apply.": {
+        "fr": "Rien d'écrit. Relancer avec --apply.",
+        "en": "Nothing written. Re-run with --apply.",
+    },
+    "Now visible to": {
+        "fr": "Désormais visibles pour",
+        "en": "Now visible to",
+    },
+    "Visible to": {
+        "fr": "Visibles pour",
+        "en": "Visible to",
+    },
+    "Would create one access group over": {
+        "fr": "Créerait un groupe d'accès sur",
+        "en": "Would create one access group over",
+    },
+    "file(s)": {
+        "fr": "fichier(s)",
+        "en": "file(s)",
+    },
+    "folder(s)": {
+        "fr": "dossier(s)",
+        "en": "folder(s)",
+    },
+    "root folder(s)": {
+        "fr": "dossier(s) racine",
+        "en": "root folder(s)",
+    },
+    "Census": {
+        "fr": "Recensement",
+        "en": "Census",
+    },
+    "Compared against nothing — census only.": {
+        "fr": "Comparé à rien — recensement seul.",
+        "en": "Compared against nothing — census only.",
+    },
+    "Default package:": {
+        "fr": "Package par défaut :",
+        "en": "Default package:",
+    },
+    "Every suggested module is installed.": {
+        "fr": "Tous les modules suggérés sont installés.",
+        "en": "Every suggested module is installed.",
+    },
+    "Installed modules by author": {
+        "fr": "Modules installés, par auteur",
+        "en": "Installed modules by author",
+    },
+    "Modules of": {
+        "fr": "Modules de",
+        "en": "Modules of",
+    },
+    "No default package known for this version": {
+        "fr": "Aucun package par défaut connu pour cette version",
+        "en": "No default package known for this version",
+    },
+    "Odoo": {
+        "fr": "Odoo",
+        "en": "Odoo",
+    },
+    "absent from the addons path — sync the repo first": {
+        "fr": "hors du chemin des addons — synchroniser le dépôt d'abord",
+        "en": "absent from the addons path — sync the repo first",
+    },
+    "also needs": {
+        "fr": "réclame aussi",
+        "en": "also needs",
+    },
+    "half-way — finish the pending update": {
+        "fr": "à mi-chemin — finir la mise à jour en attente",
+        "en": "half-way — finish the pending update",
+    },
+    "installed": {
+        "fr": "déjà en place",
+        "en": "installed",
+    },
+    "known": {
+        "fr": "connus",
+        "en": "known",
+    },
+    "known to the database — install it": {
+        "fr": "dans la base — à installer",
+        "en": "known to the database — install it",
+    },
+    "present but broken — fix the dependency": {
+        "fr": "en panne de dépendance — à réparer",
+        "en": "present but broken — fix the dependency",
+    },
+    "suggested module(s)": {
+        "fr": "module(s) suggéré(s)",
+        "en": "suggested module(s)",
+    },
+    "suggested module(s) not installed": {
+        "fr": "module(s) suggéré(s) non installé(s)",
+        "en": "suggested module(s) not installed",
+    },
+    "unknown author": {
+        "fr": "auteur inconnu",
+        "en": "unknown author",
+    },
     "rows dropped, the table remains": {
         "fr": "lignes supprimées, la table demeure",
         "en": "rows dropped, the table remains",
