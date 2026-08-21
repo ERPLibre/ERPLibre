@@ -218,6 +218,21 @@ def inspect(database):
         "SELECT model || '.' || name FROM ir_model_fields ORDER BY 1",
     )
     etat["field"] = sorted(ligne[0] for ligne in champs or [])
+    # À quel module appartient chaque champ. Sans cela, un champ d'un
+    # module OCA compterait comme « non déclaré par OpenUpgrade » —
+    # littéralement vrai, et trompeur : OpenUpgrade n'analyse que le cœur
+    # d'Odoo, il ne pouvait rien en dire.
+    origines = run_psql(
+        database,
+        "SELECT f.model || '.' || f.name, d.module FROM ir_model_fields f"
+        " JOIN ir_model_data d ON d.model = 'ir.model.fields'"
+        " AND d.res_id = f.id",
+    )
+    dct_origine = {}
+    for ligne in origines or []:
+        if len(ligne) >= 2:
+            dct_origine.setdefault(ligne[0], set()).add(ligne[1])
+    etat["field_module"] = {cle: sorted(v) for cle, v in dct_origine.items()}
     # Les copies COW par leur CLÉ : c'est elle qu'on réinitialise, et
     # c'est par elle qu'on les retrouve d'une version à l'autre.
     copies = run_psql(
@@ -577,6 +592,91 @@ def as_version(etat):
         return None
 
 
+_CACHE_DECLARE = {}
+
+
+def declared_index(version):
+    """L'index OpenUpgrade du palier, mis en cache par version.
+
+    Lire 402 fichiers coûte 0,04 s — négligeable une fois, pas six fois
+    par rapport quand on compare tous les paliers d'affilée.
+    """
+    if version not in _CACHE_DECLARE:
+        from script.analyse import openupgrade_analysis
+
+        _CACHE_DECLARE[version] = openupgrade_analysis.load(version)
+    return _CACHE_DECLARE[version]
+
+
+def overlay_declared(
+    version, modeles_perdus, champs_perdus, origine_champ=None
+):
+    """Le THÉORIQUE posé sur le PRATIQUE : qui avait été annoncé ?
+
+    Une perte déclarée par OpenUpgrade n'est pas un incident, c'est le
+    palier qui fait son travail. Les séparer transforme « 300 champs
+    disparus » — un chiffre devant lequel on ne peut rien faire — en une
+    poignée de champs que personne n'a annoncés, et qu'il faut regarder.
+
+    Le cas qui justifie tout : « devenu calculé ». Le champ EXISTE
+    toujours ; il n'a plus de colonne. Ni gain ni perte : transformation.
+    """
+    from script.analyse import openupgrade_analysis
+
+    if not version:
+        return {"available": False, "reason": "version"}
+    index = declared_index(version)
+    if not index["modules"]:
+        return {"available": False, "reason": "missing"}
+
+    modeles = {"obsolete": [], "renamed": [], "undeclared": []}
+    for nom in modeles_perdus:
+        change = openupgrade_analysis.model_change(nom, index)
+        if not change:
+            modeles["undeclared"].append(nom)
+        elif change[0] == "renamed":
+            modeles["renamed"].append((nom, change[1]))
+        else:
+            modeles["obsolete"].append(nom)
+
+    champs = {
+        "del": [],
+        "unstored": [],
+        "company_dependent": [],
+        "moved": [],
+        "model_gone": [],
+        "not_analysed": [],
+        "undeclared": [],
+    }
+    partis = tuple(f"{nom}." for nom in modeles_perdus)
+    analyses = openupgrade_analysis.analysed_modules(version)
+    for cle in champs_perdus:
+        change = openupgrade_analysis.field_change(cle, index)
+        if change:
+            if change[0] == "moved":
+                champs["moved"].append((cle, change[1]))
+            else:
+                champs[change[0]].append(cle)
+            continue
+        # Un champ dont le MODÈLE a disparu n'est pas une trouvaille de
+        # plus : c'est la même, comptée une fois par champ. Sur un palier
+        # réel cela triplait la liste et noyait le vrai signal.
+        if partis and cle.startswith(partis):
+            champs["model_gone"].append(cle)
+            continue
+        origines = set((origine_champ or {}).get(cle) or [])
+        if origines and not (origines & analyses):
+            champs["not_analysed"].append(cle)
+            continue
+        champs["undeclared"].append(cle)
+    return {
+        "available": True,
+        "modules": index["modules"],
+        "models": modeles,
+        "fields": champs,
+    }
+
+
 def explain_loss(table, version):
     """Ce qu'Odoo a fait de cette table à cette version, ou None.
 
@@ -635,14 +735,22 @@ def compare(avant, apres):
     # Les plus grosses pertes EN TÊTE : on attaque une liste de
     # cinquante-sept par le haut, pas par ordre alphabétique.
     lignes_perdues.sort(key=lambda item: -(item[1] - item[2]))
+    champs_perdus = sorted(champ_avant - champ_apres)
+    modeles_perdus = sorted(mod_avant - mod_apres)
     return {
-        "fields_lost": sorted(champ_avant - champ_apres),
+        "declared": overlay_declared(
+            version,
+            modeles_perdus,
+            champs_perdus,
+            avant.get("field_module"),
+        ),
+        "fields_lost": champs_perdus,
         "fields_gained": sorted(champ_apres - champ_avant),
         "cow_lost": sorted(cow_avant - cow_apres),
         "cow_gained": sorted(cow_apres - cow_avant),
         "modules_lost": sorted(inst_avant - inst_apres),
         "modules_gained": sorted(inst_apres - inst_avant),
-        "models_lost": sorted(mod_avant - mod_apres),
+        "models_lost": modeles_perdus,
         "models_gained": sorted(mod_apres - mod_avant),
         "rows_lost": lignes_perdues,
         "rows_gained": lignes_gagnees,
@@ -733,6 +841,115 @@ def overall(lst_snapshot):
     if len(presents) < 2:
         return {"unavailable": True}
     return compare(presents[0], presents[-1])
+
+
+DECLARE_MODELES = (
+    ("obsolete", "declared obsolete", "dim"),
+    ("renamed", "renamed by Odoo", "dim"),
+    ("undeclared", "NOT declared by OpenUpgrade", "warn"),
+)
+
+# L'ordre range du plus rassurant au plus inquiétant : ce qu'on doit
+# regarder finit la liste, donc reste sous les yeux.
+DECLARE_CHAMPS = (
+    ("del", "declared removed", "dim"),
+    ("moved", "moved to another module", "dim"),
+    ("company_dependent", "became a per-company jsonb column", "dim"),
+    (
+        "unstored",
+        "computed now — the field remains, the column does not",
+        "ok",
+    ),
+    ("model_gone", "their model went away too", "dim"),
+    ("not_analysed", "in a module OpenUpgrade does not analyse", "dim"),
+    ("undeclared", "NOT declared by OpenUpgrade", "warn"),
+)
+
+
+def group_by_field_name(cles):
+    """[(nom, combien, exemple)] par nom de champ, les plus nombreux d'abord.
+
+    Un champ retiré d'un MIXIN disparaît de tous les modèles qui en
+    héritent : `__last_update` s'est ainsi compté 580 fois au palier 17.
+    C'est UN changement. Listé modèle par modèle, il remplissait l'écran
+    et cachait les vingt autres ; groupé, il tient sur une ligne.
+    """
+    par_nom = {}
+    for cle in cles:
+        nom = cle.rsplit(".", 1)[-1] if "." in cle else cle
+        par_nom.setdefault(nom, []).append(cle)
+    return sorted(
+        ((nom, len(lst), sorted(lst)[0]) for nom, lst in par_nom.items()),
+        key=lambda item: (-item[1], item[0]),
+    )
+
+
+def render_declared(declare, colour, limit=8):
+    """Le théorique posé sur le pratique. Rien si on ne peut pas le lire.
+
+    Se taire quand l'analyse manque plutôt que d'afficher des zéros :
+    « 0 déclaré » et « analyse introuvable » se ressemblent à l'œil et ne
+    veulent pas du tout dire la même chose.
+    """
+    from script.todo.migration_status import paint
+
+    if not declare.get("available"):
+        if declare.get("reason") == "missing":
+            return [
+                f"   {paint('⇄', 'dim', colour)}"
+                f" {t('No OpenUpgrade analysis for this step.')}"
+            ]
+        return []
+    lignes = [
+        f"   {paint('⇄', 'dim', colour)} {t('Against OpenUpgrade')}"
+        f" ({declare['modules']} {t('core module(s) analysed')})"
+    ]
+    for titre, groupes, table in (
+        (t("model(s) lost"), declare["models"], DECLARE_MODELES),
+        (t("field(s) lost"), declare["fields"], DECLARE_CHAMPS),
+    ):
+        total = sum(len(groupes.get(cle) or []) for cle, _l, _c in table)
+        if not total:
+            continue
+        lignes.append(f"       {total} {titre} :")
+        for cle, libelle, teinte in table:
+            trouves = groupes.get(cle) or []
+            if not trouves:
+                continue
+            lignes.append(
+                f"         {paint(str(len(trouves)).rjust(5), teinte, colour)}"
+                f"  {t(libelle)}"
+            )
+            if cle not in ("undeclared", "unstored"):
+                # Ces deux-là seuls méritent des noms : l'un parce qu'il
+                # faut aller voir, l'autre parce qu'on croirait à une
+                # perte. Nommer les autres noierait le rapport.
+                continue
+            plats = [
+                element[0] if isinstance(element, tuple) else element
+                for element in trouves
+            ]
+            if table is DECLARE_CHAMPS:
+                groupes_nom = group_by_field_name(plats)
+                for nom, combien, exemple in groupes_nom[:limit]:
+                    suffixe = (
+                        f"  × {combien} {t('model(s)')}" if combien > 1 else ""
+                    )
+                    montre = exemple if combien == 1 else nom
+                    lignes.append(f"             {montre}{suffixe}")
+                if len(groupes_nom) > limit:
+                    lignes.append(
+                        f"             … {len(groupes_nom) - limit}"
+                        f" {t('other field name(s)')}"
+                    )
+            else:
+                for nom in plats[:limit]:
+                    lignes.append(f"             {nom}")
+                if len(plats) > limit:
+                    lignes.append(
+                        f"             … {len(plats) - limit} {t('more')}"
+                    )
+    return lignes
 
 
 def render_text(lst_snapshot, colour=None, limit=8):
@@ -868,6 +1085,7 @@ def render_compare(diff, colour, limit=8):
                 lignes.append(f"           {connu['why']}")
             if len(connues) > limit:
                 lignes.append(f"       … {len(connues) - limit} {t('more')}")
+    lignes.extend(render_declared(diff.get("declared") or {}, colour, limit))
     delta = diff["delta"]
     lignes.append(
         "   "

@@ -1175,5 +1175,160 @@ class TestItRefusesToNestItself(Base):
         self.assertIn("its own", source)
 
 
+class TestTheOpenUpgradeOverlay(unittest.TestCase):
+    """Le théorique posé sur le pratique.
+
+    Le rapport comptait des « + » et des « − ». Un champ devenu calculé
+    n'est ni l'un ni l'autre : il perd sa colonne et garde son existence.
+    Sans troisième état, on alarmait à chaque palier.
+    """
+
+    INDEX = {
+        "models_new": {"product.combo"},
+        "models_obsolete": {"account.unreconcile"},
+        "models_renamed": {"pos.combo": "product.combo"},
+        "fields_new": set(),
+        "fields_del": {"account.journal.secure_sequence_id"},
+        "fields_unstored": {"account.account.code"},
+        "fields_stored": set(),
+        "fields_moved": {"pos.combo.base_price": "product"},
+        "fields_company_dependent": {"account.cash.rounding.loss_account_id"},
+        "fields_other": {},
+        "xml_new": 0,
+        "xml_del": 0,
+        "modules": 402,
+    }
+
+    def setUp(self):
+        quality._CACHE_DECLARE[18] = self.INDEX
+        from script.analyse import openupgrade_analysis as oa
+
+        self.vrai = oa.analysed_modules
+        oa.analysed_modules = lambda version, root=None: {"account", "sale"}
+        self.oa = oa
+
+    def tearDown(self):
+        quality._CACHE_DECLARE.pop(18, None)
+        self.oa.analysed_modules = self.vrai
+
+    def pose(self, modeles=(), champs=(), origines=None):
+        return quality.overlay_declared(
+            18, list(modeles), list(champs), origines
+        )
+
+    def test_a_declared_obsolete_model_is_not_a_finding(self):
+        d = self.pose(modeles=["account.unreconcile"])
+        self.assertEqual(d["models"]["obsolete"], ["account.unreconcile"])
+        self.assertEqual(d["models"]["undeclared"], [])
+
+    def test_a_renamed_model_names_its_destination(self):
+        d = self.pose(modeles=["pos.combo"])
+        self.assertEqual(
+            d["models"]["renamed"], [("pos.combo", "product.combo")]
+        )
+
+    def test_an_unknown_model_stays_undeclared(self):
+        d = self.pose(modeles=["ma.bebelle"])
+        self.assertEqual(d["models"]["undeclared"], ["ma.bebelle"])
+
+    def test_a_field_that_became_computed_is_its_own_category(self):
+        # NI perte NI gain : le champ demeure, la colonne non. C'est tout
+        # l'objet de l'ajout.
+        d = self.pose(champs=["account.account.code"])
+        self.assertEqual(d["fields"]["unstored"], ["account.account.code"])
+        self.assertEqual(d["fields"]["undeclared"], [])
+
+    def test_declared_removals_and_moves_land_apart(self):
+        d = self.pose(
+            champs=[
+                "account.journal.secure_sequence_id",
+                "pos.combo.base_price",
+                "account.cash.rounding.loss_account_id",
+            ]
+        )
+        self.assertEqual(
+            d["fields"]["del"], ["account.journal.secure_sequence_id"]
+        )
+        self.assertEqual(
+            d["fields"]["moved"], [("pos.combo.base_price", "product")]
+        )
+        self.assertEqual(
+            d["fields"]["company_dependent"],
+            ["account.cash.rounding.loss_account_id"],
+        )
+
+    def test_a_field_whose_model_vanished_is_not_counted_again(self):
+        # 544 champs pour un seul modèle disparu, mesuré sur un vrai
+        # palier : listés un par un, ils cachaient les vingt vraies
+        # trouvailles.
+        d = self.pose(
+            modeles=["account.unreconcile"],
+            champs=["account.unreconcile.name"],
+        )
+        self.assertEqual(
+            d["fields"]["model_gone"], ["account.unreconcile.name"]
+        )
+        self.assertEqual(d["fields"]["undeclared"], [])
+
+    def test_a_field_of_an_unanalysed_module_is_not_accused(self):
+        # OpenUpgrade n'analyse que le cœur : dire « non déclaré » d'un
+        # champ OCA est vrai à la lettre et faux en esprit.
+        d = self.pose(
+            champs=["x.mon_champ"],
+            origines={"x.mon_champ": ["mon_module_oca"]},
+        )
+        self.assertEqual(d["fields"]["not_analysed"], ["x.mon_champ"])
+        self.assertEqual(d["fields"]["undeclared"], [])
+
+    def test_a_core_field_with_no_declaration_SURVIVES_as_undeclared(self):
+        # Le signal ne doit pas se faire absorber par les catégories
+        # rassurantes : c'est la seule ligne qui demande un examen.
+        d = self.pose(
+            champs=["account.account.mystere"],
+            origines={"account.account.mystere": ["account"]},
+        )
+        self.assertEqual(
+            d["fields"]["undeclared"], ["account.account.mystere"]
+        )
+
+    def test_no_analysis_is_said_not_shown_as_zero(self):
+        # « 0 déclaré » et « analyse absente » se ressemblent à l'œil.
+        quality._CACHE_DECLARE[18] = dict(self.INDEX, modules=0)
+        d = self.pose(modeles=["x.y"])
+        self.assertFalse(d["available"])
+        self.assertEqual(d["reason"], "missing")
+        texte = "\n".join(quality.render_declared(d, False))
+        self.assertIn(
+            todo_i18n.t("No OpenUpgrade analysis for this step."), texte
+        )
+
+    def test_an_unknown_version_declares_nothing_quietly(self):
+        d = quality.overlay_declared(None, ["x.y"], [])
+        self.assertFalse(d["available"])
+        self.assertEqual(quality.render_declared(d, False), [])
+
+
+class TestGroupingByFieldName(unittest.TestCase):
+    def test_one_mixin_field_is_one_finding(self):
+        # `__last_update` s'est compté 391 fois sur un vrai palier : c'est
+        # UN changement.
+        groupes = quality.group_by_field_name(
+            [f"modele{i}.zz_last_update" for i in range(391)]
+            + ["account.account.aa_autre"]
+        )
+        self.assertEqual(groupes[0][0], "zz_last_update")
+        self.assertEqual(groupes[0][1], 391)
+
+    def test_the_most_widespread_comes_first(self):
+        groupes = quality.group_by_field_name(
+            ["a.zzz", "b.zzz", "c.zzz", "d.aaa"]
+        )
+        self.assertEqual([nom for nom, _n, _e in groupes], ["zzz", "aaa"])
+
+    def test_a_lone_field_keeps_its_full_key_as_example(self):
+        groupes = quality.group_by_field_name(["account.account.seul"])
+        self.assertEqual(groupes[0], ("seul", 1, "account.account.seul"))
+
+
 if __name__ == "__main__":
     unittest.main()

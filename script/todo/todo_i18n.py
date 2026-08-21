@@ -5891,6 +5891,70 @@ TRANSLATIONS = {
         "fr": "ligne(s)",
         "en": "row(s)",
     },
+    "Against OpenUpgrade": {
+        "fr": "Face à OpenUpgrade",
+        "en": "Against OpenUpgrade",
+    },
+    "NOT declared by OpenUpgrade": {
+        "fr": "NON déclarés par OpenUpgrade",
+        "en": "NOT declared by OpenUpgrade",
+    },
+    "No OpenUpgrade analysis for this step.": {
+        "fr": "Pas d'analyse OpenUpgrade pour ce palier.",
+        "en": "No OpenUpgrade analysis for this step.",
+    },
+    "became a per-company jsonb column": {
+        "fr": "passés en colonne jsonb par société",
+        "en": "became a per-company jsonb column",
+    },
+    "computed now — the field remains, the column does not": {
+        "fr": "devenus calculés — le champ demeure, la colonne non",
+        "en": "computed now — the field remains, the column does not",
+    },
+    "core module(s) analysed": {
+        "fr": "module(s) cœur analysé(s)",
+        "en": "core module(s) analysed",
+    },
+    "declared obsolete": {
+        "fr": "déclarés obsolètes",
+        "en": "declared obsolete",
+    },
+    "declared removed": {
+        "fr": "déclarés supprimés",
+        "en": "declared removed",
+    },
+    "field(s) lost": {
+        "fr": "champ(s) perdu(s)",
+        "en": "field(s) lost",
+    },
+    "model(s) lost": {
+        "fr": "modèle(s) perdu(s)",
+        "en": "model(s) lost",
+    },
+    "moved to another module": {
+        "fr": "déplacés vers un autre module",
+        "en": "moved to another module",
+    },
+    "renamed by Odoo": {
+        "fr": "renommés par Odoo",
+        "en": "renamed by Odoo",
+    },
+    "their model went away too": {
+        "fr": "leur modèle a disparu aussi",
+        "en": "their model went away too",
+    },
+    "in a module OpenUpgrade does not analyse": {
+        "fr": "dans un module qu'OpenUpgrade n'analyse pas",
+        "en": "in a module OpenUpgrade does not analyse",
+    },
+    "model(s)": {
+        "fr": "modèle(s)",
+        "en": "model(s)",
+    },
+    "other field name(s)": {
+        "fr": "autre(s) nom(s) de champ",
+        "en": "other field name(s)",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",
