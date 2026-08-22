@@ -221,6 +221,102 @@ def scan_backups(dossier):
     return trouves
 
 
+def files_on_disk(racine, database):
+    """(au bon niveau, nichés) pour une base. Deux ensembles de noms."""
+    base = os.path.join(racine, database)
+    bons, niches = set(), set()
+    if not os.path.isdir(base):
+        return bons, niches
+    for prefixe in os.listdir(base):
+        sous = os.path.join(base, prefixe)
+        if not os.path.isdir(sous):
+            continue
+        if prefixe == "filestore":
+            for deux in os.listdir(sous):
+                profond = os.path.join(sous, deux)
+                if not os.path.isdir(profond):
+                    continue
+                for nom in os.listdir(profond):
+                    if os.path.isfile(os.path.join(profond, nom)):
+                        niches.add(f"{deux}/{nom}")
+            continue
+        for nom in os.listdir(sous):
+            if os.path.isfile(os.path.join(sous, nom)):
+                bons.add(f"{prefixe}/{nom}")
+    return bons, niches
+
+
+def verify_restore(database, zip_path, config_path=None):
+    """La sauvegarde a-t-elle bien atterri ? À vérifier UNE fois.
+
+    Après un clone, il n'y a rien à contrôler : `copytree` recopie la
+    source telle quelle, défauts compris — le contrôle appartient à la
+    restauration d'origine, pas au miroir.
+
+    Ce qu'on cherche est précis. `shutil.move` d'Odoo renomme quand la
+    destination n'existe pas et IMBRIQUE quand elle existe. Un dossier
+    `filestore/<base>/` laissé par une restauration précédente suffit
+    donc à envoyer toute la sauvegarde dans
+    `filestore/<base>/filestore/`, où Odoo ne regardera jamais. Mesuré :
+    1168 fichiers, 133 Mo, recopiés ensuite dans les six bases de la
+    chaîne par le clone, sans que rien ne le signale.
+    """
+    attendus = set(scan_zip(zip_path))
+    racine = filestore_root(config_path)
+    bons, niches = files_on_disk(racine, database)
+    return {
+        "database": database,
+        "zip": os.path.basename(zip_path),
+        "expected": len(attendus),
+        "placed": len(attendus & bons),
+        "nested": len(attendus & niches),
+        "missing": len(attendus - bons - niches),
+        "root": os.path.join(racine, database),
+    }
+
+
+def scan_zip(chemin):
+    """Les noms de fichiers du `filestore/` d'une sauvegarde."""
+    try:
+        with zipfile.ZipFile(chemin) as archive:
+            return [
+                membre[len("filestore/") :]
+                for membre in archive.namelist()
+                if membre.startswith("filestore/") and not membre.endswith("/")
+            ]
+    except (OSError, zipfile.BadZipFile):
+        return []
+
+
+def render_verify(rapport):
+    """Se taire quand tout va bien : un contrôle bavard finit ignoré."""
+    if not rapport["expected"]:
+        return []
+    if not rapport["nested"] and not rapport["missing"]:
+        return [
+            f"✅ {t('Filestore restored:')} {rapport['placed']}"
+            f"/{rapport['expected']} {t('file(s) in place')}"
+        ]
+    lignes = [
+        f"⚠  {t('Filestore restore looks wrong for')} {rapport['database']}"
+        f" ({rapport['zip']}) :",
+        f"     {rapport['placed']}/{rapport['expected']}"
+        f" {t('file(s) in place')}",
+    ]
+    if rapport["nested"]:
+        lignes.append(
+            f"     {rapport['nested']}"
+            f" {t('landed in a nested filestore Odoo never reads')}"
+        )
+        lignes.append(
+            f"     {t('To fix:')} rsync -a --remove-source-files"
+            f" {rapport['root']}/filestore/ {rapport['root']}/"
+        )
+    if rapport["missing"]:
+        lignes.append(f"     {rapport['missing']} {t('never landed at all')}")
+    return lignes
+
+
 def classify(piece, present, ailleurs, niches, sauvegardes, champs_vivants):
     """Le verdict d'une pièce jointe. None si son fichier est là.
 

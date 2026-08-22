@@ -10,6 +10,10 @@ import os
 import sys
 from subprocess import check_output
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+)
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
@@ -86,6 +90,74 @@ def get_list_db_cache(arg_base):
     return lst_db, lst_db_cache
 
 
+def verify_filestore(database, image):
+    """Contrôler qu'une restauration a bien posé ses fichiers.
+
+    Une seule fois, à la restauration d'origine. Après un clone il n'y a
+    rien à vérifier : `copytree` recopie la source telle quelle, défauts
+    compris — le contrôle appartient à ce qui a créé le défaut, pas à ce
+    qui l'a dupliqué.
+
+    Le contrôle n'interrompt pas : la base est restaurée et utilisable,
+    c'est la DISPOSITION des fichiers qui est suspecte. Refuser ici
+    casserait des chaînes qui marchent, pour un défaut qui se répare
+    d'une commande.
+    """
+    chemin = os.path.join("image_db", f"{image}.zip")
+    if not os.path.isfile(chemin):
+        return
+    try:
+        from script.analyse import check_filestore
+    except Exception:  # pragma: no cover - l'outil d'analyse est optionnel
+        return
+    rapport = check_filestore.verify_restore(database, chemin)
+    for ligne in check_filestore.render_verify(rapport):
+        print(ligne)
+
+
+def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
+    """Restaurer depuis l'image, ou cloner le cache déjà restauré.
+
+    Le contrôle du filestore ne suit QUE les vraies restaurations. Le
+    clone recopie sa source telle quelle : contrôler le miroir dirait
+    deux fois la même chose, et la seconde au mauvais endroit.
+    """
+    if cache_database not in lst_db_cache and not config.ignore_cache:
+        _logger.info(
+            f"## Create cache {cache_database} from image {config.image} ##"
+        )
+        arg = (
+            f"{arg_base} --restore"
+            f" --restore_image {config.image} --database {cache_database}"
+        )
+        print(check_output(arg.split(" ")).decode())
+        verify_filestore(cache_database, config.image)
+
+    if config.ignore_cache:
+        _logger.info(
+            f"## Restoring {config.image} to database {config.database} ##"
+        )
+        arg = (
+            f"{arg_base} --restore --restore_image"
+            f" {config.image} --database {config.database}"
+        )
+    else:
+        _logger.info(
+            f"## Clone cache {cache_database} to database"
+            f" {config.database} ##"
+        )
+        arg = (
+            f"{arg_base} --clone --from_database"
+            f" {cache_database} --database {config.database}"
+        )
+    if config.neutralize:
+        arg += " --neutralize"
+    print(arg)
+    print(check_output(arg.split(" ")).decode())
+    if config.ignore_cache:
+        verify_filestore(config.database, config.image)
+
+
 def main():
     config = get_config()
 
@@ -139,40 +211,7 @@ def main():
             print(out)
         if config.only_drop:
             return
-        # Check cache exist
-        if cache_database not in lst_db_cache and not config.ignore_cache:
-            _logger.info(
-                f"## Create cache {cache_database} from image"
-                f" {config.image} ##"
-            )
-            arg = (
-                f"{arg_base} --restore"
-                f" --restore_image {config.image} --database {cache_database}"
-            )
-            out = check_output(arg.split(" ")).decode()
-            print(out)
-        # Clone database
-        if config.ignore_cache:
-            _logger.info(
-                f"## Restoring {config.image} to database {config.database} ##"
-            )
-            arg = (
-                f"{arg_base} --restore --restore_image"
-                f" {config.image} --database {config.database}"
-            )
-        else:
-            _logger.info(
-                f"## Clone cache {cache_database} to database {config.database} ##"
-            )
-            arg = (
-                f"{arg_base} --clone --from_database"
-                f" {cache_database} --database {config.database}"
-            )
-        if config.neutralize:
-            arg += " --neutralize"
-        print(arg)
-        out = check_output(arg.split(" ")).decode()
-        print(out)
+        restore_or_clone(config, arg_base, cache_database, lst_db_cache)
 
     if not config.clean_cache and not config.database:
         print("Nothing to do.")

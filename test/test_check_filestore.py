@@ -289,6 +289,138 @@ class TestTheReport(unittest.TestCase):
         self.assertIn("res.country / image × 2", resume)
 
 
+class TestVerifyingARestore(unittest.TestCase):
+    """Le contrôle d'après-restauration, celui qui aurait vu le nichage."""
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        self.zip = os.path.join(self.racine, "sauv.zip")
+        with zipfile.ZipFile(self.zip, "w") as archive:
+            for nom in ("aa/un", "bb/deux", "cc/trois"):
+                archive.writestr(f"filestore/{nom}", "x")
+            archive.writestr("dump.sql", "x")
+        self.fs = os.path.join(self.racine, "fs")
+        self.vrai = fs.filestore_root
+        fs.filestore_root = lambda config=None: self.fs
+
+    def tearDown(self):
+        fs.filestore_root = self.vrai
+        shutil.rmtree(self.racine)
+
+    def pose(self, chemins):
+        for chemin in chemins:
+            complet = os.path.join(self.fs, "ma_base", chemin)
+            os.makedirs(os.path.dirname(complet), exist_ok=True)
+            with open(complet, "w", encoding="utf-8") as handle:
+                handle.write("x")
+
+    def test_a_clean_restore_reports_everything_in_place(self):
+        self.pose(["aa/un", "bb/deux", "cc/trois"])
+        r = fs.verify_restore("ma_base", self.zip)
+        self.assertEqual((r["expected"], r["placed"]), (3, 3))
+        self.assertEqual((r["nested"], r["missing"]), (0, 0))
+
+    def test_a_nested_restore_is_caught(self):
+        # Le défaut exact qui a coûté 133 Mo par base, sept fois.
+        self.pose(
+            ["filestore/aa/un", "filestore/bb/deux", "filestore/cc/trois"]
+        )
+        r = fs.verify_restore("ma_base", self.zip)
+        self.assertEqual(r["nested"], 3)
+        self.assertEqual(r["placed"], 0)
+
+    def test_a_half_nested_restore_counts_both_sides(self):
+        self.pose(["aa/un", "filestore/bb/deux"])
+        r = fs.verify_restore("ma_base", self.zip)
+        self.assertEqual((r["placed"], r["nested"], r["missing"]), (1, 1, 1))
+
+    def test_files_that_never_landed_are_counted(self):
+        self.pose(["aa/un"])
+        self.assertEqual(fs.verify_restore("ma_base", self.zip)["missing"], 2)
+
+    def test_a_zip_without_a_filestore_says_nothing(self):
+        # Se taire quand il n'y a rien à contrôler : un contrôle bavard
+        # à chaque restauration finit par ne plus être lu.
+        vide = os.path.join(self.racine, "vide.zip")
+        with zipfile.ZipFile(vide, "w") as archive:
+            archive.writestr("dump.sql", "x")
+        r = fs.verify_restore("ma_base", vide)
+        self.assertEqual(r["expected"], 0)
+        self.assertEqual(fs.render_verify(r), [])
+
+    def test_the_fix_command_names_the_real_directory(self):
+        self.pose(["filestore/aa/un"])
+        texte = "\n".join(
+            fs.render_verify(fs.verify_restore("ma_base", self.zip))
+        )
+        self.assertIn(os.path.join(self.fs, "ma_base"), texte)
+        self.assertIn(todo_i18n.t("To fix:"), texte)
+
+    def test_a_clean_restore_still_says_so_briefly(self):
+        self.pose(["aa/un", "bb/deux", "cc/trois"])
+        texte = "\n".join(
+            fs.render_verify(fs.verify_restore("ma_base", self.zip))
+        )
+        self.assertIn(todo_i18n.t("Filestore restored:"), texte)
+        self.assertNotIn(todo_i18n.t("To fix:"), texte)
+
+
+class TestTheRestoreWiring(unittest.TestCase):
+    RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    def source(self, chemin):
+        with io.open(
+            os.path.join(self.RACINE, chemin), encoding="utf-8"
+        ) as handle:
+            return handle.read()
+
+    def test_db_restore_checks_after_a_real_restore(self):
+        src = self.source("script/database/db_restore.py")
+        self.assertEqual(src.count("verify_filestore("), 3)
+        self.assertIn(
+            "if config.ignore_cache:\n        verify_filestore("
+            "config.database",
+            src,
+            "le contrôle d'après-restauration directe n'est plus gardé"
+            " par ignore_cache",
+        )
+        self.assertIn(
+            "not config.ignore_cache:",
+            src,
+            "la création du cache n'est plus conditionnée",
+        )
+
+    def test_the_clone_path_is_NOT_checked(self):
+        # Le miroir recopie sa source, défauts compris : contrôler là
+        # dirait deux fois la même chose, et au mauvais endroit.
+        src = self.source("script/database/db_restore.py")
+        self.assertIn("--clone --from_database", src)
+        debut = src.index("--clone --from_database")
+        marque = "verify_filestore(config.database"
+        self.assertIn(
+            marque, src, "le contrôle d'après-restauration a disparu"
+        )
+        fin = src.index(marque, debut)
+        self.assertNotIn("verify_filestore", src[debut:fin])
+
+    def test_the_analyse_menu_offers_the_tool(self):
+        src = self.source("script/todo/todo.py")
+        self.assertIn("Attachment files missing from the filestore", src)
+        self.assertIn("self.execute_analyse_filestore()", src)
+        self.assertIn("def execute_analyse_filestore", src)
+
+    def test_the_menu_has_as_many_entries_as_branches(self):
+        src = self.source("script/todo/todo.py")
+        debut = src.index("def prompt_execute_analyse")
+        fin = src.index('print(t("Command not found !"))', debut)
+        bloc = src[debut:fin]
+        entrees = bloc.count('"prompt_description"')
+        branches = sum(
+            f'status == "{n}"' in bloc for n in range(1, entrees + 2)
+        )
+        self.assertEqual(entrees, branches)
+
+
 class TestTheExitCodes(unittest.TestCase):
     def setUp(self):
         self.vrai = fs.audit

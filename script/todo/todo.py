@@ -10196,6 +10196,12 @@ class TODO:
                     "Modules missing from the default package"
                 )
             },
+            {"section": t("Files")},
+            {
+                "prompt_description": t(
+                    "Attachment files missing from the filestore"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -10214,6 +10220,8 @@ class TODO:
                 self.execute_analyse_migration_quality()
             elif status == "5":
                 self.execute_analyse_module_package()
+            elif status == "6":
+                self.execute_analyse_filestore()
             else:
                 print(t("Command not found !"))
 
@@ -10256,6 +10264,45 @@ class TODO:
             [
                 {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("List the known packages")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_filestore(self):
+        """Ce qui manque au filestore, et ce qu'on peut encore récupérer.
+
+        Pas d'option « sauvegarde .zip » : l'outil compare une BASE à son
+        filestore, et un zip porte les deux ensemble par construction —
+        il n'y a rien à y trouver.
+        """
+        from script.analyse import check_filestore as filestore
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        print(f"⧖ {t('Scanning filestores and backups…')}")
+        try:
+            rapport = filestore.audit(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        print("\n".join(filestore.render(rapport, limit=20)))
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(filestore.render(rapport, limit=0)))
+            else:
+                self._analyse_export_json(
+                    rapport, os.path.basename(database), "filestore"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,
