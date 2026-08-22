@@ -2928,6 +2928,107 @@ class TODO:
         except (OSError, subprocess.SubprocessError, ValueError):
             return 0, 0
 
+    @staticmethod
+    def _fmt_uptime(secs):
+        """Durée depuis le démarrage, en six caractères au plus.
+
+        « _fmt_dur » s'arrête aux minutes — bon pour une installation, illisible
+        pour une VM debout depuis trois jours. Ici la précision décroît avec la
+        durée : personne ne lit les secondes d'un uptime de 19 heures."""
+        secs = int(secs)
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}m"
+        if secs < 86400:
+            return f"{secs // 3600}h{(secs % 3600) // 60:02d}"
+        days = secs // 86400
+        # Au-delà de 99 jours, les heures ne rentrent plus dans la colonne — et
+        # personne ne les lit sur une machine debout depuis un an.
+        if days >= 100:
+            return f"{days}j"
+        return f"{days}j{(secs % 86400) // 3600:02d}h"
+
+    @staticmethod
+    def _qemu_domain_uptime(name):
+        """Secondes depuis le démarrage du domaine, ou None.
+
+        libvirt n'expose pas l'uptime d'un invité : ni dominfo, ni domstats, ni
+        l'agent. Mais le processus QEMU du domaine est né avec lui, et son âge
+        est donc exactement celui de la VM. « guest=<nom>, » est le motif que
+        libvirt met dans sa ligne de commande — la virgule évite qu'un nom
+        préfixe d'un autre matche à sa place."""
+        try:
+            res = subprocess.run(
+                ["pgrep", "-f", f"guest={name},"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            pid = (res.stdout or "").split()[0]
+            age = subprocess.run(
+                ["ps", "-o", "etimes=", "-p", pid],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return int((age.stdout or "").strip())
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _qemu_dommemstat(name):
+        """(utilisée, totale) en KiO vues par l'INVITÉ, ou (0, 0).
+
+        « available » est ce que l'invité voit, « usable » ce qu'il peut encore
+        rendre : leur différence est son « used », à quelques mégaoctets près —
+        calibré contre le « free » de deux VM (1186 contre 1216, 4831 contre
+        4838). « unused » ne convient pas : il ignore le cache, et donnait
+        10,8 Go d'« utilisé » sur une VM qui en occupait 1,2.
+
+        La période de collecte est posée d'abord, et c'est indispensable : sans
+        elle le ballon ne rafraîchit rien, et une VM qui occupait 4,8 Go en
+        annonçait 490 Mo — vécu. « --live » ne touche pas le XML : le réglage
+        disparaît au prochain démarrage du domaine."""
+        try:
+            subprocess.run(
+                [
+                    "sudo",
+                    "virsh",
+                    "dommemstat",
+                    name,
+                    "--period",
+                    "5",
+                    "--live",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+            res = subprocess.run(
+                ["sudo", "virsh", "dommemstat", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 0, 0
+        stat = {}
+        for line in (res.stdout or "").splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                try:
+                    stat[parts[0]] = int(parts[1])
+                except ValueError:
+                    continue
+        total = stat.get("available", 0)
+        usable = stat.get("usable", 0)
+        if not total or not usable:
+            return 0, total
+        return max(0, total - usable), total
+
     def _qemu_list_vms_advanced(self):
         """Tableau détaillé par VM : état, vCPU, RAM allouée, disque (virtuel
         + réel), plus l'espace total disponible du stockage des images."""
@@ -2936,9 +3037,12 @@ class TODO:
             print(f"\n{t('No VM found.')}")
             return
         g = 1 << 30
+        # Largeurs serrées pour que la ligne tienne en 80 colonnes AVEC le nom
+        # entier : c'est lui qui distingue les machines, et « erplibre-ubuntu-
+        # 2604-gno » tronqué ne distingue plus rien.
         header = (
-            f"\n{'VM':<28} {'État':<10} {'vCPU':>4} {'RAM':>8} "
-            f"{'Disque':>9} {'Réel':>9}"
+            f"\n{'VM':<26} {'État':<8} {'vCPU':>4} {'RAM':>10} "
+            f"{'Disque':>7} {'Réel':>7} {'Uptime':>6}"
         )
         print(header)
         print("─" * len(header.strip()))
@@ -2951,9 +3055,27 @@ class TODO:
             if disk:
                 disk_dirs.add(os.path.dirname(disk))
             ram_g = (mem_kib * 1024) / g if mem_kib else 0
+            # « RAM » dit désormais l'USAGE et non la seule allocation : sur un
+            # hyperviseur, savoir qu'une VM de 32 Go n'en occupe que 4,7 décide
+            # s'il reste de la place pour la suivante. Deux nombres dans une
+            # colonne plutôt que deux colonnes — le tableau tient encore sur
+            # une ligne de terminal.
+            used_kib, _total_kib = self._qemu_dommemstat(name)
+            # Le total sans décimale quand il est entier — une allocation
+            # vaut 8, 12 ou 32 Go, jamais 32,0.
+            alloc = f"{ram_g:.0f}" if ram_g == int(ram_g) else f"{ram_g:.1f}"
+            ram = (
+                f"{used_kib * 1024 / g:.1f}G/{alloc}G"
+                if used_kib
+                else f"-/{alloc}G"
+            )
+            # L'uptime vient de l'âge du processus QEMU : libvirt ne l'expose
+            # nulle part, et ce processus est né avec le domaine.
+            up = self._qemu_domain_uptime(name)
             print(
-                f"{name:<28.28} {state:<10.10} {vcpus:>4} "
-                f"{ram_g:>7.1f}G {virt / g:>8.1f}G {actual / g:>8.1f}G"
+                f"{name:<26.26} {state:<8.8} {vcpus:>4} "
+                f"{ram:>10} {virt / g:>6.1f}G {actual / g:>6.1f}G "
+                f"{self._fmt_uptime(up) if up else '-':>6}"
             )
         # Espace total disponible sur le(s) stockage(s) des disques.
         for d in sorted(disk_dirs) or ["/var/lib/libvirt/images"]:
