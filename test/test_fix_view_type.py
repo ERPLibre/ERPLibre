@@ -241,6 +241,75 @@ class TestTheWiring(unittest.TestCase):
             )
 
 
+class TestTheToolIsCalledWithTheRightContract(unittest.TestCase):
+    """Pour cet outil, 1 veut dire « trouvailles », pas « échec ».
+
+    `todo_upgrade_execute` ouvre SON menu d'erreur sur tout statut non
+    nul. Sans `wait_at_error=False`, ce menu se superpose au nôtre : la
+    question « Les corriger ? » n'est jamais posée, et l'on tourne en
+    rond. C'est arrivé en vrai, sur une migration bloquée.
+    """
+
+    def setUp(self):
+        from script.todo import auto_ask
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        self.auto_ask = auto_ask
+        self.vrai_ask = auto_ask.ask
+        self.obj = TodoUpgrade.__new__(TodoUpgrade)
+        self.appels = []
+
+        def faux(cmd, **kw):
+            self.appels.append((cmd, kw))
+            statut = 0 if "--apply" in cmd else 1
+            if statut and kw.get("wait_at_error", True):
+                # Ce que fait le VRAI : il n'en revient pas avec le
+                # statut, il repart dans son propre menu.
+                raise AssertionError(
+                    "menu d'erreur imbriqué : wait_at_error manquant"
+                )
+            return statut, cmd
+
+        self.obj.todo_upgrade_execute = faux
+        self.obj.ask = lambda prompt, default="": "y"
+
+    def tearDown(self):
+        self.auto_ask.ask = self.vrai_ask
+
+    def test_the_report_call_does_not_reopen_the_error_menu(self):
+        with redirect_stdout(io.StringIO()):
+            self.obj.prompt_fix_view_type("db")
+        self.assertTrue(self.appels)
+        self.assertIs(self.appels[0][1].get("wait_at_error"), False)
+
+    def test_the_apply_call_does_not_either(self):
+        with redirect_stdout(io.StringIO()):
+            self.obj.prompt_fix_view_type("db")
+        self.assertEqual(len(self.appels), 2)
+        self.assertIn("--apply", self.appels[1][0])
+        self.assertIs(self.appels[1][1].get("wait_at_error"), False)
+
+    def test_it_returns_true_only_when_the_apply_succeeded(self):
+        with redirect_stdout(io.StringIO()):
+            self.assertTrue(self.obj.prompt_fix_view_type("db"))
+
+    def test_refusing_runs_no_apply(self):
+        self.obj.ask = lambda prompt, default="": "n"
+        with redirect_stdout(io.StringIO()):
+            self.assertFalse(self.obj.prompt_fix_view_type("db"))
+        self.assertEqual(len(self.appels), 1)
+
+    def test_nothing_to_fix_asks_nothing(self):
+        demandes = []
+        self.obj.ask = (
+            lambda prompt, default="": demandes.append(prompt) or "y"
+        )
+        self.obj.todo_upgrade_execute = lambda cmd, **kw: (0, cmd)
+        with redirect_stdout(io.StringIO()):
+            self.assertFalse(self.obj.prompt_fix_view_type("db"))
+        self.assertEqual(demandes, [])
+
+
 class TestTranslations(unittest.TestCase):
     def test_every_key_exists(self):
         with io.open(fvt.__file__, encoding="utf-8") as handle:

@@ -2956,8 +2956,14 @@ class TodoUpgrade:
         pour réparer ce qui empêche Odoo de démarrer ne servirait à rien.
         """
         outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_view_type.py")
+        # `wait_at_error=False` est OBLIGATOIRE : pour cet outil, 1 veut
+        # dire « des trouvailles », pas « échec ». Sans ce drapeau,
+        # `todo_upgrade_execute` y lit une panne et rouvre SON menu
+        # d'erreur par-dessus le nôtre — mesuré : la question « Les
+        # corriger ? » n'était jamais posée et le menu tournait en rond.
         status, _cmd = self.todo_upgrade_execute(
-            f"{PYTHON_BIN} ./{outil} -d {database}"
+            f"{PYTHON_BIN} ./{outil} -d {database}",
+            wait_at_error=False,
         )
         if status != 1:
             # 0 : rien à corriger. 2 : l'outil a échoué. Ni l'un ni
@@ -2971,7 +2977,8 @@ class TodoUpgrade:
         if reponse not in ("y", "yes", "o"):
             return False
         status, _cmd = self.todo_upgrade_execute(
-            f"{PYTHON_BIN} ./{outil} -d {database} --apply"
+            f"{PYTHON_BIN} ./{outil} -d {database} --apply",
+            wait_at_error=False,
         )
         return status == 0
 
