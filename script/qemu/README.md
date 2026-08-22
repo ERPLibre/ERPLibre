@@ -188,12 +188,19 @@ reader asks for a byte range, and falls back to the whole slice when the WebView
 server ignores `Range` — 4 MB at worst, which is why the slices are bounded.
 Raster images are left out: addon screenshots, in a browser that shows text.
 
-Measured on a VM: 139 repositories, 116 156 files in 391 slices, an APK of
-282 MB with **3 002 entries**, and 20 files read back from the packs identical
-byte for byte to their source. The install verifies that transfer with
-`script/mobile/check_bundle_transfer.py`, which also runs on its own, and a
-failed transfer fails the VM — an app that does not carry the code it is meant
-to show is not the app that was asked for.
+Images are packed too, and a packed file has no URL of its own: the reader turns
+its bytes into a blob URL. Gettext catalogues, on the other hand, are dropped —
+41 594 `.po`/`.pot` files weighing 857 MB, 72 % of the payload for content that
+Weblate maintains and nobody reads on a phone. `BUNDLE_KEEP_PO=1` brings them
+back, `BUNDLE_SKIP_IMG=1` drops the images.
+
+Measured on a VM: 139 repositories, 80 841 files in 233 slices, an APK of 354 MB
+with **2 844 entries**, and 20 files read back from the packs identical byte for
+byte to their source. The APK does not follow the payload — text compresses,
+PNG does not: the code alone is 331 MB of assets for about 130 MB of APK. The
+install verifies the transfer with `script/mobile/check_bundle_transfer.py`,
+which also runs on its own, and a failed transfer fails the VM — an app that
+does not carry the code it is meant to show is not the app that was asked for.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio

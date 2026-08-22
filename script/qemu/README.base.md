@@ -314,12 +314,19 @@ reader asks for a byte range, and falls back to the whole slice when the WebView
 server ignores `Range` — 4 MB at worst, which is why the slices are bounded.
 Raster images are left out: addon screenshots, in a browser that shows text.
 
-Measured on a VM: 139 repositories, 116 156 files in 391 slices, an APK of
-282 MB with **3 002 entries**, and 20 files read back from the packs identical
-byte for byte to their source. The install verifies that transfer with
-`script/mobile/check_bundle_transfer.py`, which also runs on its own, and a
-failed transfer fails the VM — an app that does not carry the code it is meant
-to show is not the app that was asked for.
+Images are packed too, and a packed file has no URL of its own: the reader turns
+its bytes into a blob URL. Gettext catalogues, on the other hand, are dropped —
+41 594 `.po`/`.pot` files weighing 857 MB, 72 % of the payload for content that
+Weblate maintains and nobody reads on a phone. `BUNDLE_KEEP_PO=1` brings them
+back, `BUNDLE_SKIP_IMG=1` drops the images.
+
+Measured on a VM: 139 repositories, 80 841 files in 233 slices, an APK of 354 MB
+with **2 844 entries**, and 20 files read back from the packs identical byte for
+byte to their source. The APK does not follow the payload — text compresses,
+PNG does not: the code alone is 331 MB of assets for about 130 MB of APK. The
+install verifies the transfer with `script/mobile/check_bundle_transfer.py`,
+which also runs on its own, and a failed transfer fails the VM — an app that
+does not carry the code it is meant to show is not the app that was asked for.
 
 It is bounded to apt-based distributions, because that upstream installer
 starts with `sudo apt install openjdk-17-jdk`. It requires no Android Studio
@@ -487,9 +494,17 @@ WebView ignore `Range` — 4 Mo au pire, et c'est pour cela que les tranches son
 bornées. Les images matricielles restent dehors : des captures d'écran
 d'addons, dans un navigateur qui montre du texte.
 
-Mesuré sur une VM : 139 dépôts, 116 156 fichiers en 391 tranches, un APK de
-282 Mo à **3 002 entrées**, et 20 fichiers relus depuis les packs identiques
-octet pour octet à leur source. L'installation vérifie ce transfert avec
+Les images sont empaquetées aussi, et un fichier empaqueté n'a pas d'URL propre :
+le lecteur fait un blob de ses octets. Les catalogues gettext, en revanche, sont
+écartés — 41 594 fichiers `.po`/`.pot` pour 857 Mo, soit 72 % du poids, d'un
+contenu que Weblate maintient et que personne ne lit sur un téléphone.
+`BUNDLE_KEEP_PO=1` les ramène, `BUNDLE_SKIP_IMG=1` retire les images.
+
+Mesuré sur une VM : 139 dépôts, 80 841 fichiers en 233 tranches, un APK de
+354 Mo à **2 844 entrées**, et 20 fichiers relus depuis les packs identiques
+octet pour octet à leur source. L'APK ne suit pas la charge — le texte se
+compresse, le PNG non : le code seul fait 331 Mo d'assets pour environ 130 Mo
+d'APK. L'installation vérifie le transfert avec
 `script/mobile/check_bundle_transfer.py`, qui s'exécute aussi seul, et un
 transfert manqué fait échouer la VM — une application qui ne porte pas le code
 qu'elle est censée montrer n'est pas l'application demandée.
