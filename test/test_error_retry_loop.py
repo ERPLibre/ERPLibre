@@ -54,9 +54,24 @@ class Harness(unittest.TestCase):
 
         class FauxExecute:
             def exec_command_live(_self, cmd, **kw):
+                # Une interrogation de service — la détection de thème —
+                # n'est pas un rejeu de la commande : l'inscrire dans
+                # `lst_run` doublerait tous les comptes de cette suite.
+                if "ir_module_module" in cmd:
+                    if kw.get("return_status_and_output_and_command"):
+                        return 0, cmd, []
+                    return 0, cmd
                 self.lst_run.append(cmd)
                 # Toujours en échec : c'est le cas qu'on veut borner.
-                return (1 if echec else 0), cmd
+                statut = 1 if echec else 0
+                # La FORME du retour suit les drapeaux, comme le vrai :
+                # un faux qui rend toujours deux valeurs casse dès qu'un
+                # appelant demande la sortie.
+                if kw.get("return_status_and_output_and_command"):
+                    return statut, cmd, []
+                if kw.get("return_status_and_output"):
+                    return statut, []
+                return statut, cmd
 
         obj.execute = FauxExecute()
         suite = iter(resets if resets is not None else [])

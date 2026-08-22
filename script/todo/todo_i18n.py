@@ -6171,6 +6171,10 @@ TRANSLATIONS = {
         "fr": "Les corriger ?",
         "en": "Correct them?",
     },
+    "Uninstall the theme(s) the error names": {
+        "fr": "Désinstaller le(s) thème(s) que l'erreur nomme",
+        "en": "Uninstall the theme(s) the error names",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",

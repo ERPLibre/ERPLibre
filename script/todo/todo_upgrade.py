@@ -2855,6 +2855,9 @@ class TodoUpgrade:
         appelante passait le seuil de complexité, et une boucle d'invite
         se relit mieux seule que noyée dans l'exécution d'une commande.
         """
+        # Une fois, avant la boucle : la détection lit un journal et
+        # interroge la base, et la boucle peut tourner huit fois.
+        themes = self.theme_blamed_by_the_error(database_name)
         tours = 0
         while True:
             # Une borne STRUCTURELLE, et non pas seulement la logique
@@ -2880,6 +2883,11 @@ class TodoUpgrade:
                     f"[5] {t('Fix views whose type contradicts their')}"
                     f" {t('inheritance')}"
                 )
+                if themes:
+                    print(
+                        f"[6] {t('Uninstall the theme(s) the error names')}"
+                        f" : {', '.join(themes)}"
+                    )
             # `self.ask` : une migration automatique s'arrêtait ICI,
             # sur une invite qui ne demande qu'à continuer, et restait
             # bloquée sans que rien ne le signale.
@@ -2917,6 +2925,17 @@ class TodoUpgrade:
                 # encore et encore, sans fin.
                 defaut = ""
                 continue
+            if wait_status == "6" and themes:
+                # Le thème parti, la commande mérite un nouvel essai —
+                # et `repare` autorise le rejeu automatique borné.
+                for theme in themes:
+                    self.run_on_terminal(
+                        f"./script/addons/uninstall_addons_theme.sh"
+                        f" {database_name} {theme}"
+                    )
+                wait_status = "1"
+                repare = True
+                break
             if wait_status == "5" and database_name:
                 # Rien à voir avec les COW : ici la vue n'est PAS une
                 # copie, c'est son `type` stocké qui ment. Odoo ne le
@@ -3192,6 +3211,46 @@ class TodoUpgrade:
         if status:
             return []
         return [line.strip() for line in (output or []) if line.strip()]
+
+    def step_log_tail(self, octets=65536):
+        """La fin du journal de l'étape en cours, ou "".
+
+        Bornée, et lue depuis la FIN : une mise à jour de modules écrit
+        des dizaines de milliers de lignes, et charger tout le fichier
+        pour en regarder vingt coûterait plus que l'erreur qu'on cherche.
+        """
+        chemin = self.log_dir()
+        etape = getattr(self, "current_step", "")
+        if not chemin or not etape:
+            return ""
+        fichier = os.path.join(chemin, f"{self.step_slug(etape)}.log")
+        try:
+            with open(fichier, "rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                depart = max(0, handle.tell() - octets)
+                handle.seek(depart)
+                return handle.read().decode("utf-8", errors="replace")
+        except OSError:
+            return ""
+
+    def theme_blamed_by_the_error(self, database_name):
+        """Les thèmes installés que la sortie récente MET EN CAUSE.
+
+        Deux conditions, pas une. Un thème doit être installé — sinon il
+        n'y a rien à retirer — ET son nom doit figurer dans ce que la
+        commande vient d'écrire. Proposer la désinstallation à chaque
+        échec reviendrait à offrir de casser le design du site pour une
+        panne qui n'a rien à voir.
+        """
+        if not database_name:
+            return []
+        installes = self.installed_theme(database_name)
+        if not installes:
+            return []
+        journal = self.step_log_tail()
+        if not journal:
+            return []
+        return [nom for nom in installes if nom in journal]
 
     def prompt_uninstall_theme(self, database_name):
         """Proposer de retirer les thèmes AVANT de monter de version.
