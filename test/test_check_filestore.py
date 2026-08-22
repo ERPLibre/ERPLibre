@@ -149,18 +149,32 @@ class TestScanning(unittest.TestCase):
         shutil.rmtree(self.racine)
 
     def test_other_filestores_are_indexed_and_mine_is_skipped(self):
-        ailleurs, _n = fs.scan_filestores(self.racine, sauf="ma_base")
+        ailleurs, _n, _p = fs.scan_filestores(self.racine, sauf="ma_base")
         self.assertEqual(ailleurs.get("bb/ailleurs"), "autre")
         self.assertNotIn("aa/present", ailleurs)
 
     def test_nested_files_are_indexed_under_their_logical_name(self):
         # C'est sous « cc/niche » qu'on les cherchera, pas sous
         # « filestore/cc/niche ».
-        _a, niches = fs.scan_filestores(self.racine, sauf=None)
+        _a, niches, _p = fs.scan_filestores(self.racine, sauf=None)
         self.assertEqual(niches.get("cc/niche"), "ma_base")
 
+    def test_the_same_nested_file_in_two_databases_counts_in_BOTH(self):
+        # Le clone recopie le nichage : un même fichier dort dans
+        # plusieurs bases. L'index n'en retient qu'une — le premier
+        # `setdefault` gagne, et l'ordre est alphabétique — donc la 17
+        # s'entendait dire que le problème était chez les voisines.
+        for base in ("aaa_base", "zzz_base"):
+            complet = os.path.join(self.racine, base, "filestore", "ee", "x")
+            os.makedirs(os.path.dirname(complet), exist_ok=True)
+            with open(complet, "w", encoding="utf-8") as handle:
+                handle.write("x")
+        _a, _n, par_base = fs.scan_filestores(self.racine, sauf=None)
+        self.assertEqual(par_base.get("aaa_base"), 1)
+        self.assertEqual(par_base.get("zzz_base"), 1)
+
     def test_a_missing_root_is_empty_not_a_crash(self):
-        self.assertEqual(fs.scan_filestores("/nulle/part"), ({}, {}))
+        self.assertEqual(fs.scan_filestores("/nulle/part"), ({}, {}, {}))
 
     def test_backups_are_read_from_the_central_directory(self):
         dossier = tempfile.mkdtemp()
@@ -197,7 +211,7 @@ class TestTheAudit(unittest.TestCase):
             fs.filestore_root,
         )
         fs.live_fields = lambda base: set()
-        fs.scan_filestores = lambda racine, sauf=None: ({}, {})
+        fs.scan_filestores = lambda racine, sauf=None: ({}, {}, {})
         fs.scan_backups = lambda dossier: {}
         fs.filestore_root = lambda config=None: "/nulle/part"
 
@@ -749,6 +763,220 @@ class TestTidyingForReal(unittest.TestCase):
             os.path.join(self.base, "aa", "deja"), encoding="utf-8"
         ) as handle:
             self.assertEqual(handle.read(), "bon")
+
+
+class TestTheDeadRowsThatKeptTheirFile(unittest.TestCase):
+    """1860 lignes, 30 Mo, que l'outil ne voyait pas.
+
+    Il s'appelle « fichiers absents » et ne regardait donc que les
+    fichiers absents. Or une ligne dont le champ a disparu retient son
+    fichier tant qu'elle existe : le ramasse-miettes d'Odoo ne retire
+    que ce qui n'est plus référencé.
+    """
+
+    def setUp(self):
+        self.vrais = (
+            fs.attachments,
+            fs.live_fields,
+            fs.scan_filestores,
+            fs.scan_backups,
+            fs.filestore_root,
+        )
+        fs.live_fields = lambda base: {"res.partner.image_1920"}
+        fs.scan_filestores = lambda racine, sauf=None: ({}, {}, {})
+        fs.scan_backups = lambda dossier: {}
+        fs.filestore_root = lambda config=None: "/nulle/part"
+
+    def tearDown(self):
+        (
+            fs.attachments,
+            fs.live_fields,
+            fs.scan_filestores,
+            fs.scan_backups,
+            fs.filestore_root,
+        ) = self.vrais
+
+    def pose_fichier(self, chemin):
+        """Un VRAI fichier : c'est la présence qui distingue les deux cas."""
+        complet = os.path.join(self.racine, "db", chemin)
+        os.makedirs(os.path.dirname(complet), exist_ok=True)
+        with open(complet, "w", encoding="utf-8") as handle:
+            handle.write("x")
+
+    def test_a_dead_row_WITH_its_file_lands_in_dead_kept(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine, True)
+        fs.filestore_root = lambda config=None: self.racine
+        self.pose_fichier("aa/bb")
+        fs.attachments = lambda base: [
+            piece("aa/bb", "res.partner", "image", size=4096, pid="5")
+        ]
+        rapport = fs.audit("db")
+        # Fichier présent : ce n'est PAS un fichier manquant…
+        self.assertEqual(rapport["missing"], 0)
+        # …mais la ligne est morte, et son fichier occupe le disque.
+        self.assertEqual(len(rapport["dead_kept"]), 1)
+        self.assertEqual(rapport["dead_kept_size"], 4096)
+        self.assertEqual(rapport["dead_ids"], [5])
+
+    def test_a_living_row_with_its_file_is_left_alone(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine, True)
+        fs.filestore_root = lambda config=None: self.racine
+        self.pose_fichier("aa/bb")
+        fs.attachments = lambda base: [
+            piece("aa/bb", "res.partner", "image_1920", size=4096, pid="5")
+        ]
+        rapport = fs.audit("db")
+        self.assertEqual(rapport["dead_kept"], [])
+        self.assertEqual(rapport["dead_ids"], [])
+
+    def test_the_size_is_summed_by_the_audit_itself(self):
+        self.racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.racine, True)
+        fs.filestore_root = lambda config=None: self.racine
+        for chemin in ("aa/bb", "cc/dd"):
+            self.pose_fichier(chemin)
+        fs.attachments = lambda base: [
+            piece("aa/bb", "res.partner", "image", size=1024, pid="5"),
+            piece("cc/dd", "res.partner", "image", size=1024, pid="6"),
+        ]
+        self.assertEqual(fs.audit("db")["dead_kept_size"], 2048)
+
+    def test_the_report_shows_the_weight(self):
+        gardees = [piece("a/1", "res.partner", "image", size=2048)]
+        texte = "\n".join(
+            fs.render_dead_kept({"dead_kept": gardees, "dead_kept_size": 2048})
+        )
+        self.assertIn("2 ko", texte)
+        self.assertIn("res.partner / image", texte)
+
+    def test_nothing_kept_says_nothing(self):
+        self.assertEqual(fs.render_dead_kept({"dead_kept": []}), [])
+
+    def test_a_living_field_is_never_counted(self):
+        self.assertFalse(
+            fs.is_dead_field(
+                piece("a/1", "res.partner", "image_1920"),
+                {"res.partner.image_1920"},
+            )
+        )
+
+    def test_an_uploaded_document_has_no_field_so_is_never_dead(self):
+        self.assertFalse(fs.is_dead_field(piece("a/1", "project.task"), set()))
+
+
+class TestTheNestedCountIsPerDatabase(unittest.TestCase):
+    """« 1168 fichiers échoués » devant une base qu'on vient de ranger.
+
+    Le compte agrégeait tous les filestores de la machine : on rangeait,
+    le rapport affichait le même chiffre, et l'on rangeait à nouveau.
+    """
+
+    def setUp(self):
+        self.vrais = (
+            fs.attachments,
+            fs.live_fields,
+            fs.scan_filestores,
+            fs.scan_backups,
+            fs.filestore_root,
+        )
+        fs.attachments = lambda base: []
+        fs.live_fields = lambda base: set()
+        fs.scan_backups = lambda dossier: {}
+        fs.filestore_root = lambda config=None: "/nulle/part"
+        fs.scan_filestores = lambda racine, sauf=None: (
+            {},
+            {"a/1": "ma_base", "b/2": "voisine", "c/3": "voisine"},
+            {"ma_base": 1, "voisine": 2},
+        )
+
+    def tearDown(self):
+        (
+            fs.attachments,
+            fs.live_fields,
+            fs.scan_filestores,
+            fs.scan_backups,
+            fs.filestore_root,
+        ) = self.vrais
+
+    def test_only_this_database_counts_as_nested(self):
+        rapport = fs.audit("ma_base")
+        self.assertEqual(rapport["nested_total"], 1)
+        self.assertEqual(rapport["nested_elsewhere"], 2)
+
+    def test_a_tidy_database_is_not_told_it_has_work(self):
+        fs.scan_filestores = lambda racine, sauf=None: (
+            {},
+            {"b/2": "voisine"},
+            {"voisine": 1},
+        )
+        rapport = fs.audit("ma_base")
+        texte = "\n".join(fs.render_nested(rapport))
+        self.assertNotIn(
+            todo_i18n.t("file(s) sit in a nested filestore Odoo never reads."),
+            texte,
+        )
+        self.assertIn(
+            todo_i18n.t("such file(s) sit in OTHER databases filestores."),
+            texte,
+        )
+
+
+class TestTheMigrationWiring(unittest.TestCase):
+    RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    def source(self, chemin):
+        with io.open(
+            os.path.join(self.RACINE, chemin), encoding="utf-8"
+        ) as handle:
+            return handle.read()
+
+    def test_the_purge_runs_ONCE_at_the_end_not_between_bumps(self):
+        # Entre deux paliers, deux à onze champs disparaissent puis
+        # REVIENNENT : purger là trancherait sur du transitoire.
+        src = self.source("script/todo/todo_upgrade.py")
+        self.assertIn("prompt_purge_dead_attachments", src)
+        appel = "self.prompt_purge_dead_attachments(database_name_upgrade)"
+        self.assertEqual(src.count(appel), 1)
+        boucle = src.index("for index, next_version in enumerate(")
+        self.assertGreater(
+            src.index(appel), boucle, "l'appel doit suivre la boucle"
+        )
+        etape = src.index('"5 - Cleaning up database after upgrade"')
+        self.assertGreater(src.index(appel), etape)
+
+    def test_the_purge_runs_BEFORE_the_final_backup(self):
+        # Qui veut garder l'état d'avant refuse la purge ; la sauvegarde
+        # qui suit doit capturer l'état nettoyé.
+        src = self.source("script/todo/todo_upgrade.py")
+        appel = "self.prompt_purge_dead_attachments(database_name_upgrade)"
+        self.assertLess(src.index(appel), src.index("cmd_backup_template"))
+
+    def test_the_restore_offers_to_tidy_where_the_fault_is_born(self):
+        # L'APPEL, pas le nom : `pass` à sa place laisse la fonction
+        # définie et le test passerait sur du code mort.
+        src = self.source("script/database/db_restore.py")
+        self.assertIn("tidy_nested_plan", src)
+        self.assertIn(
+            'if rapport.get("nested"):\n        offer_tidy(',
+            src,
+            "le rangement n'est plus proposé après la vérification",
+        )
+
+    def test_the_restore_never_asks_without_a_terminal(self):
+        # Ce script tourne aussi sans personne devant : une question
+        # posée à un stdin fermé arrêterait la migration.
+        src = self.source("script/database/db_restore.py")
+        debut = src.index("def offer_tidy")
+        fin = src.index("input(", debut)
+        self.assertIn("sys.stdin.isatty()", src[debut:fin])
+
+    def test_the_clone_path_still_offers_nothing(self):
+        src = self.source("script/database/db_restore.py")
+        debut = src.index("--clone --from_database")
+        fin = src.index("verify_filestore(config.database", debut)
+        self.assertNotIn("offer_tidy", src[debut:fin])
 
 
 class TestVerifyingARestore(unittest.TestCase):

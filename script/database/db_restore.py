@@ -7,6 +7,7 @@ import configparser
 import getpass
 import logging
 import os
+import shutil
 import sys
 from subprocess import check_output
 
@@ -113,6 +114,41 @@ def verify_filestore(database, image):
     rapport = check_filestore.verify_restore(database, chemin)
     for ligne in check_filestore.render_verify(rapport):
         print(ligne)
+    if rapport.get("nested"):
+        offer_tidy(check_filestore, rapport)
+
+
+def offer_tidy(check_filestore, rapport):
+    """Proposer de ranger TOUT DE SUITE, là où le défaut naît.
+
+    C'est le seul endroit qui vaille. Le nichage se produit une fois, à
+    la restauration, puis le clone le recopie tel quel : mesuré, les six
+    bases de la chaîne portaient les mêmes 1168 fichiers. Ranger ici,
+    c'est ranger une fois ; ranger plus tard, c'est six fois.
+
+    Rien ne se fait sans réponse humaine, et rien du tout hors d'un
+    terminal : ce script tourne aussi sans personne devant, et une
+    question posée à un `stdin` fermé arrêterait la migration.
+    """
+    if not sys.stdin.isatty():
+        return
+    remonter, doublons = check_filestore.tidy_nested_plan(rapport)
+    if not remonter and not doublons:
+        return
+    print(f"   {len(remonter)} à remonter, {len(doublons)} doublons purs")
+    try:
+        reponse = input("💬 Ranger maintenant ? (y/N) : ").strip().lower()
+    except EOFError:
+        return
+    if reponse not in ("y", "yes", "o"):
+        return
+    for source, cible in remonter:
+        os.makedirs(os.path.dirname(cible), exist_ok=True)
+        shutil.move(source, cible)
+    for source, _cible in doublons:
+        os.remove(source)
+    shutil.rmtree(check_filestore.nested_dir(rapport), ignore_errors=True)
+    print(f"✅ {len(remonter)} remontés, {len(doublons)} doublons supprimés.")
 
 
 def restore_or_clone(config, arg_base, cache_database, lst_db_cache):

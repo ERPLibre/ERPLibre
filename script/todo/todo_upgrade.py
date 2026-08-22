@@ -2825,6 +2825,7 @@ class TodoUpgrade:
             f"✨ {t('Re-update i18n, purge the data and the tables')}"
             f" ({t('except mail_test and mail_test_full')})"
         )
+        self.prompt_purge_dead_attachments(database_name_upgrade)
         # waiting_input = self.ask("💬print Press any keyboard key to continue...")
         msg = "6 - Migration finished"
         self.print_step(msg)

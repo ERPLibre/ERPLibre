@@ -175,9 +175,9 @@ def scan_filestores(racine, sauf=None):
     qu'on cherchera — mais notés à part : les remettre en place est un
     déplacement, pas une copie depuis ailleurs.
     """
-    ailleurs, niches = {}, {}
+    ailleurs, niches, par_base = {}, {}, {}
     if not os.path.isdir(racine):
-        return ailleurs, niches
+        return ailleurs, niches, par_base
     for base in sorted(os.listdir(racine)):
         chemin = os.path.join(racine, base)
         if not os.path.isdir(chemin):
@@ -187,19 +187,25 @@ def scan_filestores(racine, sauf=None):
             if not os.path.isdir(sous):
                 continue
             if prefixe == "filestore":
-                cible, marque = niches, base
+                # Un même fichier peut être niché dans PLUSIEURS bases —
+                # le clone les recopie toutes. L'index n'en retient qu'une
+                # (le premier `setdefault` gagne) : il sert à retrouver un
+                # fichier, pas à compter. D'où le décompte par base, sans
+                # lequel une base nichée s'entendait dire que le problème
+                # était chez les voisines.
                 for deux in sorted(os.listdir(sous)):
                     profond = os.path.join(sous, deux)
                     if not os.path.isdir(profond):
                         continue
                     for nom in os.listdir(profond):
-                        cible.setdefault(f"{deux}/{nom}", marque)
+                        niches.setdefault(f"{deux}/{nom}", base)
+                        par_base[base] = par_base.get(base, 0) + 1
                 continue
             if base == sauf:
                 continue
             for nom in os.listdir(sous):
                 ailleurs.setdefault(f"{prefixe}/{nom}", base)
-    return ailleurs, niches
+    return ailleurs, niches, par_base
 
 
 def scan_backups(dossier):
@@ -358,6 +364,18 @@ def render_verify(rapport):
     return lignes
 
 
+def is_dead_field(piece, champs_vivants):
+    """La pièce jointe porte-t-elle un champ qui n'existe plus ?
+
+    Sans `res_field` la question ne se pose pas : c'est un document
+    téléversé, pas la valeur d'un champ. Le juger sur un champ absent le
+    ferait disparaître du rapport.
+    """
+    if not piece.get("field"):
+        return False
+    return f"{piece['model']}.{piece['field']}" not in champs_vivants
+
+
 def classify(piece, present, ailleurs, niches, sauvegardes, champs_vivants):
     """Le verdict d'une pièce jointe. None si son fichier est là.
 
@@ -368,10 +386,8 @@ def classify(piece, present, ailleurs, niches, sauvegardes, champs_vivants):
         return None
     # Un champ disparu n'a rien à récupérer : la ligne est une scorie.
     # Le tester EN PREMIER évite de proposer une remise en place inutile.
-    if piece["field"]:
-        cle = f"{piece['model']}.{piece['field']}"
-        if cle not in champs_vivants:
-            return ("dead_field", cle)
+    if is_dead_field(piece, champs_vivants):
+        return ("dead_field", f"{piece['model']}.{piece['field']}")
     if piece["store_fname"] in niches:
         return ("nested", niches[piece["store_fname"]])
     if piece["store_fname"] in ailleurs:
@@ -401,18 +417,26 @@ def audit(database, config_path=None, backups=None):
             for nom in os.listdir(sous):
                 if os.path.isfile(os.path.join(sous, nom)):
                     present.add(f"{prefixe}/{nom}")
-    ailleurs, niches = scan_filestores(racine, sauf=database)
+    ailleurs, niches, par_base = scan_filestores(racine, sauf=database)
     sauvegardes = scan_backups(backups or os.path.join(REPO_ROOT, "image_db"))
     champs_vivants = live_fields(database)
 
     groupes = {verdict: [] for verdict in VERDICTS}
     vus = set()
     morts = []
+    gardees = []
     for piece in pieces:
         verdict = classify(
             piece, present, ailleurs, niches, sauvegardes, champs_vivants
         )
         if not verdict:
+            # Fichier présent — mais son champ vit-il encore ? Un outil
+            # nommé « fichiers absents » ne regardait pas là, et laissait
+            # dormir 1860 lignes et 30 Mo que plus rien ne lit.
+            if is_dead_field(piece, champs_vivants):
+                gardees.append(piece)
+                if str(piece.get("id", "")).isdigit():
+                    morts.append(int(piece["id"]))
             continue
         # La déduplication qui suit sert à compter des FICHIERS. Pour
         # effacer des LIGNES il les faut toutes : vingt-deux lignes
@@ -436,9 +460,14 @@ def audit(database, config_path=None, backups=None):
         "files_present": len(present),
         "missing": len(vus),
         "groups": groupes,
-        "nested_total": len(niches),
+        "nested_total": par_base.get(database, 0),
+        "nested_elsewhere": sum(
+            combien for base, combien in par_base.items() if base != database
+        ),
         "root": mien,
         "dead_ids": morts,
+        "dead_kept": gardees,
+        "dead_kept_size": sum(piece["size"] for piece in gardees),
     }
 
 
@@ -452,7 +481,7 @@ def render(rapport, limit=20):
     ]
     if not rapport["missing"]:
         lignes.append(f"   ✅ {t('every attachment file is present')}")
-        return lignes + render_nested(rapport)
+        return lignes + render_dead_kept(rapport) + render_nested(rapport)
     lignes.append(f"   {rapport['missing']} {t('file(s) missing')} :")
     for verdict in VERDICTS:
         groupe = rapport["groups"][verdict]
@@ -487,17 +516,53 @@ def render(rapport, limit=20):
             )
         if limit and len(groupe) > limit:
             lignes.append(f"         … {len(groupe) - limit} {t('more')}")
-    return lignes + render_nested(rapport)
+    return lignes + render_dead_kept(rapport) + render_nested(rapport)
+
+
+def render_dead_kept(rapport, limit=4):
+    """Les lignes mortes dont le FICHIER est toujours là.
+
+    Elles ne manquent à personne — c'est justement le problème : rien ne
+    les lit, et leur fichier occupe le disque tant que la ligne existe,
+    puisque le ramasse-miettes d'Odoo ne retire que ce qui n'est plus
+    référencé. Un outil nommé « fichiers absents » ne regardait pas là,
+    et laissait dormir 1860 lignes et 30 Mo.
+    """
+    gardees = rapport.get("dead_kept") or []
+    if not gardees:
+        return []
+    lignes = [
+        "",
+        f"   🕳 {len(gardees)}"
+        f" {t('row(s) whose field is gone still hold their file')}"
+        f"  ({rapport.get('dead_kept_size', 0) // 1024} ko)",
+    ]
+    apercu = summarise(gardees)
+    for texte in apercu[: limit or None]:
+        lignes.append(f"       {texte}")
+    if limit and len(apercu) > limit:
+        lignes.append(f"       … {len(apercu) - limit} {t('more')}")
+    return lignes
 
 
 def render_nested(rapport):
+    ailleurs = rapport.get("nested_elsewhere") or 0
     if not rapport.get("nested_total"):
+        # Rien ici, mais peut-être chez les voisines : le dire sans
+        # laisser croire que CETTE base est concernée.
+        if ailleurs:
+            return [
+                "",
+                f"   ↳ {ailleurs}"
+                f" {t('such file(s) sit in OTHER databases filestores.')}",
+            ]
         return []
-    return [
+    lignes = [
         "",
         f"   ↳ {rapport['nested_total']}"
-        f" {t('file(s) sit in nested filestores Odoo never reads.')}",
+        f" {t('file(s) sit in a nested filestore Odoo never reads.')}",
     ]
+    return lignes
 
 
 def alive_mark(piece):
