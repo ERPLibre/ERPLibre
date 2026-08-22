@@ -150,6 +150,132 @@ class TestTheReport(unittest.TestCase):
         self.assertNotIn("[500]", texte)
 
 
+class TestNothingUnpacksTheFailureTupleBlindly(unittest.TestCase):
+    """Ajouter un champ au tuple d'échec a cassé une migration en cours.
+
+    Le tuple est passé de trois à quatre éléments et deux sites
+    dépaquetaient encore trois — `too many values to unpack`, en plein
+    milieu, APRÈS la réinitialisation d'une copie COW. Le commentaire
+    « TOUJOURS quatre éléments » ne protège de rien : il faut ne pas
+    dépaqueter quand on ne veut qu'un champ.
+    """
+
+    CHEMIN = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "script",
+        "odoo",
+        "migration",
+        "smoke_public_url.py",
+    )
+
+    def source(self):
+        with io.open(self.CHEMIN, encoding="utf-8") as handle:
+            return handle.read()
+
+    def test_no_three_element_unpack_survives(self):
+        import re
+
+        motif = re.compile(
+            r"for\s+[a-z_]+,\s*[a-z_]+,\s*[a-z_]+\s+in\s+lst_failure"
+        )
+        trouves = motif.findall(self.source())
+        self.assertEqual(trouves, [], f"dépaquetage à trois : {trouves}")
+
+    def test_taking_only_the_url_uses_an_index(self):
+        # Indexer survit au prochain champ ajouté ; dépaqueter non.
+        self.assertIn("[echec[0] for echec in lst_failure]", self.source())
+
+
+class TestRecheckingAfterAReset(unittest.TestCase):
+    """La passe qui a cassé, exercée pour de vrai.
+
+    Elle ne tournait sous aucun test : c'est pourquoi le dépaquetage à
+    trois y a survécu à la suite complète, aux mutations, et n'est
+    tombé qu'en production.
+    """
+
+    def setUp(self):
+        self.vrais = {
+            nom: getattr(smoke, nom)
+            for nom in (
+                "start_server",
+                "wait_ready",
+                "check_urls",
+                "internal_needs_retry",
+                "stop_server",
+            )
+            if hasattr(smoke, nom)
+        }
+        self.vus = []
+
+        class FauxServeur:
+            def __init__(self):
+                self.arrete = False
+
+        smoke.start_server = lambda *a, **k: FauxServeur()
+        smoke.wait_ready = lambda *a, **k: True
+        smoke.internal_needs_retry = lambda rapport: False
+        if hasattr(smoke, "stop_server"):
+            smoke.stop_server = lambda *a, **k: None
+
+        def faux_check(lst_url, timeout=30):
+            self.vus.append(list(lst_url))
+            return []
+
+        smoke.check_urls = faux_check
+
+    def tearDown(self):
+        for nom, valeur in self.vrais.items():
+            setattr(smoke, nom, valeur)
+
+    def test_it_rechecks_exactly_the_urls_that_had_failed(self):
+        echecs = [
+            ("http://h/contactus", 500, ["2837"], "http://h/en/contactus"),
+            ("http://h/blog", 500, [], "http://h/blog"),
+        ]
+        smoke.recheck_after_reset(
+            "db",
+            8169,
+            "./config.conf",
+            "http://h",
+            None,
+            echecs,
+            {"failures": []},
+            internal=False,
+        )
+        self.assertEqual(self.vus, [["http://h/contactus", "http://h/blog"]])
+
+    def test_it_rechecks_the_REQUESTED_url_not_the_final_one(self):
+        # On revérifie ce que le sitemap publie : c'est cette adresse-là
+        # que les visiteurs demandent.
+        echecs = [("http://h/a", 500, [], "http://h/z")]
+        smoke.recheck_after_reset(
+            "db",
+            8169,
+            "./config.conf",
+            "http://h",
+            None,
+            echecs,
+            {"failures": []},
+            internal=False,
+        )
+        self.assertEqual(self.vus, [["http://h/a"]])
+
+    def test_an_empty_failure_list_rechecks_nothing(self):
+        smoke.recheck_after_reset(
+            "db",
+            8169,
+            "./config.conf",
+            "http://h",
+            None,
+            [],
+            {"failures": []},
+            internal=False,
+        )
+        self.assertEqual(self.vus, [[]])
+
+
 class TestTheLogSurvives(unittest.TestCase):
     def test_the_previous_run_is_kept(self):
         # Le journal était ouvert en « w » : relancer le test effaçait la

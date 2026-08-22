@@ -777,7 +777,7 @@ def recheck_after_reset(
                 f"{t('The server never answered on')} {base_url}"
             )
         lst_again = check_urls(
-            [url for url, _s, _p in lst_failure], timeout=timeout
+            [echec[0] for echec in lst_failure], timeout=timeout
         )
         if internal_needs_retry(internal_report):
             reprise = internal_phase(
@@ -936,7 +936,7 @@ def main(argv=None):
         f"\n↻ {t('Re-checked the')} {len(lst_failure)}"
         f" {t('failing URL(s) after the reset')} :"
     )
-    print(render([url for url, _s, _p in lst_failure], lst_again, None))
+    print(render([echec[0] for echec in lst_failure], lst_again, None))
     return 1 if (lst_again or internal_failed) else 0
 
 
