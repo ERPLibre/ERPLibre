@@ -15,6 +15,7 @@ IP_VM:5555). Une redirection vers l'IP de la VM ne peut donc PAS aboutir, et
 seul un dernier saut dans la VM place « localhost » au bon endroit.
 """
 
+import os
 import socket
 import subprocess
 import sys
@@ -458,6 +459,45 @@ class TestPortInUse(unittest.TestCase):
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         self.assertFalse(TODO._port_in_use(port))
+
+
+class TestEmulatorGpuOverride(unittest.TestCase):
+    """« -gpu host » doit être essayable sans toucher au code.
+
+    Les drapeaux sont figés à l'import de todo.py : la variable doit donc être
+    lue AVANT, ce qu'un sous-processus est seul à démontrer. Le défaut reste
+    swangle — mesuré — car un contexte GL qui échoue laisse l'émulateur pendu
+    au lieu de retomber.
+    """
+
+    def _flags(self, env=None):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        environ = dict(os.environ, PYTHONPATH=root)
+        environ.update(env or {})
+        res = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.argv=['todo.py']\n"
+                "from script.todo.todo import TODO\n"
+                "print(TODO._QEMU_EMULATOR_FLAGS)",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=root,
+            env=environ,
+            timeout=120,
+        )
+        self.assertEqual(0, res.returncode, res.stderr[-400:])
+        return res.stdout
+
+    def test_the_default_is_the_measured_one(self):
+        self.assertIn("-gpu swangle", self._flags())
+
+    def test_the_variable_replaces_it(self):
+        out = self._flags({"EL_EMULATOR_GPU": "host"})
+        self.assertIn("-gpu host", out)
+        self.assertNotIn("swangle", out)
 
 
 if __name__ == "__main__":

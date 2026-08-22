@@ -3043,6 +3043,74 @@ TRANSLATIONS = {
         "fr": "VM à modifier (séparées par des virgules) : ",
         "en": "VMs to change (comma-separated): ",
     },
+    "Adjust hardware only (vCPU, RAM, 3D)": {
+        "fr": "Régler le matériel seulement (vCPU, RAM, 3D)",
+        "en": "Adjust hardware only (vCPU, RAM, 3D)",
+    },
+    "Adjust hardware before starting? (y/N): ": {
+        "fr": "Régler le matériel avant de démarrer ? (o/N) : ",
+        "en": "Adjust hardware before starting? (y/N): ",
+    },
+    "Not shut off, hardware left untouched:": {
+        "fr": "Pas éteintes, matériel inchangé :",
+        "en": "Not shut off, hardware left untouched:",
+    },
+    "Host GPU:": {
+        "fr": "GPU de l'hôte :",
+        "en": "Host GPU:",
+    },
+    "none (software rendering)": {
+        "fr": "aucun (rendu logiciel)",
+        "en": "none (software rendering)",
+    },
+    "software rendering": {
+        "fr": "rendu logiciel",
+        "en": "software rendering",
+    },
+    "Unreadable VM definition.": {
+        "fr": "Définition de VM illisible.",
+        "en": "Unreadable VM definition.",
+    },
+    "Nothing to change.": {
+        "fr": "Rien à changer.",
+        "en": "Nothing to change.",
+    },
+    "Changes:": {
+        "fr": "Changements :",
+        "en": "Changes:",
+    },
+    "Apply these changes? (y/N): ": {
+        "fr": "Appliquer ces changements ? (o/N) : ",
+        "en": "Apply these changes? (y/N): ",
+    },
+    "Autostart": {
+        "fr": "Démarrage automatique",
+        "en": "Autostart",
+    },
+    "VM hardware": {
+        "fr": "Matériel des VM",
+        "en": "VM hardware",
+    },
+    "3D": {
+        "fr": "3D",
+        "en": "3D",
+    },
+    "3D acceleration (host GPU)": {
+        "fr": "Accélération 3D (GPU de l'hôte)",
+        "en": "3D acceleration (host GPU)",
+    },
+    "Render node": {
+        "fr": "Nœud de rendu",
+        "en": "Render node",
+    },
+    "no render node on the host": {
+        "fr": "aucun nœud de rendu sur l'hôte",
+        "en": "no render node on the host",
+    },
+    "this VM has no virtual screen": {
+        "fr": "cette VM n'a pas d'écran virtuel",
+        "en": "this VM has no virtual screen",
+    },
     "Unknown VM(s):": {
         "fr": "VM inconnue(s) :",
         "en": "Unknown VM(s):",

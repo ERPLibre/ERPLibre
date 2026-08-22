@@ -260,6 +260,103 @@ def host_arch() -> str:
     }.get(machine, "amd64")
 
 
+# Nœud de rendu DRM : le fichier que le processus QEMU ouvre pour créer un
+# contexte OpenGL (virgl) et donner la 3D à la VM. Un hôte sans GPU — ou
+# lui-même virtualisé sans GPU transmis — n'expose AUCUN « renderD* », et
+# aucune option de ligne de commande ne peut y suppléer : la VM retombe alors
+# sur le rendu logiciel. On teste donc la présence du nœud, pas nos droits
+# dessus : l'accès est accordé par libvirt au démarrage du domaine (cgroup +
+# étiquette), et un test de lecture sous notre propre compte rejetterait à
+# tort un hôte où seul le groupe « render » entre.
+HOST_DRI_DIR = Path("/dev/dri")
+
+
+def host_render_nodes(directory=HOST_DRI_DIR) -> list[str]:
+    """Nœuds de rendu de l'hôte, triés (ex. ['/dev/dri/renderD128'])."""
+    directory = Path(directory)
+    try:
+        names = sorted(p.name for p in directory.iterdir())
+    except OSError:
+        return []
+    return [str(directory / n) for n in names if n.startswith("renderD")]
+
+
+def host_gpu_node(directory=HOST_DRI_DIR) -> str:
+    """Nœud de rendu à confier à QEMU, ou '' si l'hôte n'a pas de GPU.
+
+    Le premier de la liste : sur une machine à plusieurs cartes, renderD128
+    est le nœud du GPU primaire. --gpu-node force un autre choix.
+    """
+    nodes = host_render_nodes(directory)
+    return nodes[0] if nodes else ""
+
+
+def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
+    """(3D activée, message à dire) pour un mode --gpu et un nœud donnés.
+
+    Séparée du reste pour être vérifiable sans hôte : c'est ici que se décide
+    « par défaut avec GPU s'il existe », et le silence n'est pas une option —
+    une VM en rendu logiciel doit dire pourquoi.
+    """
+    mode = (mode or "auto").lower()
+    if mode == "off":
+        return False, ""
+    if not screen:
+        # Sans écran virtuel, la 3D n'a rien à accélérer. Le dire seulement
+        # quand elle a été demandée explicitement.
+        if mode == "on":
+            return (
+                False,
+                "  GPU : pas d'écran virtuel sur cette VM, 3D ignorée.",
+            )
+        return False, ""
+    if not node:
+        if mode == "on":
+            return (
+                False,
+                "  ⚠ GPU demandé mais l'hôte n'a aucun nœud de rendu"
+                " (/dev/dri/renderD*) : la VM démarrerait sans écran."
+                " Rendu logiciel.",
+            )
+        return (
+            False,
+            "  GPU : aucun sur l'hôte, rendu logiciel (virgl absent).",
+        )
+    return True, f"  GPU : 3D activée par {node} (virtio-gpu + egl-headless)."
+
+
+def gpu_apply(
+    video: list, mode: str, node: str, screen: bool
+) -> tuple[list, list, str]:
+    """(video, arguments 3D, message) — pour virt-install.
+
+    Renvoie le `--video` à garder : celui de la 3D REMPLACE le simple
+    « --video virtio », il ne s'y ajoute pas. Deux --video donneraient deux
+    écrans à la VM, et l'invité n'afficherait le bureau que sur un seul.
+    """
+    use_gpu, message = gpu_decision(mode, node, screen)
+    if not use_gpu:
+        return video, [], message
+    return [], gpu_install_args(node), message
+
+
+def gpu_install_args(node: str) -> list[str]:
+    """Arguments virt-install qui donnent la 3D à la VM.
+
+    Deux pièces indissociables : l'accélération sur le virtio-gpu, et un
+    affichage capable de contexte GL. « egl-headless » joue ce second rôle
+    SANS remplacer la console VNC — il n'ouvre aucun port, il n'existe que
+    pour porter le contexte OpenGL. C'est la recette documentée pour associer
+    3D et VNC, là où <gl enable/> ne vaut que pour SPICE.
+    """
+    return [
+        "--video",
+        "model.type=virtio,model.acceleration.accel3d=on",
+        "--graphics",
+        f"type=egl-headless,gl.rendernode={node}",
+    ]
+
+
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
@@ -2798,6 +2895,16 @@ def virt_install(
             # d'avant : --graphics spice,listen=none
             graphics = "vnc,listen=127.0.0.1"
             video = ["--video", "virtio"]
+    # 3D : allumée d'office quand l'hôte a un GPU (--gpu auto). Une VM
+    # graphique sans accélération rend tout par le processeur — le bureau
+    # comme l'émulateur Android qui tourne dedans — et c'est le défaut le plus
+    # coûteux qu'on puisse laisser en place sans le dire.
+    gpu_node = args.gpu_node or host_gpu_node()
+    video, gpu_args, gpu_msg = gpu_apply(
+        video, args.gpu, gpu_node, graphics != "none"
+    )
+    if gpu_msg:
+        print(gpu_msg)
     cmd = [
         "virt-install",
         # Sans --connect, un utilisateur non root vise qemu:///session : le
@@ -2871,7 +2978,7 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
-    cmd += video
+    cmd += video + gpu_args
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -3147,6 +3254,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="VM graphique : écran virtuel SPICE là où l'architecture le "
         "permet. Les paquets GNOME sont posés par la commande d'installation, "
         "pas ici.",
+    )
+    g_vm.add_argument(
+        "--gpu",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Accélération 3D par le GPU de l'hôte : auto (défaut, activée "
+        "si un /dev/dri/renderD* existe), on (forcer), off (rendu logiciel).",
+    )
+    g_vm.add_argument(
+        "--gpu-node",
+        default="",
+        help="Nœud de rendu à utiliser (défaut : le premier trouvé). Utile "
+        "sur un hôte à plusieurs cartes.",
     )
     g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."

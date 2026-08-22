@@ -287,6 +287,9 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
 - `--force` — écrase le disque de travail qcow2 existant.
+- `--gpu` — accélération 3D par le GPU de l'hôte : `auto` (défaut, activée si
+  l'hôte a un nœud de rendu), `on` (forcer), `off` (rendu logiciel).
+- `--gpu-node` — quel nœud de rendu utiliser, sur un hôte à plusieurs cartes.
 - `--lang` — langue du guide affiché à la connexion SSH, `fr` (défaut) ou
   `en`. Le menu TODO passe la sienne.
 - `--erplibre-dir` — où ERPLibre sera installé dans la VM
@@ -363,6 +366,39 @@ Host myvm
 Ça marche en Wi-Fi et sans arrêter la VM — l'option la plus simple pour un
 accès personnel. Préférez un pont (ci-dessous) si la VM doit être un serveur
 à part entière exposé sur le LAN.
+
+## Accélération 3D (GPU de l'hôte)
+
+Une VM graphique sans accélération rend tout par le processeur — le bureau
+comme l'émulateur Android qui tourne dedans. Le déploiement prend donc le GPU
+de l'hôte **par défaut** (`--gpu auto`) : si l'hôte expose un nœud de rendu,
+la VM reçoit un virtio-GPU avec `accel3d` et un affichage `egl-headless` qui
+porte le contexte OpenGL **à côté** de la console VNC — il n'ouvre aucun port
+et ne remplace rien. Pas de nœud de rendu, pas de 3D, et le déploiement dit
+pourquoi au lieu de retomber en silence.
+
+```bash
+ls /dev/dri/renderD*             # le GPU utilisable par QEMU — vide : pas de 3D
+sudo virsh dumpxml <nom-vm> | grep -A2 -E "accel3d|egl-headless"
+```
+
+Une VM déjà installée se règle depuis le menu TODO **pendant qu'elle est
+éteinte** : libvirt ne lit ces réglages qu'au démarrage de QEMU. `QEMU/KVM ›
+Liste des VM › [2] Changer l'état`, puis acceptez *Régler le matériel avant de
+démarrer*, ou prenez `[3] Régler le matériel seulement`. vCPU, RAM, 3D et
+démarrage automatique s'y règlent — en formulaire si Textual est présent, en
+invites sinon.
+
+Deux choses à savoir :
+
+- Un hôte qui est **lui-même une VM** n'a aucun nœud de rendu, sauf si un GPU
+  lui a été transmis. Imbriqué sans passthrough, la 3D est hors d'atteinte :
+  l'émulateur Android tourne alors sur SwiftShader, et aucune option n'y
+  change rien.
+- Quand la VM a la 3D, l'émulateur peut être essayé en `-gpu host` plutôt
+  qu'en `-gpu swangle`, son défaut : `EL_EMULATOR_GPU=host ./todo.sh`. Ça
+  reste un essai manuel — un émulateur dont le contexte GL échoue reste pendu
+  au lieu de retomber, d'où `swangle` par défaut.
 
 ## QEMU dans QEMU (imbriqué) & exposer la VM via un pont
 

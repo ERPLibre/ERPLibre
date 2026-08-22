@@ -1675,8 +1675,15 @@ class TODO:
     # menu propose lui-même — laisse un instantané en cours, et le lancement
     # SUIVANT meurt sur « A snapshot operation is pending and timeout has
     # expired ». Vécu, et le message ne dit pas quoi faire.
+    # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
+    # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
+    # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
+    # EL_EMULATOR_GPU permet de l'essayer sans toucher au code, une fois le
+    # nœud de rendu présent dans l'invité (voir script/qemu/README).
+    _QEMU_EMULATOR_GPU = os.environ.get("EL_EMULATOR_GPU") or "swangle"
     _QEMU_EMULATOR_FLAGS = (
-        "-no-audio -no-boot-anim -no-snapshot-save -gpu swangle"
+        "-no-audio -no-boot-anim -no-snapshot-save"
+        f" -gpu {_QEMU_EMULATOR_GPU}"
         " -skin 540x1140 -prop qemu.sf.lcd_density=240"
     )
     _QEMU_AVD_NAME = "erplibre"
@@ -2881,14 +2888,25 @@ class TODO:
         print(f"\n{t('Target state:')}")
         print(f"  [1] {t('Open (start)')}")
         print(f"  [2] {t('Close (shut down)')}")
+        print(f"  [3] {t('Adjust hardware only (vCPU, RAM, 3D)')}")
         st = input(t("Choice: ")).strip()
         if st == "1":
             action, verb = "start", t("start")
         elif st == "2":
             action, verb = "shutdown", t("shut down")
+        elif st == "3":
+            self._qemu_adjust_hardware(resolved)
+            return
         else:
             print(t("Cancelled."))
             return
+        # Le matériel d'une VM ne se règle QUE pendant qu'elle est éteinte :
+        # démarrer est donc le dernier moment pour le faire, et le seul où la
+        # question tombe juste.
+        if action == "start" and self._is_yes(
+            input(f"\n{t('Adjust hardware before starting? (y/N): ')}")
+        ):
+            self._qemu_adjust_hardware(resolved)
         # DOUBLE validation avant d'appliquer.
         summary = f"{verb} -> {', '.join(resolved)}"
         if not self._is_yes(input(f"{t('Apply:')} {summary} ? (o/N) : ")):
@@ -2901,6 +2919,163 @@ class TODO:
             cmd = f"sudo virsh {action} {shlex.quote(real)}"
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    @staticmethod
+    def _qemu_dumpxml(name):
+        """XML du domaine, ou '' — source de son état matériel."""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dumpxml", name],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return res.stdout if res.returncode == 0 else ""
+
+    @staticmethod
+    def _qemu_autostart(name):
+        """Démarrage automatique activé ? (absent du XML : virsh seul le sait)"""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dominfo", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        for line in res.stdout.splitlines():
+            if line.startswith("Autostart:"):
+                return line.split(":", 1)[1].strip() == "enable"
+        return False
+
+    def _qemu_ask_bool(self, prompt, default):
+        """Question fermée dont le DÉFAUT est l'état actuel de la VM.
+
+        Une réponse vide — ou incompréhensible — laisse la VM telle quelle :
+        sur un formulaire de matériel, le silence ne doit rien modifier.
+        """
+        ans = input(prompt).strip()
+        if self._is_yes(ans):
+            return True
+        if self._is_no(ans):
+            return False
+        return default
+
+    def _qemu_host_gpu_node(self):
+        """Nœud de rendu de l'hôte, vu par deploy_qemu (source unique), ou ''."""
+        try:
+            return self._qemu_import_module().host_gpu_node()
+        except (OSError, AttributeError, ImportError):
+            return ""
+
+    def _qemu_adjust_hardware(self, names):
+        """Règle vCPU, RAM, 3D et démarrage automatique de VM ÉTEINTES.
+
+        Les VM allumées sont écartées, en le disant : virt-xml y écrirait une
+        définition qui ne prendrait effet qu'au prochain démarrage — un
+        réglage qui paraît appliqué et ne l'est pas.
+        """
+        from script.todo import qemu_hardware as hw
+
+        off, busy = [], []
+        for name in names:
+            state = self._qemu_domstate(name)
+            (off if state == "shut off" else busy).append(name)
+        if busy:
+            print(
+                f"\n  ⚠ {t('Not shut off, hardware left untouched:')}"
+                f" {', '.join(busy)}"
+            )
+        if not off:
+            return
+        node = self._qemu_host_gpu_node()
+        gpu_txt = node or t("none (software rendering)")
+        print(f"\n{t('Host GPU:')} {gpu_txt}")
+        rows = [
+            r
+            for r in (
+                hw.hw_state(self._qemu_dumpxml(n), self._qemu_autostart(n))
+                for n in off
+            )
+            if r.get("name")
+        ]
+        if not rows:
+            print(f"  ⚠ {t('Unreadable VM definition.')}")
+            return
+        for r in rows:
+            print(f"  {r['name']:<30} {hw.hw_summary(r)}")
+        want = self._qemu_hw_form(rows, node)
+        if want is None:
+            print(t("Cancelled."))
+            return
+        if not want:
+            want = self._qemu_hw_prompts(rows, node)
+        if not want:
+            print(t("Cancelled."))
+            return
+        plan = []
+        for r in rows:
+            plan += hw.hw_plan(r, want.get(r["name"]) or {}, node)
+        for entry in plan:
+            if entry.get("skip"):
+                print(f"  ⚠ {entry['what']} : {entry['skip']}")
+        cmds = [e for e in plan if e.get("cmd")]
+        if not cmds:
+            print(f"\n{t('Nothing to change.')}")
+            return
+        print(f"\n{t('Changes:')}")
+        for entry in cmds:
+            print(f"  - {entry['what']}")
+        if not self._is_yes(input(t("Apply these changes? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for entry in cmds:
+            cmd = "sudo " + " ".join(shlex.quote(c) for c in entry["cmd"])
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_hw_form(self, rows, node):
+        """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
+        retomber sur les invites en ligne (textual absent), None si annulé."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return {}
+        try:
+            from script.todo.qemu_hardware import run_hardware_form
+
+            return run_hardware_form(rows, node)
+        except ImportError:
+            return {}
+
+    def _qemu_hw_prompts(self, rows, node):
+        """Même ajustement, en invites, quand Textual n'est pas disponible."""
+        from script.todo import qemu_hardware as hw
+
+        want = {}
+        for r in rows:
+            print(f"\n  {r['name']} — {hw.hw_summary(r)}")
+            vcpus = input(f"    vCPU [{r.get('vcpus')}] : ")
+            ram = input(f"    RAM [{hw.fmt_mib(r.get('mem_mib'))}] : ")
+            reason = hw.gpu_allowed(r, node)
+            if reason:
+                print(f"    ⚠ {t('3D acceleration (host GPU)')} : {reason}")
+                gpu = False
+            else:
+                gpu = self._qemu_ask_bool(
+                    f"    {t('3D acceleration (host GPU)')} ? (o/N) : ",
+                    bool(r.get("accel3d")),
+                )
+            auto = self._qemu_ask_bool(
+                f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
+            )
+            want[r["name"]] = hw.build_want(r, vcpus, ram, gpu, auto)
+        return want
 
     @staticmethod
     def _qemu_dominfo(name):
