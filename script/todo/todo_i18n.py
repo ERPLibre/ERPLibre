@@ -5955,6 +5955,222 @@ TRANSLATIONS = {
         "fr": "autre(s) nom(s) de champ",
         "en": "other field name(s)",
     },
+    "Filestore of": {
+        "fr": "Filestore de",
+        "en": "Filestore of",
+    },
+    "file(s) missing": {
+        "fr": "fichier(s) absent(s)",
+        "en": "file(s) missing",
+    },
+    "file(s) on disk": {
+        "fr": "fichier(s) sur disque",
+        "en": "file(s) on disk",
+    },
+    "file(s) sit in nested filestores Odoo never reads.": {
+        "fr": "fichier(s) échoué(s) dans des filestores imbriqués qu'Odoo ne lit jamais.",
+        "en": "file(s) sit in nested filestores Odoo never reads.",
+    },
+    "intact in another database's filestore": {
+        "fr": "intacts dans le filestore d'une autre base",
+        "en": "intact in another database's filestore",
+    },
+    "its field no longer exists — nothing reads it": {
+        "fr": "leur champ n'existe plus — rien ne les lit",
+        "en": "its field no longer exists — nothing reads it",
+    },
+    "nowhere to be found — truly lost": {
+        "fr": "introuvables — réellement perdus",
+        "en": "nowhere to be found — truly lost",
+    },
+    "still in a backup zip": {
+        "fr": "encore dans une sauvegarde zip",
+        "en": "still in a backup zip",
+    },
+    "stored attachment(s)": {
+        "fr": "pièce(s) jointe(s) stockée(s)",
+        "en": "stored attachment(s)",
+    },
+    "stranded in a nested filestore Odoo never reads": {
+        "fr": "échoués dans un filestore imbriqué qu'Odoo ne lit pas",
+        "en": "stranded in a nested filestore Odoo never reads",
+    },
+    "Files": {
+        "fr": "Fichiers",
+        "en": "Files",
+    },
+    "Attachment files missing from the filestore": {
+        "fr": "🗄  Fichiers de pièces jointes absents du filestore",
+        "en": "🗄  Attachment files missing from the filestore",
+    },
+    "Scanning filestores and backups…": {
+        "fr": "Examen des filestores et des sauvegardes…",
+        "en": "Scanning filestores and backups…",
+    },
+    "Filestore restored:": {
+        "fr": "Filestore restauré :",
+        "en": "Filestore restored:",
+    },
+    "file(s) in place": {
+        "fr": "fichier(s) en place",
+        "en": "file(s) in place",
+    },
+    "Filestore restore looks wrong for": {
+        "fr": "Restauration du filestore suspecte pour",
+        "en": "Filestore restore looks wrong for",
+    },
+    "landed in a nested filestore Odoo never reads": {
+        "fr": "atterris dans un filestore imbriqué qu'Odoo ne lit jamais",
+        "en": "landed in a nested filestore Odoo never reads",
+    },
+    "To fix:": {
+        "fr": "Pour corriger :",
+        "en": "To fix:",
+    },
+    "never landed at all": {
+        "fr": "ne sont arrivés nulle part",
+        "en": "never landed at all",
+    },
+    "record still exists": {
+        "fr": "l'enregistrement existe encore",
+        "en": "record still exists",
+    },
+    "record is gone — nothing will miss it": {
+        "fr": "l'enregistrement a disparu — personne ne la cherchera",
+        "en": "record is gone — nothing will miss it",
+    },
+    "Delete these": {
+        "fr": "Supprimer ces",
+        "en": "Delete these",
+    },
+    "Directory:": {
+        "fr": "Dossier :",
+        "en": "Directory:",
+    },
+    "No nested filestore to tidy.": {
+        "fr": "Pas de filestore imbriqué à ranger.",
+        "en": "No nested filestore to tidy.",
+    },
+    "Nothing to purge.": {
+        "fr": "Rien à purger.",
+        "en": "Nothing to purge.",
+    },
+    "Nothing was deleted.": {
+        "fr": "Rien n'a été supprimé.",
+        "en": "Nothing was deleted.",
+    },
+    "Nothing was moved.": {
+        "fr": "Rien n'a été déplacé.",
+        "en": "Nothing was moved.",
+    },
+    "The purge failed.": {
+        "fr": "La purge a échoué.",
+        "en": "The purge failed.",
+    },
+    "attachment row(s) deleted.": {
+        "fr": "ligne(s) de pièce jointe supprimée(s).",
+        "en": "attachment row(s) deleted.",
+    },
+    "attachment row(s) for good?": {
+        "fr": "ligne(s) de pièce jointe, définitivement ?",
+        "en": "attachment row(s) for good?",
+    },
+    "duplicate(s) removed": {
+        "fr": "doublon(s) supprimé(s)",
+        "en": "duplicate(s) removed",
+    },
+    "file(s) to move up": {
+        "fr": "fichier(s) à remonter",
+        "en": "file(s) to move up",
+    },
+    "moved up": {
+        "fr": "remonté(s)",
+        "en": "moved up",
+    },
+    "pure duplicate(s) to delete": {
+        "fr": "doublon(s) pur(s) à supprimer",
+        "en": "pure duplicate(s) to delete",
+    },
+    "🧹 Purge attachments whose field no longer exists": {
+        "fr": "🧹 Purger les pièces jointes dont le champ n'existe plus",
+        "en": "🧹 Purge attachments whose field no longer exists",
+    },
+    "🧹 Tidy the nested filestore Odoo never reads": {
+        "fr": "🧹 Ranger le filestore imbriqué qu'Odoo ne lit pas",
+        "en": "🧹 Tidy the nested filestore Odoo never reads",
+    },
+    "The purge ran but said nothing.": {
+        "fr": "La purge a tourné sans rien annoncer.",
+        "en": "The purge ran but said nothing.",
+    },
+    "row(s) whose field is gone still hold their file": {
+        "fr": "ligne(s) à champ disparu retiennent encore leur fichier",
+        "en": "row(s) whose field is gone still hold their file",
+    },
+    "file(s) sit in a nested filestore Odoo never reads.": {
+        "fr": "fichier(s) échoué(s) dans un filestore imbriqué qu'Odoo ne lit jamais.",
+        "en": "file(s) sit in a nested filestore Odoo never reads.",
+    },
+    "such file(s) sit in OTHER databases filestores.": {
+        "fr": "fichier(s) de ce genre dorment dans les filestores d'AUTRES bases.",
+        "en": "such file(s) sit in OTHER databases filestores.",
+    },
+    "Could not inspect the attachments: ": {
+        "fr": "Inspection des pièces jointes impossible : ",
+        "en": "Could not inspect the attachments: ",
+    },
+    "Delete them?": {
+        "fr": "Les supprimer ?",
+        "en": "Delete them?",
+    },
+    "No attachment points at a field that is gone.": {
+        "fr": "Aucune pièce jointe ne pointe vers un champ disparu.",
+        "en": "No attachment points at a field that is gone.",
+    },
+    "attachment(s) point at a field that no longer exists": {
+        "fr": "pièce(s) jointe(s) pointent vers un champ qui n'existe plus",
+        "en": "attachment(s) point at a field that no longer exists",
+    },
+    "Corrected.": {
+        "fr": "Corrigé.",
+        "en": "Corrected.",
+    },
+    "Every view type agrees with its inheritance.": {
+        "fr": "Tous les types de vue s'accordent avec leur héritage.",
+        "en": "Every view type agrees with its inheritance.",
+    },
+    "No module update will fix this: the type is set once,": {
+        "fr": "Aucune mise à jour de module ne corrigera cela : le type est posé une fois,",
+        "en": "No module update will fix this: the type is set once,",
+    },
+    "The correction failed.": {
+        "fr": "La correction a échoué.",
+        "en": "The correction failed.",
+    },
+    "at creation. Re-run with --apply.": {
+        "fr": "à la création. Relancer avec --apply.",
+        "en": "at creation. Re-run with --apply.",
+    },
+    "their inheritance": {
+        "fr": "leur héritage",
+        "en": "their inheritance",
+    },
+    "view(s) whose stored type contradicts": {
+        "fr": "vue(s) dont le type stocké contredit",
+        "en": "view(s) whose stored type contradicts",
+    },
+    "Fix views whose type contradicts their": {
+        "fr": "Corriger les vues dont le type contredit leur",
+        "en": "Fix views whose type contradicts their",
+    },
+    "inheritance": {
+        "fr": "héritage",
+        "en": "inheritance",
+    },
+    "Correct them?": {
+        "fr": "Les corriger ?",
+        "en": "Correct them?",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",

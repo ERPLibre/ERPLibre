@@ -1594,7 +1594,13 @@ class TestWhatGetsRecorded(Base):
         # l'état : c'est précisément celui qu'on cherchera en revenant.
         import inspect
 
-        source = inspect.getsource(TodoUpgrade.todo_upgrade_execute)
+        # Le menu d'erreur vit dans `_prompt_on_error`, extrait de
+        # `todo_upgrade_execute` quand celui-ci a passé le seuil de
+        # complexité. Lire les deux : c'est le CHEMIN d'erreur qu'on
+        # éprouve, pas une méthode en particulier.
+        source = inspect.getsource(
+            TodoUpgrade.todo_upgrade_execute
+        ) + inspect.getsource(TodoUpgrade._prompt_on_error)
         self.assertLess(
             source.index('record_event("command"'),
             source.index("Error detected"),

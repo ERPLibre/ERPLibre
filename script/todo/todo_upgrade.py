@@ -2848,6 +2848,195 @@ class TodoUpgrade:
         if status.lower().strip() == "y":
             self.todo.prompt_execute_selenium_and_run_db(database_name_upgrade)
 
+    def _prompt_on_error(self, database_name, defaut, repare):
+        """Le menu proposé quand une commande échoue. Rend (choix, réparé).
+
+        Extrait de `todo_upgrade_execute` : à cinq entrées la méthode
+        appelante passait le seuil de complexité, et une boucle d'invite
+        se relit mieux seule que noyée dans l'exécution d'une commande.
+        """
+        tours = 0
+        while True:
+            # Une borne STRUCTURELLE, et non pas seulement la logique
+            # ci-dessous qui bascule le défaut. Les deux protections
+            # visent la même panne — une invite qui se repropose sans
+            # fin — mais celle-ci tient même si l'autre est cassée un
+            # jour par mégarde. Une boucle infinie dans une migration
+            # lancée sans surveillance coûte une nuit.
+            tours += 1
+            if tours > self.MAX_ERROR_TURNS:
+                print(f"🛑 {t('Too many turns on this prompt: moving on.')}")
+                wait_status = ""
+                break
+            print(f"[1] {t('to redo the command')}")
+            if database_name:
+                print(
+                    f"[2] {t('Check the COW views that drifted')}"
+                    f" ({database_name})"
+                )
+                print(f"[3] {t('Reset one of them onto its module view')}")
+                print(f"[4] {t('Browse the differences full screen')}")
+                print(
+                    f"[5] {t('Fix views whose type contradicts their')}"
+                    f" {t('inheritance')}"
+                )
+            # `self.ask` : une migration automatique s'arrêtait ICI,
+            # sur une invite qui ne demande qu'à continuer, et restait
+            # bloquée sans que rien ne le signale.
+            wait_status = (
+                self.ask(
+                    f"💬 {t('Error detected. Choose, or ctrl+c to')}"
+                    f" {t('stop')}"
+                    f" ({t('Enter')} = {defaut or t('continue')}) : ",
+                    default=defaut,
+                )
+                .strip()
+                .lower()
+            )
+
+            # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
+            # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
+
+            if wait_status == "2" and database_name:
+                # Le motif d'échec le plus fréquent ici est « Element
+                # <xpath …> cannot be located in parent view » : une copie
+                # COW en retard sur sa vue module. On propose l'outil sur
+                # place, puis on repose le choix pour rejouer.
+                self.check_stale_cow_views(database_name)
+                continue
+            if wait_status == "3" and database_name:
+                repare = self.prompt_reset_stale_cow_views(database_name)
+                if repare:
+                    # Quelque chose a changé : la commande mérite un
+                    # nouvel essai, et c'est le seul cas où le rejeu
+                    # est AUTOMATIQUE.
+                    wait_status = "1"
+                    break
+                # Rien à réinitialiser. Reproposer « 3 » ferait tourner
+                # en rond — mesuré : « Aucune copie COW n'a dérivé »,
+                # encore et encore, sans fin.
+                defaut = ""
+                continue
+            if wait_status == "5" and database_name:
+                # Rien à voir avec les COW : ici la vue n'est PAS une
+                # copie, c'est son `type` stocké qui ment. Odoo ne le
+                # recalcule jamais — il le pose à la création — donc
+                # aucune mise à jour ne le réparera, et le chargement
+                # échoue avant d'y arriver.
+                repare = self.prompt_fix_view_type(database_name)
+                if repare:
+                    wait_status = "1"
+                    break
+                defaut = ""
+                continue
+            if wait_status == "4" and database_name:
+                # Sur le VRAI terminal : un plein écran refuse de
+                # s'ouvrir sur un stdout capturé, et retomberait sur le
+                # rapport texte sans que rien ne distingue les deux.
+                self.run_on_terminal(
+                    f"{PYTHON_BIN} ./"
+                    + os.path.join(
+                        PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
+                    )
+                    + f" -d {database_name} --tui"
+                )
+                continue
+            break
+
+        return wait_status, repare
+
+    def prompt_fix_view_type(self, database):
+        """Corriger les vues dont le `type` contredit leur héritage.
+
+        Rend True si quelque chose a changé — c'est ce qui autorise le
+        rejeu automatique de la commande.
+
+        En SQL, sans l'ORM : le registre ne charge plus, et c'est
+        précisément ce qu'on répare. Un outil qui aurait besoin d'Odoo
+        pour réparer ce qui empêche Odoo de démarrer ne servirait à rien.
+        """
+        outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_view_type.py")
+        status, _cmd = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database}"
+        )
+        if status != 1:
+            # 0 : rien à corriger. 2 : l'outil a échoué. Ni l'un ni
+            # l'autre ne justifie de rejouer la commande.
+            return False
+        reponse = (
+            self.ask(f"💬 {t('Correct them?')} (Y/n) : ", default="y")
+            .strip()
+            .lower()
+        )
+        if reponse not in ("y", "yes", "o"):
+            return False
+        status, _cmd = self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database} --apply"
+        )
+        return status == 0
+
+    def prompt_purge_dead_attachments(self, database):
+        """Effacer les pièces jointes dont le champ n'existe plus.
+
+        ICI et pas entre les paliers. Mesuré : entre deux versions, deux
+        à onze champs disparaissent puis REVIENNENT — `hr.employee.phone`,
+        `account.move.statement_id`. « Le champ n'existe plus » est donc
+        un état transitoire tant que la migration court, et purger
+        dessus, c'est trancher sur ce qui va se rétablir.
+
+        Le gain d'un nettoyage par palier serait nul de toute façon :
+        mesuré, 1881 lignes apparaissent au palier 13 et le compte ne
+        bouge plus ensuite. Une passe finale les prend toutes.
+
+        Après la sauvegarde ? Non, AVANT : celle qui suit capturera
+        l'état nettoyé, et qui veut garder l'état d'avant n'a qu'à
+        refuser ici puis relancer l'outil depuis le menu Analyse.
+        """
+        from script.analyse import check_filestore as filestore
+
+        try:
+            rapport = filestore.audit(database)
+        except Exception as exc:
+            print(f"⚠ {t('Could not inspect the attachments: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            return
+        sql = filestore.purge_dead_sql(rapport)
+        combien = len(rapport.get("dead_ids") or [])
+        if not sql:
+            print(f"✅ {t('No attachment points at a field that is gone.')}")
+            return
+        poids = rapport.get("dead_kept_size", 0) // 1024
+        print()
+        print(
+            f"🕳 {combien}"
+            f" {t('attachment(s) point at a field that no longer exists')}"
+            f" ({poids} ko)"
+        )
+        for texte in filestore.summarise(
+            rapport["groups"]["dead_field"] + (rapport.get("dead_kept") or [])
+        )[:6]:
+            print(f"   {texte}")
+        reponse = (
+            self.ask(f"💬 {t('Delete them?')} (Y/n) : ", default="y")
+            .strip()
+            .lower()
+        )
+        if reponse not in ("y", "yes", "o"):
+            print(f"ℹ️  {t('Nothing was deleted.')}")
+            return
+        status, _cmd, sortie = self.todo_upgrade_execute(
+            f'psql -d {database} -c "{sql}"', get_output=True
+        )
+        if status:
+            print(f"❌ {t('The purge failed.')}")
+            return
+        efface = filestore.rows_deleted(sortie)
+        if efface is None:
+            print(f"⚠ {t('The purge ran but said nothing.')}")
+            return
+        print(f"✅ {efface} {t('attachment row(s) deleted.')}")
+
     def get_rename_module(self, lst_module, next_version):
         path_search = f"odoo{next_version}.0/OCA_OpenUpgrade/"
         status, cmd_executed, lst_output = self.todo_upgrade_execute(
@@ -3679,79 +3868,9 @@ class TodoUpgrade:
             # n'existent pas et le défaut redevient « continuer ».
             defaut = "3" if database_name else ""
             repare = False
-            tours = 0
-            while True:
-                # Une borne STRUCTURELLE, et non pas seulement la logique
-                # ci-dessous qui bascule le défaut. Les deux protections
-                # visent la même panne — une invite qui se repropose sans
-                # fin — mais celle-ci tient même si l'autre est cassée un
-                # jour par mégarde. Une boucle infinie dans une migration
-                # lancée sans surveillance coûte une nuit.
-                tours += 1
-                if tours > self.MAX_ERROR_TURNS:
-                    print(
-                        f"🛑 {t('Too many turns on this prompt: moving on.')}"
-                    )
-                    wait_status = ""
-                    break
-                print(f"[1] {t('to redo the command')}")
-                if database_name:
-                    print(
-                        f"[2] {t('Check the COW views that drifted')}"
-                        f" ({database_name})"
-                    )
-                    print(f"[3] {t('Reset one of them onto its module view')}")
-                    print(f"[4] {t('Browse the differences full screen')}")
-                # `self.ask` : une migration automatique s'arrêtait ICI,
-                # sur une invite qui ne demande qu'à continuer, et restait
-                # bloquée sans que rien ne le signale.
-                wait_status = (
-                    self.ask(
-                        f"💬 {t('Error detected. Choose, or ctrl+c to')}"
-                        f" {t('stop')}"
-                        f" ({t('Enter')} = {defaut or t('continue')}) : ",
-                        default=defaut,
-                    )
-                    .strip()
-                    .lower()
-                )
-
-                # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
-                # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
-
-                if wait_status == "2" and database_name:
-                    # Le motif d'échec le plus fréquent ici est « Element
-                    # <xpath …> cannot be located in parent view » : une copie
-                    # COW en retard sur sa vue module. On propose l'outil sur
-                    # place, puis on repose le choix pour rejouer.
-                    self.check_stale_cow_views(database_name)
-                    continue
-                if wait_status == "3" and database_name:
-                    repare = self.prompt_reset_stale_cow_views(database_name)
-                    if repare:
-                        # Quelque chose a changé : la commande mérite un
-                        # nouvel essai, et c'est le seul cas où le rejeu
-                        # est AUTOMATIQUE.
-                        wait_status = "1"
-                        break
-                    # Rien à réinitialiser. Reproposer « 3 » ferait tourner
-                    # en rond — mesuré : « Aucune copie COW n'a dérivé »,
-                    # encore et encore, sans fin.
-                    defaut = ""
-                    continue
-                if wait_status == "4" and database_name:
-                    # Sur le VRAI terminal : un plein écran refuse de
-                    # s'ouvrir sur un stdout capturé, et retomberait sur le
-                    # rapport texte sans que rien ne distingue les deux.
-                    self.run_on_terminal(
-                        f"{PYTHON_BIN} ./"
-                        + os.path.join(
-                            PATH_MIGRATION_GLOBAL, "reset_stale_cow_views.py"
-                        )
-                        + f" -d {database_name} --tui"
-                    )
-                    continue
-                break
+            wait_status, repare = self._prompt_on_error(
+                database_name, defaut, repare
+            )
 
             if wait_status == "1":
                 # Le rejeu AUTOMATIQUE est borné ; celui qu'on demande à la

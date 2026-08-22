@@ -141,7 +141,13 @@ class TestTheToolAndTheMigrationOfferIt(unittest.TestCase):
 
         from script.todo.todo_upgrade import TodoUpgrade
 
-        source = inspect.getsource(TodoUpgrade.todo_upgrade_execute)
+        # Le menu d'erreur vit dans `_prompt_on_error`, extrait de
+        # `todo_upgrade_execute` quand celui-ci a passé le seuil de
+        # complexité. Lire les deux : c'est le CHEMIN d'erreur qu'on
+        # éprouve, pas une méthode en particulier.
+        source = inspect.getsource(
+            TodoUpgrade.todo_upgrade_execute
+        ) + inspect.getsource(TodoUpgrade._prompt_on_error)
         self.assertIn("Browse the differences full screen", source)
         self.assertIn('wait_status == "4"', source)
 
@@ -152,7 +158,13 @@ class TestTheToolAndTheMigrationOfferIt(unittest.TestCase):
 
         from script.todo.todo_upgrade import TodoUpgrade
 
-        source = inspect.getsource(TodoUpgrade.todo_upgrade_execute)
+        # Le menu d'erreur vit dans `_prompt_on_error`, extrait de
+        # `todo_upgrade_execute` quand celui-ci a passé le seuil de
+        # complexité. Lire les deux : c'est le CHEMIN d'erreur qu'on
+        # éprouve, pas une méthode en particulier.
+        source = inspect.getsource(
+            TodoUpgrade.todo_upgrade_execute
+        ) + inspect.getsource(TodoUpgrade._prompt_on_error)
         start = source.index('wait_status == "4"')
         window = source[start : start + 620]
         self.assertIn("run_on_terminal", window)

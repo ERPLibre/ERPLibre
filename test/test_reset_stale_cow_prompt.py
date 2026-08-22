@@ -141,7 +141,13 @@ class TestTheKeysComeFromTheTool(unittest.TestCase):
     def test_the_error_prompt_offers_it(self):
         import inspect
 
-        source = inspect.getsource(TodoUpgrade.todo_upgrade_execute)
+        # Le menu d'erreur vit dans `_prompt_on_error`, extrait de
+        # `todo_upgrade_execute` quand celui-ci a passé le seuil de
+        # complexité. Lire les deux : c'est le CHEMIN d'erreur qu'on
+        # éprouve, pas une méthode en particulier.
+        source = inspect.getsource(
+            TodoUpgrade.todo_upgrade_execute
+        ) + inspect.getsource(TodoUpgrade._prompt_on_error)
         self.assertIn("prompt_reset_stale_cow_views", source)
         self.assertIn("Reset one of them onto its module view", source)
 

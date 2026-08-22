@@ -176,7 +176,13 @@ class TestTheHumanKeepsTheWheel(Harness):
     def test_the_prompt_says_what_enter_does(self):
         import inspect
 
-        source = inspect.getsource(TodoUpgrade.todo_upgrade_execute)
+        # Le menu d'erreur vit dans `_prompt_on_error`, extrait de
+        # `todo_upgrade_execute` quand celui-ci a passé le seuil de
+        # complexité. Lire les deux : c'est le CHEMIN d'erreur qu'on
+        # éprouve, pas une méthode en particulier.
+        source = inspect.getsource(
+            TodoUpgrade.todo_upgrade_execute
+        ) + inspect.getsource(TodoUpgrade._prompt_on_error)
         self.assertIn('defaut = "3" if database_name else ""', source)
         self.assertIn("default=defaut", source)
 
