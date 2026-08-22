@@ -3103,6 +3103,18 @@ TRANSLATIONS = {
         "fr": "Nœud de rendu",
         "en": "Render node",
     },
+    "no statistics yet": {
+        "fr": "pas encore de statistiques",
+        "en": "no statistics yet",
+    },
+    "10s average": {
+        "fr": "moyenne 10 s",
+        "en": "10s average",
+    },
+    "total written": {
+        "fr": "cumul écrit",
+        "en": "total written",
+    },
     "Screens": {
         "fr": "Écrans",
         "en": "Screens",

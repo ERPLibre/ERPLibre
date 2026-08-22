@@ -1059,6 +1059,245 @@ def virsh_domstates() -> dict:
     return states
 
 
+# Fenêtre du débit d'écriture. Dix secondes : le disque d'une VM en
+# installation travaille par rafales — « apt » décompresse, « poetry » compile,
+# puis plus rien pendant trois secondes. Un instantané de deux secondes affiche
+# donc tantôt 0, tantôt 200 Mo/s, et ne dit rien. Sur dix secondes, le chiffre
+# devient un débit qu'on peut comparer d'une VM à l'autre.
+WRITE_WINDOW = 10.0
+
+# Âge maximal d'un relevé du ballon mémoire. Au-delà, la valeur est TAISÉE
+# plutôt que montrée : virtio-balloon ne publie ses compteurs que si une
+# période de collecte est armée, et une valeur figée depuis une demi-heure
+# ferait croire à une VM au repos alors qu'elle compile.
+BALLOON_MAX_AGE = 30.0
+
+# Les compteurs du ballon sont en kibioctets ; ceux des blocs, en octets.
+_KIB = 1024
+
+
+def parse_domstats(text: str) -> dict:
+    """Sortie de « virsh domstats » -> {nom: relevé}.
+
+    Un relevé porte : ram_used / ram_total (octets), ram_at (horodatage du
+    dernier rapport du ballon), wr_bytes (cumul écrit depuis le démarrage du
+    processus QEMU), disk_used / disk_total (octets).
+
+    Le seed ISO est ÉCARTÉ des disques : monté en lecture seule, il n'est
+    jamais écrit, et sa capacité (quelques mégaoctets) l'aurait fait passer
+    pour le disque système sur une VM dont le qcow2 n'est pas encore alloué.
+    """
+    out = {}
+    nom = None
+    brut = {}
+
+    def clore():
+        if nom is None:
+            return
+        rec = {
+            "ram_used": 0,
+            "ram_total": 0,
+            "ram_at": 0,
+            "wr_bytes": 0,
+            "disk_used": 0,
+            "disk_total": 0,
+        }
+        dispo = brut.get("balloon.available")
+        util = brut.get("balloon.usable")
+        if dispo:
+            rec["ram_total"] = dispo * _KIB
+            if util is not None:
+                rec["ram_used"] = max(0, (dispo - util)) * _KIB
+        rec["ram_at"] = brut.get("balloon.last-update") or 0
+        # Disques : on parcourt les index déclarés par block.count.
+        meilleur = 0
+        for i in range(int(brut.get("block.count") or 0)):
+            chemin = brut.get(f"block.{i}.path.str") or ""
+            if chemin.lower().endswith(".iso"):
+                continue
+            rec["wr_bytes"] += brut.get(f"block.{i}.wr.bytes") or 0
+            cap = brut.get(f"block.{i}.capacity") or 0
+            if cap >= meilleur:
+                meilleur = cap
+                rec["disk_total"] = cap
+                rec["disk_used"] = brut.get(f"block.{i}.allocation") or 0
+        out[nom] = rec
+
+    for ligne in (text or "").splitlines():
+        ligne = ligne.strip()
+        if ligne.startswith("Domain:"):
+            clore()
+            nom = ligne.split("'")[1] if "'" in ligne else None
+            brut = {}
+            continue
+        if nom is None or "=" not in ligne:
+            continue
+        cle, _, val = ligne.partition("=")
+        try:
+            brut[cle] = int(val)
+        except ValueError:
+            # Les valeurs non numériques (chemins, noms de device) sont
+            # gardées à part : « block.0.path » en est une, et c'est elle qui
+            # démasque le seed ISO.
+            brut[f"{cle}.str"] = val
+    clore()
+    return out
+
+
+class WriteWindow:
+    """Débit d'écriture moyen par VM, sur une fenêtre glissante."""
+
+    def __init__(self, window=WRITE_WINDOW):
+        self.window = window
+        self._hist = {}
+
+    def add(self, name, wr_bytes, now):
+        hist = self._hist.setdefault(name, [])
+        # Un compteur qui RECULE veut dire que le domaine a redémarré : le
+        # processus QEMU est neuf, ses compteurs repartent de zéro. Sans ce
+        # garde, le débit affiché serait négatif, puis énorme au relevé
+        # suivant. Une installation redémarre la VM : le cas est la règle.
+        if hist and wr_bytes < hist[-1][1]:
+            hist.clear()
+        hist.append((now, wr_bytes))
+        limite = now - self.window
+        while len(hist) > 2 and hist[1][0] < limite:
+            hist.pop(0)
+
+    def rate(self, name):
+        """Octets/s, ou None tant que la fenêtre n'a pas de quoi conclure."""
+        hist = self._hist.get(name) or []
+        if len(hist) < 2:
+            return None
+        span = hist[-1][0] - hist[0][0]
+        if span < 1.0:
+            return None
+        return max(0.0, (hist[-1][1] - hist[0][1]) / span)
+
+    def total(self, name):
+        """Écrit depuis le premier relevé de la fenêtre (octets)."""
+        hist = self._hist.get(name) or []
+        return hist[-1][1] if hist else None
+
+
+def fmt_rate(bps) -> str:
+    """Octets/s -> « 12.3M/s ». « - » tant qu'on ne sait pas."""
+    return "-" if bps is None else f"{_fmt_size(int(bps))}/s"
+
+
+def _fmt_tight(nbytes) -> str:
+    """Comme _fmt_size, mais sans décimale au-delà de dix unités.
+
+    « 63G » plutôt que « 62.6G » : dans une colonne de tableau, ces deux
+    caractères décident si « Disque » reste visible ou sort de l'écran, et la
+    décimale n'apprend rien à côté d'un total de 65 Go.
+    """
+    if nbytes is None:
+        return "-"
+    for unit, div in (("T", 1 << 40), ("G", 1 << 30), ("M", 1 << 20)):
+        if nbytes >= div:
+            val = nbytes / div
+            return f"{val:.0f}{unit}" if val >= 10 else f"{val:.1f}{unit}"
+    return f"{max(0, int(nbytes)) // 1024}K"
+
+
+def fmt_pair(used, total) -> str:
+    """« 1.1G/12G », « 63G/65G ». « - » si le total manque : « ?/12G »
+    n'informe pas."""
+    if not total:
+        return "-"
+    return f"{_fmt_tight(used)}/{_fmt_tight(total)}"
+
+
+def fmt_pct(used, total) -> str:
+    return f" ({int(used / total * 100)}%)" if total else ""
+
+
+def ram_pair(rec, now, max_age=BALLOON_MAX_AGE) -> str:
+    """RAM utilisée/totale de la VM, ou « - » si le relevé est PÉRIMÉ."""
+    if not rec or not rec.get("ram_total"):
+        return "-"
+    at = rec.get("ram_at") or 0
+    if at and now - at > max_age:
+        return "-"
+    return fmt_pair(rec.get("ram_used"), rec["ram_total"])
+
+
+def vm_stats_line(name, rec, bps, now, ecrit=None) -> str:
+    """Section statistiques d'UNE VM, en une ligne dense.
+
+    Le tableau porte les mêmes chiffres en colonnes, pour tout le parc d'un
+    coup d'œil ; cette ligne les détaille pour la VM sélectionnée — celle dont
+    le journal et la commande SSH sont déjà affichés.
+    """
+    if not rec:
+        return f"  📊 {name} · {t('no statistics yet')}"
+    bits = [f"✍ {fmt_rate(bps)} ({t('10s average')})"]
+    if ecrit:
+        bits.append(f"{t('total written')} {_fmt_size(ecrit)}")
+    ram = ram_pair(rec, now)
+    if ram != "-":
+        bits.append(
+            f"🧠 RAM {ram}{fmt_pct(rec['ram_used'], rec['ram_total'])}"
+        )
+    if rec.get("disk_total"):
+        bits.append(
+            f"💾 {t('disk')} "
+            f"{fmt_pair(rec['disk_used'], rec['disk_total'])}"
+            f"{fmt_pct(rec['disk_used'], rec['disk_total'])}"
+        )
+    return f"  📊 {name} · " + " · ".join(bits)
+
+
+def read_domstats() -> str:
+    """Sortie brute de « virsh domstats --balloon --block » (tout le parc).
+
+    UN appel pour toutes les VM — 0,03 s mesuré sur deux domaines. Le suivi
+    relève toutes les deux secondes : une commande par VM y coûterait N
+    processus à chaque tour."""
+    try:
+        res = subprocess.run(
+            ["sudo", "virsh", "domstats", "--balloon", "--block"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env={**os.environ, "LC_ALL": "C", "LANG": "C"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout if res.returncode == 0 else ""
+
+
+def arm_balloon(names) -> None:
+    """Arme la période de collecte du ballon (5 s) sur chaque VM.
+
+    Sans elle, « balloon.available » et « balloon.usable » restent FIGÉS sur le
+    dernier rapport du pilote : mesuré sur une VM fraîche, 388 Mo annoncés
+    contre 1,1 Go réellement occupés, avec un horodatage vieux d'une
+    demi-heure. La période se perd quand le domaine redémarre — ce qu'une
+    installation fait — donc on la réarme à intervalle lent.
+    """
+    for name in names or ():
+        try:
+            subprocess.run(
+                [
+                    "sudo",
+                    "virsh",
+                    "dommemstat",
+                    name,
+                    "--period",
+                    "5",
+                    "--live",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env={**os.environ, "LC_ALL": "C", "LANG": "C"},
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+
+
 # --------------------------------------------------------------------------- #
 # Dashboard Textual
 # --------------------------------------------------------------------------- #
@@ -1068,13 +1307,26 @@ def virsh_domstates() -> dict:
 # que ce qui était affiché au départ.
 COL_DEFAULT_WIDTHS = {
     "seq": 3,
-    "vm": 22,
-    "arch": 7,
+    # 21 : un caractère de moins que l'ancien 22, et c'est lui qui fait tenir
+    # la ligne entière sur un terminal de 150 colonnes. « + » l'élargit, et
+    # c'est déjà la colonne visée par défaut.
+    "vm": 21,
+    # 5 : « amd64 », « s390x », « arm64 » font cinq caractères, et l'en-tête
+    # « Arch » quatre. Les deux de plus ne servaient rien.
+    "arch": 5,
     "err": 4,
     "state": 8,
-    "odoo": 6,
-    "elapsed": 7,
-    "disk": 8,
+    # 4 : une icône (🟢) ou un tiret, sous un en-tête de quatre lettres.
+    "odoo": 4,
+    # 6 : « 125:30 » est le pire cas d'une installation de deux heures.
+    "elapsed": 6,
+    # Section statistiques de la VM : ce qu'elle écrit, sa RAM, son disque.
+    # « 12.3M/s » tient en 7 et « 1.1G/12G » en 9 : au-delà, « Disque » sortait
+    # de l'écran sur un terminal de 150 colonnes, moitié prise par le journal.
+    "wr": 7,
+    # 10 et non 9 : sur une VM de 128 Go, « 1001M/128G » fait dix caractères.
+    "ram": 10,
+    "disk": 9,
 }
 
 
@@ -1369,7 +1621,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         que devinable, et « max-width » laisse la table suivre l'élargissement
         des colonnes sans manger tout l'écran. */
         DataTable {
-            width: auto; max-width: 60%; height: 1fr;
+            width: auto; max-width: 66%; height: 1fr;
             overflow-x: auto; overflow-y: auto;
             scrollbar-size-horizontal: 1; scrollbar-size-vertical: 1;
             border: solid $accent;
@@ -1444,6 +1696,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             )
             # État libvirt (running/paused/gone), rafraîchi à intervalle LENT.
             self._domstate = {}
+            # Statistiques par VM : dernier relevé libvirt, et la fenêtre
+            # glissante qui en tire un débit d'écriture.
+            self._vmstats = {}
+            self._wrate = WriteWindow()
             # Erreurs détectées dans le log à la complétion : {nom: (err, warn)}.
             self._errcount = {}
             # Sommaire de stats déplié (clic) ou non.
@@ -1498,6 +1754,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             table.add_column(
                 "Durée", key="elapsed", width=COL_DEFAULT_WIDTHS["elapsed"]
             )
+            # Statistiques de la VM. « Écrit/s » est une MOYENNE sur dix
+            # secondes : le disque d'une installation travaille par rafales,
+            # et l'instantané n'y montrait que des 0 et des pics.
+            table.add_column(
+                "Écrit/s", key="wr", width=COL_DEFAULT_WIDTHS["wr"]
+            )
+            table.add_column("RAM", key="ram", width=COL_DEFAULT_WIDTHS["ram"])
             table.add_column(
                 "Disque", key="disk", width=COL_DEFAULT_WIDTHS["disk"]
             )
@@ -1510,6 +1773,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     "⏳",
                     "—",
                     "--:--",
+                    "-",
+                    "-",
                     "-",
                     key=vm["name"],
                 )
@@ -1525,6 +1790,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Sommaire de stats en CHIFFRES (cliquable -> détail).
             yield Static("", id="stats")
             yield Static("", id="statsdetail")
+            # Section statistiques de la VM SÉLECTIONNÉE : les mêmes chiffres
+            # que ses colonnes, mais détaillés (pourcentages, cumul écrit).
+            # Une ligne par VM du parc aurait chassé le pied de page dès cinq
+            # machines ; la sélection suit déjà le journal et la barre SSH.
+            yield Static("", id="vmstats")
             yield Static("", id="sshbar")
             yield Footer()
 
@@ -1536,6 +1806,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             )
             self.sub_title = f"0/{len(vms)} {t('completed')}"
             self._refresh_ssh()
+            self._refresh_vmstats()
             self._load_selected_log(reset=True)
             # Table toutes les 2 s (30 lectures de fin de log), suivi du log
             # sélectionné toutes les 1 s (une seule lecture incrémentale).
@@ -1550,6 +1821,25 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         # -- helpers -------------------------------------------------------- #
         def _vm_by_name(self, name):
             return next((v for v in vms if v["name"] == name), None)
+
+        def _refresh_vmstats(self):
+            """Ligne de statistiques de la VM sélectionnée."""
+            name = self._selected
+            if not name:
+                return
+            try:
+                bar = self.query_one("#vmstats", Static)
+            except Exception:
+                return
+            bar.update(
+                vm_stats_line(
+                    name,
+                    self._vmstats.get(name),
+                    self._wrate.rate(name),
+                    time.time(),
+                    self._wrate.total(name),
+                )
+            )
 
         def _refresh_ssh(self):
             vm = self._vm_by_name(self._selected)
@@ -1612,9 +1902,27 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             """(THREAD) statut + taille disque de chaque VM + télémétrie. AUCUNE
             mise à jour d'UI ici : uniquement des I/O bloquantes déportées."""
             disks, status, errors, odoo = {}, {}, {}, {}
+            # UN appel virsh pour tout le parc, dans ce thread : le débit se
+            # calcule sur les relevés successifs, donc il faut échantillonner
+            # à chaque tour (2 s) et non au rythme lent des états.
+            stats = parse_domstats(read_domstats())
+            now_s = time.time()
+            for name, rec in stats.items():
+                self._wrate.add(name, rec["wr_bytes"], now_s)
+            self._vmstats = stats
+            wr, ram = {}, {}
             for vm in vms:
                 name = vm["name"]
-                disks[name] = _fmt_size(disk_actual_size(vm_disk_path(vm)))
+                rec = stats.get(name)
+                wr[name] = fmt_rate(self._wrate.rate(name))
+                ram[name] = ram_pair(rec, now_s)
+                if rec and rec.get("disk_total"):
+                    disks[name] = fmt_pair(rec["disk_used"], rec["disk_total"])
+                else:
+                    # Domaine pas encore défini (conversion de l'image, tout
+                    # début de l'installation) : le qcow2 existe déjà, et
+                    # st_blocks dit ce qu'il occupe. Sans total à annoncer.
+                    disks[name] = _fmt_size(disk_actual_size(vm_disk_path(vm)))
                 if (
                     name not in self._final
                     and self._domstate.get(name) != "gone"
@@ -1634,16 +1942,22 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 ):
                     if _port_open(vm.get("ip"), 8069):
                         odoo[name] = True
-            return disks, status, self._collect_tele(), errors, odoo
+            return disks, status, self._collect_tele(), errors, odoo, wr, ram
 
         async def _tick_table(self):
             # I/O (lectures de logs, stat disque, /proc) DÉPORTÉES en thread ->
             # la boucle d'événements Textual reste fluide même sous forte
             # charge ou disque lent. Les mises à jour d'UI restent sur la boucle.
             try:
-                disks, status, tele, errors, odoo = await asyncio.to_thread(
-                    self._collect_table
-                )
+                (
+                    disks,
+                    status,
+                    tele,
+                    errors,
+                    odoo,
+                    wr,
+                    ram,
+                ) = await asyncio.to_thread(self._collect_table)
             except Exception:
                 return
             self._errcount.update(errors)
@@ -1655,6 +1969,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 for vm in vms:
                     name = vm["name"]
                     self._set_cell(table, name, "disk", disks.get(name, "-"))
+                    self._set_cell(table, name, "wr", wr.get(name, "-"))
+                    self._set_cell(table, name, "ram", ram.get(name, "-"))
                     # Colonne Odoo : 🟢 dès que :8069 répond, sinon « — ».
                     self._set_cell(
                         table,
@@ -1743,6 +2059,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 if tele:
                     self.query_one("#telemetry", Static).update(tele)
                 self._update_stats()
+                # Les chiffres de la VM sélectionnée viennent d'être relevés :
+                # sa section les redit ici, détaillés.
+                self._refresh_vmstats()
             except Exception:
                 pass
 
@@ -1849,6 +2168,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             for vm in vms:
                 self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+            # Réarmer la période du ballon sur les VM qui tournent : sans elle
+            # la RAM affichée serait celle du dernier rapport du pilote, et une
+            # installation redémarre la VM — ce qui remet la période à zéro.
+            vivantes = [
+                vm["name"] for vm in vms if states.get(vm["name"]) == "running"
+            ]
+            if vivantes:
+                await asyncio.to_thread(arm_balloon, vivantes)
 
             # L'adresse est relue au même rythme. Le processus détaché suivait
             # déjà la VM quand son bail changeait, mais les VUES gardaient celle
@@ -1889,6 +2216,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 return
             self._selected = name
             self._refresh_ssh()
+            self._refresh_vmstats()
             self._load_selected_log(reset=True)
 
         def action_follow(self) -> None:
