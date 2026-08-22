@@ -75,6 +75,29 @@ XML_AVEC_3D = XML_SANS_3D.replace(
     "<gl rendernode='/dev/dri/renderD128'/></graphics>",
 )
 
+# XML persistant complet : mode CPU, écrans, interface réseau. C'est cette
+# forme-là que « virsh dumpxml --inactive » rend, sans les décorations que
+# libvirt ajoute au démarrage (portid, vnetN, alias).
+XML_COMPLET = """<domain type='kvm'>
+  <name>erplibre-ubuntu-2604-gnome</name>
+  <memory unit='KiB'>33554432</memory>
+  <currentMemory unit='KiB'>33554432</currentMemory>
+  <vcpu placement='static'>8</vcpu>
+  <cpu mode='host-passthrough' check='none' migratable='on'/>
+  <devices>
+    <interface type='network'>
+      <mac address='52:54:00:fc:a1:34'/>
+      <source network='default'/>
+      <model type='virtio'/>
+    </interface>
+    <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'/>
+    <video>
+      <model type='virtio' heads='1' primary='yes'/>
+    </video>
+  </devices>
+</domain>
+"""
+
 XML_SERVEUR = """<domain type='kvm'>
   <name>erplibre-serveur</name>
   <memory unit='KiB'>2097152</memory>
@@ -388,6 +411,8 @@ class TestMenuGlue(unittest.TestCase):
         )
         todo._qemu_autostart = lambda name: False
         todo._qemu_host_gpu_node = lambda: node
+        # Aucun test ne doit atteindre virsh : la liste des réseaux est fournie.
+        todo._qemu_net_choices = lambda: ["network:default"]
         todo.launched = []
         todo.execute = mock.Mock()
         todo.execute.exec_command_live = (
@@ -407,14 +432,14 @@ class TestMenuGlue(unittest.TestCase):
         """virt-xml y écrirait une définition qui ne prend effet qu'au
         prochain démarrage : un réglage qui paraît appliqué et ne l'est pas."""
         todo = self._todo({"vm-a": "running"})
-        todo._qemu_hw_form = lambda rows, node: {}
+        todo._qemu_hw_form = lambda rows, node, nets=None: {}
         out = self._run(todo, ["vm-a"], [])
         self.assertIn("vm-a", out)
         self.assertEqual([], todo.launched)
 
     def test_a_shut_off_vm_is_adjusted(self):
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: {
+        todo._qemu_hw_form = lambda rows, node, nets=None: {
             "vm-a": {"vcpus": 4, "ram": 8192, "gpu": True}
         }
         self._run(todo, ["vm-a"], ["o"])
@@ -425,7 +450,7 @@ class TestMenuGlue(unittest.TestCase):
 
     def test_nothing_to_change_launches_nothing(self):
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: {
+        todo._qemu_hw_form = lambda rows, node, nets=None: {
             "vm-a": {"vcpus": 8, "ram": 32768, "gpu": False}
         }
         out = self._run(todo, ["vm-a"], [])
@@ -434,26 +459,30 @@ class TestMenuGlue(unittest.TestCase):
 
     def test_refusing_the_confirmation_launches_nothing(self):
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: {"vm-a": {"vcpus": 4}}
+        todo._qemu_hw_form = lambda rows, node, nets=None: {
+            "vm-a": {"vcpus": 4}
+        }
         self._run(todo, ["vm-a"], ["n"])
         self.assertEqual([], todo.launched)
 
     def test_cancelling_the_form_launches_nothing(self):
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: None
+        todo._qemu_hw_form = lambda rows, node, nets=None: None
         self._run(todo, ["vm-a"], [])
         self.assertEqual([], todo.launched)
 
     def test_the_skipped_3d_is_explained_not_silent(self):
         todo = self._todo({"vm-a": "shut off"}, node="")
-        todo._qemu_hw_form = lambda rows, node: {"vm-a": {"gpu": True}}
+        todo._qemu_hw_form = lambda rows, node, nets=None: {
+            "vm-a": {"gpu": True}
+        }
         out = self._run(todo, ["vm-a"], [])
         self.assertIn(hw.t("no render node on the host"), out)
         self.assertEqual([], todo.launched)
 
     def test_the_host_gpu_is_announced_before_anything_else(self):
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: None
+        todo._qemu_hw_form = lambda rows, node, nets=None: None
         out = self._run(todo, ["vm-a"], [])
         self.assertIn(NODE, out)
 
@@ -461,8 +490,9 @@ class TestMenuGlue(unittest.TestCase):
         """Le repli en ligne n'est pas décoratif : sans Textual, c'est la SEULE
         voie, et un {} mal interprété annulerait tout."""
         todo = self._todo({"vm-a": "shut off"})
-        todo._qemu_hw_form = lambda rows, node: {}
-        self._run(todo, ["vm-a"], ["6", "", "o", "n", "o"])
+        todo._qemu_hw_form = lambda rows, node, nets=None: {}
+        # vCPU, RAM, 3D, démarrage auto, mode CPU, écrans, puis la validation.
+        self._run(todo, ["vm-a"], ["6", "", "o", "n", "", "", "o"])
         self.assertIn("--vcpus 6", " ".join(todo.launched))
 
     def test_an_empty_answer_keeps_the_current_state(self):
@@ -543,18 +573,302 @@ class TestForm(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("8", app.query_one("#vcpus0", Input).value)
             self.assertEqual("32G", app.query_one("#ram0", Input).value)
 
+    async def test_the_second_row_carries_cpu_screens_and_network(self):
+        from textual.widgets import Input, Select
+
+        app = hw.run_hardware_form(
+            [hw.hw_state(XML_COMPLET)],
+            NODE,
+            nets=["network:default", "bridge:br0"],
+            run_app=False,
+        )
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.query_one("#cpu0", Select).value = "host-model"
+            app.query_one("#heads0", Input).value = "2"
+            app.query_one("#net0", Select).value = "bridge:br0"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+        want = app.want["erplibre-ubuntu-2604-gnome"]
+        self.assertEqual("host-model", want["cpu"])
+        self.assertEqual(2, want["heads"])
+        self.assertEqual("bridge:br0", want["net"])
+
+    async def test_the_screens_value_is_actually_visible(self):
+        """Sous six colonnes, Textual dessine le cadre du champ mais PAS son
+        contenu : la valeur devient invisible, et on valide un champ qu'on
+        croit vide. Pire qu'une troncature, donc vérifié à l'écran."""
+        import re
+
+        app = hw.run_hardware_form(
+            [dict(hw.hw_state(XML_COMPLET), heads=3)], NODE, run_app=False
+        )
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            svg = app.export_screenshot()
+        rendu = re.findall(r">([^<>]+)</text>", svg)
+        self.assertIn("3", [txt.strip() for txt in rendu])
+
+    async def test_without_networks_to_offer_there_is_no_network_field(self):
+        """Un hôte sans pont n'a qu'une voie : une liste à un seul choix ne
+        vaut pas la place qu'elle prend."""
+        app = hw.run_hardware_form(
+            [dict(hw.hw_state(XML_COMPLET), net="")], NODE, run_app=False
+        )
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(0, len(app.query("#net0")))
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+        self.assertEqual("", app.want["erplibre-ubuntu-2604-gnome"]["net"])
+
+    async def test_the_current_network_stays_selected(self):
+        """La liste montre ce que la VM a : sans cela, valider sans y toucher
+        la basculerait sur le premier choix de la liste."""
+        from textual.widgets import Select
+
+        app = hw.run_hardware_form(
+            [hw.hw_state(XML_COMPLET)],
+            NODE,
+            nets=["bridge:br0", "network:default"],
+            run_app=False,
+        )
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(
+                "network:default", app.query_one("#net0", Select).value
+            )
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+        want = app.want["erplibre-ubuntu-2604-gnome"]
+        self.assertEqual("network:default", want["net"])
+        self.assertEqual([], hw.hw_plan(hw.hw_state(XML_COMPLET), want, NODE))
+
     async def test_it_fits_in_eighty_columns(self):
         """Un terminal de 80 colonnes est le plus petit qu'on rencontre ;
         au-delà, les libellés se tronquent en « Démarrage automatiq… »."""
         import re
 
-        rows = [hw.hw_state(XML_SANS_3D), hw.hw_state(XML_SERVEUR)]
-        app = await self._mount(rows, NODE)
+        rows = [hw.hw_state(XML_COMPLET), hw.hw_state(XML_SERVEUR)]
+        app = hw.run_hardware_form(
+            rows, NODE, nets=["network:default", "bridge:br0"], run_app=False
+        )
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.pause()
             svg = app.export_screenshot()
         texte = " ".join(re.findall(r">([^<>]+)</text>", svg))
         self.assertNotIn("…", texte)
+
+
+class TestCpuScreensNetwork(unittest.TestCase):
+    """Les trois réglages ajoutés, et pourquoi chacun est celui-là.
+
+    Mesuré sur l'hôte avant de les offrir : « heads » atteint QEMU
+    (max_outputs), « vram » NON sur un virtio-gpu — il n'est donc pas proposé.
+    """
+
+    def _plan(self, xml, want, node=NODE):
+        return hw.hw_plan(hw.hw_state(xml), want, node)
+
+    def test_it_reads_the_cpu_mode_screens_and_network(self):
+        st = hw.hw_state(XML_COMPLET)
+        self.assertEqual("host-passthrough", st["cpu"])
+        self.assertEqual(1, st["heads"])
+        self.assertEqual("network:default", st["net"])
+
+    def test_a_vm_without_an_interface_has_no_network(self):
+        self.assertEqual("", hw.hw_state(XML_SERVEUR)["net"])
+
+    def test_a_bridge_is_read_as_a_bridge(self):
+        """libvirt refuse type='network' avec un pont pour source : le type et
+        le nom doivent voyager ensemble."""
+        xml = XML_COMPLET.replace(
+            "<interface type='network'>", "<interface type='bridge'>"
+        ).replace("<source network='default'/>", "<source bridge='br0'/>")
+        self.assertEqual("bridge:br0", hw.hw_state(xml)["net"])
+
+    def test_the_label_marks_the_bridge_only(self):
+        """Le réseau libvirt est le cas ordinaire ; le suffixe allongeait le
+        libellé au-delà de la liste déroulante, qui se repliait."""
+        self.assertEqual("default", hw.net_label("network:default"))
+        self.assertIn("br0", hw.net_label("bridge:br0"))
+        self.assertIn(hw.t("bridge"), hw.net_label("bridge:br0"))
+
+    def test_the_spec_names_the_right_virt_xml_key(self):
+        self.assertEqual("network=default", hw.net_spec("network:default"))
+        self.assertEqual("bridge=br0", hw.net_spec("bridge:br0"))
+
+    def test_passthrough_keeps_check_and_migratable(self):
+        """C'est ce que virt-install écrit, et ce que veut la virtualisation
+        imbriquée : sans eux libvirt vérifie un modèle qu'il n'a pas calculé.
+        """
+        xml = XML_COMPLET.replace(
+            "<cpu mode='host-passthrough' check='none' migratable='on'/>",
+            "<cpu mode='host-model'/>",
+        )
+        plan = self._plan(xml, {"cpu": "host-passthrough"})
+        arg = plan[0]["cmd"][-1]
+        self.assertIn("check=none", arg)
+        self.assertIn("migratable=on", arg)
+
+    def test_host_model_carries_nothing_extra(self):
+        plan = self._plan(XML_COMPLET, {"cpu": "host-model"})
+        self.assertEqual("host-model", plan[0]["cmd"][-1])
+
+    def test_the_same_cpu_mode_changes_nothing(self):
+        self.assertEqual(
+            [], self._plan(XML_COMPLET, {"cpu": "host-passthrough"})
+        )
+
+    def test_screens_go_through_the_video_model(self):
+        """« heads » devient max_outputs sur la ligne QEMU — vérifié par
+        domxml-to-native. C'est le seul réglage vidéo qui y arrive."""
+        plan = self._plan(XML_COMPLET, {"heads": 2})
+        self.assertIn("model.heads=2", plan[0]["cmd"])
+
+    def test_screens_on_a_screenless_vm_are_refused_not_attempted(self):
+        """« --edit --video » sortirait en erreur au milieu du lot, et les
+        commandes suivantes ne partiraient pas."""
+        plan = self._plan(XML_SERVEUR, {"heads": 2})
+        self.assertEqual(1, len(plan))
+        self.assertIn("skip", plan[0])
+
+    def test_screens_and_3d_are_two_separate_edits(self):
+        """Vérifié sur un domaine réel : le second « --edit --video » ne
+        remet pas heads à 1, et le premier ne perd pas l'accélération."""
+        plan = self._plan(XML_COMPLET, {"heads": 2, "gpu": True})
+        videos = [e for e in plan if "--video" in e.get("cmd", [])]
+        self.assertEqual(2, len(videos))
+        heads = [e for e in videos if "model.heads=2" in e["cmd"]]
+        self.assertEqual(1, len(heads))
+        self.assertNotIn("accel3d", " ".join(heads[0]["cmd"]))
+
+    def test_switching_to_a_bridge(self):
+        """Le MAC et l'adresse PCI survivent — vérifié sur un domaine réel,
+        démarré : sans cela l'invité verrait une carte neuve, et son bail
+        DHCP comme son nom d'interface changeraient."""
+        plan = self._plan(XML_COMPLET, {"net": "bridge:br0"})
+        self.assertIn("bridge=br0", plan[0]["cmd"])
+        self.assertNotIn("mac", " ".join(plan[0]["cmd"]))
+
+    def test_switching_back_to_a_libvirt_network(self):
+        xml = XML_COMPLET.replace(
+            "<interface type='network'>", "<interface type='bridge'>"
+        ).replace("<source network='default'/>", "<source bridge='br0'/>")
+        plan = hw.hw_plan(hw.hw_state(xml), {"net": "network:default"}, NODE)
+        self.assertIn("network=default", plan[0]["cmd"])
+
+    def test_the_same_network_changes_nothing(self):
+        self.assertEqual(
+            [], self._plan(XML_COMPLET, {"net": "network:default"})
+        )
+
+    def test_a_vm_without_an_interface_is_told_not_attempted(self):
+        plan = self._plan(XML_SERVEUR, {"net": "bridge:br0"})
+        self.assertEqual(1, len(plan))
+        self.assertIn("skip", plan[0])
+
+    def test_an_unknown_current_cpu_mode_stays_offered(self):
+        """Une VM en mode « custom » ne doit pas voir son réglage disparaître
+        d'une liste qui l'ignore : la liste afficherait un AUTRE mode que le
+        sien, et valider le formulaire le changerait sans le dire."""
+        modes = hw.cpu_choices([{"cpu": "custom"}])
+        self.assertIn("custom", modes)
+        self.assertIn("host-passthrough", modes)
+
+    def test_the_network_list_merges_the_host_and_the_current_value(self):
+        choices = hw.net_choices(
+            [{"net": "bridge:br9"}], ["network:default", "bridge:br9"]
+        )
+        self.assertEqual(
+            ["network:default", "bridge:br9"], [tok for tok, _ in choices]
+        )
+
+    def test_empty_answers_keep_the_current_hardware(self):
+        st = hw.hw_state(XML_COMPLET)
+        want = hw.build_want(
+            st, "", "", False, False, cpu="", heads="", net=""
+        )
+        self.assertEqual("host-passthrough", want["cpu"])
+        self.assertEqual(1, want["heads"])
+        self.assertEqual("network:default", want["net"])
+        self.assertEqual([], hw.hw_plan(st, want, ""))
+
+
+class TestHostNetworks(unittest.TestCase):
+    """Ce que l'hôte propose : ses réseaux libvirt, et ses ponts à lui."""
+
+    def _choices(self, nets, infos, bridges):
+        todo = TODO.__new__(TODO)
+        sorties = {}
+        sorties["net-list"] = nets
+        sorties["bridge"] = bridges
+        sorties.update(infos)
+
+        def fake(cmd):
+            if "net-list" in cmd:
+                return sorties["net-list"]
+            if "net-info" in cmd:
+                return sorties.get(cmd[-1], [])
+            return sorties["bridge"]
+
+        todo._qemu_cmd_lines = fake
+        return todo._qemu_net_choices()
+
+    def test_a_libvirt_owned_bridge_is_not_offered_twice(self):
+        """virbr0 EST le réseau « default » : l'offrir aussi comme pont
+        proposerait deux fois le même chemin, dont un qui contourne la
+        gestion du réseau par libvirt."""
+        got = self._choices(
+            ["default"],
+            {"default": ["Name:           default", "Bridge:         virbr0"]},
+            ["3: virbr0: <BROADCAST,MULTICAST,UP,LOWER_UP>"],
+        )
+        self.assertEqual(["network:default"], got)
+
+    def test_a_real_bridge_is_offered(self):
+        got = self._choices(
+            ["default"],
+            {"default": ["Bridge:         virbr0"]},
+            [
+                "3: virbr0: <BROADCAST>",
+                "4: br0: <BROADCAST,MULTICAST,UP,LOWER_UP>",
+            ],
+        )
+        self.assertEqual(["network:default", "bridge:br0"], got)
+
+    def test_a_host_without_libvirt_answers_nothing(self):
+        todo = TODO.__new__(TODO)
+        todo._qemu_cmd_lines = lambda cmd: []
+        self.assertEqual([], todo._qemu_net_choices())
+
+    def test_the_persistent_definition_is_what_gets_read(self):
+        """Sur une VM allumée, « dumpxml » sans --inactive rend la vue VIVANTE
+        (portid, vnetN, alias) — pas la définition que virt-xml modifie."""
+        vu = {}
+
+        def fake_run(cmd, **kw):
+            vu["cmd"] = cmd
+            return subprocess.CompletedProcess([], 0, "<domain/>", "")
+
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            TODO._qemu_dumpxml("vm-a")
+        self.assertIn("--inactive", vu["cmd"])
+
+    def test_a_numbered_pick_defaults_to_the_current_value(self):
+        todo = TODO.__new__(TODO)
+        out = io.StringIO()
+        for reponse, attendu in (
+            ("", "b"),
+            ("mille", "b"),
+            ("9", "b"),
+            ("1", "a"),
+            ("2", "b"),
+        ):
+            with mock.patch("builtins.input", lambda *a, r=reponse: r):
+                with contextlib.redirect_stdout(out):
+                    got = todo._qemu_pick("t", ["a", "b"], "b")
+            self.assertEqual(attendu, got, reponse)
 
 
 if __name__ == "__main__":

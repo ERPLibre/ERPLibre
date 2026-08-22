@@ -705,8 +705,22 @@ sudo virsh dumpxml <vm-name> | grep -A2 -E "accel3d|egl-headless"
 An existing VM is adjusted from the TODO menu **while it is shut off**:
 libvirt only reads these settings when QEMU starts. `QEMU/KVM › List VMs ›
 [2] Change the state`, then either accept *Adjust hardware before starting*,
-or take `[3] Adjust hardware only`. vCPU, RAM, 3D and autostart are set
-there — in a form when Textual is available, in prompts otherwise.
+or take `[3] Adjust hardware only`. In a form when Textual is available, in
+prompts otherwise, it sets:
+
+- **vCPU, RAM, autostart** — the plain sizing knobs.
+- **CPU mode** — `host-passthrough` (what the fleet uses) hands the host CPU
+  instructions over as they are: that is what makes nested virtualization
+  possible *inside* the VM. `host-model` describes an equivalent model,
+  migratable to another machine.
+- **Screens** — the virtio-GPU `heads`, which becomes `max_outputs` on the
+  QEMU command line. `vram` is deliberately *not* offered: on a virtio-GPU
+  libvirt writes it into the XML and QEMU never receives it (check with
+  `virsh domxml-to-native` — only `max_outputs` shows up). Only qxl uses vram.
+- **Network** — the libvirt networks and the host bridges, the latter to put
+  the VM on the LAN (see the bridge section below). Switching keeps the MAC
+  address and the PCI slot, so the guest finds *its* card again — same
+  interface name, same DHCP lease.
 
 Two things worth knowing:
 
@@ -748,9 +762,23 @@ sudo virsh dumpxml <nom-vm> | grep -A2 -E "accel3d|egl-headless"
 Une VM déjà installée se règle depuis le menu TODO **pendant qu'elle est
 éteinte** : libvirt ne lit ces réglages qu'au démarrage de QEMU. `QEMU/KVM ›
 Liste des VM › [2] Changer l'état`, puis acceptez *Régler le matériel avant de
-démarrer*, ou prenez `[3] Régler le matériel seulement`. vCPU, RAM, 3D et
-démarrage automatique s'y règlent — en formulaire si Textual est présent, en
-invites sinon.
+démarrer*, ou prenez `[3] Régler le matériel seulement`. En formulaire si
+Textual est présent, en invites sinon, il règle :
+
+- **vCPU, RAM, démarrage automatique** — le dimensionnement ordinaire.
+- **Mode CPU** — `host-passthrough` (celui du parc) donne les instructions du
+  processeur hôte telles quelles : c'est lui qui rend la virtualisation
+  imbriquée possible *dans* la VM. `host-model` décrit un modèle équivalent,
+  migrable vers une autre machine.
+- **Écrans** — le `heads` du virtio-gpu, qui devient `max_outputs` sur la
+  ligne QEMU. La `vram` n'est délibérément *pas* proposée : sur un virtio-gpu,
+  libvirt l'écrit dans le XML et QEMU ne la reçoit jamais (à vérifier avec
+  `virsh domxml-to-native` : seul `max_outputs` y apparaît). Seul qxl la
+  consomme.
+- **Réseau** — les réseaux libvirt et les ponts de l'hôte, ces derniers pour
+  poser la VM sur le LAN (voir la section du pont plus bas). Le basculement
+  garde l'adresse MAC et l'emplacement PCI : l'invité retrouve *sa* carte,
+  donc son nom d'interface et son bail DHCP.
 
 Deux choses à savoir :
 

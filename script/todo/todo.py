@@ -2922,10 +2922,16 @@ class TODO:
 
     @staticmethod
     def _qemu_dumpxml(name):
-        """XML du domaine, ou '' — source de son état matériel."""
+        """XML PERSISTANT du domaine, ou '' — source de son état matériel.
+
+        « --inactive » n'est pas décoratif : sur une VM allumée, « dumpxml »
+        rend la vue VIVANTE, décorée de ce que libvirt a alloué au démarrage
+        (portid du réseau, vnetN, alias). C'est la définition persistante que
+        virt-xml modifie, et c'est donc elle qu'il faut lire.
+        """
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dumpxml", name],
+                ["sudo", "virsh", "dumpxml", "--inactive", name],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -2973,6 +2979,52 @@ class TODO:
         except (OSError, AttributeError, ImportError):
             return ""
 
+    def _qemu_net_choices(self):
+        """Réseaux proposables : réseaux libvirt, puis ponts de l'hôte.
+
+        Les ponts appartenant à un réseau libvirt (virbr0 pour « default »)
+        sont écartés : les proposer offrirait DEUX fois le même chemin, dont
+        un qui contourne la gestion du réseau par libvirt.
+        """
+        tokens = []
+        nets = self._qemu_cmd_lines(
+            ["sudo", "virsh", "net-list", "--all", "--name"]
+        )
+        owned = set()
+        for net in nets:
+            tokens.append(f"network:{net}")
+            for line in self._qemu_cmd_lines(
+                ["sudo", "virsh", "net-info", net]
+            ):
+                if line.startswith("Bridge:"):
+                    owned.add(line.split(":", 1)[1].strip())
+        for line in self._qemu_cmd_lines(
+            ["ip", "-o", "link", "show", "type", "bridge"]
+        ):
+            # « 3: br0: <BROADCAST,...» -> br0
+            parts = line.split(":")
+            bridge = parts[1].strip() if len(parts) > 1 else ""
+            if bridge and bridge not in owned:
+                tokens.append(f"bridge:{bridge}")
+        return tokens
+
+    @staticmethod
+    def _qemu_cmd_lines(cmd):
+        """Lignes non vides d'une commande, ou [] si elle échoue."""
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if res.returncode != 0:
+            return []
+        return [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+
     def _qemu_adjust_hardware(self, names):
         """Règle vCPU, RAM, 3D et démarrage automatique de VM ÉTEINTES.
 
@@ -3009,12 +3061,13 @@ class TODO:
             return
         for r in rows:
             print(f"  {r['name']:<30} {hw.hw_summary(r)}")
-        want = self._qemu_hw_form(rows, node)
+        nets = self._qemu_net_choices()
+        want = self._qemu_hw_form(rows, node, nets)
         if want is None:
             print(t("Cancelled."))
             return
         if not want:
-            want = self._qemu_hw_prompts(rows, node)
+            want = self._qemu_hw_prompts(rows, node, nets)
         if not want:
             print(t("Cancelled."))
             return
@@ -3039,7 +3092,7 @@ class TODO:
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
-    def _qemu_hw_form(self, rows, node):
+    def _qemu_hw_form(self, rows, node, nets=None):
         """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
         retomber sur les invites en ligne (textual absent), None si annulé."""
         from script.todo import textual_setup
@@ -3049,14 +3102,34 @@ class TODO:
         try:
             from script.todo.qemu_hardware import run_hardware_form
 
-            return run_hardware_form(rows, node)
+            return run_hardware_form(rows, node, nets)
         except ImportError:
             return {}
 
-    def _qemu_hw_prompts(self, rows, node):
+    def _qemu_pick(self, title, values, current, labels=None):
+        """Liste numérotée dont le DÉFAUT est la valeur actuelle.
+
+        Rendre la valeur actuelle sur une réponse vide, et sur une réponse
+        illisible : dans un formulaire de matériel, ne rien comprendre ne doit
+        rien changer.
+        """
+        labels = labels or values
+        print(f"{title} :")
+        for i, (val, lab) in enumerate(zip(values, labels), 1):
+            mark = " ←" if val == current else ""
+            print(f"      [{i}] {lab}{mark}")
+        ans = input("      " + t("Choice: ")).strip()
+        if not ans.isdigit():
+            return current
+        idx = int(ans)
+        return values[idx - 1] if 1 <= idx <= len(values) else current
+
+    def _qemu_hw_prompts(self, rows, node, nets=None):
         """Même ajustement, en invites, quand Textual n'est pas disponible."""
         from script.todo import qemu_hardware as hw
 
+        cpus = hw.cpu_choices(rows)
+        reseaux = hw.net_choices(rows, nets)
         want = {}
         for r in rows:
             print(f"\n  {r['name']} — {hw.hw_summary(r)}")
@@ -3074,7 +3147,23 @@ class TODO:
             auto = self._qemu_ask_bool(
                 f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
             )
-            want[r["name"]] = hw.build_want(r, vcpus, ram, gpu, auto)
+            cpu = self._qemu_pick(f"    {t('CPU mode')}", cpus, r.get("cpu"))
+            heads = ""
+            if r.get("video"):
+                heads = input(f"    {t('Screens')} [{r.get('heads') or 1}] : ")
+            net = r.get("net") or ""
+            # Une seule possibilité : rien à demander. C'est le cas d'un hôte
+            # sans pont, où le réseau libvirt est la seule voie.
+            if len(reseaux) > 1:
+                net = self._qemu_pick(
+                    f"    {t('Network')}",
+                    [tok for tok, _lab in reseaux],
+                    net,
+                    labels=[lab for _tok, lab in reseaux],
+                )
+            want[r["name"]] = hw.build_want(
+                r, vcpus, ram, gpu, auto, cpu=cpu, heads=heads, net=net
+            )
         return want
 
     @staticmethod

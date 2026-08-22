@@ -3103,6 +3103,22 @@ TRANSLATIONS = {
         "fr": "Nœud de rendu",
         "en": "Render node",
     },
+    "Screens": {
+        "fr": "Écrans",
+        "en": "Screens",
+    },
+    "bridge": {
+        "fr": "pont",
+        "en": "bridge",
+    },
+    "this VM has no interface": {
+        "fr": "cette VM n'a pas d'interface réseau",
+        "en": "this VM has no interface",
+    },
+    "CPU mode": {
+        "fr": "Mode CPU",
+        "en": "CPU mode",
+    },
     "no render node on the host": {
         "fr": "aucun nœud de rendu sur l'hôte",
         "en": "no render node on the host",

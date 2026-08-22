@@ -48,6 +48,21 @@ CONNECT = "qemu:///system"
 # ou un cirrus est accepté par le schéma et ne fait rien.
 GPU_VIDEO_MODEL = "virtio"
 
+# Modes CPU proposés. « host-passthrough » donne les instructions du
+# processeur hôte telles quelles — c'est ce qui rend la virtualisation
+# IMBRIQUÉE possible dans la VM, et ce que virt-install pose par défaut ;
+# « host-model » décrit un modèle équivalent, migrable vers une autre machine.
+# Les attributs check/migratable accompagnent le passthrough, comme
+# virt-install les écrit : sans eux libvirt vérifie un modèle qu'il n'a pas
+# calculé.
+CPU_MODES = ("host-passthrough", "host-model")
+CPU_EXTRA = {"host-passthrough": ",check=none,migratable=on"}
+
+# « vram » n'est PAS proposé : sur un virtio-gpu, libvirt l'écrit dans le XML
+# et QEMU ne le reçoit jamais — vérifié par « virsh domxml-to-native », qui
+# ne montre que « max_outputs » (les écrans). Ce serait un bouton sans effet.
+# Seul qxl consomme vram, et le parc n'utilise pas qxl.
+
 # Affichages qui donnent un écran à la VM. « egl-headless » n'en est pas un :
 # il n'ouvre aucun port et n'existe que pour porter le contexte OpenGL.
 SCREEN_TYPES = ("vnc", "spice", "sdl", "desktop")
@@ -132,6 +147,11 @@ def hw_state(xml: str, autostart=None) -> dict:
         "egl": False,
         "render": "",
         "screen": False,
+        "heads": 1,
+        "cpu": "",
+        # PREMIÈRE interface seulement : c'est celle que « virt-xml --edit
+        # --network » modifie, et une VM du parc n'en a qu'une.
+        "net": "",
         "autostart": bool(autostart),
     }
     try:
@@ -145,9 +165,23 @@ def hw_state(xml: str, autostart=None) -> dict:
         state["vcpus"] = 0
     state["max_mem_mib"] = _mib(root.find("memory"))
     state["mem_mib"] = _mib(root.find("currentMemory")) or state["max_mem_mib"]
+    cpu = root.find("cpu")
+    if cpu is not None:
+        state["cpu"] = cpu.get("mode") or ""
+    iface = root.find("./devices/interface")
+    if iface is not None:
+        source = iface.find("source")
+        state["net"] = net_token(
+            iface.get("type") or "",
+            source if source is not None else None,
+        )
     model = root.find("./devices/video/model")
     if model is not None:
         state["video"] = model.get("type") or ""
+        try:
+            state["heads"] = int(model.get("heads") or 1)
+        except ValueError:
+            state["heads"] = 1
         accel = model.find("acceleration")
         state["accel3d"] = accel is not None and accel.get("accel3d") == "yes"
     for graphics in root.findall("./devices/graphics"):
@@ -161,6 +195,62 @@ def hw_state(xml: str, autostart=None) -> dict:
                 (gl.get("rendernode") or "") if gl is not None else ""
             )
     return state
+
+
+def net_token(kind: str, source) -> str:
+    """Identité du réseau d'une interface : « network:default », « bridge:br0 ».
+
+    Un seul jeton pour comparer, choisir et appliquer : le type et le nom vont
+    toujours ensemble — « br0 » ne veut rien dire sans savoir que c'est un
+    pont, et libvirt refuse type='network' avec un pont pour source.
+    """
+    if not kind:
+        return ""
+    name = ""
+    if source is not None:
+        name = (
+            source.get("network")
+            or source.get("bridge")
+            or source.get("dev")
+            or ""
+        )
+    return f"{kind}:{name}" if name else kind
+
+
+def net_label(token: str) -> str:
+    """« network:default » -> « default », « bridge:br0 » -> « br0 (pont) ».
+
+    Le réseau libvirt ne porte pas de suffixe : c'est le cas ordinaire, et le
+    nommer allongeait le libellé au-delà de la liste déroulante. Seul le pont
+    est marqué, parce que c'est lui qui change le comportement de la VM.
+    """
+    if not token:
+        return "—"
+    kind, _, name = token.partition(":")
+    if kind == "network":
+        return name
+    if kind == "bridge":
+        return f"{name} ({t('bridge')})"
+    return token
+
+
+# Les modes CPU s'affichent en court : la valeur écrite dans le XML reste
+# entière, seul le libellé raccourcit.
+CPU_LABELS = {"host-passthrough": "passthrough", "host-model": "model"}
+
+
+def cpu_label(mode: str) -> str:
+    return CPU_LABELS.get(mode, mode or "—")
+
+
+def net_spec(token: str) -> str:
+    """Jeton -> argument « --network » de virt-xml."""
+    kind, _, name = token.partition(":")
+    if kind == "network":
+        return f"network={name}"
+    if kind == "bridge":
+        return f"bridge={name}"
+    return token
 
 
 def _virt_xml(name: str, *args) -> list:
@@ -207,6 +297,55 @@ def hw_plan(state: dict, want: dict, node: str = "") -> list:
                 ),
             }
         )
+
+    cpu = (want.get("cpu") or "").strip()
+    if cpu and cpu != state.get("cpu"):
+        plan.append(
+            {
+                "what": f"CPU {state.get('cpu') or '—'} → {cpu}",
+                "cmd": _virt_xml(
+                    name, "--edit", "--cpu", cpu + CPU_EXTRA.get(cpu, "")
+                ),
+            }
+        )
+
+    heads = positive_int(want.get("heads"), 0)
+    if heads and heads != state.get("heads"):
+        if not state.get("video"):
+            # « --edit --video » n'a aucun périphérique à modifier : virt-xml
+            # sortirait en erreur au milieu du lot.
+            plan.append(
+                {
+                    "what": t("Screens"),
+                    "skip": t("this VM has no virtual screen"),
+                }
+            )
+        else:
+            plan.append(
+                {
+                    "what": f"{t('Screens')} {state.get('heads')} → {heads}",
+                    "cmd": _virt_xml(
+                        name, "--edit", "--video", f"model.heads={heads}"
+                    ),
+                }
+            )
+
+    net = (want.get("net") or "").strip()
+    if net and net != state.get("net"):
+        if not state.get("net"):
+            plan.append(
+                {"what": t("Network"), "skip": t("this VM has no interface")}
+            )
+        else:
+            plan.append(
+                {
+                    "what": f"{t('Network')} {net_label(state.get('net'))}"
+                    f" → {net_label(net)}",
+                    "cmd": _virt_xml(
+                        name, "--edit", "--network", net_spec(net)
+                    ),
+                }
+            )
 
     gpu = want.get("gpu")
     if gpu is not None:
@@ -312,7 +451,9 @@ def _gpu_plan(name: str, state: dict, gpu: bool, node: str) -> list:
     return plan
 
 
-def build_want(state: dict, vcpus, ram, gpu, autostart) -> dict:
+def build_want(
+    state: dict, vcpus, ram, gpu, autostart, cpu="", heads="", net=""
+) -> dict:
     """Valeurs de widgets -> intention, en retombant sur l'état actuel.
 
     Un champ vidé ou illisible ne veut pas dire « zéro vCPU » : il veut dire
@@ -325,6 +466,9 @@ def build_want(state: dict, vcpus, ram, gpu, autostart) -> dict:
         "ram": parse_ram(ram) or state.get("mem_mib") or 0,
         "gpu": bool(gpu),
         "autostart": bool(autostart),
+        "cpu": (cpu or state.get("cpu") or "").strip(),
+        "heads": positive_int(heads, state.get("heads") or 1),
+        "net": (net or state.get("net") or "").strip(),
     }
 
 
@@ -345,20 +489,67 @@ def hw_summary(state: dict) -> str:
         bits.append(f"3D {node.rsplit('/', 1)[-1]}")
     elif state.get("screen"):
         bits.append(t("software rendering"))
+    if (state.get("heads") or 1) > 1:
+        bits.append(f"{state['heads']} {t('Screens').lower()}")
+    if state.get("net"):
+        bits.append(net_label(state["net"]))
+    # Le mode CPU n'est dit que s'il n'est PAS le passthrough : c'est le défaut
+    # du parc, et une ligne de résumé ne doit porter que l'inattendu.
+    if state.get("cpu") and state["cpu"] != "host-passthrough":
+        bits.append(f"CPU {state['cpu']}")
     return ", ".join(bits)
 
 
-def run_hardware_form(rows, node: str = "", run_app: bool = True):
+def cpu_choices(states) -> list:
+    """Modes CPU à proposer, le mode courant compris s'il sort de la liste.
+
+    Une VM en mode « custom » ne doit pas voir son réglage disparaître d'une
+    liste qui l'ignore : la liste déroulante afficherait alors un autre mode
+    que le sien, et valider le formulaire le changerait sans le dire.
+    """
+    modes = list(CPU_MODES)
+    for state in states or ():
+        mode = (state or {}).get("cpu")
+        if mode and mode not in modes:
+            modes.append(mode)
+    return modes
+
+
+def net_choices(states, nets=None) -> list:
+    """[(jeton, libellé)] des réseaux proposables, courants inclus."""
+    tokens = []
+    for token in list(nets or ()):
+        if token and token not in tokens:
+            tokens.append(token)
+    for state in states or ():
+        token = (state or {}).get("net")
+        if token and token not in tokens:
+            tokens.append(token)
+    return [(tok, net_label(tok)) for tok in tokens]
+
+
+def run_hardware_form(rows, node: str = "", nets=None, run_app: bool = True):
     """Formulaire d'ajustement matériel. Renvoie {nom: intention} ou None.
 
-    `rows` est une liste d'états (hw_state). `run_app=False` renvoie
-    l'instance sans la lancer — c'est ainsi que les tests l'inspectent.
+    `rows` est une liste d'états (hw_state), `nets` les réseaux que l'hôte
+    peut offrir. `run_app=False` renvoie l'instance sans la lancer — c'est
+    ainsi que les tests l'inspectent.
     """
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, VerticalScroll
-    from textual.widgets import Button, Checkbox, Footer, Header, Input, Static
+    from textual.widgets import (
+        Button,
+        Checkbox,
+        Footer,
+        Header,
+        Input,
+        Select,
+        Static,
+    )
 
     states = [dict(r) for r in rows if r]
+    cpus = cpu_choices(states)
+    reseaux = net_choices(states, nets)
 
     class HardwareForm(App):
         TITLE = t("VM hardware")
@@ -378,6 +569,15 @@ def run_hardware_form(rows, node: str = "", run_app: bool = True):
         .cb3d { width: auto; margin: 0 2 0 1; }
         .cbauto { width: auto; }
         .warn { padding: 0 3; }
+        .sel { width: 22; }
+        /* Le réseau porte un suffixe (« br0 (pont) ») : deux colonnes de plus
+           que le mode CPU, qui s'affiche en un mot. */
+        .selnet { width: 24; }
+        .lbl2 { width: 8; height: 3; content-align: right middle; }
+        /* 8 et pas 5 : sous cette largeur, Textual dessine le cadre du champ
+           mais PAS son contenu — la valeur devient invisible, ce qui est pire
+           qu'une troncature (on valide un champ qu'on croit vide). */
+        .heads { width: 8; }
         #bar { height: auto; padding: 1; }
         """
         BINDINGS = [
@@ -427,6 +627,30 @@ def run_hardware_form(rows, node: str = "", run_app: bool = True):
                             id=f"auto{i}",
                             classes="cbauto",
                         )
+                    with Horizontal(classes="row"):
+                        yield Static("CPU", classes="lbl2")
+                        yield Select(
+                            [(cpu_label(m), m) for m in cpus],
+                            value=st.get("cpu") or cpus[0],
+                            allow_blank=False,
+                            id=f"cpu{i}",
+                            classes="sel",
+                        )
+                        yield Static(t("Screens"), classes="lbl2")
+                        yield Input(
+                            value=str(st.get("heads") or 1),
+                            id=f"heads{i}",
+                            classes="heads",
+                        )
+                        if reseaux:
+                            yield Static(t("Network"), classes="lbl2")
+                            yield Select(
+                                [(lab, tok) for tok, lab in reseaux],
+                                value=st.get("net") or reseaux[0][0],
+                                allow_blank=False,
+                                id=f"net{i}",
+                                classes="selnet",
+                            )
                     if reason:
                         yield Static(f"⚠ {reason}", classes="warn")
             with Horizontal(id="bar"):
@@ -437,12 +661,18 @@ def run_hardware_form(rows, node: str = "", run_app: bool = True):
         def action_apply(self) -> None:
             want = {}
             for i, st in enumerate(states):
+                net = st.get("net") or ""
+                if reseaux:
+                    net = self.query_one(f"#net{i}", Select).value or net
                 want[st.get("name", "")] = build_want(
                     st,
                     self.query_one(f"#vcpus{i}", Input).value,
                     self.query_one(f"#ram{i}", Input).value,
                     self.query_one(f"#gpu{i}", Checkbox).value,
                     self.query_one(f"#auto{i}", Checkbox).value,
+                    cpu=self.query_one(f"#cpu{i}", Select).value or "",
+                    heads=self.query_one(f"#heads{i}", Input).value,
+                    net=net,
                 )
             self.want = want
             self.exit()
