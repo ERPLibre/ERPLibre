@@ -88,11 +88,8 @@ class TestTheRepairSql(unittest.TestCase):
 
 
 class TestTheReport(unittest.TestCase):
-    def test_a_clean_database_says_so(self):
-        texte = "\n".join(fvt.render([]))
-        self.assertIn(
-            todo_i18n.t("Every view type agrees with its inheritance."), texte
-        )
+    def test_a_clean_check_renders_nothing(self):
+        self.assertEqual(fvt.render([]), [])
 
     def test_a_finding_names_the_view_and_both_types(self):
         texte = "\n".join(fvt.render([vue(637, "tree", "search")]))
@@ -190,6 +187,280 @@ class TestTheExitCodes(unittest.TestCase):
     def test_an_unreadable_database_exits_two(self):
         self.branche(None)
         code, _ = self.lance(["-d", "db"])
+        self.assertEqual(code, 2)
+
+
+def arbre(vid=3931, origine="custom", type_="list", xmlid="-"):
+    return {
+        "id": vid,
+        "type": type_,
+        "xmlid": xmlid,
+        "model": "res.partner",
+        "origin": origine,
+    }
+
+
+class TestTheTreeTag(unittest.TestCase):
+    """Odoo 18 a renommé `tree` en `list`, balise comprise.
+
+    OpenUpgrade convertit la COLONNE `type` et jamais l'ARCH. Une vue de
+    module s'en remet à la première mise à jour ; une vue sans xmlid
+    n'est réécrite par rien.
+    """
+
+    def test_the_replacement_covers_open_AND_close(self):
+        sql = fvt.repair_tree_sql([arbre()], jsonb=True)
+        self.assertIn("'<tree', '<list'", sql)
+        self.assertIn("'</tree>', '</list>'", sql)
+
+    def test_it_replaces_EVERY_occurrence_not_just_the_root(self):
+        # Un `<tree>` imbriqué dans un formulaire — une liste one2many —
+        # est refusé autant que celui de la racine. `replace` en SQL
+        # remplace tout ; un ancrage `^` n'aurait pris que le premier.
+        sql = fvt.repair_tree_sql([arbre()], jsonb=True)
+        self.assertNotIn("^", sql)
+        self.assertNotIn("regexp", sql.lower())
+
+    def test_jsonb_is_rebuilt_language_by_language(self):
+        # Une traduction oubliée laisserait la vue cassée dans cette
+        # langue seulement — une panne qui ne se montre qu'à certains.
+        sql = fvt.repair_tree_sql([arbre()], jsonb=True)
+        self.assertIn("jsonb_each_text", sql)
+        self.assertIn("jsonb_object_agg", sql)
+
+    def test_a_text_column_is_handled_too(self):
+        sql = fvt.repair_tree_sql([arbre()], jsonb=False)
+        self.assertNotIn("jsonb", sql)
+        self.assertIn("replace(replace(arch_db", sql)
+
+    def test_nothing_to_fix_gives_no_sql(self):
+        self.assertEqual(fvt.repair_tree_sql([], jsonb=True), "")
+
+    def test_it_targets_the_listed_ids_only(self):
+        sql = fvt.repair_tree_sql([arbre(11), arbre(22)], jsonb=True)
+        self.assertIn("WHERE id IN (11, 22)", sql)
+
+    def test_the_report_tells_custom_from_module(self):
+        # C'est LE renseignement utile : l'une se répare d'une mise à
+        # jour, l'autre ne se répare jamais toute seule.
+        texte = "\n".join(
+            fvt.render_tree([arbre(1, "custom"), arbre(2, "module")])
+        )
+        self.assertIn(
+            todo_i18n.t("custom — nothing will ever rewrite it"), texte
+        )
+        self.assertIn(
+            todo_i18n.t("from a module — a module update also fixes it"), texte
+        )
+
+    def test_no_tree_renders_nothing(self):
+        self.assertEqual(fvt.render_tree([]), [])
+
+
+class TestTheSqlAgainstARealPostgres(unittest.TestCase):
+    """Le SQL, exécuté pour de vrai.
+
+    Une assertion sur le TEXTE d'une requête ne voit pas ce qu'elle
+    fait : ajouter un `LIMIT 1` la laisserait passer alors qu'une seule
+    langue serait convertie — une vue cassée dans les autres, une panne
+    qui ne se montre qu'à certains.
+    """
+
+    BASE = "tmp_fix_view_type_test"
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil as _shutil
+        import subprocess as _sub
+
+        if not _shutil.which("psql") or not _shutil.which("createdb"):
+            raise unittest.SkipTest("PostgreSQL absent")
+        _sub.run(["dropdb", "--if-exists", cls.BASE], capture_output=True)
+        fait = _sub.run(["createdb", cls.BASE], capture_output=True)
+        if fait.returncode:
+            raise unittest.SkipTest("createdb impossible")
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil as _shutil
+        import subprocess as _sub
+
+        if _shutil.which("dropdb"):
+            _sub.run(["dropdb", "--if-exists", cls.BASE], capture_output=True)
+
+    def prepare(self, colonne, valeur):
+        fvt.run_psql(
+            self.BASE, "DROP TABLE IF EXISTS ir_ui_view", read_only=False
+        )
+        fvt.run_psql(
+            self.BASE,
+            f"CREATE TABLE ir_ui_view (id serial PRIMARY KEY,"
+            f" arch_db {colonne})",
+            read_only=False,
+        )
+        fvt.run_psql(
+            self.BASE,
+            f"INSERT INTO ir_ui_view (arch_db) VALUES ({valeur})",
+            read_only=False,
+        )
+
+    def arch(self):
+        lignes = fvt.run_psql(
+            self.BASE, "SELECT arch_db::text FROM ir_ui_view"
+        )
+        return lignes[0][0] if lignes else ""
+
+    def test_every_language_is_converted(self):
+        self.prepare(
+            "jsonb",
+            '\'{"en_US": "<tree><field/></tree>",'
+            ' "fr_CA": "<tree><field/></tree>"}\'::jsonb',
+        )
+        fvt.run_psql(
+            self.BASE,
+            fvt.repair_tree_sql([arbre(1)], jsonb=True),
+            read_only=False,
+        )
+        obtenu = self.arch()
+        self.assertNotIn("<tree", obtenu)
+        self.assertEqual(obtenu.count("<list>"), 2)
+        self.assertEqual(obtenu.count("</list>"), 2)
+
+    def test_a_nested_tree_is_converted_too(self):
+        # Une liste one2many dans un formulaire : refusée autant que la
+        # racine, et invisible pour un contrôle qui ne verrait que celle-ci.
+        self.prepare(
+            "jsonb",
+            '\'{"en_US": "<form><field><tree/></field></form>"}\'::jsonb',
+        )
+        fvt.run_psql(
+            self.BASE,
+            fvt.repair_tree_sql([arbre(1)], jsonb=True),
+            read_only=False,
+        )
+        self.assertNotIn("<tree", self.arch())
+        self.assertIn("<list/>", self.arch())
+
+    def test_a_text_column_works_too(self):
+        self.prepare("text", "'<tree><field/></tree>'")
+        fvt.run_psql(
+            self.BASE,
+            fvt.repair_tree_sql([arbre(1)], jsonb=False),
+            read_only=False,
+        )
+        self.assertEqual(self.arch(), "<list><field/></list>")
+
+    def test_the_detection_query_runs(self):
+        # Une requête qui ne compile pas rendrait None, et l'outil
+        # dirait « base illisible » au lieu de « rien à corriger ».
+        self.prepare("jsonb", '\'{"en_US": "<form/>"}\'::jsonb')
+        fvt.run_psql(
+            self.BASE,
+            "CREATE TABLE IF NOT EXISTS ir_model_data"
+            " (id serial, model text, res_id integer, module text, name text)",
+            read_only=False,
+        )
+        fvt.run_psql(
+            self.BASE,
+            "ALTER TABLE ir_ui_view ADD COLUMN IF NOT EXISTS type text,"
+            " ADD COLUMN IF NOT EXISTS model text",
+            read_only=False,
+        )
+        self.assertEqual(fvt.find_tree(self.BASE, jsonb=True), [])
+
+
+class TestTheVersionGate(unittest.TestCase):
+    """Avant la 18, `<tree>` est parfaitement légitime."""
+
+    def setUp(self):
+        self.vrai = fvt.run_psql
+        self.ecritures = []
+
+    def tearDown(self):
+        fvt.run_psql = self.vrai
+
+    def branche(self, majeure, arbres=True):
+        def faux(database, sql, read_only=True):
+            if not read_only:
+                self.ecritures.append(sql)
+                return []
+            if "latest_version" in sql:
+                return [[f"{majeure}.0.1.3"]]
+            if "information_schema" in sql:
+                return [["jsonb"]]
+            if "WITH RECURSIVE" in sql:
+                return []
+            if "<tree" in sql:
+                return (
+                    [["3931", "list", "-", "res.partner", "custom"]]
+                    if arbres
+                    else []
+                )
+            return []
+
+        fvt.run_psql = faux
+
+    def lance(self, argv):
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            code = fvt.main(argv)
+        return code, tampon.getvalue()
+
+    def test_a_17_database_is_left_alone(self):
+        # « Corriger » un <tree> légitime casserait une vue saine.
+        self.branche(17)
+        code, sortie = self.lance(["-d", "db"])
+        self.assertEqual(code, 0)
+        self.assertEqual(self.ecritures, [])
+        self.assertIn(
+            todo_i18n.t("Every view agrees with what Odoo expects."), sortie
+        )
+
+    def test_an_18_database_reports_it(self):
+        self.branche(18)
+        code, sortie = self.lance(["-d", "db"])
+        self.assertEqual(code, 1)
+        self.assertIn("3931", sortie)
+        self.assertEqual(self.ecritures, [])
+
+    def test_an_unknown_version_stays_on_the_safe_side(self):
+        # Sans version on ne SAIT pas : ne rien toucher.
+        self.branche(None)
+        code, _ = self.lance(["-d", "db"])
+        self.assertEqual(code, 0)
+
+    def test_apply_writes_once_per_repair(self):
+        appels = {"n": 0}
+
+        def faux(database, sql, read_only=True):
+            if not read_only:
+                self.ecritures.append(sql)
+                return []
+            if "latest_version" in sql:
+                return [["18.0.1.3"]]
+            if "information_schema" in sql:
+                return [["jsonb"]]
+            if "WITH RECURSIVE" in sql:
+                return []
+            if "<tree" in sql:
+                appels["n"] += 1
+                # Trouvé au premier passage, plus rien au second.
+                return (
+                    [["3931", "list", "-", "res.partner", "custom"]]
+                    if appels["n"] == 1
+                    else []
+                )
+            return []
+
+        fvt.run_psql = faux
+        code, sortie = self.lance(["-d", "db", "--apply"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.ecritures), 1)
+        self.assertIn(todo_i18n.t("Corrected."), sortie)
+
+    def test_a_correction_that_did_not_take_exits_two(self):
+        self.branche(18)
+        code, _ = self.lance(["-d", "db", "--apply"])
         self.assertEqual(code, 2)
 
 

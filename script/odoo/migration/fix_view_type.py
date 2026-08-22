@@ -2,7 +2,10 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Une vue dont le `type` stocké contredit son héritage.
+"""Deux données de vue qu'Odoo refuse, et qu'aucune mise à jour ne répare.
+
+A — le `type` stocké contredit l'héritage
+=========================================
 
 Le symptôme est brutal : Odoo refuse de charger la base.
 
@@ -36,6 +39,29 @@ Une vue héritée prend le type de son ancêtre — c'est la règle d'Odoo
 lui-même, citée plus haut. Vérifié : zéro écart sur une installation 18
 neuve et sur quatre bases migrées, un seul sur celle qui refusait de
 charger. Le détecteur ne crie pas au loup.
+
+B — un `<tree>` survit dans une base Odoo 18
+============================================
+La 18 a renommé le type `tree` en `list`, balise comprise. OpenUpgrade
+convertit la COLONNE :
+
+    def _fix_list_view_type(cr):
+        '''Former tree views have view type list now.'''
+        cr.execute("UPDATE ir_ui_view SET type='list' WHERE type='tree'")
+
+…et jamais l'ARCH. Le chargement meurt alors sur
+
+    Le nœud racine d'une vue list devrait être <list>, et non <tree>
+
+Une vue de module s'en remet à la première mise à jour du module, qui
+réécrit son arch depuis le XML. Une vue SANS xmlid — une liste faite à
+la main, une copie de site — n'est réécrite par rien : elle reste
+cassée pour toujours.
+
+Le remplacement porte sur TOUTES les occurrences, pas seulement la
+racine : un `<tree>` imbriqué dans un formulaire (une liste one2many)
+est tout aussi refusé. Vérifié : les addons d'Odoo 18 n'en contiennent
+plus une seule, donc tout `<tree>` d'une base 18 est un reste.
 
 Codes de sortie : 0 rien à signaler, 1 des trouvailles, 2 l'outil a échoué.
 """
@@ -85,6 +111,10 @@ ORDER BY v.id
 """
 
 
+# La 18 renomme `tree` en `list`. Avant, la balise est légitime.
+PREMIERE_VERSION_LIST = 18
+
+
 def run_psql(database, sql, read_only=True):
     """Interroger la base. En lecture seule sauf demande explicite."""
     env = os.environ.copy()
@@ -121,6 +151,97 @@ def find(database):
     ]
 
 
+def db_major(database):
+    """La version majeure d'Odoo de cette base, ou None.
+
+    Celle qu'Odoo inscrit, pas celle du checkout : on répare une base,
+    pas un répertoire.
+    """
+    lignes = run_psql(
+        database,
+        "SELECT latest_version FROM ir_module_module WHERE name = 'base'",
+    )
+    if not lignes or not lignes[0][0]:
+        return None
+    try:
+        return int(lignes[0][0].split(".")[0])
+    except ValueError:
+        return None
+
+
+def arch_is_jsonb(database):
+    """`arch_db` est un jsonb depuis la 16, un texte avant."""
+    lignes = run_psql(
+        database,
+        "SELECT data_type FROM information_schema.columns"
+        " WHERE table_name = 'ir_ui_view' AND column_name = 'arch_db'",
+    )
+    return bool(lignes) and lignes[0][0] == "jsonb"
+
+
+def arch_as_text(jsonb):
+    """L'expression SQL qui rend l'arch en texte, quelle que soit sa forme."""
+    return "arch_db::text" if jsonb else "coalesce(arch_db, '')"
+
+
+def find_tree(database, jsonb):
+    """Les vues qui portent encore un `<tree>`. [] hors des bases 18+."""
+    texte = arch_as_text(jsonb)
+    lignes = run_psql(
+        database,
+        f"SELECT v.id::text, v.type,"
+        f" coalesce(d.module || '.' || d.name, '-'),"
+        f" coalesce(v.model, '-'),"
+        f" CASE WHEN d.id IS NULL THEN 'custom' ELSE 'module' END"
+        f" FROM ir_ui_view v"
+        f" LEFT JOIN ir_model_data d"
+        f"        ON d.model = 'ir.ui.view' AND d.res_id = v.id"
+        f" WHERE {texte} LIKE '%<tree%'"
+        f" ORDER BY v.id",
+    )
+    if lignes is None:
+        return None
+    return [
+        {
+            "id": int(ligne[0]),
+            "type": ligne[1],
+            "xmlid": ligne[2],
+            "model": ligne[3],
+            "origin": ligne[4],
+        }
+        for ligne in lignes
+        if len(ligne) >= 5
+    ]
+
+
+def repair_tree_sql(vues, jsonb):
+    """Le SQL qui remplace `<tree>` par `<list>`, ou "".
+
+    TOUTES les occurrences : un `<tree>` imbriqué dans un formulaire est
+    refusé autant que celui de la racine. Les addons d'Odoo 18 n'en
+    contiennent plus une seule, donc il n'y a rien de légitime à épargner.
+    """
+    if not vues:
+        return ""
+    liste = ", ".join(str(vue["id"]) for vue in vues)
+    if jsonb:
+        # jsonb : reconstruire l'objet, langue par langue. Une traduction
+        # oubliée laisserait la vue cassée dans cette langue seulement —
+        # une panne qui ne se montre qu'à certains.
+        remplace = (
+            "(SELECT jsonb_object_agg(cle,"
+            " replace(replace(valeur, '<tree', '<list'),"
+            " '</tree>', '</list>'))"
+            " FROM jsonb_each_text(arch_db) AS paires(cle, valeur))"
+        )
+    else:
+        remplace = (
+            "replace(replace(arch_db, '<tree', '<list'),"
+            " '</tree>', '</list>')"
+        )
+    return f"UPDATE ir_ui_view SET arch_db = {remplace} WHERE id IN ({liste})"
+
+
 def repair_sql(vues):
     """Le SQL de correction, ou "" s'il n'y a rien à corriger.
 
@@ -142,7 +263,7 @@ def repair_sql(vues):
 
 def render(vues, applique=False):
     if not vues:
-        return [f"✅ {t('Every view type agrees with its inheritance.')}"]
+        return []
     lignes = [
         f"🩹 {len(vues)} {t('view(s) whose stored type contradicts')}"
         f" {t('their inheritance')} :"
@@ -159,6 +280,31 @@ def render(vues, applique=False):
             f"   {t('No module update will fix this: the type is set once,')}"
             f" {t('at creation. Re-run with --apply.')}"
         )
+    return lignes
+
+
+def render_tree(vues, applique=False):
+    if not vues:
+        return []
+    lignes = [
+        f"🩹 {len(vues)} {t('view(s) still carry a <tree> tag Odoo 18')}"
+        f" {t('renamed to <list>')} :"
+    ]
+    for vue in vues:
+        # L'ORIGINE est le renseignement utile : une vue de module se
+        # répare d'une mise à jour, une vue sans xmlid n'est réécrite
+        # par rien et reste cassée pour toujours.
+        marque = (
+            t("custom — nothing will ever rewrite it")
+            if vue["origin"] == "custom"
+            else t("from a module — a module update also fixes it")
+        )
+        lignes.append(
+            f"       {vue['id']:<7} {vue['xmlid'][:40]:<42}"
+            f" {vue['type']:<8} {vue['model'][:22]:<24} {marque}"
+        )
+    if applique:
+        lignes.append(f"   ✅ {t('Corrected.')}")
     return lignes
 
 
@@ -181,21 +327,36 @@ def main(argv=None):
     if vues is None:
         print(f"❌ {t('Cannot read the database: ')}{config.database}")
         return 2
-    if not vues:
-        print("\n".join(render(vues)))
+    # Le renommage `tree` → `list` n'a de sens qu'à partir de la 18 :
+    # avant, la balise est parfaitement légitime et la « corriger »
+    # casserait des vues saines.
+    jsonb = arch_is_jsonb(config.database)
+    majeure = db_major(config.database)
+    arbres = []
+    if majeure and majeure >= PREMIERE_VERSION_LIST:
+        arbres = find_tree(config.database, jsonb) or []
+
+    if not vues and not arbres:
+        print(f"✅ {t('Every view agrees with what Odoo expects.')}")
         return 0
     if not config.apply:
-        print("\n".join(render(vues)))
+        print("\n".join(render(vues) + render_tree(arbres)))
         return 1
-    sql = repair_sql(vues)
-    if run_psql(config.database, sql, read_only=False) is None:
+
+    for sql in (repair_sql(vues), repair_tree_sql(arbres, jsonb)):
+        if sql and run_psql(config.database, sql, read_only=False) is None:
+            print(f"❌ {t('The correction failed.')}")
+            return 2
+    # Relire APRÈS : annoncer « corrigé » sans vérifier ferait relancer
+    # la migration sur le même mur.
+    if find(config.database) or (arbres and find_tree(config.database, jsonb)):
         print(f"❌ {t('The correction failed.')}")
         return 2
-    reste = find(config.database)
-    if reste:
-        print(f"❌ {t('The correction failed.')}")
-        return 2
-    print("\n".join(render(vues, applique=True)))
+    print(
+        "\n".join(
+            render(vues, applique=True) + render_tree(arbres, applique=True)
+        )
+    )
     return 0
 
 

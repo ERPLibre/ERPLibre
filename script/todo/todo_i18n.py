@@ -6135,10 +6135,6 @@ TRANSLATIONS = {
         "fr": "Corrigé.",
         "en": "Corrected.",
     },
-    "Every view type agrees with its inheritance.": {
-        "fr": "Tous les types de vue s'accordent avec leur héritage.",
-        "en": "Every view type agrees with its inheritance.",
-    },
     "No module update will fix this: the type is set once,": {
         "fr": "Aucune mise à jour de module ne corrigera cela : le type est posé une fois,",
         "en": "No module update will fix this: the type is set once,",
@@ -6174,6 +6170,26 @@ TRANSLATIONS = {
     "Uninstall the theme(s) the error names": {
         "fr": "Désinstaller le(s) thème(s) que l'erreur nomme",
         "en": "Uninstall the theme(s) the error names",
+    },
+    "Every view agrees with what Odoo expects.": {
+        "fr": "Toutes les vues s'accordent avec ce qu'Odoo attend.",
+        "en": "Every view agrees with what Odoo expects.",
+    },
+    "custom — nothing will ever rewrite it": {
+        "fr": "faite main — rien ne la réécrira jamais",
+        "en": "custom — nothing will ever rewrite it",
+    },
+    "from a module — a module update also fixes it": {
+        "fr": "d'un module — une mise à jour la répare aussi",
+        "en": "from a module — a module update also fixes it",
+    },
+    "renamed to <list>": {
+        "fr": "a renommée en <list>",
+        "en": "renamed to <list>",
+    },
+    "view(s) still carry a <tree> tag Odoo 18": {
+        "fr": "vue(s) portent encore une balise <tree> qu'Odoo 18",
+        "en": "view(s) still carry a <tree> tag Odoo 18",
     },
     "Census": {
         "fr": "Recensement",
