@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import sys
+import subprocess
 from subprocess import check_output
 
 sys.path.append(
@@ -81,6 +82,71 @@ def get_master_password():
         return pa
     except getpass.GetPassWarning:
         _logger.error("Password echoed, danger!")
+
+
+# Assez pour une faute de frappe répétée, pas assez pour qu'une boucle
+# oubliée tourne toute la nuit devant une invite que personne ne lit.
+MAX_ESSAIS_MOT_DE_PASSE = 10
+
+
+def password_refused(sortie):
+    """Odoo a-t-il refusé le mot de passe maître, ou autre chose ?
+
+    La distinction porte tout. Reposer la question sur n'importe quel
+    échec cacherait la vraie panne derrière dix invites, et l'on
+    chercherait un mot de passe alors que la base est cassée.
+
+    Odoo lève `AccessDenied` — la classe apparaît dans la trace, et son
+    message traduit peut varier. On reconnaît donc la CLASSE.
+    """
+    return "AccessDenied" in (sortie or "")
+
+
+def probe_master_password(arg_base):
+    """(accepté, sortie) — éprouver le mot de passe sur `--list`.
+
+    La commande la plus inoffensive : elle ne touche à rien et rend le
+    même refus qu'une restauration. Valider ici évite d'échouer à
+    mi-parcours, une fois la base déjà supprimée.
+    """
+    done = subprocess.run(
+        f"{arg_base} --list".split(" "),
+        capture_output=True,
+        text=True,
+    )
+    return done.returncode == 0, (done.stdout or "") + (done.stderr or "")
+
+
+def ask_master_password(arg_base, essais=MAX_ESSAIS_MOT_DE_PASSE):
+    """Le mot de passe maître, redemandé tant qu'Odoo le refuse.
+
+    None si l'on renonce — invite vide, essais épuisés, ou panne qui
+    n'a rien à voir avec le mot de passe.
+
+    Une faute de frappe arrêtait la migration net, sur une trace
+    `CalledProcessError` que rien n'attrapait. Après une heure de
+    paliers, c'est cher payé pour une lettre.
+    """
+    for tour in range(1, essais + 1):
+        mot = get_master_password()
+        if not mot:
+            return None
+        candidat = f"{arg_base} --master_password={mot}"
+        accepte, sortie = probe_master_password(candidat)
+        if accepte:
+            return mot
+        if not password_refused(sortie):
+            # Autre chose est cassé : le dire, et ne pas noyer la panne
+            # sous dix invites de mot de passe.
+            _logger.error(sortie.strip()[-1500:])
+            return None
+        restants = essais - tour
+        if restants:
+            _logger.warning(
+                f"Master password refused, {restants} attempt(s) left."
+            )
+    _logger.error("Master password refused too many times.")
+    return None
 
 
 def get_list_db_cache(arg_base):
@@ -217,12 +283,11 @@ def main():
 
         has_admin_password = config_parser.get("options", "admin_passwd")
         if has_admin_password and has_admin_password != "admin":
-            master_password = get_master_password()
+            master_password = ask_master_password(arg_base)
             if not master_password:
                 _logger.error("Missing master password, cancel transaction.")
                 sys.exit(1)
-            else:
-                arg_base += f" --master_password={master_password}"
+            arg_base += f" --master_password={master_password}"
         else:
             _logger.info("No master password needed... Continue")
 
