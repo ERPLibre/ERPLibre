@@ -6115,12 +6115,12 @@ TRANSLATIONS = {
         "en": "📦 Modules missing from the default package",
     },
     "Show every entry": {
-        "fr": "Tout afficher",
-        "en": "Show every entry",
+        "fr": "📜 Tout afficher",
+        "en": "📜 Show every entry",
     },
     "List the known packages": {
-        "fr": "Lister les packages connus",
-        "en": "List the known packages",
+        "fr": "📚 Lister les packages connus",
+        "en": "📚 List the known packages",
     },
     "Already repaired: the group exists.": {
         "fr": "Déjà réparé : le groupe existe.",

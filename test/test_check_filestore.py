@@ -730,6 +730,62 @@ class TestTheExitCodes(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+class TestTheFollowUpIcons(unittest.TestCase):
+    """Chaque entrée « Aller plus loin » porte une icône, ou aucune.
+
+    Une seule entrée nue au milieu d'entrées ornées se lit comme un
+    oubli — et c'en est un. Le garde vaut mieux qu'une relecture : la
+    prochaine entrée ajoutée sans icône tombera ici, pas dans l'œil de
+    quelqu'un six mois plus tard.
+    """
+
+    RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+    def libelles(self):
+        """Les clés passées en `prompt_description` à `_analyse_follow_up`."""
+        import ast
+
+        with io.open(
+            os.path.join(self.RACINE, "script", "todo", "todo.py"),
+            encoding="utf-8",
+        ) as handle:
+            arbre = ast.parse(handle.read())
+        trouves = []
+        for node in ast.walk(arbre):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "_analyse_follow_up"
+                and node.args
+            ):
+                continue
+            for element in ast.walk(node.args[0]):
+                if (
+                    isinstance(element, ast.Call)
+                    and isinstance(element.func, ast.Name)
+                    and element.func.id == "t"
+                    and element.args
+                    and isinstance(element.args[0], ast.Constant)
+                ):
+                    trouves.append(element.args[0].value)
+        return trouves
+
+    def test_there_are_follow_up_entries_to_check(self):
+        # Sans cette borne, un jour où l'extraction ne trouve plus rien,
+        # le test suivant passerait en ne vérifiant rien du tout.
+        self.assertGreater(len(self.libelles()), 5)
+
+    def test_every_follow_up_entry_carries_an_icon(self):
+        for cle in self.libelles():
+            for langue in ("fr", "en"):
+                texte = todo_i18n.TRANSLATIONS.get(cle, {}).get(langue, cle)
+                self.assertGreaterEqual(
+                    ord(texte[0]),
+                    0x1F300,
+                    f"entrée sans icône [{langue}] : {texte!r}",
+                )
+
+
 class TestTranslations(unittest.TestCase):
     def test_every_key_exists(self):
         import ast
