@@ -1659,6 +1659,26 @@ class TODO:
     # Commande de l'émulateur dans la VM. Le chemin est ABSOLU : un
     # « ssh hôte 'commande' » ne lit ni ~/.profile ni ~/.bashrc.
     _QEMU_EMULATOR_BIN = "$HOME/android/emulator/emulator"
+
+    # Drapeaux passés à CHAQUE lancement, et non écrits dans le config.ini de
+    # l'AVD : l'émulateur réécrit ce fichier depuis le profil du téléphone au
+    # premier démarrage, et les hw.lcd.* y étaient effacés — l'AVD repartait en
+    # 1080x2400 densité 420, quatre fois les pixels voulus. Mesuré.
+    #
+    # La résolution et la DENSITÉ vont ensemble, et c'est contre-intuitif :
+    # 540x1140 en densité 420 est PIRE que le plein écran — 81 ms de médiane
+    # contre 40, et 57 % d'images en retard contre 37, tout étant rendu énorme.
+    # Avec la densité 240, la queue s'effondre : 99e centile à 250 ms contre
+    # 950, et 32 % d'images en retard.
+    #
+    # « -no-snapshot-save » : sans lui, un émulateur tué par pkill — ce que ce
+    # menu propose lui-même — laisse un instantané en cours, et le lancement
+    # SUIVANT meurt sur « A snapshot operation is pending and timeout has
+    # expired ». Vécu, et le message ne dit pas quoi faire.
+    _QEMU_EMULATOR_FLAGS = (
+        "-no-audio -no-boot-anim -no-snapshot-save -gpu swangle"
+        " -skin 540x1140 -prop qemu.sf.lcd_density=240"
+    )
     _QEMU_AVD_NAME = "erplibre"
 
     def _qemu_emulator_running(self, target, src="virsh"):
@@ -1778,8 +1798,8 @@ class TODO:
             # partir d'ici, où il n'y a pas d'écran à lui donner.
             print(f"\n  {t('Run this on YOUR workstation:')}")
             print(
-                f"\n    ssh -XC {target} '{emu} -avd {avd}"
-                " -no-audio -no-boot-anim'\n"
+                f"\n    ssh -XC {target} '{emu} -avd {avd} "
+                f"{self._QEMU_EMULATOR_FLAGS}'\n"
             )
             print(
                 f"  {t('X11 compression is on (-XC); the screen is 540x1140.')}"
@@ -1792,8 +1812,9 @@ class TODO:
         # l'émulateur refuse de démarrer. setsid le détache, pour qu'il survive
         # à la fermeture de ce ssh.
         start = (
-            f'setsid -f sg kvm -c "{emu} -avd {avd} -no-window -no-audio'
-            ' -no-boot-anim > /tmp/erplibre-emulator.log 2>&1"'
+            f'setsid -f sg kvm -c "{emu} -avd {avd} -no-window '
+            f"{self._QEMU_EMULATOR_FLAGS}"
+            ' > /tmp/erplibre-emulator.log 2>&1"'
         )
         res = subprocess.run(
             ["ssh"] + self._qemu_ssh_opts(src) + [target, start],
@@ -1865,8 +1886,8 @@ class TODO:
             )
             print(
                 f"\n    ssh {target} '{self._QEMU_EMULATOR_BIN} "
-                f"-avd {self._QEMU_AVD_NAME}"
-                " -no-window -no-audio -no-boot-anim'\n"
+                f"-avd {self._QEMU_AVD_NAME} -no-window "
+                f"{self._QEMU_EMULATOR_FLAGS}'\n"
             )
         print(f"  {t('2. Open the tunnel from YOUR workstation:')}")
         if src == "ssh_config":
@@ -6692,16 +6713,16 @@ class TODO:
             "dev=$(cat $HOME/.erplibre-avd-device); "
             'echo no | avdmanager create avd -n erplibre -k "$img" '
             '-d "$dev" --force && '
-            # Rendu logiciel, écrit dans la config : par ssh -X il n'y a pas de
-            # GLX direct, et « auto » donnerait un écran noir.
-            # L'écran, RÉDUIT, et c'est ce réglage qui décide du confort. Le
-            # profil Pixel donne 1080x2400, soit 2,6 Mpixels à pousser
-            # image par image à travers SSH, en rendu logiciel : « ça se
-            # lance mais c'est trop lent ». En 540x1140 il en reste
-            # 0,62 Mpixel — 4,2 fois moins. Android gère la densité et
-            # l'application ne s'en aperçoit pas ; qui veut la taille
-            # réelle l'écrase au lancement par « -skin 1080x2400 ».
-            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swangle\\nhw.lcd.width=540\\nhw.lcd.height=1140\\nhw.lcd.density=240\\n" '
+            # Rendu logiciel, écrit dans la config : par ssh -X il n'y a pas
+            # de GLX direct, et « auto » donnerait un écran noir. Ces deux
+            # clés-là SURVIVENT, elles ne viennent pas du profil du téléphone.
+            #
+            # L'écran, en revanche, ne s'écrit PAS ici : l'émulateur réécrit
+            # config.ini depuis le profil Pixel au premier démarrage, et les
+            # hw.lcd.* y étaient effacés — l'AVD repartait en 1080x2400
+            # densité 420. C'est donc au LANCEMENT qu'il se règle, par
+            # _QEMU_EMULATOR_FLAGS, et la commande affichée plus bas les porte.
+            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swangle\\n" '
             ">> $HOME/.android/avd/erplibre.avd/config.ini' && "
             f'echo "   ✅ {t("AVD ready:")} '
             "$(cat $HOME/.erplibre-avd-device) / "
@@ -6717,10 +6738,11 @@ class TODO:
             # found ». Vécu, sur la ligne que ce message affichait lui-même.
             f'echo "   {t("open it from your workstation:")} '
             # « -XC » et non « -X » : la compression X11 change tout sur un
-            # écran distant. « -no-boot-anim » retire une animation qui
-            # ne sert qu'à faire attendre.
+            # écran distant. Les autres drapeaux viennent de la même autorité
+            # que le lancement du menu : écran réduit, densité qui va avec, et
+            # pas d'instantané en attente si on tue l'émulateur.
             'ssh -XC erplibre@$ip \\"$HOME/android/emulator/emulator '
-            '-avd erplibre -no-audio -no-boot-anim\\""; '
+            f'-avd erplibre {self._QEMU_EMULATOR_FLAGS}\\""; '
             f'echo "   {t("then install the APK:")} '
             # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
             # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».

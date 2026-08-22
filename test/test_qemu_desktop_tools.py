@@ -526,17 +526,29 @@ class TestAndroidEmulator(unittest.TestCase):
             "avd", self.todo._qemu_tools_for(("avd",), "amd64", "", "ubuntu")
         )
 
-    def test_the_screen_is_small_enough_to_travel(self):
-        """Le profil Pixel donne 1080x2400 : 2,6 Mpixels par image à pousser
-        dans SSH, et « ça se lance mais c'est trop lent ». Mesuré après
-        réduction : 540x1140 confirmé par « wm size », et la capture pleine
-        page tombe de 220 Ko à 49 Ko."""
-        for key in (
-            "hw.lcd.width=540",
-            "hw.lcd.height=1140",
-            "hw.lcd.density=240",
-        ):
-            self.assertIn(key, self.cmd, key)
+    def test_the_screen_is_set_at_launch_not_in_the_config(self):
+        """Écrire hw.lcd.* dans config.ini ne SERT À RIEN : l'émulateur réécrit
+        ce fichier depuis le profil du téléphone au premier démarrage, et l'AVD
+        repartait en 1080x2400 densité 420 — constaté sur la VM. La taille se
+        règle donc au lancement, et la commande affichée la porte."""
+        self.assertNotIn("hw.lcd.width", self.cmd)
+        self.assertIn("-skin 540x1140", self.cmd)
+        # Ces deux clés-là survivent : elles ne viennent pas du profil.
+        self.assertIn("hw.gpu.mode=swangle", self.cmd)
+
+    def test_the_density_travels_with_the_resolution(self):
+        """Contre-intuitif, et mesuré : 540x1140 en densité 420 est PIRE que le
+        plein écran — 81 ms de médiane contre 40, et 57 % d'images en retard
+        contre 37, tout étant rendu énorme. Avec la densité 240 : 38 ms, 32 %,
+        et le 99e centile tombe de 950 ms à 250."""
+        self.assertIn("qemu.sf.lcd_density=240", self.cmd)
+
+    def test_a_killed_emulator_does_not_block_the_next_start(self):
+        """Ce menu propose lui-même de tuer l'émulateur par pkill. Sans
+        « -no-snapshot-save », le lancement suivant meurt sur « A snapshot
+        operation is pending and timeout has expired » — vécu, et le message ne
+        dit pas quoi faire."""
+        self.assertIn("-no-snapshot-save", self.cmd)
 
     def test_the_printed_command_compresses_the_display(self):
         """« -XC » plutôt que « -X » sur un écran distant."""

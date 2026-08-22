@@ -155,8 +155,16 @@ class _MenuCase(unittest.TestCase):
         self.todo._qemu_self_address = staticmethod(lambda: ("10.0.0.2", True))
         self.calls = []
 
-    def _play(self, answers, running=0, start_rc=0, port_taken=False,
-              probe="", running_after=1, log="rien"):
+    def _play(
+        self,
+        answers,
+        running=0,
+        start_rc=0,
+        port_taken=False,
+        probe="",
+        running_after=1,
+        log="rien",
+    ):
         """Joue le menu avec des réponses données ; rend (sortie, commandes).
 
         « running » est le compte AVANT le démarrage, « running_after » celui
@@ -254,6 +262,28 @@ class TestEmulatorMenu(_MenuCase):
         self.assertIn("setsid -f", cmd)
         self.assertIn("/tmp/erplibre-emulator.log", cmd)
 
+    def test_the_start_carries_the_shared_flags(self):
+        """Une seule autorité pour ces drapeaux : le lancement du menu, la
+        commande fenêtrée et celle de l'étape AVD doivent dire la même chose.
+        La densité va avec la résolution — 540x1140 en densité 420 est mesuré
+        PIRE que le plein écran."""
+        _, calls = self._play(["1", "1", "n"])
+        cmd = self._started(calls)[0][-1]
+        for flag in (
+            "-skin 540x1140",
+            "qemu.sf.lcd_density=240",
+            "-no-snapshot-save",
+            "-gpu swangle",
+        ):
+            self.assertIn(flag, cmd, flag)
+
+    def test_the_windowed_command_carries_them_too(self):
+        """Qui ouvre la fenêtre depuis son poste doit avoir le même écran que
+        qui passe par scrcpy — sinon la comparaison ne veut rien dire."""
+        out, _ = self._play(["1", "2"])
+        self.assertIn("-skin 540x1140", out)
+        self.assertIn("qemu.sf.lcd_density=240", out)
+
     def test_the_start_command_is_valid_shell(self):
         """Une apostrophe ou un guillemet de trop, et la VM répond par une
         erreur de syntaxe — déjà rencontré dans ce même fichier."""
@@ -272,7 +302,8 @@ class TestEmulatorMenu(_MenuCase):
     def test_a_vm_without_the_sdk_is_diagnosed_before_anything_else(self):
         """Une VM déployée sans cocher l'outil est le cas NORMAL. Le menu le
         dit avant même de demander la fenêtre — mesuré sur une VM de migration,
-        où le démarrage détaché rendait 0 et le journal disait « not found »."""
+        où le démarrage détaché rendait 0 et le journal disait « not found ».
+        """
         out, calls = self._play(["1"], probe="NO_SDK\n")
         self.assertIn("SDK", out)
         self.assertNotIn("[1]", out.split("VM locale")[-1])
