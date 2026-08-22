@@ -6191,6 +6191,10 @@ TRANSLATIONS = {
         "fr": "vue(s) portent encore une balise <tree> qu'Odoo 18",
         "en": "view(s) still carry a <tree> tag Odoo 18",
     },
+    "failed at": {
+        "fr": "a échoué sur",
+        "en": "failed at",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",

@@ -53,7 +53,15 @@ class TestReadingTheSitemap(unittest.TestCase):
     def setUp(self):
         self.answers = {}
         self.original = smoke.fetch
-        smoke.fetch = lambda url, timeout=30: self.answers.get(url, (404, ""))
+
+        # `fetch` rend TROIS valeurs depuis qu'il porte l'URL finale.
+        # Un faux resté à deux casse chaque appelant sur un « not enough
+        # values to unpack » qui n'apprend rien de la panne réelle.
+        def faux(url, timeout=30):
+            statut, corps = self.answers.get(url, (404, ""))
+            return statut, corps, url
+
+        smoke.fetch = faux
         self.addCleanup(setattr, smoke, "fetch", self.original)
 
     def test_a_plain_sitemap(self):
@@ -101,13 +109,22 @@ class TestWhatCountsAsAFailure(unittest.TestCase):
     def setUp(self):
         self.answers = {}
         self.original = smoke.fetch
-        smoke.fetch = lambda url, timeout=30: self.answers.get(url, (200, ""))
+
+        # `fetch` rend TROIS valeurs depuis qu'il porte l'URL finale.
+        # Un faux resté à deux casse chaque appelant sur un « not enough
+        # values to unpack » qui n'apprend rien de la panne réelle.
+        def faux(url, timeout=30):
+            statut, corps = self.answers.get(url, (200, ""))
+            return statut, corps, url
+
+        smoke.fetch = faux
         self.addCleanup(setattr, smoke, "fetch", self.original)
 
     def test_a_500_fails(self):
         self.answers["http://h/bad"] = (500, "")
         self.assertEqual(
-            smoke.check_urls(["http://h/bad"]), [("http://h/bad", 500, [])]
+            smoke.check_urls(["http://h/bad"]),
+            [("http://h/bad", 500, [], "http://h/bad")],
         )
 
     def test_a_404_fails_too(self):
@@ -119,7 +136,8 @@ class TestWhatCountsAsAFailure(unittest.TestCase):
     def test_no_answer_at_all_fails(self):
         self.answers["http://h/dead"] = (0, "")
         self.assertEqual(
-            smoke.check_urls(["http://h/dead"]), [("http://h/dead", 0, [])]
+            smoke.check_urls(["http://h/dead"]),
+            [("http://h/dead", 0, [], "http://h/dead")],
         )
 
     def test_a_200_passes(self):
@@ -141,7 +159,9 @@ class TestTheReport(unittest.TestCase):
         self.assertIn("✅", text)
 
     def test_a_failure_shows_the_status_and_the_url(self):
-        text = smoke.render(["a"], [("http://h/blog/x", 500, [])])
+        text = smoke.render(
+            ["a"], [("http://h/blog/x", 500, [], "http://h/blog/x")]
+        )
         self.assertIn("500", text)
         self.assertIn("http://h/blog/x", text)
 
@@ -211,7 +231,7 @@ class TestTheCulpritViewsAreNamed(unittest.TestCase):
     def test_a_late_context_is_still_attached(self):
         # Odoo vide son tampon à l'arrêt : le journal se lit APRÈS, et rien
         # ne doit dépendre du moment où la ligne est apparue.
-        lst_failure = [("http://h/a", 500, [])]
+        lst_failure = [("http://h/a", 500, [], "http://h/a")]
         log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
         self.assertIn("2841", rebuilt[0][2])
@@ -221,20 +241,20 @@ class TestTheCulpritViewsAreNamed(unittest.TestCase):
         # à sa vue module, et c'est l'enfant (3282) qui portait l'arch
         # périmée. Ne nommer que le parent envoyait réinitialiser une copie
         # qui allait déjà bien, et la page restait en 500.
-        lst_failure = [("http://h/contactus", 500, [])]
+        lst_failure = [("http://h/contactus", 500, [], "http://h/contactus")]
         log = ["[view_id: 3282, model: n/a, parent_id: 3281]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
         self.assertEqual(rebuilt[0][2], ["3281", "3282"])
 
     def test_the_parent_comes_first(self):
         # C'est le cas le plus fréquent — le blogue — donc en tête de liste.
-        lst_failure = [("http://h/a", 500, [])]
+        lst_failure = [("http://h/a", 500, [], "http://h/a")]
         log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
         self.assertEqual(rebuilt[0][2][0], "2841")
 
     def test_an_already_attributed_id_is_not_duplicated(self):
-        lst_failure = [("http://h/a", 500, ["2841"])]
+        lst_failure = [("http://h/a", 500, ["2841"], "http://h/a")]
         log = ["[view_id: 3288, model: n/a, parent_id: 2841]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
         self.assertEqual(rebuilt[0][2].count("2841"), 1)
@@ -359,7 +379,7 @@ class TestOfferingTheFix(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             done = smoke.prompt(
                 "db",
-                [("http://h/a", 500, ["2841"])],
+                [("http://h/a", 500, ["2841"], "http://h/a")],
                 lst_key,
                 ask=lambda prompt: answer,
             )
