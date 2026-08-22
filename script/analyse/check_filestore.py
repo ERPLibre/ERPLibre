@@ -388,6 +388,10 @@ def audit(database, config_path=None, backups=None):
         return {"unavailable": True, "database": database}
     racine = filestore_root(config_path)
     mien = os.path.join(racine, database)
+    # `root` désigne le dossier de CETTE base. Y mettre la racine de tous
+    # les filestores faisait chercher le dossier imbriqué à
+    # `<data_dir>/filestore/filestore` — inexistant — et l'outil
+    # répondait « rien à ranger » devant 1168 fichiers échoués.
     present = set()
     if os.path.isdir(mien):
         for prefixe in os.listdir(mien):
@@ -403,12 +407,19 @@ def audit(database, config_path=None, backups=None):
 
     groupes = {verdict: [] for verdict in VERDICTS}
     vus = set()
+    morts = []
     for piece in pieces:
         verdict = classify(
             piece, present, ailleurs, niches, sauvegardes, champs_vivants
         )
         if not verdict:
             continue
+        # La déduplication qui suit sert à compter des FICHIERS. Pour
+        # effacer des LIGNES il les faut toutes : vingt-deux lignes
+        # partageaient deux fichiers, et la purge n'en offrait qu'une à
+        # la fois — il fallait la relancer vingt-deux fois.
+        if verdict[0] == "dead_field" and str(piece.get("id", "")).isdigit():
+            morts.append(int(piece["id"]))
         # Plusieurs pièces jointes partagent un fichier quand leur contenu
         # est identique : le compter une fois par ligne gonflerait le
         # rapport sans ajouter un seul fichier à récupérer.
@@ -426,7 +437,8 @@ def audit(database, config_path=None, backups=None):
         "missing": len(vus),
         "groups": groupes,
         "nested_total": len(niches),
-        "root": racine,
+        "root": mien,
+        "dead_ids": morts,
     }
 
 
@@ -461,7 +473,7 @@ def render(rapport, limit=20):
             if len(apercu) > 4:
                 lignes.append(f"         … {len(apercu) - 4} {t('more')}")
             continue
-        for piece in groupe[:limit]:
+        for piece in groupe[: limit or None]:
             ou = (
                 f"{piece['model']} #{piece['res_id']}"
                 if piece["model"]
@@ -473,7 +485,7 @@ def render(rapport, limit=20):
                 f" {piece['size'] // 1024:>6} ko  {ou}{champ}"
                 f"  {piece['created']}  {alive_mark(piece)}"
             )
-        if len(groupe) > limit:
+        if limit and len(groupe) > limit:
             lignes.append(f"         … {len(groupe) - limit} {t('more')}")
     return lignes + render_nested(rapport)
 
@@ -523,15 +535,27 @@ def purge_dead_sql(rapport):
     porte, et rejouer ce raisonnement en SQL laisserait la porte ouverte
     à effacer autre chose que ce qui a été montré.
     """
-    ids = sorted(
-        int(piece["id"])
-        for piece in rapport["groups"]["dead_field"]
-        if str(piece.get("id", "")).isdigit()
-    )
+    ids = sorted(set(rapport.get("dead_ids") or []))
     if not ids:
         return ""
     liste = ", ".join(str(i) for i in ids)
     return f"DELETE FROM ir_attachment WHERE id IN ({liste})"
+
+
+def rows_deleted(sortie):
+    """Le nombre annoncé par « DELETE n », ou None si rien ne le dit.
+
+    None n'est pas zéro : « la commande n'a rien annoncé » et « elle n'a
+    rien supprimé » appellent des mots différents. Les confondre ferait
+    taire une panne ou inventer un succès.
+    """
+    lignes = sortie if isinstance(sortie, list) else str(sortie).splitlines()
+    for ligne in reversed([str(x).strip() for x in lignes]):
+        if ligne.startswith("DELETE "):
+            reste = ligne[len("DELETE ") :].strip()
+            if reste.isdigit():
+                return int(reste)
+    return None
 
 
 def nested_dir(rapport):

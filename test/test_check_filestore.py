@@ -231,6 +231,40 @@ class TestTheAudit(unittest.TestCase):
         fs.attachments = lambda base: None
         self.assertTrue(fs.audit("db")["unavailable"])
 
+    def test_every_row_sharing_a_dead_file_is_listed_for_deletion(self):
+        # Vingt-deux lignes partageaient deux fichiers : la purge n'en
+        # offrait qu'une à la fois, et il fallait la relancer vingt-deux
+        # fois. Compter des FICHIERS et effacer des LIGNES ne sont pas la
+        # même opération.
+        fs.attachments = lambda base: [
+            piece("aa/bb", "res.country", "image", res_id="1", pid="10"),
+            piece("aa/bb", "res.country", "image", res_id="2", pid="11"),
+            piece("cc/dd", "res.country", "image", res_id="3", pid="12"),
+        ]
+        rapport = fs.audit("db")
+        self.assertEqual(rapport["missing"], 2)
+        self.assertEqual(len(rapport["groups"]["dead_field"]), 2)
+        self.assertEqual(sorted(rapport["dead_ids"]), [10, 11, 12])
+        self.assertIn("(10, 11, 12)", fs.purge_dead_sql(rapport))
+
+    def test_a_live_row_sharing_a_file_is_never_swept_along(self):
+        # Deux lignes, un seul fichier, mais un seul champ mort : effacer
+        # les deux emporterait une pièce jointe bien vivante.
+        fs.live_fields = lambda base: {"project.task.attachment"}
+        fs.attachments = lambda base: [
+            piece("aa/bb", "res.country", "image", pid="10"),
+            piece("aa/bb", "project.task", "attachment", pid="11"),
+        ]
+        rapport = fs.audit("db")
+        self.assertEqual(rapport["dead_ids"], [10])
+
+    def test_the_root_points_at_this_database_directory(self):
+        # Y mettre la racine de tous les filestores faisait chercher le
+        # dossier imbriqué à `<data_dir>/filestore/filestore` : l'outil
+        # répondait « rien à ranger » devant 1168 fichiers échoués.
+        fs.attachments = lambda base: []
+        self.assertEqual(fs.audit("ma_base")["root"], "/nulle/part/ma_base")
+
     def test_a_dead_field_never_lands_in_lost(self):
         # Le garde du champ disparu doit VRAIMENT couper : sans lui, ces
         # lignes gonfleraient les pertes réelles.
@@ -270,6 +304,34 @@ class TestTheReport(unittest.TestCase):
         # noms qu'on n'a pas à lire cacheraient les trois qui comptent.
         self.assertNotIn("recuperable.png", texte)
         self.assertIn("res.country / image", texte)
+
+    def test_limit_zero_shows_EVERYTHING(self):
+        # « Tout afficher » passe limit=0. Une tranche [:0] est vide :
+        # l'écran annonçait « … 3 de plus » et ne montrait rien du tout.
+        groupes = {v: [] for v in fs.VERDICTS}
+        groupes["lost"] = [
+            piece(f"a/{i}", "project.task", name=f"perdu{i}.png")
+            for i in range(3)
+        ]
+        texte = "\n".join(
+            fs.render(self.rapport(missing=3, groups=groupes), limit=0)
+        )
+        for i in range(3):
+            self.assertIn(f"perdu{i}.png", texte)
+        self.assertNotIn(todo_i18n.t("more"), texte)
+
+    def test_a_limit_still_caps_and_says_how_many_were_hidden(self):
+        groupes = {v: [] for v in fs.VERDICTS}
+        groupes["lost"] = [
+            piece(f"a/{i}", "project.task", name=f"perdu{i}.png")
+            for i in range(5)
+        ]
+        texte = "\n".join(
+            fs.render(self.rapport(missing=5, groups=groupes), limit=2)
+        )
+        self.assertIn("perdu0.png", texte)
+        self.assertNotIn("perdu4.png", texte)
+        self.assertIn(f"3 {todo_i18n.t('more')}", texte)
 
     def test_the_nested_pile_is_reported(self):
         texte = "\n".join(fs.render(self.rapport(nested_total=1168)))
@@ -349,27 +411,45 @@ class TestTheLivingRecord(unittest.TestCase):
 
 
 class TestTheRepairs(unittest.TestCase):
-    def rapport(self, morts=(), racine="/fs/db"):
+    def rapport(self, ids=(), racine="/fs/db"):
         base = {v: [] for v in fs.VERDICTS}
-        base["dead_field"] = list(morts)
-        return {"root": racine, "groups": base}
+        return {"root": racine, "groups": base, "dead_ids": list(ids)}
 
     def test_the_purge_deletes_by_id_only(self):
         # Par IDENTIFIANT, jamais par un domaine reconstruit : rejouer le
         # raisonnement en SQL ouvrirait la porte à effacer autre chose
         # que ce qui a été montré.
-        sql = fs.purge_dead_sql(
-            self.rapport([piece("a/1", pid="3"), piece("b/2", pid="9")])
-        )
+        sql = fs.purge_dead_sql(self.rapport([9, 3]))
         self.assertIn("WHERE id IN (3, 9)", sql)
         self.assertNotIn("res_model", sql)
 
     def test_nothing_dead_gives_no_sql(self):
         self.assertEqual(fs.purge_dead_sql(self.rapport()), "")
 
-    def test_a_row_without_an_id_is_never_deleted(self):
-        sql = fs.purge_dead_sql(self.rapport([piece("a/1", pid="")]))
-        self.assertEqual(sql, "")
+    def test_a_report_without_the_key_gives_no_sql(self):
+        self.assertEqual(fs.purge_dead_sql({"groups": {}}), "")
+
+
+class TestReadingWhatPostgresSaid(unittest.TestCase):
+    def test_it_reads_the_count(self):
+        self.assertEqual(fs.rows_deleted(["DELETE 250"]), 250)
+
+    def test_zero_is_zero_not_success(self):
+        # « DELETE 0 » se félicitait d'avoir supprimé : rejouer une purge
+        # déjà faite annonçait un travail qui n'avait pas eu lieu.
+        self.assertEqual(fs.rows_deleted(["DELETE 0"]), 0)
+
+    def test_it_takes_the_LAST_word(self):
+        self.assertEqual(fs.rows_deleted(["DELETE 5", "bruit", "DELETE 7"]), 7)
+
+    def test_silence_is_not_zero(self):
+        # « rien annoncé » et « rien supprimé » appellent des mots
+        # différents : les confondre tait une panne.
+        self.assertIsNone(fs.rows_deleted(["ERROR: boom"]))
+        self.assertIsNone(fs.rows_deleted([]))
+
+    def test_a_plain_string_works_too(self):
+        self.assertEqual(fs.rows_deleted("DELETE 3\n"), 3)
 
 
 class TestTidyingTheNested(unittest.TestCase):
@@ -422,16 +502,14 @@ class TestTheRepairMenu(unittest.TestCase):
         self.vrai_ask = auto_ask.ask
         self.lancees = []
         self.obj = todo_module.TODO.__new__(todo_module.TODO)
-        self.obj.execute = type(
-            "E",
-            (),
-            {
-                "exec_command_live": lambda _s, cmd, **k: self.lancees.append(
-                    cmd
-                )
-                or 0
-            },
-        )()
+
+        def faux_exec(_self, cmd, **kw):
+            self.lancees.append(cmd)
+            if kw.get("return_status_and_output"):
+                return 0, ["DELETE 1"]
+            return 0
+
+        self.obj.execute = type("E", (), {"exec_command_live": faux_exec})()
 
     def tearDown(self):
         self.auto_ask.ask = self.vrai_ask
@@ -445,29 +523,33 @@ class TestTheRepairMenu(unittest.TestCase):
 
         self.auto_ask.ask = faux
 
-    def rapport(self, morts=()):
+    def rapport(self, morts=(), ids=()):
         groupes = {v: [] for v in fs.VERDICTS}
         groupes["dead_field"] = list(morts)
-        return {"root": "/fs/db", "groups": groupes}
+        return {"root": "/fs/db", "groups": groupes, "dead_ids": list(ids)}
 
     def test_saying_no_deletes_nothing(self):
         self.repond("n")
         with redirect_stdout(io.StringIO()):
-            self.obj._filestore_purge_dead("db", self.rapport([piece("a/1")]))
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
         self.assertEqual(self.lancees, [])
 
     def test_pressing_enter_deletes_nothing(self):
         # Le défaut d'une SUPPRESSION doit être de ne rien faire.
         self.repond("")
         with redirect_stdout(io.StringIO()):
-            self.obj._filestore_purge_dead("db", self.rapport([piece("a/1")]))
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
         self.assertEqual(self.lancees, [])
 
     def test_accepting_runs_a_command_that_actually_exists(self):
         self.repond("y")
         with redirect_stdout(io.StringIO()):
             self.obj._filestore_purge_dead(
-                "db", self.rapport([piece("a/1", pid="3")])
+                "db", self.rapport([piece("a/1")], [3])
             )
         self.assertEqual(len(self.lancees), 1)
         self.assertIn("psql -d db", self.lancees[0])
@@ -496,6 +578,127 @@ class TestTheRepairMenu(unittest.TestCase):
         # Le garde du défaut doit rester collé à la question : c'est lui
         # qui empêche Entrée de supprimer.
         self.assertIn('auto_ask.ask(question, default="n")', src)
+
+    def test_a_delete_that_changed_nothing_is_NOT_a_success(self):
+        # « DELETE 0 » se félicitait d'avoir supprimé. Rejouer une purge
+        # déjà faite annonçait donc un travail qui n'avait pas eu lieu.
+        def rien(_self, cmd, **kw):
+            self.lancees.append(cmd)
+            return (
+                (0, ["DELETE 0"]) if kw.get("return_status_and_output") else 0
+            )
+
+        self.obj.execute = type("E", (), {"exec_command_live": rien})()
+        self.repond("y")
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.assertIn("0 ", tampon.getvalue())
+        self.assertNotIn("✅ 1 ", tampon.getvalue())
+
+    def test_a_silent_command_is_flagged_not_counted(self):
+        def muet(_self, cmd, **kw):
+            self.lancees.append(cmd)
+            return (
+                (0, ["rien du tout"])
+                if kw.get("return_status_and_output")
+                else 0
+            )
+
+        self.obj.execute = type("E", (), {"exec_command_live": muet})()
+        self.repond("y")
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.assertIn(
+            todo_i18n.t("The purge ran but said nothing."), tampon.getvalue()
+        )
+
+    def test_a_repair_reports_whether_it_did_something(self):
+        # C'est ce booléen qui déclenche la relecture du rapport : sans
+        # lui, « Tout afficher » rejouerait l'état d'avant la purge.
+        self.repond("n")
+        with redirect_stdout(io.StringIO()):
+            refus = self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.repond("y")
+        with redirect_stdout(io.StringIO()):
+            fait = self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.assertFalse(refus)
+        self.assertTrue(fait)
+
+
+class TestTheReportIsRereadAfterARepair(unittest.TestCase):
+    """« Tout afficher » doit montrer l'APRÈS, pas l'avant.
+
+    Sans relecture on purgeait, on relisait, et l'on voyait encore ce
+    qui venait de disparaître — puis on repurgeait des lignes déjà
+    effacées en croyant le travail inachevé. C'est arrivé en vrai.
+    """
+
+    def setUp(self):
+        from script.todo import auto_ask
+        from script.todo import todo as todo_module
+
+        self.auto_ask = auto_ask
+        self.vrai_ask = auto_ask.ask
+        self.vrai_audit = fs.audit
+        self.appels = []
+        self.obj = todo_module.TODO.__new__(todo_module.TODO)
+        self.obj._analyse_select_database = lambda: "db"
+        self.obj._filestore_purge_dead = lambda base, rapport: True
+        self.obj._filestore_tidy_nested = lambda rapport: True
+
+        def audit(base, *a, **k):
+            self.appels.append(base)
+            return {
+                "database": base,
+                "attachments": 1,
+                "files_present": 1,
+                "missing": 0,
+                "nested_total": 0,
+                "root": "/fs/db",
+                "groups": {v: [] for v in fs.VERDICTS},
+                "dead_ids": [],
+            }
+
+        fs.audit = audit
+        self.auto_ask.ask = lambda p, default="", seconds=None: "n"
+
+    def tearDown(self):
+        self.auto_ask.ask = self.vrai_ask
+        fs.audit = self.vrai_audit
+
+    def joue(self, rang):
+        self.obj._analyse_follow_up = lambda choix, handler: handler(rang)
+        with redirect_stdout(io.StringIO()):
+            self.obj.execute_analyse_filestore()
+
+    def test_a_purge_triggers_a_fresh_read(self):
+        self.joue(2)
+        self.assertEqual(len(self.appels), 2)
+
+    def test_a_tidy_triggers_a_fresh_read(self):
+        self.joue(3)
+        self.assertEqual(len(self.appels), 2)
+
+    def test_merely_displaying_does_not(self):
+        # Relire pour afficher coûterait un balayage complet des
+        # filestores et des zips à chaque coup d'œil.
+        self.joue(1)
+        self.assertEqual(len(self.appels), 1)
+
+    def test_a_refused_repair_does_not_reread(self):
+        self.obj._filestore_purge_dead = lambda base, rapport: False
+        self.joue(2)
+        self.assertEqual(len(self.appels), 1)
 
 
 class TestTidyingForReal(unittest.TestCase):

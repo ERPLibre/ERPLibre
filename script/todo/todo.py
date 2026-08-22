@@ -10290,18 +10290,32 @@ class TODO:
         if rapport.get("unavailable"):
             print(f"❌ {t('Cannot read the database: ')}{database}")
             return
+        etat = {"rapport": rapport}
         print("\n".join(filestore.render(rapport, limit=20)))
+
+        def relire():
+            """Relire APRÈS une réparation.
+
+            Sans cela « Tout afficher » rejouait le rapport d'avant :
+            on purgeait, on relisait, et l'on voyait encore ce qui
+            venait de disparaître. Pire, on repurgeait des lignes déjà
+            effacées en croyant le travail inachevé.
+            """
+            print(f"⧖ {t('Scanning filestores and backups…')}")
+            etat["rapport"] = filestore.audit(database)
 
         def handler(rank):
             if rank == 1:
-                print("\n".join(filestore.render(rapport, limit=0)))
+                print("\n".join(filestore.render(etat["rapport"], limit=0)))
             elif rank == 2:
-                self._filestore_purge_dead(database, rapport)
+                if self._filestore_purge_dead(database, etat["rapport"]):
+                    relire()
             elif rank == 3:
-                self._filestore_tidy_nested(rapport)
+                if self._filestore_tidy_nested(etat["rapport"]):
+                    relire()
             else:
                 self._analyse_export_json(
-                    rapport, os.path.basename(database), "filestore"
+                    etat["rapport"], os.path.basename(database), "filestore"
                 )
 
         self._analyse_follow_up(
@@ -10338,7 +10352,7 @@ class TODO:
         sql = filestore.purge_dead_sql(rapport)
         if not sql:
             print(f"ℹ️  {t('Nothing to purge.')}")
-            return
+            return False
         print()
         for texte in filestore.summarise(lignes):
             print(f"   {texte}")
@@ -10352,16 +10366,25 @@ class TODO:
             "o",
         ):
             print(f"ℹ️  {t('Nothing was deleted.')}")
-            return
-        status = self.execute.exec_command_live(
+            return False
+        status, sortie = self.execute.exec_command_live(
             f'psql -d {database} -c "{sql}"',
             source_erplibre=False,
             single_source_erplibre=True,
+            return_status_and_output=True,
         )
         if status:
             print(f"❌ {t('The purge failed.')}")
-            return
-        print(f"✅ {len(lignes)} {t('attachment row(s) deleted.')}")
+            return False
+        # Le nombre ANNONCÉ par PostgreSQL, pas celui qu'on espérait :
+        # rejouer une purge déjà faite rendait « DELETE 0 » et l'outil
+        # se félicitait quand même d'avoir supprimé.
+        efface = filestore.rows_deleted(sortie)
+        if efface is None:
+            print(f"⚠ {t('The purge ran but said nothing.')}")
+            return True
+        print(f"✅ {efface} {t('attachment row(s) deleted.')}")
+        return True
 
     def _filestore_tidy_nested(self, rapport):
         """Remonter ce qui manque, effacer les doublons purs.
@@ -10376,7 +10399,7 @@ class TODO:
         remonter, doublons = filestore.tidy_nested_plan(rapport)
         if not remonter and not doublons:
             print(f"ℹ️  {t('No nested filestore to tidy.')}")
-            return
+            return False
         print()
         print(f"   {len(remonter)} {t('file(s) to move up')}")
         print(f"   {len(doublons)} {t('pure duplicate(s) to delete')}")
@@ -10385,7 +10408,7 @@ class TODO:
             f"💬 {t('Go ahead?')} (y/N) : ", default="n"
         ).strip().lower() not in ("y", "yes", "o"):
             print(f"ℹ️  {t('Nothing was moved.')}")
-            return
+            return False
         deplaces, effaces = 0, 0
         for source, cible in remonter:
             os.makedirs(os.path.dirname(cible), exist_ok=True)
@@ -10401,6 +10424,7 @@ class TODO:
             f"✅ {deplaces} {t('moved up')}, {effaces}"
             f" {t('duplicate(s) removed')}."
         )
+        return True
 
     def _analyse_offer_install(self, database, rapport):
         """Proposer d'installer ce qui manque, quand c'est installable.
