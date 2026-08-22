@@ -4,6 +4,31 @@
 
 # TODO load specific test file : ./run.sh -d test_file --log-level=test --test-enable --stop-after-init --test-file ./.venv.erplibre/test.py
 
+###########################
+# Tests unitaires python  #
+###########################
+# Ni base de données, ni Odoo, ni VM : ils lisent le code et exécutent les
+# fragments de shell que todo.py génère, « sudo », « pgrep » et « pkill »
+# bouchonnés. Une dizaine de secondes, là où « make test » demande une base et
+# plusieurs minutes — d'où une cible à part, faite pour être lancée souvent.
+#
+# DÉPENDANCE : les tests du transfert mobile lisent
+# mobile/erplibre_home_mobile. Le lanceur l'annonce présent ou absent avant de
+# commencer, et les tests concernés se déclarent ignorés plutôt que de passer
+# en silence — un test vert sans son dépôt ne prouve rien.
+#
+# « test_todo.py » n'en fait PAS partie : il demande une base de données. Son
+# nom sans souligné le laisse hors du motif, et c'est voulu.
+.PHONY: test_unit
+test_unit:
+	./script/test/run_unit_test.sh
+
+# Un seul fichier, pour la boucle d'écriture :
+#   make test_unit_file F=test/test_qemu_forgejo.py
+.PHONY: test_unit_file
+test_unit_file:
+	./script/test/run_unit_test.sh $(F)
+
 .PHONY: open_test_coverage
 open_test_coverage:
 	-$(BROWSER) htmlcov/index.html

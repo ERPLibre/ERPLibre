@@ -2058,13 +2058,17 @@ class TODO:
         host, from_ssh = self._qemu_self_address()
         user = os.environ.get("USER", "user")
         print(f"\n  {t('No display here; run this on YOUR workstation:')}")
-        print(f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n")
+        print(
+            f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n"
+        )
         if not from_ssh:
             print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
         print(f"  {t('A ~/.ssh/config alias works there too.')}")
         print(f"  {t('It builds its own tunnel; no ssh -L to keep open.')}")
-        print(f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
-              " / zypper")
+        print(
+            f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
+            " / zypper"
+        )
 
     def _qemu_console_tunnel(self, name, src):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
