@@ -130,6 +130,7 @@ def attachments(database):
     lignes = run_psql(
         database,
         "SELECT a.store_fname, coalesce(a.res_model, ''),"
+        " a.id::text,"
         " coalesce(a.res_field, ''), coalesce(a.res_id::text, ''),"
         " coalesce(a.name, ''), coalesce(a.file_size::text, '0'),"
         " coalesce(a.mimetype, ''), coalesce(a.create_date::text, '')"
@@ -142,15 +143,16 @@ def attachments(database):
         {
             "store_fname": ligne[0],
             "model": ligne[1],
-            "field": ligne[2],
-            "res_id": ligne[3],
-            "name": ligne[4],
-            "size": int(ligne[5] or 0),
-            "mimetype": ligne[6],
-            "created": ligne[7][:10],
+            "id": ligne[2],
+            "field": ligne[3],
+            "res_id": ligne[4],
+            "name": ligne[5],
+            "size": int(ligne[6] or 0),
+            "mimetype": ligne[7],
+            "created": ligne[8][:10],
         }
         for ligne in lignes
-        if len(ligne) >= 8
+        if len(ligne) >= 9
     ]
 
 
@@ -219,6 +221,45 @@ def scan_backups(dossier):
         except (OSError, zipfile.BadZipFile):
             continue
     return trouves
+
+
+def resources_alive(database, pieces):
+    """{(modele, id): True/False} — l'enregistrement visé existe-t-il ?
+
+    Une image perdue dont la tâche a été supprimée n'est pas une perte :
+    personne ne la cherchera jamais. Une image perdue sur une tâche
+    VIVANTE en est une, et c'est la seule qu'il faille regretter.
+    Confondre les deux, c'est pleurer au hasard.
+
+    Une requête par modèle, sur les seules pièces jointes déjà classées
+    perdues — jamais sur les milliers d'autres.
+    """
+    par_modele = {}
+    for piece in pieces:
+        if not piece.get("model") or not (piece.get("res_id") or "").isdigit():
+            continue
+        par_modele.setdefault(piece["model"], set()).add(int(piece["res_id"]))
+    vivants = {}
+    for modele, ids in par_modele.items():
+        table = modele.replace(".", "_").replace("'", "")
+        # Un modèle abstrait ou transitoire n'a pas de table : interroger
+        # une table absente rendrait None, qu'on lirait « n'existe pas ».
+        # Ce serait un mensonge, et le pire sens du mensonge ici.
+        existe = run_psql(
+            database, f"SELECT to_regclass('{table}') IS NOT NULL"
+        )
+        if not existe or existe[0][0] != "t":
+            continue
+        liste = ", ".join(str(i) for i in sorted(ids))
+        lignes = run_psql(
+            database, f"SELECT id FROM {table} WHERE id IN ({liste})"
+        )
+        if lignes is None:
+            continue
+        trouves = {int(ligne[0]) for ligne in lignes if ligne and ligne[0]}
+        for identifiant in ids:
+            vivants[(modele, str(identifiant))] = identifiant in trouves
+    return vivants
 
 
 def files_on_disk(racine, database):
@@ -375,6 +416,9 @@ def audit(database, config_path=None, backups=None):
             continue
         vus.add(piece["store_fname"])
         groupes[verdict[0]].append(dict(piece, where=verdict[1]))
+    vivants = resources_alive(database, groupes["lost"])
+    for piece in groupes["lost"]:
+        piece["alive"] = vivants.get((piece["model"], piece["res_id"]))
     return {
         "database": database,
         "attachments": len(pieces),
@@ -427,7 +471,7 @@ def render(rapport, limit=20):
             lignes.append(
                 f"         {piece['name'][:44] or '(sans nom)':<46}"
                 f" {piece['size'] // 1024:>6} ko  {ou}{champ}"
-                f"  {piece['created']}"
+                f"  {piece['created']}  {alive_mark(piece)}"
             )
         if len(groupe) > limit:
             lignes.append(f"         … {len(groupe) - limit} {t('more')}")
@@ -444,6 +488,21 @@ def render_nested(rapport):
     ]
 
 
+def alive_mark(piece):
+    """Dire si l'enregistrement visé vit encore, ou qu'on ne sait pas.
+
+    Trois états, pas deux : « on n'a pas pu vérifier » ne doit pas se
+    lire comme « il a disparu », sans quoi une vraie perte serait classée
+    en fausse alerte.
+    """
+    etat = piece.get("alive")
+    if etat is True:
+        return f"✓ {t('record still exists')}"
+    if etat is False:
+        return f"✗ {t('record is gone — nothing will miss it')}"
+    return ""
+
+
 def summarise(groupe):
     """« modele / champ × N », pour dire beaucoup en peu de lignes."""
     compte = {}
@@ -454,6 +513,60 @@ def summarise(groupe):
         f"{cle} × {combien}" if combien > 1 else cle
         for cle, combien in sorted(compte.items(), key=lambda x: -x[1])
     ]
+
+
+def purge_dead_sql(rapport):
+    """Le SQL qui efface les lignes dont le champ n'existe plus, ou "".
+
+    On efface par IDENTIFIANT, pas par un domaine reconstruit : la liste
+    a été établie en confrontant `ir_model_fields` à ce que la base
+    porte, et rejouer ce raisonnement en SQL laisserait la porte ouverte
+    à effacer autre chose que ce qui a été montré.
+    """
+    ids = sorted(
+        int(piece["id"])
+        for piece in rapport["groups"]["dead_field"]
+        if str(piece.get("id", "")).isdigit()
+    )
+    if not ids:
+        return ""
+    liste = ", ".join(str(i) for i in ids)
+    return f"DELETE FROM ir_attachment WHERE id IN ({liste})"
+
+
+def nested_dir(rapport):
+    """Le dossier imbriqué de cette base, s'il en existe un."""
+    chemin = os.path.join(rapport["root"], "filestore")
+    return chemin if os.path.isdir(chemin) else ""
+
+
+def tidy_nested_plan(rapport):
+    """(à remonter, doublons) parmi les fichiers imbriqués.
+
+    Deux tas très différents : ce qui MANQUE au bon niveau doit y
+    remonter, ce qui y est déjà est un doublon pur. Les traiter d'un
+    bloc écraserait des fichiers présents par des copies — inutile, et
+    inquiétant sur une base de production.
+    """
+    dossier = nested_dir(rapport)
+    if not dossier:
+        return [], []
+    bons, _n = files_on_disk(
+        os.path.dirname(rapport["root"]), os.path.basename(rapport["root"])
+    )
+    remonter, doublons = [], []
+    for deux in sorted(os.listdir(dossier)):
+        profond = os.path.join(dossier, deux)
+        if not os.path.isdir(profond):
+            continue
+        for nom in sorted(os.listdir(profond)):
+            complet = os.path.join(profond, nom)
+            if not os.path.isfile(complet):
+                continue
+            (doublons if f"{deux}/{nom}" in bons else remonter).append(
+                (complet, os.path.join(rapport["root"], deux, nom))
+            )
+    return remonter, doublons
 
 
 def main(argv=None):

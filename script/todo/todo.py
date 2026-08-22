@@ -10295,6 +10295,10 @@ class TODO:
         def handler(rank):
             if rank == 1:
                 print("\n".join(filestore.render(rapport, limit=0)))
+            elif rank == 2:
+                self._filestore_purge_dead(database, rapport)
+            elif rank == 3:
+                self._filestore_tidy_nested(rapport)
             else:
                 self._analyse_export_json(
                     rapport, os.path.basename(database), "filestore"
@@ -10303,9 +10307,99 @@ class TODO:
         self._analyse_follow_up(
             [
                 {"prompt_description": t("Show every entry")},
+                {
+                    "prompt_description": t(
+                        "🧹 Purge attachments whose field no longer exists"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "🧹 Tidy the nested filestore Odoo never reads"
+                    )
+                },
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,
+        )
+
+    def _filestore_purge_dead(self, database, rapport):
+        """Effacer les pièces jointes dont le champ a disparu.
+
+        La seule ÉCRITURE en base de tout le menu Analyse. Elle porte sur
+        des lignes que plus rien ne lit — `res.country.image` est devenu
+        `image_url`, calculé, en 13 — mais elle reste une suppression :
+        question explicite, défaut à « non », et le compte est relu avant
+        de partir.
+        """
+        from script.analyse import check_filestore as filestore
+        from script.todo import auto_ask
+
+        lignes = rapport["groups"]["dead_field"]
+        sql = filestore.purge_dead_sql(rapport)
+        if not sql:
+            print(f"ℹ️  {t('Nothing to purge.')}")
+            return
+        print()
+        for texte in filestore.summarise(lignes):
+            print(f"   {texte}")
+        question = (
+            f"💬 {t('Delete these')} {len(lignes)}"
+            f" {t('attachment row(s) for good?')} (y/N) : "
+        )
+        if auto_ask.ask(question, default="n").strip().lower() not in (
+            "y",
+            "yes",
+            "o",
+        ):
+            print(f"ℹ️  {t('Nothing was deleted.')}")
+            return
+        status = self.execute.exec_command_live(
+            f'psql -d {database} -c "{sql}"',
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+        if status:
+            print(f"❌ {t('The purge failed.')}")
+            return
+        print(f"✅ {len(lignes)} {t('attachment row(s) deleted.')}")
+
+    def _filestore_tidy_nested(self, rapport):
+        """Remonter ce qui manque, effacer les doublons purs.
+
+        Deux tas, deux gestes. Écraser un fichier présent par une copie
+        identique ne gagnerait rien et brouillerait la trace ; c'est
+        pourquoi les doublons sont comptés à part et jamais déplacés.
+        """
+        from script.analyse import check_filestore as filestore
+        from script.todo import auto_ask
+
+        remonter, doublons = filestore.tidy_nested_plan(rapport)
+        if not remonter and not doublons:
+            print(f"ℹ️  {t('No nested filestore to tidy.')}")
+            return
+        print()
+        print(f"   {len(remonter)} {t('file(s) to move up')}")
+        print(f"   {len(doublons)} {t('pure duplicate(s) to delete')}")
+        print(f"   {t('Directory:')} {filestore.nested_dir(rapport)}")
+        if auto_ask.ask(
+            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
+        ).strip().lower() not in ("y", "yes", "o"):
+            print(f"ℹ️  {t('Nothing was moved.')}")
+            return
+        deplaces, effaces = 0, 0
+        for source, cible in remonter:
+            os.makedirs(os.path.dirname(cible), exist_ok=True)
+            shutil.move(source, cible)
+            deplaces += 1
+        for source, _cible in doublons:
+            os.remove(source)
+            effaces += 1
+        dossier = filestore.nested_dir(rapport)
+        if dossier:
+            shutil.rmtree(dossier, ignore_errors=True)
+        print(
+            f"✅ {deplaces} {t('moved up')}, {effaces}"
+            f" {t('duplicate(s) removed')}."
         )
 
     def _analyse_offer_install(self, database, rapport):

@@ -28,10 +28,11 @@ from script.analyse import check_filestore as fs  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 
-def piece(store, model="", field="", res_id="1", name="x", size=1024):
+def piece(store, model="", field="", res_id="1", name="x", size=1024, pid="7"):
     return {
         "store_fname": store,
         "model": model,
+        "id": pid,
         "field": field,
         "res_id": res_id,
         "name": name,
@@ -287,6 +288,264 @@ class TestTheReport(unittest.TestCase):
             ]
         )
         self.assertIn("res.country / image × 2", resume)
+
+
+class TestTheLivingRecord(unittest.TestCase):
+    """Une image perdue sur un enregistrement supprimé n'est pas perdue."""
+
+    def setUp(self):
+        self.vrai = fs.run_psql
+        self.demandes = []
+
+    def tearDown(self):
+        fs.run_psql = self.vrai
+
+    def branche(self, tables, ids):
+        def faux(base, sql):
+            self.demandes.append(sql)
+            if "to_regclass" in sql:
+                return [["t" if any(x in sql for x in tables) else "f"]]
+            return [[str(i)] for i in ids]
+
+        fs.run_psql = faux
+
+    def test_a_living_record_is_reported_as_such(self):
+        self.branche(["project_task"], [15])
+        vivants = fs.resources_alive(
+            "db", [piece("a/1", "project.task", res_id="15")]
+        )
+        self.assertIs(vivants[("project.task", "15")], True)
+
+    def test_a_deleted_record_is_reported_as_gone(self):
+        self.branche(["project_task"], [])
+        vivants = fs.resources_alive(
+            "db", [piece("a/1", "project.task", res_id="15")]
+        )
+        self.assertIs(vivants[("project.task", "15")], False)
+
+    def test_a_model_without_a_table_is_left_UNKNOWN(self):
+        # « on n'a pas pu vérifier » ne doit pas se lire « il a disparu » :
+        # une vraie perte serait classée en fausse alerte.
+        self.branche([], [])
+        vivants = fs.resources_alive(
+            "db", [piece("a/1", "un.abstrait", res_id="1")]
+        )
+        self.assertEqual(vivants, {})
+
+    def test_an_attachment_without_a_record_is_not_queried(self):
+        self.branche([], [])
+        fs.resources_alive("db", [piece("a/1")])
+        self.assertEqual(self.demandes, [])
+
+    def test_the_mark_says_all_three_states(self):
+        self.assertIn(
+            todo_i18n.t("record still exists"), fs.alive_mark({"alive": True})
+        )
+        self.assertIn(
+            todo_i18n.t("record is gone — nothing will miss it"),
+            fs.alive_mark({"alive": False}),
+        )
+        self.assertEqual(fs.alive_mark({"alive": None}), "")
+
+
+class TestTheRepairs(unittest.TestCase):
+    def rapport(self, morts=(), racine="/fs/db"):
+        base = {v: [] for v in fs.VERDICTS}
+        base["dead_field"] = list(morts)
+        return {"root": racine, "groups": base}
+
+    def test_the_purge_deletes_by_id_only(self):
+        # Par IDENTIFIANT, jamais par un domaine reconstruit : rejouer le
+        # raisonnement en SQL ouvrirait la porte à effacer autre chose
+        # que ce qui a été montré.
+        sql = fs.purge_dead_sql(
+            self.rapport([piece("a/1", pid="3"), piece("b/2", pid="9")])
+        )
+        self.assertIn("WHERE id IN (3, 9)", sql)
+        self.assertNotIn("res_model", sql)
+
+    def test_nothing_dead_gives_no_sql(self):
+        self.assertEqual(fs.purge_dead_sql(self.rapport()), "")
+
+    def test_a_row_without_an_id_is_never_deleted(self):
+        sql = fs.purge_dead_sql(self.rapport([piece("a/1", pid="")]))
+        self.assertEqual(sql, "")
+
+
+class TestTidyingTheNested(unittest.TestCase):
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        self.base = os.path.join(self.racine, "ma_base")
+        for chemin in ("aa/deja", "filestore/aa/deja", "filestore/bb/absent"):
+            complet = os.path.join(self.base, chemin)
+            os.makedirs(os.path.dirname(complet), exist_ok=True)
+            with open(complet, "w", encoding="utf-8") as handle:
+                handle.write("x")
+
+    def tearDown(self):
+        shutil.rmtree(self.racine)
+
+    def test_it_separates_what_to_move_from_pure_duplicates(self):
+        # Écraser un fichier présent par une copie identique ne gagne
+        # rien et brouille la trace : les deux tas restent distincts.
+        remonter, doublons = fs.tidy_nested_plan({"root": self.base})
+        self.assertEqual(
+            [os.path.basename(a) for a, _b in remonter], ["absent"]
+        )
+        self.assertEqual([os.path.basename(a) for a, _b in doublons], ["deja"])
+
+    def test_the_destination_is_the_right_level(self):
+        remonter, _d = fs.tidy_nested_plan({"root": self.base})
+        self.assertEqual(
+            remonter[0][1], os.path.join(self.base, "bb", "absent")
+        )
+
+    def test_no_nested_directory_gives_an_empty_plan(self):
+        shutil.rmtree(os.path.join(self.base, "filestore"))
+        self.assertEqual(fs.tidy_nested_plan({"root": self.base}), ([], []))
+        self.assertEqual(fs.nested_dir({"root": self.base}), "")
+
+
+class TestTheRepairMenu(unittest.TestCase):
+    """Les réparations ÉCRIVENT. On éprouve ce qui part, pas les appels.
+
+    Un test qui constate qu'une fonction a été appelée n'aurait pas vu
+    que `exec_command` n'existe pas — seul `exec_command_live` est
+    offert. C'est arrivé ici : le code aurait planté au premier usage.
+    """
+
+    def setUp(self):
+        from script.todo import auto_ask
+        from script.todo import todo as todo_module
+
+        self.auto_ask = auto_ask
+        self.vrai_ask = auto_ask.ask
+        self.lancees = []
+        self.obj = todo_module.TODO.__new__(todo_module.TODO)
+        self.obj.execute = type(
+            "E",
+            (),
+            {
+                "exec_command_live": lambda _s, cmd, **k: self.lancees.append(
+                    cmd
+                )
+                or 0
+            },
+        )()
+
+    def tearDown(self):
+        self.auto_ask.ask = self.vrai_ask
+
+    def repond(self, *reponses):
+        file = list(reponses)
+
+        def faux(prompt, default="", seconds=None):
+            reponse = file.pop(0) if file else ""
+            return reponse or default
+
+        self.auto_ask.ask = faux
+
+    def rapport(self, morts=()):
+        groupes = {v: [] for v in fs.VERDICTS}
+        groupes["dead_field"] = list(morts)
+        return {"root": "/fs/db", "groups": groupes}
+
+    def test_saying_no_deletes_nothing(self):
+        self.repond("n")
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead("db", self.rapport([piece("a/1")]))
+        self.assertEqual(self.lancees, [])
+
+    def test_pressing_enter_deletes_nothing(self):
+        # Le défaut d'une SUPPRESSION doit être de ne rien faire.
+        self.repond("")
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead("db", self.rapport([piece("a/1")]))
+        self.assertEqual(self.lancees, [])
+
+    def test_accepting_runs_a_command_that_actually_exists(self):
+        self.repond("y")
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1", pid="3")])
+            )
+        self.assertEqual(len(self.lancees), 1)
+        self.assertIn("psql -d db", self.lancees[0])
+        self.assertIn("WHERE id IN (3)", self.lancees[0])
+
+    def test_nothing_dead_asks_nothing(self):
+        demandes = []
+        self.auto_ask.ask = lambda p, default="", seconds=None: (
+            demandes.append(p) or "y"
+        )
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead("db", self.rapport())
+        self.assertEqual(demandes, [])
+        self.assertEqual(self.lancees, [])
+
+    def test_the_menu_offers_both_repairs(self):
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        with io.open(
+            os.path.join(racine, "script", "todo", "todo.py"), encoding="utf-8"
+        ) as handle:
+            src = handle.read()
+        self.assertIn("_filestore_purge_dead", src)
+        self.assertIn("_filestore_tidy_nested", src)
+        # Le garde du défaut doit rester collé à la question : c'est lui
+        # qui empêche Entrée de supprimer.
+        self.assertIn('auto_ask.ask(question, default="n")', src)
+
+
+class TestTidyingForReal(unittest.TestCase):
+    def setUp(self):
+        from script.todo import auto_ask
+        from script.todo import todo as todo_module
+
+        self.auto_ask = auto_ask
+        self.vrai_ask = auto_ask.ask
+        self.racine = tempfile.mkdtemp()
+        self.base = os.path.join(self.racine, "ma_base")
+        for chemin, contenu in (
+            ("aa/deja", "bon"),
+            ("filestore/aa/deja", "copie"),
+            ("filestore/bb/absent", "utile"),
+        ):
+            complet = os.path.join(self.base, chemin)
+            os.makedirs(os.path.dirname(complet), exist_ok=True)
+            with open(complet, "w", encoding="utf-8") as handle:
+                handle.write(contenu)
+        self.obj = todo_module.TODO.__new__(todo_module.TODO)
+
+    def tearDown(self):
+        self.auto_ask.ask = self.vrai_ask
+        shutil.rmtree(self.racine, ignore_errors=True)
+
+    def test_refusing_leaves_every_file_where_it_was(self):
+        self.auto_ask.ask = lambda p, default="", seconds=None: "n"
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_tidy_nested({"root": self.base})
+        self.assertTrue(
+            os.path.isfile(
+                os.path.join(self.base, "filestore", "bb", "absent")
+            )
+        )
+
+    def test_accepting_moves_up_and_removes_the_nest(self):
+        self.auto_ask.ask = lambda p, default="", seconds=None: "y"
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_tidy_nested({"root": self.base})
+        self.assertTrue(
+            os.path.isfile(os.path.join(self.base, "bb", "absent"))
+        )
+        self.assertFalse(os.path.isdir(os.path.join(self.base, "filestore")))
+        # Le fichier déjà présent n'a pas été ÉCRASÉ par sa copie :
+        # vérifier sa seule existence laisserait passer l'écrasement.
+        with io.open(
+            os.path.join(self.base, "aa", "deja"), encoding="utf-8"
+        ) as handle:
+            self.assertEqual(handle.read(), "bon")
 
 
 class TestVerifyingARestore(unittest.TestCase):
