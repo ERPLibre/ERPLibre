@@ -74,6 +74,20 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Migration : revenir à une étape depuis l'écran de reprise ou depuis une invite, et agir sur les copies COW dès leur annonce
 - L'analyse des copies de site compare chaque copie à la vue qu'elle masque
 - Un test vérifie que ce qu'importe l'outillage est bien déclaré
+- Migration Odoo automatisée : l'outil mène toute l'exécution — réparer, rejouer, un déroulement automatique qui prend le défaut au bout de cinq secondes, et un compte à rebours qui nomme la réponse qu'il va prendre
+- Écran d'état de migration : « t » montre où en est une exécution, avec les commandes en couleur, la durée écoulée, le journal du serveur lu pour vous, et un fichier de journal par étape sur disque
+- Qualité de migration : ce qu'une exécution a gagné et perdu étape par étape, les fichiers manquants nommés, les refontes propres à Odoo distinguées des vraies pertes, et les changements déclarés par OpenUpgrade superposés aux réels
+- Réparations de migration : le SCSS personnalisé que le palier suivant casse, prévu puis corrigé ; les thèmes désinstallés avant le premier palier ; la visibilité DMS rétablie ; les vues dont le type stocké contredit leur parent ; et les balises <tree> qu'Odoo 18 a renommées en <list>
+- Tests de fumée après une migration : chaque URL publique demandée, /my et chaque application ouverte sous l'utilisateur de test de neutralisation, les vues derrière une URL en échec nommées, et le nettoyage de base OCA passé d'abord
+- Vérification du filestore : si les fichiers joints sont bien arrivés, si l'enregistrement existe encore, et les nettoyages proposés sur place
+- Analyse : les modules qui manquent à une base par rapport au paquet par défaut, avec une offre d'installer ceux qui sont prêts, et les fichiers joints réellement irrécupérables
+- Debian sur s390x par debian-installer, aucune image cloud n'étant publiée pour cette architecture
+- Une VM de développement mobile : PyCharm, Android Studio, extensions GNOME, un émulateur Android et un tunnel adb pour scrcpy, l'application mobile étant compilée et testée dedans
+- Forgejo, une forge git installable depuis le menu de déploiement
+- Matériel réglé par VM : le GPU de l'hôte, le mode CPU, les écrans et le réseau
+- virt-viewer ouvre l'écran d'une VM depuis le menu
+- Le tableau de bord d'installation affiche la RAM de l'hôte, la RAM utilisée et l'uptime d'une VM, et depuis combien de temps un journal est muet
+- Une VM accueille sa connexion SSH avec les commandes propres à sa distribution
 
 ## Retiré
 
@@ -106,6 +120,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Année de copyright portée à 2026
 - Miroirs pacman canadiens placés en tête sur Arch, le miroir « géographique » officiel mesurant quatre fois plus lent depuis Montréal
 - Une dépendance Poetry peut être déclinée par architecture : factur-x est épinglé en 3.x sur s390x, où saxonche ne publie pas de roue, et PyMuPDF y est écarté
+- Entrée cible la version d'Odoo la plus élevée supportée, le défaut étant calculé depuis le menu
+- Une cible make lance les tests unitaires, avec la dépendance mobile déclarée
 
 ## Corrigé
 
@@ -125,11 +141,20 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le README ne listait ni Fedora, ni openSUSE, ni Linux Mint, ni Debian 13, toutes supportées
 - Les outils de migration COW et la mise à niveau de la base parlent la langue du système
 - Les outils d'analyse et de migration sont exécutables
+- L'installateur forgejo ne réaffiche plus le mot de passe administrateur qu'il vient de poser
+- La connexion Selenium renvoyait le défaut de configuration au lieu des identifiants reçus, lors de la reprise après une modale
+- db_restore redemande le mot de passe maître au lieu de mourir sur une faute de frappe
+- pyproj exige le binaire proj, pas seulement ses en-têtes, et PROJ est bâti là où la distribution est en retard
+- run.sh est lancé par bash, contre les échecs 203/EXEC de systemd
+- pykcs11 se compile avec SWIG 4.3 et au-delà
+- os-release remplace lsb_release, et une collision d'IP se voit mieux
 
 ## Sécurité
 
-- Les mots de passe et jetons sont caviardés avant l'affichage ou la
-  journalisation d'une commande
+- Les mots de passe et jetons sont caviardés avant l'affichage ou la journalisation d'une commande
+- Le mot de passe maître d'Odoo ne voyage plus sur la ligne de commande : MASTER_PWD le porte, et /proc/<pid>/environ n'est lisible que par son propriétaire là où /proc/<pid>/cmdline l'est par tout utilisateur de la machine (exige le commit correspondant dans le fork odoo)
+- Le mot de passe KeePass parvient à la connexion Selenium de la même façon : la commande porte le NOM d'une variable d'environnement, jamais la valeur
+- Ce qu'une commande AFFICHE est caviardé comme la commande elle-même : un outil qui réaffiche ses propres arguments ne remet plus le secret dans le terminal ni dans le fichier de journal
 
 
 ## [1.6.0] - 2025-04-25
