@@ -43,6 +43,8 @@ def filter_label(filtre):
     return {
         "all": t("all modules"),
         "installed": t("installed only"),
+        "pending": t("in progress"),
+        "application": t("apps only"),
         "absent": t("not installed"),
         "broken": t("broken dependencies"),
     }.get(filtre, filtre)
@@ -78,6 +80,16 @@ def next_mode(mode):
     suite = (None,) + dependency.DETAILS
     courant = mode if mode in suite else None
     return suite[(suite.index(courant) + 1) % len(suite)]
+
+
+def toggle_filter(courant, cible):
+    """Aller à `cible` — ou en revenir si l'on y est déjà.
+
+    Une touche qui ne fait qu'ALLER piège : arrivé sur « en cours », il
+    faudrait se souvenir de quelle autre touche ramène à la liste
+    entière. La même touche fait donc l'aller et le retour.
+    """
+    return "all" if courant == cible else cible
 
 
 def next_filter(filtre):
@@ -161,6 +173,9 @@ def build_app(rapport):
             ("escape", "leave", t("Quit")),
             ("d", "cycle_detail", t("Dependencies")),
             ("f", "cycle_filter", t("Filter")),
+            ("i", "set_filter('installed')", t("Installed")),
+            ("u", "set_filter('pending')", t("In progress")),
+            ("t", "set_filter('application')", t("Apps")),
             ("slash", "find", t("Search")),
         ]
 
@@ -235,6 +250,11 @@ def build_app(rapport):
 
         def action_cycle_filter(self):
             self.filtre = next_filter(self.filtre)
+            self._fill()
+
+        def action_set_filter(self, cible):
+            """Sauter droit à un filtre. `f` reste là pour les parcourir."""
+            self.filtre = toggle_filter(self.filtre, cible)
             self._fill()
 
         def action_find(self):

@@ -45,11 +45,25 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 # résultat faux et visible plutôt qu'une boucle sans fin.
 PROFONDEUR_MAX = 64
 
-FILTRES = ("all", "installed", "absent", "broken")
+FILTRES = (
+    "all",
+    "installed",
+    "pending",
+    "application",
+    "absent",
+    "broken",
+)
 
 # Ce qui compte comme « en place ». « to upgrade » l'est : le module est
 # chargé, il sera seulement rejoué. « to install » ne l'est pas encore.
 ETATS_PRESENTS = ("installed", "to upgrade")
+
+# Les états qu'Odoo traverse et ne devrait pas garder. Un module qui y
+# reste est une opération inachevée : mesuré sur test_neutralize_upgrade_13
+# en pleine migration, 22 modules figés en « to remove ». Ils ne sont plus
+# tout à fait installés et pas encore partis, donc aucun autre filtre ne
+# les montre pour ce qu'ils sont.
+ETATS_EN_COURS = ("to install", "to upgrade", "to remove")
 
 
 def reverse(depend):
@@ -87,6 +101,11 @@ def closure(nom, graphe):
 
 def present(etat):
     return etat in ETATS_PRESENTS
+
+
+def pending(etat):
+    """L'état est-il un passage, plutôt qu'une destination ?"""
+    return etat in ETATS_EN_COURS
 
 
 def broken(recensement, depend):
@@ -176,7 +195,17 @@ def rows(rapport, filtre="all"):
         etat = rapport["modules"][nom][0]
         if filtre == "installed" and not present(etat):
             continue
-        if filtre == "absent" and present(etat):
+        # « non installés » exclut aussi les états de passage : un module
+        # en « to remove » EST encore installé, il s'en va. Le ranger avec
+        # ce qu'on pourrait installer était trompeur ; il a sa touche.
+        if filtre == "absent" and (present(etat) or pending(etat)):
+            continue
+        if filtre == "pending" and not pending(etat):
+            continue
+        # `application` est le drapeau « App » d'Odoo : ces modules-là
+        # sont les racines, ceux qu'on installe pour de vrai — les autres
+        # arrivent derrière eux.
+        if filtre == "application" and not rapport["modules"][nom][2]:
             continue
         if filtre == "broken" and nom not in cassants:
             continue
@@ -296,11 +325,19 @@ def head_text(rapport):
     )
     total = len(rapport["modules"])
     casses = len(rapport.get("broken", []))
+    en_cours = sum(
+        1 for infos in rapport["modules"].values() if pending(infos[0])
+    )
     texte = (
         f"📦 {rapport['database']}"
         f"  ({t('Odoo')} {rapport.get('version') or '?'})"
         f"  ·  {installes}/{total} {t('modules installed')}"
     )
+    if en_cours:
+        # Annoncé dans l'en-tête et non seulement derrière une touche :
+        # une opération inachevée explique des symptômes qu'on chercherait
+        # ailleurs pendant une heure.
+        texte += f"  ·  ⏳ {en_cours} {t('in progress')}"
     if casses:
         texte += f"  ·  ❌ {casses} {t('broken dependency(ies)')}"
     return texte
@@ -326,6 +363,18 @@ def render_text(rapport, limit=0, cap=0):
             lignes.append(f"      → {', '.join(amont[: limit or None])}")
     if cap and len(lst_row) > cap:
         lignes.append(f"   … {len(lst_row) - cap} {t('more')}")
+    lst_en_cours = [
+        nom
+        for nom, infos in sorted(rapport["modules"].items())
+        if pending(infos[0])
+    ]
+    if lst_en_cours:
+        lignes.append("")
+        lignes.append(f"⏳ {t('left in a transient state')}")
+        for nom in lst_en_cours[: limit or None]:
+            lignes.append(f"   {nom} ({rapport['modules'][nom][0]})")
+        if limit and len(lst_en_cours) > limit:
+            lignes.append(f"   … {len(lst_en_cours) - limit} {t('more')}")
     if rapport.get("broken"):
         lignes.append("")
         lignes.append(f"❌ {t('installed on missing dependencies')}")

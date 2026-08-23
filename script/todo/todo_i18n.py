@@ -6346,6 +6346,30 @@ TRANSLATIONS = {
         "fr": "dépendances cassées",
         "en": "broken dependencies",
     },
+    "in progress": {
+        "fr": "en cours",
+        "en": "in progress",
+    },
+    "apps only": {
+        "fr": "applications seulement",
+        "en": "apps only",
+    },
+    "left in a transient state": {
+        "fr": "laissés dans un état de passage",
+        "en": "left in a transient state",
+    },
+    "Installed": {
+        "fr": "Installés",
+        "en": "Installed",
+    },
+    "In progress": {
+        "fr": "En cours",
+        "en": "In progress",
+    },
+    "Apps": {
+        "fr": "Applications",
+        "en": "Apps",
+    },
     "Dependencies": {
         "fr": "Dépendances",
         "en": "Dependencies",

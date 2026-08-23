@@ -22,10 +22,10 @@ from script.analyse import check_module_dependency as dep  # noqa: E402
 from script.analyse import check_module_dependency_tui as tui  # noqa: E402
 
 
-def base(modules, depend=None):
+def base(modules, depend=None, apps=()):
     """Un rapport minimal. `modules` : {nom: état}."""
     recensement = {
-        nom: (etat, f"Résumé {nom}", False, "TechnoLibre")
+        nom: (etat, f"Résumé {nom}", nom in apps, "TechnoLibre")
         for nom, etat in modules.items()
     }
     depend = (
@@ -200,6 +200,135 @@ class TestRows(unittest.TestCase):
         # Un filtre inconnu ne doit pas vider la liste en silence.
         for filtre in dep.FILTRES:
             dep.rows(self.rapport(), filtre)
+
+
+class TestTheTransientStates(unittest.TestCase):
+    """Un module qui reste en chemin est une opération inachevée.
+
+    Mesuré sur test_neutralize_upgrade_13, en pleine migration :
+    22 modules figés en « to remove ». Aucun autre filtre ne les montrait
+    pour ce qu'ils sont.
+    """
+
+    def test_the_three_transient_states_are_pending(self):
+        for etat in ("to install", "to upgrade", "to remove"):
+            self.assertTrue(dep.pending(etat), etat)
+
+    def test_a_settled_state_is_not(self):
+        for etat in ("installed", "uninstalled", "uninstallable"):
+            self.assertFalse(dep.pending(etat), etat)
+
+    def rapport(self):
+        return base(
+            {
+                "zebre": "installed",
+                "alpha": "to remove",
+                "milieu": "to install",
+                "bravo": "uninstalled",
+                "charlie": "to upgrade",
+            }
+        )
+
+    def test_the_pending_filter_shows_exactly_those(self):
+        self.assertEqual(
+            [r["name"] for r in dep.rows(self.rapport(), "pending")],
+            ["alpha", "charlie", "milieu"],
+        )
+
+    def test_a_module_on_its_way_out_is_not_listed_as_absent(self):
+        # « to remove » EST encore installé ; le ranger avec ce qu'on
+        # pourrait installer envoyait chercher au mauvais endroit.
+        self.assertEqual(
+            [r["name"] for r in dep.rows(self.rapport(), "absent")], ["bravo"]
+        )
+
+    def test_to_upgrade_is_both_installed_and_pending(self):
+        # Il est chargé ET il attend : les deux sont vrais, et les taire
+        # ferait disparaître un module d'une des deux vues.
+        noms = [r["name"] for r in dep.rows(self.rapport(), "installed")]
+        self.assertIn("charlie", noms)
+        self.assertIn(
+            "charlie", [r["name"] for r in dep.rows(self.rapport(), "pending")]
+        )
+
+    def test_the_header_announces_them(self):
+        self.assertIn("3 en cours", dep.head_text(self.rapport()))
+
+    def test_the_header_stays_quiet_when_there_are_none(self):
+        self.assertNotIn("en cours", dep.head_text(base({"a": "installed"})))
+
+    def test_the_text_report_lists_them_with_their_state(self):
+        texte = "\n".join(dep.render_text(self.rapport()))
+        self.assertIn("alpha (to remove)", texte)
+        self.assertIn("milieu (to install)", texte)
+
+    def bloc_en_cours(self, lignes):
+        """Les lignes qui suivent le titre « état de passage »."""
+        debut = next(i for i, x in enumerate(lignes) if "état de passage" in x)
+        suite = []
+        for ligne in lignes[debut + 1 :]:
+            if not ligne.startswith("   "):
+                break
+            suite.append(ligne)
+        return suite
+
+    def test_the_text_report_bounds_that_list_too(self):
+        # Trois en cours, borne à deux : deux nommés, et le troisième
+        # ANNONCÉ. Compter les lignes, pas chercher un chiffre au hasard.
+        suite = self.bloc_en_cours(dep.render_text(self.rapport(), limit=2))
+        nommes = [x for x in suite if x.strip().endswith(")")]
+        self.assertEqual(len(nommes), 2)
+        self.assertEqual(suite[-1].strip(), "… 1 de plus")
+
+    def test_without_a_limit_they_are_all_named(self):
+        suite = self.bloc_en_cours(dep.render_text(self.rapport()))
+        self.assertEqual(len(suite), 3)
+        self.assertFalse(any("de plus" in x for x in suite))
+
+
+class TestTheApplicationFilter(unittest.TestCase):
+    def rapport(self):
+        return base(
+            {
+                "zebre": "installed",
+                "alpha": "installed",
+                "milieu": "uninstalled",
+            },
+            apps=("zebre", "milieu"),
+        )
+
+    def test_it_keeps_the_apps_whatever_their_state(self):
+        # Un module applicatif non installé reste applicatif : filtrer
+        # sur « App » et sur « installé » sont deux questions.
+        self.assertEqual(
+            [r["name"] for r in dep.rows(self.rapport(), "application")],
+            ["milieu", "zebre"],
+        )
+
+    def test_a_plain_module_is_left_out(self):
+        self.assertNotIn(
+            "alpha",
+            [r["name"] for r in dep.rows(self.rapport(), "application")],
+        )
+
+    def test_the_pane_says_whether_it_is_one(self):
+        self.assertIn("oui", dep.pane_text(self.rapport(), "zebre"))
+        self.assertIn("non", dep.pane_text(self.rapport(), "alpha"))
+
+
+class TestToggleFilter(unittest.TestCase):
+    def test_the_same_key_goes_and_comes_back(self):
+        # Sans le retour, il faudrait se souvenir de quelle AUTRE touche
+        # ramène à la liste entière.
+        self.assertEqual(tui.toggle_filter("all", "pending"), "pending")
+        self.assertEqual(tui.toggle_filter("pending", "pending"), "all")
+
+    def test_another_key_replaces_rather_than_returns(self):
+        self.assertEqual(tui.toggle_filter("installed", "pending"), "pending")
+
+    def test_every_direct_filter_is_a_known_one(self):
+        for cible in ("installed", "pending", "application"):
+            self.assertIn(cible, dep.FILTRES)
 
 
 class TestListing(unittest.TestCase):
@@ -524,10 +653,23 @@ class TestTheScreenActuallyDrives(unittest.TestCase):
             },
         )
 
-    def conduire(self, scenario):
+    def rapport_etats(self):
+        """Un jeu qui porte les trois catégories des touches i / u / t."""
+        return base(
+            {
+                "sale": "installed",
+                "mail": "installed",
+                "muk_theme": "to remove",
+                "stock": "to install",
+                "vieux": "uninstalled",
+            },
+            apps=("sale", "stock"),
+        )
+
+    def conduire(self, scenario, rapport=None):
         import asyncio
 
-        app = tui.build_app(self.rapport())
+        app = tui.build_app(rapport or self.rapport())
 
         async def piloter():
             async with app.run_test() as pilote:
@@ -593,6 +735,56 @@ class TestTheScreenActuallyDrives(unittest.TestCase):
         # « d » doit remarcher une fois la recherche finie : sans cela on
         # ne peut plus rien faire après avoir cherché.
         self.assertEqual(vus["mode"], dep.DETAILS[0])
+
+    def test_i_u_and_t_each_jump_straight_to_their_filter(self):
+        vus = {}
+
+        async def scenario(app, pilote):
+            for touche in ("i", "u", "t"):
+                await pilote.press(touche)
+                vus[touche] = (
+                    app.filtre,
+                    sorted(row["name"] for row in app.lst_row),
+                )
+                await pilote.press(touche)
+                vus[touche + "_retour"] = app.filtre
+
+        self.conduire(scenario, self.rapport_etats())
+        self.assertEqual(vus["i"], ("installed", ["mail", "sale"]))
+        self.assertEqual(vus["u"], ("pending", ["muk_theme", "stock"]))
+        self.assertEqual(vus["t"], ("application", ["sale", "stock"]))
+        for touche in ("i", "u", "t"):
+            self.assertEqual(vus[touche + "_retour"], "all")
+
+    def test_a_second_key_replaces_the_filter_rather_than_stacking(self):
+        vus = {}
+
+        async def scenario(app, pilote):
+            await pilote.press("i")
+            await pilote.press("u")
+            vus["filtre"] = app.filtre
+            vus["lignes"] = app.query_one("#left").row_count
+
+        self.conduire(scenario, self.rapport_etats())
+        self.assertEqual(vus["filtre"], "pending")
+        self.assertEqual(vus["lignes"], 2)
+
+    def test_those_letters_are_typed_not_obeyed_while_searching(self):
+        # « i », « u » et « t » sont des lettres avant d'être des
+        # raccourcis : dans le champ de recherche, elles s'écrivent.
+        vus = {}
+
+        async def scenario(app, pilote):
+            await pilote.press("slash")
+            for lettre in "it":
+                await pilote.press(lettre)
+            await pilote.pause()
+            vus["motif"] = app.motif
+            vus["filtre"] = app.filtre
+
+        self.conduire(scenario, self.rapport_etats())
+        self.assertEqual(vus["motif"], "it")
+        self.assertEqual(vus["filtre"], "all")
 
     def test_escape_closes_the_search_before_it_closes_the_screen(self):
         vus = {}
