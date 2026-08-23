@@ -3147,6 +3147,321 @@ TRANSLATIONS = {
         "fr": "Suivre le démarrage des VM (sans installation)",
         "en": "Watch the VMs start (no install)",
     },
+    "Proxmox VE - Deploy a VM on a remote host": {
+        "fr": "Proxmox VE - Déployer une VM sur un hôte distant",
+        "en": "Proxmox VE - Deploy a VM on a remote host",
+    },
+    "Deploy a virtual machine on Proxmox VE!": {
+        "fr": "Déployer une machine virtuelle sur Proxmox VE !",
+        "en": "Deploy a virtual machine on Proxmox VE!",
+    },
+    "Which Proxmox host?": {
+        "fr": "Quel hôte Proxmox ?",
+        "en": "Which Proxmox host?",
+    },
+    "From the local QEMU VMs": {
+        "fr": "Depuis les VM QEMU locales",
+        "en": "From the local QEMU VMs",
+    },
+    "Type an address": {
+        "fr": "Saisir une adresse",
+        "en": "Type an address",
+    },
+    "Keep": {
+        "fr": "Garder",
+        "en": "Keep",
+    },
+    "Address (user@host, default user root): ": {
+        "fr": "Adresse (utilisateur@hôte, utilisateur root par défaut) : ",
+        "en": "Address (user@host, default user root): ",
+    },
+    "SSH jump host (blank = none): ": {
+        "fr": "Rebond SSH (vide = aucun) : ",
+        "en": "SSH jump host (blank = none): ",
+    },
+    "Local VMs:": {
+        "fr": "VM locales :",
+        "en": "Local VMs:",
+    },
+    "No IP for this VM: is it running?": {
+        "fr": "Pas d'IP pour cette VM : est-elle démarrée ?",
+        "en": "No IP for this VM: is it running?",
+    },
+    "Checking": {
+        "fr": "Vérification de",
+        "en": "Checking",
+    },
+    "Not a Proxmox host (or unreachable):": {
+        "fr": "Ce n'est pas un hôte Proxmox (ou il est injoignable) :",
+        "en": "Not a Proxmox host (or unreachable):",
+    },
+    "Check the address, the SSH access and pveversion.": {
+        "fr": "Vérifier l'adresse, l'accès SSH et pveversion.",
+        "en": "Check the address, the SSH access and pveversion.",
+    },
+    "Proxmox host:": {
+        "fr": "Hôte Proxmox :",
+        "en": "Proxmox host:",
+    },
+    "through": {
+        "fr": "par",
+        "en": "through",
+    },
+    "exit code": {
+        "fr": "code de retour",
+        "en": "exit code",
+    },
+    "No VM on this Proxmox host.": {
+        "fr": "Aucune VM sur cet hôte Proxmox.",
+        "en": "No VM on this Proxmox host.",
+    },
+    "No running VM on this Proxmox host.": {
+        "fr": "Aucune VM démarrée sur cet hôte Proxmox.",
+        "en": "No running VM on this Proxmox host.",
+    },
+    "VMs on this host:": {
+        "fr": "VM de cet hôte :",
+        "en": "VMs on this host:",
+    },
+    "Selection (number): ": {
+        "fr": "Sélection (numéro) : ",
+        "en": "Selection (number): ",
+    },
+    "Deploy a VM on the Proxmox host": {
+        "fr": "Déployer une VM sur l'hôte Proxmox",
+        "en": "Deploy a VM on the Proxmox host",
+    },
+    "Preview a deployment (dry-run, nothing sent)": {
+        "fr": "Prévisualiser un déploiement (dry-run, rien n'est envoyé)",
+        "en": "Preview a deployment (dry-run, nothing sent)",
+    },
+    "Download a cloud image on the host": {
+        "fr": "Télécharger une image cloud sur l'hôte",
+        "en": "Download a cloud image on the host",
+    },
+    "List VMs (qm list)": {
+        "fr": "Lister les VM (qm list)",
+        "en": "List VMs (qm list)",
+    },
+    "Clean up (orphan disks)": {
+        "fr": "Nettoyer (disques orphelins)",
+        "en": "Clean up (orphan disks)",
+    },
+    "Statistics (host and VMs)": {
+        "fr": "Statistiques (hôte et VM)",
+        "en": "Statistics (host and VMs)",
+    },
+    "Remote desktop tunnel (VNC/RDP over SSH)": {
+        "fr": "Tunnel bureau distant (VNC/RDP par SSH)",
+        "en": "Remote desktop tunnel (VNC/RDP over SSH)",
+    },
+    "List available images and their specs": {
+        "fr": "Lister les images disponibles et leurs specs",
+        "en": "List available images and their specs",
+    },
+    "Proxmox - example sequence (dry-run)": {
+        "fr": "Proxmox - exemple de séquence (dry-run)",
+        "en": "Proxmox - example sequence (dry-run)",
+    },
+    "Host": {
+        "fr": "Hôte",
+        "en": "Host",
+    },
+    "Change the Proxmox host": {
+        "fr": "Changer d'hôte Proxmox",
+        "en": "Change the Proxmox host",
+    },
+    "VM name (default: erplibre-<distro>): ": {
+        "fr": "Nom de la VM (défaut : erplibre-<distro>) : ",
+        "en": "VM name (default: erplibre-<distro>): ",
+    },
+    "RAM in MB, blank = 4096": {
+        "fr": "RAM en Mo, vide = 4096",
+        "en": "RAM in MB, blank = 4096",
+    },
+    "vCPU, blank = 2": {
+        "fr": "vCPU, vide = 2",
+        "en": "vCPU, blank = 2",
+    },
+    "Disk size (default 32G): ": {
+        "fr": "Taille du disque (défaut 32G) : ",
+        "en": "Disk size (default 32G): ",
+    },
+    "Size (+10G to add, 40G for a target): ": {
+        "fr": "Taille (+10G pour ajouter, 40G pour une cible) : ",
+        "en": "Size (+10G to add, 40G for a target): ",
+    },
+    "No storage able to hold a VM disk.": {
+        "fr": "Aucun stockage capable d'héberger un disque de VM.",
+        "en": "No storage able to hold a VM disk.",
+    },
+    "No network bridge on this host.": {
+        "fr": "Aucun pont réseau sur cet hôte.",
+        "en": "No network bridge on this host.",
+    },
+    "offered": {
+        "fr": "proposés",
+        "en": "offered",
+    },
+    "Would run on": {
+        "fr": "Serait exécuté sur",
+        "en": "Would run on",
+    },
+    "SSH key ->": {
+        "fr": "clé SSH ->",
+        "en": "SSH key ->",
+    },
+    "Deploy this VM now? (Y/n): ": {
+        "fr": "Déployer cette VM maintenant ? (O/n) : ",
+        "en": "Deploy this VM now? (Y/n): ",
+    },
+    "SSH key unreadable:": {
+        "fr": "Clé SSH illisible :",
+        "en": "SSH key unreadable:",
+    },
+    "SSH key not pushed: password login only.": {
+        "fr": "Clé SSH non transmise : connexion par mot de passe seulement.",
+        "en": "SSH key not pushed: password login only.",
+    },
+    "Step failed, stopping here.": {
+        "fr": "Étape en échec, on s'arrête ici.",
+        "en": "Step failed, stopping here.",
+    },
+    "Waiting for the VM address…": {
+        "fr": "Attente de l'adresse de la VM…",
+        "en": "Waiting for the VM address…",
+    },
+    "No address yet. Try [6] later.": {
+        "fr": "Pas encore d'adresse. Réessayer avec [6] plus tard.",
+        "en": "No address yet. Try [6] later.",
+    },
+    "Install ERPLibre on it? (Y/n): ": {
+        "fr": "Y installer ERPLibre ? (O/n) : ",
+        "en": "Install ERPLibre on it? (Y/n): ",
+    },
+    "No address from the guest agent.": {
+        "fr": "Aucune adresse rendue par l'agent invité.",
+        "en": "No address from the guest agent.",
+    },
+    "Is qemu-guest-agent installed and the VM started?": {
+        "fr": "qemu-guest-agent est-il installé et la VM démarrée ?",
+        "en": "Is qemu-guest-agent installed and the VM started?",
+    },
+    "Ctrl+O to quit the serial console.": {
+        "fr": "Ctrl+O pour quitter la console série.",
+        "en": "Ctrl+O to quit the serial console.",
+    },
+    "Proxmox can only GROW a disk, never shrink it.": {
+        "fr": "Proxmox ne sait qu'AGRANDIR un disque, jamais le rétrécir.",
+        "en": "Proxmox can only GROW a disk, never shrink it.",
+    },
+    "This also destroys their disks and backups.": {
+        "fr": "Cela détruit aussi leurs disques et leurs sauvegardes.",
+        "en": "This also destroys their disks and backups.",
+    },
+    "Nothing orphaned.": {
+        "fr": "Rien d'orphelin.",
+        "en": "Nothing orphaned.",
+    },
+    "Orphan disks:": {
+        "fr": "Disques orphelins :",
+        "en": "Orphan disks:",
+    },
+    "Free them?": {
+        "fr": "Les libérer ?",
+        "en": "Free them?",
+    },
+    "no address, skipped": {
+        "fr": "pas d'adresse, ignorée",
+        "en": "no address, skipped",
+    },
+    "unreachable from here.": {
+        "fr": "injoignable d'ici.",
+        "en": "unreachable from here.",
+    },
+    "Use [13] to add a ProxyJump entry, then a tunnel.": {
+        "fr": "Utiliser [13] pour l'entrée ProxyJump, puis un tunnel.",
+        "en": "Use [13] to add a ProxyJump entry, then a tunnel.",
+    },
+    "Example: demo-vm, Debian 13, on a Proxmox host": {
+        "fr": "Exemple : demo-vm, Debian 13, sur un hôte Proxmox",
+        "en": "Example: demo-vm, Debian 13, on a Proxmox host",
+    },
+    "storages": {
+        "fr": "stockages",
+        "en": "storages",
+    },
+    "memory": {
+        "fr": "mémoire",
+        "en": "memory",
+    },
+    "No address for this VM.": {
+        "fr": "Aucune adresse pour cette VM.",
+        "en": "No address for this VM.",
+    },
+    "A static address is visible right after creation.": {
+        "fr": "Une adresse fixe est connue dès la création.",
+        "en": "A static address is visible right after creation.",
+    },
+    "address given at creation:": {
+        "fr": "adresse donnée à la création :",
+        "en": "address given at creation:",
+    },
+    "qm create needs one. Two ways:": {
+        "fr": "« qm create » en exige un. Deux voies :",
+        "en": "qm create needs one. Two ways:",
+    },
+    "create an internal": {"fr": "créer un pont interne", "en": "create an internal"},
+    "touches no physical NIC": {
+        "fr": "ne touche à aucune interface physique",
+        "en": "touches no physical NIC",
+    },
+    "do it myself (bridge-ports <nic>, needs console)": {
+        "fr": "le faire moi-même (bridge-ports <nic>, console requise)",
+        "en": "do it myself (bridge-ports <nic>, needs console)",
+    },
+    "To bridge the LAN, on the host:": {
+        "fr": "Pour ponter le LAN, sur l'hôte :",
+        "en": "To bridge the LAN, on the host:",
+    },
+    "This moves the host address: do it from a console.": {
+        "fr": "Cela déplace l'adresse de l'hôte : à faire depuis une console.",
+        "en": "This moves the host address: do it from a console.",
+    },
+    "uplink for NAT": {"fr": "sortie pour le NAT", "en": "uplink for NAT"},
+    "none": {"fr": "aucune", "en": "none"},
+    "The bridge did not come up.": {
+        "fr": "Le pont n'est pas monté.",
+        "en": "The bridge did not come up.",
+    },
+    "SSH does not know this host key yet.": {
+        "fr": "ssh ne connaît pas encore la clé de cet hôte.",
+        "en": "SSH does not know this host key yet.",
+    },
+    "Would record:": {
+        "fr": "Enregistrerait :",
+        "en": "Would record:",
+    },
+    "Record it?": {
+        "fr": "L'enregistrer ?",
+        "en": "Record it?",
+    },
+    "No host key obtained.": {
+        "fr": "Aucune clé d'hôte obtenue.",
+        "en": "No host key obtained.",
+    },
+    "key(s) recorded in ~/.ssh/known_hosts": {
+        "fr": "clé(s) enregistrée(s) dans ~/.ssh/known_hosts",
+        "en": "key(s) recorded in ~/.ssh/known_hosts",
+    },
+    "qm needs root: no root, and sudo asks for a password.": {
+        "fr": "qm exige root : ni root, ni sudo sans mot de passe.",
+        "en": "qm needs root: no root, and sudo asks for a password.",
+    },
+    "Connect as root@, or allow NOPASSWD sudo.": {
+        "fr": "Se connecter en root@, ou autoriser sudo sans mot de passe.",
+        "en": "Connect as root@, or allow NOPASSWD sudo.",
+    },
     "Proxmox VE hypervisor (no Odoo)": {
         "fr": "Hyperviseur Proxmox VE (sans Odoo)",
         "en": "Proxmox VE hypervisor (no Odoo)",

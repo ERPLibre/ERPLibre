@@ -426,17 +426,20 @@ cleanup() {
 fix_efi_fallback() {
     local esp="${PVE_ESP:-/boot/efi}"
     local secours="${esp}/EFI/BOOT"
-    [ -d "${secours}" ] || return 0
-    [ -e "${secours}/grub.cfg" ] && return 0
-    local stub="" candidat=""
-    for candidat in "${esp}"/EFI/*/grub.cfg; do
-        [ -e "${candidat}" ] || continue
-        case "${candidat}" in
-            */EFI/BOOT/grub.cfg) continue ;;
-        esac
-        stub="${candidat}"
-        break
-    done
+    # sudo sur CHAQUE lecture. /boot/efi est une vfat montée « umask=077 » :
+    # root seul y entre, et un « [ -d ] » non privilégié y répond FAUX. Ce
+    # correctif ne faisait donc RIEN, en silence, et la VM retombait sur
+    # « grub> » au redémarrage suivant — vécu deux fois. Le glob du shell est
+    # aveugle pour la même raison : il faut énumérer avec sudo.
+    sudo test -d "${secours}" || return 0
+    sudo test -e "${secours}/grub.cfg" && return 0
+    local stub=""
+    # « || true » : quand aucun stub n'existe, grep ne trouve rien et rend 1
+    # — avec « set -o pipefail », l'affectation échoue et le script s'arrête
+    # AVANT d'avoir dit ce qui manque. Attrapé par un test, pas sur la machine
+    # réelle, où un stub existait et masquait le cas.
+    stub="$(sudo sh -c "ls ${esp}/EFI/*/grub.cfg 2>/dev/null" \
+        | grep -v '/EFI/BOOT/grub.cfg' | head -1 || true)"
     if [ -z "${stub}" ]; then
         say "${Yellow}⚠${Color_Off} aucun grub.cfg à recopier sous ${esp} :" \
             "vérifier l'amorçage avant de redémarrer."

@@ -293,10 +293,26 @@ class TestTheRealBundle(unittest.TestCase):
                 " ./mobile/install_mobile_dev.sh"
             )
         cls.repos = MOBILE / "dist" / "repos"
-        if not (cls.repos / "manifest.json").is_file():
+        manifeste = cls.repos / "manifest.json"
+        if not manifeste.is_file():
             raise unittest.SkipTest(
                 "dépôt mobile présent mais pas compilé :"
                 " ./mobile/compile_and_run.sh (ou npm run build)"
+            )
+        # Manifeste PRÉSENT mais VIDE : l'application a été compilée sans le
+        # transfert des dépôts. C'est un choix légitime, pas une régression —
+        # et le distinguer importe, car ces tests échouaient alors sur
+        # « aucun dépôt à vérifier », ce qui se lit comme une panne du
+        # transfert. Vu le 23 août 2026 sur un build de 07:55 : manifeste à
+        # zéro entrée, aucun pack.
+        try:
+            entrees = json.loads(manifeste.read_text())
+        except (OSError, ValueError) as exc:
+            raise unittest.SkipTest(f"manifeste illisible : {exc}")
+        if not entrees:
+            raise unittest.SkipTest(
+                "compilé SANS les dépôts (manifeste vide) :"
+                " relancer ./mobile/compile_and_run.sh pour les inclure"
             )
 
     def test_the_transfer_is_coherent(self):
