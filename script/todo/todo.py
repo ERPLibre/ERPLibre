@@ -11,10 +11,10 @@ import inspect
 import json
 import logging
 import os
-import socket
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -2111,7 +2111,9 @@ class TODO:
             jump = self._ssh_proxyjump(name)
             domain = name.rsplit("+", 1)[-1]
             if not jump:
-                print(f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}")
+                print(
+                    f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}"
+                )
                 print(f"  {t('Cannot tell which machine runs its QEMU.')}")
                 return
         port = self._qemu_vnc_port(domain, jump)
@@ -2121,11 +2123,17 @@ class TODO:
         if not port:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
-            print(f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'")
-            print(f"  {t('To open it on the loopback (VM restart required):')}")
+            print(
+                f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'"
+            )
+            print(
+                f"  {t('To open it on the loopback (VM restart required):')}"
+            )
             print(f"    {pre}sudo virsh destroy {domain}")
-            print(f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
-                  " port='-1' autoport='yes' listen='127.0.0.1'/>")
+            print(
+                f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
+                " port='-1' autoport='yes' listen='127.0.0.1'/>"
+            )
             print(f"    {pre}sudo virsh start {domain}")
             print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
             return
@@ -2135,13 +2143,17 @@ class TODO:
             host, from_ssh = self._qemu_self_address()
             user = os.environ.get("USER", "user")
             if not from_ssh:
-                print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
             target = f"{user}@{host}"
         print(f"\n  {t('Run this on YOUR workstation:')}")
         print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {target}\n")
         if jump:
-            print(f"  {t('Target is the hypervisor')} ({jump}), "
-                  f"{t('not the VM: the socket is QEMU-side.')}")
+            print(
+                f"  {t('Target is the hypervisor')} ({jump}), "
+                f"{t('not the VM: the socket is QEMU-side.')}"
+            )
         print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
@@ -2178,7 +2190,9 @@ class TODO:
         """
         base = ["virsh", "--connect", "qemu:///system", "vncdisplay", domain]
         for argv in (base, ["sudo", "-n"] + base):
-            cmd = (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            cmd = (
+                (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            )
             try:
                 res = subprocess.run(
                     cmd, capture_output=True, text=True, timeout=25
@@ -5672,9 +5686,9 @@ class TODO:
             f'echo "   {t("address:")} '
             "$(hostname -I 2>/dev/null | awk '{print $1}')\"; "
             f'echo "   {t("disk:")} '
-            "$(df -h / | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}')\"; "
+            '$(df -h / | awk \'NR==2 {print $3"/"$2" ("$5")"}\')"; '
             f'echo "   {t("memory:")} '
-            "$(free -h 2>/dev/null | awk 'NR==2 {print $3\"/\"$2}')\"; "
+            '$(free -h 2>/dev/null | awk \'NR==2 {print $3"/"$2}\')"; '
             f'echo "   {t("uptime:")} $(uptime -p 2>/dev/null || true)"; '
             f'echo "<=== {t("VM start-up")}"; '
         )
@@ -9242,9 +9256,7 @@ class TODO:
         # système). Sans cela, décocher ERPLibre faisait disparaître le tableau
         # de bord — rapporté, et c'est ce qui donnait « le suivi ne fonctionne
         # plus ». Le choix vient du déploiement, pas de l'installation.
-        monitor = (
-            install["monitor"] if install else spec.get("monitor", True)
-        )
+        monitor = install["monitor"] if install else spec.get("monitor", True)
         if install or desktop or monitor:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
