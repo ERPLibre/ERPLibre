@@ -334,9 +334,114 @@ def add_reference_arch(database, lst_finding, config_path=None, timeout=600):
     return "orm", None
 
 
+def attach_cow_twin_diff(lst_finding, dct_twin, dct_copy_arch):
+    """Comparer chaque copie COW à la vue de module qu'elle masque.
+
+    C'est LA comparaison qui compte pour une copie, et elle n'a besoin d'aucun
+    registre : les deux côtés sont dans la base, appariés par leur clé —
+    exactement l'appariement que fait Odoo, et la raison pour laquelle
+    renommer une clé suffit à désapparier une copie.
+
+    Elle marche donc là où la comparaison avec la source du module est
+    impossible : une base dont la version diffère du checkout, et une
+    sauvegarde .zip, qui portent l'une comme l'autre les deux arch.
+
+    Une copie sans jumelle est laissée telle quelle : c'est une page faite
+    dans l'éditeur web, il n'y a rien à quoi la comparer.
+
+    Fonction pure — les deux provenances lui passent leurs dictionnaires et
+    concluent donc la même chose des mêmes faits. Renvoie le nombre de copies
+    comparées.
+    """
+    n_compared = 0
+    for row in lst_finding:
+        if row["category"] != "website_cow_copy":
+            continue
+        twin = dct_twin.get(row.get("key"))
+        if not twin:
+            continue
+        twin_id, twin_arch = twin
+        copy_arch = dct_copy_arch.get(row["id"])
+        if copy_arch is None:
+            continue
+        differs, comparable = arch_differs(twin_arch, copy_arch)
+        # Mêmes noms de champs que la comparaison avec la source du module :
+        # l'écran de navigation et le rendu texte marchent alors sans savoir
+        # laquelle des deux a produit la donnée.
+        row["arch_ref"] = twin_arch
+        row["arch_db_text"] = copy_arch
+        row["twin_id"] = twin_id
+        row["comparable"] = comparable
+        row["differs"] = differs
+        if comparable:
+            row["diff_stats"] = diff_stats(side_by_side(twin_arch, copy_arch))
+        n_compared += 1
+    return n_compared
+
+
+def _cow_twin_arch(database, lst_key, **kwargs):
+    """{clé: (id, arch)} des vues de module masquées par ces copies."""
+    if not lst_key:
+        return {}
+    values = ", ".join(
+        "'" + k.replace("'", "''") + "'" for k in sorted(set(lst_key))
+    )
+    rows = json_query(
+        database,
+        f"""
+        SELECT DISTINCT ON (v.key)
+               v.key            AS key,
+               v.id             AS id,
+               v.arch_db::text  AS arch
+          FROM ir_ui_view v
+         WHERE v.key IN ({values}) AND v.website_id IS NULL
+         ORDER BY v.key, v.id
+        """,
+        **kwargs,
+    )
+    return {r["key"]: (r["id"], normalise_arch(r["arch"])) for r in rows}
+
+
+def _cow_copy_arch(database, lst_id, **kwargs):
+    """{id: arch} des seules copies retenues.
+
+    Rapatrier l'arch de toutes les vues ferait une ligne de sortie de plusieurs
+    centaines de mégaoctets ; celle des seules copies COW en fait quelques-uns.
+    """
+    if not lst_id:
+        return {}
+    ids = ", ".join(str(int(i)) for i in lst_id)
+    rows = json_query(
+        database,
+        "SELECT id AS id, arch_db::text AS arch"
+        f" FROM ir_ui_view WHERE id IN ({ids})",
+        **kwargs,
+    )
+    return {r["id"]: normalise_arch(r["arch"]) for r in rows}
+
+
+def add_cow_twin_diff(database, lst_finding, **kwargs):
+    """Comparer les copies COW d'une BASE à leur jumelle. Deux requêtes."""
+    lst_copy = [
+        row
+        for row in lst_finding
+        if row["category"] == "website_cow_copy" and row.get("has_module_twin")
+    ]
+    if not lst_copy:
+        return 0
+    dct_twin = _cow_twin_arch(
+        database, [row["key"] for row in lst_copy if row.get("key")], **kwargs
+    )
+    dct_copy = _cow_copy_arch(
+        database, [row["id"] for row in lst_copy], **kwargs
+    )
+    return attach_cow_twin_diff(lst_finding, dct_twin, dct_copy)
+
+
 def collect(
     database,
     with_diff=False,
+    with_cow_diff=False,
     scope="flagged",
     config_path=None,
     timeout=120,
@@ -369,6 +474,12 @@ def collect(
         dct_count[category] += 1
         if category in ACTIONABLE:
             lst_finding.append(row)
+
+    n_cow_compared = 0
+    if with_cow_diff:
+        # Indépendant de la voie ORM : les deux arch sont en base, donc ceci
+        # marche même quand la version du checkout interdit l'autre.
+        n_cow_compared = add_cow_twin_diff(database, lst_finding, **kwargs)
 
     arch_ref_source, arch_ref_error = "none", None
     checkout = checkout_odoo_version()
@@ -455,6 +566,7 @@ def collect(
         "scope": scope,
         "arch_ref_error": arch_ref_error,
         "n_identical_after_canonical": n_identical,
+        "n_cow_compared": n_cow_compared,
         "n_views": len(lst_view),
         "counts": dct_count,
         "findings": lst_finding,
@@ -528,11 +640,30 @@ def collect_from_backup(zip_path):
         if category in ACTIONABLE:
             lst_finding.append(row)
 
+    # Le dump porte les arch des deux côtés : la comparaison COW est donc
+    # possible depuis un zip, là où celle avec la source du module ne l'est
+    # pas faute de registre.
+    dct_twin = {}
+    for row in dct_rows["ir_ui_view"]:
+        if row.get("key") and row.get("website_id") in (None, ""):
+            dct_twin.setdefault(
+                row["key"],
+                (row.get("id"), normalise_arch(row.get("arch_db"))),
+            )
+    dct_copy = {
+        (int(r.get("id")) if (r.get("id") or "").isdigit() else r.get("id")): (
+            normalise_arch(r.get("arch_db"))
+        )
+        for r in dct_rows["ir_ui_view"]
+    }
+    n_cow_compared = attach_cow_twin_diff(lst_finding, dct_twin, dct_copy)
+
     return {
         "tool": "analyse_view_custom",
         "version": 1,
         "database": os.path.basename(zip_path),
         "source": "backup",
+        "n_cow_compared": n_cow_compared,
         "backup_path": zip_path,
         "odoo_version": backup_version(dct_rows, manifest),
         "checkout_version": checkout_odoo_version(),
@@ -793,6 +924,12 @@ def main(argv=None):
         help=t("which views to compare (default: flagged)"),
     )
     parser.add_argument(
+        "--cow-diff",
+        dest="cow_diff",
+        action="store_true",
+        help=t("compare each website copy with the module view it shadows"),
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
         help=t("fail if the comparison could not be made"),
@@ -814,7 +951,8 @@ def main(argv=None):
         else:
             data = collect(
                 config.database,
-                with_diff=config.diff or config.tui,
+                with_diff=config.diff,
+                with_cow_diff=config.cow_diff or config.tui,
                 scope=config.scope,
                 config_path=config.config,
             )

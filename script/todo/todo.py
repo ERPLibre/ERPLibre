@@ -10166,13 +10166,18 @@ class TODO:
                 print(t("Command not found !"))
 
     def prompt_execute_analyse(self):
-        """Analyses en lecture seule d'une base Odoo.
+        """Analyses d'une base Odoo, en lecture seule.
 
-        Aucune entrée de ce menu n'écrit : la connexion psql est ouverte avec
-        `default_transaction_read_only=on`, donc c'est le serveur qui refuse
-        toute écriture, pas une promesse du code.
+        Toute LECTURE passe par une connexion psql ouverte avec
+        `default_transaction_read_only=on` : c'est le serveur qui refuse
+        l'écriture, pas une promesse du code.
+
+        Une seule action écrit — installer les modules suggérés, à la fin
+        de l'analyse [5]. Elle ne part jamais seule : question explicite,
+        défaut à « non », liste à confirmer, et refus net si le checkout
+        n'est pas sur la version de la base.
         """
-        print(f"🤖 {t('Analyse a database, without ever writing to it!')}")
+        print(f"🤖 {t('Analyse a database. Reading never writes.')}")
         choices = [
             {"section": t("Structure")},
             {"prompt_description": t("Tables and database size")},
@@ -10185,6 +10190,18 @@ class TODO:
             {"prompt_description": t("Studio and hand-made x_ fields")},
             {"section": t("Migration")},
             {"prompt_description": t("Quality of a migration, step by step")},
+            {"section": t("Modules")},
+            {
+                "prompt_description": t(
+                    "Modules missing from the default package"
+                )
+            },
+            {"section": t("Files")},
+            {
+                "prompt_description": t(
+                    "Attachment files missing from the filestore"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -10201,8 +10218,287 @@ class TODO:
                 self.execute_analyse_custom_field()
             elif status == "4":
                 self.execute_analyse_migration_quality()
+            elif status == "5":
+                self.execute_analyse_module_package()
+            elif status == "6":
+                self.execute_analyse_filestore()
             else:
                 print(t("Command not found !"))
+
+    def execute_analyse_module_package(self):
+        """Ce que la base n'a pas, alors que l'installation par défaut l'a.
+
+        Pas de choix « sauvegarde .zip » ici, contrairement aux autres
+        analyses : l'outil interroge `ir_module_module`, qu'un zip
+        n'expose pas sans restauration. Proposer l'option pour la refuser
+        ensuite ferait perdre le temps de la choisir.
+        """
+        from script.analyse import check_module_package as modules
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        try:
+            rapport = modules.audit(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        print("\n".join(modules.render(rapport, limit=8)))
+        self._analyse_offer_install(database, rapport)
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(modules.render(rapport, limit=0)))
+            elif rank == 2:
+                for nom in sorted(modules.read_packages()):
+                    print(f"   {nom}")
+            else:
+                self._analyse_export_json(
+                    rapport, os.path.basename(database), "module_package"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
+                {"prompt_description": t("List the known packages")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_filestore(self):
+        """Ce qui manque au filestore, et ce qu'on peut encore récupérer.
+
+        Pas d'option « sauvegarde .zip » : l'outil compare une BASE à son
+        filestore, et un zip porte les deux ensemble par construction —
+        il n'y a rien à y trouver.
+        """
+        from script.analyse import check_filestore as filestore
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        print(f"⧖ {t('Scanning filestores and backups…')}")
+        try:
+            rapport = filestore.audit(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        etat = {"rapport": rapport}
+        print("\n".join(filestore.render(rapport, limit=20)))
+
+        def relire():
+            """Relire APRÈS une réparation.
+
+            Sans cela « Tout afficher » rejouait le rapport d'avant :
+            on purgeait, on relisait, et l'on voyait encore ce qui
+            venait de disparaître. Pire, on repurgeait des lignes déjà
+            effacées en croyant le travail inachevé.
+            """
+            print(f"⧖ {t('Scanning filestores and backups…')}")
+            etat["rapport"] = filestore.audit(database)
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(filestore.render(etat["rapport"], limit=0)))
+            elif rank == 2:
+                if self._filestore_purge_dead(database, etat["rapport"]):
+                    relire()
+            elif rank == 3:
+                if self._filestore_tidy_nested(etat["rapport"]):
+                    relire()
+            else:
+                self._analyse_export_json(
+                    etat["rapport"], os.path.basename(database), "filestore"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
+                {
+                    "prompt_description": t(
+                        "🧹 Purge attachments whose field no longer exists"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "🧹 Tidy the nested filestore Odoo never reads"
+                    )
+                },
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def _filestore_purge_dead(self, database, rapport):
+        """Effacer les pièces jointes dont le champ a disparu.
+
+        La seule ÉCRITURE en base de tout le menu Analyse. Elle porte sur
+        des lignes que plus rien ne lit — `res.country.image` est devenu
+        `image_url`, calculé, en 13 — mais elle reste une suppression :
+        question explicite, défaut à « non », et le compte est relu avant
+        de partir.
+        """
+        from script.analyse import check_filestore as filestore
+        from script.todo import auto_ask
+
+        lignes = rapport["groups"]["dead_field"]
+        sql = filestore.purge_dead_sql(rapport)
+        if not sql:
+            print(f"ℹ️  {t('Nothing to purge.')}")
+            return False
+        print()
+        for texte in filestore.summarise(lignes):
+            print(f"   {texte}")
+        question = (
+            f"💬 {t('Delete these')} {len(lignes)}"
+            f" {t('attachment row(s) for good?')} (y/N) : "
+        )
+        if auto_ask.ask(question, default="n").strip().lower() not in (
+            "y",
+            "yes",
+            "o",
+        ):
+            print(f"ℹ️  {t('Nothing was deleted.')}")
+            return False
+        status, sortie = self.execute.exec_command_live(
+            f'psql -d {database} -c "{sql}"',
+            source_erplibre=False,
+            single_source_erplibre=True,
+            return_status_and_output=True,
+        )
+        if status:
+            print(f"❌ {t('The purge failed.')}")
+            return False
+        # Le nombre ANNONCÉ par PostgreSQL, pas celui qu'on espérait :
+        # rejouer une purge déjà faite rendait « DELETE 0 » et l'outil
+        # se félicitait quand même d'avoir supprimé.
+        efface = filestore.rows_deleted(sortie)
+        if efface is None:
+            print(f"⚠ {t('The purge ran but said nothing.')}")
+            return True
+        print(f"✅ {efface} {t('attachment row(s) deleted.')}")
+        return True
+
+    def _filestore_tidy_nested(self, rapport):
+        """Remonter ce qui manque, effacer les doublons purs.
+
+        Deux tas, deux gestes. Écraser un fichier présent par une copie
+        identique ne gagnerait rien et brouillerait la trace ; c'est
+        pourquoi les doublons sont comptés à part et jamais déplacés.
+        """
+        from script.analyse import check_filestore as filestore
+        from script.todo import auto_ask
+
+        remonter, doublons = filestore.tidy_nested_plan(rapport)
+        if not remonter and not doublons:
+            print(f"ℹ️  {t('No nested filestore to tidy.')}")
+            return False
+        print()
+        print(f"   {len(remonter)} {t('file(s) to move up')}")
+        print(f"   {len(doublons)} {t('pure duplicate(s) to delete')}")
+        print(f"   {t('Directory:')} {filestore.nested_dir(rapport)}")
+        if auto_ask.ask(
+            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
+        ).strip().lower() not in ("y", "yes", "o"):
+            print(f"ℹ️  {t('Nothing was moved.')}")
+            return False
+        deplaces, effaces = 0, 0
+        for source, cible in remonter:
+            os.makedirs(os.path.dirname(cible), exist_ok=True)
+            shutil.move(source, cible)
+            deplaces += 1
+        for source, _cible in doublons:
+            os.remove(source)
+            effaces += 1
+        dossier = filestore.nested_dir(rapport)
+        if dossier:
+            shutil.rmtree(dossier, ignore_errors=True)
+        print(
+            f"✅ {deplaces} {t('moved up')}, {effaces}"
+            f" {t('duplicate(s) removed')}."
+        )
+        return True
+
+    def _analyse_offer_install(self, database, rapport):
+        """Proposer d'installer ce qui manque, quand c'est installable.
+
+        Seuls les modules « available » sont offerts. Le dire est
+        nécessaire : le rapport vient d'en annoncer onze, la liste n'en
+        montre qu'un, et sans un mot on croirait à un bogue.
+
+        C'est la seule écriture de tout le menu Analyse, d'où trois
+        garde-fous : la version du checkout doit être celle de la base —
+        un Odoo 18 lancé sur une base 12 la réécrit avant d'échouer —, la
+        question par défaut est « non », et la liste choisie est
+        confirmée avant que rien ne parte.
+        """
+        from script.analyse import check_module_package as modules
+        from script.odoo.migration import database_cleanup
+        from script.todo import auto_ask
+
+        candidats = modules.installable(rapport)
+        if not candidats:
+            return
+        autres = len(modules.missing(rapport)) - len(candidats)
+
+        souci = database_cleanup.require_matching_version(database)
+        if souci:
+            print(f"\n⚠ {souci}")
+            print(f"   {t('Cannot install from here.')}")
+            return
+
+        print()
+        detail = f" ({autres} {t('need repair first')})" if autres else ""
+        question = (
+            f"💬 {t('Install some of the')} {len(candidats)}"
+            f" {t('suggested module(s) waiting in this database?')}{detail}"
+            f" (y/N) : "
+        )
+        if auto_ask.ask(question, default="n").strip().lower() not in (
+            "y",
+            "yes",
+            "o",
+        ):
+            return
+
+        print()
+        for rang, nom in enumerate(candidats, start=1):
+            print(f"   [{rang}] {nom}")
+        print(f"   [a] {t('every one of them')}")
+        print(f"   {t('Enter = cancel')}")
+        choisis, refuses = modules.parse_selection(
+            auto_ask.ask(f"💬 {t('Numbers, space separated:')} ", default=""),
+            candidats,
+        )
+        # Un jeton refusé n'est JAMAIS avalé : en demander cinq et en
+        # recevoir quatre sans un mot ferait croire l'installation faite.
+        if refuses:
+            print(f"⚠ {t('Ignored, not in the list:')} {' '.join(refuses)}")
+        if not choisis:
+            print(f"ℹ️  {t('Nothing selected.')}")
+            return
+
+        print()
+        print(f"   {t('About to install into')} {database} :")
+        print(f"       {', '.join(choisis)}")
+        if auto_ask.ask(
+            f"💬 {t('Go ahead?')} (y/N) : ", default="n"
+        ).strip().lower() not in ("y", "yes", "o"):
+            print(f"ℹ️  {t('Nothing selected.')}")
+            return
+        self.execute.exec_command_live(
+            f"./script/addons/install_addons.sh {database}"
+            f" {','.join(choisis)}",
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
 
     def execute_analyse_migration_quality(self):
         """Ce qu'une migration a gagné et perdu, palier par palier.
@@ -10374,6 +10670,8 @@ class TODO:
 
         def run(**kwargs):
             try:
+                # Une sauvegarde compare déjà ses copies COW à la lecture :
+                # les deux arch sont dans le dump, il n'y a rien à demander.
                 state["data"] = (
                     analyse.collect_from_backup(database)
                     if is_backup
@@ -10430,6 +10728,19 @@ class TODO:
                 print(analyse.render(data, verbose=True, hints=False))
 
         lst_choice = [{"prompt_description": t("Show every view")}]
+        # La comparaison des copies COW n'a besoin d'aucun registre : les deux
+        # arch sont dans la base, appariées par leur clé. Elle est donc offerte
+        # partout, y compris sur une sauvegarde et sur une base dont la version
+        # diffère du checkout — là où l'autre comparaison est refusée.
+        has_cow = bool(state["data"]["counts"].get("website_cow_copy"))
+        if has_cow:
+            lst_choice.append(
+                {
+                    "prompt_description": t(
+                        "Compare the website copies with the view they shadow"
+                    )
+                }
+            )
         if can_compare:
             lst_choice += [
                 {
@@ -10446,19 +10757,35 @@ class TODO:
             ]
         lst_choice.append({"prompt_description": t("Export as JSON")})
 
+        def compare_cow():
+            if not run(with_cow_diff=True):
+                return
+            state["tried"] = True
+            data = state["data"]
+            print(analyse.render(data, hints=False))
+            n = data.get("n_cow_compared") or 0
+            n_diff = len([r for r in data["findings"] if r.get("differs")])
+            print(
+                f"  {n} {t('website copies compared with their module view,')}"
+                f" {n_diff} {t('differ.')}"
+            )
+
         def handler(rank):
             data = state["data"]
+            offset = 1 if has_cow else 0
             if rank == 1:
                 print(analyse.render(data, verbose=True, hints=False))
-            elif not can_compare or rank == len(lst_choice):
+            elif has_cow and rank == 2:
+                compare_cow()
+            elif rank == len(lst_choice):
                 self._analyse_export_json(
                     data, os.path.basename(database), "view_custom"
                 )
-            elif rank == 2:
+            elif can_compare and rank == 2 + offset:
                 compare("flagged")
-            elif rank == 3:
+            elif can_compare and rank == 3 + offset:
                 compare("all")
-            elif rank == 4:
+            elif can_compare and rank == 4 + offset:
                 browse()
 
         self._analyse_follow_up(lst_choice, handler)

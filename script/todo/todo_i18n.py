@@ -4091,6 +4091,50 @@ TRANSLATIONS = {
         "en": "🔬 Analyse - Odoo database analysis",
     },
     "Analyse": {"fr": "Analyse", "en": "Analysis"},
+    "Analyse a database. Reading never writes.": {
+        "fr": "Analyser une base ; la lecture n'écrit jamais.",
+        "en": "Analyse a database. Reading never writes.",
+    },
+    "About to install into": {
+        "fr": "Sur le point d'installer dans",
+        "en": "About to install into",
+    },
+    "Cannot install from here.": {
+        "fr": "Installation impossible d'ici.",
+        "en": "Cannot install from here.",
+    },
+    "Enter = cancel": {
+        "fr": "Entrée = annuler",
+        "en": "Enter = cancel",
+    },
+    "Go ahead?": {
+        "fr": "On y va ?",
+        "en": "Go ahead?",
+    },
+    "Ignored, not in the list:": {
+        "fr": "Ignorés, absents de la liste :",
+        "en": "Ignored, not in the list:",
+    },
+    "Install some of the": {
+        "fr": "Installer une partie des",
+        "en": "Install some of the",
+    },
+    "Numbers, space separated:": {
+        "fr": "Numéros, séparés par des espaces :",
+        "en": "Numbers, space separated:",
+    },
+    "every one of them": {
+        "fr": "tous",
+        "en": "every one of them",
+    },
+    "need repair first": {
+        "fr": "à réparer d'abord",
+        "en": "need repair first",
+    },
+    "suggested module(s) waiting in this database?": {
+        "fr": "module(s) suggéré(s) qui attendent dans cette base ?",
+        "en": "suggested module(s) waiting in this database?",
+    },
     "Analyse a database, without ever writing to it!": {
         "fr": "Analyser une base, sans jamais y écrire !",
         "en": "Analyse a database, without ever writing to it!",
@@ -6071,12 +6115,12 @@ TRANSLATIONS = {
         "en": "📦 Modules missing from the default package",
     },
     "Show every entry": {
-        "fr": "Tout afficher",
-        "en": "Show every entry",
+        "fr": "📜 Tout afficher",
+        "en": "📜 Show every entry",
     },
     "List the known packages": {
-        "fr": "Lister les packages connus",
-        "en": "List the known packages",
+        "fr": "📚 Lister les packages connus",
+        "en": "📚 List the known packages",
     },
     "Already repaired: the group exists.": {
         "fr": "Déjà réparé : le groupe existe.",
