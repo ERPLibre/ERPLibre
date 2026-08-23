@@ -707,6 +707,9 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
         from script.todo.deploy_form_lib import run_deploy_progress
 
+        if not dry_run and not self._pve_confirm_spec(host, spec):
+            print(t("Cancelled."))
+            return
         cle_locale = spec.get("ssh_key") or self._qemu_default_ssh_key()
         if cle_locale and not dry_run:
             if self._pve_push_key(cle_locale):
@@ -739,6 +742,8 @@ class ProxmoxMenuMixin:
             return
         if spec["existing"]:
             print(f"  ⏭ {t('already there')} : {', '.join(spec['existing'])}")
+        if not travaux:
+            return
         resultats = run_deploy_progress(travaux, spec.get("parallelism") or 1)
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
         for nom, code, sortie, _duree in resultats:
@@ -748,6 +753,32 @@ class ProxmoxMenuMixin:
         if not reussies:
             return
         self._pve_after_create(host, spec, reussies, cle_locale)
+
+    def _pve_confirm_spec(self, host, spec):
+        """Récapitulatif puis confirmation, dans le TERMINAL.
+
+        L'écran a montré le plan, mais c'est ici que ça devient réel — et sur
+        une machine qui n'est pas la nôtre. La ligne dit donc où, quoi, et
+        combien, avant le mot de passe sudo que l'hôte va demander."""
+        print(f"\n  {t('Proxmox host')} : {self._pve_label(host)}")
+        print(
+            f"  {t('storage')} {spec['storage']}   "
+            f"{t('bridge')} {spec['bridge']}   [{spec['res_label']}]"
+        )
+        for vm in spec["vms"]:
+            print(
+                f"    {vm['name']:32} {t('VMID')} {vm['vmid']}   "
+                f"{vm['vcpus']} vCPU  {vm['ram']} Mo  {vm['disk']}   "
+                f"{(vm.get('ipconfig') or '').replace('ip=', '')}"
+            )
+        if spec.get("install"):
+            print(
+                f"  ERPLibre : {spec['install'].get('label') or ''}"
+                f"  ({spec['install'].get('branch')})"
+            )
+        return self._is_yes_default_yes(
+            input(f"\n{t('Deploy this VM now? (Y/n): ')}")
+        )
 
     def _pve_after_create(self, host, spec, reussies, cle_locale):
         """Ce qui suit la création : l'adresse, ~/.ssh/config, l'installation.
