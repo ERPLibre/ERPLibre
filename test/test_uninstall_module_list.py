@@ -15,6 +15,7 @@ Le retrait doit se faire pendant qu'on est ENCORE sur l'ancienne
 version, là où l'état est légal et où l'ORM fonctionne.
 """
 
+import ast
 import io
 import os
 import sys
@@ -116,10 +117,11 @@ class TestWhenItRuns(unittest.TestCase):
     def test_a_private_list_wins_over_the_shared_one(self):
         # Une base peut avoir ses propres retraits sans qu'on touche à la
         # liste partagée de tout le monde.
-        source = io.open(
+        with io.open(
             os.path.join(RACINE, "script", "todo", "todo_upgrade.py"),
             encoding="utf-8",
-        ).read()
+        ) as handle:
+            source = handle.read()
         debut = source.index("def read_uninstall_module_list")
         fin = source.index("def split_present_missing")
         bloc = source[debut:fin]
@@ -127,6 +129,138 @@ class TestWhenItRuns(unittest.TestCase):
             bloc.index("PATH_MIGRATION_PRIVATE"),
             bloc.index("PATH_MIGRATION_GLOBAL"),
         )
+
+
+class TestTheListFollowsTheClone(unittest.TestCase):
+    """Un clone refait doit rejouer la liste de son palier.
+
+    Deux endroits bâtissent la base intermédiaire : l'étape « Uninstall
+    module », et « Choose delete missing module » qui la jette et la
+    refait depuis la version précédente. Le second ne rejouait que les
+    modules choisis là. Mesuré sur test_neutralize_upgrade_18 :
+    web_responsive retiré au rang 218, clone refait au rang 230, et il
+    était revenu — la 18 a refusé de charger sur l'exclusion de
+    muk_web_theme, alors que la désinstallation avait réussi.
+    """
+
+    def source(self):
+        with io.open(
+            os.path.join(RACINE, "script", "todo", "todo_upgrade.py"),
+            encoding="utf-8",
+        ) as handle:
+            return handle.read()
+
+    def fonction(self):
+        import ast
+
+        for noeud in ast.walk(ast.parse(self.source())):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "execute_odoo_upgrade"
+            ):
+                return noeud
+        return None
+
+    @staticmethod
+    def _appelle(noeud, methode):
+        return (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == methode
+        )
+
+    def appels_uninstall(self):
+        import ast
+
+        return [
+            n
+            for n in ast.walk(self.fonction())
+            if self._appelle(n, "uninstall_from_database")
+        ]
+
+    def noms_venant_de_la_liste(self):
+        """Les variables affectées depuis `uninstall_list_for(...)`."""
+        import ast
+
+        noms = set()
+        for n in ast.walk(self.fonction()):
+            if isinstance(n, ast.Assign) and self._appelle(
+                n.value, "uninstall_list_for"
+            ):
+                for cible in n.targets:
+                    if isinstance(cible, ast.Name):
+                        noms.add(cible.id)
+        return noms
+
+    def test_there_is_more_than_one_place_that_uninstalls(self):
+        # Sans cette borne, le test suivant passerait le jour où un des
+        # deux chemins disparaît — ou n'existe plus sous cette forme.
+        self.assertGreaterEqual(len(self.appels_uninstall()), 2)
+
+    def test_every_uninstall_goes_through_the_shared_list(self):
+        import ast
+
+        noms = self.noms_venant_de_la_liste()
+        self.assertTrue(noms, "aucune variable ne vient de uninstall_list_for")
+        for appel in self.appels_uninstall():
+            premier = appel.args[0] if appel.args else None
+            direct = self._appelle(premier, "uninstall_list_for")
+            indirect = isinstance(premier, ast.Name) and premier.id in noms
+            self.assertTrue(
+                direct or indirect,
+                "un chemin désinstalle sans rejouer la liste du palier :"
+                f" ligne {appel.lineno}",
+            )
+
+
+class TestUninstallListFor(unittest.TestCase):
+    class Faux(TodoUpgrade):
+        def __init__(self, fichier=()):
+            self.fichier = list(fichier)
+            self.affiche = []
+
+        def read_uninstall_module_list(self, depart, database_name):
+            self.depart = depart
+            return list(self.fichier), [
+                (nom, "raison", "f") for nom in self.fichier
+            ]
+
+        def print_uninstall_reason(self, detail):
+            self.affiche.append(detail)
+
+    def test_it_reads_the_file_of_the_step_being_left(self):
+        # Monter vers 18 lit le fichier 17 → 18, pas 18 → 19.
+        faux = self.Faux(["web_responsive"])
+        faux.uninstall_list_for(18, "une_base")
+        self.assertEqual(faux.depart, 17)
+
+    def test_the_chosen_modules_come_first(self):
+        # L'ordre compte : ce que la personne vient de choisir se lit en
+        # tête de la ligne de commande qui suit.
+        faux = self.Faux(["duFichier"])
+        self.assertEqual(
+            faux.uninstall_list_for(18, "b", ["choisi"]),
+            ["choisi", "duFichier"],
+        )
+
+    def test_a_module_named_twice_is_uninstalled_once(self):
+        faux = self.Faux(["commun"])
+        self.assertEqual(
+            faux.uninstall_list_for(18, "b", ["commun", "commun"]),
+            ["commun"],
+        )
+
+    def test_it_says_why_each_one_goes(self):
+        faux = self.Faux(["web_responsive"])
+        faux.uninstall_list_for(18, "b")
+        self.assertTrue(faux.affiche)
+
+    def test_it_stays_quiet_when_the_step_has_no_list(self):
+        faux = self.Faux([])
+        self.assertEqual(
+            faux.uninstall_list_for(18, "b", ["choisi"]), ["choisi"]
+        )
+        self.assertEqual(faux.affiche, [])
 
 
 if __name__ == "__main__":

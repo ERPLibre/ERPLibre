@@ -2020,17 +2020,8 @@ class TodoUpgrade:
                 # uninstall_module_list_odoo130_to_odoo140.txt is read HERE,
                 # right before the 13 -> 14 data migration. Without this the
                 # per-bump files existed in name only and were never read.
-                lst_file, lst_detail = self.read_uninstall_module_list(
-                    next_version - 1, database_name
-                )
-                if lst_detail:
-                    print(
-                        f"✨ {t('Modules to uninstall before Odoo')}"
-                        f"{next_version} :"
-                    )
-                    self.print_uninstall_reason(lst_detail)
-                lst_module_to_uninstall = list(
-                    dict.fromkeys(list(lst_module_to_uninstall) + lst_file)
+                lst_module_to_uninstall = self.uninstall_list_for(
+                    next_version, database_name, lst_module_to_uninstall
                 )
 
                 if lst_module_to_uninstall:
@@ -2303,8 +2294,15 @@ class TodoUpgrade:
                         # Duplicate database
                         cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
+                        # Le clone est NEUF : ce qu'on avait retiré du
+                        # précédent est revenu avec lui. La liste du palier
+                        # se rejoue donc ici, avec les modules choisis.
                         self.uninstall_from_database(
-                            lst_module_to_delete,
+                            self.uninstall_list_for(
+                                next_version,
+                                database_name,
+                                lst_module_to_delete,
+                            ),
                             database_name_upgrade,
                             next_version,
                         )
@@ -3795,6 +3793,32 @@ class TodoUpgrade:
         if answer == "3" or not lst_present:
             return []
         return lst_present
+
+    def uninstall_list_for(self, next_version, database_name, extra=()):
+        """Ce qu'il faut retirer avant `next_version`, liste du palier comprise.
+
+        DEUX endroits bâtissent le clone intermédiaire : l'étape
+        « Uninstall module », et « Choose delete missing module » qui le
+        jette et le refait depuis la version précédente. Le second ne
+        rejouait que les modules choisis là, donc la liste du palier était
+        perdue avec le clone : web_responsive revenait, et la 18 refusait
+        de charger sur l'exclusion de muk_web_theme — après que la première
+        désinstallation eut pourtant réussi. Une seule fonction, pour que
+        les deux ne puissent plus diverger.
+
+        `dict.fromkeys` dédoublonne au passage : la liste choisie porte
+        parfois deux fois le même nom.
+        """
+        lst_file, lst_detail = self.read_uninstall_module_list(
+            next_version - 1, database_name
+        )
+        if lst_detail:
+            print(
+                f"✨ {t('Modules to uninstall before Odoo')}"
+                f"{next_version} :"
+            )
+            self.print_uninstall_reason(lst_detail)
+        return list(dict.fromkeys(list(extra) + lst_file))
 
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
