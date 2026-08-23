@@ -6214,6 +6214,126 @@ TRANSLATIONS = {
         "fr": "📦 Modules absents du package par défaut",
         "en": "📦 Modules missing from the default package",
     },
+    "Dependencies between modules": {
+        "fr": "🔗 Dépendances entre les modules",
+        "en": "🔗 Dependencies between modules",
+    },
+    "modules installed": {
+        "fr": "modules installés",
+        "en": "modules installed",
+    },
+    "of them installed": {
+        "fr": "installé(s)",
+        "en": "of them installed",
+    },
+    "nothing installed depends on it": {
+        "fr": "rien d'installé n'en dépend",
+        "en": "nothing installed depends on it",
+    },
+    "Reading the modules and their dependencies…": {
+        "fr": "Lecture des modules et de leurs dépendances…",
+        "en": "Reading the modules and their dependencies…",
+    },
+    "Modules and their dependencies": {
+        "fr": "Modules et leurs dépendances",
+        "en": "Modules and their dependencies",
+    },
+    "unknown to this database": {
+        "fr": "inconnu de cette base",
+        "en": "unknown to this database",
+    },
+    "state": {
+        "fr": "état",
+        "en": "state",
+    },
+    "author": {
+        "fr": "auteur",
+        "en": "author",
+    },
+    "application": {
+        "fr": "application",
+        "en": "application",
+    },
+    "yes": {
+        "fr": "oui",
+        "en": "yes",
+    },
+    "depends on": {
+        "fr": "dépend de",
+        "en": "depends on",
+    },
+    "needed by": {
+        "fr": "requis par",
+        "en": "needed by",
+    },
+    "absent": {
+        "fr": "absent",
+        "en": "absent",
+    },
+    "press d to walk the dependencies": {
+        "fr": "appuyez sur d pour parcourir les dépendances",
+        "en": "press d to walk the dependencies",
+    },
+    "installed on missing dependencies": {
+        "fr": "installé sur des dépendances absentes",
+        "en": "installed on missing dependencies",
+    },
+    "broken dependency(ies)": {
+        "fr": "dépendance(s) cassée(s)",
+        "en": "broken dependency(ies)",
+    },
+    "What it needs, directly": {
+        "fr": "Ce dont il a besoin, directement",
+        "en": "What it needs, directly",
+    },
+    "What needs it, directly": {
+        "fr": "Ce qui en a besoin, directement",
+        "en": "What needs it, directly",
+    },
+    "Everything it pulls in": {
+        "fr": "Tout ce qu'il entraîne",
+        "en": "Everything it pulls in",
+    },
+    "Everything that falls with it": {
+        "fr": "Tout ce qui tombe avec lui",
+        "en": "Everything that falls with it",
+    },
+    "all modules": {
+        "fr": "tous les modules",
+        "en": "all modules",
+    },
+    "installed only": {
+        "fr": "installés seulement",
+        "en": "installed only",
+    },
+    "not installed": {
+        "fr": "non installés",
+        "en": "not installed",
+    },
+    "broken dependencies": {
+        "fr": "dépendances cassées",
+        "en": "broken dependencies",
+    },
+    "Dependencies": {
+        "fr": "Dépendances",
+        "en": "Dependencies",
+    },
+    "Filter": {
+        "fr": "Filtre",
+        "en": "Filter",
+    },
+    "Search": {
+        "fr": "Chercher",
+        "en": "Search",
+    },
+    "module": {
+        "fr": "module",
+        "en": "module",
+    },
+    "module name…": {
+        "fr": "nom de module…",
+        "en": "module name…",
+    },
     "Show every entry": {
         "fr": "📜 Tout afficher",
         "en": "📜 Show every entry",

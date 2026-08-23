@@ -10450,6 +10450,7 @@ class TODO:
                     "Modules missing from the default package"
                 )
             },
+            {"prompt_description": t("Dependencies between modules")},
             {"section": t("Files")},
             {
                 "prompt_description": t(
@@ -10475,6 +10476,8 @@ class TODO:
             elif status == "5":
                 self.execute_analyse_module_package()
             elif status == "6":
+                self.execute_analyse_module_dependency()
+            elif status == "7":
                 self.execute_analyse_filestore()
             else:
                 print(t("Command not found !"))
@@ -10518,6 +10521,55 @@ class TODO:
             [
                 {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("List the known packages")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_module_dependency(self):
+        """Qui dépend de qui, pour savoir ce qu'on peut retirer.
+
+        L'écran est ouvert par l'outil lui-même, qui retombe sur son
+        rapport texte s'il ne peut pas — terminal absent, Textual absent.
+
+        Pas d'option « sauvegarde .zip » : les dépendances vivent dans
+        `ir_module_module_dependency`, qu'un zip n'expose pas sans
+        restauration.
+        """
+        from script.analyse import check_module_dependency as dependency
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        print(f"⧖ {t('Reading the modules and their dependencies…')}")
+        try:
+            rapport = dependency.survey(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        try:
+            from script.analyse.check_module_dependency_tui import run_tui
+        except Exception:
+            run_tui = None
+        if not (run_tui and run_tui(rapport)):
+            # Borné : une base porte trois mille modules, et déverser six
+            # mille lignes dans le menu n'est pas un repli.
+            print("\n".join(dependency.render_text(rapport, limit=8, cap=40)))
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(dependency.render_text(rapport, limit=0)))
+            else:
+                self._analyse_export_json(
+                    rapport, os.path.basename(database), "module_dependency"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,
