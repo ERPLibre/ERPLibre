@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+# © 2021-2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
+"""Une désinstallation se MESURE, elle ne se suppose pas.
+
+`odoo-bin --uninstall` ne cherche que l'état « installed ». Un module resté
+en « to remove » d'une tentative précédente est ignoré en silence, et Odoo
+sort en 0. Le pilote tenait ce 0 pour une réussite : c'est ainsi que
+muk_web_theme a traversé quatre paliers de 12 → 18 en étant réputé retiré,
+alors qu'il était « installed » de la 15 à la 18.
+"""
+
+import ast
+import io
+import os
+import sys
+import unittest
+
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+)
+
+from script.todo.todo_upgrade import TodoUpgrade  # noqa: E402
+
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+SOURCE = os.path.join(RACINE, "script", "todo", "todo_upgrade.py")
+
+
+class FauxPilote(TodoUpgrade):
+    """Un pilote qui n'exécute rien, mais respecte le contrat de retour."""
+
+    def __init__(self, survivants=(), lisible=True):
+        self.survivants = list(survivants)
+        self.lisible = lisible
+        self.commandes = []
+        self.commentaires = []
+        self.dct_progression = {}
+        self.dct_module_per_version = {}
+
+    def todo_upgrade_execute(self, cmd, **kwargs):
+        self.commandes.append(cmd)
+        if kwargs.get("get_output"):
+            # Le vrai rend TROIS valeurs quand on demande la sortie, et un
+            # statut NON nul veut dire « raté ».
+            if not self.lisible:
+                return 1, cmd, None
+            return 0, cmd, list(self.survivants)
+        return 0, cmd
+
+    def write_config(self):
+        pass
+
+    def add_comment_progression(self, msg):
+        self.commentaires.append(msg)
+
+    def split_present_missing(self, lst):
+        return list(lst), []
+
+
+class TestStillInstalled(unittest.TestCase):
+    def test_it_names_what_survived(self):
+        pilote = FauxPilote(survivants=["muk_web_theme"])
+        self.assertEqual(
+            pilote.still_installed("db", ["muk_web_theme", "web_responsive"]),
+            ["muk_web_theme"],
+        )
+
+    def test_an_unreadable_database_says_UNKNOWN_not_empty(self):
+        # Rendre [] serait affirmer « tout est parti » sans l'avoir lu :
+        # exactement le défaut qu'on corrige.
+        pilote = FauxPilote(lisible=False)
+        self.assertIsNone(pilote.still_installed("db", ["web_responsive"]))
+
+    def test_nothing_to_check_asks_the_database_nothing(self):
+        pilote = FauxPilote()
+        self.assertEqual(pilote.still_installed("db", []), [])
+        self.assertEqual(pilote.commandes, [])
+
+    def test_it_counts_to_remove_as_still_there(self):
+        # « to remove » n'est pas « uninstalled » : c'est justement l'état
+        # que --uninstall refuse de traiter, donc celui qu'il faut voir.
+        pilote = FauxPilote()
+        pilote.still_installed("db", ["web_responsive"])
+        self.assertIn("state <> 'uninstalled'", pilote.commandes[0])
+
+    def test_the_module_names_are_quoted_for_sql(self):
+        pilote = FauxPilote()
+        pilote.still_installed("db", ["web_responsive"])
+        self.assertIn("'web_responsive'", pilote.commandes[0])
+
+
+class TestTheBookkeepingTellsTheTruth(unittest.TestCase):
+    def pilote(self, survivants):
+        pilote = FauxPilote(survivants=survivants)
+        pilote.dct_module_per_version = {
+            17: ["web_responsive", "muk_web_theme"]
+        }
+        return pilote
+
+    def test_a_module_left_in_place_stays_counted_as_installed(self):
+        pilote = self.pilote(["web_responsive"])
+        pilote.uninstall_from_database(["web_responsive"], "db", 17)
+        self.assertIn("web_responsive", pilote.dct_module_per_version[17])
+
+    def test_a_module_really_gone_is_dropped(self):
+        pilote = self.pilote([])
+        pilote.uninstall_from_database(["web_responsive"], "db", 17)
+        self.assertNotIn("web_responsive", pilote.dct_module_per_version[17])
+        # …et sans emporter le voisin au passage.
+        self.assertIn("muk_web_theme", pilote.dct_module_per_version[17])
+
+    def test_the_survivor_is_recorded_where_someone_will_read_it(self):
+        pilote = self.pilote(["web_responsive"])
+        pilote.uninstall_from_database(["web_responsive"], "db", 17)
+        trace = " ".join(pilote.commentaires)
+        self.assertIn("still installed", trace)
+        self.assertIn("web_responsive", trace)
+
+    def test_an_unreadable_database_does_not_crash_the_migration(self):
+        # « je ne sais pas » revient en None : le traiter comme une liste
+        # ferait tomber la migration sur un TypeError, six heures après le
+        # départ, pour un renseignement qui n'était que confortable.
+        pilote = FauxPilote(lisible=False)
+        pilote.dct_module_per_version = {17: ["web_responsive"]}
+        pilote.uninstall_from_database(["web_responsive"], "db", 17)
+        self.assertEqual(pilote.dct_module_per_version[17], [])
+
+    def test_a_silent_success_leaves_no_alarm(self):
+        pilote = self.pilote([])
+        pilote.uninstall_from_database(["web_responsive"], "db", 17)
+        self.assertEqual(
+            [c for c in pilote.commentaires if "still installed" in c], []
+        )
+
+
+class TestNoStepWritesAnotherStepsFlag(unittest.TestCase):
+    """Chaque drapeau `state_4_*` ne doit porter QUE sa propre liste.
+
+    Trois étapes rangeaient leurs drapeaux sous
+    `state_4_module_migrate_odoo_lst`. Sans effet dans la course en cours —
+    la locale est lue une fois, au début — mais à la REPRISE cette clé est
+    relue comme « OpenUpgrade est passé », et la migration du palier est
+    sautée. Un test structurel se justifie ici : conduire une reprise
+    complète coûterait des heures, et la faute est visible dans l'écriture.
+    """
+
+    def assignations(self):
+        with io.open(SOURCE, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+        vues = {}
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Assign):
+                continue
+            for cible in noeud.targets:
+                if not (
+                    isinstance(cible, ast.Subscript)
+                    and isinstance(cible.value, ast.Attribute)
+                    and cible.value.attr == "dct_progression"
+                    and isinstance(cible.slice, ast.Constant)
+                    and str(cible.slice.value).startswith("state_4_")
+                ):
+                    continue
+                if isinstance(noeud.value, ast.Name):
+                    vues.setdefault(cible.slice.value, set()).add(
+                        noeud.value.id
+                    )
+        return vues
+
+    def test_the_scan_actually_finds_something(self):
+        # Sans cette borne, le test suivant passerait sur un dictionnaire
+        # vide le jour où la forme de l'écriture change.
+        self.assertGreater(len(self.assignations()), 2)
+
+    def test_each_flag_is_written_from_one_list_only(self):
+        for cle, noms in sorted(self.assignations().items()):
+            self.assertEqual(
+                len(noms), 1, f"{cle} écrit depuis {sorted(noms)}"
+            )
+
+    def test_the_migrate_flag_comes_from_the_migrate_list(self):
+        self.assertEqual(
+            self.assignations().get("state_4_module_migrate_odoo_lst"),
+            {"lst_module_migrate_odoo"},
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

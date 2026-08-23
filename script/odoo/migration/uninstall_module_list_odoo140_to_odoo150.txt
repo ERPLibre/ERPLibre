@@ -1,1 +1,13 @@
-muk_web_theme
+# Modules à retirer AVANT de monter de 14.0 vers 15.0.
+#
+# Un module par ligne, une justification après « # ».
+
+# Raison d'origine NON consignée : la ligne arrive avec cbc43fde, sans un
+# mot. Mesuré depuis, sur test_neutralize (12 → 18) : la commande part
+# bien — « uninstall_addons.sh test_neutralize_upgrade_15 muk_web_theme »
+# est dans le journal — et le module est pourtant « installed » de la 15 à
+# la 18. Odoo ne cherche que l'état « installed » et le module traînait en
+# « to remove » depuis la 13 ; il sort en 0 sans rien retirer.
+# Le retrait n'a donc JAMAIS eu lieu, et rien n'a cassé pour autant.
+# Avant de s'y fier, retrouver le motif — ou retirer la ligne.
+muk_web_theme  # motif d'origine inconnu ; retrait jamais effectif (mesuré)

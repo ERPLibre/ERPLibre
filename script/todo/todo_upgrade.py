@@ -2040,9 +2040,6 @@ class TodoUpgrade:
                         next_version - 1,
                     )
                     lst_module_uninstall_module[index] = True
-                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
-                        lst_module_uninstall_module
-                    )
                     self.write_config()
 
             self.dct_progression["config_state_4_uninstall_module"] = (
@@ -2087,9 +2084,6 @@ class TodoUpgrade:
                         next_version - 1,
                     )
                     lst_module_install_module[index] = True
-                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
-                        lst_module_install_module
-                    )
                     self.write_config()
 
             self.dct_progression["config_state_4_install_module"] = (
@@ -3198,6 +3192,34 @@ class TodoUpgrade:
         self.open_step_log(msg)
         print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
 
+    def still_installed(self, database_name, lst_module):
+        """Parmi ces modules, lesquels la base tient-elle ENCORE ?
+
+        Odoo ne signale rien quand il ne retire rien : « --uninstall » ne
+        cherche que l'état « installed » et laisse filer en silence un module
+        resté en « to remove » d'une tentative précédente. Le code de sortie
+        vaut donc 0 pour une désinstallation qui n'a pas eu lieu — c'est ainsi
+        que muk_web_theme a traversé quatre paliers en étant réputé retiré.
+
+        Rendre None, et non la liste vide, quand la base ne répond pas :
+        « je ne sais pas » et « rien ne reste » appellent des suites
+        différentes, et les confondre recrée le défaut qu'on corrige.
+        """
+        if not lst_module:
+            return []
+        noms = ", ".join(f"'{nom}'" for nom in sorted(set(lst_module)))
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
+            f" ir_module_module WHERE name IN ({noms})"
+            " AND state <> 'uninstalled' ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
+
     def installed_theme(self, database_name):
         """Thèmes installés, hors theme_default qui EST l'absence de thème."""
         status, _cmd, output = self.todo_upgrade_execute(
@@ -3773,12 +3795,26 @@ class TodoUpgrade:
             single_source_odoo=True,
         )
 
+        lst_left = self.still_installed(database_name, lst_module_to_uninstall)
+        if lst_left is None:
+            # Base illisible : on ne sait pas. Le dire, plutôt que de trancher.
+            print(f"⚠️  {t('Could not verify the uninstall.')}")
+            lst_left = []
+        elif lst_left:
+            self.add_comment_progression(
+                "uninstall - still installed: " + ", ".join(lst_left)
+            )
+            print(
+                f"❌ {t('The uninstall did not take:')} {', '.join(lst_left)}"
+            )
+            print(f"   {t('Odoo exits 0 even when it removes nothing.')}")
+
         # Update list installed module — only what was REALLY uninstalled, so
         # a module left in place stays counted as installed.
         self.dct_module_per_version[actual_version] = sorted(
             list(
                 set(self.dct_module_per_version[actual_version])
-                - set(lst_module_to_uninstall)
+                - (set(lst_module_to_uninstall) - set(lst_left))
             )
         )
         self.dct_progression["dct_module_per_version"] = (

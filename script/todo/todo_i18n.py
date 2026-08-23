@@ -1748,6 +1748,18 @@ TRANSLATIONS = {
         "fr": "Rien de désinstallé.",
         "en": "Nothing uninstalled.",
     },
+    "The uninstall did not take:": {
+        "fr": "La désinstallation n'a pas pris :",
+        "en": "The uninstall did not take:",
+    },
+    "Odoo exits 0 even when it removes nothing.": {
+        "fr": "Odoo sort en 0 même quand il ne retire rien.",
+        "en": "Odoo exits 0 even when it removes nothing.",
+    },
+    "Could not verify the uninstall.": {
+        "fr": "Impossible de vérifier la désinstallation.",
+        "en": "Could not verify the uninstall.",
+    },
     "Check the COW views that drifted": {
         "fr": "Vérifier les vues COW en retard sur leur vue module",
         "en": "Check the COW views that drifted",
