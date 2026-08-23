@@ -1052,6 +1052,10 @@ class TODO:
         # deploy_qemu.py, qui fait autorité sur le catalogue.
         "opensuse": (["16.0", "tumbleweed"], "16.0"),
         "arch": (["latest"], "latest"),
+        # Proxmox VE : le numéro est celui de PVE, pas de Debian (9 = trixie).
+        # Une seule version au catalogue, la seule qui couvre amd64 ET arm64 —
+        # voir PROXMOX_VERSIONS dans deploy_qemu.py, qui fait autorité.
+        "proxmox": (["9"], "9"),
     }
 
     def _qemu_prompt_distro(self):
@@ -5339,13 +5343,25 @@ class TODO:
                 "make install_os && make install_dev && "
                 + self._QEMU_QEMU_PKGS,
             ),
+            (
+                t("Proxmox VE hypervisor (no Odoo)"),
+                "./script/proxmox/install_proxmox.sh",
+            ),
         ]
         return profiles
 
-    def _qemu_pick_install_profile(self):
+    def _qemu_pick_install_profile(self, distro=""):
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
-        finale exécutée dans ~/git/erplibre)."""
+        finale exécutée dans ~/git/erplibre).
+
+        Sur une VM Proxmox, le profil hyperviseur passe en tête : choisir
+        « Proxmox VE » comme système, c'est demander qu'il soit installé, et
+        laisser Odoo 18 en défaut ferait poser un ERP sur un hyperviseur.
+        """
         profiles = self._qemu_install_profiles()
+        if distro == "proxmox":
+            pve = t("Proxmox VE hypervisor (no Odoo)")
+            profiles.sort(key=lambda p: p[0] != pve)
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
@@ -8922,11 +8938,28 @@ class TODO:
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
         )
+        if not self._is_yes_default_yes(ans) and any(
+            v.get("distro") == "proxmox" for v in vms
+        ):
+            # C'est par cette étape que passe l'installation de Proxmox : sans
+            # elle la VM reste une Debian nue, ce qui n'est pas ce qu'on a
+            # demandé en choisissant « Proxmox VE » comme système.
+            print(
+                f"\n  ⚠ {t('Proxmox will NOT be installed: plain Debian VM.')}"
+            )
+            print(
+                f"    {t('Later, in the VM:')}"
+                " sudo ./script/proxmox/install_proxmox.sh"
+            )
         if self._is_yes_default_yes(ans):
             branch = self._qemu_pick_branch()
             # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
             prod = self._qemu_ask_prod()
-            label, cmd = self._qemu_pick_install_profile()
+            label, cmd = self._qemu_pick_install_profile(
+                "proxmox"
+                if any(v.get("distro") == "proxmox" for v in vms)
+                else ""
+            )
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )

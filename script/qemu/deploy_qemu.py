@@ -140,6 +140,30 @@ ARCH_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "latest": ("latest", "archlinux", 1024, "20G"),
 }
 
+# Proxmox VE ne publie AUCUNE image cloud : son ISO est un installateur, et la
+# voie que l'amont documente pour tout le reste est « Proxmox VE sur Debian ».
+# La base est donc l'image cloud Debian, que les paquets pve transforment en
+# hyperviseur. Le numéro est celui de PROXMOX, pas de Debian : PVE 9 = trixie.
+#
+# arm64 est officiel depuis PVE 9 — vérifié dans le dépôt amont, dont le
+# Release de trixie annonce « amd64 arm64 » et dont l'index arm64 sert bien
+# proxmox-ve. bookworm (PVE 8), lui, est amd64 seulement : d'où une seule
+# version au catalogue, celle qui couvre les deux architectures.
+#
+# s390x n'y figure pas et n'y figurera pas par cette voie : l'index
+# « binary-s390x » du dépôt répond 404. Ce n'est pas une difficulté, c'est une
+# absence — et ARCH_DISTRO_SUPPORT la dit à la place d'un échec au montage.
+#
+# RAM/disque : 4 Gio et 32 Go, pas les 1 Gio/20 Go de Debian. Proxmox demande
+# 2 Gio pour lui seul, et l'installation télécharge son propre noyau ; 20 Go ne
+# laisseraient pas la place d'une seule VM invitée.
+PROXMOX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "9": ("trixie", "debian13", 4096, "32G"),
+}
+
+# Version Debian dont l'image sert de base à chaque version de Proxmox.
+PROXMOX_DEBIAN_BASE: dict[str, str] = {"9": "13"}
+
 # distro -> (table des versions, version par défaut).
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
@@ -149,6 +173,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
+    "proxmox": (PROXMOX_VERSIONS, "9"),
 }
 
 # Traduction de l'arch générique (amd64/arm64) vers le nom propre à la distro.
@@ -235,6 +260,7 @@ ARM64_DISTROS: tuple[str, ...] = (
     "almalinux",
     "rocky",
     "opensuse",
+    "proxmox",
 )
 
 
@@ -429,6 +455,13 @@ def image_candidates(
             f"{base}/{code}/latest/debian-{version}-genericcloud-{a}.qcow2"
             for base in DEBIAN_CLOUD_BASES
         ]
+    if distro == "proxmox":
+        # C'est bien l'image DEBIAN qu'on télécharge : « proxmox-ve », posé
+        # dessus, en fait l'hyperviseur. Le miroir ne connaît que le numéro de
+        # Debian, jamais celui de Proxmox.
+        return image_candidates(
+            "debian", code, arch, PROXMOX_DEBIAN_BASE[version], dry_run
+        )
     if distro == "fedora":
         return [resolve_fedora_url(version, arch, dry_run)]
     if distro == "almalinux":
@@ -525,6 +558,14 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"ubuntu-{version}-server-cloudimg-{a}.img"
     if distro == "debian":
         return f"debian-{version}-genericcloud-{a}.qcow2"
+    if distro == "proxmox":
+        # Le fichier téléchargé EST celui de Debian : lui donner le même nom
+        # de cache fait qu'un déploiement Debian 13 et un Proxmox se
+        # PARTAGENT le téléchargement (325 Mio) au lieu d'en faire deux. Sans
+        # cette branche, le repli de fin nommait l'image « fedora-cloud-9 ».
+        return (
+            f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
+        )
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
     if distro == "opensuse":
@@ -1615,6 +1656,7 @@ DISTRO_LABELS: dict[str, str] = {
     "rocky": "Rocky Linux",
     "opensuse": "openSUSE",
     "arch": "Arch Linux",
+    "proxmox": "Proxmox VE",
 }
 
 # Gestionnaire de paquets de chaque distribution du catalogue.
@@ -1626,6 +1668,8 @@ DISTRO_PKG: dict[str, str] = {
     "rocky": "dnf",
     "opensuse": "zypper",
     "arch": "pacman",
+    # Debian dessous : c'est apt qui sert, et le guide de connexion le dit.
+    "proxmox": "apt",
 }
 
 

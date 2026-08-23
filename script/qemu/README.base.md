@@ -184,9 +184,23 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (default), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+| proxmox | `9` | ✔ | ✔ | — |
 
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
+
+`proxmox` is Proxmox VE, and it deserves a word: it publishes **no cloud
+image** — its ISO is an installer that formats the disk. So the deployment
+does what upstream itself documents for every other case, *Proxmox VE on
+Debian*: it downloads the **Debian trixie** cloud image (the very same file, so
+a Debian 13 and a Proxmox deployment share one download) and the `pve`
+packages turn it into a hypervisor — Proxmox kernel, web UI on `:8006`.
+
+The version number is Proxmox's, not Debian's: PVE 9 = trixie. arm64 has been
+official since PVE 9 (the upstream `trixie` Release announces `amd64 arm64`,
+and the arm64 index really serves `proxmox-ve`). s390x is absent and will stay
+so by this route: the repository has no `binary-s390x` index at all — the
+catalog says it before the deployment rather than failing at the first `apt`.
 
 `opensuse` covers two distinct products, not two versions of one. Leap `16.0`
 is numbered and stable (SLE base) and is the default. `tumbleweed` is the
@@ -218,6 +232,7 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+| proxmox | `9` | ✔ | ✔ | — |
 
 Fedora ne construit s390x que pour la version courante, et sur une
 arborescence à part (`fedora-secondary`) — d'où la version unique.
@@ -231,6 +246,38 @@ installation.
 Les deux livrent un qpdf au-dessus du seuil de pikepdf : la compilation de
 qpdf, une demi-heure, ne s'y déclenche jamais — ce qui compte sous émulation
 s390x.
+
+`proxmox`, c'est Proxmox VE, et il mérite un mot : il ne publie **aucune image
+cloud** — son ISO est un installateur qui formate le disque. Le déploiement
+fait donc ce que l'amont documente lui-même pour tous les autres cas,
+*Proxmox VE sur Debian* : il télécharge l'image cloud **Debian trixie** (le
+même fichier, si bien qu'un déploiement Debian 13 et un Proxmox se partagent un
+seul téléchargement) et les paquets `pve` en font un hyperviseur — noyau
+Proxmox, interface web sur `:8006`.
+
+Le numéro de version est celui de Proxmox, pas de Debian : PVE 9 = trixie.
+arm64 est officiel depuis PVE 9 (le Release `trixie` de l'amont annonce
+`amd64 arm64`, et l'index arm64 sert bien `proxmox-ve`). s390x est absent et le
+restera par cette voie : le dépôt n'a aucun index `binary-s390x` — le catalogue
+le dit avant le déploiement plutôt que d'échouer au premier `apt`.
+
+Une VM Proxmox est un hyperviseur DANS une VM : ses propres invités demandent
+la virtualisation imbriquée à tous les étages. L'installation se fait par le
+profil « Hyperviseur Proxmox VE (sans Odoo) » du menu de déploiement, ou à la
+main dans la VM :
+
+```bash
+sudo ./script/proxmox/install_proxmox.sh --dry-run   # dit ce qu'il ferait
+sudo ./script/proxmox/install_proxmox.sh             # puis : sudo reboot
+```
+
+Trois pièges de l'image cloud, tous rencontrés sur une VM réelle et traités par
+le script : cloud-init tient encore le verrou d'`apt` au premier démarrage ;
+`grub-pc`, tiré par les paquets `pve`, demande sur quel disque s'installer et
+bloque toute la transaction sans préréponse ; et le chemin de secours UEFI
+(`\EFI\BOOT\`) reçoit les binaires GRUB de Proxmox mais pas le `grub.cfg`
+qui dit où trouver la configuration — sans quoi la VM s'arrête sur l'invite
+`grub>`, sans menu ni noyau.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.

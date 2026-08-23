@@ -3115,6 +3115,18 @@ TRANSLATIONS = {
         "fr": "Nœud de rendu",
         "en": "Render node",
     },
+    "Proxmox VE hypervisor (no Odoo)": {
+        "fr": "Hyperviseur Proxmox VE (sans Odoo)",
+        "en": "Proxmox VE hypervisor (no Odoo)",
+    },
+    "Proxmox will NOT be installed: plain Debian VM.": {
+        "fr": "Proxmox ne sera PAS installé : la VM restera une Debian nue.",
+        "en": "Proxmox will NOT be installed: plain Debian VM.",
+    },
+    "Later, in the VM:": {
+        "fr": "Plus tard, dans la VM :",
+        "en": "Later, in the VM:",
+    },
     "sshfs mount failed.": {
         "fr": "Le montage sshfs a échoué.",
         "en": "sshfs mount failed.",

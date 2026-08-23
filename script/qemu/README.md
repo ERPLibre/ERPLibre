@@ -97,9 +97,23 @@ Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 | rocky | `9`, `10` (default) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (default), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+| proxmox | `9` | ✔ | ✔ | — |
 
 Fedora builds s390x only for the current release, and on a separate tree
 (`fedora-secondary`) — hence the single version there.
+
+`proxmox` is Proxmox VE, and it deserves a word: it publishes **no cloud
+image** — its ISO is an installer that formats the disk. So the deployment
+does what upstream itself documents for every other case, *Proxmox VE on
+Debian*: it downloads the **Debian trixie** cloud image (the very same file, so
+a Debian 13 and a Proxmox deployment share one download) and the `pve`
+packages turn it into a hypervisor — Proxmox kernel, web UI on `:8006`.
+
+The version number is Proxmox's, not Debian's: PVE 9 = trixie. arm64 has been
+official since PVE 9 (the upstream `trixie` Release announces `amd64 arm64`,
+and the arm64 index really serves `proxmox-ve`). s390x is absent and will stay
+so by this route: the repository has no `binary-s390x` index at all — the
+catalog says it before the deployment rather than failing at the first `apt`.
 
 `opensuse` covers two distinct products, not two versions of one. Leap `16.0`
 is numbered and stable (SLE base) and is the default. `tumbleweed` is the
