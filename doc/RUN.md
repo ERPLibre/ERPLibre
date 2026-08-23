@@ -17,6 +17,21 @@ Simply
 ./run.sh
 ```
 
+Without any argument, ERPLibre picks the database for you: with a single
+one it starts on it, with several it shows a numbered menu. It only asks
+when a real terminal is there — a service started by systemd behaves
+exactly as before.
+
+Two options steer that, and neither reaches Odoo:
+
+| option | effect |
+|---|---|
+| `--auto-erplibre` | pick the database even when other arguments are given |
+| `--no-cli-erplibre` | never show the menu; a lone database is still taken |
+
+Naming a database yourself — `-d`, `--database` — turns the whole thing
+off, and so does a `db_name` set in the configuration file.
+
 With arguments
 
 ```bash
