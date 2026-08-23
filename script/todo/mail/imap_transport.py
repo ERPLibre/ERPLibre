@@ -25,7 +25,7 @@ from script.todo.mail.charset import decode_bytes
 from script.todo.mail.imap_sync import FolderInfo, HeaderInfo, SelectInfo
 from script.todo.todo_i18n import t
 
-HEADER_FIELDS = "FROM TO SUBJECT DATE MESSAGE-ID"
+HEADER_FIELDS = "FROM TO SUBJECT DATE MESSAGE-ID IN-REPLY-TO REFERENCES"
 
 SPECIAL_USE = {
     "\\Sent": "sent",
@@ -164,6 +164,15 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
             # Une date est une commodité d'affichage : aucune valeur
             # d'en-tête ne justifie de perdre le message.
             stamp = 0
+
+        # `str()` comme pour la date : un en-tête porteur d'octets 8 bits
+        # revient en `Header`, sur lequel `.strip()` lèverait — et la
+        # synchronisation du dossier ENTIER tomberait, comme elle l'a déjà
+        # fait pour une seule date illisible.
+        def entete(nom: str) -> str:
+            valeur = msg.get(nom)
+            return str(valeur).strip() if valeur else ""
+
         out.append(
             HeaderInfo(
                 uid=int(uid_match.group(1)),
@@ -178,6 +187,8 @@ def parse_fetch_headers(data: list) -> list[HeaderInfo]:
                 frm=decode_header_value(msg.get("From")),
                 to=decode_header_value(msg.get("To")),
                 subject=decode_header_value(msg.get("Subject")),
+                in_reply_to=entete("In-Reply-To"),
+                references=entete("References"),
             )
         )
     return out

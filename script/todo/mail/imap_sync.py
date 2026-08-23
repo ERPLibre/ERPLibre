@@ -60,6 +60,10 @@ class HeaderInfo:
     frm: str
     to: str
     subject: str
+    # Fils de discussion (v2). Bruts : le hachage appartient au cache, seul
+    # détenteur du sel.
+    in_reply_to: str = ""
+    references: str = ""
 
 
 @dataclass
@@ -218,6 +222,8 @@ class Syncer:
                         to=h.to,
                         subject=h.subject,
                         snippet="",
+                        in_reply_to=h.in_reply_to,
+                        references=h.references,
                     )
                     for h in headers
                 ],
