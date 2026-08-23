@@ -278,5 +278,76 @@ class TestAFailedOpenUpgradeStaysUnrecorded(unittest.TestCase):
         self.assertEqual(len(self.lignes_affectation()), 1)
 
 
+class TestDiscardingTheCloneDiscardsItsPreparation(unittest.TestCase):
+    """Rebâtir le clone annule tout ce qu'on lui avait fait.
+
+    Quand OpenUpgrade échoue, le pilote remet le drapeau de clonage à zéro
+    pour que la base intermédiaire soit refaite depuis la version
+    précédente. Mais les drapeaux des étapes qui avaient préparé CE
+    clone — le SQL de pré-migration, les désinstallations, les
+    installations — restaient debout. La base neuve repartait donc sans
+    sa préparation, et OpenUpgrade retombait sur le problème même que le
+    SQL existe pour écarter.
+    """
+
+    PAR_CLONE = (
+        "lst_fix_migration_odoo",
+        "lst_module_uninstall_module",
+        "lst_module_install_module",
+    )
+
+    def bloc_abandon(self):
+        with io.open(SOURCE, encoding="utf-8") as handle:
+            arbre = ast.parse(handle.read())
+        for noeud in ast.walk(arbre):
+            if isinstance(
+                noeud, ast.If
+            ) and TestAFailedOpenUpgradeStaysUnrecorded._remet_le_clone_a_zero(
+                noeud
+            ):
+                return noeud
+        return None
+
+    def remis_a_zero(self):
+        """Les listes que ce bloc remet à leur valeur vide."""
+        noms = set()
+        for petit in ast.walk(self.bloc_abandon()):
+            if not isinstance(petit, ast.Assign):
+                continue
+            if not (
+                isinstance(petit.value, ast.Constant)
+                and petit.value.value is False
+            ) and not (
+                isinstance(petit.value, ast.List) and not petit.value.elts
+            ):
+                continue
+            for cible in petit.targets:
+                if isinstance(cible, ast.Subscript) and isinstance(
+                    cible.value, ast.Name
+                ):
+                    noms.add(cible.value.id)
+        return noms
+
+    def test_the_failure_block_is_found(self):
+        self.assertIsNotNone(self.bloc_abandon())
+
+    def test_every_per_clone_flag_is_reset(self):
+        remis = self.remis_a_zero()
+        for nom in self.PAR_CLONE:
+            self.assertIn(nom, remis, f"{nom} survit à son clone")
+
+    def test_each_reset_is_persisted(self):
+        # Remettre la liste à zéro sans l'écrire ne survit pas au
+        # processus : c'est la reprise qui relit le fichier.
+        corps = ast.dump(self.bloc_abandon())
+        for cle in (
+            "state_4_fix_migration_odoo_lst",
+            "state_4_uninstall_module",
+            "state_4_install_module",
+        ):
+            self.assertIn(cle, corps)
+        self.assertIn("write_config", corps)
+
+
 if __name__ == "__main__":
     unittest.main()

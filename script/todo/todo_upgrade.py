@@ -2665,6 +2665,24 @@ class TodoUpgrade:
                     self.dct_progression["state_4_clone_odoo_lst"] = (
                         lst_clone_odoo
                     )
+                    # Tout ce qui a été fait À ce clone meurt avec lui : la
+                    # base reconstruite est une copie neuve de la version
+                    # précédente et réclame la même préparation. Laisser ces
+                    # drapeaux debout sautait le SQL de pré-migration sur le
+                    # clone neuf, et OpenUpgrade retombait sur le problème
+                    # même que ce SQL existe pour écarter.
+                    lst_fix_migration_odoo[index] = []
+                    self.dct_progression["state_4_fix_migration_odoo_lst"] = (
+                        lst_fix_migration_odoo
+                    )
+                    lst_module_uninstall_module[index] = False
+                    self.dct_progression["state_4_uninstall_module"] = (
+                        lst_module_uninstall_module
+                    )
+                    lst_module_install_module[index] = False
+                    self.dct_progression["state_4_install_module"] = (
+                        lst_module_install_module
+                    )
                     self.write_config()
                     print(
                         f"\n❌ -> {t('Database migration to Odoo')}"
